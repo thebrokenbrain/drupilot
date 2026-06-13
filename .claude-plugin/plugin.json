@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "description": "Port Drupal 9/10 modules and themes to Drupal 11: viability assessment, minimal port (drupal-rector + AI digests rules), optional full \"Drupal 11 way\" refactor, the complete PHPUnit suite in DDEV (Unit/Kernel/Functional/FunctionalJavascript), and Drupal.org contribution (issue fork + Merge Request, or legacy patch).",
   "author": {
-    "name": "drupilot authors",
+    "name": "Josemi Rodríguez",
     "email": "jossemi@gmail.com"
   },
   "homepage": "https://github.com/thebrokenbrain/drupilot",

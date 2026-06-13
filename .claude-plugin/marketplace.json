@@ -2,7 +2,7 @@
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "drupilot",
   "owner": {
-    "name": "drupilot authors",
+    "name": "Josemi Rodríguez",
     "email": "jossemi@gmail.com"
   },
   "metadata": {
@@ -17,7 +17,7 @@
       "version": "0.1.0",
       "category": "development",
       "keywords": ["drupal", "drupal11", "migration", "rector", "ddev", "phpunit"],
-      "author": { "name": "drupilot authors" }
+      "author": { "name": "Josemi Rodríguez" }
     }
   ]
 }
