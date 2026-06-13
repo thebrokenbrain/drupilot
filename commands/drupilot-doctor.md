@@ -63,18 +63,19 @@ without explicit confirmation.**
 
 For the privileged steps the installer needs `sudo` without a TTY. On Linux, set this
 up first with the global **sudo-askpass** skill (it auto-detects the desktop's askpass
-helper and exports `SUDO_ASKPASS`), then call the installer in the same shell so the
-variable is in scope:
+helper and exports `SUDO_ASKPASS`), then call the installer **yourself via the Bash
+tool** in the same shell so the variable is in scope. The command below is a template —
+substitute the confirmed tool list for `<tools...>`; **do not** run it verbatim:
 
-> Invoke the `sudo-askpass` skill, then run:
->
-> !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-deps.sh" <tools...>`
->
-> where `<tools...>` is the explicit list the user confirmed (e.g. `git jq docker ddev`)
-> or `all`. The installer is idempotent: it skips tools that are already present and OK,
-> detects the OS via `os_id` (Fedora -> dnf), uses `sudo -A` when `SUDO_ASKPASS` is set,
-> and refuses to install anything without `--yes`/`DRUPILOT_ASSUME_YES` unless a TTY
-> confirmation is given.
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-deps.sh" <tools...>
+```
+
+where `<tools...>` is the explicit list the user confirmed (e.g. `git jq docker ddev`)
+or `all`. The installer is idempotent: it skips tools that are already present and OK,
+detects the OS via `os_id` (Fedora -> dnf), uses `sudo -A` when `SUDO_ASKPASS` is set,
+and refuses to install anything without `--yes`/`DRUPILOT_ASSUME_YES` unless a TTY
+confirmation is given.
 
 ## Step 5 — Re-check
 

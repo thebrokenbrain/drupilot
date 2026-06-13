@@ -45,7 +45,12 @@ leaf scripts in order. Each is idempotent.
 
 ### 3a — Bring up the DDEV Drupal 11 project
 
-!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-up.sh" --subject "<subject_dir>" --docroot web`
+Run this yourself via the Bash tool, substituting `<subject_dir>` with the resolved
+subject directory from Step 2's context (do not run it verbatim):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-up.sh" --subject "<subject_dir>" --docroot web
+```
 
 This configures `--project-type=drupal11 --docroot=web --php-version=$(resolve_php_target)`,
 starts DDEV, runs `ddev composer create drupal/recommended-project:^11` when there is no
@@ -54,7 +59,11 @@ than assuming hostnames/images. It skips if the project is already configured/ru
 
 ### 3b — Install the add-ons
 
-!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-add-ons.sh" --contrib --selenium`
+Run this yourself via the Bash tool once 3a has the project up:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-add-ons.sh" --contrib --selenium
+```
 
 Installs `ddev/ddev-drupal-contrib` and (for JS tests) `ddev/ddev-selenium-standalone-chrome`
 (v2), then restarts. It detects already-installed add-ons and soft-warns (does not fail)

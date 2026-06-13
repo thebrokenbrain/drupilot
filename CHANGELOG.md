@@ -13,6 +13,16 @@ tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+### Fixed
+- `/drupilot-doctor` and `/drupilot-setup` no longer fail at command load: the
+  installer/DDEV step examples were written as `` !`…` `` command injections, so
+  Claude Code tried to execute them at load time. The `install-deps.sh` example
+  carried the literal `<tools...>` placeholder, which the shell parsed as an
+  invalid redirection (`syntax error near unexpected token 'newline'`). These
+  three step templates (`install-deps.sh`, `ddev-up.sh`, `ddev-add-ons.sh`) are
+  now plain code blocks the model runs via the Bash tool, not load-time
+  injections. Only read-only context probes remain as `` !`…` ``.
+
 ## [0.1.0] - 2026-06-13
 
 ### Added
