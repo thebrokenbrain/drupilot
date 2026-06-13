@@ -1,6 +1,6 @@
 ---
-description: drupilot router and guided flow. Detects the current state of a Drupal module/theme port (environment, cached assessment, phase) and recommends the next logical step; can run the full setup->assess->port->[refactor]->test->[contribute] flow by delegating to the orchestrator. Use as the main entry point when the user says "port this module to Drupal 11", "what's next", or just "/drupilot".
-argument-hint: "[subject-path] [full|status|next]"
+description: drupilot router and guided flow. Detects the current state of a Drupal module/theme port (environment, cached assessment, phase) and recommends the next logical step; can run the full setup->assess->port->[refactor]->test->[contribute] flow by delegating to the orchestrator, or run it hands-off with the `auto` mode word (unattended setup->assess->port->refactor->test that writes the local patch and never performs any outward-facing contribution). Use as the main entry point when the user says "port this module to Drupal 11", "what's next", or just "/drupilot".
+argument-hint: "[subject-path] [full|auto|status|next]"
 allowed-tools: Bash, Read, Task
 ---
 
@@ -19,7 +19,9 @@ only when the user asks for it, drive the whole flow end to end.
 - Treat the scripts as the source of truth for detection — do not guess versions or
   state from memory.
 - `$ARGUMENTS` may carry a subject path (a module/theme directory) and/or a mode
-  word: `full`, `status`, or `next` (default: `next`).
+  word: `full`, `auto`, `status`, or `next` (default: `next`). The env var
+  `DRUPILOT_AUTONOMOUS=true` is equivalent to the `auto` mode word: when it is set
+  and no explicit `status`/`next` is requested, the effective mode is `auto`.
 
 ## Step 1 — Detect the environment (gates, no side effects)
 
@@ -41,6 +43,11 @@ detect-php script (all read-only):
 Then detect the effective PHP target and whether it is confirmed:
 
 !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/detect-php.sh" --json`
+
+Also read the autonomous flag and the contribution mode (so the summary and the
+flow honor them):
+
+!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; printf "autonomous=%s\n" "$(config_get DRUPILOT_AUTONOMOUS false)"; printf "contrib_mode=%s\n" "$(config_get DRUPILOT_CONTRIB_MODE semi)"; printf "generate_rules=%s\n" "$(config_get DRUPILOT_GENERATE_RULES ask)"'`
 
 ## Step 3 — Read the cached assessment (if any)
 
@@ -79,22 +86,53 @@ decision order:
 Note that `refactor` (Phase 2) and `contribute` are **opt-in** and only suggested, not
 forced.
 
-## Step 5 — Run the full flow (only on request)
+## Step 5 — Run the flow (`full`) or hands-off (`auto`)
 
-If the mode word in `$ARGUMENTS` is `full` (or the user explicitly asks to "do the
-whole thing"):
+Resolve the effective mode: the `$ARGUMENTS` mode word wins; otherwise, if
+`autonomous=true` (from Step 2), the effective mode is `auto`; otherwise it is
+`next`.
+
+### `full` — guided, with confirmations
+
+If the mode is `full` (or the user explicitly asks to "do the whole thing"):
 
 1. State the plan in English: the ordered phases you will run
    (setup -> assess -> port -> [refactor if opted in] -> test -> [contribute if opted
    in]), which are gated, and that heavy work may run in the background.
-2. Confirm with the user before starting.
+2. **Confirm with the user before starting.**
 3. Delegate the orchestration to the **drupal-port-orchestrator** subagent via the Task
    tool, passing the subject directory, the detected PHP target, the environment
    readiness, the cached assessment state, and whether the user opted into refactor
    and/or contribution. Let the orchestrator decide when to delegate to the other
    subagents and when to gate.
 
+### `auto` — hands-off, unattended
+
+If the mode is `auto` (the `auto` mode word, or `DRUPILOT_AUTONOMOUS=true`):
+
+1. State the plan briefly, then **proceed without an initial confirmation** — that
+   is the point of this mode. (drupilot's own gates are relaxed here, but the
+   Claude Code permission mode still governs Bash/Edit/Write prompts; for a truly
+   unattended run the user launches with `acceptEdits` or a headless bypass.)
+2. Delegate to **drupal-port-orchestrator** with an explicit `autonomous=true`
+   instruction so it:
+   - runs **setup -> assess -> port -> refactor -> test** in order, gating each
+     heavy stage and skipping work already done (idempotent);
+   - treats `DRUPILOT_GENERATE_RULES` as `auto` **unless it is explicitly `off`**;
+   - writes the local `.patch` at the end of the port (and again after refactor);
+   - **never** performs any outward-facing action — no `git push`, no Merge
+     Request, no `/drupilot-contribute`. Contribution stays opt-in: if the subject
+     is contrib, the orchestrator only *suggests* `/drupilot-contribute` at the end.
+3. If a hard requirement is missing for a stage, the orchestrator stops that stage
+   with the actionable report and no side effects, exactly as in guided mode.
+
+Honor `DRUPILOT_VIABILITY_THRESHOLD`: if the assessment exceeds it, the
+orchestrator still ports (it never refuses) but says so plainly in the final
+summary.
+
+### `status` / `next`
+
 If the mode is `status`, just print the summary from Step 4 and stop (defer to
 `/drupilot-status` for the canonical no-side-effects report). If the mode is `next`
-(default), print the summary and the single recommended next step, and stop without
-acting.
+(default when autonomous is off), print the summary and the single recommended
+next step, and stop without acting.

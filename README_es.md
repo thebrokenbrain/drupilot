@@ -22,6 +22,7 @@
 - [Inicio rápido](#inicio-rápido)
 - [Comandos](#comandos)
 - [Filosofía de portabilidad en dos fases](#filosofía-de-portabilidad-en-dos-fases)
+- [Modo autónomo (manos fuera)](#modo-autónomo-manos-fuera)
 - [Configuración](#configuración)
 - [Casos de uso](#casos-de-uso)
 - [Cómo funciona (arquitectura)](#cómo-funciona-arquitectura)
@@ -38,7 +39,8 @@
 - **Portabilidad mínima (Fase 1)** — el conjunto de cambios más pequeño para que el módulo/tema funcione en Drupal 11 **respetando la funcionalidad original**. Motor: `palantirnet/drupal-rector`, una capa opcional de reglas IA (`dbuytaert/drupal-digests`) y ajustes manuales puntuales.
 - **Refactor completo (Fase 2, opt-in)** — una reescritura a las mejores prácticas modernas de Drupal 11: atributos PHP 8 para plugins, inyección de dependencias, tipados estrictos, cero deprecaciones, `Drupal` + `DrupalPractice` limpios y suite de tests en verde.
 - **Tests** — descubre, adapta y ejecuta la suite PHPUnit completa (Unit / Kernel / Functional / FunctionalJavascript) dentro de DDEV (con Selenium para JS), iterando hasta verde y reportando cobertura. Los fallos **nunca** se silencian.
-- **Contribución** — prepara y (opcionalmente) publica el resultado a Drupal.org mediante el flujo moderno issue-fork + Merge Request, o un patch legacy, en modo **semi-automático** (confirma cada acción externa) o **totalmente automático**.
+- **Contribución** — prepara y (opcionalmente) publica el resultado a Drupal.org mediante el flujo moderno issue-fork + Merge Request, o un patch legacy, en modo **semi-automático** (confirma cada acción externa) o **totalmente automático**. Siempre se genera un `.patch` junto al MR para adjuntarlo al issue.
+- **Patches** — toda portabilidad escribe además un `.patch` local (`MODULE-port-to-drupal-11.patch`) para que puedas revisar el cambio, aplicarlo en otro sitio o probarlo en local antes de contribuir — sin necesidad de cuenta de Drupal.org.
 
 El target de PHP por defecto es **8.3** y es totalmente configurable; todo (sets de Rector, nivel de PHPStan, sniffs de PHPCS, `php_version` de DDEV) deriva de un único ajuste.
 
@@ -106,7 +108,7 @@ Tras instalar, reinicia o abre una sesión nueva para que carguen los hooks. Lue
 
 | Comando | Qué hace |
 | --- | --- |
-| `/drupilot [sujeto]` | **Router / flujo guiado.** Detecta el estado actual (entorno, último assess, fase) y recomienda el siguiente paso, o ejecuta todo el flujo de principio a fin. |
+| `/drupilot [sujeto] [full\|auto]` | **Router / flujo guiado.** Detecta el estado actual (entorno, último assess, fase) y recomienda el siguiente paso. `full` ejecuta todo el flujo con confirmaciones; `auto` lo ejecuta **sin intervención** (ver más abajo). |
 | `/drupilot-doctor [install]` | **Verificación de requisitos.** Tabla de estado por plataforma (Docker + daemon, DDEV, git, composer/php, jq, SSH/PAT) con instrucciones de instalación e instalación asistida opcional (con confirmación). |
 | `/drupilot-setup` | Levanta un sitio **Drupal 11 con DDEV**, instala los add-ons (`ddev-drupal-contrib`, Selenium) y el toolchain de desarrollo de Composer, y escribe `rector.php` / `phpstan.neon` / `phpcs.xml.dist` / entorno de tests desde plantillas. Idempotente. |
 | `/drupilot-assess [sujeto]` | Produce el **informe de viabilidad** + plan por etapas con veredicto S/M/L/XL. |
@@ -127,6 +129,37 @@ Un **estudio de viabilidad** siempre se ejecuta primero como gate de decisión. 
 
 ---
 
+## Modo autónomo (manos fuera)
+
+¿Quieres apuntar drupilot a un módulo y dejar que los agentes hagan **todos** los pasos? Usa la palabra de modo `auto` (o pon `DRUPILOT_AUTONOMOUS=true`). El `drupal-port-orchestrator` ejecuta entonces **setup → assess → port → refactor → test** sin intervención — sin confirmación inicial, generando el `.patch` local al final — y delega en los subagentes especialistas (`drupal-viability-analyst`, `drupal-test-engineer`) según haga falta.
+
+```text
+# El lenguaje natural basta — esto dispara el orquestador:
+"Porta el módulo del directorio actual a Drupal 11, hazlo todo de forma autónoma"
+
+# …o explícitamente:
+/drupilot web/modules/custom/my_module auto
+```
+
+Dos cosas que conviene saber — son límites de seguridad deliberados:
+
+1. **Nunca contribuye por su cuenta.** El modo autónomo se detiene antes de cualquier acción hacia el exterior: ni `git push`, ni Merge Request, ni `/drupilot-contribute`. Si el módulo es contrib, solo *sugiere* contribuir al final. Publicar sigue siendo un paso explícito y aparte que ejecutas tú.
+2. **Dos capas de "sin preguntas".** La palabra de modo `auto` solo relaja los *gates propios* de drupilot. Bash/Edit/Write siguen pasando por el sistema de permisos de Claude Code, así que una ejecución realmente desatendida necesita además un modo de permisos permisivo:
+
+```bash
+# Interactivo pero desatendido (acepta los edits automáticamente):
+claude --permission-mode acceptEdits
+
+# Totalmente headless (CI / scripts):
+export DRUPILOT_AUTONOMOUS=true
+export DRUPILOT_GENERATE_RULES=auto    # el orquestador ya lo trata como auto en este modo
+claude -p "/drupilot web/modules/custom/my_module auto" --permission-mode bypassPermissions
+```
+
+En modo autónomo `DRUPILOT_GENERATE_RULES` se trata como `auto` (ponlo en `off` para que la generación de reglas ad-hoc se quede en solo-informar). Todo sigue estando gateado y siendo idempotente: un requisito duro ausente detiene esa etapa limpiamente, y reejecutar salta el trabajo ya hecho. En cambio, `full` ejecuta el mismo pipeline pero **se detiene a pedir tu confirmación** y deja refactor/contribución como opt-in.
+
+---
+
 ## Configuración
 
 Los valores por defecto están en `config/defaults.json`. **Cada clave `DRUPILOT_*` puede sobreescribirse con una variable de entorno del mismo nombre** (la variable de entorno siempre gana).
@@ -144,6 +177,7 @@ Los valores por defecto están en `config/defaults.json`. **Cada clave `DRUPILOT
 | `DRUPILOT_USE_DIGESTS_RULES` | `true` | Usar la capa complementaria `drupal-digests` tras el Rector oficial. |
 | `DRUPILOT_DIGESTS_REF` | `main` | Commit/tag del repo `drupal-digests`, para reproducibilidad. |
 | `DRUPILOT_GENERATE_RULES` | `ask` | Generar reglas Rector ad-hoc para deprecaciones no cubiertas: `ask` / `auto` / `off`. |
+| `DRUPILOT_AUTONOMOUS` | `false` | Modo manos fuera (equivale a la palabra de modo `auto`): setup→assess→port→refactor→test sin intervención, escribe el patch local, **nunca** contribuye. Ver [Modo autónomo](#modo-autónomo-manos-fuera). |
 
 Otras variables de entorno útiles: `DRUPILOT_GITLAB_PAT` (tu Personal Access Token de GitLab, leído solo en runtime, nunca persistido), `DRUPILOT_ASSUME_YES=1` (saltar confirmaciones en ejecuciones no interactivas), `NO_COLOR=1`.
 
@@ -172,7 +206,13 @@ Obtienes un informe markdown (cacheado para más tarde) que clasifica cada halla
 /drupilot web/modules/custom/my_module
 ```
 
-El router comprueba tu entorno, ejecuta el assess, aplica la portabilidad de Fase 1, ejecuta la suite de tests en DDEV y reporta en cada paso — deteniéndose para pedir confirmación antes de cualquier acción externa. Te dice exactamente qué va a hacer antes de hacerlo.
+El router comprueba tu entorno, ejecuta el assess, aplica la portabilidad de Fase 1, ejecuta la suite de tests en DDEV y reporta en cada paso — deteniéndose para pedir confirmación antes de cualquier acción externa. Te dice exactamente qué va a hacer antes de hacerlo. Al terminar la portabilidad escribe un `MODULE-port-to-drupal-11.patch` local para que puedas revisar o probar el cambio de inmediato.
+
+Para que los agentes lo hagan todo sin pausas, añade `auto` (ver [Modo autónomo](#modo-autónomo-manos-fuera)):
+
+```text
+/drupilot web/modules/custom/my_module auto
+```
 
 ### 3. Solo portabilidad mínima (Fase 1), sin refactor
 
@@ -218,7 +258,7 @@ export DRUPILOT_GITLAB_PAT=glpat-xxxxxxxx   # nunca se almacena; se lee en runti
 /drupilot-contribute web/contrib/some_module 3456789
 ```
 
-Crea el issue fork, la rama y el commit (en el formato correcto, detectando la convención del proyecto), hace push y abre el Merge Request vía la API de GitLab — **degradando con gracia** a una URL de MR de un clic si la API está bloqueada. Te recuerda que **el crédito lo asignan los maintainers** mediante el Contribution Record del issue, y nunca expone tu PAT.
+Crea el issue fork, la rama y el commit (en el formato correcto, detectando la convención del proyecto), hace push, abre el Merge Request vía la API de GitLab — **degradando con gracia** a una URL de MR de un clic si la API está bloqueada — y **además escribe un `.patch`** (`MODULE-port-to-drupal-11-ISSUEID-COMMENT.patch`) para adjuntarlo al issue junto al MR. Te recuerda que **el crédito lo asignan los maintainers** mediante el Contribution Record del issue, y nunca expone tu PAT.
 
 ---
 

@@ -20,6 +20,7 @@
 - [Quick start](#quick-start)
 - [Commands](#commands)
 - [The two-phase porting philosophy](#the-two-phase-porting-philosophy)
+- [Hands-off (autonomous) mode](#hands-off-autonomous-mode)
 - [Configuration](#configuration)
 - [Use cases](#use-cases)
 - [How it works (architecture)](#how-it-works-architecture)
@@ -36,7 +37,8 @@
 - **Minimal port (Phase 1)** — the smallest set of changes to make the module/theme run on Drupal 11 while **preserving the original functionality**. Driven by `palantirnet/drupal-rector`, an optional AI-rules layer (`dbuytaert/drupal-digests`), and targeted manual fixes.
 - **Full refactor (Phase 2, opt-in)** — a rewrite to modern Drupal 11 best practices: PHP 8 attributes for plugins, dependency injection, strict types, zero deprecations, clean `Drupal` + `DrupalPractice`, and a green test suite.
 - **Tests** — discovers, adapts and runs the complete PHPUnit suite (Unit / Kernel / Functional / FunctionalJavascript) inside DDEV (with Selenium for JS), iterating until green and reporting coverage. Failures are **never** silenced.
-- **Contribution** — prepares and (optionally) publishes the result to Drupal.org via the modern issue-fork + Merge Request flow, or a legacy patch, with a **semi-automatic** (confirm every outward action) or **fully automatic** mode.
+- **Contribution** — prepares and (optionally) publishes the result to Drupal.org via the modern issue-fork + Merge Request flow, or a legacy patch, with a **semi-automatic** (confirm every outward action) or **fully automatic** mode. A `.patch` is always produced alongside the MR so you can attach it to the issue.
+- **Patches** — every port also writes a local `.patch` (`MODULE-port-to-drupal-11.patch`) so you can review the change, apply it elsewhere, or test it locally before contributing — no Drupal.org account required.
 
 The default PHP target is **8.3** and is fully configurable; everything (Rector sets, PHPStan level, PHPCS sniffs, DDEV `php_version`) derives from a single setting.
 
@@ -104,7 +106,7 @@ After installing, restart or start a new session so the hooks load. Then run `/d
 
 | Command | What it does |
 | --- | --- |
-| `/drupilot [subject]` | **Router / guided flow.** Detects the current state (environment, last assessment, phase) and recommends the next step, or runs the whole flow end to end. |
+| `/drupilot [subject] [full\|auto]` | **Router / guided flow.** Detects the current state (environment, last assessment, phase) and recommends the next step. `full` runs the whole flow with confirmations; `auto` runs it **hands-off** (see below). |
 | `/drupilot-doctor [install]` | **Requirements check.** Per-platform status table (Docker + daemon, DDEV, git, composer/php, jq, SSH/PAT) with install instructions and optional assisted installation (with confirmation). |
 | `/drupilot-setup` | Spins up a **Drupal 11 DDEV** site, installs the add-ons (`ddev-drupal-contrib`, Selenium) and the Composer dev toolchain, and writes `rector.php` / `phpstan.neon` / `phpcs.xml.dist` / test env from templates. Idempotent. |
 | `/drupilot-assess [subject]` | Produces the **viability report** + staged plan with an S/M/L/XL verdict. |
@@ -125,6 +127,37 @@ A **viability assessment** always runs first as a decision gate. If the refactor
 
 ---
 
+## Hands-off (autonomous) mode
+
+Want to point drupilot at a module and let the agents do **all** the steps? Use the `auto` mode word (or set `DRUPILOT_AUTONOMOUS=true`). The `drupal-port-orchestrator` then runs **setup → assess → port → refactor → test** unattended — no initial confirmation, generating the local `.patch` at the end — and delegates to the specialist subagents (`drupal-viability-analyst`, `drupal-test-engineer`) as needed.
+
+```text
+# Natural language is enough — this triggers the orchestrator:
+"Port the module in the current directory to Drupal 11, run the whole thing autonomously"
+
+# …or explicitly:
+/drupilot web/modules/custom/my_module auto
+```
+
+Two things to know — they are deliberate safety boundaries:
+
+1. **It never contributes on its own.** Autonomous mode stops before any outward-facing action: no `git push`, no Merge Request, no `/drupilot-contribute`. If the module is contrib, it only *suggests* contributing at the end. Publishing stays an explicit, separate step you run yourself.
+2. **Two layers of "no prompts".** The `auto` mode word only relaxes *drupilot's own* gates. Bash/Edit/Write still go through Claude Code's permission system, so a truly unattended run also needs a permissive permission mode:
+
+```bash
+# Interactive but unattended (accepts edits automatically):
+claude --permission-mode acceptEdits
+
+# Fully headless (CI / scripts):
+export DRUPILOT_AUTONOMOUS=true
+export DRUPILOT_GENERATE_RULES=auto    # the orchestrator already treats it as auto in this mode
+claude -p "/drupilot web/modules/custom/my_module auto" --permission-mode bypassPermissions
+```
+
+In autonomous mode `DRUPILOT_GENERATE_RULES` is treated as `auto` (set it to `off` to keep ad-hoc rule generation report-only). Everything is still gated and idempotent: a missing hard requirement stops that stage cleanly, and re-running skips work already done. By contrast, `full` runs the same pipeline but **pauses for your confirmation** and leaves refactor/contribution opt-in.
+
+---
+
 ## Configuration
 
 Defaults live in `config/defaults.json`. **Every `DRUPILOT_*` key can be overridden by an environment variable of the same name** (the environment variable always wins).
@@ -142,6 +175,7 @@ Defaults live in `config/defaults.json`. **Every `DRUPILOT_*` key can be overrid
 | `DRUPILOT_USE_DIGESTS_RULES` | `true` | Use the complementary `drupal-digests` layer after official Rector. |
 | `DRUPILOT_DIGESTS_REF` | `main` | Commit/tag of the `drupal-digests` repo, for reproducibility. |
 | `DRUPILOT_GENERATE_RULES` | `ask` | Generate ad-hoc Rector rules for uncovered deprecations: `ask` / `auto` / `off`. |
+| `DRUPILOT_AUTONOMOUS` | `false` | Hands-off mode (same as the `auto` mode word): unattended setup→assess→port→refactor→test, writes the local patch, **never** contributes. See [Hands-off mode](#hands-off-autonomous-mode). |
 
 Other useful environment variables: `DRUPILOT_GITLAB_PAT` (your GitLab Personal Access Token, read only at runtime, never persisted), `DRUPILOT_ASSUME_YES=1` (skip confirmations in non-interactive runs), `NO_COLOR=1`.
 
@@ -170,7 +204,13 @@ You get a markdown report (cached for later) classifying every finding as auto-f
 /drupilot web/modules/custom/my_module
 ```
 
-The router checks your environment, runs the assessment, applies the Phase 1 port, runs the test suite in DDEV, and reports at each step — pausing for your confirmation before anything outward-facing. It tells you exactly what it will do before doing it.
+The router checks your environment, runs the assessment, applies the Phase 1 port, runs the test suite in DDEV, and reports at each step — pausing for your confirmation before anything outward-facing. It tells you exactly what it will do before doing it. When the port finishes it writes a local `MODULE-port-to-drupal-11.patch` so you can review or test the change immediately.
+
+To let the agents run the whole thing without pausing, add `auto` (see [Hands-off mode](#hands-off-autonomous-mode)):
+
+```text
+/drupilot web/modules/custom/my_module auto
+```
 
 ### 3. Minimal port only (Phase 1), no refactor
 
@@ -216,7 +256,7 @@ export DRUPILOT_GITLAB_PAT=glpat-xxxxxxxx   # never stored; read at runtime
 /drupilot-contribute web/contrib/some_module 3456789
 ```
 
-It creates the issue fork, branch and commit (in the correct format, detecting the project's convention), pushes, and opens the Merge Request via the GitLab API — **degrading gracefully** to a one-click MR URL if the API is blocked. It reminds you that **credit is assigned by the maintainers** via the issue's Contribution Record, and it never exposes your PAT.
+It creates the issue fork, branch and commit (in the correct format, detecting the project's convention), pushes, opens the Merge Request via the GitLab API — **degrading gracefully** to a one-click MR URL if the API is blocked — and **also writes a `.patch`** (`MODULE-port-to-drupal-11-ISSUEID-COMMENT.patch`) to attach to the issue alongside the MR. It reminds you that **credit is assigned by the maintainers** via the issue's Contribution Record, and it never exposes your PAT.
 
 ---
 

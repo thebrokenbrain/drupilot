@@ -87,7 +87,7 @@ its `CONTRIBUTING.md` (some contrib still use the legacy
 
 Apply the ported change-set on the branch, `git add -A`, and commit.
 
-## Step 4 — Push and open the MR (or make a patch)
+## Step 4 — Push, open the MR, and attach a patch
 
 For an issue-fork project (modern flow), rebase onto `origin/BASE`, push to the
 issue remote, and open the MR — honoring the mode:
@@ -99,14 +99,21 @@ issue remote, and open the MR — honoring the mode:
 In **semi** mode, `open-mr.sh` confirms before the push; do not bypass it. In
 **auto** mode it tries the API and degrades to printing the MR URL if blocked.
 
-For a project **not** migrated to issue forks, use the legacy patch flow instead:
+Then **always** also generate the contribution patch — it is normal to attach a
+`.patch` to the issue (reviewers and CI often expect one, and it lets people test
+the change without checking out the fork), so produce it **in addition to** the
+MR, not only as a fallback:
 
 ```bash
-!bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/make-patch.sh" --module "<PROJECT>" --issue "<ISSUEID>"
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/make-patch.sh" --module "<PROJECT>" --issue "<ISSUEID>" --comment "<N>"
 ```
 
-Then guide the user to attach the patch to the issue, comment, and set "Needs
-review".
+This writes `PROJECT-port-to-drupal-11-ISSUEID-COMMENT.patch` (diff against
+`origin/BASE`). Guide the user to attach it to the issue, comment, and set "Needs
+review". Bump `--comment` for each new revision.
+
+For a project **not** migrated to issue forks there is no MR: the patch above is
+the whole contribution — run it without the `open-mr.sh` step.
 
 ## Step 5 — Contribution Record reminder and security notes
 
@@ -128,5 +135,6 @@ Hard rules, always:
 
 Summarize in English: the issue, the mode used, the fork/branch, the commit
 message format applied, what was pushed and whether the MR was opened via API or
-left as a URL to open manually, the patch path if the legacy flow was used, and
-the Contribution Record reminder. Confirm that the PAT was never exposed.
+left as a URL to open manually, the **patch path** (generated alongside the MR,
+or as the sole deliverable for unmigrated projects), and the Contribution Record
+reminder. Confirm that the PAT was never exposed.

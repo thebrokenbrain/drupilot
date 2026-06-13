@@ -180,16 +180,35 @@ bash "$ROOT/scripts/contrib/open-mr.sh" --project "$NAME" --issue ISSUEID \
   `.contrib.pat_env_var` env var — never printed).
 - Pushes to the issue remote: `git push NAME-ISSUEID ISSUEID-short-description`.
 
-## 5b. Legacy flow — patch (PROMPT 3.3, for unmigrated projects)
+### Also attach a patch (always, in addition to the MR)
 
-If the project is not on the issue-fork workflow:
+A `.patch` on the issue is conventional even when there is an MR — reviewers and
+some CI expect one, and it lets people test the change without checking out the
+fork. So after the MR, **always** also produce the contribution patch:
 
 ```bash
 bash "$ROOT/scripts/contrib/make-patch.sh" --module "$NAME" --issue ISSUEID \
      [--comment N] --base BASE_VERSION
 ```
 
-This rebases onto `origin/BASE_VERSION` and writes
+This writes `NAME-short-description-ISSUEID-COMMENT.patch`
+(`git diff origin/BASE_VERSION`). Attach it to the issue alongside (or as a
+complement to) the MR, and bump `--comment` per revision. This is distinct from
+the offline **local preview** patch (`make-patch.sh --local`, named
+`NAME-short-description.patch`) that the port/refactor flow writes for local
+testing.
+
+## 5b. Legacy flow — patch only (PROMPT 3.3, for unmigrated projects)
+
+If the project is not on the issue-fork workflow there is no MR; the patch is the
+whole contribution. Run the same script (no `open-mr.sh` step):
+
+```bash
+bash "$ROOT/scripts/contrib/make-patch.sh" --module "$NAME" --issue ISSUEID \
+     [--comment N] --base BASE_VERSION
+```
+
+It rebases onto `origin/BASE_VERSION` and writes
 `git diff origin/BASE_VERSION > NAME-short-description-ISSUEID-COMMENT.patch`
 (naming convention `[module]-[short-description]-[issue]-[comment].patch`). Then
 the developer attaches the patch to the issue, comments, and sets "Needs review".
@@ -235,7 +254,8 @@ This reminder is mandatory on every successful contribution, in both modes.
 
 ## 9. Report in chat (concise English)
 
-State: the project + issue, the flow used (modern MR or legacy patch), the
-branch/commit, whether the MR was opened via API or left as a manual URL (with
-that URL), the patch path if legacy, and the Contribution Record reminder. Never
-include the PAT or any credential in the summary.
+State: the project + issue, the flow used (modern MR + patch, or legacy patch
+only), the branch/commit, whether the MR was opened via API or left as a manual
+URL (with that URL), the contribution patch path (generated in both flows), and
+the Contribution Record reminder. Never include the PAT or any credential in the
+summary.

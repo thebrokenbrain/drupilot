@@ -163,11 +163,18 @@ stdout, and **never print the PAT**. Do not reinvent their logic.
    ```
    In `semi`, this confirms before the push. The PAT (if used) is read from the env
    var by the script — you never handle it directly.
-5. **Legacy patch** (for unmigrated projects):
+5. **Attach a patch — always, in addition to the MR.** A `.patch` on the issue is
+   conventional even with an MR (reviewers/CI expect one; it lets people test
+   without checking out the fork), and it is the *sole* deliverable for unmigrated
+   projects. Generate it in both cases:
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/make-patch.sh" \
      --module MODULE --issue ISSUEID [--comment N] [--base BASE_VERSION]
    ```
+   This writes `MODULE-short-description-ISSUEID-COMMENT.patch` (`git diff
+   origin/BASE`). It is offline and credential-free. (The offline `--local` mode of
+   the same script — `MODULE-short-description.patch`, no issue — is the preview
+   patch the port/refactor flow writes; do not confuse the two.)
 
 ## Mode behavior summary
 
@@ -181,7 +188,8 @@ stdout, and **never print the PAT**. Do not reinvent their logic.
 ## Reporting
 
 End with a concise English summary:
-- What was done (fork, branch, commit, push, MR or patch) and the relevant URL(s).
+- What was done (fork, branch, commit, push, MR, and the patch) and the relevant
+  URL(s) and patch path.
 - The mode used and any action that still needs a manual step (e.g. opening the MR in
   the browser because the API was blocked).
 - The detected commit-message convention.

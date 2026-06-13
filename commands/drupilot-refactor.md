@@ -94,7 +94,20 @@ Push static analysis to the refactor level and require clean coding standards:
 Iterate until: zero deprecations, PHPStan clean at level 5-6, and `phpcs
 --standard=Drupal,DrupalPractice` reports no violations.
 
-## Step 6 — Report
+## Step 6 — Refresh the local patch
+
+Phase 2 changes more code, so regenerate the local preview patch to reflect the
+refactor (overwrites the Phase 1 one in place):
+
+```bash
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/make-patch.sh" --local --subject "$1"
+```
+
+It rewrites `MODULE-port-to-drupal-11.patch` next to the module. This stays a
+preview/test patch; the issue-ready contribution patch is produced by
+`/drupilot-contribute`.
+
+## Step 7 — Report
 
 Summarize in English:
 
@@ -105,6 +118,7 @@ Summarize in English:
 - Test status: which groups ran, the pass result, coverage, and any test
   documented as un-passable for an external reason.
 - A reviewable summary of the diff.
+- **Local patch**: the refreshed `MODULE-port-to-drupal-11.patch` path (Step 6).
 - Next suggested step: `/drupilot-test` for a final full green run, then
   `/drupilot-contribute` if the subject is a contrib project the user wants to
   publish.

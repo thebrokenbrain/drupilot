@@ -1,28 +1,49 @@
 #!/usr/bin/env bash
 # =============================================================================
 # drupilot — scripts/contrib/make-patch.sh
-# Legacy Drupal.org contribution flow: generate a patch file for projects that
-# have not migrated to issue forks / merge requests (PROMPT 3.3).
+# Generate a Drupal patch file. Two modes:
 #
-# Flow:
-#   1. Fetch origin and rebase the current branch onto origin/BASE.
-#   2. git diff origin/BASE > MODULE-short-description-ISSUE-COMMENT.patch
+#   * legacy (default) — the Drupal.org contribution patch for projects that
+#     have not migrated to issue forks / merge requests (PROMPT 3.3). Fetches
+#     origin, rebases the current branch onto origin/BASE, and writes
+#     git diff origin/BASE > MODULE-short-description-ISSUE-COMMENT.patch.
+#     Gated on the `contribute` profile (git). Used by the contribute flow,
+#     and ALSO run alongside the Merge Request so the issue gets an attachable
+#     patch in addition to the MR.
 #
-# Naming convention (PROMPT 3.3): [module]-[short-description]-[issue]-[comment].patch
-# This does NOT push and NEVER touches credentials.
+#   * --local — a "test it locally / preview the port" patch. NO issue id, NO
+#     network, NO rebase: it diffs the subject subtree against a detected base
+#     ref (committed port changes when an upstream exists, otherwise the working
+#     tree) and writes MODULE-DESCRIPTION.patch next to the module. New
+#     (untracked) files are included via a throwaway index, so the patch is
+#     complete without touching the developer's real git index. This is the
+#     patch the port/refactor flow writes automatically at the end.
+#
+# Naming:
+#   legacy  -> [module]-[short-description]-[issue]-[comment].patch  (PROMPT 3.3)
+#   --local -> [module]-[short-description].patch
+#
+# This script never pushes and NEVER touches credentials.
 #
 # Usage:
 #   make-patch.sh --module NAME --issue ID
 #                 [--comment N] [--base BASE_VERSION] [--description SLUG]
-#                 [--output DIR]
+#                 [--output DIR] [--subject DIR]
+#   make-patch.sh --local [--subject DIR] [--module NAME]
+#                 [--base BASE_VERSION] [--description SLUG] [--output DIR]
 #
 #   --module       module/theme machine name used as the filename prefix.
-#   --issue        numeric issue id.
+#                  Auto-detected from --subject when omitted.
+#   --subject      module/theme directory. Sets the machine name (if --module is
+#                  absent) and, in --local mode, the default --output directory.
+#   --issue        numeric issue id (required unless --local).
 #   --comment      issue comment number the patch will be attached to (default 1).
 #   --base         base version branch to diff against (e.g. 11.x). Defaults to
 #                  the upstream tracking branch, then origin/HEAD.
 #   --description  short slug for the filename (default: 'port-to-drupal-11').
-#   --output       directory to write the patch into (default: current dir).
+#   --output       directory to write the patch into. Default: the subject dir in
+#                  --local mode, else the current directory.
+#   --local        local/preview mode (no issue, no network, no rebase).
 #
 # Exit codes: 0 ok · 1 usage/error · 2 hard requirement missing (gate).
 # =============================================================================
@@ -32,11 +53,13 @@ set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
 MODULE=""
+SUBJECT=""
 ISSUE=""
 COMMENT="1"
 BASE=""
 DESCRIPTION="port-to-drupal-11"
-OUTPUT="$PWD"
+OUTPUT=""
+LOCAL=0
 
 usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
 
@@ -51,6 +74,8 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --module) MODULE="${2:-}"; shift 2;;
     --module=*) MODULE="${1#*=}"; shift;;
+    --subject) SUBJECT="${2:-}"; shift 2;;
+    --subject=*) SUBJECT="${1#*=}"; shift;;
     --issue) ISSUE="${2:-}"; shift 2;;
     --issue=*) ISSUE="${1#*=}"; shift;;
     --comment) COMMENT="${2:-}"; shift 2;;
@@ -61,17 +86,122 @@ while [[ $# -gt 0 ]]; do
     --description=*) DESCRIPTION="${1#*=}"; shift;;
     --output) OUTPUT="${2:-}"; shift 2;;
     --output=*) OUTPUT="${1#*=}"; shift;;
+    --local) LOCAL=1; shift;;
     -h|--help) usage; exit 0;;
     *) log_warn "Unknown argument: $1"; shift;;
   esac
 done
 
-[[ -n "$MODULE" ]] || die "Missing --module NAME" 1
-[[ -n "$ISSUE" ]]  || die "Missing --issue ID" 1
+# Resolve the machine name from the subject dir when --module is not given. In
+# --local mode the subject defaults to the current directory, so an empty/omitted
+# --subject still detects the module from where we are.
+DETECT_DIR="$SUBJECT"
+[[ -z "$DETECT_DIR" && "$LOCAL" == "1" ]] && DETECT_DIR="$PWD"
+if [[ -z "$MODULE" && -n "$DETECT_DIR" ]]; then
+  MODULE="$(subject_machine_name "$DETECT_DIR" 2>/dev/null || true)"
+fi
+[[ -n "$MODULE" ]] || die "Missing --module NAME (or pass --subject DIR to detect it)." 1
+
+have_cmd git || die "git is not installed." 1
+
+MODULE_SLUG="$(slugify "$MODULE")"
+DESC_SLUG="$(slugify "$DESCRIPTION")"
+[[ -n "$DESC_SLUG" ]] || DESC_SLUG="patch"
+
+# =============================================================================
+# LOCAL / PREVIEW MODE — offline diff of the port, no issue, no rebase.
+# =============================================================================
+if [[ "$LOCAL" == "1" ]]; then
+  # Where is the subject? Default to the current directory.
+  SUBJ_DIR="${SUBJECT:-$PWD}"
+  [[ -d "$SUBJ_DIR" ]] || die "Subject directory not found: $SUBJ_DIR" 1
+
+  # The local patch only needs git — no SSH/PAT, no `contribute` gate. If the
+  # subject is not under version control we cannot produce a reliable diff, so
+  # we warn and exit 0 (fail-safe: never break the surrounding port flow).
+  if ! git -C "$SUBJ_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    log_warn "The local patch needs the module to be under git version control."
+    log_warn "'$SUBJ_DIR' is not inside a git checkout — skipping patch generation."
+    exit 0
+  fi
+
+  REPO="$(git -C "$SUBJ_DIR" rev-parse --show-toplevel 2>/dev/null)"
+  [[ -n "$REPO" ]] || die "Could not resolve the git repository root for $SUBJ_DIR" 1
+  # Path of the subject relative to the repo root (trailing slash, empty at root).
+  RELPREFIX="$(git -C "$SUBJ_DIR" rev-parse --show-prefix 2>/dev/null || true)"
+  PATHSPEC="${RELPREFIX:-.}"
+
+  # Output: default next to the module.
+  [[ -n "$OUTPUT" ]] || OUTPUT="$SUBJ_DIR"
+  mkdir -p "$OUTPUT"
+  OUTPUT_ABS="$(cd "$OUTPUT" && pwd)"
+  PATCH_NAME="$MODULE_SLUG-$DESC_SLUG.patch"
+  PATCH_PATH="$OUTPUT_ABS/$PATCH_NAME"
+
+  log_step "Local patch: $MODULE (preview of the port, scoped to $PATHSPEC)"
+
+  # Resolve the base ref WITHOUT touching the network or the working tree.
+  BASE_REF=""
+  if [[ -n "$BASE" ]]; then
+    if git -C "$REPO" rev-parse --verify --quiet "origin/$BASE" >/dev/null 2>&1; then
+      BASE_REF="origin/$BASE"
+    elif git -C "$REPO" rev-parse --verify --quiet "$BASE" >/dev/null 2>&1; then
+      BASE_REF="$BASE"
+    else
+      die "Base '$BASE' not found locally (tried origin/$BASE and $BASE). Pass an existing --base." 1
+    fi
+  else
+    UPSTREAM="$(git -C "$REPO" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+    if [[ -n "$UPSTREAM" ]]; then
+      BASE_REF="$UPSTREAM"
+    else
+      DEF="$(git -C "$REPO" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)"
+      if [[ -n "$DEF" ]]; then BASE_REF="$DEF"; else BASE_REF="HEAD"; fi
+    fi
+  fi
+  log_info "Diffing against base '$BASE_REF' (no fetch, no rebase)."
+
+  # Build the diff in a throwaway index so untracked (new) files are included
+  # without mutating the developer's real git index.
+  TMP_INDEX="$(mktemp "${TMPDIR:-/tmp}/drupilot-index.XXXXXX")"
+  cleanup_index() { rm -f "$TMP_INDEX"; }
+  trap cleanup_index EXIT
+  if ! GIT_INDEX_FILE="$TMP_INDEX" git -C "$REPO" read-tree HEAD 2>/dev/null; then
+    # No HEAD yet (unborn branch): start from an empty index.
+    GIT_INDEX_FILE="$TMP_INDEX" git -C "$REPO" read-tree --empty 2>/dev/null || true
+  fi
+  # Exclude the patch file itself so a re-run never embeds the previous patch.
+  EXCLUDE_SELF=":(exclude)${RELPREFIX}${PATCH_NAME}"
+  GIT_INDEX_FILE="$TMP_INDEX" git -C "$REPO" add -A -- "$PATHSPEC" "$EXCLUDE_SELF" 2>/dev/null || true
+
+  if ! GIT_INDEX_FILE="$TMP_INDEX" git -C "$REPO" diff --cached "$BASE_REF" -- "$PATHSPEC" "$EXCLUDE_SELF" > "$PATCH_PATH" 2>/dev/null; then
+    rm -f "$PATCH_PATH"
+    die "git diff against $BASE_REF failed." 1
+  fi
+
+  if [[ ! -s "$PATCH_PATH" ]]; then
+    rm -f "$PATCH_PATH"
+    log_warn "No differences against $BASE_REF — nothing to patch yet."
+    exit 0
+  fi
+
+  hr
+  log_ok "Local patch written: $PATCH_PATH"
+  log_info "Apply it elsewhere with:  git apply $PATCH_NAME   (or 'patch -p1 < $PATCH_NAME')"
+  log_info "This is a preview of the port; the contribution patch (with issue+comment) is produced by the contribute flow."
+
+  # Machine-readable: the patch path on STDOUT.
+  printf '%s\n' "$PATCH_PATH"
+  exit 0
+fi
+
+# =============================================================================
+# LEGACY / CONTRIBUTION MODE — rebase onto origin/BASE, diff, issue+comment name.
+# =============================================================================
+[[ -n "$ISSUE" ]]  || die "Missing --issue ID (or pass --local for a preview patch)." 1
 [[ "$ISSUE" =~ ^[0-9]+$ ]] || die "Issue id must be numeric: '$ISSUE'" 1
 [[ "$COMMENT" =~ ^[0-9]+$ ]] || die "Comment number must be numeric: '$COMMENT'" 1
 
-have_cmd git || die "git is not installed." 1
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
   || die "Not inside a git checkout. cd into the project clone first." 1
 
@@ -86,11 +216,8 @@ if [[ -r "$PREFLIGHT" ]]; then
   fi
 fi
 
-MODULE_SLUG="$(slugify "$MODULE")"
-DESC_SLUG="$(slugify "$DESCRIPTION")"
-[[ -n "$DESC_SLUG" ]] || DESC_SLUG="patch"
-
 PATCH_NAME="$MODULE_SLUG-$DESC_SLUG-$ISSUE-$COMMENT.patch"
+[[ -n "$OUTPUT" ]] || OUTPUT="$PWD"
 mkdir -p "$OUTPUT"
 # Resolve to an absolute output path so the diff lands where the user expects.
 OUTPUT_ABS="$(cd "$OUTPUT" && pwd)"

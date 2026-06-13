@@ -11,6 +11,34 @@ release, rename `[Unreleased]` to the new version with a date, bump `version`
 in `.claude-plugin/plugin.json` (and the `marketplace.json` entry) to match, and
 tag the commit `vX.Y.Z`.
 
+## [Unreleased]
+
+### Added
+- Hands-off **autonomous mode**: the `auto` mode word (`/drupilot <subject> auto`)
+  and the `DRUPILOT_AUTONOMOUS` config key run **setup → assess → port → refactor →
+  test** unattended — no initial confirmation, `DRUPILOT_GENERATE_RULES` treated as
+  `auto` (unless `off`), the local patch written at the end. It **never** performs
+  any outward-facing action (no `git push` / Merge Request / contribute), even in
+  `auto` contribution mode; contribution stays an explicit, separate step. Wired
+  through the `/drupilot` router and the `drupal-port-orchestrator`, and documented
+  in both READMEs (including how it combines with the Claude Code permission mode
+  for a fully headless run).
+- Local **preview patch**: `scripts/contrib/make-patch.sh --local` writes
+  `MODULE-port-to-drupal-11.patch` next to the module (offline, git-only, no rebase),
+  including new/untracked files via a throwaway git index so the developer's real
+  index is never touched. `/drupilot-port` (and `/drupilot-refactor`) generate and
+  refresh it automatically.
+
+### Changed
+- The Drupal.org contribution flow now **always** produces a `.patch` alongside the
+  Merge Request (`[module]-[short-description]-[issue]-[comment].patch`), not only as
+  the legacy fallback for unmigrated projects — it is conventional to attach one to
+  the issue. Updated `/drupilot-contribute`, the `drupal-contribution` skill and the
+  `drupal-contrib-publisher` agent.
+- `make-patch.sh` gained `--local` and `--subject` (auto-detects the machine name
+  from the subject directory); the legacy issue/comment flow is unchanged. The local
+  mode skips the `contribute` gate (it needs only git, no SSH/PAT).
+
 ## [0.2.0] - 2026-06-13
 
 ### Added

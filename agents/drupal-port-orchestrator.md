@@ -95,7 +95,35 @@ Read via the scripts (which call `config_get`/`config_json`); env vars override
 (true), `DRUPILOT_CODER_CONSTRAINT` (^8.3), `DRUPILOT_PHPSTAN_LEVEL` (2),
 `DRUPILOT_PHPSTAN_LEVEL_REFACTOR` (6), `DRUPILOT_VIABILITY_THRESHOLD` (medium),
 `DRUPILOT_CONTRIB_MODE` (semi), `DRUPILOT_USE_DIGESTS_RULES` (true),
-`DRUPILOT_DIGESTS_REF` (main), `DRUPILOT_GENERATE_RULES` (ask).
+`DRUPILOT_DIGESTS_REF` (main), `DRUPILOT_GENERATE_RULES` (ask),
+`DRUPILOT_AUTONOMOUS` (false).
+
+## Autonomous mode (hands-off)
+
+When the router delegates with `autonomous=true` (the `/drupilot <subject> auto`
+mode word, or `DRUPILOT_AUTONOMOUS=true`), run the pipeline unattended:
+
+- **No initial confirmation.** State the plan briefly and proceed. This relaxes
+  *drupilot's own* gates only — the Claude Code permission mode still governs
+  Bash/Edit/Write prompts, so a fully unattended run depends on how the session was
+  launched (`acceptEdits` / headless bypass). Do not assume you can write without
+  the harness's permission.
+- **Scope: `setup -> assess -> port -> refactor -> test`.** Refactor (Phase 2) is
+  included in autonomous mode by design (this is the explicit opt-in). Each heavy
+  stage is still gated and idempotent.
+- **`DRUPILOT_GENERATE_RULES` is treated as `auto`** unless it is explicitly `off`
+  (then keep `off`). You still report every ad-hoc rule/manual change you make.
+- **Always write the local `.patch`** at the end of the port stage, and refresh it
+  after refactor (`make-patch.sh --local --subject <path>`).
+- **Never perform any outward-facing action.** No `git push`, no Merge Request, no
+  contribution — *not even in `auto` contribution mode*. If the subject is a contrib
+  project, only **suggest** `/drupilot-contribute` in the final summary. The
+  `guard-contrib.sh` hook remains a backstop; autonomous mode never tries to defeat
+  it.
+- **Never refuse.** If viability exceeds `DRUPILOT_VIABILITY_THRESHOLD`, still port
+  and say so plainly; if a stage's hard requirement is missing, stop that stage with
+  the actionable report and no side effects, then continue with what is still
+  possible (e.g. static port without DDEV).
 
 ## The pipeline you coordinate
 
@@ -171,13 +199,21 @@ run `phpcbf` + `phpcs` + `phpstan` and leave the subject compiling **without blo
 deprecations**. No architectural changes. Report the summarized diff, which rules
 (official/digests/ad-hoc) were applied, and what is deferred to Phase 2.
 
+When the subject validates, write the local preview patch (offline, git-only;
+skips with a warning if the module is not under git):
+`scripts/contrib/make-patch.sh --local --subject <path>` →
+`MODULE-port-to-drupal-11.patch` next to the module, for local review/testing
+before any contribution.
+
 ### Stage 4 — refactor (gate: `analyze`/`test`; Phase 2, OPT-IN ONLY)
 
-Only when the user explicitly opts in. Use the `full-refactor` skill: PHP 8 attribute
-plugins, dependency injection, strict typing, modern APIs, zero deprecations, raise
-PHPStan to level 5-6, and clean `Drupal` + `DrupalPractice`. **Coordinate closely
-with `drupal-test-engineer`** so the suite stays/turns green as the architecture
-changes. Explain every significant change.
+Only when the user explicitly opts in (this includes autonomous mode, which opts
+in by design). Use the `full-refactor` skill: PHP 8 attribute plugins, dependency
+injection, strict typing, modern APIs, zero deprecations, raise PHPStan to level
+5-6, and clean `Drupal` + `DrupalPractice`. **Coordinate closely with
+`drupal-test-engineer`** so the suite stays/turns green as the architecture
+changes. Explain every significant change. When done, **refresh the local patch**
+(`make-patch.sh --local --subject <path>`) so it reflects the refactor.
 
 ### Stage 5 — test (gate: `test`) -> delegate
 

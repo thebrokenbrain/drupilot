@@ -177,14 +177,30 @@ PHPCS is clean (or remaining items are explicitly noted as out-of-scope). If a
 running Drupal site exists, `run-upgrade-status.sh --module NAME` gives a
 complementary view (it soft-skips when Drupal is not installed).
 
-## 7. Report and hand off
+## 7. Local patch (preview / test before contributing)
+
+When the subject validates, write a local `.patch` of the whole port so the
+developer can review it, apply it elsewhere, or test it before deciding to
+contribute. Offline, no rebase, git-only; it skips with a warning (never an
+error) if the module is not under version control:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/make-patch.sh" --local --subject "<path>"
+```
+
+This writes `MODULE-port-to-drupal-11.patch` next to the module (diff scoped to
+the module subtree, new files included, the developer's git index untouched). It
+is distinct from the **contribution** patch (named `[module]-[desc]-[issue]-[comment].patch`)
+that `drupal-contribution` produces alongside the Merge Request — see §5 there.
+
+## 8. Report and hand off
 
 Summarize (in English): the diff, which rules were applied (official / digests /
 ad-hoc), the manual changes made, the resulting `core_version_requirement`, the
-phpcs/phpstan state, and what was **deferred to Phase 2** (any architectural
-work, DI, attributes, strict types, missing tests). Then hand off to
-`test-adaptation` to get the suite green, and offer `full-refactor` if the user
-opts into Phase 2.
+phpcs/phpstan state, the **local patch path** (or that it was skipped), and what
+was **deferred to Phase 2** (any architectural work, DI, attributes, strict
+types, missing tests). Then hand off to `test-adaptation` to get the suite green,
+and offer `full-refactor` if the user opts into Phase 2.
 
 ## Gotchas
 

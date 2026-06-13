@@ -12,6 +12,9 @@
   "DRUPILOT_USE_DIGESTS_RULES": true,
   "DRUPILOT_DIGESTS_REF": "main",
   "DRUPILOT_GENERATE_RULES": "ask",
+  "DRUPILOT_AUTONOMOUS": false,
+
+  "_autonomous_comment": "Hands-off mode. When true (or invoked as `/drupilot <subject> auto`), the orchestrator runs setup -> assess -> port -> refactor -> test unattended: no initial confirmation, DRUPILOT_GENERATE_RULES is treated as 'auto' unless explicitly set to 'off', and the local .patch is always written at the end. It NEVER performs outward-facing actions on its own (no git push / Merge Request / contribute) — those stay opt-in via /drupilot-contribute. This only relaxes drupilot's own gates; the Claude Code permission mode still governs Bash/Edit/Write prompts (use acceptEdits or a headless bypass for a fully unattended run).",
 
   "_requirements_comment": "Minimum versions used by preflight.sh. Some carry uncertainty (see PROMPT 1.2): the real gate is functional (e.g. that 'ddev config --project-type=drupal11' works), not just the number.",
   "requirements": {

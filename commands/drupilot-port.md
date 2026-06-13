@@ -140,7 +140,24 @@ If PHPStan still reports blocking deprecations, iterate (back to the relevant
 pass) until they are resolved or clearly attributable to something deferred to
 Phase 2 (and recorded as such). Do not silence findings.
 
-## Step 8 — Report
+## Step 8 — Write the local patch (preview / test locally)
+
+Once the subject compiles and validates, write a local `.patch` of the whole
+port so the user can review it, apply it elsewhere, or test it before deciding to
+contribute. This is offline (no network, no rebase) and only needs the module to
+be under git version control; if it is not, the script warns and skips without
+breaking the flow.
+
+```bash
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/make-patch.sh" --local --subject "$1"
+```
+
+It writes `MODULE-port-to-drupal-11.patch` next to the module (diff scoped to the
+module subtree, new files included). This is **not** the contribution patch — the
+issue-ready patch with the `issue-comment` name is produced later by
+`/drupilot-contribute`, alongside the Merge Request.
+
+## Step 9 — Report
 
 Summarize in English:
 
@@ -153,6 +170,8 @@ Summarize in English:
   jQuery UI rework, deeper API modernization) explicitly listed for
   `/drupilot-refactor`.
 - A short, reviewable summary of the diff (files touched, nature of changes).
+- **Local patch**: the path to the `MODULE-port-to-drupal-11.patch` written in
+  Step 8 (or a note that it was skipped because the module is not under git).
 - Next suggested step: `/drupilot-test` to adapt and run the test suite, then
   optionally `/drupilot-refactor`.
 
