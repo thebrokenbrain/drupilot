@@ -61,3 +61,9 @@ The flow is **command → (gate) → skill + subagent → scripts → templates*
 - **New command:** `commands/<name>.md` with YAML frontmatter (`description`, `argument-hint`, `allowed-tools`; add `disable-model-invocation: true` for outward-facing/destructive commands like `drupilot-contribute`). Body is a prompt template that gates requirements, loads the relevant skill, drives scripts, and summarizes in English.
 - **New skill/subagent:** `skills/<dir>/SKILL.md` / `agents/<name>.md` — embed the relevant versions/commands from `../PROMPT.md` §1–§3 so they never re-research.
 - **Templates** (`templates/*.tmpl`) use `{{PLACEHOLDER}}` tokens substituted at setup time and are parameterized by the PHP target.
+
+## Changelog and releases
+
+Record **every notable change in `CHANGELOG.md`** under the `[Unreleased]` section as you make it (Keep a Changelog format: `Added` / `Changed` / `Deprecated` / `Removed` / `Fixed` / `Security`). This is the running log of improvements — do not skip it.
+
+On a release, keep the version in sync across three places: rename `[Unreleased]` to the new version with a date in `CHANGELOG.md`, bump `version` in `.claude-plugin/plugin.json` **and** the `drupilot` entry in `.claude-plugin/marketplace.json` to match, then tag the commit `vX.Y.Z` (the `CHANGELOG.md` compare/tag links assume those tags exist). Follow Semantic Versioning.
