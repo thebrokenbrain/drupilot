@@ -45,6 +45,17 @@ higher than the Phase 1 deprecation level. The PHP target still derives from
 `DRUPILOT_PHP_TARGET` (default `8.3`); never assume PHP 8.5 is supported — branch
 on the runtime check.
 
+Because a refactor introduces typed / `final` public APIs (a BC break),
+re-evaluate the core target in refactor mode:
+
+```bash
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/core-strategy.sh" --subject "$1" --phase refactor
+```
+
+It recommends `^11` (drop Drupal 10) and a **major** version bump — plan a new
+`N+1.0.x` branch, not a minor. Apply its `core_version_requirement`; `^11` needs
+no `require.php`. Surface the major-bump implication in the final summary.
+
 ## Step 2 — Load the procedure
 
 Invoke the **full-refactor** skill for the modernization checklist and the exact

@@ -72,8 +72,14 @@ All output you produce — the report, the chat summary, every label — is in *
   - **CKEditor 5** — CKEditor 4 removed since D10; text-format/editor config migration.
   - **jQuery / jQuery UI** — `core/jquery.ui.*` libraries removed/externalized.
   - **PHPUnit 10/11**, **Guzzle 7** — test and HTTP client API shifts.
-- **info.yml**: minimal D11 change is `core_version_requirement: ^10 || ^11` (or `^11`
-  if dropping D10). The old `core: 8.x` key is gone. A missing
+- **info.yml + core target**: the recommended `core_version_requirement` comes from
+  `scripts/analysis/core-strategy.sh` (strategy `DRUPILOT_CORE_TARGET_STRATEGY`,
+  default `auto`): `^10 || ^11` for a BC-preserving port or `^11` on a BC break.
+  Keeping Drupal 10 also implies composer `require.php: ">=<target>"` — the port's
+  PHP floor is the target, while Drupal 10 itself allows PHP 8.1, so without it a
+  D10 + PHP<target site would fatal. The choice also yields a SemVer
+  **version-bump** verdict (drop a core major or break the public API → major; add
+  D11 with no break → minor). The old `core: 8.x` key is gone; a missing
   `core_version_requirement` is **blocking** and must be flagged.
 
 ## The analysis you run
@@ -107,6 +113,13 @@ not reinvent their logic; capture and interpret their output.
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-upgrade-status.sh" --module <NAME>
    ```
    If Drupal is not installed, soft-skip and note it in the report.
+7. **Core compatibility decision** (read-only; needs only the `*.info.yml`):
+   ```bash
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/core-strategy.sh" --subject <DIR> --phase port --json
+   ```
+   Carry its `recommended_core_version_requirement`, `composer_core_constraint`,
+   `require_php`, `version_bump`, rationale and warnings into the report and
+   `assess.json`.
 
 ## Classification
 
@@ -118,8 +131,9 @@ Bucket every finding:
 - **Manual** — not covered by any Rector rule. Each needs a human change.
 - **Hard breaks** — Twig 3, CKEditor 5, jQuery UI, Symfony 7. Call these out
   separately; they drive the effort estimate the most.
-- **info.yml status** — present/correct, needs the minimal change, or blocking
-  (missing `core_version_requirement`).
+- **info.yml status + core target** — present/correct, needs the minimal change,
+  or blocking (missing `core_version_requirement`); plus the recommended target,
+  its `require.php`, and the version-bump verdict from the core-strategy helper.
 - **Contrib dependency D11 readiness** — for each declared dependency, whether a D11
   release exists; a dependency with no D11 release is an external blocker.
 

@@ -77,9 +77,15 @@ All output you produce — messages, summaries, plans — is in **English**.
 - **Drush**: `drush/drush` **^13** (required by D11).
 - **Upgrade Status**: `drupal/upgrade_status` contrib module; **requires an installed
   Drupal** (bootstrap + DB) -> only runs inside a live DDEV environment.
-- **info.yml**: the minimal change is `core_version_requirement: ^10 || ^11` (or
-  `^11` if dropping D10, per `DRUPILOT_KEEP_D10`). The old `core: 8.x` key no longer
-  exists; a missing `core_version_requirement` is blocking.
+- **info.yml + core target**: pick `core_version_requirement` with
+  `scripts/analysis/core-strategy.sh` (strategy `DRUPILOT_CORE_TARGET_STRATEGY`,
+  default `auto`): `^10 || ^11` for a BC-preserving port, `^11` on a BC break.
+  Keeping Drupal 10 implies composer `require.php: ">=<target>"` (the port's PHP
+  floor is the target; Drupal 10 itself allows PHP 8.1, so without it a D10 +
+  PHP<target site would fatal). The choice also yields a SemVer **version-bump**
+  verdict (drop a core major / break the API → major; add D11 → minor). The old
+  `core: 8.x` key no longer exists; a missing `core_version_requirement` is
+  blocking. (Legacy `DRUPILOT_KEEP_D10` still overrides.)
 - **Hard breaks to watch**: Symfony 7 (event subscriber signatures/types), Twig 3
   (`spaceless` removed, retired filters/functions), CKEditor 5 (CKEditor 4 gone since
   D10), jQuery / jQuery UI (`core/jquery.ui.*` removed/externalized), PHPUnit 10/11,
@@ -91,8 +97,9 @@ All output you produce — messages, summaries, plans — is in **English**.
 
 Read via the scripts (which call `config_get`/`config_json`); env vars override
 `config/defaults.json`:
-`DRUPILOT_PHP_TARGET` (8.3), `DRUPILOT_DRUPAL_TARGET` (^11), `DRUPILOT_KEEP_D10`
-(true), `DRUPILOT_CODER_CONSTRAINT` (^8.3), `DRUPILOT_PHPSTAN_LEVEL` (2),
+`DRUPILOT_PHP_TARGET` (8.3), `DRUPILOT_DRUPAL_TARGET` (^11),
+`DRUPILOT_CORE_TARGET_STRATEGY` (auto), `DRUPILOT_CODER_CONSTRAINT` (^8.3),
+`DRUPILOT_PHPSTAN_LEVEL` (2),
 `DRUPILOT_PHPSTAN_LEVEL_REFACTOR` (6), `DRUPILOT_VIABILITY_THRESHOLD` (medium),
 `DRUPILOT_CONTRIB_MODE` (semi), `DRUPILOT_USE_DIGESTS_RULES` (true),
 `DRUPILOT_DIGESTS_REF` (main), `DRUPILOT_GENERATE_RULES` (ask),
@@ -193,9 +200,12 @@ Use the `minimal-port` skill. Three passes (PROMPT §5.4):
 3. **Ad-hoc generation (optional, `DRUPILOT_GENERATE_RULES`)** — for deprecations no
    source covers: in `ask` confirm first; in `auto` generate a reusable Rector rule
    or apply manually with change-record context; in `off` only report.
-Then apply the minimal manual changes Rector cannot (e.g.
-`core_version_requirement`, mechanical Twig/CKEditor/jQuery fixes). After each batch,
-run `phpcbf` + `phpcs` + `phpstan` and leave the subject compiling **without blocking
+Then apply the minimal manual changes Rector cannot. Decide
+`core_version_requirement` with `scripts/analysis/core-strategy.sh --subject <DIR>
+--phase port` and apply it; when it returns a `require.php` (always for
+`^10 || ^11`), add `"require": { "php": ">=<target>" }` to `composer.json`. Apply
+the remaining mechanical Twig/CKEditor/jQuery fixes. After each batch, run
+`phpcbf` + `phpcs` + `phpstan` and leave the subject compiling **without blocking
 deprecations**. No architectural changes. Report the summarized diff, which rules
 (official/digests/ad-hoc) were applied, and what is deferred to Phase 2.
 

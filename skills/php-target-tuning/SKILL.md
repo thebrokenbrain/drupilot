@@ -118,6 +118,18 @@ Then re-derive: re-run `detect-php.sh --json`, regenerate `rector.php`,
 set, PHPStan, PHPCS and the DDEV runtime produces confusing, inconsistent
 findings.
 
+## 5. Cross-reference: the core target and `require.php`
+
+The PHP target is also the **floor of the port**. The Drupal core-target decision
+itself lives in `scripts/analysis/core-strategy.sh` (helper `recommend_core_target`),
+not here — but the two meet at one rule: when a port **keeps Drupal 10**
+(`core_version_requirement: ^10 || ^11`) it declares composer
+`require.php: ">=<target>"`, because Drupal 10's own minimum is PHP 8.1 while the
+port requires the target (>= 8.3). A `^11`-only target needs no `require.php` (core
+enforces it). The strategy is set by `DRUPILOT_CORE_TARGET_STRATEGY` (default
+`auto`). This skill stays the source of truth for the PHP target itself; it does
+**not** duplicate the core-target / SemVer logic.
+
 ## Gotchas
 
 - **One PHP version per run.** Do not stack `php83` + `php84` Rector sets.

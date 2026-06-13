@@ -20,7 +20,26 @@
 |---|---|
 | Drupal target | `{{DRUPAL_TARGET}}` |
 | PHP target | `{{PHP_TARGET}}` {{PHP_TARGET_NOTE}} |
-| Keep Drupal 10 compatible | {{KEEP_D10}} (`^10 \|\| ^11` vs `^11`) |
+
+## Core compatibility decision
+
+Recommended by `scripts/analysis/core-strategy.sh` (strategy
+`DRUPILOT_CORE_TARGET_STRATEGY`, default `auto`). Policy: the port's PHP floor is
+the PHP target; keeping Drupal 10 therefore declares `require.php` so a
+D10 + PHP&lt;target site is blocked at install instead of fataling at runtime.
+
+| Field | Value |
+|---|---|
+| Strategy | {{CORE_TARGET_STRATEGY}} (`auto` / `d11-only` / `keep-d10`) |
+| Recommended `core_version_requirement` | `{{RECOMMENDED_CORE_REQUIREMENT}}` |
+| composer `drupal/core` constraint | `{{COMPOSER_CORE_CONSTRAINT}}` |
+| composer `require.php` | {{REQUIRE_PHP}} |
+| Version bump (SemVer) | **{{VERSION_BUMP}}** |
+
+**Why:**
+{{CORE_TARGET_RATIONALE}}
+
+{{CORE_TARGET_WARNING}}
 
 ## Verdict
 

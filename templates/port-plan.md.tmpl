@@ -12,6 +12,9 @@
 | Drupal target | `{{DRUPAL_TARGET}}` |
 | PHP target | `{{PHP_TARGET}}` {{PHP_TARGET_NOTE}} |
 | Viability verdict | {{VERDICT}} (S / M / L / XL) |
+| Core target | `{{TARGET_CORE_REQUIREMENT}}` (strategy {{CORE_TARGET_STRATEGY}}) |
+| composer `require.php` | {{REQUIRE_PHP}} |
+| Version bump (SemVer) | **{{VERSION_BUMP}}** {{VERSION_BUMP_BRANCH_NOTE}} |
 
 ## Stages
 
@@ -34,9 +37,13 @@ apply, then validate (PHPStan + PHPCS + test suite) before moving on.
 - **Effort:** {{STAGE1_EFFORT}}
 - **Actions:** set `core_version_requirement: {{TARGET_CORE_REQUIREMENT}}`,
   remove the legacy `core: 8.x` key if present, and reconcile declared
-  dependencies. {{STAGE1_NOTES}}
-- **Risks:** raising the minimum core inadvertently. With `DRUPILOT_KEEP_D10`
-  set, keep `^10 || ^11` so the extension still runs on Drupal 10.
+  dependencies. {{STAGE1_REQUIRE_PHP_NOTE}} {{STAGE1_NOTES}}
+- **Risks:** raising the minimum core inadvertently. The core target comes from
+  `DRUPILOT_CORE_TARGET_STRATEGY` (`auto` keeps `^10 || ^11` while backwards
+  compatible, `^11` on a BC break / refactor). When keeping Drupal 10, declare
+  `require.php` (the port's PHP floor is the target; D10 itself allows PHP 8.1)
+  so a D10 + PHP&lt;target site is blocked at install rather than fataling at
+  runtime.
 - **Preserves original:** metadata-only; behavior unchanged.
 
 ### Stage 2 — Rector (official, `palantirnet/drupal-rector`)

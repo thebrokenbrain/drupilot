@@ -302,6 +302,128 @@ ddev_project_name() {
 }
 
 # ---------------------------------------------------------------------------
+# Core compatibility target (info.yml core_version_requirement) reasoning
+# ---------------------------------------------------------------------------
+# drupilot policy: a port to Drupal 11 has a PHP floor equal to the resolved
+# DRUPILOT_PHP_TARGET (>= 8.3). Drupal 10 itself allows PHP 8.1, so KEEPING D10
+# (`^10 || ^11`) must ALSO declare composer `require.php: ">=<target>"` —
+# otherwise a D10 + PHP<target site installs the module and then fatals at
+# runtime. `^11` alone needs no require.php (core enforces its own minimum).
+#
+# recommend_core_target <subject> [phase] [bc_override] -> recommendation JSON:
+#   { strategy, phase, current_core_version_requirement,
+#     recommended_core_version_requirement, composer_core_constraint,
+#     require_php (string|null), version_bump (major|minor|patch),
+#     bc_break (bool), php_target, rationale:[...], warnings:[...] }
+#   phase: port | refactor (default port). bc_override: auto | yes | no.
+recommend_core_target() {
+  local subject="${1:-$PWD}" phase="${2:-port}" bc_override="${3:-auto}"
+  have_cmd jq || { printf '{}\n'; return 1; }
+
+  local php_target current_req
+  php_target="$(resolve_php_target)"
+  current_req="$(subject_core_requirement "$subject" 2>/dev/null || true)"
+  current_req="$(trim "$current_req")"
+
+  # --- strategy resolution (auto default; KEEP_D10 legacy override) --------
+  local strat keep_override legacy_note=""
+  strat="$(config_get DRUPILOT_CORE_TARGET_STRATEGY auto)"; strat="${strat,,}"
+  case "$strat" in d11-only|keep-d10|auto) : ;; *) strat="auto";; esac
+  keep_override="$(config_get DRUPILOT_KEEP_D10 "")"
+  if [[ "$strat" == "auto" && -n "$keep_override" ]]; then
+    case "${keep_override,,}" in
+      1|true|yes|on)  strat="keep-d10"; legacy_note="DRUPILOT_KEEP_D10 legacy override";;
+      0|false|no|off) strat="d11-only"; legacy_note="DRUPILOT_KEEP_D10 legacy override";;
+    esac
+  fi
+
+  # --- current support signals --------------------------------------------
+  local had_pre11=0 current_has_11=0
+  if [[ -n "$current_req" ]] && printf '%s' "$current_req" | grep -qE '(^|[^0-9])(8|9|10)([^0-9]|$)'; then had_pre11=1; fi
+  if [[ -n "$current_req" ]] && printf '%s' "$current_req" | grep -qE '(^|[^0-9])11([^0-9]|$)'; then current_has_11=1; fi
+
+  # --- BC-break detection (drives the SemVer major bump) ------------------
+  local bc_break=0
+  [[ "$phase" == "refactor" ]] && bc_break=1
+  case "${bc_override,,}" in
+    yes|true|1) bc_break=1;;
+    no|false|0) bc_break=0;;
+  esac
+
+  # --- resolve `auto` into a concrete strategy ----------------------------
+  local resolved
+  if [[ "$strat" == "auto" ]]; then
+    if [[ "$bc_break" == "1" ]]; then
+      resolved="d11-only"
+    elif [[ "$had_pre11" == "1" || -z "$current_req" ]]; then
+      resolved="keep-d10"           # widest BC-preserving set
+    else
+      resolved="d11-only"           # already 11-only; nothing older to keep
+    fi
+  else
+    resolved="$strat"
+  fi
+
+  # --- requirement + composer constraint + require.php (floor = target) ---
+  local req composer require_php=""
+  local -a rationale=() warnings=()
+  if [[ "$resolved" == "keep-d10" ]]; then
+    req="^10 || ^11"; composer="^10 || ^11"
+    require_php=">=$php_target"      # ALWAYS when keeping D10 (policy floor = target)
+    rationale+=("Strategy: keep-d10 ('^10 || ^11')${legacy_note:+ ($legacy_note)}.")
+    rationale+=("PHP floor is the target ($php_target); keeping Drupal 10 declares composer require.php \">=$php_target\".")
+    warnings+=("Drupal 10's own minimum is PHP 8.1, but this port targets PHP $php_target. require.php \">=$php_target\" blocks D10 sites below PHP $php_target at install time (composer) rather than fataling at runtime. If you do not need the D10 transition window, drop to '^11'.")
+  else
+    req="^11"; composer="^11"
+    rationale+=("Strategy: d11-only ('^11')${legacy_note:+ ($legacy_note)}.")
+    rationale+=("Drupal 11 enforces PHP $php_target itself, so no composer require.php is needed.")
+  fi
+
+  # --- version bump (SemVer for Drupal contrib) ---------------------------
+  local drops_major=0
+  [[ "$resolved" == "d11-only" && "$had_pre11" == "1" ]] && drops_major=1
+  local version_bump
+  if [[ "$bc_break" == "1" || "$drops_major" == "1" ]]; then
+    version_bump="major"
+    [[ "$drops_major" == "1" ]] && rationale+=("Dropping a previously-supported Drupal major (current '${current_req:-none}' -> '$req') is backwards-incompatible -> MAJOR (cut a new N+1.0.x branch).")
+    [[ "$bc_break" == "1" ]] && rationale+=("Phase 2 refactor / asserted public-API BC break -> MAJOR.")
+  elif [[ "$current_has_11" == "0" ]]; then
+    version_bump="minor"
+    rationale+=("Adding Drupal 11 support with no API break -> MINOR.")
+  else
+    version_bump="patch"
+    rationale+=("No core-major change and no API break -> PATCH.")
+  fi
+
+  # --- emit JSON ----------------------------------------------------------
+  jq -n \
+    --arg strategy "$resolved" \
+    --arg phase "$phase" \
+    --arg current "$current_req" \
+    --arg req "$req" \
+    --arg composer "$composer" \
+    --arg require_php "$require_php" \
+    --arg version_bump "$version_bump" \
+    --arg php_target "$php_target" \
+    --argjson bc_break "$([[ "$bc_break" == "1" ]] && echo true || echo false)" \
+    --argjson rationale "$(arr_to_json ${rationale[@]+"${rationale[@]}"})" \
+    --argjson warnings "$(arr_to_json ${warnings[@]+"${warnings[@]}"})" \
+    '{
+      strategy: $strategy,
+      phase: $phase,
+      current_core_version_requirement: ($current | select(. != "") // null),
+      recommended_core_version_requirement: $req,
+      composer_core_constraint: $composer,
+      require_php: ($require_php | select(. != "") // null),
+      version_bump: $version_bump,
+      bc_break: $bc_break,
+      php_target: $php_target,
+      rationale: $rationale,
+      warnings: $warnings
+    }'
+}
+
+# ---------------------------------------------------------------------------
 # Interaction (safe confirmation in non-TTY contexts)
 # ---------------------------------------------------------------------------
 # confirm <question> [default_yes:0/1] -> 0 if the user accepts.
@@ -328,6 +450,13 @@ confirm() {
 json_str() {
   if have_cmd jq; then jq -Rn --arg s "$1" '$s'
   else printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g')"; fi
+}
+
+# arr_to_json <elem...> -> a compact JSON array of the (string) arguments.
+# Empty arg list -> "[]". Requires jq.
+arr_to_json() {
+  if [[ "$#" -eq 0 ]]; then printf '[]'; return 0; fi
+  printf '%s\n' "$@" | jq -R . | jq -s -c .
 }
 
 # ---------------------------------------------------------------------------

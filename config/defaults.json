@@ -3,7 +3,7 @@
 
   "DRUPILOT_PHP_TARGET": "8.3",
   "DRUPILOT_DRUPAL_TARGET": "^11",
-  "DRUPILOT_KEEP_D10": true,
+  "DRUPILOT_CORE_TARGET_STRATEGY": "auto",
   "DRUPILOT_CODER_CONSTRAINT": "^8.3",
   "DRUPILOT_PHPSTAN_LEVEL": 2,
   "DRUPILOT_PHPSTAN_LEVEL_REFACTOR": 6,
@@ -15,6 +15,8 @@
   "DRUPILOT_AUTONOMOUS": false,
 
   "_autonomous_comment": "Hands-off mode. When true (or invoked as `/drupilot <subject> auto`), the orchestrator runs setup -> assess -> port -> refactor -> test unattended: no initial confirmation, DRUPILOT_GENERATE_RULES is treated as 'auto' unless explicitly set to 'off', and the local .patch is always written at the end. It NEVER performs outward-facing actions on its own (no git push / Merge Request / contribute) — those stay opt-in via /drupilot-contribute. This only relaxes drupilot's own gates; the Claude Code permission mode still governs Bash/Edit/Write prompts (use acceptEdits or a headless bypass for a fully unattended run).",
+
+  "_core_target_comment": "Drupal core compatibility decision (scripts/analysis/core-strategy.sh; helper recommend_core_target). DRUPILOT_CORE_TARGET_STRATEGY: auto (default) | d11-only | keep-d10. 'auto' keeps the widest set ('^10 || ^11') for a backwards-compatible Phase 1 port and switches to '^11' on a BC break / Phase 2 refactor. POLICY: a Drupal 11 port's PHP floor is the resolved DRUPILOT_PHP_TARGET (>= 8.3). Because Drupal 10 itself allows PHP 8.1, keeping D10 ALWAYS adds composer require.php '>=<target>' so a D10 + PHP<target site is blocked at install time (composer) instead of fataling at runtime; '^11' needs no require.php (core enforces its own minimum). DRUPILOT_KEEP_D10 is the legacy boolean override (true -> keep-d10, false -> d11-only), honored only when explicitly set in the environment.",
 
   "_requirements_comment": "Minimum versions used by preflight.sh. Some carry uncertainty (see PROMPT 1.2): the real gate is functional (e.g. that 'ddev config --project-type=drupal11' works), not just the number.",
   "requirements": {

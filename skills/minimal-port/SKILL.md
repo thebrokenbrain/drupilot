@@ -128,10 +128,25 @@ Keep any generated rule minimal and behavior-preserving.
 
 Apply only the mechanical, behavior-preserving fixes:
 
-- **`*.info.yml`:** ensure `core_version_requirement`. With `DRUPILOT_KEEP_D10=true`
-  use `^10 || ^11`; otherwise `^11`. The old `core: 8.x` key no longer exists; a
-  missing `core_version_requirement` is a hard blocker. Check the current value
-  with `subject_core_requirement`.
+- **`*.info.yml` + composer core target:** decide the target with the helper
+  instead of a static flag:
+
+  ```bash
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/core-strategy.sh" --subject "<path>" --phase port --json
+  ```
+
+  Apply its `recommended_core_version_requirement` (`auto` → `^10 || ^11` for a
+  BC-preserving port, or `^11` on a BC break / `d11-only`). The old `core: 8.x`
+  key no longer exists; a missing `core_version_requirement` is a hard blocker.
+  **When the helper returns a non-null `require_php`** (it always does for
+  `^10 || ^11`, because the port's PHP floor is the target while Drupal 10 itself
+  allows PHP 8.1), add it to the project's `composer.json`:
+  `"require": { "php": ">=<target>" }` — this blocks a D10 + PHP<target site at
+  install instead of fataling at runtime. For `^11` no `require.php` is needed
+  (core enforces it). State the chosen `core_version_requirement`, the
+  `require.php`, and the `version_bump` verdict in the chat summary. Do not
+  silently overwrite a `core_version_requirement` the user already hand-tuned —
+  if it differs from the recommendation, say so and confirm.
 - **Twig 3:** removed filters/functions; `spaceless` is gone (use
   `{% apply spaceless %}` or whitespace control) — only when mechanical.
 - **CKEditor 5:** CKEditor 4 was removed in D10; migrate config/text-format

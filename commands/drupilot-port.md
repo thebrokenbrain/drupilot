@@ -34,7 +34,7 @@ tell the user to run `/drupilot-setup` first and stop.
   echo "core_requirement=$(subject_core_requirement "$SUBJECT" 2>/dev/null || echo "<missing>")"; \
   echo "php_target=$(resolve_php_target)"; \
   echo "drupal_target=$(resolve_drupal_target)"; \
-  echo "keep_d10=$(config_get DRUPILOT_KEEP_D10 true)"; \
+  echo "core_strategy=$(config_get DRUPILOT_CORE_TARGET_STRATEGY auto)"; \
   echo "use_digests=$(config_get DRUPILOT_USE_DIGESTS_RULES true)"; \
   echo "digests_ref=$(config_get DRUPILOT_DIGESTS_REF main)"; \
   echo "generate_rules=$(config_get DRUPILOT_GENERATE_RULES ask)"' \
@@ -43,12 +43,19 @@ tell the user to run `/drupilot-setup` first and stop.
 
 If a cached `viability-report.md` exists for this project, read it first
 (`project_state_dir`) so you know what to expect. Decide the **target
-`core_version_requirement`**:
+`core_version_requirement`** with the helper (not a static flag):
 
-- `DRUPILOT_KEEP_D10=true` (default) → `^10 || ^11`.
-- `DRUPILOT_KEEP_D10=false` → `^11`.
+```bash
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/core-strategy.sh" --subject "$1" --phase port
+```
 
-This target constraint drives which digests rules are safe (see Pass 2).
+Apply its `recommended_core_version_requirement` (`auto` → `^10 || ^11` for a
+BC-preserving port, or `^11` on a BC break) in Step 6. When it returns a
+`require.php` (always for `^10 || ^11`, since the port's PHP floor is the target
+while Drupal 10 itself allows PHP 8.1), add `"require": { "php": ">=<target>" }`
+to `composer.json`. Note the `version_bump` verdict for the final summary. This
+target also drives which digests rules are safe (see Pass 2). The legacy
+`DRUPILOT_KEEP_D10` still works as an explicit override.
 
 ## Step 2 — Load the procedure
 
@@ -113,9 +120,12 @@ Keep ad-hoc rules minimal and mechanical; do not slip refactoring in here.
 
 Apply only the mechanical compatibility edits, preserving behavior:
 
-- **`info.yml`**: set `core_version_requirement` to the target decided in Step 1
-  (e.g. `^10 || ^11`). Remove the obsolete `core: 8.x` key if present. A missing
-  `core_version_requirement` is blocking — fix it.
+- **`info.yml` + `composer.json`**: set `core_version_requirement` to the target
+  decided in Step 1 (e.g. `^10 || ^11`). Remove the obsolete `core: 8.x` key if
+  present. A missing `core_version_requirement` is blocking — fix it. When Step 1
+  reported a `require.php` (i.e. keeping Drupal 10), add
+  `"require": { "php": ">=<target>" }` to `composer.json` so a D10 + PHP<target
+  site is blocked at install, not at runtime.
 - **Twig 3**: replace removed filters/functions and `{% spaceless %}` with their
   mechanical equivalents (e.g. the `spaceless` filter / `~` handling) only where
   the change is unambiguous.

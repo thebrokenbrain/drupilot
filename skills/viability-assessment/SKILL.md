@@ -138,7 +138,26 @@ fi
 Rector/PHPStan findings and adds environment-level signals (e.g. contrib project
 D11 readiness). Its absence must never block the report.
 
-## 4. Classify the findings
+### 3.5 Core compatibility decision (info.yml + composer + SemVer)
+
+Compute the recommended Drupal core target with the dedicated helper. It is
+read-only and needs only the subject's `*.info.yml`:
+
+```bash
+bash "$ROOT/scripts/analysis/core-strategy.sh" --subject "$SUBJECT" --phase port --json
+```
+
+It returns `{ strategy, recommended_core_version_requirement,
+composer_core_constraint, require_php, version_bump, rationale[], warnings[] }`.
+The strategy comes from `DRUPILOT_CORE_TARGET_STRATEGY` (`auto` | `d11-only` |
+`keep-d10`; legacy `DRUPILOT_KEEP_D10` still overrides). **Policy:** the port's
+PHP floor is `DRUPILOT_PHP_TARGET`, so keeping Drupal 10 (`^10 || ^11`) **always**
+carries `require.php: ">=<target>"` — Drupal 10 itself allows PHP 8.1, so without
+it a D10 + PHP<target site would install and then fatal. `auto` keeps the widest
+BC-preserving set and switches to `^11` (a **major** version bump) on a BC break.
+Use `--phase port` for the assessment; an opt-in Phase 2 refactor
+(`--phase refactor`) would recommend `^11` + a major bump. Carry every field
+(including `version_bump` and the warnings) into the report and `assess.json`.
 
 Build the classification that drives the verdict:
 
@@ -161,10 +180,11 @@ Build the classification that drives the verdict:
    - **Symfony 7**: event subscriber / service signatures and type changes. Grep
      for `EventSubscriberInterface`, controllers, and PHP type mismatches PHPStan
      surfaces.
-5. **info.yml status** — the minimal change is
-   `core_version_requirement: ^10 || ^11` (or `^11` if dropping D10, controlled
-   by `DRUPILOT_KEEP_D10`). A missing `core_version_requirement` (or a legacy
-   `core: 8.x`) is **blocking** and must be flagged.
+5. **info.yml status** — the recommended `core_version_requirement` comes from
+   the core-strategy helper (§3.5): `auto` yields `^10 || ^11` for a
+   BC-preserving port (paired with `require.php: ">=<target>"`) or `^11` on a BC
+   break. A missing `core_version_requirement` (or a legacy `core: 8.x`) is
+   **blocking** and must be flagged.
 6. **Contrib dependency D11 support** — read `dependencies:` in `*.info.yml` and
    `require` in any `composer.json`. For each non-core `drupal/*` dependency,
    note whether it has a D11-compatible release. `upgrade_status` reports this
@@ -210,12 +230,18 @@ PLAN_TMPL="$ROOT/templates/port-plan.md.tmpl"
 ```
 
 - `viability-report.md` (from `templates/viability-report.md.tmpl`): subject +
-  type, PHP/Drupal target (note "unconfirmed" if applicable), verdict (S/M/L/XL)
-  with the above-threshold flag, auto-fixable vs manual counts (official vs
-  digests broken out), the four hard-break sections with concrete findings,
-  `info.yml` status, contrib-dependency D11 table, the phased plan summary, and a
-  raw-tool-output appendix (the captured rector/phpstan/phpcs/upgrade_status
-  output, lightly trimmed).
+  type, PHP/Drupal target (note "unconfirmed" if applicable), the **core
+  compatibility decision** (strategy, recommended `core_version_requirement`,
+  composer constraint, `require.php`, the **version-bump verdict** and rationale,
+  and any PHP-floor warning — from §3.5), verdict (S/M/L/XL) with the
+  above-threshold flag, auto-fixable vs manual counts (official vs digests broken
+  out), the four hard-break sections with concrete findings, `info.yml` status,
+  contrib-dependency D11 table, the phased plan summary, and a raw-tool-output
+  appendix (the captured rector/phpstan/phpcs/upgrade_status output, lightly
+  trimmed). Fill `{{CORE_TARGET_STRATEGY}}`, `{{RECOMMENDED_CORE_REQUIREMENT}}`,
+  `{{COMPOSER_CORE_CONSTRAINT}}`, `{{REQUIRE_PHP}}`, `{{VERSION_BUMP}}`,
+  `{{CORE_TARGET_RATIONALE}}`, `{{CORE_TARGET_WARNING}}` and
+  `{{TARGET_CORE_REQUIREMENT}}` from the helper JSON.
 - `port-plan.md` (from `templates/port-plan.md.tmpl`): staged plan — stages,
   per-stage effort, risks, exactly what preserves original functionality without
   colliding with D11 (Phase 1), and what is explicitly **deferred to Phase 2**
@@ -232,16 +258,20 @@ Suggested phasing to encode in the plan:
 5. **Phase 2 (opt-in) — Refactor**: "Drupal 11 way", PHPStan 5-6, clean PHPCS,
    added tests. Deferred unless the developer opts in.
 
-Cache a small JSON summary (`assess.json`: verdict, counts, ready flags,
-timestamp) in `$STATE` for `/drupilot-status`.
+Cache a small JSON summary (`assess.json`: verdict, counts, ready flags, the
+core-target recommendation — strategy, recommended `core_version_requirement`,
+`require.php`, `version_bump` — and a timestamp) in `$STATE` for
+`/drupilot-status` and the port stage.
 
 ## 7. Report in chat (concise English)
 
 After writing the files, give a short summary: subject + type, PHP/Drupal target,
-the verdict and whether it crosses the threshold, the headline auto-fixable vs
-manual split, the hard breaks found, info.yml status, any unported dependency,
-and the path to both artifacts. Offer the next step (`/drupilot-port` for Phase
-1) — never decide for the developer.
+the **core-target recommendation** (recommended `core_version_requirement`, the
+`require.php` it implies, and the **version-bump verdict** — e.g. "new major:
+drops Drupal 10" or "minor: adds Drupal 11"), the verdict and whether it crosses
+the threshold, the headline auto-fixable vs manual split, the hard breaks found,
+info.yml status, any unported dependency, and the path to both artifacts. Offer
+the next step (`/drupilot-port` for Phase 1) — never decide for the developer.
 
 ## 8. Gotchas
 

@@ -11,6 +11,28 @@ release, rename `[Unreleased]` to the new version with a date, bump `version`
 in `.claude-plugin/plugin.json` (and the `marketplace.json` entry) to match, and
 tag the commit `vX.Y.Z`.
 
+## [Unreleased]
+
+### Added
+- Reasoned **Drupal core compatibility target** decision, replacing the static
+  `DRUPILOT_KEEP_D10` binary. New `scripts/analysis/core-strategy.sh`
+  (`--subject DIR [--phase port|refactor] [--bc-break|--no-bc-break] [--json]`)
+  and the `recommend_core_target` helper in `common.sh` recommend, with a
+  rationale: the `core_version_requirement` (`^11` vs `^10 || ^11`), the composer
+  `drupal/core` constraint, the composer `require.php` that choice implies, and a
+  SemVer **version-bump verdict** (major/minor/patch). Wired into assess (report +
+  `assess.json`), port and refactor, the report/plan templates, and the
+  analyst/orchestrator agents.
+
+### Changed
+- Core compatibility is now decided by `DRUPILOT_CORE_TARGET_STRATEGY`
+  (`auto` default | `d11-only` | `keep-d10`) instead of the boolean
+  `DRUPILOT_KEEP_D10` (kept as a legacy override, honored only when set). Policy:
+  a port's PHP floor is `DRUPILOT_PHP_TARGET`, so keeping Drupal 10 — which itself
+  allows PHP 8.1 — **always** declares composer `require.php: ">=<target>"` so a
+  D10 + PHP<target site is blocked at install rather than fataling at runtime;
+  `^11` needs none (core enforces its own minimum).
+
 ## [0.3.0] - 2026-06-13
 
 ### Added

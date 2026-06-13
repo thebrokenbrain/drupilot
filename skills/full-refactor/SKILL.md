@@ -61,6 +61,23 @@ Apply these where they fit the code (do not force them where they do not):
 - **Twig 3 / CKEditor 5 / jQuery** — finish any non-mechanical migration deferred
   from Phase 1 (custom Twig extensions, editor plugins, JS without jQuery UI).
 
+## 1b. Reconsider the core target (a refactor usually warrants a new major)
+
+Phase 2 introduces modern typed / `final` public APIs, which are
+backwards-incompatible. Re-run the core-target helper in refactor mode:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/core-strategy.sh" --subject "<path>" --phase refactor --json
+```
+
+`--phase refactor` asserts a BC break, so it recommends `^11` (drop Drupal 10)
+and a **major** version bump — cut a new `N+1.0.x` branch rather than a minor on
+the existing one. Apply the recommended `core_version_requirement`; for `^11` no
+composer `require.php` is needed (core enforces PHP >= the target). If you
+deliberately keep `^10 || ^11` (an explicit override), the helper returns
+`require.php: ">=<target>"` — add it to `composer.json`. State the version-bump
+implication (new major branch) in the summary.
+
 ## 2. Refactor loop
 
 Work one concern at a time. After each change, re-run the validate loop and the
