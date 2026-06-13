@@ -11,7 +11,7 @@ release, rename `[Unreleased]` to the new version with a date, bump `version`
 in `.claude-plugin/plugin.json` (and the `marketplace.json` entry) to match, and
 tag the commit `vX.Y.Z`.
 
-## [Unreleased]
+## [0.5.0] - 2026-06-13
 
 ### Added
 - **Determinism by default** (`DRUPILOT_DETERMINISTIC`, default `true`) with a
@@ -186,7 +186,8 @@ tag the commit `vX.Y.Z`.
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.1.0...v0.2.0
