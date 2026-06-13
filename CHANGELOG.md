@@ -11,9 +11,45 @@ release, rename `[Unreleased]` to the new version with a date, bump `version`
 in `.claude-plugin/plugin.json` (and the `marketplace.json` entry) to match, and
 tag the commit `vX.Y.Z`.
 
-## [Unreleased]
+## [0.2.0] - 2026-06-13
+
+### Added
+- `ddev_project_name` helper in `scripts/lib/common.sh`: sanitizes a directory
+  basename into a hostname-safe DDEV project name (lowercase, invalid runs → `-`,
+  trimmed), with a `drupal-project` fallback.
+
+### Changed
+- `templates/ddev-web-environment.yaml.tmpl` is now written to a **separate**
+  `.ddev/config.testing.yaml` and reduced to `MINK_DRIVER_ARGS_WEBDRIVER` +
+  `SYMFONY_DEPRECATIONS_HELPER` — ddev-drupal-contrib already supplies
+  `SIMPLETEST_*`, `BROWSERTEST_*`, `DTT_*` and `DRUPAL_TEST_WEBDRIVER_*`, so the
+  fragment now merges cleanly instead of clobbering `SIMPLETEST_BASE_URL`.
+- `/drupilot-setup` and the `ddev-environment` skill now document the
+  recommended-project subject placement (move the extension into
+  `web/modules/custom` after Drupal is created), register all three coder PHPCS
+  `installed_paths`, and write the testing env to `config.testing.yaml`.
 
 ### Fixed
+- `ddev-up.sh` derived the DDEV project name from the directory basename
+  verbatim, so a path containing `_`, uppercase or dots (e.g.
+  `upgrade-to-d11-file_version`) made `ddev config` fail with "is not a valid
+  project name". The name is now sanitized to a hostname-safe label.
+- `ddev-up.sh` now detects a non-clean project root (a stray module dir or a
+  downloaded tarball) before `ddev composer create` and aborts with actionable
+  guidance, instead of letting composer fail cryptically with "is not allowed to
+  be present".
+- `ddev-add-ons.sh` now disables ddev-drupal-contrib's `symlink-project` hook in
+  the recommended-project layout (before the restart, so it never runs) and
+  removes the spurious `web/modules/custom/<project>/` symlink dir it would
+  otherwise create from the project's `composer.json`/`.ddev`.
+- The testing `MINK_DRIVER_ARGS_WEBDRIVER` value broke `ddev start` ("did not
+  find expected key") because DDEV serializes `web_environment` values into the
+  generated docker-compose wrapped in double quotes WITHOUT escaping the inner
+  quotes. The template value is now pre-escaped (`\"` inside YAML single quotes).
+- PHPCS setup registered only `coder_sniffer` in `installed_paths`; coder's
+  Drupal standard also references `phpcs-variable-analysis` and
+  `slevomat/coding-standard`, so `phpcs --standard=Drupal` failed with
+  "Referenced sniff ... does not exist". All three are now documented/registered.
 - `/drupilot-doctor` and `/drupilot-setup` no longer fail at command load: the
   installer/DDEV step examples were written as `` !`…` `` command injections, so
   Claude Code tried to execute them at load time. The `install-deps.sh` example
@@ -52,5 +88,6 @@ tag the commit `vX.Y.Z`.
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/thebrokenbrain/drupilot/releases/tag/v0.1.0

@@ -105,8 +105,10 @@ port/refactor skills), not the assertion.
 ## 4. Ensure the JS test prerequisites (Selenium + Mink)
 
 FunctionalJavascript tests need the Selenium add-on (v2) and the
-`MINK_DRIVER_ARGS_WEBDRIVER` / `SIMPLETEST_BASE_URL` environment from PROMPT 2.5,
-set in `.ddev/config.yaml -> web_environment`. If JS tests exist:
+`MINK_DRIVER_ARGS_WEBDRIVER` environment from PROMPT 2.5, written to a separate
+`.ddev/config.testing.yaml -> web_environment` (ddev-drupal-contrib already
+supplies `SIMPLETEST_BASE_URL=http://web` and the DB/browsertest vars; keep the
+MINK value's escaped-quote form so `ddev start` stays valid). If JS tests exist:
 
 ```bash
 bash "$ROOT/scripts/env/ddev-add-ons.sh" --selenium
@@ -114,9 +116,9 @@ bash "$ROOT/scripts/env/ddev-add-ons.sh" --selenium
 
 - The add-on install is idempotent and soft (it warns, does not fail, if Selenium
   cannot install).
-- **Read the generated `.ddev/config.yaml`** for the real webdriver host
-  (e.g. `selenium-chrome:4444`) and base URL rather than assuming — the hostname
-  depends on the add-on/DDEV version (PROMPT 2.5 warning). If Selenium is absent,
+- **Read `.ddev/docker-compose.selenium-chrome.yaml`** for the real webdriver
+  host (e.g. `selenium-chrome:4444`) rather than assuming — the hostname depends
+  on the add-on/DDEV version (PROMPT 2.5 warning). If Selenium is absent,
   proceed with the non-JS suites and record that JS tests were skipped for a
   missing dependency (an external blocker, §7).
 

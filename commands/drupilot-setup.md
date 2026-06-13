@@ -43,6 +43,15 @@ the heavy steps (composer create/require, add-on installs) may run in the backgr
 Use the **ddev-environment** skill for the operating procedure and gotchas, then run the
 leaf scripts in order. Each is idempotent.
 
+**Subject placement (important).** drupilot uses the `recommended-project` layout: Drupal
+lives at the project root and the subject lives under `web/modules/custom/<machine_name>`
+(or `web/themes/custom/...`). `ddev composer create` needs an almost-empty root, so if the
+subject was extracted INTO the project root (e.g. from a downloaded tarball), or sits in a
+subdirectory next to a tarball, move those aside FIRST (e.g. to a sibling staging dir),
+let 3a create Drupal, THEN move the extension into `web/modules/custom/<machine_name>` and
+delete the staging copy. `ddev-up.sh` aborts with guidance when the root is not clean, so
+do this placement before (re-)running it.
+
 ### 3a — Bring up the DDEV Drupal 11 project
 
 Run this yourself via the Bash tool, substituting `<subject_dir>` with the resolved
@@ -77,27 +86,41 @@ Inside the DDEV project, install the dev dependencies using the constraints from
 phpstan ^2.1 + extension-installer + phpstan-drupal ^2.0 + phpstan-deprecation-rules
 ^2.0, drupal/coder (at the configured constraint), and optionally drupal/upgrade_status.
 Read the constraints first, then run `ddev composer require --dev ...`. This is
-idempotent — Composer is a no-op when the constraints are already satisfied. Register the
-coder sniffer so `phpcs -i` lists `Drupal` and `DrupalPractice`.
+idempotent — Composer is a no-op when the constraints are already satisfied.
+
+drupal/coder ships a Composer plugin (`*/phpcodesniffer-composer-installer`) that
+auto-registers the PHPCS `installed_paths`. Allow that plugin, let it run, then just
+verify with `ddev exec vendor/bin/phpcs -i` (it must list `Drupal` and `DrupalPractice`).
+If you set `installed_paths` MANUALLY, register all THREE paths coder's Drupal standard
+references — `coder_sniffer`, `phpcs-variable-analysis` and `slevomat/coding-standard` —
+not just `coder_sniffer`, or phpcs aborts with "Referenced sniff ... does not exist":
+`ddev exec vendor/bin/phpcs --config-set installed_paths vendor/drupal/coder/coder_sniffer,vendor/sirbrillig/phpcs-variable-analysis,vendor/slevomat/coding-standard`
 
 ## Step 4 — Write the tool configs from templates
 
 Write the configuration files at the Drupal root by substituting the template
 placeholders (`{{PHP_TARGET}}`, `{{DRUPAL_TARGET}}`, `{{CODER_CONSTRAINT}}`,
-`{{PHPSTAN_LEVEL}}`, `{{SUBJECT_PATH}}`, `{{PROJECT_NAME}}`, `{{WEBDRIVER_HOST}}`,
-`{{SIMPLETEST_BASE_URL}}`) with the resolved values. `{{SUBJECT_PATH}}` is the in-tree
+`{{PHPSTAN_LEVEL}}`, `{{SUBJECT_PATH}}`, `{{PROJECT_NAME}}`, `{{WEBDRIVER_HOST}}`)
+with the resolved values. `{{SUBJECT_PATH}}` is the in-tree
 path (e.g. `web/modules/custom/<machine_name>`). Use the templates:
 
 - `@${CLAUDE_PLUGIN_ROOT}/templates/rector.php.tmpl` -> `<drupal_root>/rector.php`
 - `@${CLAUDE_PLUGIN_ROOT}/templates/phpstan.neon.tmpl` -> `<drupal_root>/phpstan.neon`
 - `@${CLAUDE_PLUGIN_ROOT}/templates/phpcs.xml.dist.tmpl` -> `<drupal_root>/phpcs.xml.dist`
-- `@${CLAUDE_PLUGIN_ROOT}/templates/ddev-web-environment.yaml.tmpl` -> merge into
-  `<drupal_root>/.ddev/config.yaml` under `web_environment:`
+- `@${CLAUDE_PLUGIN_ROOT}/templates/ddev-web-environment.yaml.tmpl` -> write to a
+  SEPARATE `<drupal_root>/.ddev/config.testing.yaml` (do NOT merge into the generated
+  `config.yaml`). ddev-drupal-contrib already provides `SIMPLETEST_DB`,
+  `SIMPLETEST_BASE_URL=http://web`, `BROWSERTEST_*` and `DTT_*` in its
+  `config.contrib.yaml`; this file only adds `MINK_DRIVER_ARGS_WEBDRIVER` and
+  `SYMFONY_DEPRECATIONS_HELPER`, so it merges cleanly instead of clobbering them.
 
-For the webdriver host and `SIMPLETEST_BASE_URL`, **read the generated
-`.ddev/config.yaml`** for the real project hostname instead of assuming. Do not
-overwrite a config the user has hand-edited without saying so; if a file already exists
-and differs, show the diff and confirm before replacing.
+`{{WEBDRIVER_HOST}}` is the Selenium service host:port — **read the generated
+`.ddev/docker-compose.selenium-chrome.yaml`** for it (typically `selenium-chrome:4444`)
+instead of assuming. Keep the MINK value's escaped-quote / single-quote form from the
+template verbatim — DDEV does not escape inner quotes when it serializes
+`web_environment`, so an unescaped JSON value breaks `ddev start`. After writing the file,
+run `ddev restart`. Do not overwrite a config the user has hand-edited without saying so;
+if a file already exists and differs, show the diff and confirm before replacing.
 
 ## Step 5 — Report
 

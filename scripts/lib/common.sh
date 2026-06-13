@@ -285,6 +285,22 @@ subject_core_requirement() {
     | sed -E 's/^[[:space:]]*core_version_requirement:[[:space:]]*//; s/[[:space:]]*$//'
 }
 
+# ddev_project_name <string> -> a DDEV/hostname-safe project name derived from
+# the input (usually a directory basename). DDEV rejects names that are not valid
+# hostname labels, so underscores, dots, spaces and uppercase all break
+# `ddev config` (e.g. a dir named "upgrade-to-d11-file_version" is refused). We
+# take the basename, lowercase it, replace every run of invalid characters with a
+# single '-', and trim leading/trailing '-'. Falls back to "drupal-project".
+ddev_project_name() {
+  local raw="${1:-}" name
+  raw="${raw##*/}"
+  name="$(printf '%s' "$raw" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[^a-z0-9]+/-/g; s/-+/-/g; s/^-//; s/-$//')"
+  [[ -n "$name" ]] || name="drupal-project"
+  printf '%s' "$name"
+}
+
 # ---------------------------------------------------------------------------
 # Interaction (safe confirmation in non-TTY contexts)
 # ---------------------------------------------------------------------------

@@ -99,11 +99,21 @@ command should use.
 
 ## 4. Place the subject module/theme
 
-Modules live under `web/modules/custom/<name>`, themes under
-`web/themes/custom/<name>`. With the `ddev-drupal-contrib` add-on the subject can
-instead be developed at the repo root and symlinked into place by the add-on —
-read its docs/output rather than hardcoding paths. `subject_type` (from
-`common.sh`) tells you module vs theme so you choose the right directory.
+drupilot uses the **`recommended-project` layout**: Drupal at the repo root, the
+subject physically under `web/modules/custom/<name>` (modules) or
+`web/themes/custom/<name>` (themes). `subject_type` (from `common.sh`) tells you
+module vs theme. Because `ddev composer create` needs an almost-empty root, place
+the subject AFTER Drupal is created: if it was extracted into the project root or
+sits next to a tarball, move those aside first, create Drupal, then move the
+extension into `web/<modules|themes>/custom/<name>`.
+
+`ddev-drupal-contrib` also supports a "module at the repo root" layout where it
+symlinks the root into `web/modules/custom`. drupilot does NOT use that layout —
+with no `*.info.yml` at the repo root, `symlink-project` would derive the name
+from the DDEV project and create a spurious `web/modules/custom/<project>/` of
+symlinks back to the project's `composer.json`/`.ddev`. `ddev-add-ons.sh` detects
+the recommended-project layout and disables that hook automatically, keeping the
+add-on's wrapper commands and testing `web_environment`.
 
 ## 5. Install add-ons
 
@@ -144,10 +154,14 @@ hardcoding versions:
 - `drush/drush:^13`
 - optional `drupal/upgrade_status`
 
-After installing coder, register the standard once (idempotent):
+coder ships a Composer plugin (`*/phpcodesniffer-composer-installer`) that
+auto-registers PHPCS `installed_paths`. Allow it and just verify with `phpcs -i`.
+If you set the paths MANUALLY, register all THREE that coder's Drupal standard
+references — or phpcs aborts with "Referenced sniff ... does not exist":
 
 ```bash
-ddev exec vendor/bin/phpcs --config-set installed_paths vendor/drupal/coder/coder_sniffer
+ddev exec vendor/bin/phpcs --config-set installed_paths \
+  vendor/drupal/coder/coder_sniffer,vendor/sirbrillig/phpcs-variable-analysis,vendor/slevomat/coding-standard
 ddev exec vendor/bin/phpcs -i   # must list Drupal and DrupalPractice
 ```
 
@@ -166,20 +180,24 @@ tokens; substitute with `sed`/`envsubst`. Write only if missing or out of date
 | `phpstan.neon.tmpl` | `phpstan.neon` | `{{PHPSTAN_LEVEL}}`, `{{SUBJECT_PATH}}` |
 | `phpcs.xml.dist.tmpl` | `phpcs.xml.dist` | `{{SUBJECT_PATH}}` |
 | `ddev-config.yaml.tmpl` | (reference for `.ddev/config.yaml`) | `{{PROJECT_NAME}}`, `{{PHP_TARGET}}` |
-| `ddev-web-environment.yaml.tmpl` | `.ddev/config.yaml` → `web_environment:` | `{{WEBDRIVER_HOST}}`, `{{SIMPLETEST_BASE_URL}}` |
+| `ddev-web-environment.yaml.tmpl` | `.ddev/config.testing.yaml` (separate file) | `{{WEBDRIVER_HOST}}` |
 
 `{{SUBJECT_PATH}}` is the in-docroot path, e.g. `web/modules/custom/foo`.
 `{{PHP_TARGET}}` = `resolve_php_target`; `{{PHPSTAN_LEVEL}}` =
 `DRUPILOT_PHPSTAN_LEVEL` (default 2 for Phase 1). `{{CODER_CONSTRAINT}}` =
 `DRUPILOT_CODER_CONSTRAINT`.
 
-The testing `web_environment:` block (from PROMPT §2.5) sets `SIMPLETEST_BASE_URL`,
-`SIMPLETEST_DB=mysql://db:db@db/db`, `BROWSERTEST_OUTPUT_DIRECTORY`,
-`MINK_DRIVER_ARGS_WEBDRIVER` (references the webdriver host) and
-`SYMFONY_DEPRECATIONS_HELPER=disabled`. **Read the generated
-`.ddev/config.yaml`** for the actual webdriver service host and base URL — the
-template value is a placeholder; the add-on/DDEV version decides the real host.
-After editing `.ddev/config.yaml`, run `ddev restart` so the changes take effect.
+Write the testing `web_environment:` to a SEPARATE `.ddev/config.testing.yaml` so
+it merges with what ddev-drupal-contrib already provides (`SIMPLETEST_DB`,
+`SIMPLETEST_BASE_URL=http://web`, `BROWSERTEST_*`, `DTT_*`,
+`DRUPAL_TEST_WEBDRIVER_*`). The template adds only `MINK_DRIVER_ARGS_WEBDRIVER`
+(Drupal core's WebDriverTestBase) and `SYMFONY_DEPRECATIONS_HELPER=disabled`.
+**Read `.ddev/docker-compose.selenium-chrome.yaml`** for the real webdriver host
+(typically `selenium-chrome:4444`) instead of assuming it. Keep the template's
+escaped-quote / YAML single-quote form for the MINK value verbatim: DDEV wraps
+each web_environment value in double quotes WITHOUT escaping the inner quotes, so
+a raw JSON value produces invalid compose YAML ("did not find expected key") and
+`ddev start` fails. After writing the file, run `ddev restart`.
 
 ## 8. Verify and report
 

@@ -97,7 +97,7 @@ declare -a ICMD=()
 [[ -n "$RUNNER" ]] && read -r -a ICMD <<<"$RUNNER"
 if ! "${ICMD[@]}" vendor/bin/phpcs -i 2>/dev/null | grep -qi 'DrupalPractice'; then
   log_warn "phpcs does not list the Drupal/DrupalPractice standards yet."
-  log_warn "Register them once with:  vendor/bin/phpcs --config-set installed_paths vendor/drupal/coder/coder_sniffer"
+  log_warn "Register all three coder paths once with:  vendor/bin/phpcs --config-set installed_paths vendor/drupal/coder/coder_sniffer,vendor/sirbrillig/phpcs-variable-analysis,vendor/slevomat/coding-standard"
 fi
 
 # build_cmd <bin> -> populates the global REPLY array with the full command

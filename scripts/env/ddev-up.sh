@@ -86,8 +86,14 @@ fi
 mkdir -p "$PROJECT_DIR"
 PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
 
-# Default project name from the directory if not provided.
+# Default project name from the directory if not provided. Either way, sanitize
+# it to a hostname-safe value: DDEV rejects underscores/dots/uppercase, so a
+# directory named e.g. "upgrade-to-d11-file_version" would fail `ddev config`.
 [[ -z "$PROJECT_NAME" ]] && PROJECT_NAME="$(basename "$PROJECT_DIR")"
+_RAW_PROJECT_NAME="$PROJECT_NAME"
+PROJECT_NAME="$(ddev_project_name "$PROJECT_NAME")"
+[[ "$PROJECT_NAME" != "$_RAW_PROJECT_NAME" ]] \
+  && log_info "Sanitized DDEV project name '$_RAW_PROJECT_NAME' -> '$PROJECT_NAME' (hostname-safe)."
 
 DDEV_CONFIG="$PROJECT_DIR/.ddev/config.yaml"
 
@@ -159,6 +165,28 @@ if [[ -f "$PROJECT_DIR/composer.json" ]]; then
   log_ok "composer.json already present — not running 'ddev composer create'."
 else
   log_step "Creating the Drupal $DRUPAL_TARGET Composer project"
+  # `ddev composer create` (composer create-project) requires an almost-empty
+  # project root: only "$DOCROOT/" and dotfiles like .ddev/ are tolerated. If the
+  # subject module/theme (or a downloaded tarball) was extracted into the project
+  # root, creation fails with a cryptic "is not allowed to be present". Detect
+  # stray non-dot entries up front and stop with actionable guidance instead.
+  STRAY=()
+  shopt -s nullglob
+  for _entry in "$PROJECT_DIR"/*; do
+    _base="$(basename "$_entry")"
+    [[ "$_base" == "$DOCROOT" ]] && continue
+    STRAY+=("$_base")
+  done
+  shopt -u nullglob
+  if [[ ${#STRAY[@]} -gt 0 ]]; then
+    log_err "Cannot create the Drupal project: the root '$PROJECT_DIR' is not clean."
+    log_err "composer create-project only tolerates '$DOCROOT/' and dotfiles, but it also contains: ${STRAY[*]}"
+    log_plain "Move your module/theme (and any downloaded tarball) out of the project root,"
+    log_plain "re-run setup to create Drupal, then place the extension under"
+    log_plain "'$DOCROOT/modules/custom/<name>' (or '$DOCROOT/themes/custom/<name>'). The"
+    log_plain "drupilot setup flow performs that placement step for you."
+    die "Project root not clean for 'ddev composer create' (stray: ${STRAY[*]})." 1
+  fi
   ( cd "$PROJECT_DIR" && ddev composer create --no-interaction "drupal/recommended-project:${DRUPAL_TARGET}" ) \
     || die "'ddev composer create' failed. Check network access and the DDEV web container ('ddev logs -s web')." 1
   log_ok "Composer project created."

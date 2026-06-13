@@ -60,18 +60,21 @@ All output you produce — messages, summaries, coverage reports — is in **Eng
     (full site **with** a real browser via Selenium/chromedriver).
 - **DDEV** provides the full stack (web + DB + chromedriver). For JS tests use the
   **v2** Selenium add-on: `ddev/ddev-selenium-standalone-chrome`.
-- **Testing environment variables** belong in `.ddev/config.yaml` under
-  `web_environment:` (PROMPT §2.5):
+- **Testing environment variables**: `ddev-drupal-contrib` already provides
+  `SIMPLETEST_DB`, `SIMPLETEST_BASE_URL=http://web`, `BROWSERTEST_*` and `DTT_*`
+  in its `config.contrib.yaml`. Add only the rest in a SEPARATE
+  `.ddev/config.testing.yaml` (PROMPT §2.5):
   ```yaml
   web_environment:
-    - SIMPLETEST_BASE_URL=https://<project>.ddev.site
-    - SIMPLETEST_DB=mysql://db:db@db/db
-    - BROWSERTEST_OUTPUT_DIRECTORY=/var/www/html/web/sites/simpletest/browser_output
-    - MINK_DRIVER_ARGS_WEBDRIVER=["chrome", {"browserName":"chrome","goog:chromeOptions":{"args":["--disable-gpu","--headless","--no-sandbox"]}}, "http://selenium-chrome:4444/wd/hub"]
+    - 'MINK_DRIVER_ARGS_WEBDRIVER=[\"chrome\",{\"browserName\":\"chrome\",\"goog:chromeOptions\":{\"args\":[\"--disable-gpu\",\"--headless\",\"--no-sandbox\"]}},\"http://selenium-chrome:4444/wd/hub\"]'
     - SYMFONY_DEPRECATIONS_HELPER=disabled
   ```
-  The webdriver hostname and the availability of a PHP 8.5 image depend on the
-  add-on / DDEV version: **read the generated YAML** rather than assuming.
+  The MINK value MUST keep its inner double quotes escaped (`\"`) inside YAML
+  single quotes: DDEV serializes `web_environment` into the generated
+  docker-compose wrapped in double quotes WITHOUT escaping inner quotes, so a raw
+  JSON value makes `ddev start` fail ("did not find expected key"). The webdriver
+  hostname (and a PHP 8.5 image) depend on the add-on / DDEV version: **read the
+  generated `.ddev/docker-compose.selenium-chrome.yaml`** rather than assuming.
 - **Running tests** (PROMPT §2.5):
   ```bash
   ddev exec vendor/bin/phpunit -c web/core web/modules/custom/<module>

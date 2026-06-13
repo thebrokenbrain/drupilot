@@ -1,22 +1,28 @@
-# drupilot — .ddev/config.yaml (web_environment fragment for testing)
+# drupilot — .ddev/config.testing.yaml (web_environment fragment for testing)
 #
-# Testing environment variables for running the Drupal 11 PHPUnit suite inside
-# DDEV (Unit + Kernel + Functional + FunctionalJavascript). Merge this
-# `web_environment:` block into the project's .ddev/config.yaml (or drop it into
-# a .ddev/config.testing.yaml override). Generated from a template; the
-# {{PLACEHOLDER}} tokens are substituted by drupilot at setup time:
-#   {{SIMPLETEST_BASE_URL}} — site URL, e.g. https://my-site.ddev.site
-#   {{WEBDRIVER_HOST}}      — Selenium webdriver endpoint host:port,
-#                             e.g. selenium-chrome:4444
+# Extra testing environment variables for the Drupal 11 PHPUnit suite, written as
+# a SEPARATE .ddev/config.testing.yaml so it MERGES with — and does not fight —
+# what ddev-drupal-contrib already provides. That add-on's config.contrib.yaml
+# already sets SIMPLETEST_DB, SIMPLETEST_BASE_URL=http://web, BROWSERTEST_*,
+# DTT_* and DRUPAL_TEST_WEBDRIVER_*. So here we add ONLY what is missing:
+#   - MINK_DRIVER_ARGS_WEBDRIVER  (used by Drupal core's WebDriverTestBase)
+#   - SYMFONY_DEPRECATIONS_HELPER
+# Generated from a template; {{WEBDRIVER_HOST}} is the Selenium webdriver
+# endpoint host:port, e.g. selenium-chrome:4444. After the add-on is installed,
+# READ the generated .ddev/docker-compose.selenium-chrome.yaml for the real
+# service host rather than assuming it (PROMPT 2.5 / 7.1).
 #
-# IMPORTANT: the real webdriver hostname depends on the version of the
-# ddev/ddev-selenium-standalone-chrome add-on (use v2 for Drupal 11). After the
-# add-on is installed, READ the generated YAML rather than assuming
-# "selenium-chrome:4444" (PROMPT 2.5). The same applies to whether a PHP 8.5
-# image is available.
+# Do NOT re-declare SIMPLETEST_BASE_URL here: the add-on already sets it to
+# http://web, which is what Selenium (on the same DDEV network) must reach; a
+# ddev.site URL would override that with a worse value.
+#
+# CRITICAL QUOTING: DDEV re-serializes each web_environment value into the
+# generated docker-compose by wrapping it in DOUBLE quotes WITHOUT escaping the
+# double quotes the value already contains. A raw JSON value therefore yields
+# invalid compose YAML ("did not find expected key") and `ddev start` fails. So
+# MINK_DRIVER_ARGS_WEBDRIVER must have its inner double quotes pre-escaped as \"
+# and the whole item wrapped in YAML SINGLE quotes (which keep backslashes
+# literal). This mirrors how ddev-drupal-contrib emits DTT_MINK_DRIVER_ARGS.
 web_environment:
-  - SIMPLETEST_BASE_URL={{SIMPLETEST_BASE_URL}}
-  - SIMPLETEST_DB=mysql://db:db@db/db
-  - BROWSERTEST_OUTPUT_DIRECTORY=/var/www/html/web/sites/simpletest/browser_output
-  - MINK_DRIVER_ARGS_WEBDRIVER=["chrome", {"browserName":"chrome","goog:chromeOptions":{"args":["--disable-gpu","--headless","--no-sandbox"]}}, "http://{{WEBDRIVER_HOST}}/wd/hub"]
+  - 'MINK_DRIVER_ARGS_WEBDRIVER=[\"chrome\",{\"browserName\":\"chrome\",\"goog:chromeOptions\":{\"args\":[\"--disable-gpu\",\"--headless\",\"--no-sandbox\"]}},\"http://{{WEBDRIVER_HOST}}/wd/hub\"]'
   - SYMFONY_DEPRECATIONS_HELPER=disabled
