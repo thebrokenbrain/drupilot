@@ -1,5 +1,5 @@
 ---
-description: drupilot router and guided flow. Detects the current state of a Drupal module/theme port (environment, cached assessment, phase) and recommends the next logical step; can run the full setup->assess->port->[refactor]->test->[contribute] flow by delegating to the orchestrator, or run it hands-off with the `auto` mode word (unattended setup->assess->port->refactor->test that writes the local patch and never performs any outward-facing contribution). Use as the main entry point when the user says "port this module to Drupal 11", "what's next", or just "/drupilot".
+description: drupilot router and main entry point for porting. Detects the current state of a Drupal module/theme port (environment, cached assessment, phase). When the user asks to PORT/upgrade/modernize a module ('port this module to Drupal 11', 'upgrade this to D11', 'make it work on Drupal 11'), it RUNS the full setup->assess->port->[refactor]->test flow via the drupal-port-orchestrator — guided with confirmations, or hands-off with the `auto` mode word / DRUPILOT_AUTONOMOUS=true (which writes the local patch and never performs outward-facing contribution). For an exploratory ask or a bare '/drupilot' ('what's next', 'where am I', 'status'), it instead summarizes and recommends the single next step. Use it whenever the user wants to port a module/theme to Drupal 11 or asks what to do next.
 argument-hint: "[subject-path] [full|auto|status|next]"
 allowed-tools: Bash, Read, Task
 ---
@@ -7,8 +7,9 @@ allowed-tools: Bash, Read, Task
 # drupilot — router and guided flow
 
 You are the entry point for the drupilot plugin. Your job is to **detect the current
-state**, **summarize it in English**, and **recommend the next logical step** — and,
-only when the user asks for it, drive the whole flow end to end.
+state**, **summarize it in English**, and then either **run the porting flow** (when
+the user asked you to port/upgrade the module) or **recommend the next logical step**
+(for an exploratory ask). Infer which from the request — see Hard rules.
 
 ## Hard rules
 
@@ -18,10 +19,20 @@ only when the user asks for it, drive the whole flow end to end.
   intent explicitly.
 - Treat the scripts as the source of truth for detection — do not guess versions or
   state from memory.
-- `$ARGUMENTS` may carry a subject path (a module/theme directory) and/or a mode
-  word: `full`, `auto`, `status`, or `next` (default: `next`). The env var
-  `DRUPILOT_AUTONOMOUS=true` is equivalent to the `auto` mode word: when it is set
-  and no explicit `status`/`next` is requested, the effective mode is `auto`.
+- `$ARGUMENTS` may carry a subject path (a module/theme directory) and/or an explicit
+  mode word: `full`, `auto`, `status`, or `next`. `DRUPILOT_AUTONOMOUS=true` is
+  equivalent to the `auto` mode word.
+- **Mode inference (when no explicit mode word is given) — infer from intent:**
+  - An **action / port** request ("port this to Drupal 11", "upgrade this module",
+    "make it D11", "do the port", "modernize it") → **run the flow**: effective mode
+    **`full`** — or **`auto`** if the user also asked for it unattended ("don't stop",
+    "do everything yourself", "automatic") or `DRUPILOT_AUTONOMOUS=true`.
+  - An **exploratory** request or a bare `/drupilot` ("what's next", "where am I") →
+    **`next`** (summarize + recommend one step; do not act).
+  - A **status** request ("status", "how's it going") → **`status`** (read-only).
+  An explicit mode word always overrides inference. If intent is genuinely ambiguous,
+  state the plan and confirm once — do **not** silently fall back to `next` when the
+  user clearly asked you to port.
 
 ## Step 1 — Detect the environment (gates, no side effects)
 
@@ -92,9 +103,12 @@ forced.
 
 ## Step 5 — Run the flow (`full`) or hands-off (`auto`)
 
-Resolve the effective mode: the `$ARGUMENTS` mode word wins; otherwise, if
-`autonomous=true` (from Step 2), the effective mode is `auto`; otherwise it is
-`next`.
+Resolve the effective mode in order: (1) an explicit `$ARGUMENTS` mode word wins;
+(2) else if `autonomous=true` (from Step 2) → `auto`; (3) else infer from the user's
+intent per the Hard rules — a port/upgrade request → `full` (or `auto` if they asked
+for unattended), an exploratory ask → `next`, a status ask → `status`. So "port this
+module to Drupal 11" runs the flow (`full`); it does not stop at recommending the next
+step.
 
 ### `full` — guided, with confirmations
 

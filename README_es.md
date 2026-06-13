@@ -133,7 +133,7 @@ Un **estudio de viabilidad** siempre se ejecuta primero como gate de decisión. 
 
 ## Modo autónomo (manos fuera)
 
-¿Quieres apuntar drupilot a un módulo y dejar que los agentes hagan **todos** los pasos? Usa la palabra de modo `auto` (o pon `DRUPILOT_AUTONOMOUS=true`). El `drupal-port-orchestrator` ejecuta entonces **setup → assess → port → refactor → test** sin intervención — sin confirmación inicial, generando el `.patch` local al final — y delega en los subagentes especialistas (`drupal-viability-analyst`, `drupal-test-engineer`) según haga falta.
+Basta describir lo que quieres en lenguaje natural — **"porta este módulo a Drupal 11"** ya ejecuta el flujo completo (guiado, con confirmaciones) a través del `drupal-port-orchestrator`, que delega en los subagentes especialistas (`drupal-viability-analyst`, `drupal-test-engineer`) según haga falta. ¿Lo quieres **totalmente desatendido** (sin ninguna confirmación)? Usa la palabra de modo `auto` (o pon `DRUPILOT_AUTONOMOUS=true`): entonces ejecuta **setup → assess → port → refactor → test** sin intervención — sin confirmación inicial, generando el `.patch` local al final.
 
 ```text
 # El lenguaje natural basta — esto dispara el orquestador:

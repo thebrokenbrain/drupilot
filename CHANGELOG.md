@@ -11,6 +11,16 @@ release, rename `[Unreleased]` to the new version with a date, bump `version`
 in `.claude-plugin/plugin.json` (and the `marketplace.json` entry) to match, and
 tag the commit `vX.Y.Z`.
 
+## [Unreleased]
+
+### Changed
+- The `/drupilot` router now **infers intent**: a natural-language port request
+  ("port this module to Drupal 11", "upgrade this to D11") runs the full flow via the
+  `drupal-port-orchestrator` (mode `full`, guided with confirmations; `auto` if you
+  ask for unattended), instead of only recommending the next step. A bare `/drupilot`
+  or an exploratory ask ("what's next") still just summarizes and recommends; an
+  explicit mode word always wins.
+
 ## [0.5.0] - 2026-06-13
 
 ### Added

@@ -131,7 +131,7 @@ A **viability assessment** always runs first as a decision gate. If the refactor
 
 ## Hands-off (autonomous) mode
 
-Want to point drupilot at a module and let the agents do **all** the steps? Use the `auto` mode word (or set `DRUPILOT_AUTONOMOUS=true`). The `drupal-port-orchestrator` then runs **setup → assess → port → refactor → test** unattended — no initial confirmation, generating the local `.patch` at the end — and delegates to the specialist subagents (`drupal-viability-analyst`, `drupal-test-engineer`) as needed.
+Just describe what you want in natural language — **"port this module to Drupal 11"** already runs the whole flow (guided, with confirmations) via the `drupal-port-orchestrator`, which delegates to the specialist subagents (`drupal-viability-analyst`, `drupal-test-engineer`) as needed. Want it **fully unattended** (no confirmations at all)? Use the `auto` mode word (or set `DRUPILOT_AUTONOMOUS=true`): it then runs **setup → assess → port → refactor → test** hands-off — no initial confirmation, generating the local `.patch` at the end.
 
 ```text
 # Natural language is enough — this triggers the orchestrator:
