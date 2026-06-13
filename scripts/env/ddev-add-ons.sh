@@ -218,6 +218,9 @@ if [[ "$WANT_SELENIUM" == "1" && "$SELENIUM_OK" == "1" ]]; then
   log_info "webdriver host instead of assuming 'selenium-chrome' (PROMPT 2.5 / 7.1)."
 fi
 
+# Record the installed add-on versions in the reproducibility lockfile (best-effort).
+bash "$PLUGIN_ROOT_DIR/scripts/env/lock-sync.sh" --dir "$PROJECT_DIR" >/dev/null 2>&1 || true
+
 hr
 if [[ "$WANT_SELENIUM" == "1" && "$SELENIUM_OK" == "0" ]]; then
   log_warn "Add-ons installed except Selenium (soft failure). JS tests are unavailable for now."

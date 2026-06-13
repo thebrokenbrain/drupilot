@@ -38,7 +38,7 @@ Resolve the subject directory: use `$1` if it points at a Drupal extension, othe
 detect it from the current directory. Then collect facts via common.sh helpers and the
 detect-php script (all read-only):
 
-!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; ROOT="$(find_drupal_root "$SUBJ" 2>/dev/null || true)"; printf "subject_dir=%s\n" "$SUBJ"; printf "is_extension=%s\n" "$(is_drupal_extension_dir "$SUBJ" && echo yes || echo no)"; printf "machine_name=%s\n" "$(subject_machine_name "$SUBJ" 2>/dev/null || echo -)"; printf "subject_type=%s\n" "$(subject_type "$SUBJ" 2>/dev/null || echo -)"; printf "core_requirement=%s\n" "$(subject_core_requirement "$SUBJ" 2>/dev/null || echo -)"; printf "drupal_root=%s\n" "${ROOT:--}"; printf "ddev_config=%s\n" "$([[ -n "$ROOT" && -f "$ROOT/.ddev/config.yaml" ]] && echo yes || echo no)"; printf "ddev_running=%s\n" "$(ddev_running "$ROOT" 2>/dev/null && echo yes || echo no)"; printf "state_dir=%s\n" "$(project_state_dir "$SUBJ")"' _ "$1"`
+!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; ROOT="$(find_drupal_root "$SUBJ" 2>/dev/null || true)"; printf "subject_dir=%s\n" "$SUBJ"; printf "is_extension=%s\n" "$(is_drupal_extension_dir "$SUBJ" && echo yes || echo no)"; printf "machine_name=%s\n" "$(subject_machine_name "$SUBJ" 2>/dev/null || echo -)"; printf "subject_type=%s\n" "$(subject_type "$SUBJ" 2>/dev/null || echo -)"; printf "core_requirement=%s\n" "$(subject_core_requirement "$SUBJ" 2>/dev/null || echo -)"; printf "drupal_root=%s\n" "${ROOT:--}"; printf "ddev_config=%s\n" "$([[ -n "$ROOT" && -f "$ROOT/.ddev/config.yaml" ]] && echo yes || echo no)"; printf "ddev_running=%s\n" "$(ddev_running "$ROOT" 2>/dev/null && echo yes || echo no)"; printf "state_dir=%s\n" "$(project_state_dir "$SUBJ")"; printf "lockfile=%s\n" "$(LF="$(DRUPILOT_PROJECT_DIR="${ROOT:-$SUBJ}" drupilot_lock_file 2>/dev/null)"; [[ -f "$LF" ]] && echo "$LF" || echo -)"' _ "$1"`
 
 Then detect the effective PHP target and whether it is confirmed:
 
@@ -47,7 +47,7 @@ Then detect the effective PHP target and whether it is confirmed:
 Also read the autonomous flag and the contribution mode (so the summary and the
 flow honor them):
 
-!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; printf "autonomous=%s\n" "$(config_get DRUPILOT_AUTONOMOUS false)"; printf "contrib_mode=%s\n" "$(config_get DRUPILOT_CONTRIB_MODE semi)"; printf "generate_rules=%s\n" "$(config_get DRUPILOT_GENERATE_RULES ask)"'`
+!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; printf "autonomous=%s\n" "$(config_get DRUPILOT_AUTONOMOUS false)"; printf "contrib_mode=%s\n" "$(config_get DRUPILOT_CONTRIB_MODE semi)"; printf "generate_rules=%s\n" "$(config_get DRUPILOT_GENERATE_RULES ask)"; printf "deterministic=%s\n" "$(config_get DRUPILOT_DETERMINISTIC true)"'`
 
 ## Step 3 — Read the cached assessment (if any)
 
@@ -56,7 +56,9 @@ it. Read `@<state_dir>/assess.json` and `@<state_dir>/viability-report.md` if pr
 note the verdict, effort (S/M/L/XL), auto-fixable vs manual counts, and the timestamp.
 Also note the last test result (`<state_dir>/last-test.json`) and the current phase
 marker (`<state_dir>/phase`) if those files exist. If none exist, the project has not
-been assessed yet.
+been assessed yet. If Step 2 reported a `lockfile` path, read it and note the
+frozen toolchain (Drupal core, key tool versions, the digests SHA) — that is what
+a deterministic re-run reuses.
 
 ## Step 4 — Summarize and recommend
 
@@ -65,6 +67,8 @@ Print a concise English summary:
 - Subject: machine name, type (module/theme/profile), `core_version_requirement`.
 - PHP target (and a clear note if it is **unconfirmed**, e.g. 8.5 — never claim it is
   supported).
+- **Reproducibility:** whether deterministic mode is on (`deterministic`), and if a
+  lockfile exists, the frozen Drupal core / digests SHA it pins.
 - Environment readiness per profile (analysis / setup+tests / contribution).
 - DDEV state (configured? running?).
 - Assessment state (assessed? verdict + effort, or "not assessed yet").

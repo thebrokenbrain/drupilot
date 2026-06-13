@@ -186,6 +186,90 @@ config_json() {
 req_version() { config_json ".requirements.${1}" "${2:-}"; }
 
 # ---------------------------------------------------------------------------
+# Determinism mode + per-project lockfile (drupilot-lock.json)
+# ---------------------------------------------------------------------------
+# drupilot is reproducible BY DEFAULT: it freezes the versions/refs it resolves
+# (Drupal core, the dev toolchain, the digests SHA, DDEV add-ons) into a
+# per-project lockfile and reuses them on later runs, so porting the same module
+# twice converges on the same toolchain. Set DRUPILOT_DETERMINISTIC=false (the
+# escape hatch) to always resolve fresh (the legacy floating behavior) and
+# refresh the lock. This only governs drupilot's own resolution; it is unrelated
+# to the Claude Code permission mode.
+deterministic_mode() { config_bool DRUPILOT_DETERMINISTIC 1; }
+
+# drupilot_lock_file [project_dir] -> path to this project's lockfile. The lock
+# lives under the per-project state dir (like assess.json / tests.json), so it
+# never contaminates the user's project tree. Scripts that already know the
+# Drupal root can export DRUPILOT_PROJECT_DIR; otherwise $PWD is used (analysis
+# scripts cd into the Drupal root first, so $PWD is the project there).
+drupilot_lock_file() {
+  local base="${1:-${DRUPILOT_PROJECT_DIR:-$PWD}}"
+  printf '%s/drupilot-lock.json' "$(project_state_dir "$base")"
+}
+
+# lock_get <jq-path> [default] -> read a value from the lockfile. <jq-path> is a
+# jq filter beginning with '.', e.g. '.digests.sha'. Returns the default when the
+# lock, jq or the key is absent. STDOUT only (no logging).
+lock_get() {
+  local path="$1" def="${2:-}" f
+  f="$(drupilot_lock_file)"
+  if [[ -r "$f" ]] && have_cmd jq; then
+    local v; v="$(jq -r "${path} // empty" "$f" 2>/dev/null)"
+    if [[ -n "$v" && "$v" != "null" ]]; then printf '%s' "$v"; return 0; fi
+  fi
+  printf '%s' "$def"
+}
+
+# lock_set <jq-path> <value> -> set a STRING value at <jq-path>, creating the
+# lock (and any intermediate objects) if absent. Atomic (temp file + mv). No-op
+# (return 1) without jq. <jq-path> is plugin-controlled, never user input.
+lock_set() {
+  local path="$1" value="$2" f tmp
+  have_cmd jq || return 1
+  f="$(drupilot_lock_file)"
+  [[ -f "$f" ]] || printf '{}\n' > "$f" 2>/dev/null || return 1
+  tmp="$(mktemp "${f}.XXXXXX" 2>/dev/null)" || return 1
+  if jq --arg v "$value" "${path} = \$v" "$f" > "$tmp" 2>/dev/null; then
+    mv -f "$tmp" "$f"
+  else
+    rm -f "$tmp" 2>/dev/null || true; return 1
+  fi
+}
+
+# lock_set_json <jq-path> <json-value> -> like lock_set but for a raw JSON value
+# (number, boolean, object, array), e.g. lock_set_json .phpstan_level 2.
+lock_set_json() {
+  local path="$1" value="$2" f tmp
+  have_cmd jq || return 1
+  f="$(drupilot_lock_file)"
+  [[ -f "$f" ]] || printf '{}\n' > "$f" 2>/dev/null || return 1
+  tmp="$(mktemp "${f}.XXXXXX" 2>/dev/null)" || return 1
+  if jq --argjson v "$value" "${path} = \$v" "$f" > "$tmp" 2>/dev/null; then
+    mv -f "$tmp" "$f"
+  else
+    rm -f "$tmp" 2>/dev/null || true; return 1
+  fi
+}
+
+# lock_resolve <jq-path> <fresh-cmd...> -> resolve-and-freeze, the core pattern.
+# Deterministic mode: if the lock already has <jq-path>, echo it (no fresh work);
+# otherwise run <fresh-cmd...> (its STDOUT is the value), freeze it, echo it.
+# Non-deterministic mode: always run <fresh-cmd...>, refresh the lock, echo it.
+# Returns non-zero (and echoes nothing) if the fresh resolver yields nothing.
+lock_resolve() {
+  local path="$1"; shift
+  local cached fresh
+  if deterministic_mode; then
+    cached="$(lock_get "$path" "")"
+    if [[ -n "$cached" ]]; then printf '%s' "$cached"; return 0; fi
+  fi
+  fresh="$("$@")" || return 1
+  [[ -n "$fresh" ]] || return 1
+  lock_set "$path" "$fresh" 2>/dev/null || true
+  printf '%s' "$fresh"
+}
+
+# ---------------------------------------------------------------------------
 # PHP / Drupal target resolution
 # ---------------------------------------------------------------------------
 resolve_php_target()    { config_get DRUPILOT_PHP_TARGET "8.3"; }
@@ -250,10 +334,20 @@ drupal_runner() {
 # subject_info_file <dir> -> first *.info.yml in the directory (non-recursive)
 subject_info_file() {
   local dir="${1:-$PWD}" f
+  local -a matches=()
   for f in "$dir"/*.info.yml; do
-    [[ -e "$f" ]] && { printf '%s' "$f"; return 0; }
+    [[ -e "$f" ]] && matches+=("$f")
   done
-  return 1
+  [[ ${#matches[@]} -gt 0 ]] || return 1
+  # One *.info.yml is the norm; if a directory unexpectedly has more, pick the
+  # first in a STABLE (LC_ALL=C) order so the choice is deterministic regardless
+  # of filesystem listing order.
+  if [[ ${#matches[@]} -gt 1 ]]; then
+    printf '%s' "$(printf '%s\n' "${matches[@]}" | LC_ALL=C sort | head -n1)"
+  else
+    printf '%s' "${matches[0]}"
+  fi
+  return 0
 }
 
 # is_drupal_extension_dir <dir> -> 0 if it contains a *.info.yml

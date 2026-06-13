@@ -90,14 +90,23 @@ if [[ "$FIX" == "1" && ! -f "$DRUPAL_ROOT/vendor/bin/phpcbf" ]]; then
   die "vendor/bin/phpcbf is missing but --fix was requested. Install drupal/coder first." 2
 fi
 
-# --- Confirm the Drupal standards are registered (best-effort) ------------
-# `phpcs -i` should list Drupal and DrupalPractice; if not, hint at the
-# installed_paths registration from PROMPT 1.4 (setup normally handles this).
+# --- Ensure the Drupal standards are registered (idempotent) --------------
+# `phpcs -i` must list Drupal and DrupalPractice or the run silently checks
+# against the wrong standard — a real source of divergent results. coder ships a
+# Composer plugin that normally registers them; if it did not, register all three
+# paths ourselves (PROMPT 1.4) and re-verify. Idempotent: a no-op when present.
 declare -a ICMD=()
 [[ -n "$RUNNER" ]] && read -r -a ICMD <<<"$RUNNER"
 if ! "${ICMD[@]}" vendor/bin/phpcs -i 2>/dev/null | grep -qi 'DrupalPractice'; then
-  log_warn "phpcs does not list the Drupal/DrupalPractice standards yet."
-  log_warn "Register all three coder paths once with:  vendor/bin/phpcs --config-set installed_paths vendor/drupal/coder/coder_sniffer,vendor/sirbrillig/phpcs-variable-analysis,vendor/slevomat/coding-standard"
+  log_warn "Drupal/DrupalPractice standards not registered yet — registering them now (idempotent)."
+  "${ICMD[@]}" vendor/bin/phpcs --config-set installed_paths \
+    vendor/drupal/coder/coder_sniffer,vendor/sirbrillig/phpcs-variable-analysis,vendor/slevomat/coding-standard \
+    >/dev/null 2>&1 || true
+  if "${ICMD[@]}" vendor/bin/phpcs -i 2>/dev/null | grep -qi 'DrupalPractice'; then
+    log_ok "Registered the Drupal/DrupalPractice standards."
+  else
+    log_warn "Could not auto-register the Drupal standards. Ensure drupal/coder is installed and its phpcodesniffer-composer-installer plugin was allowed (composer config allow-plugins)."
+  fi
 fi
 
 # build_cmd <bin> -> populates the global REPLY array with the full command

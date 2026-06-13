@@ -88,9 +88,10 @@ Official pass plus, when enabled, the AI-generated digests layer:
 
 ```bash
 bash "$ROOT/scripts/analysis/run-rector.sh" --subject "$SUBJECT"
-# digests layer (PROMPT 2.1.1) only if DRUPILOT_USE_DIGESTS_RULES is true:
-bash "$ROOT/scripts/analysis/run-rector.sh" --subject "$SUBJECT" --digests \
-     --digests-ref "$(config_get DRUPILOT_DIGESTS_REF main)"
+# digests layer (PROMPT 2.1.1) only if DRUPILOT_USE_DIGESTS_RULES is true. The
+# script resolves the ref itself (default 'main', frozen in the lockfile when
+# deterministic); add --digests-ref only to force a specific commit/tag:
+bash "$ROOT/scripts/analysis/run-rector.sh" --subject "$SUBJECT" --digests
 ```
 
 - Default is dry-run; do **not** pass `--apply` here. The diff/rule-hit summary is
@@ -169,17 +170,29 @@ Build the classification that drives the verdict:
    separately.
 3. **Manual changes** — deprecations PHPStan flags that no Rector rule covers,
    plus mechanical edits Rector skips. Medium cost.
-4. **Hard breaks** — structural changes that usually need real work. Detect each
-   explicitly (use Grep over the subject):
-   - **Twig 3**: removed filters/functions, `{% spaceless %}` (removed), changed
-     escaping. Grep templates for `spaceless`, deprecated filters.
-   - **CKEditor 5**: CKEditor 4 was removed in D10. Look for `ckeditor` (4-era)
-     plugin configs, `*.ckeditor.yml`, custom CKEditor 4 plugin JS.
-   - **jQuery UI**: `core/jquery.ui.*` libraries were removed/externalized. Grep
-     `*.libraries.yml` and JS for `jquery.ui`, `drupal.ajax` UI widgets.
-   - **Symfony 7**: event subscriber / service signatures and type changes. Grep
-     for `EventSubscriberInterface`, controllers, and PHP type mismatches PHPStan
-     surfaces.
+4. **Hard breaks** — detect each category with the EXACT greps below (run all
+   four; a category is "present" when its grep returns ≥1 file). This makes
+   `hard_breaks` reproducible instead of a judgment call:
+
+   ```bash
+   # Twig 3: spaceless tag + removed filters/functions.
+   grep -rIlE '\{%[-[:space:]]*spaceless|\|[[:space:]]*(spaceless|convert_encoding)\b' \
+     --include='*.twig' "$SUBJECT"
+   # CKEditor 4 (removed in D10): editor config + 4-era plugin JS/yml.
+   grep -rIlE 'CKEDITOR\.|Drupal\.editors\.ckeditor|editor\.editor\.ckeditor\b' \
+     --include='*.yml' --include='*.js' "$SUBJECT"
+   # jQuery UI (removed/externalized): library deps + JS usage.
+   grep -rIlE 'jquery[._]ui|core/jquery\.ui' \
+     --include='*.libraries.yml' --include='*.yml' --include='*.js' "$SUBJECT"
+   # Symfony 7 (subscriber/service signature & type changes).
+   grep -rIlE 'EventSubscriberInterface|getSubscribedEvents' --include='*.php' "$SUBJECT"
+   ```
+
+   `hard_breaks` = the number of the four categories with ≥1 matching file. Record
+   the per-category file lists. **Symfony 7** is the most false-positive-prone
+   (having a subscriber is common and may not break): keep it counted for the
+   verdict, but note in the report whether PHPStan actually flags a
+   type/signature error there — if it does not, call it "no real work".
 5. **info.yml status** — the recommended `core_version_requirement` comes from
    the core-strategy helper (§3.5): `auto` yields `^10 || ^11` for a
    BC-preserving port (paired with `require.php: ">=<target>"`) or `^11` on a BC
@@ -199,22 +212,36 @@ changed. Read the relevant ones (match by API name / change-record number) to
 justify a finding and shape the plan. They are context only — never
 copied/redistributed (unlicensed), never the sole basis for a verdict.
 
-## 5. Estimate effort (S / M / L / XL)
+## 5. Estimate effort (S / M / L / XL) — deterministic rubric
 
-Combine the counts into a verdict. Rough rubric (adapt with judgment, explain the
-reasoning in the report):
+The verdict is computed from three integer counts (no subjective weighting), so
+two assessments of the same module reach the same verdict:
 
-- **S (Small)** — almost entirely auto-fixable; only the `info.yml` bump + a
-  handful of manual deprecations; no hard breaks; all contrib deps support D11.
-- **M (Medium)** — meaningful manual deprecation work and/or one contained hard
-  break (e.g. a jQuery UI swap); deps mostly ready.
-- **L (Large)** — multiple hard breaks (e.g. CKEditor 4->5 *and* Symfony 7 event
-  subscribers), or a large manual surface, or a key contrib dep not yet ported.
-- **XL (Extra large)** — pervasive hard breaks, architecture entangled with
-  removed APIs, or blocking unported dependencies with no alternative.
+- `manual` — deprecations PHPStan flags that **no** Rector rule (official or
+  digests) covers, plus the mechanical edits Rector cannot make. (`info.yml` is
+  not counted — it is always required.)
+- `hard_breaks` — how many of the four categories are actually present (0–4),
+  counted by the fixed greps in §3 step 4.
+- `blocking_deps` — `drupal/*` dependencies with **no** D11 release **and no**
+  viable alternative. (A dependency that merely needs swapping but has an
+  alternative is not "blocking" — count it as one `hard_break` instead.)
 
-Compare against `DRUPILOT_VIABILITY_THRESHOLD` (default `medium`). If the verdict
-meets or exceeds the threshold, set a clear "above threshold" flag in the report.
+Apply the FIRST matching rule, top to bottom. This IS the verdict, not a hint:
+
+| Verdict | Condition (first match wins) |
+|---|---|
+| **XL** | `blocking_deps >= 1`  OR  `hard_breaks >= 3`  OR  `manual > 40` |
+| **L**  | `hard_breaks == 2`  OR  `manual > 15` |
+| **M**  | `hard_breaks == 1`  OR  `manual >= 5` |
+| **S**  | otherwise (`hard_breaks == 0` AND `manual < 5` AND `blocking_deps == 0`) |
+
+Record the three counts and the matched rule **verbatim** in the report so the
+verdict is auditable and reproduces. The auto-fixable share (official vs digests)
+is reported separately as context; it does **not** change the verdict — it
+measures what is cheap, not the remaining effort.
+
+Compare against `DRUPILOT_VIABILITY_THRESHOLD` (order `S < M < L < XL`; default
+`medium`). If the verdict meets or exceeds it, set the "above threshold" flag.
 **Even then, still produce the phased plan** — never withhold it.
 
 ## 6. Produce the artifacts

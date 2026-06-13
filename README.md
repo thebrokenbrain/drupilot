@@ -125,6 +125,8 @@ After installing, restart or start a new session so the hooks load. Then run `/d
 
 A **viability assessment** always runs first as a decision gate. If the refactor is disproportionate (a configurable threshold), `drupilot` does not refuse — it still delivers a staged port plan that preserves the original functionality, and leaves the decision to you.
 
+**How "respecting the original functionality" is verified.** The adapted test suite staying **green is the preservation gate** for both phases — that green is the evidence the behavior is preserved. Test adaptations only update a test's *form* (PHPUnit/Drupal API), never *what it verifies*; a behavioral regression is fixed in the code, never by relaxing a test. If the module ships **no tests**, `drupilot` reports preservation as **not verified** and recommends adding them — it does not fabricate them.
+
 ---
 
 ## Hands-off (autonomous) mode
@@ -177,6 +179,7 @@ Defaults live in `config/defaults.json`. **Every `DRUPILOT_*` key can be overrid
 | `DRUPILOT_DIGESTS_REF` | `main` | Commit/tag of the `drupal-digests` repo, for reproducibility. |
 | `DRUPILOT_GENERATE_RULES` | `ask` | Generate ad-hoc Rector rules for uncovered deprecations: `ask` / `auto` / `off`. |
 | `DRUPILOT_AUTONOMOUS` | `false` | Hands-off mode (same as the `auto` mode word): unattended setup→assess→port→refactor→test, writes the local patch, **never** contributes. See [Hands-off mode](#hands-off-autonomous-mode). |
+| `DRUPILOT_DETERMINISTIC` | `true` | Reproducibility (default on): freeze the resolved Drupal core, dev toolchain, digests SHA and DDEV add-ons in a per-project `drupilot-lock.json` and reuse them on later runs. Set to `false` to resolve fresh every time and refresh the lock. See [Determinism](#determinism-reproducible-by-default). |
 
 Other useful environment variables: `DRUPILOT_GITLAB_PAT` (your GitLab Personal Access Token, read only at runtime, never persisted), `DRUPILOT_ASSUME_YES=1` (skip confirmations in non-interactive runs), `NO_COLOR=1`.
 
@@ -186,6 +189,22 @@ Example — target PHP 8.4 and drop Drupal 10 support for one session:
 export DRUPILOT_PHP_TARGET=8.4
 export DRUPILOT_CORE_TARGET_STRATEGY=d11-only   # ^11 only (drops Drupal 10)
 ```
+
+---
+
+## Determinism (reproducible by default)
+
+Porting the same module twice should yield the same result. drupilot is **deterministic by default** (`DRUPILOT_DETERMINISTIC=true`): the first time it resolves the moving parts of a port it **freezes** them in a per-project `drupilot-lock.json` (kept in drupilot's state dir, not your project tree) and **reuses** them on later runs:
+
+- the exact **Drupal core** version and the **dev-toolchain** versions (`drupal-rector`, PHPStan + extensions, `coder`/PHPCS, Drush) read from the generated `composer.lock`;
+- the **digests commit (SHA)** that the `main` branch resolved to — so the AI-generated rule layer stays fixed for the project even though its default ref is still `main`;
+- the installed **DDEV add-on** versions.
+
+It works like a `composer.lock`: the version ranges in `config/defaults.json` stay flexible, but the lock pins exactly what was used. `scripts/env/lock-sync.sh` captures/updates it (`ddev-up.sh` and `ddev-add-ons.sh` call it automatically).
+
+**Escape hatch:** set `DRUPILOT_DETERMINISTIC=false` to ignore the lock, resolve everything fresh (the newest in each range, the live `main` for digests) and refresh the lock. `lock-sync.sh --refresh` does the same for the digests SHA only.
+
+Beyond versions, drupilot keeps the *process* objective too: stable file ordering, a numeric S/M/L/XL rubric, fixed hard-break greps, and a done bar judged solely by Rector/PHPStan/PHPCS + the test suite.
 
 ---
 

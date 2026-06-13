@@ -13,6 +13,9 @@
   "DRUPILOT_DIGESTS_REF": "main",
   "DRUPILOT_GENERATE_RULES": "ask",
   "DRUPILOT_AUTONOMOUS": false,
+  "DRUPILOT_DETERMINISTIC": true,
+
+  "_deterministic_comment": "Reproducibility (DEFAULT ON). When true, drupilot freezes the versions/refs it resolves (Drupal core, the dev toolchain, the digests SHA, DDEV add-ons) into a per-project drupilot-lock.json (under the plugin's state dir, NOT the user's project tree) and reuses them on later runs, so porting the same module twice converges on the same toolchain and result. Set DRUPILOT_DETERMINISTIC=false (the escape hatch) to always resolve fresh (legacy floating behavior) and refresh the lock. This governs only drupilot's own resolution; the Claude Code permission mode still governs Bash/Edit/Write. Helpers: deterministic_mode / lock_get / lock_set / lock_resolve in scripts/lib/common.sh; capture/refresh via scripts/env/lock-sync.sh.",
 
   "_autonomous_comment": "Hands-off mode. When true (or invoked as `/drupilot <subject> auto`), the orchestrator runs setup -> assess -> port -> refactor -> test unattended: no initial confirmation, DRUPILOT_GENERATE_RULES is treated as 'auto' unless explicitly set to 'off', and the local .patch is always written at the end. It NEVER performs outward-facing actions on its own (no git push / Merge Request / contribute) — those stay opt-in via /drupilot-contribute. This only relaxes drupilot's own gates; the Claude Code permission mode still governs Bash/Edit/Write prompts (use acceptEdits or a headless bypass for a fully unattended run).",
 
@@ -46,11 +49,11 @@
     "feed_path": "feeds/rector.xml"
   },
 
-  "_packages_comment": "Composer constraints for the dev toolchain (PROMPT 1.1). Installed inside DDEV.",
+  "_packages_comment": "Composer constraints for the dev toolchain (PROMPT 1.1), installed inside DDEV. These are the verified SUPPORTED RANGES; the EXACT patch versions resolved on first install are frozen per-project in drupilot-lock.json (see _deterministic_comment) and reused while DRUPILOT_DETERMINISTIC is on. extension-installer only autoconfigures phpstan-drupal and upgrade_status only corroborates findings — neither affects the port result, so they carry a broad range and are pinned exactly by the lock rather than here.",
   "packages": {
-    "drupal_rector": "palantirnet/drupal-rector",
+    "drupal_rector": "palantirnet/drupal-rector:^0.21",
     "phpstan": "phpstan/phpstan:^2.1",
-    "phpstan_extension_installer": "phpstan/extension-installer",
+    "phpstan_extension_installer": "phpstan/extension-installer:^1.0",
     "phpstan_drupal": "mglaman/phpstan-drupal:^2.0",
     "phpstan_deprecation_rules": "phpstan/phpstan-deprecation-rules:^2.0",
     "coder": "drupal/coder",

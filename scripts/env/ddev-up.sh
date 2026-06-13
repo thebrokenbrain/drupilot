@@ -211,6 +211,13 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Step 6 — Freeze the resolved versions in the reproducibility lockfile
+# ---------------------------------------------------------------------------
+# Best-effort: capture the exact Drupal core (and whatever composer.lock holds so
+# far) so later runs reuse it (deterministic mode). Never fail setup over the lock.
+bash "$PLUGIN_ROOT_DIR/scripts/env/lock-sync.sh" --dir "$PROJECT_DIR" >/dev/null 2>&1 || true
+
+# ---------------------------------------------------------------------------
 # Done
 # ---------------------------------------------------------------------------
 hr

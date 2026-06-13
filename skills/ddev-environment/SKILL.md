@@ -168,6 +168,21 @@ ddev exec vendor/bin/phpcs -i   # must list Drupal and DrupalPractice
 With `phpstan/extension-installer` present, the phpstan-drupal and deprecation
 rules autoload — no manual `includes:` needed.
 
+**Freeze the toolchain for reproducibility.** drupilot is deterministic by default
+(`DRUPILOT_DETERMINISTIC`): after installing the toolchain, capture the exact
+resolved versions so later runs converge on the same toolchain:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/lock-sync.sh" --dir "<project-root>"
+```
+
+In deterministic mode, if `drupilot-lock.json` already pins exact versions
+(`.toolchain.*`), require **those exact versions** rather than the ranges (e.g.
+`ddev composer require --dev "phpstan/phpstan:=2.1.17"`) so the port matches a
+previous one; `DRUPILOT_DETERMINISTIC=false` requires the ranges fresh and
+refreshes the lock. `ddev-up.sh` and `ddev-add-ons.sh` already call `lock-sync.sh`
+for core and add-ons.
+
 ## 7. Write the toolchain config from templates
 
 Templates live in `${CLAUDE_PLUGIN_ROOT}/templates/` and use `{{PLACEHOLDER}}`

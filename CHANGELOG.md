@@ -11,6 +11,54 @@ release, rename `[Unreleased]` to the new version with a date, bump `version`
 in `.claude-plugin/plugin.json` (and the `marketplace.json` entry) to match, and
 tag the commit `vX.Y.Z`.
 
+## [Unreleased]
+
+### Added
+- **Determinism by default** (`DRUPILOT_DETERMINISTIC`, default `true`) with a
+  per-project `drupilot-lock.json`: drupilot freezes the resolved Drupal core,
+  dev-toolchain versions, the digests commit SHA and the DDEV add-on versions and
+  reuses them on later runs, so porting the same module twice converges on the same
+  toolchain and result. `DRUPILOT_DETERMINISTIC=false` (escape hatch) resolves
+  fresh and refreshes the lock. New `common.sh` helpers (`deterministic_mode`,
+  `lock_get`/`lock_set`/`lock_set_json`/`lock_resolve`, `drupilot_lock_file`) and a
+  new `scripts/env/lock-sync.sh` (`--json`/`--refresh`/`--dry-run`) that captures
+  versions from `composer.lock` and `ddev add-on list`; `ddev-up.sh` and
+  `ddev-add-ons.sh` call it. Surfaced in `/drupilot`, `/drupilot-status` and the
+  SessionStart hook.
+- **Preservation gate by tests**: a port (and a refactor) only counts as done when
+  the adapted test suite is green — that green is the evidence the original behavior
+  is preserved. Test adaptations may change only the *form* (PHPUnit/Drupal API),
+  never *what is verified*; a behavioral failure is a production-code regression to
+  fix in code, never a test to relax. With no tests, drupilot states preservation is
+  **not verified** and recommends adding them (it does not fabricate them).
+  Reinforced in `test-adaptation`, `minimal-port` and `full-refactor`.
+
+### Changed
+- Pinned the dev toolchain to its verified ranges in `config/defaults.json`
+  (`palantirnet/drupal-rector:^0.21`, `phpstan/extension-installer:^1.0`; the rest
+  already matched PROMPT §1). The exact patch versions are frozen by the lock.
+- The digests layer keeps `main` as its default ref but is now **reproducible**:
+  `run-rector.sh` resolves `main` to a commit SHA, freezes it in the lock, reuses
+  it on later runs, and **verifies** the checked-out SHA — recloning instead of
+  silently reusing a stale cache. `DRUPILOT_DETERMINISTIC=false` re-resolves the
+  live ref.
+- Made the model-driven steps objective: a numeric S/M/L/XL viability rubric and
+  fixed hard-break greps (`viability-assessment`), concrete uniform refactor rules
+  replacing "where appropriate" (`full-refactor`), and an explicit failure
+  decision tree + objective stop condition (`test-adaptation`).
+- PHPStan uses a project-local `tmpDir` (`.phpstan-cache`) for reproducible cached
+  results; `run-phpstan.sh` warns when the level comes from the environment.
+- `run-phpcs.sh` auto-registers the Drupal/DrupalPractice `installed_paths`
+  (idempotent) instead of only warning, so results no longer depend on prior setup.
+
+### Fixed
+- Non-deterministic file ordering: `discover-tests.sh` and `subject_info_file` now
+  sort (`LC_ALL=C`), so the test inventory and the chosen `*.info.yml` are stable
+  regardless of filesystem order.
+- `run-phpunit.sh` reads the Selenium webdriver host from the generated DDEV YAML
+  instead of hardcoding `selenium-chrome`, and writes a machine-readable
+  `last-test.json` (per-group result + any documented JS skip).
+
 ## [0.4.0] - 2026-06-13
 
 ### Added

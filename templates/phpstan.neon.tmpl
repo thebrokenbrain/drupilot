@@ -32,6 +32,12 @@ parameters:
     - */vendor/*
     - */node_modules/*
 
+  # Deterministic, project-local result cache: keep PHPStan's cache inside the
+  # project (not the shared system temp) so runs are reproducible and isolated
+  # per project. Safe to delete; PHPStan invalidates it on version/config change.
+  # Add `.phpstan-cache/` to the project's .gitignore.
+  tmpDir: .phpstan-cache
+
 # Fallback when phpstan/extension-installer is not installed. With the
 # extension installer present these are wired in automatically — leave commented.
 # includes:

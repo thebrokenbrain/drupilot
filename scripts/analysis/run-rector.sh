@@ -95,6 +95,7 @@ case "$SUBJECT_ABS" in
 esac
 
 cd "$DRUPAL_ROOT"
+export DRUPILOT_PROJECT_DIR="$DRUPAL_ROOT"  # so the lockfile lands in this project's state dir
 RUNNER="$(drupal_runner "$DRUPAL_ROOT")"   # "ddev exec" when DDEV is up, else ""
 PHP_TARGET="$(resolve_php_target)"
 
@@ -191,7 +192,25 @@ if [[ "$USE_DIGESTS" == "1" ]]; then
   log_warn "They may migrate APIs deprecated in 11.2+ and removed in 12.0, which can raise"
   log_warn "the effective core_version_requirement. Workflow: dry-run -> review diff -> apply -> validate."
 
-  REF="${DIGESTS_REF:-$(config_get DRUPILOT_DIGESTS_REF "main")}"
+  # --- Resolve the digests ref/SHA (reproducible by default) --------------
+  # Decision: the default ref stays 'main'. In deterministic mode the SHA that
+  # 'main' first resolved is frozen in the per-project lockfile and reused, so the
+  # same project always runs the same digests rules without maintaining a manual
+  # pin. A --digests-ref DIFFERENT from the configured default is an explicit
+  # intent: it wins and refreshes the lock. DRUPILOT_DETERMINISTIC=false always
+  # re-resolves the live ref. (`--digests-ref main`, the redundant default some
+  # callers pass, is treated as "not forced" so the lock still applies.)
+  CONFIGURED_REF="$(config_get DRUPILOT_DIGESTS_REF "main")"
+  FREEZE_SHA=1
+  if [[ -n "$DIGESTS_REF" && "$DIGESTS_REF" != "$CONFIGURED_REF" ]]; then
+    REF="$DIGESTS_REF"
+  elif deterministic_mode && [[ -n "$(lock_get .digests.sha "")" ]]; then
+    REF="$(lock_get .digests.sha "")"
+    FREEZE_SHA=0
+    log_info "Deterministic mode: reusing the digests SHA frozen in the lockfile ($REF)."
+  else
+    REF="$CONFIGURED_REF"
+  fi
   REPO_URL="$(config_json .digests.repo_url "https://github.com/dbuytaert/drupal-digests.git")"
   CFG_REL="$(config_json .digests.config_path "rector/all.php")"
   CACHE="$(digests_cache_dir)"
@@ -202,23 +221,49 @@ if [[ "$USE_DIGESTS" == "1" ]]; then
     CONFIG_PATH="$(cd "$(dirname "$DIGESTS_CONFIG")" && pwd)/$(basename "$DIGESTS_CONFIG")"
     log_info "Using explicit digests config: $CONFIG_PATH"
   else
-    # Clone or update the digests repo into the plugin cache (idempotent).
-    if [[ -d "$CACHE/.git" ]]; then
-      log_info "Updating digests cache at $CACHE (ref: $REF)"
+    # Clone/update the cache, make HEAD exactly $REF, and VERIFY it. A pinned SHA
+    # the shallow cache lacks triggers a clean reclone — we never silently reuse a
+    # stale cache for a pinned SHA.
+    _is_sha=0
+    if [[ "$REF" =~ ^[0-9a-f]{7,40}$ ]]; then _is_sha=1; fi
+    _digests_checkout_ref() {
+      # Detach onto $REF whether it is a branch tip, a tag, or a fetchable SHA.
       git -C "$CACHE" fetch --depth 1 origin "$REF" >/dev/null 2>&1 \
-        || git -C "$CACHE" fetch origin >/dev/null 2>&1 || log_warn "git fetch failed; using the cached copy."
-      git -C "$CACHE" checkout -q "$REF" >/dev/null 2>&1 || true
-      git -C "$CACHE" pull --ff-only >/dev/null 2>&1 || true
-    else
+        && git -C "$CACHE" checkout -q --detach FETCH_HEAD >/dev/null 2>&1 && return 0
+      git -C "$CACHE" checkout -q "$REF" >/dev/null 2>&1
+    }
+
+    if [[ ! -d "$CACHE/.git" ]]; then
       log_info "Cloning $REPO_URL into $CACHE (ref: $REF)"
       rm -rf "$CACHE" 2>/dev/null || true
-      if git clone --depth 1 --branch "$REF" "$REPO_URL" "$CACHE" >/dev/null 2>&1 \
-         || git clone --depth 1 "$REPO_URL" "$CACHE" >/dev/null 2>&1; then
-        git -C "$CACHE" checkout -q "$REF" >/dev/null 2>&1 || true
-      else
-        die "Failed to clone the digests repo from $REPO_URL. Check your network or skip --digests." 2
+      git clone --depth 1 --branch "$REF" "$REPO_URL" "$CACHE" >/dev/null 2>&1 \
+        || git clone --depth 1 "$REPO_URL" "$CACHE" >/dev/null 2>&1 \
+        || die "Failed to clone the digests repo from $REPO_URL. Check your network or skip --digests." 2
+    fi
+    log_info "Setting digests cache to ref: $REF"
+    _digests_checkout_ref || true
+    DIGESTS_SHA="$(git -C "$CACHE" rev-parse HEAD 2>/dev/null || true)"
+
+    # A pinned SHA that did not check out -> reclone fresh and try once more.
+    if [[ "$_is_sha" == "1" && ( -z "$DIGESTS_SHA" || "$DIGESTS_SHA" != "$REF"* ) ]]; then
+      log_warn "Digests cache HEAD ($DIGESTS_SHA) != pinned ref ($REF); recloning."
+      rm -rf "$CACHE" 2>/dev/null || true
+      git clone --depth 1 "$REPO_URL" "$CACHE" >/dev/null 2>&1 \
+        || die "Failed to reclone the digests repo from $REPO_URL." 2
+      _digests_checkout_ref || true
+      DIGESTS_SHA="$(git -C "$CACHE" rev-parse HEAD 2>/dev/null || true)"
+      if [[ -z "$DIGESTS_SHA" || "$DIGESTS_SHA" != "$REF"* ]]; then
+        die "Could not check out the pinned digests SHA '$REF'. Retry online, refresh the lock (DRUPILOT_DETERMINISTIC=false), or skip --digests." 2
       fi
     fi
+
+    if [[ -n "$DIGESTS_SHA" ]]; then log_ok "Digests at $DIGESTS_SHA (ref: $REF)."; fi
+    if [[ "$FREEZE_SHA" == "1" && -n "$DIGESTS_SHA" ]]; then
+      lock_set .digests.sha "$DIGESTS_SHA" 2>/dev/null || true
+      lock_set .digests.ref "$CONFIGURED_REF" 2>/dev/null || true
+      log_info "Froze the digests SHA in the lockfile (reused on later runs while deterministic)."
+    fi
+
     CONFIG_PATH="$CACHE/$CFG_REL"
     [[ -f "$CONFIG_PATH" ]] || die "Digests config not found after clone/update: $CONFIG_PATH" 2
   fi

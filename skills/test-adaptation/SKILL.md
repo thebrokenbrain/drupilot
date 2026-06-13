@@ -97,10 +97,25 @@ changes to look for (Grep + Edit, minimal and explained):
   `getSession()`/`assertSession()`; the Mink webdriver config comes from the DDEV
   `web_environment` (see §4).
 
-Keep adaptations **minimal and behavior-preserving** in Phase 1 (mirror the port
-philosophy). Explain each non-trivial change. Do not rewrite test logic to chase
-a green bar — if the production code is wrong, fix the code (coordinate with the
-port/refactor skills), not the assertion.
+Keep adaptations **minimal and behavior-preserving** (mirror the port
+philosophy). The suite is the **preservation gate**, so a test adaptation may
+change only the *form* of a test, never *what it verifies*:
+
+- **Allowed** (mechanical API updates that preserve the test's intent):
+  namespaces / base-class relocations, `static $modules`, `$defaultTheme`, renamed
+  assertions (`assertFileNotExists`→`assertFileDoesNotExist`,
+  `assertRegExp`→`assertMatchesRegularExpression`, `assertContains`-on-string→
+  `assertStringContainsString`), `setUp(): void` return types, `public static`
+  data providers, `drupalPostForm`→`submitForm`,
+  `assertResponse`/`assertText`→`assertSession()->...`.
+- **Forbidden** (this fakes the green bar and breaks the preservation guarantee):
+  changing an expected value, weakening/removing/commenting a behavioral
+  assertion, deleting test cases, widening tolerances, or using
+  `markTestSkipped` / `@group legacy` to hide a real failure.
+
+If a behavioral test fails after porting, that is a **production-code regression**
+— fix the code (via the port/refactor skills), never the test (see the decision
+tree in §5).
 
 ## 4. Ensure the JS test prerequisites (Selenium + Mink)
 
@@ -142,12 +157,25 @@ selected group, ensures Selenium for `js`, and **never silences failures** — i
 surfaces the failing output. Iteration loop:
 
 1. Run the fastest group with a failure.
-2. Read the actual failing output (stack trace, assertion message). Diagnose:
-   adaptation gap (fix the test per §3), production-code bug (fix the code via the
-   port/refactor skills), or an **external blocker** (§7).
+2. Read the failing output and classify it with this DECISION TREE (first match
+   wins) — do not guess:
+   a. Message matches `Class .* not found` / a removed PHPUnit assertion /
+      `must ... return type ... void` / a namespace, `static $modules` or
+      `$defaultTheme` problem → **adaptation gap**: fix the TEST per §3.
+   b. Message names a module with **no D11 release** (verify on drupal.org), or
+      Selenium is unreachable → **external blocker** (§7): document it; do not
+      work around it.
+   c. Otherwise (an assertion about behavior, or an exception thrown from the
+      module's own code) → **production-code bug**: fix the CODE via the
+      port/refactor skills, never the assertion.
 3. Re-run the narrowed `--filter`, then the group, then move on.
 4. Repeat up to all four groups, then a final `--type all` to confirm no
    cross-suite regressions.
+
+**Stop condition (objective):** done when, for every applicable group, each test
+is either (i) passing or (ii) recorded as an external blocker (with its cause) in
+`last-test.json` and the report. Never stop on an unexplained red, and never use
+`markTestSkipped` to hide a real failure.
 
 Long suites should run in the background and notify on completion (PROMPT 6)
 rather than blocking the session.
@@ -176,6 +204,11 @@ number.
 
 Final report (English, concise) must state:
 
+- **Preservation status** (the headline): `verified` when the full applicable
+  suite is green (state how many tests) — that green is the evidence the original
+  functionality is respected; `not verified — no tests` when the module ships
+  none (recommend adding them; drupilot does not fabricate them here);
+  `regression` if a behavioral test is red (blocking — fix the code, not the test).
 - Discovered counts per group and how many were adapted.
 - Pass/fail per group; for the whole suite, the green/red status.
 - Coverage figures (or an explicit "not measured" with the reason).

@@ -110,7 +110,7 @@ if [[ -d "$TESTS_DIR" ]]; then
       FILES_JSON="$(jq -c \
         --arg path "$rel" --arg type "$key" --arg class "$cls" \
         '. + [{path:$path, type:$type, class:$class}]' <<<"$FILES_JSON")"
-    done < <(find "$base" -type f -name '*.php' -print0 2>/dev/null)
+    done < <(find "$base" -type f -name '*.php' -print0 2>/dev/null | LC_ALL=C sort -z)
   done
 else
   log_info "No tests/src directory under $SUBJECT — the subject has no PHPUnit tests."

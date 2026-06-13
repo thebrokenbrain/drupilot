@@ -81,6 +81,16 @@ MSG="drupilot detected a Drupal ${SUBJECT_TYPE} (\"${SUBJECT}\") in the working 
 MSG="${MSG} Effective PHP target: ${TARGET}${PHP_NOTE}."
 MSG="${MSG} Readiness — analysis: $(badge "$R_ANALYZE"); environment+tests (DDEV): $(badge "$R_SETUP"); contribution (Drupal.org): $(badge "$R_CONTRIBUTE")."
 
+# Determinism note: drupilot is reproducible by default (frozen versions/refs).
+DET="true"
+if declare -f config_get >/dev/null 2>&1; then
+  DET="$(config_get DRUPILOT_DETERMINISTIC true 2>/dev/null || echo true)"
+fi
+case "${DET,,}" in
+  1|true|yes|on) MSG="${MSG} Deterministic mode is ON: resolved versions/refs are frozen per-project so the same module ports the same way.";;
+  *) MSG="${MSG} Deterministic mode is OFF (DRUPILOT_DETERMINISTIC=${DET}); versions/refs resolve fresh each run.";;
+esac
+
 # Suggest the doctor only when something relevant is actually missing.
 SUGGEST=0
 [[ "$R_ANALYZE" == "false" || "$R_SETUP" == "false" ]] && SUGGEST=1

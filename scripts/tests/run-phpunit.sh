@@ -120,22 +120,34 @@ needs_selenium() {
   [[ "$g" == "FunctionalJavascript" ]]
 }
 
-# selenium_ready -> 0 if a Selenium/Chrome service answers inside the container.
-# Best-effort: we check the add-on config and the container DNS. We never hard
-# fail here for non-js runs; the per-group guard below decides whether to skip.
+# detect_selenium_host -> the webdriver service hostname, READ from the generated
+# DDEV compose YAML rather than assumed (the add-on/DDEV version can change it).
+# Falls back to the conventional 'selenium-chrome'.
+detect_selenium_host() {
+  local f host
+  for f in "$DRUPAL_ROOT"/.ddev/docker-compose.*selenium*.yaml "$DRUPAL_ROOT"/.ddev/*selenium*.yaml; do
+    [[ -f "$f" ]] || continue
+    # The service name under 'services:' is the reachable host: grab the first
+    # indented "<name>:" line that mentions selenium.
+    host="$(grep -oE '^[[:space:]]+[A-Za-z0-9_-]+:' "$f" 2>/dev/null \
+      | sed -E 's/[[:space:]:]//g' | grep -i selenium | head -n1)"
+    [[ -n "$host" ]] && { printf '%s' "$host"; return 0; }
+  done
+  printf 'selenium-chrome'
+}
+
+# selenium_ready -> 0 if the Selenium service answers inside the container.
+# Best-effort: checks the add-on YAML and the container DNS using the host READ
+# from the YAML. We never hard fail here for non-js runs; the per-group guard
+# below decides whether to skip (and records the reason).
 selenium_ready() {
-  # The add-on advertises a 'selenium-chrome' service; its config file lands in
-  # .ddev/. If the service container resolves from the web container, JS tests
-  # can reach the webdriver. Read the generated YAML rather than assuming hosts.
-  local cfg
-  if ls "$DRUPAL_ROOT"/.ddev/docker-compose.selenium-standalone-chrome.yaml >/dev/null 2>&1 \
-     || ls "$DRUPAL_ROOT"/.ddev/*selenium* >/dev/null 2>&1; then
-    : # add-on is installed
-  else
-    return 1
-  fi
-  # Confirm the web container can resolve the selenium service host.
-  "${RUNNER[@]}" sh -c 'getent hosts selenium-chrome >/dev/null 2>&1 || nc -z selenium-chrome 4444 2>/dev/null' \
+  local f found=0
+  for f in "$DRUPAL_ROOT"/.ddev/docker-compose.*selenium*.yaml "$DRUPAL_ROOT"/.ddev/*selenium*; do
+    [[ -e "$f" ]] && { found=1; break; }
+  done
+  [[ "$found" == "1" ]] || return 1
+  local host; host="$(detect_selenium_host)"
+  "${RUNNER[@]}" sh -c "getent hosts '$host' >/dev/null 2>&1 || nc -z '$host' 4444 2>/dev/null" \
     >/dev/null 2>&1
 }
 
@@ -173,6 +185,7 @@ RAN=0
 PASSED=0
 FAILED=0
 SKIPPED=0
+SELENIUM_NOTE=""
 declare -a FAILED_GROUPS=()
 declare -a SKIPPED_GROUPS=()
 
@@ -189,6 +202,7 @@ run_group() {
     if ! selenium_ready; then
       log_warn "Selenium add-on not reachable — skipping FunctionalJavascript tests."
       log_warn "Install it with: ddev add-on get ddev/ddev-selenium-standalone-chrome && ddev restart"
+      SELENIUM_NOTE="Selenium add-on not reachable; FunctionalJavascript tests skipped (external blocker)."
       SKIPPED=$((SKIPPED + 1))
       SKIPPED_GROUPS+=("$group")
       return 0
@@ -233,6 +247,27 @@ log_plain "  groups run: $RAN   passed: $PASSED   failed: $FAILED   skipped: $SK
 if [[ "$SKIPPED" -gt 0 ]]; then
   log_warn "Skipped (documented, not silenced): ${SKIPPED_GROUPS[*]}"
 fi
+
+# Persist a machine-readable record so /drupilot-status and the flow read the
+# outcome (and any documented skip) without re-running — a deterministic record.
+if have_cmd jq; then
+  STATE_DIR="$(project_state_dir "$SUBJECT")"
+  RUN_STATUS="passed"
+  [[ "$FAILED" -gt 0 ]] && RUN_STATUS="failed"
+  [[ "$RAN" -eq 0 && "$FAILED" -eq 0 ]] && RUN_STATUS="none-run"
+  jq -n \
+    --arg type "$TYPE" --arg status "$RUN_STATUS" \
+    --argjson ran "$RAN" --argjson passed "$PASSED" \
+    --argjson failed "$FAILED" --argjson skipped "$SKIPPED" \
+    --argjson failed_groups "$(arr_to_json ${FAILED_GROUPS[@]+"${FAILED_GROUPS[@]}"})" \
+    --argjson skipped_groups "$(arr_to_json ${SKIPPED_GROUPS[@]+"${SKIPPED_GROUPS[@]}"})" \
+    --arg js_skipped_reason "$SELENIUM_NOTE" \
+    '{type:$type, status:$status, ran:$ran, passed:$passed, failed:$failed,
+      skipped:$skipped, failed_groups:$failed_groups, skipped_groups:$skipped_groups,
+      js_skipped_reason: ($js_skipped_reason | select(. != "") // null)}' \
+    > "$STATE_DIR/last-test.json" 2>/dev/null || true
+fi
+
 if [[ "$FAILED" -gt 0 ]]; then
   log_err "Failing groups: ${FAILED_GROUPS[*]}"
   log_err "Tests did not pass. Review the output above and iterate — failures are never hidden."

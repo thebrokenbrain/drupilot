@@ -38,28 +38,40 @@ quality: modern Drupal 11 idioms, zero deprecations, PHPStan level 5–6, clean
   constructor property promotion) is gated by `DRUPILOT_PHP_TARGET`; see the
   `php-target-tuning` skill (and the 8.5 caveat — never assume it).
 
-## 1. What "Drupal 11 way" means
+## 1. What "Drupal 11 way" means (concrete rules, applied uniformly)
 
-Apply these where they fit the code (do not force them where they do not):
+Apply these as **rules with objective triggers**, not as suggestions, so two
+refactors of the same module converge. When a rule's trigger is absent it is a
+no-op — that is the only discretion.
 
-- **PHP 8 attributes for plugins** instead of doc-block annotations. Examples:
-  `#[Block(...)]`, `#[FieldType(...)]`, `#[FieldFormatter(...)]`,
-  `#[FieldWidget(...)]`, `#[Action(...)]`, `#[QueueWorker(...)]`,
-  `#[EntityType(...)]`. Move the metadata from the `@Annotation` doc block into
-  the attribute; remove the now-unused `use Drupal\...\Annotation\...;`.
-- **Dependency injection** instead of `\Drupal::service('...')` calls. Implement
-  `ContainerFactoryPluginInterface::create()` for plugins or
-  `ContainerInjectionInterface` for controllers/forms; inject services through
-  the constructor. Use **constructor property promotion** to keep it tidy.
-- **Strict types and typing.** Add `declare(strict_types=1);`, type method
-  parameters and return types, type class properties. Use `final` on classes not
-  designed for extension. Replace `array` blobs with value objects/enums where it
-  clarifies intent — but stay behavior-preserving.
-- **Modern APIs.** Replace anything deprecated through D11.4 with its current
-  equivalent (entity query `->accessCheck()`, the messenger service, typed config,
-  the current routing/event APIs, etc.). Target **zero** deprecations.
-- **Twig 3 / CKEditor 5 / jQuery** — finish any non-mechanical migration deferred
-  from Phase 1 (custom Twig extensions, editor plugins, JS without jQuery UI).
+- **Plugins → PHP 8 attributes.** EVERY plugin class still using a doc-block
+  `@Annotation` (`@Block`, `@FieldType`, `@FieldFormatter`, `@FieldWidget`,
+  `@Action`, `@QueueWorker`, `@EntityType`, `@RenderElement`, …) is converted:
+  move ALL metadata into the matching `#[...]` attribute and drop the now-unused
+  `use Drupal\...\Annotation\...;`. Never leave a plugin half-converted.
+- **`\Drupal::` → dependency injection.** EVERY `\Drupal::service('x')` and
+  `\Drupal::` accessor in a class that can receive services is injected:
+  `ContainerFactoryPluginInterface::create()` for plugins,
+  `ContainerInjectionInterface::create()` for controllers/forms, a `services.yml`
+  argument for services. Use constructor property promotion. Leave `\Drupal::`
+  only in procedural `.module`/`.install` hooks where DI is unavailable.
+- **`declare(strict_types=1);` in EVERY `.php` file** under `src/` and `tests/`.
+  Add parameter, return and property types wherever the type is known and
+  unambiguous.
+- **`final` by default.** Mark a class `final` UNLESS it is abstract, an
+  interface, a `*Base` class, or another class in the module/its tests extends it.
+  (Plugins and services are normally `final`.)
+- **Zero deprecations.** Replace every API deprecated through D11.4 with its
+  current equivalent (entity query `->accessCheck(TRUE)`, the `messenger` service,
+  typed config, current routing/event APIs). Target the refactor PHPStan level
+  clean with **no** deprecation notices.
+- **Finish deferred hard breaks.** Complete any Twig 3 / CKEditor 5 / jQuery-UI
+  migration left mechanical-only in Phase 1 (custom Twig extensions, editor
+  plugins, JS without jQuery UI).
+
+Do **not** introduce value objects/enums or other redesigns unless they are
+required to remove a deprecation: Phase 2 modernizes APIs, it does not redesign
+behavior.
 
 ## 1b. Reconsider the core target (a refactor usually warrants a new major)
 
@@ -129,7 +141,11 @@ Before declaring the module refactored, all must hold:
 - `phpstan analyse --level 5-6` clean — **zero** deprecations, no errors at the
   target level.
 - `phpcs --standard=Drupal,DrupalPractice` **clean**.
-- The full applicable test suite **green** (anything skipped is documented).
+- The full applicable test suite **green** (anything skipped is documented). Because
+  Phase 2 changes more code, this is the **preservation gate**: the same tests that
+  passed after Phase 1 must still pass, unchanged in what they verify. If the module
+  has no tests, state that preservation is **not verified** for the refactor and
+  recommend adding tests before/with it.
 - Plugins use attributes; services are injected; strict types are in place where
   appropriate.
 

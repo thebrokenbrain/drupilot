@@ -79,19 +79,23 @@ is a **Git repo, not a Composer package**: 177 AI-generated rules
 (`rector/rules/*.php`, one per core issue) aggregated by `rector/all.php`.
 
 ```bash
-# Always dry-run first; digests run AFTER official rector:
+# Always dry-run first; digests run AFTER official rector. run-rector.sh resolves
+# the ref itself (default 'main', frozen per-project in the lockfile when
+# deterministic); pass --digests-ref only to force a specific commit/tag:
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" \
-  --subject "<path>" --digests --digests-ref "$(config_get DRUPILOT_DIGESTS_REF main)"
+  --subject "<path>" --digests
 
 # Review the diff carefully, then:
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" \
   --subject "<path>" --digests --apply
 ```
 
-`run-rector.sh --digests` clones/updates the repo into `digests_cache_dir`
-(`git clone --depth 1 <repo_url>` or `git -C <cache> pull --ff-only`, checking out
-`DRUPILOT_DIGESTS_REF`) and runs `vendor/bin/rector process <path> --config
-<cache>/rector/all.php --dry-run`.
+`run-rector.sh --digests` clones/updates the repo into `digests_cache_dir`,
+checks out the resolved ref/SHA and **verifies** it (recloning rather than
+silently reusing a stale cache), then runs `vendor/bin/rector process <path>
+--config <cache>/rector/all.php --dry-run`. In deterministic mode the SHA that
+`main` first resolved is frozen in the per-project lockfile and reused on later
+runs, so the same project always applies the same digests rules.
 
 **Mandatory handling (PROMPT §2.1.1) — these are non-negotiable:**
 
@@ -214,7 +218,14 @@ Summarize (in English): the diff, which rules were applied (official / digests /
 ad-hoc), the manual changes made, the resulting `core_version_requirement`, the
 phpcs/phpstan state, the **local patch path** (or that it was skipped), and what
 was **deferred to Phase 2** (any architectural work, DI, attributes, strict
-types, missing tests). Then hand off to `test-adaptation` to get the suite green,
+types, missing tests).
+
+**Preservation gate.** Phase 1 is not "done" until `test-adaptation` reports the
+adapted suite **green** (or its red tests documented as external blockers) — that
+green is the evidence the original behavior is preserved. If the module ships
+**no tests**, say so plainly: preservation is **not verified**, the changes rest
+on Rector's equivalences + the minimal diff, and adding tests is recommended
+(drupilot does not fabricate them in Phase 1). Then hand off to `test-adaptation`,
 and offer `full-refactor` if the user opts into Phase 2.
 
 ## Gotchas

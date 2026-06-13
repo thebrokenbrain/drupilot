@@ -43,8 +43,15 @@ done
 
 [[ -n "$SUBJECT" ]] || die "Missing --subject DIR (the module/theme to analyse)." 1
 
-# Resolve the level (CLI > config default).
-[[ -n "$LEVEL" ]] || LEVEL="$(config_get DRUPILOT_PHPSTAN_LEVEL "2")"
+# Resolve the level (CLI > config). Warn when the level comes from the
+# environment (DRUPILOT_PHPSTAN_LEVEL), since that changes results vs the project
+# default and is a common silent source of divergence between machines.
+if [[ -z "$LEVEL" ]]; then
+  if [[ -n "${DRUPILOT_PHPSTAN_LEVEL:-}" ]]; then
+    log_warn "PHPStan level '$DRUPILOT_PHPSTAN_LEVEL' comes from the environment (DRUPILOT_PHPSTAN_LEVEL), overriding the project default; unset it to use the configured default."
+  fi
+  LEVEL="$(config_get DRUPILOT_PHPSTAN_LEVEL "2")"
+fi
 case "$LEVEL" in
   [0-9]|max) : ;;
   *) die "Invalid --level '$LEVEL' (expected 0-9 or 'max')." 1;;
@@ -94,9 +101,10 @@ if [[ ! -f "$DRUPAL_ROOT/vendor/bin/phpstan" ]]; then
 fi
 
 # --- Build the command ----------------------------------------------------
-# Prefer the phpstan.neon at the Drupal root (extension-installer autoloads the
-# Drupal + deprecation rules). If no config exists, PHPStan still runs with the
-# extension defaults; warn so the user knows the analysis context.
+# Config precedence (deterministic): phpstan.neon > phpstan.neon.dist > extension
+# defaults. Prefer the phpstan.neon at the Drupal root (extension-installer
+# autoloads the Drupal + deprecation rules). If neither exists, PHPStan still runs
+# with the extension defaults; warn so the user knows the analysis context.
 declare -a CMD=()
 [[ -n "$RUNNER" ]] && read -r -a CMD <<<"$RUNNER"
 CMD+=(vendor/bin/phpstan analyse --no-progress --level "$LEVEL")
