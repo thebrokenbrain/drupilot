@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  drupilot — phpcs.xml.dist
+
+  PHP_CodeSniffer ruleset for a Drupal module/theme being ported to Drupal 11.
+  Generated from a template; the {{PLACEHOLDER}} token is substituted by
+  drupilot at setup time:
+    {{SUBJECT_PATH}} — the extension to check, e.g. web/modules/custom/foo
+
+  Standards come from drupal/coder. Register the standard once per project:
+    vendor/bin/phpcs --config-set installed_paths vendor/drupal/coder/coder_sniffer
+    vendor/bin/phpcs -i   # must list Drupal and DrupalPractice
+
+  coder ^8.3 ships PHPCS 3.x (default safe), coder ^9.0 ships PHPCS 4.x. The
+  ruleset syntax below is compatible with both.
+-->
+<ruleset name="drupilot">
+  <description>Drupal coding standards for the ported extension (Drupal + DrupalPractice).</description>
+
+  <!-- Import the Drupal coding standards from drupal/coder. -->
+  <rule ref="Drupal"/>
+  <rule ref="DrupalPractice"/>
+
+  <!-- File extensions checked (PROMPT 2.3). -->
+  <arg name="extensions" value="php,module,inc,install,test,profile,theme,info,txt,md,yml"/>
+
+  <!-- Readable, colored progress output. -->
+  <arg name="colors"/>
+  <arg value="sp"/>
+
+  <!-- The extension under analysis. -->
+  <file>{{SUBJECT_PATH}}</file>
+
+  <!-- Never lint third-party or generated code. -->
+  <exclude-pattern>*/vendor/*</exclude-pattern>
+  <exclude-pattern>*/node_modules/*</exclude-pattern>
+</ruleset>

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "drupilot",
+  "displayName": "drupilot",
+  "version": "0.1.0",
+  "description": "Port Drupal 9/10 modules and themes to Drupal 11: viability assessment, minimal port (drupal-rector + AI digests rules), optional full \"Drupal 11 way\" refactor, the complete PHPUnit suite in DDEV (Unit/Kernel/Functional/FunctionalJavascript), and Drupal.org contribution (issue fork + Merge Request, or legacy patch).",
+  "author": {
+    "name": "drupilot authors",
+    "email": "jossemi@gmail.com"
+  },
+  "homepage": "https://github.com/thebrokenbrain/drupilot",
+  "repository": "https://github.com/thebrokenbrain/drupilot",
+  "license": "MIT",
+  "keywords": [
+    "drupal",
+    "drupal11",
+    "migration",
+    "port",
+    "rector",
+    "phpstan",
+    "phpcs",
+    "ddev",
+    "phpunit",
+    "deprecations",
+    "contribution"
+  ]
+}

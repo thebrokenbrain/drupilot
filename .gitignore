@@ -1,0 +1,39 @@
+# --- OS noise ---
+.DS_Store
+.AppleDouble
+Thumbs.db
+desktop.ini
+
+# --- Editors / IDEs ---
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+*~
+*.swp
+*.swo
+
+# --- Logs / temp ---
+*.log
+*.tmp
+*.bak
+.cache/
+
+# --- Local secrets / env overrides (never commit a PAT) ---
+.env
+.env.local
+*.token
+
+# drupilot writes its caches under CLAUDE_PLUGIN_DATA / XDG (not the repo);
+# the entries below are guards in case you test the plugin from a checkout.
+
+# --- drupilot build / state artifacts ---
+.drupilot/
+.drupilot-build/
+
+# --- Drupal / DDEV test scaffolding (if you spin up a site inside a checkout) ---
+/web/
+/vendor/
+.ddev/
+sites/simpletest/
+*.patch

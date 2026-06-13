@@ -1,0 +1,22 @@
+# drupilot — .ddev/config.yaml (web_environment fragment for testing)
+#
+# Testing environment variables for running the Drupal 11 PHPUnit suite inside
+# DDEV (Unit + Kernel + Functional + FunctionalJavascript). Merge this
+# `web_environment:` block into the project's .ddev/config.yaml (or drop it into
+# a .ddev/config.testing.yaml override). Generated from a template; the
+# {{PLACEHOLDER}} tokens are substituted by drupilot at setup time:
+#   {{SIMPLETEST_BASE_URL}} — site URL, e.g. https://my-site.ddev.site
+#   {{WEBDRIVER_HOST}}      — Selenium webdriver endpoint host:port,
+#                             e.g. selenium-chrome:4444
+#
+# IMPORTANT: the real webdriver hostname depends on the version of the
+# ddev/ddev-selenium-standalone-chrome add-on (use v2 for Drupal 11). After the
+# add-on is installed, READ the generated YAML rather than assuming
+# "selenium-chrome:4444" (PROMPT 2.5). The same applies to whether a PHP 8.5
+# image is available.
+web_environment:
+  - SIMPLETEST_BASE_URL={{SIMPLETEST_BASE_URL}}
+  - SIMPLETEST_DB=mysql://db:db@db/db
+  - BROWSERTEST_OUTPUT_DIRECTORY=/var/www/html/web/sites/simpletest/browser_output
+  - MINK_DRIVER_ARGS_WEBDRIVER=["chrome", {"browserName":"chrome","goog:chromeOptions":{"args":["--disable-gpu","--headless","--no-sandbox"]}}, "http://{{WEBDRIVER_HOST}}/wd/hub"]
+  - SYMFONY_DEPRECATIONS_HELPER=disabled

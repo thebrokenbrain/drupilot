@@ -1,0 +1,74 @@
+<?php
+
+/**
+ * drupilot — rector.php
+ *
+ * Self-contained Rector configuration for porting a Drupal module/theme to
+ * Drupal 11. Modeled on vendor/palantirnet/drupal-rector/rector.php.
+ *
+ * This file is generated from a template; the {{PLACEHOLDER}} tokens are
+ * substituted by drupilot at setup time:
+ *   {{SUBJECT_PATH}} — the extension to process, e.g. web/modules/custom/foo
+ *   {{PHP_TARGET}}   — the PHP target driving ->withPhpSets() (default 8.3)
+ *
+ * Drupal sets:
+ *   Drupal10SetList::DRUPAL_10  (D9/10 -> D10 deprecations)
+ *   Drupal11SetList::DRUPAL_11  (-> D11 deprecations)
+ * These run cumulatively so a D9/10 extension is carried up to D11.
+ *
+ * PHP sets are selected from the configured PHP target:
+ *   8.3 -> php83: true
+ *   8.4 -> php84: true
+ *   8.5 -> NOT assumed. PHP 8.5 support on Drupal 11 is unconfirmed and the
+ *          matching Rector LevelSet may not exist in the installed Rector
+ *          version, so drupilot detects this at runtime and only enables php84.
+ * Always target a single PHP version per run.
+ *
+ * The complementary dbuytaert/drupal-digests AI rule layer is NOT wired in
+ * here. It runs as a separate, optional pass referenced by its own config:
+ *   vendor/bin/rector process {{SUBJECT_PATH}} \
+ *     --config "$DIGESTS_CACHE/rector/all.php" --dry-run
+ * (Run the official palantirnet/drupal-rector pass first, then digests.)
+ *
+ * Rector needs the Drupal core tree present (no database). Run with --dry-run
+ * first, review the diff, then apply.
+ */
+
+declare(strict_types=1);
+
+use DrupalRector\Set\Drupal10SetList;
+use DrupalRector\Set\Drupal11SetList;
+use Rector\Config\RectorConfig;
+
+return RectorConfig::configure()
+  // Process only the target extension. Other paths (e.g. core, contrib) are
+  // left untouched.
+  ->withPaths([
+    '{{SUBJECT_PATH}}',
+  ])
+  // Never rewrite third-party code or build/test artifacts.
+  ->withSkip([
+    '*/vendor/*',
+    '*/node_modules/*',
+  ])
+  // Drupal deprecation sets, applied cumulatively D9/10 -> D11.
+  ->withSets([
+    Drupal10SetList::DRUPAL_10,
+    Drupal11SetList::DRUPAL_11,
+  ])
+  // PHP language-level upgrades for the configured target.
+  // drupilot rewrites the argument below to match {{PHP_TARGET}}:
+  //   8.3 -> php83: true ; 8.4 -> php84: true.
+  // PHP 8.5 is unconfirmed on Drupal 11 — do not enable php85 blindly.
+  ->withPhpSets(php83: true)
+  // Drupal extensions Rector should treat as PHP so hooks and *.module files
+  // are processed too.
+  ->withFileExtensions([
+    'php',
+    'module',
+    'theme',
+    'install',
+    'inc',
+    'profile',
+    'engine',
+  ]);

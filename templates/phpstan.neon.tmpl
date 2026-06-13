@@ -1,0 +1,39 @@
+# drupilot — phpstan.neon
+#
+# PHPStan configuration for analyzing a Drupal module/theme on the way to
+# Drupal 11. Generated from a template; {{PLACEHOLDER}} tokens are substituted
+# by drupilot at setup time:
+#   {{PHPSTAN_LEVEL}} — analysis level (default 2 for deprecation detection;
+#                       drupilot raises this to 5-6 during the full refactor)
+#   {{SUBJECT_PATH}}  — the extension to analyze, e.g. web/modules/custom/foo
+#
+# phpstan/extension-installer autoloads the Drupal rules and the deprecation
+# rules automatically, so no `includes:` block is needed in the common case.
+# If extension-installer is NOT present, uncomment the `includes:` block below.
+#
+# PHPStan does not bootstrap the database, but it needs the Drupal core tree
+# present (drupal_root below points at the docroot).
+parameters:
+  # Level 2 detects deprecations (the level drupal-check pins). Raise to 5-6
+  # for quality/bug analysis during the Drupal 11 way refactor.
+  level: {{PHPSTAN_LEVEL}}
+
+  # Analyze only the target extension.
+  paths:
+    - {{SUBJECT_PATH}}
+
+  # Drupal docroot, relative to this file at the project root.
+  drupal:
+    drupal_root: web
+
+  # Drupal generates dynamic code; keep PHPStan from caching across rebuilds in
+  # ways that hide regressions, and ignore the usual generated/contrib noise.
+  excludePaths:
+    - */vendor/*
+    - */node_modules/*
+
+# Fallback when phpstan/extension-installer is not installed. With the
+# extension installer present these are wired in automatically — leave commented.
+# includes:
+#   - vendor/mglaman/phpstan-drupal/extension.neon
+#   - vendor/phpstan/phpstan-deprecation-rules/rules.neon

@@ -1,0 +1,21 @@
+# drupilot — .ddev/config.yaml
+#
+# DDEV project configuration for a Drupal 11 site. Generated from a template;
+# {{PLACEHOLDER}} tokens are substituted by drupilot (ddev-up.sh / the
+# ddev-environment skill) at setup time:
+#   {{PROJECT_NAME}} — DDEV project name (lowercase, used in the .ddev.site host)
+#   {{PHP_TARGET}}   — PHP version for the web container (default 8.3)
+#
+# Prefer generating this with `ddev config` so DDEV writes the values it
+# actually supports for the installed version, then reconcile with these keys.
+# After DDEV writes the file, READ the generated YAML rather than assuming the
+# image tag or hostnames — the PHP 8.5 image availability depends on the DDEV
+# version (PROMPT 1.2 / 2.5).
+name: {{PROJECT_NAME}}
+type: drupal11
+docroot: web
+php_version: "{{PHP_TARGET}}"
+webserver_type: nginx-fpm
+database:
+  type: mariadb
+  version: "10.11"

@@ -1,0 +1,67 @@
+{
+  "_comment": "drupilot default configuration. Every DRUPILOT_* key can be overridden by an environment variable of the same name (env ALWAYS wins). See README, Configuration section.",
+
+  "DRUPILOT_PHP_TARGET": "8.3",
+  "DRUPILOT_DRUPAL_TARGET": "^11",
+  "DRUPILOT_KEEP_D10": true,
+  "DRUPILOT_CODER_CONSTRAINT": "^8.3",
+  "DRUPILOT_PHPSTAN_LEVEL": 2,
+  "DRUPILOT_PHPSTAN_LEVEL_REFACTOR": 6,
+  "DRUPILOT_VIABILITY_THRESHOLD": "medium",
+  "DRUPILOT_CONTRIB_MODE": "semi",
+  "DRUPILOT_USE_DIGESTS_RULES": true,
+  "DRUPILOT_DIGESTS_REF": "main",
+  "DRUPILOT_GENERATE_RULES": "ask",
+
+  "_requirements_comment": "Minimum versions used by preflight.sh. Some carry uncertainty (see PROMPT 1.2): the real gate is functional (e.g. that 'ddev config --project-type=drupal11' works), not just the number.",
+  "requirements": {
+    "php_min": "8.3",
+    "composer_min": "2.2.0",
+    "git_min": "2.20.0",
+    "jq_min": "1.6",
+    "docker_min": "20.10.0",
+    "ddev_min": "1.23.0",
+    "drush_min": "13.0.0"
+  },
+
+  "_php_support_comment": "PHP support per Drupal 11 branch (PROMPT 1.2). 'unconfirmed' = versions not officially confirmed yet; 8.5 is NOT confirmed on any branch -> detect at runtime, never hardcode.",
+  "php_support": {
+    "supported": ["8.3", "8.4"],
+    "unconfirmed": ["8.5"],
+    "default": "8.3",
+    "recommended": "8.4"
+  },
+
+  "_digests_comment": "Complementary AI-generated Rector rule layer (Dries Buytaert). Git repo, NOT a Composer package. NO LICENSE -> clone into a runtime cache, never vendor/redistribute.",
+  "digests": {
+    "repo_url": "https://github.com/dbuytaert/drupal-digests.git",
+    "config_path": "rector/all.php",
+    "rules_dir": "rector/rules",
+    "issues_dir": "issues",
+    "feed_path": "feeds/rector.xml"
+  },
+
+  "_packages_comment": "Composer constraints for the dev toolchain (PROMPT 1.1). Installed inside DDEV.",
+  "packages": {
+    "drupal_rector": "palantirnet/drupal-rector",
+    "phpstan": "phpstan/phpstan:^2.1",
+    "phpstan_extension_installer": "phpstan/extension-installer",
+    "phpstan_drupal": "mglaman/phpstan-drupal:^2.0",
+    "phpstan_deprecation_rules": "phpstan/phpstan-deprecation-rules:^2.0",
+    "coder": "drupal/coder",
+    "drush": "drush/drush:^13",
+    "upgrade_status": "drupal/upgrade_status"
+  },
+
+  "_contrib_comment": "URLs and endpoints for the Drupal.org contribution flow (PROMPT 3).",
+  "contrib": {
+    "gitlab_host": "git.drupal.org",
+    "gitlab_https_host": "git.drupalcode.org",
+    "ssh_test_target": "git@git.drupal.org",
+    "ssh_keys_url": "https://git.drupalcode.org/-/user_settings/ssh_keys",
+    "pat_url": "https://git.drupalcode.org/-/user_settings/personal_access_tokens",
+    "drupalcode_access_url": "https://www.drupal.org/user/me/edit",
+    "register_url": "https://www.drupal.org/user/register",
+    "pat_env_var": "DRUPILOT_GITLAB_PAT"
+  }
+}
