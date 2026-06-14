@@ -83,6 +83,15 @@ if [[ -n "$INFO" && -f "$INFO" ]]; then
   done < "$INFO"
 fi
 
+# Drupal core modules/submodules ship WITH core — always available on Drupal 11,
+# so they are never a contrib blocker. The drupal.org release-history feed returns
+# "<error>No release history" for them (same as a non-existent project), so a name
+# check is the reliable signal. This list covers the stable D10/11 core modules;
+# a rare omission just degrades to "not-on-drupalorg" (verify by hand), never to a
+# false blocker.
+CORE_MODULES=" action announcements_feed automated_cron ban basic_auth big_pipe block block_content book breakpoint ckeditor5 comment config config_translation contact content_moderation content_translation contextual datetime datetime_range dblog dynamic_page_cache editor field field_ui file filter help help_topics history image inline_form_errors jsonapi language layout_builder layout_discovery link locale media media_library menu_link_content menu_ui migrate migrate_drupal migrate_drupal_ui mysql navigation node options package_manager page_cache path path_alias pgsql responsive_image rest search serialization settings_tray shortcut sqlite syslog system taxonomy telephone text toolbar tour update user views views_ui workflows workspaces "
+is_core_module() { [[ "$CORE_MODULES" == *" $1 "* ]]; }
+
 # --- Classify each dependency's Drupal 11 readiness --------------------------
 # d11_status <project> -> echoes ready|not-ready|unknown|not-on-drupalorg
 d11_status() {
@@ -91,7 +100,11 @@ d11_status() {
   have_cmd curl || { printf 'unknown'; return; }
   xml="$(curl -fsS --max-time 8 "https://updates.drupal.org/release-history/${proj}/current" 2>/dev/null || true)"
   if [[ -z "$xml" ]]; then printf 'unknown'; return; fi
-  if printf '%s' "$xml" | grep -qiE 'no releases|<project_status>unsupported'; then printf 'not-on-drupalorg'; return; fi
+  # An <error> / "no release history" response means the project is not a contrib
+  # project on drupal.org (core submodule, custom, or renamed) — not a real blocker.
+  if printf '%s' "$xml" | grep -qiE '<error>|no release history|no releases|<project_status>unsupported'; then
+    printf 'not-on-drupalorg'; return
+  fi
   # A release whose <core_compatibility> constraint admits 11 means D11-ready.
   if printf '%s' "$xml" | grep -oiE '<core_compatibility>[^<]*</core_compatibility>' | grep -q '11'; then
     printf 'ready'; return
@@ -102,11 +115,11 @@ d11_status() {
 declare -a ROWS=()
 BLOCKERS=0; READY=0; UNKNOWN=0
 for proj in $(printf '%s\n' "${!DEPS[@]}" | LC_ALL=C sort); do
-  st="$(d11_status "$proj")"
+  if is_core_module "$proj"; then st="core"; else st="$(d11_status "$proj")"; fi
   case "$st" in
-    ready) READY=$((READY+1));;
-    not-ready|not-on-drupalorg) BLOCKERS=$((BLOCKERS+1));;
-    *) UNKNOWN=$((UNKNOWN+1));;
+    ready|core) READY=$((READY+1));;
+    not-ready)  BLOCKERS=$((BLOCKERS+1));;          # confirmed: a contrib project with no D11 release
+    *)          UNKNOWN=$((UNKNOWN+1));;            # not-on-drupalorg / unknown -> verify, NOT a hard blocker
   esac
   ROWS+=("$(jq -n --arg p "$proj" --arg s "$st" \
     --arg url "https://www.drupal.org/project/$proj" '{project:$p, d11:$s, url:$url}')")
@@ -134,14 +147,15 @@ fi
 printf '%s' "$ROWS_JSON" | jq -r '.[] | [.project, .d11] | @tsv' | while IFS=$'\t' read -r p s; do
   case "$s" in
     ready)            icon="✅"; note="D11-ready";;
+    core)             icon="✅"; note="Drupal core (bundled) — always available";;
     not-ready)        icon="❌"; note="NO D11 release — blocks the port";;
-    not-on-drupalorg) icon="❓"; note="not found on drupal.org — verify by hand";;
+    not-on-drupalorg) icon="❓"; note="not a drupal.org project (core/custom/renamed) — verify by hand";;
     *)                icon="⚠️"; note="unknown (offline/blocked) — check https://www.drupal.org/project/$p";;
   esac
   printf '  %s %-28s %s\n' "$icon" "$p" "$note" >&2
 done
 hr
-log_plain "Ready: $READY · Blockers: $BLOCKERS · Unknown: $UNKNOWN"
+log_plain "Ready: $READY · Blockers: $BLOCKERS · Unknown/verify: $UNKNOWN"
 [[ "$BLOCKERS" -gt 0 ]] && log_warn "A blocking dependency without a Drupal 11 release will stop the port until it is itself ported (document it, do not fake green)."
 # STDOUT (parseable): the project<TAB>status list.
 printf '%s' "$ROWS_JSON" | jq -r '.[] | [.project, .d11] | @tsv'

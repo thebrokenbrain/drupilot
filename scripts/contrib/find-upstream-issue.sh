@@ -87,7 +87,7 @@ while (( page < PAGES )); do
   [[ -z "$RESP" ]] && break
   PAGE_MATCHES="$(printf '%s' "$RESP" | jq -c '
     [ .list[]?
-      | select((.title // "") | test("(?i)drupal *-? *11|d11|11\\.x|core_version_requirement"))
+      | select((.title // "") | test("(?i)drupal *-? *11\\b|\\bd11\\b|\\b11\\.x\\b|drupal 11 compat"))
       | {nid: .nid, title: .title, status: (.field_issue_status // ""), url: ("https://www.drupal.org/node/" + (.nid|tostring))} ]' 2>/dev/null || echo '[]')"
   MATCHES="$(jq -c -n --argjson a "$MATCHES" --argjson b "$PAGE_MATCHES" '$a + $b' 2>/dev/null || echo "$MATCHES")"
   # Stop early if a page returned fewer than a full set (last page).
