@@ -20,8 +20,15 @@
 #     patch the port/refactor flow writes automatically at the end.
 #
 # Naming:
-#   legacy  -> [module]-[short-description]-[issue]-[comment].patch  (PROMPT 3.3)
-#   --local -> [module]-[short-description].patch
+#   legacy        -> [module]-[short-description]-[issue]-[comment].patch  (PROMPT 3.3)
+#   --local       -> [module]-[short-description].patch
+#   --local --issue ID [--comment N]
+#                 -> [module]-[short-description]-[issue]-[comment].patch — a patch
+#                    NAMED for attaching to a Drupal.org issue comment, but still
+#                    produced the offline --local way (no network, no rebase, no
+#                    `contribute` gate). This decouples "I want a patch to attach
+#                    to an issue and test locally now" from the full contribution
+#                    flow: get it here, contribute the MR later.
 #
 # This script never pushes and NEVER touches credentials.
 #
@@ -31,6 +38,7 @@
 #                 [--output DIR] [--subject DIR]
 #   make-patch.sh --local [--subject DIR] [--module NAME]
 #                 [--base BASE_VERSION] [--description SLUG] [--output DIR]
+#                 [--issue ID] [--comment N]
 #
 #   --module       module/theme machine name used as the filename prefix.
 #                  Auto-detected from --subject when omitted.
@@ -153,10 +161,24 @@ if [[ "$LOCAL" == "1" ]]; then
   [[ -n "$OUTPUT" ]] || OUTPUT="$SUBJ_DIR"
   mkdir -p "$OUTPUT"
   OUTPUT_ABS="$(cd "$OUTPUT" && pwd)"
-  PATCH_NAME="$MODULE_SLUG-$DESC_SLUG.patch"
+
+  # Naming: a bare --local patch is named for local testing; passing --issue (and
+  # optionally --comment) names it with the Drupal.org issue-comment convention so
+  # it is ready to ATTACH to an issue — while still being produced the offline way.
+  if [[ -n "$ISSUE" ]]; then
+    [[ "$ISSUE" =~ ^[0-9]+$ ]] || die "Issue id must be numeric: '$ISSUE'" 1
+    [[ "$COMMENT" =~ ^[0-9]+$ ]] || die "Comment number must be numeric: '$COMMENT'" 1
+    PATCH_NAME="$MODULE_SLUG-$DESC_SLUG-$ISSUE-$COMMENT.patch"
+  else
+    PATCH_NAME="$MODULE_SLUG-$DESC_SLUG.patch"
+  fi
   PATCH_PATH="$OUTPUT_ABS/$PATCH_NAME"
 
-  log_step "Local patch: $MODULE (preview of the port, scoped to $PATHSPEC)"
+  if [[ -n "$ISSUE" ]]; then
+    log_step "Local patch for issue #$ISSUE (comment #$COMMENT): $MODULE — offline, no push, scoped to $PATHSPEC"
+  else
+    log_step "Local patch: $MODULE (preview of the port, scoped to $PATHSPEC)"
+  fi
 
   # Resolve the base ref WITHOUT touching the network or the working tree.
   BASE_REF=""
@@ -210,10 +232,15 @@ if [[ "$LOCAL" == "1" ]]; then
     log_warn "It is still written for inspection, but check your base ref before sharing it."
   fi
 
-  hr
-  log_ok "Local patch written: $PATCH_PATH"
-  log_info "Apply it elsewhere with:  git apply $PATCH_NAME   (or 'patch -p1 < $PATCH_NAME')"
-  log_info "This is a preview of the port; the contribution patch (with issue+comment) is produced by the contribute flow."
+  announce_patch "$PATCH_PATH"
+  if [[ -n "$ISSUE" ]]; then
+    log_info "Named for Drupal.org issue #$ISSUE, comment #$COMMENT — attach it there to share/test the fix."
+    log_info "This is the OFFLINE patch (no rebase against origin/BASE). When you are ready to open a"
+    log_info "Merge Request, run /drupilot-contribute, which also produces the merge-verified patch."
+  else
+    log_info "Preview of the port for testing locally. For an issue-comment-named patch: add --issue ID."
+    log_info "To open a Merge Request later, run /drupilot-contribute (it produces the merge-verified patch)."
+  fi
 
   # Machine-readable: the patch path on STDOUT.
   printf '%s\n' "$PATCH_PATH"

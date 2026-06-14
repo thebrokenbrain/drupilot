@@ -5,10 +5,11 @@
 #
 # Inspects the Bash command about to run. When it is an outward-facing
 # contribution action (git push, push to git.drupal.org / issue/ remotes,
-# `glab mr ...`, or a curl to a GitLab API) AND DRUPILOT_CONTRIB_MODE=semi,
-# it returns permissionDecision "ask" with an English reason so the developer
-# confirms before anything leaves the machine. In `auto` mode it allows the
-# action (no-op). Everything else is a no-op.
+# `glab mr ...`, or a curl to a GitLab API) it returns permissionDecision "ask"
+# with an English reason so the developer confirms before anything leaves the
+# machine. Precedence: DRUPILOT_AUTONOMOUS=true ALWAYS asks (an autonomous run
+# must never push on its own, even in 'auto' contribution mode); otherwise
+# DRUPILOT_CONTRIB_MODE=semi asks and 'auto' allows. Everything else is a no-op.
 #
 # Fail-safe contract (CONTRACT 5.4):
 #   * never `set -e`, never exit non-zero;
@@ -78,6 +79,16 @@ fi
 # Not outward-facing -> let it through silently.
 [[ "$OUTWARD" == "1" ]] || exit 0
 
+# --- Autonomy override (enforces the documented promise) ---------------------
+# An autonomous run (DRUPILOT_AUTONOMOUS=true) must NEVER perform an outward-facing
+# action — not even in 'auto' contribution mode. The orchestrator does not issue
+# these commands in autonomous mode; this backstop enforces the promise if one
+# ever slips through, by requiring a human confirmation that an unattended run
+# cannot give. It takes precedence over DRUPILOT_CONTRIB_MODE.
+if config_bool DRUPILOT_AUTONOMOUS 0; then
+  emit_decision "ask" "drupilot is in AUTONOMOUS mode, which never performs outward-facing actions on its own. ${REASON} A human must confirm this — an unattended run will not proceed. To contribute, run /drupilot-contribute yourself. You can get a local patch any time with /drupilot-patch (no push, no network)."
+fi
+
 # --- Decide based on the contribution mode -----------------------------------
 MODE="$(config_get DRUPILOT_CONTRIB_MODE "semi" 2>/dev/null || true)"
 [[ -z "$MODE" ]] && MODE="semi"
@@ -89,6 +100,6 @@ case "${MODE,,}" in
     ;;
   semi|*)
     # Semi-automated mode (default): require explicit confirmation.
-    emit_decision "ask" "drupilot is in 'semi' contribution mode. ${REASON} Confirm before it leaves your machine. Reminder: credit on Drupal.org is granted by maintainers via the issue's Contribution Record. Set DRUPILOT_CONTRIB_MODE=auto to skip these confirmations."
+    emit_decision "ask" "drupilot is in 'semi' contribution mode. ${REASON} Confirm before it leaves your machine. Reminder: credit on Drupal.org is granted by maintainers via the issue's Contribution Record. Prefer a dry run first? /drupilot-patch writes a local patch with no push. Set DRUPILOT_CONTRIB_MODE=auto to skip these confirmations."
     ;;
 esac

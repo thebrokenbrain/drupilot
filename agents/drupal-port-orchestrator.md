@@ -123,7 +123,11 @@ mode word, or `DRUPILOT_AUTONOMOUS=true`), run the pipeline unattended:
 - **`DRUPILOT_GENERATE_RULES` is treated as `auto`** unless it is explicitly `off`
   (then keep `off`). You still report every ad-hoc rule/manual change you make.
 - **Always write the local `.patch`** at the end of the port stage, and refresh it
-  after refactor (`make-patch.sh --local --subject <path>`).
+  after refactor (`make-patch.sh --local --subject <path>`). This is the same
+  artifact the `/drupilot-patch` command produces on demand; mention in the final
+  summary that the developer can regenerate it any time (and, with `--issue ID`,
+  get an issue-comment-named one) **without** contributing. In autonomous mode do
+  **not** present the interactive end-of-stage fork — just report and suggest.
 - **Never perform any outward-facing action.** No `git push`, no Merge Request, no
   contribution — *not even in `auto` contribution mode*. If the subject is a contrib
   project, only **suggest** `/drupilot-contribute` in the final summary. The

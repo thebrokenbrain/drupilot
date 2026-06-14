@@ -150,13 +150,28 @@ Before declaring the module refactored, all must hold:
 - Plugins use attributes; services are injected; strict types are in place where
   appropriate.
 
-## 5. Report
+## 5. Refresh the patch, report, and hand off
+
+Phase 2 changes more code, so **refresh the local patch** so it reflects the
+refactor (this is a standalone, anytime action, decoupled from contribution — the
+`/drupilot-patch` command does the same):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/make-patch.sh" --local --subject "<path>"
+```
+
+It rewrites `MODULE-port-to-drupal-11.patch` next to the module; add
+`--issue ID [--comment N]` for an issue-comment-named one (still offline). The
+merge-verified contribution patch stays the job of `drupal-contribution`.
 
 Summarize (in English): each significant change and why (annotations →
 attributes, `\Drupal::` calls → DI, types/`final` added, deprecated APIs
 replaced), the final PHPStan level reached, PHPCS status, the test results +
-coverage, and any documented exception. Note that the module now follows the
-Drupal 11 way and is a candidate for `/drupilot-contribute`.
+coverage, the refreshed **local patch path**, and any documented exception. The
+module now follows the Drupal 11 way. End by putting the developer back in control
+with the closing tabbed choice (the `/drupilot-refactor` command renders it): run
+the tests, get the patch, or contribute (opt-in) — a candidate for
+`/drupilot-contribute`.
 
 ## Gotchas
 

@@ -1,7 +1,7 @@
 ---
 description: Provision a Drupal 11 DDEV environment for porting a module/theme - start DDEV, install the contrib (+ Selenium) add-ons, install the Composer dev toolchain (drupal-rector, PHPStan + extensions, coder, drush 13), and write rector.php / phpstan.neon / phpcs.xml.dist / testing web_environment from templates. Idempotent. Use for "/drupilot-setup", "set up the environment", "spin up DDEV for this module".
 argument-hint: "[subject-path] [--php X.Y]"
-allowed-tools: Bash, Read, Skill, Task
+allowed-tools: Bash, Read, Skill, Task, AskUserQuestion
 ---
 
 # drupilot — setup (DDEV environment + dev toolchain)
@@ -28,10 +28,24 @@ cwd), its type (module/theme), and the effective PHP target:
 
 !`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; printf "subject_dir=%s\n" "$SUBJ"; printf "machine_name=%s\n" "$(subject_machine_name "$SUBJ" 2>/dev/null || echo -)"; printf "subject_type=%s\n" "$(subject_type "$SUBJ" 2>/dev/null || echo -)"; printf "php_target=%s\n" "$(resolve_php_target)"; printf "php_unconfirmed=%s\n" "$(php_target_unconfirmed "$(resolve_php_target)" && echo yes || echo no)"; printf "drupal_target=%s\n" "$(resolve_drupal_target)"' _ "$1"`
 
-If a `--php X.Y` flag is present in `$ARGUMENTS`, honor it by exporting
-`DRUPILOT_PHP_TARGET` for the subsequent scripts. If the chosen target is **unconfirmed**
-(e.g. 8.5), warn clearly and keep the safe default unless the user insists — never claim
-an unconfirmed version is supported.
+**Decision point — let the developer pick the PHP target (G4/G5).** The PHP
+version pins the whole toolchain (Rector PHP set, PHPStan, PHPCS, DDEV
+`php_version`), so make it an explicit choice with **AskUserQuestion** (header
+"PHP target", default = the recommended option) *unless* a `--php X.Y` flag is in
+`$ARGUMENTS`, or `DRUPILOT_PHP_TARGET` / `DRUPILOT_CHOICE_PHP_TARGET` is already
+pinned, or the run is autonomous. Offer:
+
+- **8.4 — recommended** (`php_support.recommended`) — current, supported on
+  Drupal 11; the default.
+- **8.3 — safe floor** (`DRUPILOT_PHP_TARGET` default) — conservative; supported
+  on every Drupal 11 branch.
+- **8.5 — unconfirmed** — **not** officially confirmed on any Drupal 11 branch;
+  if chosen, warn clearly, detect at runtime, and never claim it is supported.
+
+A `--php X.Y` flag always wins over the tab. Apply the choice by exporting
+`DRUPILOT_PHP_TARGET` for the subsequent scripts **and** persisting it with
+`prefs_set DRUPILOT_PHP_TARGET <X.Y>` so the rest of the flow (assess/port/test)
+reuses it without re-asking. Never silently proceed on an unconfirmed target.
 
 ## Step 3 — State the plan, then do the work via the ddev-environment skill
 
@@ -121,6 +135,13 @@ template verbatim — DDEV does not escape inner quotes when it serializes
 `web_environment`, so an unescaped JSON value breaks `ddev start`. After writing the file,
 run `ddev restart`. Do not overwrite a config the user has hand-edited without saying so;
 if a file already exists and differs, show the diff and confirm before replacing.
+
+Then ensure drupilot's generated artifacts are git-ignored at the Drupal root, so a
+coverage run or the `.drupilot.json` preference file can never leak into a contribution
+patch. This MERGES a marker-delimited block into any existing `.gitignore` (it never
+overwrites the project's own ignores) and is idempotent:
+
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ensure-gitignore.sh" --root "<drupal_root>"`
 
 ## Step 5 — Report
 

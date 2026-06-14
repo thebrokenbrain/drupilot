@@ -39,9 +39,11 @@
 - **Full refactor (Phase 2, opt-in)** — a rewrite to modern Drupal 11 best practices: PHP 8 attributes for plugins, dependency injection, strict types, zero deprecations, clean `Drupal` + `DrupalPractice`, and a green test suite.
 - **Tests** — discovers, adapts and runs the complete PHPUnit suite (Unit / Kernel / Functional / FunctionalJavascript) inside DDEV (with Selenium for JS), iterating until green and reporting coverage. Failures are **never** silenced.
 - **Contribution** — prepares and (optionally) publishes the result to Drupal.org via the modern issue-fork + Merge Request flow, or a legacy patch, with a **semi-automatic** (confirm every outward action) or **fully automatic** mode. It generates the **issue summary and the recommended values for the mandatory fields** (Title, Category, Priority, Version, Component, Assigned) to paste into the web form, plus a brief **comment**. A `.patch` is always produced alongside the MR and **verified to apply cleanly** onto the version it targets, so you (or anyone) can attach and apply it on the issue before the maintainer merges.
-- **Patches** — every port also writes a local `.patch` (`MODULE-port-to-drupal-11.patch`) so you can review the change, apply it elsewhere, or test it locally before contributing — no Drupal.org account required.
+- **Patches, decoupled from contribution** — get the port's `.patch` any time with **`/drupilot-patch`**: offline, no push, no Drupal.org account. Choose a plain local-test patch (`MODULE-port-to-drupal-11.patch`) **or** one named with the issue-comment convention to attach to an issue and test now — and contribute the Merge Request later, as a separate step.
+- **You stay in control** — the consequential decisions are **tabbed choices** (core target, PHP target, the digests rules to apply, refactor scope, push-or-not), with the recommendation pre-selected and your answers remembered per project. Nothing important happens silently.
+- **Insight, not just output** — a per-port **report card** (`port-report.md`: what changed and why, the preservation verdict), a **dependency D11-readiness panel** (which contrib deps block the port), an **upstream issue search** (is someone already porting this?), and a **deprecation explainer** that turns cryptic output into a fix + a change-records link.
 
-The default PHP target is **8.3** and is fully configurable; everything (Rector sets, PHPStan level, PHPCS sniffs, DDEV `php_version`) derives from a single setting.
+The default PHP target is **8.3** and is fully configurable; everything (Rector sets, PHPStan level, PHPCS sniffs, DDEV `php_version`) derives from a single setting. In-flow choices persist in a per-project `.drupilot.json` (read between environment variables and the defaults).
 
 ---
 
@@ -114,8 +116,9 @@ After installing, restart or start a new session so the hooks load. Then run `/d
 | `/drupilot-port [subject]` | **Phase 1 minimal port.** Official Rector + (optional) digests rules filtered by target + ad-hoc fixes + minimal manual changes; leaves the code compiling with no blocking deprecations. |
 | `/drupilot-refactor [subject]` | **Phase 2 full refactor** (opt-in): the "Drupal 11 way", PHPStan level 5–6, clean PHPCS. |
 | `/drupilot-test [subject]` | Discovers, adapts and runs **all** test suites in DDEV (Selenium for JS); iterates to green; reports coverage. |
+| `/drupilot-patch [subject] [issue]` | **Get the `.patch`, decoupled from contributing.** Offline, no push, no gate: a plain local-test patch, or one named for a Drupal.org issue comment. Test now, contribute the MR later. |
 | `/drupilot-contribute [subject] [issue]` | Publishes to **Drupal.org**: issue fork + Merge Request (or legacy patch), in semi or auto mode. User-invocable only; never exposes the PAT. |
-| `/drupilot-status` | Read-only summary of environment, PHP target, current phase, last assessment, test status, and the suggested next step. |
+| `/drupilot-status` | Read-only summary of environment, PHP target, current phase, last assessment, test status (with the preservation verdict), the frozen reproducibility lock, and the suggested next step. |
 
 ---
 
@@ -163,7 +166,7 @@ In autonomous mode `DRUPILOT_GENERATE_RULES` is treated as `auto` (set it to `of
 
 ## Configuration
 
-Defaults live in `config/defaults.json`. **Every `DRUPILOT_*` key can be overridden by an environment variable of the same name** (the environment variable always wins).
+Defaults live in `config/defaults.json`. **Every `DRUPILOT_*` key can be overridden by an environment variable of the same name** (the environment variable always wins). A per-project **`.drupilot.json`** at the Drupal root is read **between** the environment and the defaults — this is where the tabbed choices you make (core target, PHP target, refactor scope, contribute mode) are remembered so later runs don't re-ask. It is gitignored automatically so it never lands in a patch.
 
 | Variable | Default | Effect |
 | --- | --- | --- |
@@ -187,6 +190,10 @@ Defaults live in `config/defaults.json`. **Every `DRUPILOT_*` key can be overrid
 | `DRUPILOT_GENERATE_RULES` | `ask` | Generate ad-hoc Rector rules for uncovered deprecations: `ask` / `auto` / `off`. |
 | `DRUPILOT_AUTONOMOUS` | `false` | Hands-off mode (same as the `auto` mode word): unattended setup→assess→port→refactor→test, writes the local patch, **never** contributes. See [Hands-off mode](#hands-off-autonomous-mode). |
 | `DRUPILOT_DETERMINISTIC` | `true` | Reproducibility (default on): freeze the resolved Drupal core, dev toolchain, digests SHA and DDEV add-ons in a per-project `drupilot-lock.json` and reuse them on later runs. Set to `false` to resolve fresh every time and refresh the lock. See [Determinism](#determinism-reproducible-by-default). |
+| `DRUPILOT_POST_EDIT_LINT` | `autofix` | The PostToolUse incremental lint: `autofix` (run phpcbf + phpcs, and **say** when a file was modified), `report` (phpcs only, never edits files), or `off`. It is phase-aware — during Phase 1 it surfaces compatibility **errors** only, deferring style warnings to the refactor. |
+| `DRUPILOT_SESSION_CONTEXT` | `on` | `on`/`off` toggle for the SessionStart environment summary. |
+| `DRUPILOT_REFACTOR_SCOPE` | _(asked)_ | Persisted set of Phase 2 modernizations to apply (attributes / DI / strict types / final / deprecations). Normally chosen via the `/drupilot-refactor` multi-select and remembered in `.drupilot.json`. |
+| `DRUPILOT_CHOICE_<KEY>` | — | Pre-answer a specific tabbed choice non-interactively (e.g. `DRUPILOT_CHOICE_CORE_TARGET`), so it is not asked. |
 
 Other useful environment variables: `DRUPILOT_GITLAB_PAT` (your GitLab Personal Access Token, read only at runtime, never persisted), `DRUPILOT_ASSUME_YES=1` (skip confirmations in non-interactive runs), `NO_COLOR=1`.
 
@@ -265,7 +272,21 @@ Converts annotations to PHP 8 attributes, introduces dependency injection and st
 
 Runs Unit, Kernel, Functional and FunctionalJavascript (Selenium) inside DDEV and reports coverage. If a test can't pass because of an external cause (e.g. a contrib dependency without D11 support), it is documented explicitly rather than silenced.
 
-### 6. Contribute the fix back to Drupal.org
+### 6. Get the patch — test locally now, contribute later
+
+```text
+/drupilot-patch web/modules/custom/my_module
+```
+
+Writes `MODULE-port-to-drupal-11.patch` next to the module — offline, no push, no Drupal.org account. Apply it on another checkout with `git apply`. Want to attach it to an issue and validate it there before opening a Merge Request? Pass the issue id for an issue-comment-named patch:
+
+```text
+/drupilot-patch web/modules/custom/my_module 3456789
+```
+
+This is fully **decoupled from contributing**: the upstream Merge Request (which rebases and hard-verifies the patch against `origin/BASE`) stays a separate, opt-in step you run with `/drupilot-contribute` when you are ready.
+
+### 7. Contribute the fix back to Drupal.org
 
 Semi-automatic (recommended — confirms every push / MR):
 
@@ -293,9 +314,9 @@ When the issue still has to be created, it generates the **issue summary** (the 
 - **Skills** (`skills/*/SKILL.md`) carry the reusable operating knowledge (DDEV environment, viability assessment, minimal port, full refactor, test adaptation, PHP-target tuning, Drupal contribution).
 - **Subagents** (`agents/*.md`) are specialists the commands delegate to: `drupal-port-orchestrator`, `drupal-viability-analyst`, `drupal-test-engineer`, `drupal-contrib-publisher`.
 - **Hooks** (`hooks/hooks.json`):
-  - `SessionStart` → a lightweight environment detector that summarizes your PHP target and readiness.
-  - `PostToolUse` (Write|Edit) → incremental `phpcbf` + `phpcs` on edited Drupal files.
-  - `PreToolUse` (Bash) → in `semi` mode, asks for confirmation before any outward-facing git push / MR action.
+  - `SessionStart` → a lightweight environment detector that summarizes your PHP target and readiness (silence it with `DRUPILOT_SESSION_CONTEXT=off`).
+  - `PostToolUse` (Write|Edit) → incremental `phpcbf` + `phpcs` on edited Drupal files; **phase-aware** (Phase 1 surfaces compatibility errors only) and controllable via `DRUPILOT_POST_EDIT_LINT` (`autofix`/`report`/`off`), and it tells you when it modified a file.
+  - `PreToolUse` (Bash) → asks for confirmation before any outward-facing git push / MR action in `semi` mode, and **always** in an autonomous run (which must never push on its own).
 - **Scripts** (`scripts/`) are a robust, idempotent shell library: a shared `lib/common.sh`, the `env/preflight.sh` requirements engine, and the `analysis/`, `tests/` and `contrib/` wrappers the skills and commands invoke.
 - **Templates** (`templates/`) are parameterized configs (`rector.php`, `phpstan.neon`, `phpcs.xml.dist`, DDEV config + test environment, report templates) tuned by the PHP target.
 

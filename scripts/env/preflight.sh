@@ -50,6 +50,16 @@ esac
 
 have_cmd jq || die "'jq' is required to run preflight (it builds JSON). Install jq and retry." 1
 
+# ---------------------------------------------------------------------------
+# Config sanity (NON-FATAL): warn early on a misconfigured enum value (env or
+# .drupilot.json) so the developer fixes it before it fails deep inside a tool.
+# This never changes the exit code — preflight gates requirements, not prefs.
+# ---------------------------------------------------------------------------
+config_enum DRUPILOT_CONTRIB_MODE         semi   semi auto              >/dev/null || true
+config_enum DRUPILOT_CORE_TARGET_STRATEGY auto   auto d11-only keep-d10 >/dev/null || true
+config_enum DRUPILOT_REQUIRE_PHP_FLOOR    detect detect target          >/dev/null || true
+config_enum DRUPILOT_GENERATE_RULES       ask    ask auto off           >/dev/null || true
+
 TARGET="$(resolve_php_target)"
 PHP_MIN="$(req_version php_min "8.3")"
 COMPOSER_MIN="$(req_version composer_min "2.2.0")"

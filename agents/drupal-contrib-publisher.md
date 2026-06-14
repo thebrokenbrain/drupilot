@@ -198,6 +198,13 @@ stdout, and **never print the PAT**. Do not reinvent their logic.
    port/refactor flow writes, and it only *warns* on a failed apply; do not confuse
    the two.)
 
+**Just want the patch, not to contribute yet?** If the developer only wants a
+`.patch` — to test on another checkout, or to attach to an issue comment and
+contribute the MR later — that is the **`/drupilot-patch`** command (offline
+`--local`, optionally `--issue ID` for the issue-comment name). It needs no
+`contribute` gate, no SSH/PAT, and performs no push. Point them there instead of
+running this whole contribution flow; this agent is for the actual upstream push.
+
 ## Mode behavior summary
 
 - **semi** (default): prepare fork/branch/commit and the MR draft or patch, and

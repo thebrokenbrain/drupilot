@@ -29,11 +29,19 @@ In the reported `state_dir`, read these if they exist (do not recompute anything
   (S/M/L/XL), auto-fixable vs manual counts, and the assessment timestamp.
 - `@<state_dir>/phase` — the current phase marker (e.g. setup / assessed / ported /
   refactored / tested / contributed).
-- `@<state_dir>/last-test.json` — the last PHPUnit run (groups run, pass/fail counts,
-  timestamp, any coverage figure).
+- `@<state_dir>/last-test.json` — the last PHPUnit run: groups run, pass/fail counts,
+  the **`preservation`** verdict (`verified` / `verified-partial` / `regression` /
+  `not-verified-blocked` / `not-verified-no-tests` — the behavior-preservation gate), and the `coverage`
+  object (`requested` / `html` / `percent`; `percent` is `null` in Phase 1, so do
+  not invent a figure).
 - the `lockfile` path reported in Step 2 (if any) — the reproducibility lock:
   frozen Drupal core, dev-toolchain versions, DDEV add-ons and the digests SHA a
-  deterministic re-run reuses.
+  deterministic re-run reuses. Pretty-print the whole frozen toolchain so it is
+  visible, not hidden:
+
+  !`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; ROOT="$(find_drupal_root "$SUBJ" 2>/dev/null || echo "$SUBJ")"; DRUPILOT_PROJECT_DIR="$ROOT" lock_show || true' _ "$1"`
+- `@<state_dir>/port-manifest.json` and `@<subject>/port-report.md` if present —
+  the per-port "what changed and why" record and its human report card.
 
 If a file is absent, report that part as "not done yet" rather than inventing a value.
 
@@ -50,11 +58,15 @@ Render an English summary covering:
   frozen Drupal core and digests SHA it pins (what a re-run will reuse).
 - **Current phase:** from the phase marker (or "not assessed yet").
 - **Last assessment:** verdict + effort + counts + when, or "none cached".
-- **Last test result:** pass/fail summary + when, or "tests not run yet".
+- **Last test result:** pass/fail summary, the **preservation** verdict, and when —
+  or "tests not run yet".
 
-End with a single **suggested next step** as a slash command, using this order:
-`/drupilot-doctor` if analysis is not ready; else `/drupilot-setup` if no DDEV
-environment; else `/drupilot-assess` if no cached assessment; else `/drupilot-port` if
-assessed but not ported; else `/drupilot-refactor` (opt-in) or `/drupilot-test` if tests
-are not green; else `/drupilot-contribute` (opt-in) for a contrib subject. Present this
-as a suggestion only — this command never acts on it.
+End with a single **suggested next step**. Do not restate the ladder here — use the
+same single source of truth the router uses, passing the readiness booleans from
+Step 1 (this is read-only and never acts on the suggestion):
+
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/next-step.sh" --subject "$1" --ready-analyze "<ready.analyze>" --ready-setup "<ready.setup>" --ready-test "<ready.test>" --ready-contribute "<ready.contribute>" --human`
+
+Relay its recommendation as a suggestion only. Add the same one-line aside as the
+router: once ported, `/drupilot-patch` produces a `.patch` any time (to test
+locally or attach to a Drupal.org issue) **independently** of contributing.

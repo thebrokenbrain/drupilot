@@ -219,8 +219,14 @@ Final report (English, concise) must state:
   skipped test is **documented, never hidden** behind `markTestSkipped` used to
   paper over a real failure, and never removed to make the bar green.
 
-Cache a short summary (`tests.json`: per-group pass/fail, coverage, blockers,
-timestamp) in `project_state_dir "$SUBJECT"` for `/drupilot-status`.
+`run-phpunit.sh` already writes the machine-readable summary to `last-test.json`
+in `project_state_dir "$SUBJECT"` for `/drupilot-status` and the flow: `type`,
+`status`, the **`preservation`** verdict (`verified` / `verified-partial` /
+`regression` / `not-verified-blocked` / `not-verified-no-tests`), per-group counts,
+`failed_groups` / `skipped_groups`, the `js_skipped_reason`, and a `coverage`
+object (`requested`, `html` path, `percent` — `percent` is `null`: Phase 1 does
+not compute a coverage figure, so never invent one). Read that file rather than
+re-running; do not write a second record under a different name.
 
 ## 8. Gotchas
 

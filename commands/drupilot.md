@@ -1,7 +1,7 @@
 ---
 description: drupilot router and main entry point for porting. Detects the current state of a Drupal module/theme port (environment, cached assessment, phase). When the user asks to PORT/upgrade/modernize a module ('port this module to Drupal 11', 'upgrade this to D11', 'make it work on Drupal 11'), it RUNS the full setup->assess->port->[refactor]->test flow via the drupal-port-orchestrator — guided with confirmations, or hands-off with the `auto` mode word / DRUPILOT_AUTONOMOUS=true (which writes the local patch and never performs outward-facing contribution). For an exploratory ask or a bare '/drupilot' ('what's next', 'where am I', 'status'), it instead summarizes and recommends the single next step. Use it whenever the user wants to port a module/theme to Drupal 11 or asks what to do next.
 argument-hint: "[subject-path] [full|auto|status|next]"
-allowed-tools: Bash, Read, Task
+allowed-tools: Bash, Read, Task, AskUserQuestion
 ---
 
 # drupilot — router and guided flow
@@ -31,8 +31,10 @@ the user asked you to port/upgrade the module) or **recommend the next logical s
     **`next`** (summarize + recommend one step; do not act).
   - A **status** request ("status", "how's it going") → **`status`** (read-only).
   An explicit mode word always overrides inference. If intent is genuinely ambiguous,
-  state the plan and confirm once — do **not** silently fall back to `next` when the
-  user clearly asked you to port.
+  present a tab with **AskUserQuestion** (header "How to proceed", default "Just the
+  next step"): **Run the full port** (guided, with confirmations) · **Just recommend
+  the next step** (read-only) · **Hands-off auto** (unattended, never outward-facing).
+  Do **not** silently fall back to `next` when the user clearly asked you to port.
 
 ## Step 1 — Detect the environment (gates, no side effects)
 
@@ -84,22 +86,20 @@ Print a concise English summary:
 - DDEV state (configured? running?).
 - Assessment state (assessed? verdict + effort, or "not assessed yet").
 
-Then recommend exactly one **next step** as a concrete slash command, using this
-decision order:
+Then recommend exactly one **next step** as a concrete slash command. Do **not**
+restate the ladder here — call the single source of truth, passing the readiness
+booleans you already parsed from Step 1 so it does not re-run preflight:
 
-1. If `ready.analyze` is false (or, for an environment task, `ready.setup` is false):
-   recommend `/drupilot-doctor` to fix requirements first.
-2. Else if there is no DDEV environment and the user wants to run the dynamic toolchain
-   or tests: recommend `/drupilot-setup`.
-3. Else if there is no cached assessment: recommend `/drupilot-assess`.
-4. Else if assessed but not ported: recommend `/drupilot-port`.
-5. Else if ported and the user opted into the "Drupal 11 way": recommend
-   `/drupilot-refactor`.
-6. Else if ported/refactored but tests not green: recommend `/drupilot-test`.
-7. Else, if the subject is a contrib project: recommend `/drupilot-contribute`.
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/next-step.sh" --subject "$1" --ready-analyze "<ready.analyze>" --ready-setup "<ready.setup>" --ready-test "<ready.test>" --ready-contribute "<ready.contribute>"`
 
-Note that `refactor` (Phase 2) and `contribute` are **opt-in** and only suggested, not
-forced.
+Relay its `command` + `reason`. The ladder it encodes is
+`doctor → setup → assess → port → [refactor] → test → [contribute]`; `refactor`
+(Phase 2) and `contribute` are **opt-in** and only suggested, not forced.
+
+**Patch is always available (G6).** Whatever the recommended step, add a one-line
+aside that once the subject is ported the developer can get a `.patch` any time
+with **`/drupilot-patch`** — to test on another checkout or attach to a Drupal.org
+issue comment — **independently of contributing** the Merge Request later.
 
 ## Step 5 — Run the flow (`full`) or hands-off (`auto`)
 

@@ -9,16 +9,19 @@
 # but does NOT bootstrap a database.
 #
 # Usage:
-#   run-phpstan.sh --subject DIR [--level N]
+#   run-phpstan.sh --subject DIR [--level N] [--json]
 #
 # Options:
 #   --subject DIR   Path to the module/theme to analyse (relative to the Drupal
 #                   root or absolute). Required.
 #   --level N       PHPStan rule level (default: DRUPILOT_PHPSTAN_LEVEL).
+#   --json          Emit PHPStan's native JSON (`--error-format=json`) on STDOUT —
+#                   `{totals:{errors,file_errors}, files:{...}}` — for a reproducible
+#                   count the viability analyst can read instead of estimating.
 #   -h, --help      Show this help.
 #
 # Gate: `analyze` profile (git + jq + composer/php).
-# Output: status/logging on STDERR; PHPStan's own report on STDOUT.
+# Output: status/logging on STDERR; PHPStan's own report (or JSON) on STDOUT.
 # =============================================================================
 set -euo pipefail
 
@@ -27,6 +30,7 @@ set -euo pipefail
 
 SUBJECT=""
 LEVEL=""
+AS_JSON=0
 
 usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
 
@@ -36,6 +40,7 @@ while [[ $# -gt 0 ]]; do
     --subject=*) SUBJECT="${1#*=}"; shift;;
     --level) LEVEL="${2:-}"; shift 2;;
     --level=*) LEVEL="${1#*=}"; shift;;
+    --json) AS_JSON=1; shift;;
     -h|--help) usage; exit 0;;
     *) log_warn "Unknown argument: $1"; shift;;
   esac
@@ -108,6 +113,7 @@ fi
 declare -a CMD=()
 [[ -n "$RUNNER" ]] && read -r -a CMD <<<"$RUNNER"
 CMD+=(vendor/bin/phpstan analyse --no-progress --level "$LEVEL")
+[[ "$AS_JSON" == "1" ]] && CMD+=(--error-format=json)
 
 if [[ -f "$DRUPAL_ROOT/phpstan.neon" ]]; then
   CMD+=(--configuration phpstan.neon)
@@ -124,10 +130,17 @@ CMD+=("$SUBJECT_REL")
 log_step "PHPStan: ${CMD[*]}"
 
 # Run; PHPStan exits non-zero when it finds errors. Surface the output and the
-# real exit status (never silence findings).
+# real exit status (never silence findings). In --json mode, capture stdout so it
+# stays pure JSON (all logging is on stderr) and re-emit it.
 set +e
-"${CMD[@]}"
-RC=$?
+if [[ "$AS_JSON" == "1" ]]; then
+  OUT="$("${CMD[@]}" 2>/dev/null)"
+  RC=$?
+  [[ -n "$OUT" ]] && printf '%s\n' "$OUT"
+else
+  "${CMD[@]}"
+  RC=$?
+fi
 set -e
 
 hr

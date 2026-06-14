@@ -79,25 +79,54 @@ fi
 STD="Drupal,DrupalPractice"
 EXTS="php,module,inc,install,test,profile,theme,info,txt,md,yml"
 
+# --- Behavior toggle + phase awareness ---------------------------------------
+# DRUPILOT_POST_EDIT_LINT: autofix (default) | report (run phpcs, never modify
+# files) | off (do nothing). The developer stays in control of in-place edits.
+MODE="$(config_get DRUPILOT_POST_EDIT_LINT autofix 2>/dev/null || echo autofix)"
+case "${MODE,,}" in off) exit 0;; report|autofix) : ;; *) MODE="autofix";; esac
+
+# Phase-aware strictness: during Phase 1 (minimal port) surface only ERRORS
+# (compatibility), not DrupalPractice WARNINGS — premature style nagging belongs
+# to Phase 2. In the refactor phase, surface both.
+PHASE="$(tr -d '[:space:]' < "$(project_state_dir "$EXT_DIR" 2>/dev/null)/phase" 2>/dev/null || true)"
+
 # Run from the Drupal root so relative paths resolve identically on host/in DDEV.
 REL="$FILE"
 case "$FILE" in
   "$DRUPAL_ROOT"/*) REL="${FILE#"$DRUPAL_ROOT"/}" ;;
 esac
 
-# --- phpcbf (autofix) then phpcs (report), both best-effort -------------------
-( cd "$DRUPAL_ROOT" 2>/dev/null && $RUNNER "$PHPCBF_BIN" --standard="$STD" "$REL" >/dev/null 2>&1 ) || true
+# --- phpcbf (autofix, only in autofix mode), then phpcs (report) --------------
+# In autofix mode, report whether phpcbf actually changed the file on disk, so
+# the in-place edit is never silent.
+CHANGED_NOTE=""
+if [[ "$MODE" == "autofix" ]]; then
+  BEFORE="$(cksum "$FILE" 2>/dev/null || true)"
+  ( cd "$DRUPAL_ROOT" 2>/dev/null && $RUNNER "$PHPCBF_BIN" --standard="$STD" "$REL" >/dev/null 2>&1 ) || true
+  AFTER="$(cksum "$FILE" 2>/dev/null || true)"
+  [[ -n "$BEFORE" && "$BEFORE" != "$AFTER" ]] && \
+    CHANGED_NOTE="phpcbf auto-corrected coding-standard issues in ${REL} (the file on disk was modified). "
+fi
 
-PHPCS_OUT=""
 PHPCS_OUT="$(cd "$DRUPAL_ROOT" 2>/dev/null && $RUNNER "$PHPCS_BIN" --standard="$STD" --extensions="$EXTS" --report=full --no-colors "$REL" 2>/dev/null || true)"
 
-# No output, or phpcs reported a clean file -> nothing to surface.
-[[ -z "$PHPCS_OUT" ]] && exit 0
-if ! printf '%s' "$PHPCS_OUT" | grep -qiE 'ERROR|WARNING'; then
+# Nothing from phpcs -> only surface an autofix note, if any.
+if [[ -z "$PHPCS_OUT" ]] || ! printf '%s' "$PHPCS_OUT" | grep -qiE 'ERROR|WARNING'; then
+  [[ -n "$CHANGED_NOTE" ]] && emit_context "$CHANGED_NOTE"
   exit 0
 fi
 
-MSG="drupilot incremental lint ran phpcbf + phpcs (Drupal,DrupalPractice) on ${REL}. Autofixable issues were corrected automatically; the remaining violations below need a manual fix:
+# Phase 1: if only WARNINGS remain (no ERROR), do not nag — just note any autofix.
+# Match ERROR case-SENSITIVELY: phpcs prints the severity column in uppercase, so
+# this avoids a WARNING whose message text says "error" tripping the error gate.
+if [[ "$PHASE" != "refactor" ]] && ! printf '%s' "$PHPCS_OUT" | grep -qE '\bERROR\b'; then
+  [[ -n "$CHANGED_NOTE" ]] && emit_context "$CHANGED_NOTE"
+  exit 0
+fi
+
+NOTE="The remaining violations below need a manual fix"
+[[ "$PHASE" != "refactor" ]] && NOTE="The remaining ERRORS below need a manual fix (Phase 1 surfaces compatibility errors only; DrupalPractice style warnings are deferred to /drupilot-refactor)"
+MSG="drupilot incremental lint on ${REL}. ${CHANGED_NOTE}${NOTE}:
 ${PHPCS_OUT}"
 
 emit_context "$MSG"

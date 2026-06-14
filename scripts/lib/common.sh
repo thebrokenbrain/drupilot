@@ -144,19 +144,72 @@ project_state_dir() {
 }
 
 # ---------------------------------------------------------------------------
-# Configuration (env override > defaults.json > caller default)
+# Configuration (env override > .drupilot.json project prefs > defaults.json > caller default)
 # ---------------------------------------------------------------------------
+# drupilot_prefs_file -> path to the per-project preference file (.drupilot.json)
+# at the Drupal ROOT, or non-zero if no root is resolvable. This is the
+# persistence tier for in-flow tabbed choices (core target, PHP target, refactor
+# scope, contrib mode...): config_get reads it BETWEEN the env override and
+# defaults.json (env still wins), and prefs_set writes it. It lives in the
+# project tree (gitignored via ensure-gitignore.sh), so it is implicitly keyed by
+# the project the developer is working in. Scripts that already know the Drupal
+# root can export DRUPILOT_PROJECT_DIR; otherwise it is detected from $PWD.
+drupilot_prefs_file() {
+  local root="${DRUPILOT_PROJECT_DIR:-}"
+  [[ -z "$root" ]] && root="$(find_drupal_root 2>/dev/null || true)"
+  [[ -n "$root" ]] || return 1
+  printf '%s/.drupilot.json' "$root"
+}
+
 # config_get <KEY> [default]
 config_get() {
   local key="$1" def="${2:-}"
   local envval="${!key:-}"
   if [[ -n "$envval" ]]; then printf '%s' "$envval"; return 0; fi
+  # Project preference tier (.drupilot.json at the Drupal root): remembered
+  # tabbed-choice answers, read between the env override and defaults.json.
+  local pf; pf="$(drupilot_prefs_file 2>/dev/null || true)"
+  if [[ -n "$pf" && -r "$pf" ]] && have_cmd jq; then
+    local pv; pv="$(jq -r --arg k "$key" '.[$k] // empty' "$pf" 2>/dev/null)"
+    if [[ -n "$pv" && "$pv" != "null" ]]; then printf '%s' "$pv"; return 0; fi
+  fi
   local file; file="$(drupilot_config_file)"
   if [[ -r "$file" ]] && have_cmd jq; then
     local v; v="$(jq -r --arg k "$key" '.[$k] // empty' "$file" 2>/dev/null)"
     if [[ -n "$v" && "$v" != "null" ]]; then printf '%s' "$v"; return 0; fi
   fi
   printf '%s' "$def"
+}
+
+# prefs_set <KEY> <value> -> persist a preference into .drupilot.json at the
+# Drupal root (atomic temp-file + mv). Used to remember a tabbed-choice answer
+# across runs. No-op (return 1) without jq or a resolvable root. The env var of
+# the same name always still wins over what this writes.
+prefs_set() {
+  local key="$1" value="$2" f tmp
+  have_cmd jq || return 1
+  f="$(drupilot_prefs_file 2>/dev/null || true)"
+  [[ -n "$f" ]] || return 1
+  [[ -f "$f" ]] || printf '{}\n' > "$f" 2>/dev/null || return 1
+  tmp="$(mktemp "${f}.XXXXXX" 2>/dev/null)" || return 1
+  if jq --arg k "$key" --arg v "$value" '.[$k] = $v' "$f" > "$tmp" 2>/dev/null; then
+    mv -f "$tmp" "$f"
+  else
+    rm -f "$tmp" 2>/dev/null || true; return 1
+  fi
+}
+
+# config_enum <KEY> <default> <allowed...> -> resolve KEY via config_get and
+# validate it against the allowed set. Echoes the value (STDOUT) when valid;
+# logs a clean error and returns non-zero when it is out of the set, so preflight
+# can reject a misconfigured enum up front instead of failing deep inside a tool.
+config_enum() {
+  local key="$1" def="$2"; shift 2
+  local v; v="$(config_get "$key" "$def")"
+  local a
+  for a in "$@"; do [[ "$v" == "$a" ]] && { printf '%s' "$v"; return 0; }; done
+  log_err "$key='$v' is invalid. Allowed: $*"
+  return 1
 }
 
 # config_bool <KEY> [default 0/1] -> 0 (true) / 1 (false) as the return code
@@ -198,7 +251,7 @@ req_version() { config_json ".requirements.${1}" "${2:-}"; }
 deterministic_mode() { config_bool DRUPILOT_DETERMINISTIC 1; }
 
 # drupilot_lock_file [project_dir] -> path to this project's lockfile. The lock
-# lives under the per-project state dir (like assess.json / tests.json), so it
+# lives under the per-project state dir (like assess.json / last-test.json), so it
 # never contaminates the user's project tree. Scripts that already know the
 # Drupal root can export DRUPILOT_PROJECT_DIR; otherwise $PWD is used (analysis
 # scripts cd into the Drupal root first, so $PWD is the project there).
@@ -269,6 +322,24 @@ lock_resolve() {
   printf '%s' "$fresh"
 }
 
+# lock_show [project_dir] -> pretty-print the lockfile JSON to STDOUT so the
+# developer can inspect the frozen toolchain. Returns 1 (with a note on stderr)
+# when there is no lock yet. Read-only.
+lock_show() {
+  local f; f="$(drupilot_lock_file "${1:-}")"
+  if [[ -r "$f" ]] && have_cmd jq; then jq . "$f" 2>/dev/null || cat "$f"; return 0; fi
+  log_info "No lockfile yet at $f."
+  return 1
+}
+
+# lock_clear [project_dir] -> delete the lockfile so the next run resolves fresh
+# and re-freezes (the deterministic escape hatch, per-project, without flipping
+# DRUPILOT_DETERMINISTIC globally).
+lock_clear() {
+  local f; f="$(drupilot_lock_file "${1:-}")"
+  if [[ -f "$f" ]]; then rm -f "$f" && log_ok "Cleared lockfile: $f"; else log_info "No lockfile to clear at $f."; fi
+}
+
 # ---------------------------------------------------------------------------
 # PHP / Drupal target resolution
 # ---------------------------------------------------------------------------
@@ -297,14 +368,37 @@ php_target_unconfirmed() {
 # Drupal subject detection (module / theme) and Drupal root
 # ---------------------------------------------------------------------------
 # find_drupal_root [start] -> path to the Drupal project root, or empty.
+# The "root" drupilot wants is the composer/DDEV project (where vendor/, .ddev/
+# and composer.json live), NOT the docroot. For the standard `docroot: web`
+# layout that is the PARENT of web/. The walk must therefore prefer project-root
+# signals (.ddev/config.yaml, $dir/web/core) over a bare $dir/core/lib/Drupal.php
+# — the latter means we are standing INSIDE the docroot, so the real root is the
+# composer/DDEV parent (or $dir itself when Drupal is installed at the root,
+# i.e. docroot is '.'). Getting this wrong returns .../web and makes every
+# $ROOT/.ddev and host-relative (vendor/bin, web/core) path miss.
 find_drupal_root() {
   local dir; dir="$(cd "${1:-$PWD}" 2>/dev/null && pwd || printf '')"
   [[ -z "$dir" ]] && return 1
   while [[ "$dir" != "/" && -n "$dir" ]]; do
-    if [[ -f "$dir/web/core/lib/Drupal.php" || -f "$dir/core/lib/Drupal.php" ]]; then
+    # Project-root signals: $dir is the composer/DDEV root.
+    if [[ -f "$dir/.ddev/config.yaml" || -f "$dir/web/core/lib/Drupal.php" ]]; then
       printf '%s' "$dir"; return 0
     fi
-    if [[ -f "$dir/.ddev/config.yaml" ]]; then
+    # Bare core at $dir: either $dir IS the composer/DDEV project (docroot '.'),
+    # or we are standing inside a docroot whose root is the parent.
+    if [[ -f "$dir/core/lib/Drupal.php" ]]; then
+      # Check $dir's OWN markers FIRST: a docroot-'.' project nested under an
+      # unrelated parent that merely has a composer.json (a monorepo) must not
+      # climb past itself.
+      if [[ -f "$dir/.ddev/config.yaml" || -f "$dir/composer.json" ]]; then
+        printf '%s' "$dir"; return 0
+      fi
+      # Otherwise the root is the composer/DDEV parent (a docroot whose own
+      # directory has no composer.json), else $dir as a last resort.
+      local parent; parent="$(dirname "$dir")"
+      if [[ -f "$parent/.ddev/config.yaml" || -f "$parent/composer.json" ]]; then
+        printf '%s' "$parent"; return 0
+      fi
       printf '%s' "$dir"; return 0
     fi
     dir="$(dirname "$dir")"
@@ -593,10 +687,16 @@ recommend_core_target() {
 # ---------------------------------------------------------------------------
 # confirm <question> [default_yes:0/1] -> 0 if the user accepts.
 # Without a TTY: uses DRUPILOT_ASSUME_YES or the default; never blocks forever.
+# tty_readable -> 0 only if the controlling terminal can actually be OPENED for
+# reading. `[[ -r /dev/tty ]]` is not enough: the device node is read-permissioned
+# even with no controlling terminal (e.g. the Claude Code Bash tool, cron, CI),
+# where the open() then fails. Opening it for real is the reliable test.
+tty_readable() { { : </dev/tty; } 2>/dev/null; }
+
 confirm() {
   local q="$1" default_yes="${2:-0}"
   if [[ "${DRUPILOT_ASSUME_YES:-}" == "1" ]]; then return 0; fi
-  if [[ ! -r /dev/tty ]]; then
+  if ! tty_readable; then
     [[ "$default_yes" == "1" ]] && return 0 || return 1
   fi
   local prompt=" [y/N] "; [[ "$default_yes" == "1" ]] && prompt=" [Y/n] "
@@ -606,6 +706,71 @@ confirm() {
   ans="${ans,,}"
   if [[ -z "$ans" ]]; then [[ "$default_yes" == "1" ]] && return 0 || return 1; fi
   case "$ans" in y|yes) return 0;; *) return 1;; esac
+}
+
+# choose_one <KEY> <prompt> <opt1> [opt2...] -> the tabbed-choice primitive, the
+# multi-option sibling of confirm(). Each <optN> is "value" or "value|Human
+# label"; the FIRST option is the default. The chosen VALUE is printed to STDOUT
+# (the only thing on stdout); the menu and prompt go to STDERR. Resolution order,
+# highest first: (1) DRUPILOT_CHOICE_<KEY> from env/.drupilot.json/defaults — must
+# match an option value, else ignored with a warning; (2) an interactive /dev/tty
+# selection (by number or by typing the value); (3) the default (first option)
+# when there is no TTY or DRUPILOT_ASSUME_YES=1. Fail-safe: never blocks forever
+# and always echoes a valid option value. In Claude Code commands the real tabs
+# come from AskUserQuestion; this is the script-side fail-safe fallback.
+choose_one() {
+  local key="$1" prompt="$2"; shift 2
+  local -a values=() labels=()
+  local opt v l
+  for opt in "$@"; do
+    v="${opt%%|*}"; l="${opt#*|}"; [[ "$l" == "$opt" ]] && l="$v"
+    values+=("$v"); labels+=("$l")
+  done
+  [[ ${#values[@]} -gt 0 ]] || return 1
+  local default_val="${values[0]}"
+
+  # 1. Config/env override (DRUPILOT_CHOICE_<KEY>), validated against the options.
+  local override; override="$(config_get "DRUPILOT_CHOICE_${key}" "")"
+  if [[ -n "$override" ]]; then
+    for v in "${values[@]}"; do
+      [[ "$v" == "$override" ]] && { printf '%s' "$v"; return 0; }
+    done
+    log_warn "Ignoring DRUPILOT_CHOICE_${key}='$override' (not one of: ${values[*]})."
+  fi
+
+  # 2/3. Interactive selection, or the default when there is no usable terminal.
+  if [[ "${DRUPILOT_ASSUME_YES:-}" == "1" ]] || ! tty_readable; then
+    printf '%s' "$default_val"; return 0
+  fi
+
+  local i
+  printf '%s\n' "$prompt" >&2
+  for i in "${!values[@]}"; do
+    printf '  %s) %s%s\n' "$((i+1))" "${labels[i]}" \
+      "$([[ "${values[i]}" == "$default_val" ]] && printf ' [default]')" >&2
+  done
+  local ans=""
+  printf 'Choose [1-%s] (Enter = default): ' "${#values[@]}" >&2
+  read -r ans </dev/tty || true
+  [[ -z "$ans" ]] && { printf '%s' "$default_val"; return 0; }
+  if [[ "$ans" =~ ^[0-9]+$ ]] && (( ans >= 1 && ans <= ${#values[@]} )); then
+    printf '%s' "${values[$((ans-1))]}"; return 0
+  fi
+  for v in "${values[@]}"; do
+    [[ "$ans" == "$v" ]] && { printf '%s' "$v"; return 0; }
+  done
+  log_warn "Unrecognized choice '$ans' — using the default '$default_val'."
+  printf '%s' "$default_val"
+}
+
+# announce_patch <patch_path> -> a friendly, consistent summary of a generated
+# patch (where it is, how to apply it elsewhere). STDERR only, so it never
+# pollutes a script's parseable STDOUT (the patch path stays the sole stdout).
+announce_patch() {
+  local p="$1" name; name="$(basename "$p")"
+  hr
+  log_ok "Patch ready: $p"
+  log_plain "   Apply it on another checkout:  git apply $name   (or: patch -p1 < $name)"
 }
 
 # ---------------------------------------------------------------------------

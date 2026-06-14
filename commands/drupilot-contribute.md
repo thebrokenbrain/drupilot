@@ -1,7 +1,7 @@
 ---
 description: Publish the ported contrib module/theme back to Drupal.org via an issue fork + Merge Request (or legacy patch), in semi (confirm each outward action) or auto mode, degrading gracefully when the GitLab API is blocked. User-invocable only. Never exposes the PAT.
 argument-hint: "[module-path] [issue-id]"
-allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, Skill
+allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, Skill, AskUserQuestion
 disable-model-invocation: true
 ---
 
@@ -70,7 +70,8 @@ both modes.
   behavior-preserving port (Problem/Motivation, Proposed resolution, Remaining
   tasks); Steps to reproduce and UI/API/Data-model changes are omitted. Defaults
   come from the `DRUPILOT_ISSUE_*` config keys (env-overridable).
-- **Mode**: ask for `semi` or `auto`, defaulting to `DRUPILOT_CONTRIB_MODE`:
+- **Mode**: present a tab (**AskUserQuestion**, header "Contribute mode") with
+  the default taken from `DRUPILOT_CONTRIB_MODE`:
 
   ```bash
   !bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; echo "default_mode=$(config_get DRUPILOT_CONTRIB_MODE semi)"' -- ""
@@ -84,6 +85,9 @@ both modes.
     against `git@git.drupal.org:issue/PROJECT-ISSUEID.git`) and open the MR via
     the GitLab API **only if it responds**; if the API is blocked, **degrade
     gracefully** to printing the MR URL for a one-click manual open.
+
+  (An autonomous run never reaches this command — it is `disable-model-invocation`
+  and outward-facing.)
 
 ## Step 3 — Issue fork, branch, commit
 
@@ -104,6 +108,24 @@ its `CONTRIBUTING.md` (some contrib still use the legacy
 Apply the ported change-set on the branch, `git add -A`, and commit.
 
 ## Step 4 — Push, open the MR, and attach a patch
+
+**Decision point — the push is the point of no return (G5).** In **semi** mode,
+before anything leaves the machine, surface a tab (**AskUserQuestion**, header
+"Push to Drupal.org", default = "Show the diff first") — because the `confirm()`
+inside `open-mr.sh` cannot reach a TTY under Claude Code, this is how the
+developer actually consents:
+
+- **Show the diff first** — print `git diff origin/BASE` (or the commit range) so
+  they see exactly what will be published, then re-ask.
+- **Push now** — proceed with the push + MR.
+- **Local patch only** — do **not** push; produce the offline issue-comment patch
+  instead (route to `/drupilot-patch` → issue-comment option). Lets them validate
+  on the issue before committing to an MR.
+- **Cancel** — stop with nothing sent.
+
+In **auto** mode, skip the tab and proceed (the mode's whole point), but the
+`guard-contrib.sh` PreToolUse backstop still applies, and an autonomous run is
+already excluded. Then, honoring the mode:
 
 For an issue-fork project (modern flow), rebase onto `origin/BASE`, push to the
 issue remote, and open the MR — honoring the mode:

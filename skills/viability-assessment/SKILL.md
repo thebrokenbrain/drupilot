@@ -104,6 +104,11 @@ bash "$ROOT/scripts/analysis/run-rector.sh" --subject "$SUBJECT" --digests
   at runtime — never vendored. If the clone fails, soft-skip the digests pass and
   note it.
 
+For a **reproducible** auto-fixable count (instead of eyeballing the diff), add
+`--json`: `run-rector.sh --subject "$SUBJECT" --json` emits
+`{changed_files, files, pass1_files, pass2_files}` — `pass1` = official rector,
+`pass2` = digests. Use `changed_files` and the pass split for the verdict.
+
 ### 3.2 PHPStan at deprecation level
 
 ```bash
@@ -113,7 +118,22 @@ bash "$ROOT/scripts/analysis/run-phpstan.sh" --subject "$SUBJECT" \
 
 Level 2 is the deprecation-detection level (what drupal-check pins). Count
 deprecation messages: those are the "must-fix to run on D11" items. Distinguish
-deprecations Rector already covers (in §3.1) from those it does not (manual).
+deprecations Rector already covers (in §3.1) from those it does not (manual). For
+a reproducible count, add `--json` (PHPStan's native `--error-format=json`) and
+read `.totals.file_errors` / `.totals.errors` rather than estimating from the
+human report.
+
+Make the deprecations a **teaching aid**, not a wall of red: pipe the analyzer
+output through the explainer, which annotates each known deprecated symbol with
+what changed, the modern fix, and a drupal.org change-records link:
+
+```bash
+bash "$ROOT/scripts/analysis/run-phpstan.sh" --subject "$SUBJECT" \
+  | bash "$ROOT/scripts/analysis/explain-deprecations.sh"   # add --json for structured output
+```
+
+Include the recognized items (and their fixes) in the report so the developer
+understands *why* each change is needed, not just that it is.
 
 ### 3.3 PHPCS (style baseline, informational for assessment)
 
@@ -123,7 +143,8 @@ bash "$ROOT/scripts/analysis/run-phpcs.sh" --subject "$SUBJECT"
 
 Do **not** pass `--fix` during assessment. Use the error/warning counts to gauge
 code-quality distance to a clean `Drupal,DrupalPractice` (relevant to a Phase 2
-estimate, not to Phase 1 viability).
+estimate, not to Phase 1 viability). `--json` (PHPCS's `--report=json`) gives the
+exact `.totals.errors` / `.totals.warnings` / `.totals.fixable` for the report.
 
 ### 3.4 Upgrade Status (only if Drupal is installed)
 
@@ -204,11 +225,22 @@ Build the classification that drives the verdict:
    `DRUPILOT_REQUIRE_PHP_FLOOR`) or `^11` on a BC break. A missing
    `core_version_requirement` (or a legacy `core: 8.x`) is **blocking** and must
    be flagged.
-6. **Contrib dependency D11 support** — read `dependencies:` in `*.info.yml` and
-   `require` in any `composer.json`. For each non-core `drupal/*` dependency,
-   note whether it has a D11-compatible release. `upgrade_status` reports this
-   when available; otherwise mark as "verify on drupal.org" and treat unported
-   hard dependencies as an external blocker that caps viability.
+6. **Contrib dependency D11 support** — use the dependency readiness panel
+   instead of eyeballing the lists:
+
+   ```bash
+   bash "$ROOT/scripts/analysis/deps-status.sh" --subject "$SUBJECT"
+   # --json for {totals:{ready,blockers,unknown}, dependencies:[{project,d11,url}]}
+   # --offline to skip the network checks (all contrib deps -> unknown)
+   ```
+
+   It reads `dependencies:` in `*.info.yml` and `require` in `composer.json`, then
+   checks each non-core `drupal/*` project against the drupal.org release-history
+   feed (`ready` / `not-ready` / `not-on-drupalorg` / `unknown` when the network is
+   blocked — never guessed). Feed `blockers` into the verdict: an unported **hard**
+   dependency with no D11 release is an external blocker that caps viability —
+   document it, never fake green. `upgrade_status` is a complementary signal when
+   Drupal is installed.
 
 ### Optional context: digests issue summaries
 

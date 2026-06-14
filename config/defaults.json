@@ -1,6 +1,7 @@
 {
-  "_comment": "drupilot default configuration. Every DRUPILOT_* key can be overridden by an environment variable of the same name (env ALWAYS wins). See README, Configuration section.",
+  "_comment": "drupilot default configuration. Every DRUPILOT_* key can be overridden by an environment variable of the same name (env ALWAYS wins), and a per-project .drupilot.json at the Drupal root overrides these defaults too (env > .drupilot.json > this file). See README, Configuration section.",
 
+  "_php_target_comment": "DRUPILOT_PHP_TARGET is the CONSERVATIVE default port floor (8.3, supported on every Drupal 11 branch). It is intentionally distinct from php_support.recommended (8.4), which is the version the /drupilot-setup PHP picker highlights as recommended. Both are valid targets; the default stays at the safe floor while the picker lets the developer move up to 8.4. 8.5 is unconfirmed (see _php_support_comment).",
   "DRUPILOT_PHP_TARGET": "8.3",
   "DRUPILOT_DRUPAL_TARGET": "^11",
   "DRUPILOT_CORE_TARGET_STRATEGY": "auto",
@@ -20,6 +21,10 @@
   "DRUPILOT_GENERATE_RULES": "ask",
   "DRUPILOT_AUTONOMOUS": false,
   "DRUPILOT_DETERMINISTIC": true,
+
+  "_hooks_comment": "Hook behavior toggles. DRUPILOT_POST_EDIT_LINT controls the PostToolUse incremental lint (hooks/scripts/post-edit-lint.sh): 'autofix' (default) runs phpcbf then phpcs and reports when it modified the file; 'report' runs phpcs only (never edits files in place); 'off' disables it. The hook is also phase-aware: during Phase 1 (minimal port) it surfaces compatibility ERRORS only, deferring DrupalPractice style WARNINGS to /drupilot-refactor. DRUPILOT_SESSION_CONTEXT toggles the SessionStart environment summary (hooks/scripts/session-detect-env.sh): 'on' (default) or 'off'.",
+  "DRUPILOT_POST_EDIT_LINT": "autofix",
+  "DRUPILOT_SESSION_CONTEXT": "on",
 
   "_deterministic_comment": "Reproducibility (DEFAULT ON). When true, drupilot freezes the versions/refs it resolves (Drupal core, the dev toolchain, the digests SHA, DDEV add-ons) into a per-project drupilot-lock.json (under the plugin's state dir, NOT the user's project tree) and reuses them on later runs, so porting the same module twice converges on the same toolchain and result. Set DRUPILOT_DETERMINISTIC=false (the escape hatch) to always resolve fresh (legacy floating behavior) and refresh the lock. This governs only drupilot's own resolution; the Claude Code permission mode still governs Bash/Edit/Write. Helpers: deterministic_mode / lock_get / lock_set / lock_resolve in scripts/lib/common.sh; capture/refresh via scripts/env/lock-sync.sh.",
 
