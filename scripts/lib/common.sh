@@ -563,6 +563,16 @@ recommend_core_target() {
     resolved="$strat"
   fi
 
+  # Already Drupal 11-compatible with no BC break, and the strategy was left on
+  # 'auto' (not explicitly forced): KEEP the existing declaration verbatim instead
+  # of regressing a precise one (e.g. '^11.2' or '^10.3 || ^11 || ^12') to a
+  # generic range — that would drop a higher minor floor or a future major the
+  # module already supports. The developer can still narrow it via the tab.
+  local keep_current=0
+  if [[ "$strat" == "auto" && "$current_has_11" == "1" && "$bc_break" == "0" && -n "$current_req" ]]; then
+    keep_current=1; resolved="keep-current"
+  fi
+
   # --- requirement + composer constraint + require.php + D10 honesty ---------
   local req composer require_php="" effective_floor="" d10_support="n/a"
   local -a rationale=() warnings=() suggested=()
@@ -580,7 +590,26 @@ recommend_core_target() {
     fi
   fi
 
-  if [[ "$resolved" == "keep-d10" ]]; then
+  if [[ "$keep_current" == "1" ]]; then
+    # Keep the module's existing, already-D11-compatible requirement unchanged.
+    req="$current_req"; composer="$current_req"
+    rationale+=("The module already declares a Drupal 11-compatible requirement ('$current_req'); keeping it unchanged (minimal change). Use the core-target choice to narrow it if you want.")
+    if [[ "$had_pre11" == "1" ]]; then
+      # The kept requirement still allows Drupal 10, so declare the PHP floor.
+      require_php=">=$php_target"
+      if [[ "$floor_strategy" == "detect" && -n "$detected_floor" ]]; then
+        local f="$detected_floor"
+        version_ge "$f" "8.1" || f="8.1"
+        version_ge "$php_target" "$f" || f="$php_target"
+        effective_floor="$f"; require_php=">=$f"
+      fi
+      d10_support="declared-not-verified"
+      warnings+=("The kept requirement still allows Drupal 10 ('$current_req'); its Drupal 10 compatibility is DECLARED, not verified — install/test on Drupal 10 before relying on it.")
+    fi
+    if printf '%s' "$current_req" | grep -qE '(^|[^0-9])(8|9)([^0-9]|$)'; then
+      suggested+=("The requirement still lists EOL Drupal 8/9 ('$current_req'); narrow it (e.g. to '^10 || ^11' or '^11') via the core-target choice if you no longer support them.")
+    fi
+  elif [[ "$resolved" == "keep-d10" ]]; then
     req="^10 || ^11"; composer="^10 || ^11"
     require_php=">=$php_target"      # safe default (policy floor = target)
     rationale+=("Strategy: keep-d10 ('^10 || ^11')${legacy_note:+ ($legacy_note)}.")
@@ -625,16 +654,27 @@ recommend_core_target() {
   fi
 
   # --- version bump (SemVer for Drupal contrib) ---------------------------
+  # drops_major: the recommended requirement no longer supports a core major the
+  # current one did (e.g. '^8 || ^9' -> '^10 || ^11' drops 8 AND 9, '^9 || ^10' ->
+  # '^10 || ^11' drops 9). Dropping a previously-supported core major is
+  # backwards-incompatible for those sites -> MAJOR, regardless of the strategy
+  # (the old check only caught the d11-only path and under-reported keep-d10).
   local drops_major=0
-  [[ "$resolved" == "d11-only" && "$had_pre11" == "1" ]] && drops_major=1
+  if [[ -n "$current_req" ]]; then
+    local _rec_majors _m
+    _rec_majors="$(printf '%s' "$req" | grep -oE '[0-9]+(\.[0-9]+)*' | sed -E 's/\..*//' | sort -u)"
+    for _m in $(printf '%s' "$current_req" | grep -oE '[0-9]+(\.[0-9]+)*' | sed -E 's/\..*//' | sort -u); do
+      printf '%s\n' "$_rec_majors" | grep -qx "$_m" || drops_major=1
+    done
+  fi
   local version_bump
   if [[ "$bc_break" == "1" || "$drops_major" == "1" ]]; then
     version_bump="major"
-    [[ "$drops_major" == "1" ]] && rationale+=("Dropping a previously-supported Drupal major (current '${current_req:-none}' -> '$req') is backwards-incompatible -> MAJOR (cut a new N+1.0.x branch).")
+    [[ "$drops_major" == "1" ]] && rationale+=("Dropping a previously-supported Drupal core major (current '${current_req:-none}' -> '$req') is backwards-incompatible -> MAJOR (cut a new N+1.0.x branch).")
     [[ "$bc_break" == "1" ]] && rationale+=("Phase 2 refactor / asserted public-API BC break -> MAJOR.")
   elif [[ "$current_has_11" == "0" ]]; then
     version_bump="minor"
-    rationale+=("Adding Drupal 11 support with no API break -> MINOR.")
+    rationale+=("Adding Drupal 11 support without dropping a supported core major -> MINOR.")
   else
     version_bump="patch"
     rationale+=("No core-major change and no API break -> PATCH.")

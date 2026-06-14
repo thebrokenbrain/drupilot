@@ -3,7 +3,7 @@
   "change_records_search": "https://www.drupal.org/list-changes/drupal?keywords_description=",
   "deprecations": [
     { "pattern": "drupal_set_message", "symbol": "drupal_set_message", "why": "Global message helper removed.", "fix": "Inject and use the 'messenger' service ($this->messenger()->addStatus(...))." },
-    { "pattern": "\\\\Drupal::url|(^|[^a-z])url\\(", "symbol": "Drupal::url", "why": "\\Drupal::url() removed.", "fix": "Use Url::fromRoute()/fromUri() and the 'url_generator' service." },
+    { "pattern": "\\\\Drupal::url\\b", "symbol": "Drupal::url", "why": "\\Drupal::url() removed.", "fix": "Use Url::fromRoute()/fromUri() and the 'url_generator' service." },
     { "pattern": "format_date|\\\\Drupal::service\\(.date.\\)", "symbol": "format_date", "why": "format_date() removed.", "fix": "Inject the 'date.formatter' service and call ->format()." },
     { "pattern": "(entity_load|node_load|user_load|taxonomy_term_load)\\b", "symbol": "entity_load", "why": "Procedural entity loaders removed.", "fix": "Use the 'entity_type.manager' service: ->getStorage('node')->load($id)." },
     { "pattern": "EntityManager(Interface)?\\b", "symbol": "EntityManager", "why": "EntityManager split up.", "fix": "Use EntityTypeManagerInterface (and the dedicated repository/field managers)." },

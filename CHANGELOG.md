@@ -13,6 +13,37 @@ tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-06-14
+
+Correctness fixes from testing the v0.7.0 insight tools against real contrib
+modules (file_version, amp_video_embed_field_formatter, token, gin, admin_toolbar,
+pathauto). The reasoning these tools feed was giving wrong advice in real cases.
+
+### Fixed
+- **Core target no longer regresses an already-Drupal-11-compatible requirement.**
+  `recommend_core_target` (core-strategy) was rewriting a precise existing
+  declaration to a generic range — e.g. `^11.2` → `^11` (dropping the 11.2 minor
+  floor) or `^10.3 || ^11 || ^12` → `^10 || ^11` (dropping the future `^12` and the
+  10.3 floor). A new `keep-current` resolution keeps the module's declaration
+  unchanged when it is already D11-compatible (auto strategy, no BC break); the
+  developer can still narrow it via the core-target choice.
+- **Version-bump verdict now flags a MAJOR when the port drops a supported core
+  major.** Porting `^8 || ^9` (or `^9 || ^10`, `^9.3 || ^10`) to `^10 || ^11` drops
+  Drupal 8/9 support — backwards-incompatible for those sites → MAJOR. The old
+  check only caught the `d11-only` path, so the common `keep-d10` port was
+  under-reported as MINOR.
+- **Dependency panel recognizes Drupal core modules.** `deps-status.sh` no longer
+  flags core submodules (`field`, `image`, `menu_link_content`, `toolbar`, `path`,
+  …) as "no D11 release" blockers; the drupal.org feed's `<error>` / "no release
+  history" response is reported as `not-on-drupalorg` (verify) instead of a hard
+  blocker, and only a confirmed contrib project without a D11 release counts as a
+  blocker. Verified that a genuine blocker (e.g. `amp`) is still caught.
+- **Upstream issue search no longer false-positives** on a title that merely
+  mentions `core_version_requirement`; the Drupal-11-effort title match is tighter
+  (anchored `11` / `d11` / `11.x`).
+- **Deprecation explainer no longer mis-flags `parse_url()`** (and similar) as
+  `\Drupal::url()`; the pattern is anchored to `\Drupal::url`.
+
 ## [0.7.0] - 2026-06-14
 
 Phase 2 — an exhaustive UX/capability overhaul making the port guided, pleasant
@@ -408,7 +439,8 @@ verdict, what-changed report card, frozen lock), and new insight tools
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/thebrokenbrain/drupilot/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/thebrokenbrain/drupilot/compare/v0.5.0...v0.5.1
