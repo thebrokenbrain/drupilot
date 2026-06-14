@@ -53,7 +53,23 @@ both modes.
 
 - **Issue**: ask for the issue id (`$2` if provided) — an existing issue, or one
   to create on drupal.org. If it must be created, guide the user to create it on
-  the web (and to use "Create issue fork" + "Get push access" there).
+  the web (and to use "Create issue fork" + "Get push access" there). The issue
+  can only be created on the web (no public issue API), so **generate the
+  ready-to-paste content + the recommended field values** for them:
+
+  ```bash
+  !bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/make-issue.sh" --project "<PROJECT>" --base "<BASE>" --issue "<ISSUEID>"
+  ```
+
+  This writes `<PROJECT>-issue-summary.md` and `<PROJECT>-issue-comment.md` and
+  prints the mandatory fields. Relay them: **Title** `Drupal 11 compatibility`,
+  **Category** `Task`, **Priority** `Normal`, **Version** derived from the base
+  branch (`4.0.x` → `4.0.x-dev`), **Component** `Code` (have the user verify it
+  against the project's own, project-specific component list), **Assigned** to
+  themselves. The summary keeps only the sections that apply to a
+  behavior-preserving port (Problem/Motivation, Proposed resolution, Remaining
+  tasks); Steps to reproduce and UI/API/Data-model changes are omitted. Defaults
+  come from the `DRUPILOT_ISSUE_*` config keys (env-overridable).
 - **Mode**: ask for `semi` or `auto`, defaulting to `DRUPILOT_CONTRIB_MODE`:
 
   ```bash
@@ -93,27 +109,35 @@ For an issue-fork project (modern flow), rebase onto `origin/BASE`, push to the
 issue remote, and open the MR — honoring the mode:
 
 ```bash
-!bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/open-mr.sh" --project "<PROJECT>" --issue "<ISSUEID>" --branch "<BRANCH>" --mode "<MODE>"
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/open-mr.sh" --project "<PROJECT>" --issue "<ISSUEID>" --branch "<BRANCH>" --mode "<MODE>" --description-file "<PROJECT>-issue-comment.md"
 ```
 
-In **semi** mode, `open-mr.sh` confirms before the push; do not bypass it. In
-**auto** mode it tries the API and degrades to printing the MR URL if blocked.
+`--description-file` uses the brief comment generated in Step 2 as the MR
+description. In **semi** mode, `open-mr.sh` confirms before the push; do not
+bypass it. In **auto** mode it tries the API and degrades to printing the MR URL
+if blocked.
 
-Then **always** also generate the contribution patch — it is normal to attach a
-`.patch` to the issue (reviewers and CI often expect one, and it lets people test
-the change without checking out the fork), so produce it **in addition to** the
-MR, not only as a fallback:
+Then **always** also generate the contribution patch and post the comment — it is
+normal (and useful) to attach a `.patch` to the issue: reviewers and CI expect
+one, and it lets a user **apply the fix before the maintainer merges the MR**. So
+produce it **in addition to** the MR:
 
 ```bash
-!bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/make-patch.sh" --module "<PROJECT>" --issue "<ISSUEID>" --comment "<N>"
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/make-patch.sh" --module "<PROJECT>" --issue "<ISSUEID>" --comment "<N>" --base "<BASE>"
 ```
 
 This writes `PROJECT-port-to-drupal-11-ISSUEID-COMMENT.patch` (diff against
-`origin/BASE`). Guide the user to attach it to the issue, comment, and set "Needs
+`origin/BASE`) **and verifies it applies cleanly onto `origin/BASE`** — the
+version the patch targets. The verification is a **hard gate**: a patch that does
+not apply is discarded and the script exits non-zero, because it would be useless
+to a user applying it pre-merge. If that happens, re-fetch/rebase onto the
+correct base and re-run; never hand over a broken patch. Then guide the user to
+attach the patch, post the `PROJECT-issue-comment.md` comment, and set "Needs
 review". Bump `--comment` for each new revision.
 
-For a project **not** migrated to issue forks there is no MR: the patch above is
-the whole contribution — run it without the `open-mr.sh` step.
+For a project **not** migrated to issue forks there is no MR: the verified patch
+above plus its comment are the whole contribution — run it without the
+`open-mr.sh` step (generate the comment with `--kind patch` in Step 2).
 
 ## Step 5 — Contribution Record reminder and security notes
 

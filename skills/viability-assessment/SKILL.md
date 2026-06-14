@@ -149,12 +149,17 @@ bash "$ROOT/scripts/analysis/core-strategy.sh" --subject "$SUBJECT" --phase port
 ```
 
 It returns `{ strategy, recommended_core_version_requirement,
-composer_core_constraint, require_php, version_bump, rationale[], warnings[] }`.
-The strategy comes from `DRUPILOT_CORE_TARGET_STRATEGY` (`auto` | `d11-only` |
-`keep-d10`; legacy `DRUPILOT_KEEP_D10` still overrides). **Policy:** the port's
-PHP floor is `DRUPILOT_PHP_TARGET`, so keeping Drupal 10 (`^10 || ^11`) **always**
-carries `require.php: ">=<target>"` — Drupal 10 itself allows PHP 8.1, so without
-it a D10 + PHP<target site would install and then fatal. `auto` keeps the widest
+composer_core_constraint, require_php, php_floor_detected,
+php_floor_target_compatible, d10_support, version_bump, rationale[], warnings[],
+suggested_remaining_tasks[] }`. The strategy comes from
+`DRUPILOT_CORE_TARGET_STRATEGY` (`auto` | `d11-only` | `keep-d10`; legacy
+`DRUPILOT_KEEP_D10` still overrides). **Policy:** keeping Drupal 10 (`^10 || ^11`)
+carries a `require.php` floor — Drupal 10 allows PHP 8.1, so without it a D10 +
+low-PHP site would install and then fatal. `DRUPILOT_REQUIRE_PHP_FLOOR` (`detect`
+default) sets that floor to the real minimum the code needs (e.g. `>=8.1`); `target`
+keeps `>=<target>`. `php_floor_target_compatible` is false when the code uses a
+construct newer than the target, and a kept `^10 || ^11` is reported
+`declared-not-verified` — relay both. `auto` keeps the widest
 BC-preserving set and switches to `^11` (a **major** version bump) on a BC break.
 Use `--phase port` for the assessment; an opt-in Phase 2 refactor
 (`--phase refactor`) would recommend `^11` + a major bump. Carry every field
@@ -195,9 +200,10 @@ Build the classification that drives the verdict:
    type/signature error there — if it does not, call it "no real work".
 5. **info.yml status** — the recommended `core_version_requirement` comes from
    the core-strategy helper (§3.5): `auto` yields `^10 || ^11` for a
-   BC-preserving port (paired with `require.php: ">=<target>"`) or `^11` on a BC
-   break. A missing `core_version_requirement` (or a legacy `core: 8.x`) is
-   **blocking** and must be flagged.
+   BC-preserving port (paired with a `require.php` floor — see
+   `DRUPILOT_REQUIRE_PHP_FLOOR`) or `^11` on a BC break. A missing
+   `core_version_requirement` (or a legacy `core: 8.x`) is **blocking** and must
+   be flagged.
 6. **Contrib dependency D11 support** — read `dependencies:` in `*.info.yml` and
    `require` in any `composer.json`. For each non-core `drupal/*` dependency,
    note whether it has a D11-compatible release. `upgrade_status` reports this

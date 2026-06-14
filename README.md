@@ -22,6 +22,7 @@
 - [The two-phase porting philosophy](#the-two-phase-porting-philosophy)
 - [Hands-off (autonomous) mode](#hands-off-autonomous-mode)
 - [Configuration](#configuration)
+- [Determinism (reproducible by default)](#determinism-reproducible-by-default)
 - [Use cases](#use-cases)
 - [How it works (architecture)](#how-it-works-architecture)
 - [The drupal-digests complementary layer](#the-drupal-digests-complementary-layer)
@@ -37,7 +38,7 @@
 - **Minimal port (Phase 1)** — the smallest set of changes to make the module/theme run on Drupal 11 while **preserving the original functionality**. Driven by `palantirnet/drupal-rector`, an optional AI-rules layer (`dbuytaert/drupal-digests`), and targeted manual fixes.
 - **Full refactor (Phase 2, opt-in)** — a rewrite to modern Drupal 11 best practices: PHP 8 attributes for plugins, dependency injection, strict types, zero deprecations, clean `Drupal` + `DrupalPractice`, and a green test suite.
 - **Tests** — discovers, adapts and runs the complete PHPUnit suite (Unit / Kernel / Functional / FunctionalJavascript) inside DDEV (with Selenium for JS), iterating until green and reporting coverage. Failures are **never** silenced.
-- **Contribution** — prepares and (optionally) publishes the result to Drupal.org via the modern issue-fork + Merge Request flow, or a legacy patch, with a **semi-automatic** (confirm every outward action) or **fully automatic** mode. A `.patch` is always produced alongside the MR so you can attach it to the issue.
+- **Contribution** — prepares and (optionally) publishes the result to Drupal.org via the modern issue-fork + Merge Request flow, or a legacy patch, with a **semi-automatic** (confirm every outward action) or **fully automatic** mode. It generates the **issue summary and the recommended values for the mandatory fields** (Title, Category, Priority, Version, Component, Assigned) to paste into the web form, plus a brief **comment**. A `.patch` is always produced alongside the MR and **verified to apply cleanly** onto the version it targets, so you (or anyone) can attach and apply it on the issue before the maintainer merges.
 - **Patches** — every port also writes a local `.patch` (`MODULE-port-to-drupal-11.patch`) so you can review the change, apply it elsewhere, or test it locally before contributing — no Drupal.org account required.
 
 The default PHP target is **8.3** and is fully configurable; everything (Rector sets, PHPStan level, PHPCS sniffs, DDEV `php_version`) derives from a single setting.
@@ -168,13 +169,19 @@ Defaults live in `config/defaults.json`. **Every `DRUPILOT_*` key can be overrid
 | --- | --- | --- |
 | `DRUPILOT_PHP_TARGET` | `8.3` | Target PHP version (drives Rector / PHPStan / PHPCS / DDEV). |
 | `DRUPILOT_DRUPAL_TARGET` | `^11` | Target core range. |
-| `DRUPILOT_CORE_TARGET_STRATEGY` | `auto` | Core compatibility decision: `auto` (keep `^10 \|\| ^11` while backwards-compatible, switch to `^11` on a BC break / refactor), `d11-only`, or `keep-d10`. Keeping D10 also declares composer `require.php: ">=<target>"`, and the choice yields a SemVer version-bump verdict. |
+| `DRUPILOT_CORE_TARGET_STRATEGY` | `auto` | Core compatibility decision: `auto` (keep `^10 \|\| ^11` while backwards-compatible, switch to `^11` on a BC break / refactor), `d11-only`, or `keep-d10`. Keeping D10 also declares a composer `require.php` floor (see `DRUPILOT_REQUIRE_PHP_FLOOR`), and the choice yields a SemVer version-bump verdict. |
 | `DRUPILOT_KEEP_D10` | _(legacy)_ | Legacy boolean override of the strategy (`true` → keep D10, `false` → D11-only). Honored only when set; prefer `DRUPILOT_CORE_TARGET_STRATEGY`. |
+| `DRUPILOT_REQUIRE_PHP_FLOOR` | `detect` | When keeping `^10 \|\| ^11`, how to set composer `require.php`: `detect` derives the real floor from a heuristic scan of the ported code (e.g. `>=8.1` when it uses no PHP 8.2/8.3 constructs, for genuine Drupal 10 support); `target` keeps the conservative `>=<php target>`. A lowered floor is best-effort — confirm with PHPCompatibility. |
 | `DRUPILOT_CODER_CONSTRAINT` | `^8.3` | `drupal/coder` branch (PHPCS 3.x vs 4.x). |
 | `DRUPILOT_PHPSTAN_LEVEL` | `2` | Base PHPStan level (deprecation detection). |
 | `DRUPILOT_PHPSTAN_LEVEL_REFACTOR` | `6` | PHPStan level used in the refactor phase. |
 | `DRUPILOT_VIABILITY_THRESHOLD` | `medium` | Threshold for the "large refactor" warning. |
 | `DRUPILOT_CONTRIB_MODE` | `semi` | `semi` (confirm outward actions) or `auto`. |
+| `DRUPILOT_ISSUE_TITLE` | `Drupal 11 compatibility` | Default title for the generated Drupal.org issue. |
+| `DRUPILOT_ISSUE_CATEGORY` | `Task` | Default issue Category (`bug report` / `task` / `feature request` / `support request` / `plan`). |
+| `DRUPILOT_ISSUE_PRIORITY` | `Normal` | Default issue Priority (`critical` / `major` / `normal` / `minor`). |
+| `DRUPILOT_ISSUE_COMPONENT` | `Code` | Default issue Component. The list is **project-specific** — verify it against the project's own components. |
+| `DRUPILOT_ISSUE_ASSIGNEE` | `self` | `self` (assign to the account opening the issue) or `unassigned`. |
 | `DRUPILOT_USE_DIGESTS_RULES` | `true` | Use the complementary `drupal-digests` layer after official Rector. |
 | `DRUPILOT_DIGESTS_REF` | `main` | Commit/tag of the `drupal-digests` repo, for reproducibility. |
 | `DRUPILOT_GENERATE_RULES` | `ask` | Generate ad-hoc Rector rules for uncovered deprecations: `ask` / `auto` / `off`. |
@@ -276,7 +283,7 @@ export DRUPILOT_GITLAB_PAT=glpat-xxxxxxxx   # never stored; read at runtime
 /drupilot-contribute web/contrib/some_module 3456789
 ```
 
-It creates the issue fork, branch and commit (in the correct format, detecting the project's convention), pushes, opens the Merge Request via the GitLab API — **degrading gracefully** to a one-click MR URL if the API is blocked — and **also writes a `.patch`** (`MODULE-port-to-drupal-11-ISSUEID-COMMENT.patch`) to attach to the issue alongside the MR. It reminds you that **credit is assigned by the maintainers** via the issue's Contribution Record, and it never exposes your PAT.
+When the issue still has to be created, it generates the **issue summary** (the standard Drupal.org template — for a behavior-preserving port only the sections that apply: Problem/Motivation, Proposed resolution, Remaining tasks) and the recommended **field values** (Title, Category `Task`, Priority `Normal`, Version derived from the base branch, Component `Code`, Assigned to you), since the issue can only be created on the web. It then creates the issue fork, branch and commit (in the correct format, detecting the project's convention), pushes, opens the Merge Request — with a brief generated **comment** as its description — via the GitLab API, **degrading gracefully** to a one-click MR URL if the API is blocked. It **always writes a `.patch`** (`MODULE-port-to-drupal-11-ISSUEID-COMMENT.patch`) and **verifies it applies cleanly** onto the version it targets (discarding a patch that does not apply, so you never hand over a broken one) to attach to the issue alongside the MR with the comment. It reminds you that **credit is assigned by the maintainers** via the issue's Contribution Record, and it never exposes your PAT.
 
 ---
 

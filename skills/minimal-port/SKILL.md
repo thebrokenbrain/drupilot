@@ -142,15 +142,38 @@ Apply only the mechanical, behavior-preserving fixes:
   Apply its `recommended_core_version_requirement` (`auto` → `^10 || ^11` for a
   BC-preserving port, or `^11` on a BC break / `d11-only`). The old `core: 8.x`
   key no longer exists; a missing `core_version_requirement` is a hard blocker.
-  **When the helper returns a non-null `require_php`** (it always does for
-  `^10 || ^11`, because the port's PHP floor is the target while Drupal 10 itself
-  allows PHP 8.1), add it to the project's `composer.json`:
-  `"require": { "php": ">=<target>" }` — this blocks a D10 + PHP<target site at
-  install instead of fataling at runtime. For `^11` no `require.php` is needed
-  (core enforces it). State the chosen `core_version_requirement`, the
-  `require.php`, and the `version_bump` verdict in the chat summary. Do not
-  silently overwrite a `core_version_requirement` the user already hand-tuned —
-  if it differs from the recommendation, say so and confirm.
+
+  **Two compatibility floors the helper now reasons about — keep them honest:**
+
+  - **PHP floor (`require_php`).** When it is non-null (i.e. keeping `^10 || ^11`),
+    add it to the project's `composer.json`: `"require": { "php": "<require_php>" }`.
+    Drupal 10 allows PHP 8.1 but the port targets ≥ 8.3, so this blocks a
+    D10 + low-PHP site at install instead of fataling at runtime. The helper runs
+    `detect-php-floor.sh` (a heuristic scan) and, with `DRUPILOT_REQUIRE_PHP_FLOOR=detect`
+    (default), **widens the floor to the detected one** (e.g. `>=8.1` when the code
+    uses no 8.2/8.3 constructs) for genuine D10 support; relay any warning that the
+    lowered floor is best-effort and should be confirmed with PHPCompatibility. If
+    `has_composer_json` is false, the floor **cannot be enforced** — surface that
+    warning and add a composer.json or drop to `^11`. For `^11` no `require_php` is
+    needed (core enforces it). The same scan also reports
+    `php_floor_target_compatible`: if **false**, the code uses a construct newer than
+    the target (e.g. an 8.4 feature with target 8.3) that would fatal on Drupal 11 —
+    raise `DRUPILOT_PHP_TARGET` or remove it, and do not call the port done. The
+    authoritative check that the port runs on the target is the test suite executing
+    on the target PHP version (the preservation gate).
+  - **Drupal-minor floor (`d10_support`).** A `^10 || ^11` port is emitted as
+    `declared-not-verified`: Rector's standard replacements usually exist across all
+    of Drupal 10, but drupilot does not verify it in Phase 1. **Report it as
+    declared, not verified** (mirroring the preservation gate), relay the helper's
+    `warnings` (if the port uses an API added in a later minor, it should be
+    `^10.3 || ^11`; if absent from D10, `^11`), and carry its
+    `suggested_remaining_tasks` into the contribution issue (`make-issue.sh
+    --d10-unverified`).
+
+  State the chosen `core_version_requirement`, the `require_php` (and its detected
+  floor), the `d10_support` status and the `version_bump` verdict in the chat
+  summary. Do not silently overwrite a `core_version_requirement` the user already
+  hand-tuned — if it differs from the recommendation, say so and confirm.
 - **Twig 3:** removed filters/functions; `spaceless` is gone (use
   `{% apply spaceless %}` or whitespace control) — only when mechanical.
 - **CKEditor 5:** CKEditor 4 was removed in D10; migrate config/text-format

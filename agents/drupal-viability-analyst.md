@@ -75,9 +75,11 @@ All output you produce — the report, the chat summary, every label — is in *
 - **info.yml + core target**: the recommended `core_version_requirement` comes from
   `scripts/analysis/core-strategy.sh` (strategy `DRUPILOT_CORE_TARGET_STRATEGY`,
   default `auto`): `^10 || ^11` for a BC-preserving port or `^11` on a BC break.
-  Keeping Drupal 10 also implies composer `require.php: ">=<target>"` — the port's
-  PHP floor is the target, while Drupal 10 itself allows PHP 8.1, so without it a
-  D10 + PHP<target site would fatal. The choice also yields a SemVer
+  Keeping Drupal 10 also implies a composer `require.php` floor — Drupal 10 allows
+  PHP 8.1, so without it a D10 + low-PHP site would fatal. The helper sets that
+  floor via `DRUPILOT_REQUIRE_PHP_FLOOR` (`detect` default → the real floor, e.g.
+  `>=8.1`; `target` → `>=<target>`) and reports `php_floor_target_compatible`
+  (false when the code uses a construct newer than the target). The choice also yields a SemVer
   **version-bump** verdict (drop a core major or break the public API → major; add
   D11 with no break → minor). The old `core: 8.x` key is gone; a missing
   `core_version_requirement` is **blocking** and must be flagged.

@@ -112,6 +112,48 @@ Before any outward-facing action, gather:
 - **Mode** — `semi` (default) or `auto`, from `DRUPILOT_CONTRIB_MODE` unless the
   developer overrides.
 
+### 3.1 Prepare the issue content (summary + mandatory fields)
+
+The Drupal.org issue is **created on the web** — there is no public issue API,
+and the GitLab API is blocked by default — so drupilot does **not** submit the
+form. Instead it **generates ready-to-paste content** and the recommended values
+for the mandatory fields:
+
+```bash
+bash "$ROOT/scripts/contrib/make-issue.sh" --project "$NAME" --base BASE_VERSION \
+     --issue ISSUEID [--comment N] [--kind mr|patch] [--summary "what the port did"]
+```
+
+This writes `NAME-issue-summary.md` and `NAME-issue-comment.md` next to the
+module and prints the **recommended field values**. Defaults
+(`DRUPILOT_ISSUE_*`, env-overridable):
+
+- **Title** — `Drupal 11 compatibility`.
+- **Category** — `Task` (a compatibility port, not a bug/feature).
+- **Priority** — `Normal`.
+- **Version** — derived from `--base` (e.g. `4.0.x` → `4.0.x-dev`).
+- **Component** — `Code`. This list is **project-specific** (e.g. some projects
+  add `rules integration`, `token actions`); tell the user to verify `Code`
+  against the project's own component list.
+- **Assigned** — yourself (the account opening the issue) when
+  `DRUPILOT_ISSUE_ASSIGNEE=self`, or `unassigned`.
+
+The **issue summary** is the standard Drupal.org template, but for a
+behavior-preserving port only the sections that apply are emitted —
+**Problem/Motivation**, **Proposed resolution**, **Remaining tasks**. The
+non-applicable sections (**Steps to reproduce**, **User interface changes**,
+**API changes**, **Data model changes**) are intentionally **omitted**, because a
+Phase 1 minimal port introduces none. Refine the generated prose with specifics
+from the assessment if useful, but keep that structure.
+
+If the port kept **`^10 || ^11`** (Drupal 10 support is `declared-not-verified`,
+per `core-strategy.sh`), pass `--d10-unverified` so "verify Drupal 10
+compatibility" is added to **Remaining tasks** — the dual-support claim must not
+be silently trusted in the issue.
+
+Relay the recommended fields and the summary to the user to paste into the
+issue, and keep `NAME-issue-comment.md` for the MR/patch step below.
+
 ## 4. Detect the project's commit/branch conventions
 
 Different projects use different conventions — detect, do not assume (PROMPT 3.4):
@@ -167,10 +209,13 @@ git commit -m "fix: #ISSUEID One-line summary"
 
 ```bash
 bash "$ROOT/scripts/contrib/open-mr.sh" --project "$NAME" --issue ISSUEID \
-     --branch ISSUEID-short-description --base BASE_VERSION --mode semi
+     --branch ISSUEID-short-description --base BASE_VERSION --mode semi \
+     --description-file NAME-issue-comment.md
 ```
 
-`open-mr.sh` (mode defaults to `DRUPILOT_CONTRIB_MODE`):
+`--description-file` makes the brief comment generated in §3.1 the MR
+description (it falls back to a link to the issue when omitted). `open-mr.sh`
+(mode defaults to `DRUPILOT_CONTRIB_MODE`):
 
 - Rebases onto `origin/BASE_VERSION` (PROMPT 3.2:
   `git fetch origin && git rebase origin/BASE_VERSION`).
@@ -180,38 +225,53 @@ bash "$ROOT/scripts/contrib/open-mr.sh" --project "$NAME" --issue ISSUEID \
   `.contrib.pat_env_var` env var — never printed).
 - Pushes to the issue remote: `git push NAME-ISSUEID ISSUEID-short-description`.
 
-### Also attach a patch (always, in addition to the MR)
+### Always: a comment + a verified patch (in addition to the MR)
 
 A `.patch` on the issue is conventional even when there is an MR — reviewers and
-some CI expect one, and it lets people test the change without checking out the
-fork. So after the MR, **always** also produce the contribution patch:
+some CI expect one, and (most importantly) it lets a user **apply the fix before
+a maintainer merges the MR**. So after the MR, **always** also:
 
-```bash
-bash "$ROOT/scripts/contrib/make-patch.sh" --module "$NAME" --issue ISSUEID \
-     [--comment N] --base BASE_VERSION
-```
+1. **Post the brief comment** (`NAME-issue-comment.md` from §3.1) on the issue —
+   it summarizes the change and references the attached patch — and set the
+   status to "Needs review". The same text was used as the MR description.
+2. **Produce the contribution patch:**
 
-This writes `NAME-short-description-ISSUEID-COMMENT.patch`
-(`git diff origin/BASE_VERSION`). Attach it to the issue alongside (or as a
-complement to) the MR, and bump `--comment` per revision. This is distinct from
-the offline **local preview** patch (`make-patch.sh --local`, named
-`NAME-short-description.patch`) that the port/refactor flow writes for local
-testing.
+   ```bash
+   bash "$ROOT/scripts/contrib/make-patch.sh" --module "$NAME" --issue ISSUEID \
+        [--comment N] --base BASE_VERSION
+   ```
+
+   This writes `NAME-short-description-ISSUEID-COMMENT.patch`
+   (`git diff origin/BASE_VERSION`) and **verifies it applies cleanly onto
+   `origin/BASE_VERSION`** — the version the patch targets. This check is a **hard
+   gate**: if the patch does not apply, the script discards it and exits
+   non-zero. Do **not** deliver a patch that does not apply; re-fetch/rebase onto
+   the correct base and re-run. Bump `--comment` per revision.
+
+Attach the patch to the issue alongside the MR. This contribution patch is
+distinct from the offline **local preview** patch (`make-patch.sh --local`,
+named `NAME-short-description.patch`) that the port/refactor flow writes for
+local testing (that one only *warns* if it does not apply).
 
 ## 5b. Legacy flow — patch only (PROMPT 3.3, for unmigrated projects)
 
 If the project is not on the issue-fork workflow there is no MR; the patch is the
-whole contribution. Run the same script (no `open-mr.sh` step):
+whole contribution. Generate the comment with `--kind patch` (§3.1), then run the
+same patch script (no `open-mr.sh` step):
 
 ```bash
 bash "$ROOT/scripts/contrib/make-patch.sh" --module "$NAME" --issue ISSUEID \
      [--comment N] --base BASE_VERSION
 ```
 
-It rebases onto `origin/BASE_VERSION` and writes
+It rebases onto `origin/BASE_VERSION`, writes
 `git diff origin/BASE_VERSION > NAME-short-description-ISSUEID-COMMENT.patch`
-(naming convention `[module]-[short-description]-[issue]-[comment].patch`). Then
-the developer attaches the patch to the issue, comments, and sets "Needs review".
+(naming convention `[module]-[short-description]-[issue]-[comment].patch`) and
+**verifies it applies cleanly onto `origin/BASE_VERSION`** — discarding it and
+exiting non-zero if it does not (a patch that does not apply is useless to the
+maintainer and to users testing it pre-merge). Then the developer attaches the
+patch to the issue, posts the `NAME-issue-comment.md` comment, and sets "Needs
+review".
 
 ## 6. GitLab API degradation (PROMPT 3.5)
 

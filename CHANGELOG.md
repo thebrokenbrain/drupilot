@@ -11,6 +11,59 @@ release, rename `[Unreleased]` to the new version with a date, bump `version`
 in `.claude-plugin/plugin.json` (and the `marketplace.json` entry) to match, and
 tag the commit `vX.Y.Z`.
 
+## [0.6.0] - 2026-06-14
+
+### Added
+- **Issue paperwork generator** for the contribution flow
+  (`scripts/contrib/make-issue.sh` + `templates/issue-summary.md.tmpl` /
+  `templates/issue-comment.md.tmpl`): since a Drupal.org issue can only be created
+  on the web, drupilot now generates ready-to-paste content — the issue **summary**
+  (standard Drupal.org template, but for a behavior-preserving port only the
+  applicable sections: Problem/Motivation, Proposed resolution, Remaining tasks;
+  Steps to reproduce and UI/API/Data-model changes are omitted) and a brief
+  **comment** that references the attached patch — plus the recommended values for
+  the mandatory fields (**Title**, **Category**, **Priority**, **Version**,
+  **Component**, **Assigned**). New env-overridable defaults
+  `DRUPILOT_ISSUE_TITLE`/`CATEGORY`/`PRIORITY`/`COMPONENT`/`ASSIGNEE` (Task / Normal
+  / Code / self by convention for a D11 compatibility port); Version is derived from
+  the base branch (`4.0.x` → `4.0.x-dev`).
+
+- **Honest dual-core compatibility floors.** When a port keeps `^10 || ^11`,
+  drupilot no longer *declares* dual support it has not justified:
+  - **PHP floor + target compatibility** — new
+    `scripts/analysis/detect-php-floor.sh` (a heuristic scan for PHP
+    8.2/8.3/8.4-only constructs) answers two symmetric questions: it lets
+    `recommend_core_target` set composer `require.php` to the **real** floor the
+    code needs (e.g. `>=8.1` for genuine Drupal 10 support) instead of always
+    `>=<target>`, and it reports whether the code is **compatible with the Drupal
+    11 PHP target** (`php_floor_target_compatible`) — i.e. it warns when the port
+    uses a construct newer than the target (e.g. an 8.4 feature with target 8.3,
+    which would fatal on Drupal 11/PHP 8.3). The authoritative proof of "runs on
+    the target" remains the test suite, which runs inside DDEV on the target PHP
+    version. New `DRUPILOT_REQUIRE_PHP_FLOOR` (`detect` default / `target`
+    conservative); a lowered floor is flagged best-effort (confirm with
+    PHPCompatibility). If the module has **no composer.json**, the unenforceable
+    floor is now warned about.
+  - **Drupal-minor floor** — a `^10 || ^11` recommendation is reported as
+    `declared-not-verified` (mirroring the preservation gate), with warnings to
+    raise the minor (`^10.3 || ^11`) or drop to `^11` if the port uses newer APIs
+    (escalated when the digests/AI layer is enabled), plus
+    `suggested_remaining_tasks`. `make-issue.sh --d10-unverified` carries the
+    "verify Drupal 10 compatibility" task into the contribution issue.
+  Surfaced in `core-strategy.sh` output and the `minimal-port` skill.
+
+### Changed
+- **The contribution patch is now verified to apply cleanly onto the version it
+  targets** (`make-patch.sh`): the patch is checked against a throwaway index
+  seeded from `origin/BASE`, and in the contribution flow a patch that does not
+  apply is **discarded with a non-zero exit** (hard gate) — users must be able to
+  apply it before the MR is merged. The offline `--local` preview patch only warns.
+- **The Merge Request now carries a brief description and is always accompanied by
+  a comment + the verified patch**: `open-mr.sh` gained `--description-file` so the
+  generated comment becomes the MR description (and the issue comment), instead of a
+  bare link to the issue. The contribution skill, command and the
+  `drupal-contrib-publisher` agent were updated accordingly.
+
 ## [0.5.1] - 2026-06-13
 
 ### Changed
@@ -196,7 +249,8 @@ tag the commit `vX.Y.Z`.
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/thebrokenbrain/drupilot/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.3.0...v0.4.0

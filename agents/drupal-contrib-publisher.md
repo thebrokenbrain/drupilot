@@ -149,7 +149,21 @@ stdout, and **never print the PAT**. Do not reinvent their logic.
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/setup-git.sh" --name "Real Name" --email you@example.com
    ```
 2. **Ask the issue and the mode.** Confirm the issue ID (existing or to be created)
-   and the mode (`semi` | `auto`, default `DRUPILOT_CONTRIB_MODE`).
+   and the mode (`semi` | `auto`, default `DRUPILOT_CONTRIB_MODE`). The issue is
+   created on the **web** (no public issue API), so generate the ready-to-paste
+   content and the recommended mandatory-field values:
+   ```bash
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/make-issue.sh" \
+     --project PROJECT --base BASE_VERSION --issue ISSUEID [--comment N] [--kind mr|patch] [--summary "..."]
+   ```
+   It writes `PROJECT-issue-summary.md` + `PROJECT-issue-comment.md` and prints
+   the fields. Relay them to the user: **Title** `Drupal 11 compatibility`,
+   **Category** `Task`, **Priority** `Normal`, **Version** derived from the base
+   (`4.0.x` → `4.0.x-dev`), **Component** `Code` (project-specific list — have the
+   user verify), **Assigned** to themselves. The summary keeps only the sections
+   that apply to a behavior-preserving port (Problem/Motivation, Proposed
+   resolution, Remaining tasks) and omits Steps to reproduce and UI/API/Data-model
+   changes. Defaults come from the `DRUPILOT_ISSUE_*` keys (env-overridable).
 3. **Issue fork** (clone, add the issue remote, fetch, checkout the branch):
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/issue-fork.sh" \
@@ -159,22 +173,30 @@ stdout, and **never print the PAT**. Do not reinvent their logic.
    open the MR via `glab`/API if it responds, else print the MR URL):
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/open-mr.sh" \
-     --project PROJECT --issue ISSUEID --branch BRANCH [--mode semi|auto] [--base BASE_VERSION]
+     --project PROJECT --issue ISSUEID --branch BRANCH [--mode semi|auto] [--base BASE_VERSION] \
+     --description-file PROJECT-issue-comment.md
    ```
+   `--description-file` uses the brief comment from step 2 as the MR description.
    In `semi`, this confirms before the push. The PAT (if used) is read from the env
    var by the script — you never handle it directly.
-5. **Attach a patch — always, in addition to the MR.** A `.patch` on the issue is
-   conventional even with an MR (reviewers/CI expect one; it lets people test
-   without checking out the fork), and it is the *sole* deliverable for unmigrated
-   projects. Generate it in both cases:
+5. **A comment + a verified patch — always, in addition to the MR.** A `.patch` on
+   the issue is conventional even with an MR (reviewers/CI expect one; above all it
+   lets a user apply the fix **before the maintainer merges**), and it is the *sole*
+   deliverable for unmigrated projects. Post the `PROJECT-issue-comment.md` comment
+   (the brief description) and generate the patch in both cases:
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/make-patch.sh" \
      --module MODULE --issue ISSUEID [--comment N] [--base BASE_VERSION]
    ```
    This writes `MODULE-short-description-ISSUEID-COMMENT.patch` (`git diff
-   origin/BASE`). It is offline and credential-free. (The offline `--local` mode of
-   the same script — `MODULE-short-description.patch`, no issue — is the preview
-   patch the port/refactor flow writes; do not confuse the two.)
+   origin/BASE`) and **verifies it applies cleanly onto `origin/BASE`** — a **hard
+   gate**: a patch that does not apply is discarded and the script exits non-zero,
+   since it would be useless to a user testing it pre-merge. Never hand over a
+   broken patch — rebase onto the correct base and re-run. It is offline and
+   credential-free. (The offline `--local` mode of the same script —
+   `MODULE-short-description.patch`, no issue — is the preview patch the
+   port/refactor flow writes, and it only *warns* on a failed apply; do not confuse
+   the two.)
 
 ## Mode behavior summary
 

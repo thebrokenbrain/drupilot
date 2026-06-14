@@ -4,11 +4,17 @@
   "DRUPILOT_PHP_TARGET": "8.3",
   "DRUPILOT_DRUPAL_TARGET": "^11",
   "DRUPILOT_CORE_TARGET_STRATEGY": "auto",
+  "DRUPILOT_REQUIRE_PHP_FLOOR": "detect",
   "DRUPILOT_CODER_CONSTRAINT": "^8.3",
   "DRUPILOT_PHPSTAN_LEVEL": 2,
   "DRUPILOT_PHPSTAN_LEVEL_REFACTOR": 6,
   "DRUPILOT_VIABILITY_THRESHOLD": "medium",
   "DRUPILOT_CONTRIB_MODE": "semi",
+  "DRUPILOT_ISSUE_TITLE": "Drupal 11 compatibility",
+  "DRUPILOT_ISSUE_CATEGORY": "Task",
+  "DRUPILOT_ISSUE_PRIORITY": "Normal",
+  "DRUPILOT_ISSUE_COMPONENT": "Code",
+  "DRUPILOT_ISSUE_ASSIGNEE": "self",
   "DRUPILOT_USE_DIGESTS_RULES": true,
   "DRUPILOT_DIGESTS_REF": "main",
   "DRUPILOT_GENERATE_RULES": "ask",
@@ -19,7 +25,8 @@
 
   "_autonomous_comment": "Hands-off mode. When true (or invoked as `/drupilot <subject> auto`), the orchestrator runs setup -> assess -> port -> refactor -> test unattended: no initial confirmation, DRUPILOT_GENERATE_RULES is treated as 'auto' unless explicitly set to 'off', and the local .patch is always written at the end. It NEVER performs outward-facing actions on its own (no git push / Merge Request / contribute) — those stay opt-in via /drupilot-contribute. This only relaxes drupilot's own gates; the Claude Code permission mode still governs Bash/Edit/Write prompts (use acceptEdits or a headless bypass for a fully unattended run).",
 
-  "_core_target_comment": "Drupal core compatibility decision (scripts/analysis/core-strategy.sh; helper recommend_core_target). DRUPILOT_CORE_TARGET_STRATEGY: auto (default) | d11-only | keep-d10. 'auto' keeps the widest set ('^10 || ^11') for a backwards-compatible Phase 1 port and switches to '^11' on a BC break / Phase 2 refactor. POLICY: a Drupal 11 port's PHP floor is the resolved DRUPILOT_PHP_TARGET (>= 8.3). Because Drupal 10 itself allows PHP 8.1, keeping D10 ALWAYS adds composer require.php '>=<target>' so a D10 + PHP<target site is blocked at install time (composer) instead of fataling at runtime; '^11' needs no require.php (core enforces its own minimum). DRUPILOT_KEEP_D10 is the legacy boolean override (true -> keep-d10, false -> d11-only), honored only when explicitly set in the environment.",
+  "_issue_comment": "Defaults for the Drupal.org issue used when contributing a port (PROMPT 3). The issue itself is created on the web (there is no public issue API, and the GitLab API is blocked by default), so drupilot GENERATES ready-to-paste content + recommended field values via scripts/contrib/make-issue.sh — it does not submit the form. For a Drupal 11 compatibility port the conventional values are DRUPILOT_ISSUE_CATEGORY='Task' and DRUPILOT_ISSUE_PRIORITY='Normal'. DRUPILOT_ISSUE_COMPONENT defaults to 'Code' (every project has it) — verify it against the project's own component list, which is project-specific. DRUPILOT_ISSUE_ASSIGNEE='self' means assign the issue to the account opening it ('unassigned' to leave it open). The Version field is derived from the target base branch (e.g. base 4.0.x -> 4.0.x-dev), not configured here. Non-applicable summary sections (Steps to reproduce, User interface / API / Data model changes) are omitted for a behavior-preserving port.",
+  "_core_target_comment": "Drupal core compatibility decision (scripts/analysis/core-strategy.sh; helper recommend_core_target). DRUPILOT_CORE_TARGET_STRATEGY: auto (default) | d11-only | keep-d10. 'auto' keeps the widest set ('^10 || ^11') for a backwards-compatible Phase 1 port and switches to '^11' on a BC break / Phase 2 refactor. POLICY: a Drupal 11 port's PHP floor is the resolved DRUPILOT_PHP_TARGET (>= 8.3). Because Drupal 10 itself allows PHP 8.1, keeping D10 declares a composer require.php floor so a D10 + low-PHP site is blocked at install time (composer) instead of fataling at runtime. DRUPILOT_REQUIRE_PHP_FLOOR (default 'detect') sets that floor to the REAL minimum the ported code needs (heuristic scan via scripts/analysis/detect-php-floor.sh, e.g. '>=8.1' when no PHP 8.2/8.3 constructs are used); set it to 'target' to keep the conservative '>=<target>'. The same scan also reports whether the code is compatible with the target at all (php_floor_target_compatible: false when it uses a construct newer than the target). '^11' needs no require.php (core enforces its own minimum). DRUPILOT_KEEP_D10 is the legacy boolean override (true -> keep-d10, false -> d11-only), honored only when explicitly set in the environment.",
 
   "_requirements_comment": "Minimum versions used by preflight.sh. Some carry uncertainty (see PROMPT 1.2): the real gate is functional (e.g. that 'ddev config --project-type=drupal11' works), not just the number.",
   "requirements": {

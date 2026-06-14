@@ -80,9 +80,11 @@ All output you produce — messages, summaries, plans — is in **English**.
 - **info.yml + core target**: pick `core_version_requirement` with
   `scripts/analysis/core-strategy.sh` (strategy `DRUPILOT_CORE_TARGET_STRATEGY`,
   default `auto`): `^10 || ^11` for a BC-preserving port, `^11` on a BC break.
-  Keeping Drupal 10 implies composer `require.php: ">=<target>"` (the port's PHP
-  floor is the target; Drupal 10 itself allows PHP 8.1, so without it a D10 +
-  PHP<target site would fatal). The choice also yields a SemVer **version-bump**
+  Keeping Drupal 10 implies a composer `require.php` floor (Drupal 10 itself
+  allows PHP 8.1, so without it a D10 + low-PHP site would fatal); the helper sets
+  it via `DRUPILOT_REQUIRE_PHP_FLOOR` (`detect` default → the real floor, e.g.
+  `>=8.1`; `target` → `>=<target>`). It also reports `php_floor_target_compatible`
+  (false when the code uses a construct newer than the target). The choice also yields a SemVer **version-bump**
   verdict (drop a core major / break the API → major; add D11 → minor). The old
   `core: 8.x` key no longer exists; a missing `core_version_requirement` is
   blocking. (Legacy `DRUPILOT_KEEP_D10` still overrides.)
@@ -202,8 +204,10 @@ Use the `minimal-port` skill. Three passes (PROMPT §5.4):
    or apply manually with change-record context; in `off` only report.
 Then apply the minimal manual changes Rector cannot. Decide
 `core_version_requirement` with `scripts/analysis/core-strategy.sh --subject <DIR>
---phase port` and apply it; when it returns a `require.php` (always for
-`^10 || ^11`), add `"require": { "php": ">=<target>" }` to `composer.json`. Apply
+--phase port` and apply it; when it returns a `require.php` (for `^10 || ^11`),
+add `"require": { "php": "<require_php>" }` to `composer.json` using the exact
+value returned (`DRUPILOT_REQUIRE_PHP_FLOOR` controls whether it is the real
+detected floor or `>=<target>`). Apply
 the remaining mechanical Twig/CKEditor/jQuery fixes. After each batch, run
 `phpcbf` + `phpcs` + `phpstan` and leave the subject compiling **without blocking
 deprecations**. No architectural changes. Report the summarized diff, which rules

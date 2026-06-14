@@ -124,11 +124,36 @@ The PHP target is also the **floor of the port**. The Drupal core-target decisio
 itself lives in `scripts/analysis/core-strategy.sh` (helper `recommend_core_target`),
 not here — but the two meet at one rule: when a port **keeps Drupal 10**
 (`core_version_requirement: ^10 || ^11`) it declares composer
-`require.php: ">=<target>"`, because Drupal 10's own minimum is PHP 8.1 while the
-port requires the target (>= 8.3). A `^11`-only target needs no `require.php` (core
-enforces it). The strategy is set by `DRUPILOT_CORE_TARGET_STRATEGY` (default
-`auto`). This skill stays the source of truth for the PHP target itself; it does
-**not** duplicate the core-target / SemVer logic.
+`require.php: ">=<floor>"`, because Drupal 10's own minimum is PHP 8.1 while the
+port requires at least the target (>= 8.3). A `^11`-only target needs no
+`require.php` (core enforces it). The strategy is set by
+`DRUPILOT_CORE_TARGET_STRATEGY` (default `auto`). This skill stays the source of
+truth for the PHP target itself; it does **not** duplicate the core-target / SemVer
+logic.
+
+### 5.1 Two PHP-version questions — floor vs. target compatibility
+
+`scripts/analysis/detect-php-floor.sh` is a heuristic scan of the code for
+PHP 8.2/8.3/8.4 constructs and answers both directions, controlled by
+`DRUPILOT_REQUIRE_PHP_FLOOR` (`detect` default | `target` conservative):
+
+- **Floor (look down).** The lowest PHP the code can run on. With `detect`, this
+  *widens* `require.php` below the target when honest (e.g. `>=8.1` when the code
+  uses no 8.2+ constructs), for genuine Drupal 10 support. Lowering is best-effort
+  — surface the "confirm with PHPCompatibility" warning. (Note: Rector's
+  `->withPhpSets(php8X)` can *raise* the floor by modernizing syntax, which is the
+  tension with keeping Drupal 10 on PHP 8.1.)
+- **Target compatibility (look up).** `php_floor_target_compatible` is false when
+  the code uses a construct **newer than the target** (e.g. an 8.4 feature with
+  target 8.3) — that fatals on Drupal 11/PHP 8.3, so raise `DRUPILOT_PHP_TARGET`
+  or remove the construct. Within one PHP major, higher minors are backwards
+  compatible (8.4 runs 8.3 code bar non-fatal deprecations), so a floor ≤ target
+  means OK.
+
+This scan is a cheap static signal, **not** the authoritative answer: the real
+proof that the port runs on the target is the **test suite executing on the target
+PHP version inside DDEV** (the preservation gate). Report target compatibility as
+verified by tests, or "not verified" when there are no tests.
 
 ## Gotchas
 

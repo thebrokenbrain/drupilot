@@ -51,11 +51,15 @@ If a cached `viability-report.md` exists for this project, read it first
 
 Apply its `recommended_core_version_requirement` (`auto` → `^10 || ^11` for a
 BC-preserving port, or `^11` on a BC break) in Step 6. When it returns a
-`require.php` (always for `^10 || ^11`, since the port's PHP floor is the target
-while Drupal 10 itself allows PHP 8.1), add `"require": { "php": ">=<target>" }`
-to `composer.json`. Note the `version_bump` verdict for the final summary. This
-target also drives which digests rules are safe (see Pass 2). The legacy
-`DRUPILOT_KEEP_D10` still works as an explicit override.
+`require.php` (for `^10 || ^11`, since Drupal 10 allows PHP 8.1 while the port
+needs a higher floor), add `"require": { "php": "<require_php>" }` to
+`composer.json` using the **exact** `require_php` value the helper returns
+(`DRUPILOT_REQUIRE_PHP_FLOOR=detect`, the default, derives the real floor such as
+`>=8.1`; `target` keeps `>=<target>`). Also relay `php_floor_target_compatible`
+(false → the code uses a construct newer than the target) and the
+`declared-not-verified` Drupal 10 status. Note the `version_bump` verdict for the
+final summary. This target also drives which digests rules are safe (see Pass 2).
+The legacy `DRUPILOT_KEEP_D10` still works as an explicit override.
 
 ## Step 2 — Load the procedure
 
@@ -124,8 +128,9 @@ Apply only the mechanical compatibility edits, preserving behavior:
   decided in Step 1 (e.g. `^10 || ^11`). Remove the obsolete `core: 8.x` key if
   present. A missing `core_version_requirement` is blocking — fix it. When Step 1
   reported a `require.php` (i.e. keeping Drupal 10), add
-  `"require": { "php": ">=<target>" }` to `composer.json` so a D10 + PHP<target
-  site is blocked at install, not at runtime.
+  `"require": { "php": "<require_php>" }` to `composer.json` using the exact value
+  the helper returned, so a D10 + low-PHP site is blocked at install, not at
+  runtime.
 - **Twig 3**: replace removed filters/functions and `{% spaceless %}` with their
   mechanical equivalents (e.g. the `spaceless` filter / `~` handling) only where
   the change is unambiguous.

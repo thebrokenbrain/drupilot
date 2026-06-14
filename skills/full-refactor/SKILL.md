@@ -86,9 +86,10 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/core-strategy.sh" --subject "<path>
 and a **major** version bump — cut a new `N+1.0.x` branch rather than a minor on
 the existing one. Apply the recommended `core_version_requirement`; for `^11` no
 composer `require.php` is needed (core enforces PHP >= the target). If you
-deliberately keep `^10 || ^11` (an explicit override), the helper returns
-`require.php: ">=<target>"` — add it to `composer.json`. State the version-bump
-implication (new major branch) in the summary.
+deliberately keep `^10 || ^11` (an explicit override), the helper returns a
+`require.php` floor (`DRUPILOT_REQUIRE_PHP_FLOOR`: `detect` → the real floor, e.g.
+`>=8.1`; `target` → `>=<target>`) — add it to `composer.json`. State the
+version-bump implication (new major branch) in the summary.
 
 ## 2. Refactor loop
 

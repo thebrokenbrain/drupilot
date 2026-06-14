@@ -19,11 +19,15 @@
 # Usage:
 #   open-mr.sh --project NAME --issue ID --branch BRANCH
 #              [--mode semi|auto] [--base BASE_VERSION]
+#              [--description-file FILE]
 #
 #   --mode   defaults to DRUPILOT_CONTRIB_MODE (semi). 'semi' confirms before
 #            push; 'auto' pushes without prompting (requires SSH/PAT configured).
 #   --base   base version branch to rebase onto (e.g. 11.x, 2.0.x). If omitted,
 #            the current upstream/origin HEAD is used and rebase is skipped.
+#   --description-file
+#            file whose contents become the MR description (e.g. the comment
+#            produced by make-issue.sh). Defaults to a link to the issue.
 #
 # Exit codes: 0 ok · 1 usage/error · 2 hard requirement missing (gate) ·
 #             3 push declined/failed.
@@ -38,6 +42,7 @@ ISSUE=""
 BRANCH=""
 MODE=""
 BASE=""
+DESC_FILE=""
 
 usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
 
@@ -53,6 +58,8 @@ while [[ $# -gt 0 ]]; do
     --mode=*) MODE="${1#*=}"; shift;;
     --base) BASE="${2:-}"; shift 2;;
     --base=*) BASE="${1#*=}"; shift;;
+    --description-file) DESC_FILE="${2:-}"; shift 2;;
+    --description-file=*) DESC_FILE="${1#*=}"; shift;;
     -h|--help) usage; exit 0;;
     *) log_warn "Unknown argument: $1"; shift;;
   esac
@@ -164,6 +171,14 @@ MR_TITLE="Issue #$ISSUE: port to Drupal 11"
 MR_WEB_URL=""
 API_DONE=0
 
+# MR description: the generated comment (make-issue.sh) when provided, else a
+# link to the issue. This is the brief description that accompanies the MR.
+MR_DESC="See $ISSUE_URL"
+if [[ -n "$DESC_FILE" ]]; then
+  [[ -r "$DESC_FILE" ]] || die "Description file not found or unreadable: $DESC_FILE" 1
+  MR_DESC="$(cat "$DESC_FILE")"
+fi
+
 degrade_to_url() {
   local reason="$1"
   log_warn "Could not open the MR via the GitLab API${reason:+ ($reason)}."
@@ -186,7 +201,7 @@ if have_cmd glab; then
       --source-branch "$BRANCH" \
       ${MR_TARGET:+--target-branch "$MR_TARGET"} \
       --title "$MR_TITLE" \
-      --description "See $ISSUE_URL" \
+      --description "$MR_DESC" \
       --yes 2>&1)"
   GLAB_RC=$?
   set -e
@@ -204,7 +219,7 @@ if [[ "$API_DONE" -eq 0 && -n "$PAT" ]] && have_cmd curl; then
   # Build the request body with jq to avoid quoting issues.
   BODY="$(jq -n \
     --arg sb "$BRANCH" --arg tb "${MR_TARGET:-}" \
-    --arg title "$MR_TITLE" --arg desc "See $ISSUE_URL" \
+    --arg title "$MR_TITLE" --arg desc "$MR_DESC" \
     '{source_branch:$sb, title:$title, description:$desc}
        + (if $tb == "" then {} else {target_branch:$tb} end)')"
   API_ENDPOINT="https://$HTTPS_HOST/api/v4/projects/$FORK_PATH_ENC/merge_requests"

@@ -419,6 +419,17 @@ recommend_core_target() {
   current_req="$(subject_core_requirement "$subject" 2>/dev/null || true)"
   current_req="$(trim "$current_req")"
 
+  # PHP floor strategy: 'detect' (default) derives a narrower require.php from the
+  # detected floor (DRUPILOT_DETECTED_PHP_FLOOR, set by detect-php-floor.sh);
+  # 'target' keeps the conservative ">=target". The module's own composer.json is
+  # the ONLY place an info.yml-declared '^10 || ^11' module can enforce a PHP
+  # floor, so we also note whether it exists.
+  local floor_strategy detected_floor has_composer="false"
+  floor_strategy="$(config_get DRUPILOT_REQUIRE_PHP_FLOOR detect)"; floor_strategy="${floor_strategy,,}"
+  case "$floor_strategy" in target|detect) : ;; *) floor_strategy="detect";; esac
+  detected_floor="$(trim "${DRUPILOT_DETECTED_PHP_FLOOR:-}")"
+  [[ -f "$subject/composer.json" ]] && has_composer="true"
+
   # --- strategy resolution (auto default; KEEP_D10 legacy override) --------
   local strat keep_override legacy_note=""
   strat="$(config_get DRUPILOT_CORE_TARGET_STRATEGY auto)"; strat="${strat,,}"
@@ -458,15 +469,61 @@ recommend_core_target() {
     resolved="$strat"
   fi
 
-  # --- requirement + composer constraint + require.php (floor = target) ---
-  local req composer require_php=""
-  local -a rationale=() warnings=()
+  # --- requirement + composer constraint + require.php + D10 honesty ---------
+  local req composer require_php="" effective_floor="" d10_support="n/a"
+  local -a rationale=() warnings=() suggested=()
+
+  # Target compatibility (strategy-independent): code that uses constructs newer
+  # than the target fatals even on the target PHP, so flag it regardless of the
+  # core strategy.
+  local target_compat_json="null"
+  if [[ -n "$detected_floor" ]]; then
+    if version_ge "$php_target" "$detected_floor"; then
+      target_compat_json="true"
+    else
+      target_compat_json="false"
+      warnings+=("The code uses PHP $detected_floor-only constructs but DRUPILOT_PHP_TARGET is $php_target — it will fatal on a Drupal 11 site running PHP $php_target. Raise DRUPILOT_PHP_TARGET to $detected_floor (confirm it is supported on the target Drupal 11 branch) or remove the construct.")
+    fi
+  fi
+
   if [[ "$resolved" == "keep-d10" ]]; then
     req="^10 || ^11"; composer="^10 || ^11"
-    require_php=">=$php_target"      # ALWAYS when keeping D10 (policy floor = target)
+    require_php=">=$php_target"      # safe default (policy floor = target)
     rationale+=("Strategy: keep-d10 ('^10 || ^11')${legacy_note:+ ($legacy_note)}.")
-    rationale+=("PHP floor is the target ($php_target); keeping Drupal 10 declares composer require.php \">=$php_target\".")
-    warnings+=("Drupal 10's own minimum is PHP 8.1, but this port targets PHP $php_target. require.php \">=$php_target\" blocks D10 sites below PHP $php_target at install time (composer) rather than fataling at runtime. If you do not need the D10 transition window, drop to '^11'.")
+
+    # Optionally widen the floor to the detected one (bounded to [8.1, target]).
+    if [[ "$floor_strategy" == "detect" && -n "$detected_floor" ]]; then
+      local f="$detected_floor"
+      version_ge "$f" "8.1" || f="8.1"            # never below Drupal 10's own minimum
+      version_ge "$php_target" "$f" || f="$php_target"   # never above the target
+      effective_floor="$f"
+      require_php=">=$f"
+      if [[ "$f" != "$php_target" ]]; then
+        rationale+=("Detected PHP floor is $f (heuristic scan), below the target $php_target — require.php is widened to \">=$f\" for genuine Drupal 10 (PHP $f) support.")
+        warnings+=("require.php was lowered to \">=$f\" from a best-effort syntactic scan. CONFIRM with PHPCompatibility (testVersion $f-) before release: a missed newer construct would let a Drupal 10 + PHP<$php_target site install and then fatal at runtime. Set DRUPILOT_REQUIRE_PHP_FLOOR=target to keep the conservative \">=$php_target\".")
+      else
+        rationale+=("PHP floor is the target ($php_target): the scan found PHP 8.2/8.3-only constructs (or the detected floor equals the target).")
+      fi
+    else
+      rationale+=("PHP floor is the target ($php_target); keeping Drupal 10 declares composer require.php \">=$php_target\". (Set DRUPILOT_REQUIRE_PHP_FLOOR=detect to derive a narrower, code-based floor.)")
+    fi
+
+    warnings+=("Drupal 10's own minimum is PHP 8.1, but this port's floor is ${effective_floor:-$php_target}. require.php \"$require_php\" blocks D10 sites below that floor at install time (composer) rather than fataling at runtime. If you do not need the D10 transition window, drop to '^11'.")
+
+    # The floor is only enforceable if the module ships a composer.json.
+    if [[ "$has_composer" != "true" ]]; then
+      warnings+=("This module has no composer.json, so require.php cannot be declared anywhere — an info.yml-only '^10 || ^11' module has NO way to enforce the PHP floor, and a D10 + low-PHP site would install and fatal. Either add a composer.json with \"require\": { \"php\": \"$require_php\" }, or declare '^11' only.")
+      suggested+=("Add a composer.json declaring \"require\": { \"php\": \"$require_php\" } (or drop to '^11'), so the PHP floor of the '^10 || ^11' declaration is actually enforced.")
+    fi
+
+    # D10 support is DECLARED here, not verified (cheap-scope honesty).
+    d10_support="declared-not-verified"
+    local digests_note=""
+    if config_bool DRUPILOT_USE_DIGESTS_RULES 1; then
+      digests_note=" The AI digests / ad-hoc Rector layer may introduce replacements newer than Drupal 10.0, so a raised minor (e.g. '^10.3 || ^11') is more likely — check it."
+    fi
+    warnings+=("Drupal 10 compatibility is DECLARED, not verified. drupal-rector's standard replacements are usually available across all of Drupal 10 (deprecation contract), but this was not checked here. If the port uses an API added in a later 10.x minor, set core_version_requirement to e.g. '^10.3 || ^11'; if it uses an API absent from Drupal 10, drop to '^11'.$digests_note")
+    suggested+=("Verify Drupal 10 compatibility (install on a Drupal 10 site, or run the test suite against Drupal 10) before relying on the '^10 || ^11' declaration.")
   else
     req="^11"; composer="^11"
     rationale+=("Strategy: d11-only ('^11')${legacy_note:+ ($legacy_note)}.")
@@ -499,9 +556,16 @@ recommend_core_target() {
     --arg require_php "$require_php" \
     --arg version_bump "$version_bump" \
     --arg php_target "$php_target" \
+    --arg php_floor_strategy "$floor_strategy" \
+    --arg php_floor_detected "$detected_floor" \
+    --arg php_floor_effective "$effective_floor" \
+    --argjson php_floor_target_compatible "$target_compat_json" \
+    --arg d10_support "$d10_support" \
+    --argjson has_composer_json "$has_composer" \
     --argjson bc_break "$([[ "$bc_break" == "1" ]] && echo true || echo false)" \
     --argjson rationale "$(arr_to_json ${rationale[@]+"${rationale[@]}"})" \
     --argjson warnings "$(arr_to_json ${warnings[@]+"${warnings[@]}"})" \
+    --argjson suggested "$(arr_to_json ${suggested[@]+"${suggested[@]}"})" \
     '{
       strategy: $strategy,
       phase: $phase,
@@ -512,8 +576,15 @@ recommend_core_target() {
       version_bump: $version_bump,
       bc_break: $bc_break,
       php_target: $php_target,
+      php_floor_strategy: $php_floor_strategy,
+      php_floor_detected: ($php_floor_detected | select(. != "") // null),
+      php_floor_effective: ($php_floor_effective | select(. != "") // null),
+      php_floor_target_compatible: $php_floor_target_compatible,
+      has_composer_json: $has_composer_json,
+      d10_support: $d10_support,
       rationale: $rationale,
-      warnings: $warnings
+      warnings: $warnings,
+      suggested_remaining_tasks: $suggested
     }'
 }
 

@@ -1,0 +1,23 @@
+<!--
+  drupilot — short comment posted on the Drupal.org issue when the Merge
+  Request is opened (also reused as the MR description, and as the comment for
+  the legacy patch-only flow). Rendered by scripts/contrib/make-issue.sh.
+  {{KIND}} is "merge request" or "patch".
+-->
+This {{KIND}} ports **{{PROJECT}}** to Drupal 11.
+
+{{SUMMARY}}
+
+This is a Phase 1 minimal port: it keeps the module's original behavior — no
+architectural refactoring, and no user interface, API or data-model changes.
+
+The attached patch (`{{PATCH_NAME}}`) is equivalent to this {{KIND}} and has been
+verified to apply cleanly onto `{{BASE}}`, so you can apply it to test the fix on
+your site before this is merged:
+
+    git apply {{PATCH_NAME}}        # or:  patch -p1 < {{PATCH_NAME}}
+
+Tracking issue: {{ISSUE_URL}}
+
+Credit: maintainers assign credit in this issue's Contribution Record — please
+make sure everyone who contributed is listed there.

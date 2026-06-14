@@ -70,6 +70,24 @@ slugify() {
     | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
 }
 
+# patch_applies_clean <repo> <patch> <baseref>
+# Verify the patch applies cleanly onto the TREE of <baseref> — i.e. onto the
+# version of the module the patch refers to — exactly as a user would do before
+# the change is merged. We check against a throwaway index seeded from <baseref>
+# (git apply --cached --check), so the working tree is never touched.
+# Returns 0 if it applies, 1 if it does not, 2 if the base could not be read.
+patch_applies_clean() {
+  local repo="$1" patch="$2" baseref="$3" idx rc
+  idx="$(mktemp "${TMPDIR:-/tmp}/drupilot-verify.XXXXXX")"
+  if ! GIT_INDEX_FILE="$idx" git -C "$repo" read-tree "$baseref" 2>/dev/null; then
+    rm -f "$idx"; return 2
+  fi
+  GIT_INDEX_FILE="$idx" git -C "$repo" apply --cached --check "$patch" >/dev/null 2>&1
+  rc=$?
+  rm -f "$idx"
+  return "$rc"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --module) MODULE="${2:-}"; shift 2;;
@@ -185,6 +203,13 @@ if [[ "$LOCAL" == "1" ]]; then
     exit 0
   fi
 
+  # Sanity-check that the preview applies onto the base. Warn-only here: the
+  # local patch is best-effort and must never break the surrounding port flow.
+  if ! patch_applies_clean "$REPO" "$PATCH_PATH" "$BASE_REF"; then
+    log_warn "Heads-up: this preview patch does not apply cleanly onto '$BASE_REF'."
+    log_warn "It is still written for inspection, but check your base ref before sharing it."
+  fi
+
   hr
   log_ok "Local patch written: $PATCH_PATH"
   log_info "Apply it elsewhere with:  git apply $PATCH_NAME   (or 'patch -p1 < $PATCH_NAME')"
@@ -275,6 +300,25 @@ if [[ ! -s "$PATCH_PATH" ]]; then
   rm -f "$PATCH_PATH"
   log_warn "No differences against $BASE_REF — nothing to patch. Did you commit your changes?"
   exit 0
+fi
+
+# ---------------------------------------------------------------------------
+# 3. Verify the patch applies cleanly onto the version it targets (origin/BASE).
+#    A contribution patch is meant to be applied by users before the MR is
+#    merged, so a patch that does not apply is unusable: this is a HARD gate —
+#    we do NOT emit a broken patch.
+# ---------------------------------------------------------------------------
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
+if patch_applies_clean "$REPO_ROOT" "$PATCH_PATH" "$BASE_REF"; then
+  log_ok "Verified: the patch applies cleanly onto '$BASE_REF'."
+else
+  rm -f "$PATCH_PATH"
+  log_err "The generated patch does NOT apply cleanly onto '$BASE_REF'."
+  log_err "A contribution patch must apply onto the version it targets so users can"
+  log_err "test the fix before the MR is merged. The broken patch was discarded."
+  log_plain "   Re-fetch and rebase the branch onto the correct base, then re-run:"
+  log_plain "     git fetch origin && git rebase $BASE_REF"
+  exit 1
 fi
 
 hr

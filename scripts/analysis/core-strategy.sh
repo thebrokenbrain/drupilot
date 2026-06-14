@@ -74,6 +74,18 @@ if ! is_drupal_extension_dir "$SUBJECT_ABS"; then
   log_warn "No *.info.yml in '$SUBJECT_ABS' — treating current core_version_requirement as unknown."
 fi
 
+# --- Derive the code-based PHP floor (used only when keeping Drupal 10) -----
+# Cheap, read-only heuristic scan; skipped when the conservative 'target'
+# strategy is selected or the caller already provided a floor.
+FLOOR_STRATEGY="$(config_get DRUPILOT_REQUIRE_PHP_FLOOR detect)"
+if [[ "${FLOOR_STRATEGY,,}" == "detect" && -z "${DRUPILOT_DETECTED_PHP_FLOOR:-}" ]]; then
+  DETECT_SCRIPT="$(plugin_root)/scripts/analysis/detect-php-floor.sh"
+  if [[ -r "$DETECT_SCRIPT" ]]; then
+    DF="$(bash "$DETECT_SCRIPT" --subject "$SUBJECT_ABS" --json 2>/dev/null | jq -r '.floor // empty' 2>/dev/null || true)"
+    [[ -n "$DF" ]] && export DRUPILOT_DETECTED_PHP_FLOOR="$DF"
+  fi
+fi
+
 # --- Compute the recommendation (JSON on stdout from the helper) -----------
 JSON="$(recommend_core_target "$SUBJECT_ABS" "$PHASE" "$BC_OVERRIDE")"
 
@@ -89,11 +101,24 @@ if [[ "$JSON_ONLY" -eq 0 ]]; then
   log_plain "  composer drupal/core constraint  : $(get '.composer_core_constraint')"
   log_plain "  composer require.php             : $(get '.require_php')"
   log_plain "  PHP target (policy floor)        : $(get '.php_target')"
+  log_plain "  PHP floor (detected/effective)   : $(get '.php_floor_detected') / $(get '.php_floor_effective')"
+  # Render the boolean explicitly: jq's `//` treats false as empty, so `get`
+  # would hide the all-important `false` as "-".
+  TCOMPAT="$(printf '%s' "$JSON" | jq -r '.php_floor_target_compatible | if . == null then "- (no constructs scanned)" elif . then "yes" else "NO — uses constructs newer than the target" end')"
+  log_plain "  Compatible with PHP target       : $TCOMPAT"
+  log_plain "  Drupal 10 support                : $(get '.d10_support')"
   log_plain "  Version bump (SemVer)            : $(get '.version_bump')"
 
   log_plain ""
   log_plain "  Rationale:"
   printf '%s' "$JSON" | jq -r '.rationale[] | "    - " + .' >&2 || true
+
+  SUGG_COUNT="$(printf '%s' "$JSON" | jq -r '.suggested_remaining_tasks | length')"
+  if [[ "$SUGG_COUNT" != "0" ]]; then
+    log_plain ""
+    log_plain "  Suggested remaining tasks (for the issue / before release):"
+    printf '%s' "$JSON" | jq -r '.suggested_remaining_tasks[] | "    + " + .' >&2 || true
+  fi
 
   WARN_COUNT="$(printf '%s' "$JSON" | jq -r '.warnings | length')"
   if [[ "$WARN_COUNT" != "0" ]]; then
