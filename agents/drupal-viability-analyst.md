@@ -101,15 +101,22 @@ not reinvent their logic; capture and interpret their output.
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject <DIR>
    # add --digests to include the complementary digests pass (dry-run too)
+   # add --json for {changed_files, files, pass1_files, pass2_files}
    ```
 4. **PHPStan at the deprecation level** (`DRUPILOT_PHPSTAN_LEVEL`, default 2):
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject <DIR>
+   # add --json for native {totals:{errors,file_errors}, files:{...}}
    ```
 5. **PHPCS** (read-only, no `--fix`) for coding-standard distance:
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpcs.sh" --subject <DIR>
+   # add --json for native {totals:{errors,warnings,fixable}, files:{...}}
    ```
+
+Prefer the `--json` counts for the S/M/L/XL verdict so it is **reproducible**
+(the same module yields the same numbers) rather than estimated from the human
+report. Fall back to reading the report only if a tool's JSON is unavailable.
 6. **Upgrade Status** — only if Drupal is installed in DDEV:
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-upgrade-status.sh" --module <NAME>

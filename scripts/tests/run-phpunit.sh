@@ -250,21 +250,55 @@ fi
 
 # Persist a machine-readable record so /drupilot-status and the flow read the
 # outcome (and any documented skip) without re-running — a deterministic record.
+#
+# preservation: the behavior-preservation gate verdict drupilot reports honestly:
+#   verified              -> every applicable group ran and passed (nothing skipped).
+#   verified-partial      -> the groups that ran passed, but some were skipped (an
+#                            external blocker), so part of the behavior is unproven.
+#   regression            -> at least one group failed (a production-code defect
+#                            to fix in code, never a test relaxed to fake green).
+#   not-verified-blocked  -> tests exist but none could run (e.g. Selenium absent).
+#   not-verified-no-tests -> the subject ships no tests in the selected scope, so
+#                            preservation cannot be proven (drupilot never fabricates
+#                            tests in Phase 1).
+# coverage records only what was actually collected (requested + the HTML path);
+# a percentage is NOT computed in Phase 1, so the field stays honest about that.
 if have_cmd jq; then
   STATE_DIR="$(project_state_dir "$SUBJECT")"
   RUN_STATUS="passed"
   [[ "$FAILED" -gt 0 ]] && RUN_STATUS="failed"
   [[ "$RAN" -eq 0 && "$FAILED" -eq 0 ]] && RUN_STATUS="none-run"
+
+  PRESERVATION="verified"
+  if [[ "$FAILED" -gt 0 ]]; then
+    PRESERVATION="regression"
+  elif [[ "$RAN" -eq 0 ]]; then
+    [[ "$SKIPPED" -gt 0 ]] && PRESERVATION="not-verified-blocked" || PRESERVATION="not-verified-no-tests"
+  elif [[ "$SKIPPED" -gt 0 ]]; then
+    # Some groups passed, but others were skipped (an external blocker), so the
+    # green is only partial — never report a full 'verified' over a skip.
+    PRESERVATION="verified-partial"
+  fi
+
+  COV_REQUESTED="false"; COV_HTML_PATH=""
+  if [[ "$COVERAGE" == "1" ]]; then
+    COV_REQUESTED="true"
+    if [[ ${#RUNNER[@]} -gt 0 ]]; then COV_HTML_PATH="$DRUPAL_ROOT/${COV_HTML_REL:-}"; else COV_HTML_PATH="${COV_HTML_DIR:-}"; fi
+  fi
+
   jq -n \
-    --arg type "$TYPE" --arg status "$RUN_STATUS" \
+    --arg type "$TYPE" --arg status "$RUN_STATUS" --arg preservation "$PRESERVATION" \
     --argjson ran "$RAN" --argjson passed "$PASSED" \
     --argjson failed "$FAILED" --argjson skipped "$SKIPPED" \
     --argjson failed_groups "$(arr_to_json ${FAILED_GROUPS[@]+"${FAILED_GROUPS[@]}"})" \
     --argjson skipped_groups "$(arr_to_json ${SKIPPED_GROUPS[@]+"${SKIPPED_GROUPS[@]}"})" \
     --arg js_skipped_reason "$SELENIUM_NOTE" \
-    '{type:$type, status:$status, ran:$ran, passed:$passed, failed:$failed,
+    --argjson cov_requested "$COV_REQUESTED" --arg cov_html "$COV_HTML_PATH" \
+    '{type:$type, status:$status, preservation:$preservation,
+      ran:$ran, passed:$passed, failed:$failed,
       skipped:$skipped, failed_groups:$failed_groups, skipped_groups:$skipped_groups,
-      js_skipped_reason: ($js_skipped_reason | select(. != "") // null)}' \
+      js_skipped_reason: ($js_skipped_reason | select(. != "") // null),
+      coverage: {requested:$cov_requested, html: ($cov_html | select(. != "") // null), percent: null}}' \
     > "$STATE_DIR/last-test.json" 2>/dev/null || true
 fi
 

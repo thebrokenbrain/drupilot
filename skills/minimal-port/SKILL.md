@@ -116,6 +116,16 @@ runs, so the same project always applies the same digests rules.
 The `issues/*.md` summaries in the repo explain *why* an API changed — useful
 context when reviewing a diff, but they are not rules.
 
+**Make the review participatory (G5).** The `/drupilot-port` command renders the
+review as a tab (Review and pick / Apply all unflagged / Skip). To support it,
+run `run-rector.sh --subject <path> --digests --json` for the structured
+`{pass2_files, ...}` view, present a per-rule list (rule → target API/min-version
+→ files) with floor-exceeding rules **pre-flagged**, and apply only what the
+developer keeps. Before applying, suggest a **git checkpoint**
+(`git add -A && git commit -m "wip: before digests"`) so a disliked pass can be
+dropped with a single `git reset --hard`. In an autonomous run the safe default
+is to skip the pre-flagged rules and report them.
+
 ## 4. Pass 3 — ad-hoc rule generation (optional, the "Dries approach")
 
 For deprecations **no** source covers, honor `DRUPILOT_GENERATE_RULES`
@@ -231,9 +241,23 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/make-patch.sh" --local --subject "<p
 ```
 
 This writes `MODULE-port-to-drupal-11.patch` next to the module (diff scoped to
-the module subtree, new files included, the developer's git index untouched). It
-is distinct from the **contribution** patch (named `[module]-[desc]-[issue]-[comment].patch`)
-that `drupal-contribution` produces alongside the Merge Request — see §5 there.
+the module subtree, new files included, the developer's git index untouched).
+
+Two more things to remember:
+
+- This is a **standalone, anytime** action, decoupled from contribution — the
+  developer can ask for it at any point via the **`/drupilot-patch`** command (no
+  `contribute` gate, no SSH/PAT, no push, no network).
+- Passing `--issue ID [--comment N]` names it with the Drupal.org **issue-comment**
+  convention (`[module]-[desc]-[issue]-[comment].patch`) while still being produced
+  the offline way — for attaching to an issue to test now and contributing later.
+  The **merge-verified** contribution patch (rebased onto `origin/BASE`, hard-gated
+  to apply cleanly) is the separate thing `drupal-contribution` produces alongside
+  the Merge Request — see §5 there.
+
+At the end of the stage, put the developer back in control of what comes next with
+a tabbed choice (the `/drupilot-port` command renders it): run the tests, get the
+patch (local or issue-comment), refactor (opt-in), or contribute (opt-in).
 
 ## 8. Report and hand off
 

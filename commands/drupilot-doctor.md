@@ -1,7 +1,7 @@
 ---
 description: Verify all drupilot software requirements (git, jq, php/composer, Docker + daemon, DDEV, SSH/PAT for contribution) grouped by what each is for, with per-platform install instructions, then OPTIONALLY run assisted installation after explicit confirmation. Use for "/drupilot-doctor", "check my setup", "what do I need to install", or when a command reports a missing hard requirement.
 argument-hint: "[install]"
-allowed-tools: Bash, Read, Skill
+allowed-tools: Bash, Read, Skill, AskUserQuestion
 ---
 
 # drupilot — doctor (requirements check + assisted install)
@@ -55,11 +55,24 @@ Assisted install only runs when the user clearly asks for it — either the argu
 `$1` is `install`, or the user confirms after you offer. **Never install anything
 without explicit confirmation.**
 
-1. List exactly which tools you would install (only the missing/insufficient ones) and
-   the command that will be used per the detected OS.
-2. Note the limitations: Docker needs a manual group-add + re-login (guided, not forced)
-   and the daemon must then be started; package managers require sudo.
-3. Ask for confirmation.
+**Decision point — let the developer choose what to install (G4/G5).** When there
+is at least one missing/insufficient *installable* tool (git, jq, php, composer,
+docker, ddev — not the manual items like the drupal.org account or SSH key), use
+**AskUserQuestion** to put them in control instead of a yes/no:
+
+- A **multi-select** (header "Install") listing each missing installable tool as
+  an option, pre-selected, so the developer can deselect any they want to handle
+  themselves.
+- Plus a single follow-up (header "How"): **Install selected** /
+  **Show the commands first** (print the per-OS commands, install nothing) /
+  **Skip** (leave it to the developer).
+
+Then:
+
+1. Confirm exactly which tools will be installed (only the selected
+   missing/insufficient ones) and the command used per the detected OS.
+2. Note the limitations: Docker needs a manual group-add + re-login (guided, not
+   forced) and the daemon must then be started; package managers require sudo.
 
 For the privileged steps the installer needs `sudo` without a TTY. On Linux, set this
 up first with the global **sudo-askpass** skill (it auto-detects the desktop's askpass

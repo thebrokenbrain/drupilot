@@ -39,6 +39,9 @@
 #   --description  patch description slug (default 'port-to-drupal-11').
 #   --patch-name   explicit patch filename to reference (overrides the derived).
 #   --kind         'mr' (default) or 'patch' — wording in the comment.
+#   --phase        'port' (default) or 'refactor' — drives the default Problem/
+#                  Proposed-resolution prose (a minimal port preserves behavior;
+#                  a refactor modernizes to the Drupal 11 way with a major bump).
 #   --title        issue title (default: DRUPILOT_ISSUE_TITLE).
 #   --summary      one/two-line summary of what the port did (comment body).
 #   --problem      Problem/Motivation prose (default: a generic port rationale).
@@ -64,6 +67,7 @@ COMMENT="1"
 DESCRIPTION="port-to-drupal-11"
 PATCH_NAME=""
 KIND="mr"
+PHASE="port"
 TITLE=""
 SUMMARY=""
 PROBLEM=""
@@ -99,6 +103,8 @@ while [[ $# -gt 0 ]]; do
     --patch-name=*) PATCH_NAME="${1#*=}"; shift;;
     --kind) KIND="${2:-}"; shift 2;;
     --kind=*) KIND="${1#*=}"; shift;;
+    --phase) PHASE="${2:-}"; shift 2;;
+    --phase=*) PHASE="${1#*=}"; shift;;
     --title) TITLE="${2:-}"; shift 2;;
     --title=*) TITLE="${1#*=}"; shift;;
     --summary) SUMMARY="${2:-}"; shift 2;;
@@ -181,17 +187,33 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Default prose (accurate for a Phase 1 minimal port; override via flags).
+# Default prose. Phase-aware: a Phase 1 minimal port (default) vs a Phase 2
+# "Drupal 11 way" refactor produce a different change-set, so the issue text
+# should not always claim "no behavior change". Override any of these via flags.
 # ---------------------------------------------------------------------------
+case "${PHASE,,}" in port|refactor) : ;; *) PHASE="port";; esac
+
 [[ -n "$PROBLEM" ]] || PROBLEM="\`$PROJECT\` is not yet compatible with Drupal 11. It uses APIs that were deprecated in Drupal 10 and removed in Drupal 11, and/or its \`*.info.yml\` \`core_version_requirement\` does not allow \`^11\`, so it cannot be installed or run on a Drupal 11 site."
 
-[[ -n "$RESOLUTION" ]] || RESOLUTION="Make \`$PROJECT\` Drupal 11 compatible with the smallest possible change, preserving its current behavior:
+if [[ -z "$RESOLUTION" ]]; then
+  if [[ "$PHASE" == "refactor" ]]; then
+    RESOLUTION="Make \`$PROJECT\` Drupal 11 compatible AND modernize it to the Drupal 11 way, keeping the public behavior stable:
+
+- Apply the automated \`drupal-rector\` fixes for the removed/deprecated APIs.
+- Update \`core_version_requirement\` to \`^11\` (a major version bump — see Remaining tasks).
+- Modernize: PHP 8 attributes for plugins, dependency injection, strict types, and current Symfony 7 / Twig 3 / Guzzle 7 idioms; zero deprecations; PHPStan clean at the refactor level.
+
+This is a Phase 2 refactor: the public API/behavior is preserved (the test suite stays green), but the implementation is modernized."
+  else
+    RESOLUTION="Make \`$PROJECT\` Drupal 11 compatible with the smallest possible change, preserving its current behavior:
 
 - Apply the automated \`drupal-rector\` fixes for the removed/deprecated APIs.
 - Update \`core_version_requirement\` to allow \`^11\` (keeping \`^10\` where the code stays backwards compatible).
 - Apply the remaining mechanical fixes Rector cannot make (Twig, CKEditor 5, jQuery UI, Symfony 7 where applicable).
 
 This is a Phase 1 minimal port: no architectural refactoring and no behavior change."
+  fi
+fi
 
 [[ -n "$REMAINING" ]] || REMAINING="- [ ] Review the $KIND_TEXT.
 - [ ] Run the test suite on Drupal 11.

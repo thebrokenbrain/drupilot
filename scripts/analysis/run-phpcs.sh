@@ -10,16 +10,20 @@
 # this script does not install anything, it only runs the binaries.
 #
 # Usage:
-#   run-phpcs.sh --subject DIR [--fix]
+#   run-phpcs.sh --subject DIR [--fix] [--json]
 #
 # Options:
 #   --subject DIR   Path to the module/theme to check (relative to the Drupal
 #                   root or absolute). Required.
 #   --fix           Run phpcbf first (autofix), then re-check with phpcs.
+#   --json          Emit PHPCS's native JSON (`--report=json`) on STDOUT —
+#                   `{totals:{errors,warnings,fixable}, files:{...}}` — for a
+#                   reproducible count. With --fix, phpcbf output is kept off
+#                   stdout so it stays pure JSON.
 #   -h, --help      Show this help.
 #
 # Gate: `analyze` profile (git + jq + composer/php).
-# Output: status/logging on STDERR; phpcs/phpcbf reports on STDOUT.
+# Output: status/logging on STDERR; phpcs/phpcbf reports (or JSON) on STDOUT.
 # =============================================================================
 set -euo pipefail
 
@@ -32,6 +36,7 @@ PHPCS_STANDARD="Drupal,DrupalPractice"
 
 SUBJECT=""
 FIX=0
+AS_JSON=0
 
 usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
 
@@ -40,6 +45,7 @@ while [[ $# -gt 0 ]]; do
     --subject) SUBJECT="${2:-}"; shift 2;;
     --subject=*) SUBJECT="${1#*=}"; shift;;
     --fix) FIX=1; shift;;
+    --json) AS_JSON=1; shift;;
     -h|--help) usage; exit 0;;
     *) log_warn "Unknown argument: $1"; shift;;
   esac
@@ -109,12 +115,12 @@ if ! "${ICMD[@]}" vendor/bin/phpcs -i 2>/dev/null | grep -qi 'DrupalPractice'; t
   fi
 fi
 
-# build_cmd <bin> -> populates the global REPLY array with the full command
+# run_tool <bin> [extra args...] -> run phpcs/phpcbf with the Drupal standards.
 run_tool() {
-  local bin="$1"
+  local bin="$1"; shift
   declare -a cmd=()
   [[ -n "$RUNNER" ]] && read -r -a cmd <<<"$RUNNER"
-  cmd+=("vendor/bin/$bin" "--standard=$PHPCS_STANDARD" "--extensions=$PHPCS_EXTENSIONS" "$SUBJECT_REL")
+  cmd+=("vendor/bin/$bin" "--standard=$PHPCS_STANDARD" "--extensions=$PHPCS_EXTENSIONS" "$@" "$SUBJECT_REL")
   log_step "$bin: ${cmd[*]}"
   set +e
   "${cmd[@]}"
@@ -127,13 +133,23 @@ run_tool() {
 if [[ "$FIX" == "1" ]]; then
   log_info "Autofixing with phpcbf (this modifies files in place)."
   # phpcbf returns 1 when it fixed something and 2 on real errors; neither is fatal here.
-  run_tool phpcbf || true
+  # In --json mode keep phpcbf's report off stdout so the only thing there is JSON.
+  if [[ "$AS_JSON" == "1" ]]; then run_tool phpcbf >&2 || true; else run_tool phpcbf || true; fi
   hr
 fi
 
 # --- Report pass (phpcs) --------------------------------------------------
-run_tool phpcs
-RC=$?
+if [[ "$AS_JSON" == "1" ]]; then
+  # Native JSON report; capture stdout so it stays pure JSON (logs are on stderr).
+  set +e
+  OUT="$(run_tool phpcs --report=json 2>/dev/null)"
+  RC=$?
+  set -e
+  [[ -n "$OUT" ]] && printf '%s\n' "$OUT"
+else
+  run_tool phpcs
+  RC=$?
+fi
 
 hr
 if [[ "$RC" -eq 0 ]]; then

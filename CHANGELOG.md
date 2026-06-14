@@ -11,6 +11,165 @@ release, rename `[Unreleased]` to the new version with a date, bump `version`
 in `.claude-plugin/plugin.json` (and the `marketplace.json` entry) to match, and
 tag the commit `vX.Y.Z`.
 
+## [Unreleased]
+
+## [0.7.0] - 2026-06-14
+
+Phase 2 — an exhaustive UX/capability overhaul making the port guided, pleasant
+and developer-in-control: tabbed decisions at every consequential fork, a
+first-class patch decoupled from contribution, visible state (preservation
+verdict, what-changed report card, frozen lock), and new insight tools
+(dependency D11 panel, upstream issue search, deprecation explainer).
+
+### Added
+- **Tabbed-choice primitive `choose_one()`** in `scripts/lib/common.sh` — the
+  multi-option sibling of `confirm()`. Labeled options to stderr, chosen value to
+  stdout, `DRUPILOT_CHOICE_<KEY>` override (validated against the options), real
+  `/dev/tty` selection, and a fail-safe default when there is no terminal. It is
+  the script-side fallback for the `AskUserQuestion` tabs the commands use.
+- **Per-project preference tier `.drupilot.json`** at the Drupal root, read by
+  `config_get` **between** the env override and `defaults.json` (env still wins),
+  written by the new `prefs_set()`. This is how in-flow tabbed answers (core
+  target, PHP target, refactor scope, contrib mode) persist across runs.
+- **`config_enum()`** in `common.sh` (clean error + non-zero on an out-of-set
+  value), wired into `preflight.sh` as a **non-fatal** sanity check that warns
+  early on a misconfigured `DRUPILOT_CONTRIB_MODE` / `CORE_TARGET_STRATEGY` /
+  `REQUIRE_PHP_FLOOR` / `GENERATE_RULES` (env or `.drupilot.json`).
+- **`announce_patch()`** presentation helper for a consistent "patch ready + how
+  to apply it" summary (stderr only, stdout stays the patch path).
+- **`scripts/env/ensure-gitignore.sh`** + `templates/gitignore.tmpl` — idempotently
+  ensures the Drupal root's `.gitignore` ignores drupilot's generated artifacts
+  (`.phpstan-cache/`, `.drupilot-coverage/`, `.drupilot.json`) via a
+  marker-delimited managed block **merged** into any existing `.gitignore` (never
+  overwriting the project's own ignores). Called by `/drupilot-setup`.
+- **`/drupilot-patch` command** — a first-class, gate-free way to get the port's
+  `.patch` **independently of contributing**: offline, no push, no rebase, no
+  `contribute` gate. A tabbed choice produces either a plain local-test patch or
+  one named with the Drupal.org issue-comment convention (to attach to an issue and
+  test now, contributing the Merge Request later). `make-patch.sh --local` now
+  accepts `--issue ID [--comment N]` for that issue-comment naming, still produced
+  the offline way.
+- **Tabbed decision points (`AskUserQuestion`) at the high-value forks.** Added
+  `AskUserQuestion` to the relevant commands and surfaced the consequential choices
+  as tabs (recommendation pre-selected, persisted to `.drupilot.json`): the router's
+  ambiguous-intent (full port / next step / auto), the **core target** in
+  `/drupilot-port` (keep D10+11 / D11-only / let drupilot decide, showing the
+  `require.php` floor and SemVer bump), the **PHP target** picker in
+  `/drupilot-setup` (8.4 recommended / 8.3 safe / 8.5 unconfirmed), the
+  **contribute mode** and a **push** tab in `/drupilot-contribute` (show diff /
+  push / local patch only / cancel), the **missing-tools** multi-select in
+  `/drupilot-doctor`, and an **end-of-stage "what next?"** fork in `/drupilot-port`
+  and `/drupilot-refactor`. Outward-facing options are conditioned on
+  `autonomous=false`.
+- **`scripts/env/next-step.sh`** — the single source of truth for the
+  `doctor → setup → assess → port → [refactor] → test → [contribute]` ladder,
+  emitting the recommended next step + reason as JSON/human from the per-project
+  state (assess/phase/last-test/lock). It takes the readiness booleans the caller
+  already parsed from `preflight --json` (no second preflight run).
+
+- **Structured `--json` from the analyzers (reproducible verdict).** `run-phpstan.sh`
+  (`--error-format=json`), `run-phpcs.sh` (`--report=json`) and `run-rector.sh`
+  (a `{changed_files, files, pass1_files, pass2_files}` summary) now emit machine
+  counts on stdout, so the S/M/L/XL assessment verdict and the auto-fixable share
+  are derived from real numbers instead of being estimated from the human report.
+  The `viability-assessment` skill and `drupal-viability-analyst` agent prefer them.
+- **Participatory digests review.** Because the digests layer is unlicensed,
+  AI-generated code touching the developer's module, `/drupilot-port` now reviews
+  it rule-by-rule (rule → target API/min-version → files), **pre-flags** rules whose
+  target API is newer than the kept `^10 || ^11` floor (which would silently raise
+  `core_version_requirement`), and offers a tab (Review and pick / Apply all
+  unflagged / Skip) with a git-checkpoint suggestion so a disliked pass can be
+  dropped. The autonomous default is to skip flagged rules.
+- **Port report card (`port-report.sh`).** A new, human-friendly `port-report.md`
+  summarizing what the port did and why — core target, `require.php`, PHP target,
+  version bump, the **preservation** verdict, the official-rector file count, the
+  digests rules **applied vs rejected (with reason)**, manual edits, remaining
+  deprecations, what was deferred to Phase 2, and the patch. Rendered from a
+  per-port `port-manifest.json` plus the cached assess/test state; every field is
+  optional and never invented. `/drupilot-port` and `/drupilot-refactor` write it.
+- **Visible reproducibility lock.** `lock_show` / `lock_clear` in `common.sh` let
+  the developer inspect (or reset) the frozen toolchain; `/drupilot-status` now
+  pretty-prints the whole lock instead of only naming the core/digests SHA.
+- **Granular Phase 2 refactor scope.** `/drupilot-refactor` now offers a
+  multi-select (attributes / dependency injection / strict types / `final` by
+  default / remove-all-deprecations, all pre-selected) plus a PHPStan level pick
+  (6/5/4), persisted to `.drupilot.json` (`DRUPILOT_REFACTOR_SCOPE`,
+  `DRUPILOT_PHPSTAN_LEVEL_REFACTOR`). It applies only the chosen modernizations and
+  reports when the bar was lowered by choice. `make-issue.sh --phase port|refactor`
+  makes the generated issue prose match the actual change-set (a refactor no longer
+  claims "no behavior change").
+- **Dependency Drupal 11 readiness panel (`deps-status.sh`).** Lists the subject's
+  contrib dependencies (from `composer.json` + `*.info.yml`) and checks each against
+  the drupal.org release-history feed — `ready` / `not-ready` / `not-on-drupalorg` /
+  `unknown` (when the network is blocked — never guessed). Surfaces blockers (a dep
+  with no D11 release) before the port stalls on them. Wired into the viability
+  assessment.
+- **Upstream issue search (`find-upstream-issue.sh`).** Before porting a contrib
+  project, checks the drupal.org issue queue for an existing Drupal 11 effort
+  (best-effort title scan via the api-d7 feed) so the developer can base on existing
+  work; always prints the pre-filtered issue-queue URL as the reliable fallback.
+  Offered as a tab in `/drupilot-assess`.
+- **Deprecation explainer (`explain-deprecations.sh` + `config/deprecations.json`).**
+  Annotates each known deprecated symbol in the analyzer output with what changed,
+  the modern fix, and a drupal.org change-records link (a deterministic search URL
+  keyed by the symbol — never a hardcoded, fabricatable node id). Turns cryptic red
+  output into a learning aid; piped into the viability assessment.
+
+### Changed
+- **The router and `/drupilot-status` no longer restate the next-step ladder** in
+  prose — both call `next-step.sh`, so they can never drift apart. Both also carry a
+  standing aside that `/drupilot-patch` produces a patch any time, decoupled from
+  contribution. The patch is now surfaced in the `minimal-port` / `full-refactor`
+  skills and the `drupal-contrib-publisher` / `drupal-port-orchestrator` agents too.
+- **Phase-aware, controllable post-edit lint.** `DRUPILOT_POST_EDIT_LINT`
+  (`autofix` default / `report` / `off`) governs the PostToolUse hook, which now
+  **states when phpcbf modified a file** (no more silent in-place edits) and, during
+  Phase 1, surfaces compatibility ERRORS only — deferring DrupalPractice style
+  WARNINGS to `/drupilot-refactor`. `DRUPILOT_SESSION_CONTEXT=off` silences the
+  SessionStart summary.
+
+### Fixed
+- **Self-review hardening (pre-release).** A code review of the phase-2 diff caught
+  and fixed: `next-step.sh` recommending `/drupilot-contribute` as "green" on a
+  `none-run` test result (it now reports preservation honestly as not-verified);
+  the digests/deprecation explainer's CKEditor entry using a PCRE lookahead that
+  POSIX `grep -E` rejects (entry was silently dead); `find_drupal_root` climbing
+  past a `docroot: '.'` project nested in a monorepo (it now checks the directory's
+  own markers first); the phase-1 lint gate matching ERROR case-insensitively (a
+  WARNING whose text said "error" tripped it); `run-rector.sh --json` word-splitting
+  file paths containing spaces; and `run-phpunit.sh` reporting full `verified`
+  preservation when some test groups were skipped (now `verified-partial`).
+- **Drupal root detection for the standard `docroot: web` layout.**
+  `find_drupal_root()` returned the docroot (`.../web`) instead of the
+  composer/DDEV project root, because a bare `web/core/lib/Drupal.php` matched at
+  `web/` before reaching the real root. That made `$ROOT/.ddev/config.yaml`
+  checks miss — so the router and `/drupilot-status` thought DDEV was not
+  configured and looped recommending `/drupilot-setup` — and broke host-mode
+  relative paths (`vendor/bin`, `web/core`, the subject-relative path). Now it
+  prefers project-root signals (`.ddev/config.yaml`, `$dir/web/core`) and resolves
+  a bare-core docroot to its composer/DDEV parent. Verified across `docroot: web`,
+  `docroot: '.'`, and standing-in-root layouts.
+- **Autonomy guard.** `hooks/scripts/guard-contrib.sh` now enforces the documented
+  promise that an autonomous run (`DRUPILOT_AUTONOMOUS=true`) never performs an
+  outward-facing action **on its own**: it asks for human confirmation regardless
+  of `DRUPILOT_CONTRIB_MODE`, so an unattended run cannot push/MR even in `auto`
+  contribution mode (previously `auto` contribution mode allowed the push outright).
+- **Honest test-state record.** `scripts/tests/run-phpunit.sh` now persists a
+  `preservation` verdict (`verified` / `regression` / `not-verified-blocked` /
+  `not-verified-no-tests`) and an honest `coverage` object (`requested`, `html`,
+  `percent: null` — Phase 1 does not compute a coverage figure) in
+  `last-test.json`. Reconciled the record name and shape across
+  `skills/test-adaptation/SKILL.md` (which called it `tests.json` and claimed an
+  unpersisted coverage field) and the `common.sh` lockfile comment.
+- **Reliable terminal detection.** `confirm()` (and the new `choose_one()`) now
+  test that `/dev/tty` can actually be **opened**, not merely that the node is
+  read-permissioned, so in a non-interactive context (Claude Code Bash tool, cron,
+  CI) they fall back to the default silently instead of printing a prompt/menu and
+  a `/dev/tty` open error.
+- Clarified in `config/defaults.json` that `DRUPILOT_PHP_TARGET` (8.3, the
+  conservative default floor) is intentionally distinct from
+  `php_support.recommended` (8.4, what the setup picker highlights).
+
 ## [0.6.0] - 2026-06-14
 
 ### Added
@@ -249,7 +408,8 @@ tag the commit `vX.Y.Z`.
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/thebrokenbrain/drupilot/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.4.0...v0.5.0

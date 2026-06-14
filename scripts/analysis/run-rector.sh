@@ -32,10 +32,15 @@
 #                      (default: DRUPILOT_DIGESTS_REF, falling back to 'main').
 #   --config PATH      Explicit Rector config for the complementary pass
 #                      (overrides the cloned digests all.php). Implies --digests.
+#   --json             Emit a JSON summary on STDOUT instead of the plain file
+#                      list: {changed_files, files, pass1_files, pass2_files} —
+#                      pass1 = official, pass2 = digests. Used for the reproducible
+#                      verdict and the per-pass digests review.
 #   -h, --help         Show this help.
 #
 # Gate: `analyze` profile (git + jq + composer/php).
-# Output: status/logging on STDERR; a plain list of changed files on STDOUT.
+# Output: status/logging on STDERR; a plain list of changed files (or, with
+#         --json, a JSON summary) on STDOUT.
 # =============================================================================
 set -euo pipefail
 
@@ -47,6 +52,7 @@ APPLY=0
 USE_DIGESTS=0
 DIGESTS_REF=""
 DIGESTS_CONFIG=""
+AS_JSON=0
 
 usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
 
@@ -60,6 +66,7 @@ while [[ $# -gt 0 ]]; do
     --digests-ref=*) DIGESTS_REF="${1#*=}"; USE_DIGESTS=1; shift;;
     --config) DIGESTS_CONFIG="${2:-}"; USE_DIGESTS=1; shift 2;;
     --config=*) DIGESTS_CONFIG="${1#*=}"; USE_DIGESTS=1; shift;;
+    --json) AS_JSON=1; shift;;
     -h|--help) usage; exit 0;;
     *) log_warn "Unknown argument: $1"; shift;;
   esac
@@ -297,11 +304,10 @@ fi
 
 # --- Summary --------------------------------------------------------------
 hr
-{
-  CHANGED="$(
-    { emit_changed_files "$PASS1_RAW"; [[ -n "$PASS2_RAW" ]] && emit_changed_files "$PASS2_RAW"; } | sort -u
-  )"
-} || CHANGED=""
+PASS1_FILES="$(emit_changed_files "$PASS1_RAW" 2>/dev/null || true)"
+PASS2_FILES=""
+[[ -n "$PASS2_RAW" ]] && PASS2_FILES="$(emit_changed_files "$PASS2_RAW" 2>/dev/null || true)"
+CHANGED="$( { printf '%s\n' "$PASS1_FILES"; printf '%s\n' "$PASS2_FILES"; } | grep -v '^$' | sort -u || true)"
 
 COUNT=0
 [[ -n "$CHANGED" ]] && COUNT="$(printf '%s\n' "$CHANGED" | grep -c . || true)"
@@ -314,7 +320,21 @@ else
   log_info "Re-run with --apply once you have reviewed the proposed diff."
 fi
 
-# STDOUT: the parseable changed-files list (relative to the Drupal root).
-if [[ -n "$CHANGED" ]]; then
+# STDOUT: a JSON summary (--json) or the parseable changed-files list.
+# Build the JSON arrays by splitting on NEWLINES only (jq -R reads whole lines),
+# so a file path containing a space is never split into two bogus entries.
+lines_to_json() { printf '%s\n' "${1:-}" | jq -R . | jq -s -c 'map(select(length>0))'; }
+if [[ "$AS_JSON" == "1" ]]; then
+  if have_cmd jq; then
+    jq -n \
+      --argjson files "$(lines_to_json "$CHANGED")" \
+      --argjson pass1 "$(lines_to_json "$PASS1_FILES")" \
+      --argjson pass2 "$(lines_to_json "$PASS2_FILES")" \
+      --argjson count "$COUNT" --argjson digests "$([[ "$USE_DIGESTS" == "1" ]] && echo true || echo false)" \
+      --argjson applied "$([[ "$APPLY" == "1" ]] && echo true || echo false)" \
+      '{tool:"rector", applied:$applied, digests_pass:$digests, changed_files:$count,
+        files:$files, pass1_files:$pass1, pass2_files:$pass2}'
+  fi
+elif [[ -n "$CHANGED" ]]; then
   printf '%s\n' "$CHANGED"
 fi

@@ -1,7 +1,7 @@
 ---
 description: Run a non-destructive Drupal 9/10 to 11 viability assessment (Rector --dry-run + PHPStan + PHPCS, plus upgrade_status if Drupal is installed) and produce a viability-report.md with an S/M/L/XL verdict and a phased porting plan. Use when the user wants to know how hard a module/theme is to port before touching any code.
 argument-hint: "[module-or-theme-path]"
-allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, Skill
+allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, Skill, AskUserQuestion
 ---
 
 # /drupilot-assess — Drupal 11 viability assessment (read-only)
@@ -44,6 +44,23 @@ then stop with no side effects.
 If the subject is not a Drupal extension directory (no `*.info.yml`), say so and
 ask the user for the correct path. Note whether `core_version_requirement` is
 present — a missing one is a blocking `info.yml` finding.
+
+## Step 1.5 — Is someone already porting this? (contrib only)
+
+For a contrib project hosted on drupal.org, check the issue queue before spending
+effort, so the developer can build on existing work instead of duplicating it:
+
+```bash
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/find-upstream-issue.sh" --project "<machine_name>"
+```
+
+It surfaces open issues that look like a Drupal 11 effort (best-effort title scan)
+and always prints the pre-filtered issue-queue URL. If it finds a likely match,
+present a tab with **AskUserQuestion** (header "Existing work"): **Base on the
+existing issue/MR** (open the URL, adopt its branch/patch as the starting point) ·
+**Continue independently** (assess fresh anyway). Skip this for a non-contrib /
+custom module, and never let a blocked network stop the assessment — the URL is
+the fallback.
 
 ## Step 2 — Load the operating procedure
 

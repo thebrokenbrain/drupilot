@@ -29,6 +29,14 @@ emit_context() {
   exit 0
 }
 
+# --- Opt-out toggle ----------------------------------------------------------
+# DRUPILOT_SESSION_CONTEXT=off silences this SessionStart summary entirely.
+if declare -f config_get >/dev/null 2>&1; then
+  case "$(config_get DRUPILOT_SESSION_CONTEXT on 2>/dev/null | tr '[:upper:]' '[:lower:]')" in
+    off|0|false|no) exit 0;;
+  esac
+fi
+
 # --- Read hook input ---------------------------------------------------------
 INPUT="$(cat 2>/dev/null || true)"
 

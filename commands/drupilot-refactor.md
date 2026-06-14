@@ -1,7 +1,7 @@
 ---
 description: Phase 2 opt-in full refactor to the modern Drupal 11 way — PHP 8 attributes for plugins, dependency injection, strict types, modern APIs, zero deprecations, PHPStan level 5-6, and clean Drupal+DrupalPractice, with the test suite kept green. Use only when the user explicitly opts into refactoring after a Phase 1 minimal port.
 argument-hint: "[module-or-theme-path]"
-allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, Skill
+allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, Skill, AskUserQuestion
 ---
 
 # /drupilot-refactor — Phase 2: full "Drupal 11 way" refactor (opt-in)
@@ -56,15 +56,38 @@ It recommends `^11` (drop Drupal 10) and a **major** version bump — plan a new
 `N+1.0.x` branch, not a minor. Apply its `core_version_requirement`; `^11` needs
 no `require.php`. Surface the major-bump implication in the final summary.
 
-## Step 2 — Load the procedure
+## Step 2 — Load the procedure and choose the scope
 
 Invoke the **full-refactor** skill for the modernization checklist and the exact
 toolchain commands.
 
+**Decision point — the developer picks the modernization scope (G3/G4/G5).** The
+"Drupal 11 way / PHP 8.x way" refactor is not all-or-nothing — surface a
+**multi-select** with **AskUserQuestion** (header "Modernize", **all pre-selected**
+by default, droppable) *unless* the run is autonomous or
+`DRUPILOT_REFACTOR_SCOPE` is already pinned:
+
+- **PHP 8 attributes** for plugins (annotations → `#[Block(...)]` etc.).
+- **Dependency injection** (`\Drupal::service()` → constructor injection).
+- **Strict types** (`declare(strict_types=1)` + parameter/return types).
+- **`final` by default** on classes not designed for extension — note this can
+  break downstream extenders, so it is a deliberate opt-in.
+- **Remove all deprecations** (adopt current Symfony 7 / Twig 3 / Guzzle 7 idioms).
+
+Plus a single follow-up tab (header "PHPStan level") for the quality bar: **6**
+(default, `DRUPILOT_PHPSTAN_LEVEL_REFACTOR`) / **5** / **4** — higher is stricter.
+
+Persist the choices so a re-run does not re-ask: `prefs_set DRUPILOT_REFACTOR_SCOPE
+"<csv of selected keys>"` and `prefs_set DRUPILOT_PHPSTAN_LEVEL_REFACTOR <N>` (env
+still wins). Apply **only** the selected modernizations in Step 3, and use the
+chosen PHPStan level in Step 5. If the developer dropped "final by default" or
+"remove all deprecations", say so in the report (the bar was lowered by choice).
+
 ## Step 3 — Modernize, change by change
 
-Apply the modern Drupal 11 patterns, **explaining each significant change** as you
-go (what changed, why, and that behavior is preserved):
+Apply **only the modernizations selected in Step 2** (`DRUPILOT_REFACTOR_SCOPE`),
+**explaining each significant change** as you go (what changed, why, and that
+behavior is preserved):
 
 - **PHP 8 attributes** for plugins instead of annotations (e.g. `#[Block(...)]`,
   `#[FieldType(...)]`), with the matching `use` statements.
@@ -115,7 +138,8 @@ refactor (overwrites the Phase 1 one in place):
 ```
 
 It rewrites `MODULE-port-to-drupal-11.patch` next to the module. This stays a
-preview/test patch; the issue-ready contribution patch is produced by
+preview/test patch (add `--issue ID` for an issue-comment-named one, as
+`/drupilot-patch` does); the merge-verified contribution patch is produced by
 `/drupilot-contribute`.
 
 ## Step 7 — Report
@@ -133,5 +157,26 @@ Summarize in English:
 - Next suggested step: `/drupilot-test` for a final full green run, then
   `/drupilot-contribute` if the subject is a contrib project the user wants to
   publish.
+
+**Refresh the port report card.** Record the refactor's decisions as a manifest
+(`phase: "refactor"`, the modern patterns applied, the new
+`core_version_requirement` / `version_bump`, the deferred items now done) and
+re-render so the report reflects Phase 2:
+
+```bash
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" --subject "$1" --manifest "<state_dir>/port-manifest.json"
+```
+
+`SendUserFile` the refreshed `port-report.md`.
+
+## Step 8 — What next? (developer chooses)
+
+**Unless the run is autonomous** (`DRUPILOT_AUTONOMOUS=true` — then print the
+recommendation and stop), offer a closing **AskUserQuestion** fork (header "Next
+step", default = recommended): **Run the tests** (`/drupilot-test`), **Get the
+local patch** (`/drupilot-patch`), **Patch for a Drupal.org issue**
+(`/drupilot-patch` → issue-comment option), **Contribute upstream**
+(`/drupilot-contribute`, only for a contrib project and **never** autonomously),
+or **Done for now**. Route to the chosen command.
 
 Nothing breaks silently. Every architectural change is explained.
