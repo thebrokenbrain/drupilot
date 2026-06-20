@@ -39,8 +39,16 @@ Drupal 11.
   branch on `php_target_unconfirmed`.
 - Resolve the plugin root with `${CLAUDE_PLUGIN_ROOT}` (or `plugin_root` from
   common.sh). All leaf scripts live under `${CLAUDE_PLUGIN_ROOT}/scripts/...`.
-- Cache results so `/drupilot-status` and later steps do not recompute. Use the
-  per-project state dir: `bash -lc '. "$ROOT/scripts/lib/common.sh"; project_state_dir "$SUBJECT"'`.
+- drupilot splits where it writes. The **human-readable** `viability-report.md`
+  goes into the visible `.drupilot/` artifacts dir at the Drupal root (helper
+  `project_artifacts_dir`; with no Drupal root yet — assess can run before setup —
+  it falls back to `<subject>/.drupilot/`) — the folder a developer opens. The
+  **machine-readable** `assess.json` stays in the hidden per-project state dir
+  (helper `project_state_dir`, under `$HOME`, never in the project tree, so it
+  cannot leak into a contribution) and is what `/drupilot-status` and later steps
+  read so they do not recompute. Resolve each with
+  `bash -lc '. "$ROOT/scripts/lib/common.sh"; project_artifacts_dir "$SUBJECT"'`
+  and `bash -lc '. "$ROOT/scripts/lib/common.sh"; project_state_dir "$SUBJECT"'`.
 
 ## 1. Gate first (no side effects if a hard requirement is missing)
 
@@ -284,18 +292,19 @@ Compare against `DRUPILOT_VIABILITY_THRESHOLD` (order `S < M < L < XL`; default
 
 ## 6. Produce the artifacts
 
-Write both files into the per-project state dir (and copy `viability-report.md`
-next to the subject if the user expects it there). Substitute the `{{...}}`
-tokens in the templates.
+Write the human-readable `viability-report.md` (and `port-plan.md`) into the
+visible `.drupilot/` artifacts dir; keep the machine-readable `assess.json` in the
+hidden per-project state dir. Substitute the `{{...}}` tokens in the templates.
 
 ```bash
+ART_DIR="$(bash -c '. "$CLAUDE_PLUGIN_ROOT/scripts/lib/common.sh"; project_artifacts_dir "$1"' _ "$SUBJECT")"
 STATE="$(project_state_dir "$SUBJECT")"
 REPORT_TMPL="$ROOT/templates/viability-report.md.tmpl"
 PLAN_TMPL="$ROOT/templates/port-plan.md.tmpl"
 ```
 
-- `viability-report.md` (from `templates/viability-report.md.tmpl`): subject +
-  type, PHP/Drupal target (note "unconfirmed" if applicable), the **core
+- `viability-report.md` (into `$ART_DIR`, from `templates/viability-report.md.tmpl`):
+  subject + type, PHP/Drupal target (note "unconfirmed" if applicable), the **core
   compatibility decision** (strategy, recommended `core_version_requirement`,
   composer constraint, `require.php`, the **version-bump verdict** and rationale,
   and any PHP-floor warning — from §3.5), verdict (S/M/L/XL) with the
@@ -307,7 +316,7 @@ PLAN_TMPL="$ROOT/templates/port-plan.md.tmpl"
   `{{COMPOSER_CORE_CONSTRAINT}}`, `{{REQUIRE_PHP}}`, `{{VERSION_BUMP}}`,
   `{{CORE_TARGET_RATIONALE}}`, `{{CORE_TARGET_WARNING}}` and
   `{{TARGET_CORE_REQUIREMENT}}` from the helper JSON.
-- `port-plan.md` (from `templates/port-plan.md.tmpl`): staged plan — stages,
+- `port-plan.md` (into `$ART_DIR`, from `templates/port-plan.md.tmpl`): staged plan — stages,
   per-stage effort, risks, exactly what preserves original functionality without
   colliding with D11 (Phase 1), and what is explicitly **deferred to Phase 2**
   (the refactor). The plan must exist even for an XL/above-threshold verdict.
@@ -325,8 +334,8 @@ Suggested phasing to encode in the plan:
 
 Cache a small JSON summary (`assess.json`: verdict, counts, ready flags, the
 core-target recommendation — strategy, recommended `core_version_requirement`,
-`require.php`, `version_bump` — and a timestamp) in `$STATE` for
-`/drupilot-status` and the port stage.
+`require.php`, `version_bump` — and a timestamp) in the hidden state dir `$STATE`
+(not the visible `.drupilot/` dir) for `/drupilot-status` and the port stage.
 
 ## 7. Report in chat (concise English)
 

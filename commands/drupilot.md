@@ -51,7 +51,7 @@ Resolve the subject directory: use `$1` if it points at a Drupal extension, othe
 detect it from the current directory. Then collect facts via common.sh helpers and the
 detect-php script (all read-only):
 
-!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; ROOT="$(find_drupal_root "$SUBJ" 2>/dev/null || true)"; printf "subject_dir=%s\n" "$SUBJ"; printf "is_extension=%s\n" "$(is_drupal_extension_dir "$SUBJ" && echo yes || echo no)"; printf "machine_name=%s\n" "$(subject_machine_name "$SUBJ" 2>/dev/null || echo -)"; printf "subject_type=%s\n" "$(subject_type "$SUBJ" 2>/dev/null || echo -)"; printf "core_requirement=%s\n" "$(subject_core_requirement "$SUBJ" 2>/dev/null || echo -)"; printf "drupal_root=%s\n" "${ROOT:--}"; printf "ddev_config=%s\n" "$([[ -n "$ROOT" && -f "$ROOT/.ddev/config.yaml" ]] && echo yes || echo no)"; printf "ddev_running=%s\n" "$(ddev_running "$ROOT" 2>/dev/null && echo yes || echo no)"; printf "state_dir=%s\n" "$(project_state_dir "$SUBJ")"; printf "lockfile=%s\n" "$(LF="$(DRUPILOT_PROJECT_DIR="${ROOT:-$SUBJ}" drupilot_lock_file 2>/dev/null)"; [[ -f "$LF" ]] && echo "$LF" || echo -)"' _ "$1"`
+!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; ROOT="$(find_drupal_root "$SUBJ" 2>/dev/null || true)"; printf "subject_dir=%s\n" "$SUBJ"; printf "is_extension=%s\n" "$(is_drupal_extension_dir "$SUBJ" && echo yes || echo no)"; printf "machine_name=%s\n" "$(subject_machine_name "$SUBJ" 2>/dev/null || echo -)"; printf "subject_type=%s\n" "$(subject_type "$SUBJ" 2>/dev/null || echo -)"; printf "core_requirement=%s\n" "$(subject_core_requirement "$SUBJ" 2>/dev/null || echo -)"; printf "drupal_root=%s\n" "${ROOT:--}"; printf "ddev_config=%s\n" "$([[ -n "$ROOT" && -f "$ROOT/.ddev/config.yaml" ]] && echo yes || echo no)"; printf "ddev_running=%s\n" "$(ddev_running "$ROOT" 2>/dev/null && echo yes || echo no)"; printf "state_dir=%s\n" "$(project_state_dir "$SUBJ")"; printf "artifacts_dir=%s\n" "$(project_artifacts_dir "$SUBJ")"; printf "lockfile=%s\n" "$(LF="$(DRUPILOT_PROJECT_DIR="${ROOT:-$SUBJ}" drupilot_lock_file 2>/dev/null)"; [[ -f "$LF" ]] && echo "$LF" || echo -)"' _ "$1"`
 
 Then detect the effective PHP target and whether it is confirmed:
 
@@ -65,7 +65,8 @@ flow honor them):
 ## Step 3 — Read the cached assessment (if any)
 
 Look in the `state_dir` reported above for a cached assessment so you do not recompute
-it. Read `@<state_dir>/assess.json` and `@<state_dir>/viability-report.md` if present;
+it. Read `@<state_dir>/assess.json` (machine cache) and the human-readable
+`@<artifacts_dir>/viability-report.md` (in the visible `.drupilot/` folder) if present;
 note the verdict, effort (S/M/L/XL), auto-fixable vs manual counts, and the timestamp.
 Also note the last test result (`<state_dir>/last-test.json`) and the current phase
 marker (`<state_dir>/phase`) if those files exist. If none exist, the project has not

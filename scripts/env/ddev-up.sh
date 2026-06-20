@@ -81,10 +81,49 @@ fi
 # ---------------------------------------------------------------------------
 if [[ -z "$PROJECT_DIR" ]]; then
   PROJECT_DIR="$(find_drupal_root "${SUBJECT:-$PWD}" 2>/dev/null || true)"
+  # A LOOSE extension checkout (has *.info.yml) with no Drupal above it must NOT
+  # be scaffolded on top of — that intermixes the module with the Drupal site and
+  # pollutes its composer.json. resolve-workspace.sh targets a sibling test-bed
+  # root instead; the module is placed into it later by place-subject.sh.
+  if [[ -z "$PROJECT_DIR" ]] && is_drupal_extension_dir "${SUBJECT:-$PWD}"; then
+    RESOLVER="$PLUGIN_ROOT_DIR/scripts/env/resolve-workspace.sh"
+    if [[ -r "$RESOLVER" ]] && have_cmd jq; then
+      PROJECT_DIR="$(bash "$RESOLVER" --subject "${SUBJECT:-$PWD}" --json 2>/dev/null \
+        | jq -r '.drupal_root // empty' 2>/dev/null || true)"
+      if [[ -n "$PROJECT_DIR" ]]; then
+        log_info "Loose subject detected — building the Drupal 11 test-bed in a sibling directory:"
+        log_info "  $PROJECT_DIR"
+        log_info "  (your checkout stays intact; place-subject.sh moves it in once Drupal exists)."
+      fi
+    fi
+  fi
 fi
 [[ -z "$PROJECT_DIR" ]] && PROJECT_DIR="$PWD"
 mkdir -p "$PROJECT_DIR"
 PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
+
+# Clean-root guard (BEFORE any `ddev config`): if we will need `ddev composer
+# create` (no composer.json yet), the root must contain only the docroot and
+# dotfiles. Checking here — rather than just before composer-create — means we
+# never write a stray .ddev/ into a dir that creation would then refuse.
+if [[ "$DO_CREATE" == "1" && ! -f "$PROJECT_DIR/composer.json" ]]; then
+  STRAY=()
+  shopt -s nullglob
+  for _entry in "$PROJECT_DIR"/*; do
+    _base="$(basename "$_entry")"
+    [[ "$_base" == "$DOCROOT" ]] && continue
+    STRAY+=("$_base")
+  done
+  shopt -u nullglob
+  if [[ ${#STRAY[@]} -gt 0 ]]; then
+    log_err "Cannot create the Drupal project: the root '$PROJECT_DIR' is not clean."
+    log_err "composer create-project only tolerates '$DOCROOT/' and dotfiles, but it also contains: ${STRAY[*]}"
+    log_plain "If you pointed drupilot at a module/theme directly, you do NOT need to fix this by"
+    log_plain "hand: re-run /drupilot-setup and drupilot builds Drupal in a sibling directory, then"
+    log_plain "place-subject.sh moves the extension under '$DOCROOT/modules/custom/<name>' for you."
+    die "Project root not clean for 'ddev composer create' (stray: ${STRAY[*]})." 1
+  fi
+fi
 
 # Default project name from the directory if not provided. Either way, sanitize
 # it to a hostname-safe value: DDEV rejects underscores/dots/uppercase, so a
@@ -165,28 +204,9 @@ if [[ -f "$PROJECT_DIR/composer.json" ]]; then
   log_ok "composer.json already present — not running 'ddev composer create'."
 else
   log_step "Creating the Drupal $DRUPAL_TARGET Composer project"
-  # `ddev composer create` (composer create-project) requires an almost-empty
-  # project root: only "$DOCROOT/" and dotfiles like .ddev/ are tolerated. If the
-  # subject module/theme (or a downloaded tarball) was extracted into the project
-  # root, creation fails with a cryptic "is not allowed to be present". Detect
-  # stray non-dot entries up front and stop with actionable guidance instead.
-  STRAY=()
-  shopt -s nullglob
-  for _entry in "$PROJECT_DIR"/*; do
-    _base="$(basename "$_entry")"
-    [[ "$_base" == "$DOCROOT" ]] && continue
-    STRAY+=("$_base")
-  done
-  shopt -u nullglob
-  if [[ ${#STRAY[@]} -gt 0 ]]; then
-    log_err "Cannot create the Drupal project: the root '$PROJECT_DIR' is not clean."
-    log_err "composer create-project only tolerates '$DOCROOT/' and dotfiles, but it also contains: ${STRAY[*]}"
-    log_plain "Move your module/theme (and any downloaded tarball) out of the project root,"
-    log_plain "re-run setup to create Drupal, then place the extension under"
-    log_plain "'$DOCROOT/modules/custom/<name>' (or '$DOCROOT/themes/custom/<name>'). The"
-    log_plain "drupilot setup flow performs that placement step for you."
-    die "Project root not clean for 'ddev composer create' (stray: ${STRAY[*]})." 1
-  fi
+  # `ddev composer create` requires an almost-empty root (only "$DOCROOT/" and
+  # dotfiles). The clean-root guard ran up front — before any .ddev/ was written —
+  # so by here the root is known clean.
   ( cd "$PROJECT_DIR" && ddev composer create --no-interaction "drupal/recommended-project:${DRUPAL_TARGET}" ) \
     || die "'ddev composer create' failed. Check network access and the DDEV web container ('ddev logs -s web')." 1
   log_ok "Composer project created."

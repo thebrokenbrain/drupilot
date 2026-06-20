@@ -102,10 +102,34 @@ command should use.
 drupilot uses the **`recommended-project` layout**: Drupal at the repo root, the
 subject physically under `web/modules/custom/<name>` (modules) or
 `web/themes/custom/<name>` (themes). `subject_type` (from `common.sh`) tells you
-module vs theme. Because `ddev composer create` needs an almost-empty root, place
-the subject AFTER Drupal is created: if it was extracted into the project root or
-sits next to a tarball, move those aside first, create Drupal, then move the
-extension into `web/<modules|themes>/custom/<name>`.
+module vs theme. A LOOSE checkout (a module/theme NOT already inside a Drupal
+site) is never scaffolded on top of; two scripts handle placement, so the loose
+checkout stays pristine. First resolve WHERE the test-bed and the subject live
+(read-only, like `core-strategy.sh`):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/resolve-workspace.sh" --subject "<dir>" --json
+```
+
+It emits `{subject_src, machine_name, type, loose, drupal_root, drupal_root_exists,
+subject_dest_rel, subject_dest_abs, placement, already_placed}`. For a loose
+subject it targets a sibling Drupal root `<parent>/<name>-d11` (or
+`DRUPILOT_WORKSPACE_DIR`); for a module already inside a Drupal root it reports
+`loose:false` and the existing layout is kept (full back-compat). `ddev-up.sh`
+consults this resolver internally, so the subject is never scaffolded on top of.
+
+Then, AFTER Drupal is created (`ddev composer create` needs an almost-empty root),
+place the subject into `web/<modules|themes|profiles>/custom/<name>`:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/place-subject.sh" --subject "<dir>" \
+  [--placement move|symlink|copy] [--dry-run] [--yes]
+```
+
+It is idempotent (detect-and-skip when already placed), persists
+`DRUPILOT_WORKSPACE_DIR` + `DRUPILOT_PLACEMENT` to `.drupilot.json`, and runs
+`ensure-gitignore.sh` on the new root. Exit code 2 means the Drupal root does not
+exist yet — run `ddev-up.sh` first.
 
 `ddev-drupal-contrib` also supports a "module at the repo root" layout where it
 symlinks the root into `web/modules/custom`. drupilot does NOT use that layout —

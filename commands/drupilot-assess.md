@@ -146,23 +146,32 @@ Render the report from the template, substituting the `{{PLACEHOLDER}}` tokens
 with the resolved facts and findings:
 
 - Template: `@${CLAUDE_PLUGIN_ROOT}/templates/viability-report.md.tmpl`
-- Write the rendered report to the project state cache so later commands can read
-  it without recomputing. Resolve the cache directory and write there:
+- Write the **human-readable** `viability-report.md` into the visible `.drupilot/`
+  artifacts dir at the Drupal root (helper `project_artifacts_dir`; when no Drupal
+  root exists yet — assess can run before setup — it falls back to
+  `<subject>/.drupilot/`). Resolve the directory and write there:
 
 ```bash
 !bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; \
-  SUBJECT="${1:-$PWD}"; printf "%s\n" "$(project_state_dir "$SUBJECT")/viability-report.md"' \
+  SUBJECT="${1:-$PWD}"; printf "%s\n" "$(project_artifacts_dir "$SUBJECT")/viability-report.md"' \
   -- "$1"
 ```
 
 Write the report to that path with the Write tool. Also write a small companion
-`assess.json` in the same state dir capturing the verdict, the auto-fixable
-percentage, the hard-break list, and a timestamp, so `/drupilot-status` can show a
-one-line summary without re-reading the whole report.
+**machine-readable** `assess.json` into the hidden per-project **state dir**
+(`project_state_dir`, under `$HOME` — never in the project tree, so it cannot leak
+into a contribution) capturing the verdict, the auto-fixable percentage, the
+hard-break list, and a timestamp, so `/drupilot-status` can show a one-line summary
+without re-reading the whole report:
 
-If the user is in a writable project working directory and wants a copy
-alongside the code, offer to also place `viability-report.md` at the Drupal root —
-but the cached copy in the state dir is the source of truth.
+```bash
+!bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; \
+  SUBJECT="${1:-$PWD}"; printf "%s\n" "$(project_state_dir "$SUBJECT")/assess.json"' \
+  -- "$1"
+```
+
+The visible `.drupilot/viability-report.md` is the developer-facing copy; the
+machine cache in the hidden state dir is what later commands read.
 
 ## Step 6 — Summarize in chat
 
@@ -176,6 +185,6 @@ End with a concise English summary:
   vs. Phase 2 (optional full refactor via `/drupilot-refactor`), and what is
   explicitly deferred to Phase 2.
 - The next suggested command (`/drupilot-setup` if no environment yet, otherwise
-  `/drupilot-port`), and the path to the cached report.
+  `/drupilot-port`), and the path to the visible `.drupilot/viability-report.md`.
 
 Never modify the subject's source during assessment. This command is read-only.

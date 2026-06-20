@@ -65,12 +65,8 @@ if [[ -n "$DROOT" && -f "$DROOT/.ddev/config.yaml" ]]; then
   DDEV_CONFIG="$DROOT/.ddev/config.yaml"
 fi
 if [[ -n "$DDEV_CONFIG" ]]; then
-  # php_version: "8.3"  (quotes optional). Take the first match, strip quotes.
-  DDEV_PHP="$(grep -E '^[[:space:]]*php_version:' "$DDEV_CONFIG" 2>/dev/null \
-    | head -n1 \
-    | sed -E 's/^[[:space:]]*php_version:[[:space:]]*//; s/[[:space:]]*(#.*)?$//' \
-    | tr -d '"'"'"'')"
-  DDEV_PHP="$(trim "$DDEV_PHP")"
+  # php_version: "8.3" (quotes optional) — read via the shared helper.
+  DDEV_PHP="$(ddev_php_version "$DROOT")"
 fi
 
 # ---------------------------------------------------------------------------

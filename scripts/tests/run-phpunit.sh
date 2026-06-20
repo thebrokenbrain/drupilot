@@ -157,19 +157,21 @@ selenium_ready() {
 # ---------------------------------------------------------------------------
 declare -a COVERAGE_ARGS=()
 if [[ "$COVERAGE" == "1" ]]; then
-  COV_HTML_DIR="$(project_state_dir "$SUBJECT")/coverage-html"
-  mkdir -p "$COV_HTML_DIR" 2>/dev/null || true
-  # The HTML path must be valid inside the runner's view of the filesystem.
-  # project_state_dir is on the host; when running via 'ddev exec' write the
-  # HTML report under the project (mounted at /var/www/html) instead.
+  # Coverage HTML is a developer-facing output, so it goes to the single visible,
+  # gitignored .drupilot/ artifacts dir at the Drupal root (project_artifacts_dir).
+  # Because that dir is under the root (mounted at /var/www/html in DDEV), the same
+  # relative '.drupilot/coverage/...' path resolves on the host and in the container.
+  COV_HTML_REL=".drupilot/coverage/${SUBJECT_REL//\//_}"
   if [[ ${#RUNNER[@]} -gt 0 ]]; then
-    # Inside the container the host state dir is not visible, so place the
-    # report relative to the Drupal root (mounted at /var/www/html).
-    COV_HTML_REL=".drupilot-coverage/${SUBJECT_REL//\//_}"
+    # Inside the container: a path relative to the Drupal root.
     mkdir -p "$DRUPAL_ROOT/$COV_HTML_REL" 2>/dev/null || true
     COVERAGE_ARGS=(--coverage-text "--coverage-html=$COV_HTML_REL")
     log_info "Coverage HTML will be written under: $DRUPAL_ROOT/$COV_HTML_REL"
   else
+    # Host run: the absolute artifacts dir (project_artifacts_dir resolves the
+    # Drupal root from its argument, landing in $DRUPAL_ROOT/.drupilot/coverage).
+    COV_HTML_DIR="$(project_artifacts_dir "$DRUPAL_ROOT")/coverage/${SUBJECT_REL//\//_}"
+    mkdir -p "$COV_HTML_DIR" 2>/dev/null || true
     COVERAGE_ARGS=(--coverage-text "--coverage-html=$COV_HTML_DIR")
     log_info "Coverage HTML will be written to: $COV_HTML_DIR"
   fi

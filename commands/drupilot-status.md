@@ -19,14 +19,23 @@ profile is report-only and always exits 0.
 
 ## Step 2 — Subject, Drupal/DDEV state, and effective PHP target
 
-!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; ROOT="$(find_drupal_root "$SUBJ" 2>/dev/null || true)"; printf "subject_dir=%s\n" "$SUBJ"; printf "machine_name=%s\n" "$(subject_machine_name "$SUBJ" 2>/dev/null || echo -)"; printf "subject_type=%s\n" "$(subject_type "$SUBJ" 2>/dev/null || echo -)"; printf "core_requirement=%s\n" "$(subject_core_requirement "$SUBJ" 2>/dev/null || echo -)"; printf "drupal_root=%s\n" "${ROOT:--}"; printf "ddev_config=%s\n" "$([[ -n "$ROOT" && -f "$ROOT/.ddev/config.yaml" ]] && echo yes || echo no)"; printf "ddev_running=%s\n" "$(ddev_running "$ROOT" 2>/dev/null && echo yes || echo no)"; printf "php_target=%s\n" "$(resolve_php_target)"; printf "php_unconfirmed=%s\n" "$(php_target_unconfirmed "$(resolve_php_target)" && echo yes || echo no)"; printf "deterministic=%s\n" "$(config_get DRUPILOT_DETERMINISTIC true)"; printf "state_dir=%s\n" "$(project_state_dir "$SUBJ")"; printf "lockfile=%s\n" "$(LF="$(DRUPILOT_PROJECT_DIR="${ROOT:-$SUBJ}" drupilot_lock_file 2>/dev/null)"; [[ -f "$LF" ]] && echo "$LF" || echo -)"' _ "$1"`
+!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; ROOT="$(find_drupal_root "$SUBJ" 2>/dev/null || true)"; printf "subject_dir=%s\n" "$SUBJ"; printf "machine_name=%s\n" "$(subject_machine_name "$SUBJ" 2>/dev/null || echo -)"; printf "subject_type=%s\n" "$(subject_type "$SUBJ" 2>/dev/null || echo -)"; printf "core_requirement=%s\n" "$(subject_core_requirement "$SUBJ" 2>/dev/null || echo -)"; printf "drupal_root=%s\n" "${ROOT:--}"; printf "ddev_config=%s\n" "$([[ -n "$ROOT" && -f "$ROOT/.ddev/config.yaml" ]] && echo yes || echo no)"; printf "ddev_running=%s\n" "$(ddev_running "$ROOT" 2>/dev/null && echo yes || echo no)"; printf "php_target=%s\n" "$(resolve_php_target)"; printf "php_unconfirmed=%s\n" "$(php_target_unconfirmed "$(resolve_php_target)" && echo yes || echo no)"; printf "deterministic=%s\n" "$(config_get DRUPILOT_DETERMINISTIC true)"; printf "state_dir=%s\n" "$(project_state_dir "$SUBJ")"; printf "artifacts_dir=%s\n" "$(project_artifacts_dir "$SUBJ")"; printf "lockfile=%s\n" "$(LF="$(DRUPILOT_PROJECT_DIR="${ROOT:-$SUBJ}" drupilot_lock_file 2>/dev/null)"; [[ -f "$LF" ]] && echo "$LF" || echo -)"' _ "$1"`
 
 ## Step 3 — Cached assessment, phase, and last test result
 
-In the reported `state_dir`, read these if they exist (do not recompute anything):
+drupilot splits where it writes: the **machine-readable state** (`assess.json`,
+`last-test.json`, the lockfile) lives in the hidden per-project `state_dir` under
+`$HOME` **by design** — so it survives `git clean` and can never leak into a
+contribution — while the **developer-facing reports and outputs** live in the
+single visible `artifacts_dir` at `<DRUPAL_ROOT>/.drupilot/` (gitignored, so it
+never lands in a patch). That folder holds `viability-report.md`, `port-report.md`,
+the `coverage/` HTML and the local preview `*.patch` — it is the directory a
+developer opens to see what happened.
 
-- `@<state_dir>/assess.json` and `@<state_dir>/viability-report.md` — verdict, effort
-  (S/M/L/XL), auto-fixable vs manual counts, and the assessment timestamp.
+Read these if they exist (do not recompute anything):
+
+- `@<state_dir>/assess.json` and `@<artifacts_dir>/viability-report.md` — verdict,
+  effort (S/M/L/XL), auto-fixable vs manual counts, and the assessment timestamp.
 - `@<state_dir>/phase` — the current phase marker (e.g. setup / assessed / ported /
   refactored / tested / contributed).
 - `@<state_dir>/last-test.json` — the last PHPUnit run: groups run, pass/fail counts,
@@ -40,8 +49,8 @@ In the reported `state_dir`, read these if they exist (do not recompute anything
   visible, not hidden:
 
   !`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; ROOT="$(find_drupal_root "$SUBJ" 2>/dev/null || echo "$SUBJ")"; DRUPILOT_PROJECT_DIR="$ROOT" lock_show || true' _ "$1"`
-- `@<state_dir>/port-manifest.json` and `@<subject>/port-report.md` if present —
-  the per-port "what changed and why" record and its human report card.
+- `@<state_dir>/port-manifest.json` and `@<artifacts_dir>/port-report.md` if present
+  — the per-port "what changed and why" record and its human report card.
 
 If a file is absent, report that part as "not done yet" rather than inventing a value.
 
@@ -60,6 +69,11 @@ Render an English summary covering:
 - **Last assessment:** verdict + effort + counts + when, or "none cached".
 - **Last test result:** pass/fail summary, the **preservation** verdict, and when —
   or "tests not run yet".
+- **Artifacts:** point the developer at the visible `<DRUPAL_ROOT>/.drupilot/` folder
+  (`artifacts_dir`) for `viability-report.md`, `port-report.md`, `coverage/` and the
+  local `*.patch`; note the machine-readable state (`assess.json`, `last-test.json`,
+  `drupilot-lock.json`) lives in the hidden per-project state dir under `$HOME` by
+  design, so it can never leak into a contribution.
 
 End with a single **suggested next step**. Do not restate the ladder here — use the
 same single source of truth the router uses, passing the readiness booleans from

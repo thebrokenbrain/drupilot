@@ -132,8 +132,12 @@ cache_dir() { local d; d="$(data_dir)/cache"; mkdir -p "$d" 2>/dev/null || true;
 # digests_cache_dir -> cache for the dbuytaert/drupal-digests repo (cloned at runtime).
 digests_cache_dir() { printf '%s/drupal-digests' "$(cache_dir)"; }
 
-# project_state_dir [base_dir] -> per-project state (cache assess results, etc.)
-# Keyed by the project's absolute path (sanitized) under data_dir/state.
+# project_state_dir [base_dir] -> per-project MACHINE state (assess.json,
+# last-test.json, drupilot-lock.json). Kept OUT of the project tree, under
+# data_dir/state keyed by the project's absolute path (sanitized), ON PURPOSE:
+# it must survive `git clean`, must never leak into a contribution patch / MR,
+# and the lockfile's frozen versions must not be wiped by a tree reset. The
+# developer-facing OUTPUTS go to project_artifacts_dir() instead (see below).
 project_state_dir() {
   local base="${1:-$PWD}"
   local abs; abs="$(cd "$base" 2>/dev/null && pwd || printf '%s' "$base")"
@@ -141,6 +145,40 @@ project_state_dir() {
   local d; d="$(data_dir)/state/$key"
   mkdir -p "$d" 2>/dev/null || true
   printf '%s' "$d"
+}
+
+# project_artifacts_dir [base_dir] -> the single VISIBLE directory that holds
+# drupilot's human-facing outputs for a port (port-report.md, viability-report.md,
+# coverage HTML, the local preview patch). Unlike project_state_dir() — machine
+# JSON cache + lockfile kept hidden under $HOME so they survive `git clean` and
+# can never leak — this lives IN the project tree, at <root>/.drupilot, so the
+# developer can open and inspect it. That is exactly why ensure-gitignore.sh
+# ignores `.drupilot/` (it never lands in a patch / MR). Because it sits under the
+# Drupal root (mounted at /var/www/html in DDEV), the same relative `.drupilot/...`
+# path resolves identically on the host and inside the container.
+# Resolution: DRUPILOT_ARTIFACTS_DIR override > DRUPILOT_PROJECT_DIR > the Drupal
+# root for <base> > <base> itself (a loose subject with no Drupal yet).
+project_artifacts_dir() {
+  local base="${1:-$PWD}"
+  local override; override="$(config_get DRUPILOT_ARTIFACTS_DIR "")"
+  if [[ -n "$override" ]]; then
+    mkdir -p "$override" 2>/dev/null || true
+    ( cd "$override" 2>/dev/null && pwd ) || printf '%s' "$override"
+    return 0
+  fi
+  local root="${DRUPILOT_PROJECT_DIR:-}"
+  [[ -z "$root" ]] && root="$(find_drupal_root "$base" 2>/dev/null || true)"
+  [[ -z "$root" ]] && root="$base"
+  local d="$root/.drupilot"
+  mkdir -p "$d" 2>/dev/null || true
+  # Self-ignore: a .gitignore containing '*' INSIDE the dir makes git treat the
+  # whole .drupilot/ as ignored in ANY repo it lands in — the Drupal root, or a
+  # loose subject's own nested git repo (assess before setup, or a subject that
+  # keeps its .git after a move). The root's .gitignore does NOT reach a nested
+  # repo, so this in-dir guard is what actually keeps artifacts out of a
+  # contribution patch regardless of which .gitignore git consults.
+  [[ -f "$d/.gitignore" ]] || printf '*\n' > "$d/.gitignore" 2>/dev/null || true
+  ( cd "$d" 2>/dev/null && pwd ) || printf '%s' "$d"
 }
 
 # ---------------------------------------------------------------------------
@@ -423,6 +461,21 @@ ddev_running() {
 drupal_runner() {
   local r="${1:-$(find_drupal_root 2>/dev/null || true)}"
   if ddev_running "$r"; then printf 'ddev exec'; else printf ''; fi
+}
+
+# ddev_php_version [root] -> echoes the php_version set in the project's
+# .ddev/config.yaml (empty if there is no project or no key). Reads the YAML
+# only — it does NOT start or `ddev exec`, so it is cheap and safe in gates and
+# hooks. DDEV is freely configurable across PHP minors, so this is the version
+# the toolchain actually runs on when the container is up.
+ddev_php_version() {
+  local r="${1:-$(find_drupal_root 2>/dev/null || true)}"
+  local cfg="$r/.ddev/config.yaml" v
+  [[ -n "$r" && -f "$cfg" ]] || return 0
+  v="$(grep -E '^[[:space:]]*php_version:' "$cfg" 2>/dev/null | head -n1 \
+        | sed -E 's/^[[:space:]]*php_version:[[:space:]]*//; s/[[:space:]]*(#.*)?$//')"
+  v="${v//\"/}"; v="${v//\'/}"
+  trim "$v"
 }
 
 # subject_info_file <dir> -> first *.info.yml in the directory (non-recursive)
