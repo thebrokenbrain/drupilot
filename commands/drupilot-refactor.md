@@ -158,15 +158,21 @@ Summarize in English:
   `/drupilot-contribute` if the subject is a contrib project the user wants to
   publish.
 
-**Refresh the port report card.** Record the refactor's decisions as a manifest
-(`phase: "refactor"`, the modern patterns applied, the new
-`core_version_requirement` / `version_bump`, the deferred items now done) and
-re-render so the report reflects Phase 2:
+**Refresh the port report card (trust + teaching).** Record the refactor's
+decisions as a manifest (`phase: "refactor"`, the modern patterns applied, the new
+`core_version_requirement` / `version_bump`, the deferred items now done;
+`manual_edits` items may be `{edit, why, change_record}` objects so the report
+explains each change) and re-render so the report reflects Phase 2. As Phase 2
+ran, **tee** the Rector + final validate-loop PHPStan deprecation output into
+`<state_dir>/change-log.txt` (under `$HOME`, never in the project tree) so the
+report's "Drupal 9/10 → 11 changes, explained" section is populated:
 
 ```bash
-!bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" --subject "$1" --manifest "<state_dir>/port-manifest.json"
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" --subject "$1" --manifest "<state_dir>/port-manifest.json" --changes-log "<state_dir>/change-log.txt"
 ```
 
+`port-report.sh` defaults `--changes-log` to that path, so teeing the file is
+enough; it writes into the visible `.drupilot/` dir at the Drupal root.
 `SendUserFile` the refreshed `port-report.md`.
 
 ## Step 8 — What next? (developer chooses)

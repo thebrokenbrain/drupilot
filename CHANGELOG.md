@@ -11,7 +11,98 @@ release, rename `[Unreleased]` to the new version with a date, bump `version`
 in `.claude-plugin/plugin.json` (and the `marketplace.json` entry) to match, and
 tag the commit `vX.Y.Z`.
 
-## [Unreleased]
+## [0.8.0] - 2026-06-20
+
+### Changed
+- **Developer-facing outputs now land in the visible `.drupilot/` dir** instead of
+  next to the module: `port-report.md` and `viability-report.md` (previously
+  written beside the subject or in the hidden state dir) and coverage HTML
+  (previously `.drupilot-coverage/` / the hidden state dir) all resolve through
+  `project_artifacts_dir()`. The gitignore managed block now ignores `.drupilot/`
+  and the local `*-port-to-drupal-11*.patch` previews (closing a leak: those were
+  not ignored before and could be committed into a contribution).
+
+### Fixed
+- **drupilot's own artifacts can never leak into a contribution patch, even from a
+  module's nested git repo.** A loose contrib checkout keeps its own `.git` after a
+  `move`, and the Drupal-root `.gitignore` does not reach a nested repo — so the
+  `.drupilot/` dir now writes a self-ignoring `.gitignore` (`*`) on creation
+  (`project_artifacts_dir`), making it invisible to git in ANY repo it lands in,
+  and `make-patch.sh --local` explicitly excludes `.drupilot/`, `.drupilot.json`
+  and any `*-port-to-drupal-11*.patch` from the generated diff as a backstop.
+- **`resolve-workspace.sh` never silently adopts an unrelated `<name>-d11`.** It
+  reuses an existing dir only when it carries a Drupal/drupilot signature
+  (`.ddev/config.yaml` or `web/core/lib/Drupal.php`); otherwise it bumps to the
+  next free `<name>-d11-N`, so it never runs `ddev`/composer against a directory it
+  did not create. `place-subject.sh` is now idempotent on a `move` re-run keyed on
+  the (relocated) original path, logs the relocation as `old -> new`, and persists
+  a subject-side workspace marker for copy/symlink so a loose re-run reuses the
+  same test-bed instead of deriving a fresh sibling.
+- **A loose module/theme checkout is no longer scaffolded on top of.** When
+  pointed at an extension that is not already inside a Drupal site, `ddev-up.sh`
+  used to fall back to `PROJECT_DIR=$PWD` and run `ddev composer create` (or, if
+  the module shipped its own `composer.json`, inject the dev toolchain) into the
+  module's own directory — intermixing the Drupal scaffold with the module's
+  files. It now resolves a sibling test-bed via `resolve-workspace.sh` and leaves
+  the checkout pristine until `place-subject.sh` places it.
+- **`ddev config` no longer leaves a stray `.ddev/` behind on an aborted create.**
+  The "project root is not clean for `ddev composer create`" guard now runs BEFORE
+  `ddev config`/`ddev start`, so a dirty root is rejected without first writing a
+  `.ddev/` directory into it.
+- **`preflight.sh` `analyze` profile now validates the PHP that will actually
+  run, not the host's.** The static toolchain (`run-rector`/`run-phpstan`/
+  `run-phpcs`) runs through `$(drupal_runner)`, i.e. **inside DDEV** (`ddev exec`)
+  whenever the container is up — yet preflight only ever checked the *host* PHP.
+  That produced two wrong verdicts: a false "not ready for analysis" when the host
+  lacked PHP/Composer but DDEV was up (the toolchain would have run fine via
+  `ddev exec`), and a misleading version warning when the host PHP differed from
+  DDEV's freely-configurable `php_version`. The `analyze` checks now mirror
+  `drupal_runner`: when DDEV is running they validate the DDEV `php_version`
+  against the target (Composer is satisfied via `ddev composer`) and surface a
+  "realign DDEV to the target" hint on a mismatch; with no running DDEV they fall
+  back to the host PHP/Composer checks as before.
+
+### Added
+- **Loose-checkout placement is now a real two-script procedure** in the setup
+  flow (`/drupilot-setup`, the `ddev-environment` skill and the
+  `drupal-port-orchestrator` agent). `resolve-workspace.sh --json` decides WHERE
+  the test-bed and subject live (a loose checkout targets a sibling
+  `<name>-d11` root, kept pristine; a module already inside a Drupal root reports
+  `loose:false` — full back-compat) and `place-subject.sh` places the subject under
+  `web/<modules|themes|profiles>/custom/<name>` after Drupal is created, replacing
+  the old prose that only described moving files by hand. `/drupilot-setup` adds a
+  tabbed **"Workspace layout"** decision — Sibling dir + move (recommended) /
+  symlink / in-place (legacy), persisted to `DRUPILOT_PLACEMENT`, non-default
+  options gated on `autonomous=false`.
+- **Single visible `.drupilot/` artifacts directory** at the Drupal root
+  (`project_artifacts_dir()` in `common.sh`, override `DRUPILOT_ARTIFACTS_DIR`).
+  It is the one place a developer opens to see what a port did: `port-report.md`,
+  `viability-report.md`, coverage HTML under `coverage/`, and the local preview
+  `*.patch`. It is gitignored, so it can never leak into a contribution. The
+  machine-readable cache (`assess.json`, `last-test.json`) and the determinism
+  lockfile stay HIDDEN under `$HOME` on purpose — they must survive `git clean`
+  and never enter a patch — so only human-facing outputs moved in-tree.
+- **Didactic "Drupal 9/10 → 11 changes, explained" section in the port report.**
+  `port-report.sh` gained `--changes-log FILE` (defaulting to the captured
+  Rector + PHPStan deprecation log in the state dir); it runs that text through
+  `explain-deprecations.sh` and renders each recognized change **grouped by
+  migration area** (Entity API, Twig 3, CKEditor 5, jQuery UI, Messenger, …) with
+  what changed, the fix and a drupal.org change-record link. `deprecations.json`
+  entries gained a `category` field for the grouping, and a manifest `manual_edits`
+  item may now be an object `{edit, why, change_record}` so manual changes carry
+  their rationale into the report. Every field stays optional (renders from
+  partial data, never invents).
+- **New config keys** — `DRUPILOT_PLACEMENT` (`move`|`symlink`|`copy`, default
+  `move`), `DRUPILOT_WORKSPACE_DIR` (default empty = sibling `<name>-d11`) and
+  `DRUPILOT_ARTIFACTS_DIR` (default empty = `<root>/.drupilot`).
+- **`preflight.sh --deep`** — when DDEV is up, probe the container's real PHP via
+  `ddev exec php` instead of reading `php_version` from `.ddev/config.yaml`. Used
+  by `/drupilot-doctor`'s full report; the per-command gate and the SessionStart
+  hook stay on the cheap config read (no extra `ddev exec` per gate/session).
+- **`ddev_php_version()` helper** in `scripts/lib/common.sh` — reads a project's
+  configured DDEV `php_version` from the YAML without starting or exec-ing DDEV
+  (cheap and safe in gates/hooks). `detect-php.sh` now reuses it instead of
+  duplicating the parse.
 
 ## [0.7.1] - 2026-06-14
 
@@ -439,7 +530,8 @@ verdict, what-changed report card, frozen lock), and new insight tools
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/thebrokenbrain/drupilot/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.5.1...v0.6.0

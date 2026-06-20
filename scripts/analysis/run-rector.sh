@@ -98,7 +98,11 @@ fi
 case "$SUBJECT_ABS" in
   "$DRUPAL_ROOT"/*) SUBJECT_REL="${SUBJECT_ABS#"$DRUPAL_ROOT"/}";;
   "$DRUPAL_ROOT")   SUBJECT_REL=".";;
-  *) die "Subject '$SUBJECT_ABS' is outside the Drupal root '$DRUPAL_ROOT'." 1;;
+  *) log_err "Subject '$SUBJECT_ABS' is outside the Drupal root '$DRUPAL_ROOT'."
+     log_plain "Rector runs relative to the Drupal root, so the subject must live under it."
+     log_plain "Place it with: scripts/env/place-subject.sh --subject '$SUBJECT_ABS'"
+     log_plain "(or re-run /drupilot-setup, which resolves the test-bed and places it for you)."
+     die "Subject is outside the Drupal root." 1;;
 esac
 
 cd "$DRUPAL_ROOT"

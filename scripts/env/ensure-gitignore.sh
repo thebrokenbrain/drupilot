@@ -2,8 +2,10 @@
 # =============================================================================
 # drupilot — scripts/env/ensure-gitignore.sh
 # Idempotently ensure the Drupal root's .gitignore ignores drupilot's generated
-# artifacts (.phpstan-cache/, .drupilot-coverage/, .drupilot.json), so they can
-# never leak into a contribution patch / MR or be committed by accident.
+# artifacts (the visible .drupilot/ outputs dir, .drupilot.json prefs, the
+# .phpstan-cache/ and legacy .drupilot-coverage/ dirs, and the local *.patch
+# previews), so they can never leak into a contribution patch / MR or be
+# committed by accident.
 #
 # The ignore lines live in a marker-delimited "managed block" (see
 # templates/gitignore.tmpl). This script MERGES that block into an existing
@@ -85,5 +87,5 @@ if [[ "$DRY" == "1" ]]; then
 fi
 
 printf '%s\n' "$new_content" > "$GI"
-log_ok "Ensured drupilot's ignore block in $GI (.phpstan-cache/, .drupilot-coverage/, .drupilot.json)."
+log_ok "Ensured drupilot's ignore block in $GI (.drupilot/, .drupilot.json, .phpstan-cache/, *-port-to-drupal-11*.patch)."
 exit 0

@@ -267,6 +267,27 @@ phpcs/phpstan state, the **local patch path** (or that it was skipped), and what
 was **deferred to Phase 2** (any architectural work, DI, attributes, strict
 types, missing tests).
 
+**Write the report card (trust + teaching artifact).** While the passes ran you
+should have **tee'd** the official Rector output, the digests pass output and the
+final validate-loop PHPStan deprecation report into `<state_dir>/change-log.txt`
+(`<state_dir>` is `project_state_dir`, under `$HOME` — never in the project tree,
+so it never leaks into a patch). Then write `<state_dir>/port-manifest.json`
+(shape per `port-report.sh`: `machine_name`, `type`, `phase: "port"`,
+`core_version_requirement`, `rector_official_files`, `digests`, `manual_edits`
+[each a string or `{edit, why, change_record}`], `deprecations_remaining`,
+`deferred_to_phase2`, `patch`) and render the report:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" \
+  --subject "<path>" --manifest "<state_dir>/port-manifest.json" \
+  --changes-log "<state_dir>/change-log.txt"
+```
+
+It writes `port-report.md` into the visible `.drupilot/` dir at the Drupal root,
+adding a "Drupal 9/10 → 11 changes, explained" section (each recognized change
+grouped by migration area with what changed, the fix and a change-record link).
+`--changes-log` already defaults to that path, so teeing the file is enough.
+
 **Preservation gate.** Phase 1 is not "done" until `test-adaptation` reports the
 adapted suite **green** (or its red tests documented as external blockers) — that
 green is the evidence the original behavior is preserved. If the module ships

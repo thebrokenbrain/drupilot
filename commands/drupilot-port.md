@@ -231,24 +231,35 @@ Summarize in English:
 - Next suggested step: `/drupilot-test` to adapt and run the test suite, then
   optionally `/drupilot-refactor`.
 
-**Write the port report card (the trust artifact).** Record the decisions you made
-as a small manifest JSON and render the human report next to the module, so the
+**Write the port report card (the trust + teaching artifact).** Record the
+decisions you made as a small manifest JSON and render the human report, so the
 developer (and a future maintainer reviewing the change) can see what changed and
-why at a glance. Build the manifest from what you actually did and write it to the
-project state dir, then render:
+why at a glance. The report also **teaches**: as the port ran you should have
+**tee'd** the official Rector output (pass 1), the digests pass output and the
+final validate-loop PHPStan deprecation report into `<state_dir>/change-log.txt`
+(under `$HOME`, never in the project tree, so it never leaks into a patch);
+`port-report.sh` pipes that through `explain-deprecations.sh` to render a
+"Drupal 9/10 → 11 changes, explained" section grouped by migration area. Build
+the manifest from what you actually did, write it to the project state dir, then
+render:
 
 ```bash
 # Write <state_dir>/port-manifest.json with: machine_name, type, phase ("port"),
 # core_version_requirement, require_php, php_target, version_bump,
 # rector_official_files, digests {applied, rejected:[{rule,reason}], skipped},
 # manual_edits[], deprecations_remaining, deferred_to_phase2[], patch, d10_support.
-!bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" --subject "$1" --manifest "<state_dir>/port-manifest.json"
+# Each manual_edits item may be a plain string OR an object
+# {edit, why?, change_record?} so the report can explain WHY each manual change
+# was made (and link its change record).
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" --subject "$1" --manifest "<state_dir>/port-manifest.json" --changes-log "<state_dir>/change-log.txt"
 ```
 
-It writes `port-report.md` next to the module (and pulls the `preservation`
-verdict from `last-test.json` and the assessment verdict from `assess.json`).
-`SendUserFile` it so it surfaces as a deliverable. Every field is optional — the
-report still renders from partial data, and never invents a value.
+It writes `port-report.md` into the visible `.drupilot/` artifacts dir at the
+Drupal root (and pulls the `preservation` verdict from `last-test.json` and the
+assessment verdict from `assess.json`). `port-report.sh` already defaults
+`--changes-log` to `<state_dir>/change-log.txt`, so teeing the analyzer output
+there is enough. `SendUserFile` it so it surfaces as a deliverable. Every field
+is optional — the report still renders from partial data, and never invents a value.
 
 ## Step 10 — What next? (developer chooses)
 

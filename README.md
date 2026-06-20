@@ -103,6 +103,24 @@ After installing, restart or start a new session so the hooks load. Then run `/d
 /drupilot-contribute web/modules/custom/my_module # contrib projects only
 ```
 
+### Pointing at a loose checkout
+
+You don't need a Drupal site to start. Point drupilot at a bare module/theme checkout and it builds a Drupal 11 **test-bed in a sibling directory** `<parent>/<machine_name>-d11/`, placing the subject under `web/modules/custom/<machine_name>` (themes go to `web/themes/custom/...`). **Your original checkout stays pristine** — drupilot no longer scaffolds Drupal on top of it, so its files and `composer.json` are never intermixed.
+
+```text
+parent/
+├── my_module/                 # your checkout — untouched
+└── my_module-d11/             # the test-bed drupilot builds
+    ├── .drupilot/             # visible, gitignored developer outputs
+    └── web/modules/custom/my_module
+```
+
+How the subject gets there is controlled by `DRUPILOT_PLACEMENT` (`move` / `symlink` / `copy`); the test-bed location by `DRUPILOT_WORKSPACE_DIR` (see [Configuration](#configuration)). A module that is **already inside** a Drupal root keeps that layout in place — this only applies to loose checkouts.
+
+### The `.drupilot/` folder
+
+Developer-facing outputs live in a single **visible, gitignored** `.drupilot/` directory at the Drupal root: the port **report card** (`port-report.md`), the **viability report** (`viability-report.md`), the test-coverage HTML, and the local `.patch`. It is gitignored automatically so it never lands in your patch, and you can point it elsewhere with `DRUPILOT_ARTIFACTS_DIR`. The machine-readable cache and the determinism lockfile deliberately stay **hidden under `$HOME`** so they can't leak into a patch.
+
 ---
 
 ## Commands
@@ -175,6 +193,9 @@ Defaults live in `config/defaults.json`. **Every `DRUPILOT_*` key can be overrid
 | `DRUPILOT_CORE_TARGET_STRATEGY` | `auto` | Core compatibility decision: `auto` (keep `^10 \|\| ^11` while backwards-compatible, switch to `^11` on a BC break / refactor), `d11-only`, or `keep-d10`. Keeping D10 also declares a composer `require.php` floor (see `DRUPILOT_REQUIRE_PHP_FLOOR`), and the choice yields a SemVer version-bump verdict. |
 | `DRUPILOT_KEEP_D10` | _(legacy)_ | Legacy boolean override of the strategy (`true` → keep D10, `false` → D11-only). Honored only when set; prefer `DRUPILOT_CORE_TARGET_STRATEGY`. |
 | `DRUPILOT_REQUIRE_PHP_FLOOR` | `detect` | When keeping `^10 \|\| ^11`, how to set composer `require.php`: `detect` derives the real floor from a heuristic scan of the ported code (e.g. `>=8.1` when it uses no PHP 8.2/8.3 constructs, for genuine Drupal 10 support); `target` keeps the conservative `>=<php target>`. A lowered floor is best-effort — confirm with PHPCompatibility. |
+| `DRUPILOT_PLACEMENT` | `move` | How a loose checkout is placed into the sibling test-bed: `move` relocates it (non-lossy — it stays a git repo at the new path), `symlink` keeps your checkout where it is and links it in, `copy` duplicates it. |
+| `DRUPILOT_WORKSPACE_DIR` | _(empty)_ | Explicit path for the Drupal test-bed root. Empty means a sibling `<parent>/<machine_name>-d11`. |
+| `DRUPILOT_ARTIFACTS_DIR` | _(empty)_ | Override for the visible `.drupilot/` outputs directory. Empty means `<root>/.drupilot`. |
 | `DRUPILOT_CODER_CONSTRAINT` | `^8.3` | `drupal/coder` branch (PHPCS 3.x vs 4.x). |
 | `DRUPILOT_PHPSTAN_LEVEL` | `2` | Base PHPStan level (deprecation detection). |
 | `DRUPILOT_PHPSTAN_LEVEL_REFACTOR` | `6` | PHPStan level used in the refactor phase. |

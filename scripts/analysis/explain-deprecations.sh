@@ -14,7 +14,7 @@
 # Usage:
 #   explain-deprecations.sh [--file F | -]   [--json]
 #     reads the analysis text from --file, or from STDIN (default / '-').
-#     --json  emit a JSON array of {symbol, why, fix, change_record, hits}.
+#     --json  emit a JSON array of {symbol, category, why, fix, change_record, hits}.
 #
 # Output: a human explainer on STDOUT (or JSON with --json). Logging on STDERR.
 # Exit codes: 0 ok (matches or not) · 1 usage/error. Read-only.
@@ -68,14 +68,17 @@ while (( i < COUNT )); do
   SYMBOL="$(jq -r ".deprecations[$i].symbol" "$MAP" 2>/dev/null || true)"
   WHY="$(jq -r ".deprecations[$i].why" "$MAP" 2>/dev/null || true)"
   FIX="$(jq -r ".deprecations[$i].fix" "$MAP" 2>/dev/null || true)"
+  # 'category' groups the symbol into a D9/10 -> 11 migration area for the
+  # didactic port report; legacy entries without one fall back to 'other'.
+  CATEGORY="$(jq -r ".deprecations[$i].category // \"other\"" "$MAP" 2>/dev/null || echo other)"
   i=$((i+1))
   [[ -z "$PATTERN" ]] && continue
   HITS="$(printf '%s' "$INPUT" | grep -icE "$PATTERN" 2>/dev/null || true)"
   [[ -z "$HITS" || "$HITS" -eq 0 ]] && continue
   CR="${SEARCH_BASE}$(url_encode "$SYMBOL")"
   RESULTS="$(jq -c -n --argjson acc "$RESULTS" \
-    --arg symbol "$SYMBOL" --arg why "$WHY" --arg fix "$FIX" --arg cr "$CR" --argjson hits "$HITS" \
-    '$acc + [{symbol:$symbol, why:$why, fix:$fix, change_record:$cr, hits:$hits}]' 2>/dev/null || echo "$RESULTS")"
+    --arg symbol "$SYMBOL" --arg category "$CATEGORY" --arg why "$WHY" --arg fix "$FIX" --arg cr "$CR" --argjson hits "$HITS" \
+    '$acc + [{symbol:$symbol, category:$category, why:$why, fix:$fix, change_record:$cr, hits:$hits}]' 2>/dev/null || echo "$RESULTS")"
 done
 
 if [[ "$AS_JSON" == "1" ]]; then
@@ -91,5 +94,5 @@ fi
 hr
 log_plain "Deprecation explainer — $N known pattern(s) found"
 hr
-printf '%s' "$RESULTS" | jq -r '.[] | "• \(.symbol)  (\(.hits) hit(s))\n    what: \(.why)\n    fix : \(.fix)\n    docs: \(.change_record)\n"'
+printf '%s' "$RESULTS" | jq -r '.[] | "• \(.symbol)  [\(.category // "other")]  (\(.hits) hit(s))\n    what: \(.why)\n    fix : \(.fix)\n    docs: \(.change_record)\n"'
 exit 0

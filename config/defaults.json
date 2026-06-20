@@ -22,6 +22,11 @@
   "DRUPILOT_AUTONOMOUS": false,
   "DRUPILOT_DETERMINISTIC": true,
 
+  "_workspace_comment": "Where the Drupal 11 test-bed is built and how the subject module/theme is placed in it (scripts/env/resolve-workspace.sh + place-subject.sh). When drupilot is pointed at a LOOSE checkout (a module/theme NOT already under a Drupal web/modules/custom), it does NOT scaffold Drupal on top of it (that intermixes the module's files with the Drupal scaffold). Instead it builds Drupal in a sibling directory and places the subject under web/{modules,themes,profiles}/custom/<machine_name>. DRUPILOT_WORKSPACE_DIR: explicit path for that Drupal root (default '' = auto: a sibling '<parent>/<machine_name>-d11'). An already-resolvable Drupal root (the module is already inside one) always wins, so existing layouts are untouched. DRUPILOT_PLACEMENT (move|symlink|copy, default 'move'): move relocates the loose checkout into the test-bed (non-lossy — it stays a git repo, just at a new path); symlink keeps your checkout where it is and links it in (you keep editing your original path; slightly more fragile with ddev-drupal-contrib); copy duplicates it (the original is left untouched). DRUPILOT_ARTIFACTS_DIR: override for the visible, gitignored '.drupilot/' outputs dir (default '' = <root>/.drupilot).",
+  "DRUPILOT_PLACEMENT": "move",
+  "DRUPILOT_WORKSPACE_DIR": "",
+  "DRUPILOT_ARTIFACTS_DIR": "",
+
   "_hooks_comment": "Hook behavior toggles. DRUPILOT_POST_EDIT_LINT controls the PostToolUse incremental lint (hooks/scripts/post-edit-lint.sh): 'autofix' (default) runs phpcbf then phpcs and reports when it modified the file; 'report' runs phpcs only (never edits files in place); 'off' disables it. The hook is also phase-aware: during Phase 1 (minimal port) it surfaces compatibility ERRORS only, deferring DrupalPractice style WARNINGS to /drupilot-refactor. DRUPILOT_SESSION_CONTEXT toggles the SessionStart environment summary (hooks/scripts/session-detect-env.sh): 'on' (default) or 'off'.",
   "DRUPILOT_POST_EDIT_LINT": "autofix",
   "DRUPILOT_SESSION_CONTEXT": "on",

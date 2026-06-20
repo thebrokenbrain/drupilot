@@ -164,6 +164,13 @@ It rewrites `MODULE-port-to-drupal-11.patch` next to the module; add
 `--issue ID [--comment N]` for an issue-comment-named one (still offline). The
 merge-verified contribution patch stays the job of `drupal-contribution`.
 
+**Refresh the didactic report.** Tee the Phase 2 Rector + final PHPStan
+deprecation output into `<state_dir>/change-log.txt` (under `$HOME`, never in the
+project tree), update `<state_dir>/port-manifest.json` (`phase: "refactor"`), and
+re-render with `port-report.sh --subject <path> --manifest <manifest>
+--changes-log <state_dir>/change-log.txt` so `port-report.md` in the visible
+`.drupilot/` dir reflects Phase 2 and its "changes, explained" section.
+
 Summarize (in English): each significant change and why (annotations →
 attributes, `\Drupal::` calls → DI, types/`final` added, deprecated APIs
 replaced), the final PHPStan level reached, PHPCS status, the test results +

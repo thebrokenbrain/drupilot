@@ -10,7 +10,12 @@
 # not just the binary).
 #
 # Usage:
-#   preflight.sh [--profile analyze|setup|test|contribute|all] [--json] [--quiet]
+#   preflight.sh [--profile analyze|setup|test|contribute|all] [--json] [--quiet] [--deep]
+#
+# --deep: when DDEV is up, probe the container's real PHP with `ddev exec php`
+#   instead of reading php_version from .ddev/config.yaml. Slower (one DDEV
+#   call) — used by /drupilot-doctor's full report, NOT by the per-command gate
+#   or the SessionStart hook, which stay on the cheap config read.
 #
 # Output:
 #   --json   -> a single JSON object on STDOUT (nothing else).
@@ -30,6 +35,7 @@ set -uo pipefail
 PROFILE="all"
 AS_JSON=0
 QUIET=0
+DEEP=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -37,6 +43,7 @@ while [[ $# -gt 0 ]]; do
     --profile=*) PROFILE="${1#*=}"; shift;;
     --json) AS_JSON=1; shift;;
     --quiet) QUIET=1; shift;;
+    --deep) DEEP=1; shift;;
     -h|--help)
       grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; exit 0;;
     *) log_warn "Unknown argument: $1"; shift;;
@@ -159,8 +166,40 @@ check_tool() {
 # --- Analysis tools -------------------------------------------------------
 check_tool git      "git"      "version control / patches / contribution" analysis  "analyze contribute" hard git      "$GIT_MIN"
 check_tool jq       "jq"       "JSON parsing for hooks and preflight"      analysis  "analyze"            hard jq       "$JQ_MIN"
-check_tool php      "PHP"      "host PHP (static analysis target $TARGET)" analysis  "analyze"            soft php      "$TARGET"
-check_tool composer "Composer" "dependency management (or via DDEV)"        analysis  "analyze"            soft composer "$COMPOSER_MIN"
+
+# PHP + Composer for the analyze path. The static toolchain runs wherever
+# drupal_runner sends it: INSIDE DDEV when the container is up (so the DDEV
+# php_version — freely configurable across minors — is what matters, not the
+# host PHP), else host vendor/bin. Mirror that choice here so the gate validates
+# the path that will actually run.
+ANALYZE_ROOT="$(find_drupal_root 2>/dev/null || true)"
+if [[ -n "$ANALYZE_ROOT" ]] && ddev_running "$ANALYZE_ROOT"; then
+  # --- DDEV is the execution path -----------------------------------------
+  DDEV_PHP=""
+  if [[ "$DEEP" == "1" ]]; then
+    DDEV_PHP="$( ( cd "$ANALYZE_ROOT" 2>/dev/null && ddev exec php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;' ) 2>/dev/null || true )"
+    DDEV_PHP="$(trim "$DDEV_PHP")"
+  fi
+  [[ -z "$DDEV_PHP" ]] && DDEV_PHP="$(ddev_php_version "$ANALYZE_ROOT")"
+
+  PHP_OK="false"; PHP_VER="$DDEV_PHP"
+  if [[ -z "$DDEV_PHP" ]]; then
+    PHP_OK="true"; PHP_VER="unknown"          # in DDEV but version unknown -> don't false-negative
+  elif version_ge "$DDEV_PHP" "$TARGET"; then
+    PHP_OK="true"
+  fi
+  DDEV_PHP_HINT="Realign DDEV to the target: 'ddev config --php-version=$TARGET && ddev restart' (or re-run /drupilot-setup)"
+  CHECKS+=("$(emit_check php "PHP (DDEV)" "runs inside DDEV (php_version, target $TARGET)" analysis "analyze" soft true "$PHP_VER" "$TARGET" "$PHP_OK" "$DDEV_PHP_HINT")")
+  OK_php="$PHP_OK"; HAS_php="true"
+
+  # Composer is always available in the container as `ddev composer`.
+  CHECKS+=("$(emit_check composer "Composer (DDEV)" "available in the container as 'ddev composer'" analysis "analyze" soft true "" "" true "")")
+  OK_composer="true"; HAS_composer="true"
+else
+  # --- Host execution path (no running DDEV) ------------------------------
+  check_tool php      "PHP"      "host PHP (static analysis target $TARGET)" analysis "analyze" soft php      "$TARGET"
+  check_tool composer "Composer" "dependency management (or via DDEV)"       analysis "analyze" soft composer "$COMPOSER_MIN"
+fi
 
 # --- Environment & tests --------------------------------------------------
 check_tool docker   "Docker"   "container engine for DDEV"                  environment "setup test"      hard docker   "$DOCKER_MIN"

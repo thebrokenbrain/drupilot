@@ -12,13 +12,15 @@ install what is missing. **English only** in all output.
 ## Step 1 — Run the full readiness report
 
 Run preflight with the `all` profile so it reports every requirement without gating any
-single operation (profile `all` always exits 0; it is report-only):
+single operation (profile `all` always exits 0; it is report-only). `--deep` probes the
+real PHP inside DDEV (one `ddev exec` call) when the container is up — the full report can
+afford it; the per-command gate and the SessionStart hook deliberately do not pass it:
 
-!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile all`
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile all --deep`
 
 Also capture the structured form to reason about precisely:
 
-!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile all --json`
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile all --deep --json`
 
 ## Step 2 — Render readiness
 

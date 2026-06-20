@@ -59,12 +59,50 @@ leaf scripts in order. Each is idempotent.
 
 **Subject placement (important).** drupilot uses the `recommended-project` layout: Drupal
 lives at the project root and the subject lives under `web/modules/custom/<machine_name>`
-(or `web/themes/custom/...`). `ddev composer create` needs an almost-empty root, so if the
-subject was extracted INTO the project root (e.g. from a downloaded tarball), or sits in a
-subdirectory next to a tarball, move those aside FIRST (e.g. to a sibling staging dir),
-let 3a create Drupal, THEN move the extension into `web/modules/custom/<machine_name>` and
-delete the staging copy. `ddev-up.sh` aborts with guidance when the root is not clean, so
-do this placement before (re-)running it.
+(or `web/themes/custom/...`). A LOOSE checkout (a module/theme that is NOT already inside a
+Drupal site) is never scaffolded on top of — that would intermix the module with Drupal's
+own `composer.json`/`web/`/`vendor/`. Two scripts handle placement: resolve the workspace
+first, then place the subject AFTER 3a creates Drupal (`composer create` needs an empty
+root). Run the read-only resolver to decide WHERE:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/resolve-workspace.sh" --subject "<subject_dir>" --json
+```
+
+It emits `{subject_src, machine_name, type, loose, drupal_root, drupal_root_exists,
+subject_dest_rel, subject_dest_abs, placement, already_placed}`. For a loose subject it
+targets a sibling Drupal root `<parent>/<machine_name>-d11` (or `DRUPILOT_WORKSPACE_DIR`),
+keeping the original checkout pristine; for a module already inside a Drupal root it reports
+`loose:false` and the existing layout is kept (full back-compat). `ddev-up.sh` consults this
+resolver internally, so the loose subject is never scaffolded on top of.
+
+**Decision point — workspace layout for a loose checkout.** When `loose:true`, make the
+placement an explicit choice with **AskUserQuestion** (header "Workspace layout", default =
+the recommended option) *unless* the run is autonomous (an autonomous run shows no tab and
+resolves with the `move` default). Offer:
+
+- **Sibling dir + move — recommended** (`DRUPILOT_PLACEMENT=move`) — relocate the checkout
+  into `<machine_name>-d11/web/.../custom/<machine_name>`; it stays a git repo, just at a
+  new path; the default.
+- **Sibling dir + symlink** (`DRUPILOT_PLACEMENT=symlink`) — keep editing your original path
+  and symlink it into the test-bed. Gate on `autonomous=false`.
+- **Sibling dir + copy** (`DRUPILOT_PLACEMENT=copy`) — duplicate the checkout into the
+  test-bed; the original is untouched. Gate on `autonomous=false`.
+
+Persist the answer with `prefs_set DRUPILOT_PLACEMENT <mode>` so place-subject.sh reuses it.
+
+Then, AFTER 3a has created Drupal, place the subject (idempotent — detect-and-skip when
+already placed). Pass `--yes` because the workspace tab above already captured consent for
+the relocating `move` (so the script does not re-prompt):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/place-subject.sh" --subject "<subject_dir>" --yes
+```
+
+It places the loose subject into `<root>/web/{modules,themes,profiles}/custom/<machine_name>`,
+persists `DRUPILOT_WORKSPACE_DIR` + `DRUPILOT_PLACEMENT` to `.drupilot.json`, and runs
+`ensure-gitignore.sh` on the new root. Exit code 2 means the Drupal root does not exist yet
+(run 3a first); a non-loose subject is a no-op.
 
 ### 3a — Bring up the DDEV Drupal 11 project
 

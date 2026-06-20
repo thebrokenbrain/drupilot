@@ -210,11 +210,21 @@ if [[ "$LOCAL" == "1" ]]; then
     # No HEAD yet (unborn branch): start from an empty index.
     GIT_INDEX_FILE="$TMP_INDEX" git -C "$REPO" read-tree --empty 2>/dev/null || true
   fi
-  # Exclude the patch file itself so a re-run never embeds the previous patch.
-  EXCLUDE_SELF=":(exclude)${RELPREFIX}${PATCH_NAME}"
-  GIT_INDEX_FILE="$TMP_INDEX" git -C "$REPO" add -A -- "$PATHSPEC" "$EXCLUDE_SELF" 2>/dev/null || true
+  # Exclude the patch file itself AND drupilot's own artifacts (the .drupilot/
+  # outputs dir, the .drupilot.json prefs, any previously-written drupilot patch)
+  # so a contribution patch never embeds them. The subject is often its OWN git
+  # repo (a loose contrib checkout keeps its .git after a move), which the Drupal
+  # root's .gitignore does not cover — so we exclude them here regardless.
+  EXCLUDES=(
+    ":(exclude)${RELPREFIX}${PATCH_NAME}"
+    ":(exclude)${RELPREFIX}.drupilot"
+    ":(exclude)${RELPREFIX}.drupilot.json"
+    ":(exclude)${RELPREFIX}*-port-to-drupal-11.patch"
+    ":(exclude)${RELPREFIX}*-port-to-drupal-11-*.patch"
+  )
+  GIT_INDEX_FILE="$TMP_INDEX" git -C "$REPO" add -A -- "$PATHSPEC" "${EXCLUDES[@]}" 2>/dev/null || true
 
-  if ! GIT_INDEX_FILE="$TMP_INDEX" git -C "$REPO" diff --cached "$BASE_REF" -- "$PATHSPEC" "$EXCLUDE_SELF" > "$PATCH_PATH" 2>/dev/null; then
+  if ! GIT_INDEX_FILE="$TMP_INDEX" git -C "$REPO" diff --cached "$BASE_REF" -- "$PATHSPEC" "${EXCLUDES[@]}" > "$PATCH_PATH" 2>/dev/null; then
     rm -f "$PATCH_PATH"
     die "git diff against $BASE_REF failed." 1
   fi
