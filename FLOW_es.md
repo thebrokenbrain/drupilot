@@ -69,8 +69,8 @@ flowchart TD
 
     GATE1{"¿Continuar con<br/>la portabilidad?"}:::human
 
-    subgraph F1["FASE 1 · Portabilidad mínima — que el módulo funcione en Drupal 11"]
-      PORT(("La IA aplica Rector (3 pasadas),<br/>los cambios manuales y la validación<br/>— detalle en el diagrama 2")):::ai
+    subgraph F1["FASE 1 · Portabilidad mínima — que el módulo funcione en Drupal 11 (puede mantener Drupal 10)"]
+      PORT(("La IA conduce las 3 pasadas de Rector<br/>(oficial → digests → ad-hoc),<br/>los cambios manuales y la validación<br/>— detalle en el diagrama 2")):::ai
       ART1[("Artefactos:<br/>MODULE-port-to-drupal-11.patch<br/>port-report.md")]:::result
       TST1["Tests en DDEV · run-phpunit<br/>Unit · Kernel · Functional · JS (Selenium)"]:::script
       TST2(("La IA adapta la forma de los tests;<br/>ante un fallo de comportamiento<br/>corrige el código, nunca el test")):::ai
@@ -80,10 +80,10 @@ flowchart TD
 
     GATE2{"¿Qué sigue?"}:::human
 
-    subgraph F2["FASE 2 · Modernización — opcional"]
+    subgraph F2["FASE 2 · Modernización — opcional · solo Drupal 11"]
       RF(("La IA reescribe al «estilo Drupal 11»:<br/>atributos · inyección de dependencias<br/>tipado estricto · sin deprecaciones")):::ai
       RFV["Validación a PHPStan nivel 5-6<br/>con los tests en verde"]:::script
-      DONE2(["Módulo modernizado<br/>al estilo Drupal 11"]):::milestone
+      DONE2(["Módulo modernizado — solo Drupal 11<br/>core_version_requirement ^11 · nueva versión major"]):::milestone
       RF --> RFV --> DONE2
     end
 
@@ -118,6 +118,10 @@ flowchart TD
 > **preflight** (herramienta) valida los requisitos de cada etapa antes de actuar: si falta uno imprescindible, la etapa se detiene sin dejar efectos secundarios.
 >
 > Si no se hace la Fase 2, el resultado final es el **módulo portado** (hito de la Fase 1). La Fase 2 y la contribución son siempre opcionales.
+>
+> **«La IA conduce las 3 pasadas de Rector»** no significa que la IA reescriba el código en todas las pasadas: las pasadas 1 (oficial) y 2 (digests) las ejecuta el script determinista `run-rector` — la IA revisa el dry-run y decide qué aplicar. Solo la pasada 3 (reglas ad-hoc / arreglos manuales) es trabajo propio de la IA. Ver el diagrama 2.
+>
+> **Versión de Drupal objetivo, según la fase:** la Fase 1 puede mantener `^10 || ^11` (compatible con Drupal 10 y 11) o ir a solo `^11` — lo decides tú (la decisión «versión objetivo»). El soporte de Drupal 10 mantenido así queda *declarado pero no verificado* (los tests corren en Drupal 11). La Fase 2 es **solo Drupal 11**: la reescritura moderna asume una ruptura de compatibilidad, así que pasa a `^11` y a una nueva versión major.
 
 ---
 

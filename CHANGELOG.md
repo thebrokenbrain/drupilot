@@ -11,6 +11,17 @@ release, rename `[Unreleased]` to the new version with a date, bump `version`
 in `.claude-plugin/plugin.json` (and the `marketplace.json` entry) to match, and
 tag the commit `vX.Y.Z`.
 
+## [0.8.2] - 2026-06-21
+
+### Changed
+- **`FLOW.md` / `FLOW_es.md` diagram wording.** The Phase 1 node now reads "the AI
+  **orchestrates** Rector's 3 passes" (was "applies"): passes 1 (official) and 2
+  (digests) are run by the deterministic `run-rector` script while the AI reviews
+  and decides; only pass 3 (ad-hoc rules / manual fixes) is the AI's own work.
+  Added a note on the Drupal-version target per phase — Phase 1 can keep
+  `^10 || ^11` or go `^11`-only (Drupal 10 support kept this way is
+  declared-not-verified), while Phase 2 is Drupal 11 only (`^11`, new major).
+
 ## [0.8.1] - 2026-06-21
 
 ### Added
@@ -550,7 +561,8 @@ verdict, what-changed report card, frozen lock), and new insight tools
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/thebrokenbrain/drupilot/compare/v0.7.0...v0.7.1
