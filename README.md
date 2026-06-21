@@ -376,6 +376,8 @@ When the issue still has to be created, it generates the **issue summary** (the 
 - **Scripts** (`scripts/`) are a robust, idempotent shell library: a shared `lib/common.sh`, the `env/preflight.sh` requirements engine, and the `analysis/`, `tests/` and `contrib/` wrappers the skills and commands invoke.
 - **Templates** (`templates/`) are parameterized configs (`rector.php`, `phpstan.neon`, `phpcs.xml.dist`, DDEV config + test environment, report templates) tuned by the PHP target.
 
+See **[FLOW.md](FLOW.md)** for a visual, end-to-end diagram of the flow — which tool runs at each step, where the AI steps in, and the two porting phases.
+
 ---
 
 ## The drupal-digests complementary layer

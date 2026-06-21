@@ -25,6 +25,11 @@ tag the commit `vX.Y.Z`.
   **hooks sub-table** framing what a hook is (an automation the harness fires —
   neither the AI nor the user), when each one acts, what it does, and whether its
   output goes to the AI or to the user.
+- **`FLOW.md` (mirrored in `FLOW_es.md`)** — a visual, end-to-end Mermaid diagram
+  of the flow: which tool runs at each step, where the AI steps in, the two
+  porting phases with their result milestones, and the always-on hooks with their
+  recipients. `README.md` links to `FLOW.md` and `README_es.md` links to
+  `FLOW_es.md` from the architecture section.
 
 ## [0.8.0] - 2026-06-20
 
