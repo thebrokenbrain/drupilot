@@ -69,8 +69,8 @@ flowchart TD
 
     GATE1{"Continue with<br/>the port?"}:::human
 
-    subgraph F1["PHASE 1 · Minimal port — make the module run on Drupal 11"]
-      PORT(("The AI applies Rector (3 passes),<br/>the manual changes and validation<br/>— see diagram 2")):::ai
+    subgraph F1["PHASE 1 · Minimal port — make the module run on Drupal 11 (may keep Drupal 10)"]
+      PORT(("The AI orchestrates Rector's 3 passes<br/>(official → digests → ad-hoc),<br/>the manual changes and validation<br/>— see diagram 2")):::ai
       ART1[("Artifacts:<br/>MODULE-port-to-drupal-11.patch<br/>port-report.md")]:::result
       TST1["Tests in DDEV · run-phpunit<br/>Unit · Kernel · Functional · JS (Selenium)"]:::script
       TST2(("The AI adapts the form of the tests;<br/>on a behavioral failure it<br/>fixes the code, never the test")):::ai
@@ -80,10 +80,10 @@ flowchart TD
 
     GATE2{"What next?"}:::human
 
-    subgraph F2["PHASE 2 · Modernization — optional"]
+    subgraph F2["PHASE 2 · Modernization — optional · Drupal 11 only"]
       RF(("The AI rewrites to the «Drupal 11 way»:<br/>attributes · dependency injection<br/>strict types · no deprecations")):::ai
       RFV["Validation at PHPStan level 5-6<br/>with tests green"]:::script
-      DONE2(["Module modernized<br/>the Drupal 11 way"]):::milestone
+      DONE2(["Module modernized — Drupal 11 only<br/>core_version_requirement ^11 · new major version"]):::milestone
       RF --> RFV --> DONE2
     end
 
@@ -118,6 +118,10 @@ flowchart TD
 > **preflight** (tool) validates each stage's requirements before acting: if a hard requirement is missing, the stage stops with no side effects.
 >
 > If Phase 2 is skipped, the final result is the **ported module** (the Phase 1 milestone). Phase 2 and contribution are always optional.
+>
+> **"Orchestrates Rector's 3 passes"** does not mean the AI rewrites the code in every pass: passes 1 (official) and 2 (digests) are run by the deterministic `run-rector` script — the AI reviews the dry-run and decides what to apply. Only pass 3 (ad-hoc rules / manual fixes) is the AI's own work. See diagram 2.
+>
+> **Drupal version target, per phase:** Phase 1 can keep `^10 || ^11` (compatible with Drupal 10 and 11) or go `^11`-only — it is your choice (the "target version" decision). Drupal 10 support kept this way is *declared but not verified* (the tests run on Drupal 11). Phase 2 is **Drupal 11 only**: the modern rewrite assumes a backwards-incompatible change, so it moves to `^11` and a new major version.
 
 ---
 
