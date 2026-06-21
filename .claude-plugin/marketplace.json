@@ -14,7 +14,7 @@
       "name": "drupilot",
       "source": "./",
       "description": "Port Drupal 9/10 modules and themes to Drupal 11 (assess, minimal port, full refactor, tests in DDEV, Drupal.org contribution).",
-      "version": "0.8.0",
+      "version": "0.8.1",
       "category": "development",
       "keywords": [
         "drupal",

@@ -11,6 +11,26 @@ release, rename `[Unreleased]` to the new version with a date, bump `version`
 in `.claude-plugin/plugin.json` (and the `marketplace.json` entry) to match, and
 tag the commit `vX.Y.Z`.
 
+## [0.8.1] - 2026-06-21
+
+### Added
+- **README section "What's automatic vs. where the AI decides"** (mirrored in
+  `README_es.md`) — documents the split between the deterministic, scripted code
+  fixes (official Rector, the frozen digests layer, `phpcbf`, the `PostToolUse`
+  hook) and the report-only analyzers (`phpcs`, PHPStan, preflight, detection,
+  insight tools), then enumerates where the AI applies judgment and the
+  conductor pattern (AI runs a script, reads the result, decides the next),
+  including the lone hook exception. Fills a documented gap: the README explained
+  the deterministic side well but never stated where the AI acts. Includes a
+  **hooks sub-table** framing what a hook is (an automation the harness fires —
+  neither the AI nor the user), when each one acts, what it does, and whether its
+  output goes to the AI or to the user.
+- **`FLOW.md` (mirrored in `FLOW_es.md`)** — a visual, end-to-end Mermaid diagram
+  of the flow: which tool runs at each step, where the AI steps in, the two
+  porting phases with their result milestones, and the always-on hooks with their
+  recipients. `README.md` links to `FLOW.md` and `README_es.md` links to
+  `FLOW_es.md` from the architecture section.
+
 ## [0.8.0] - 2026-06-20
 
 ### Changed
@@ -530,7 +550,8 @@ verdict, what-changed report card, frozen lock), and new insight tools
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/thebrokenbrain/drupilot/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.6.0...v0.7.0

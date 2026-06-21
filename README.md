@@ -20,6 +20,7 @@
 - [Quick start](#quick-start)
 - [Commands](#commands)
 - [The two-phase porting philosophy](#the-two-phase-porting-philosophy)
+- [What's automatic vs. where the AI decides](#whats-automatic-vs-where-the-ai-decides)
 - [Hands-off (autonomous) mode](#hands-off-autonomous-mode)
 - [Configuration](#configuration)
 - [Determinism (reproducible by default)](#determinism-reproducible-by-default)
@@ -148,6 +149,40 @@ Developer-facing outputs live in a single **visible, gitignored** `.drupilot/` d
 A **viability assessment** always runs first as a decision gate. If the refactor is disproportionate (a configurable threshold), `drupilot` does not refuse — it still delivers a staged port plan that preserves the original functionality, and leaves the decision to you.
 
 **How "respecting the original functionality" is verified.** The adapted test suite staying **green is the preservation gate** for both phases — that green is the evidence the behavior is preserved. Test adaptations only update a test's *form* (PHPUnit/Drupal API), never *what it verifies*; a behavioral regression is fixed in the code, never by relaxing a test. If the module ships **no tests**, `drupilot` reports preservation as **not verified** and recommends adding them — it does not fabricate them.
+
+---
+
+## What's automatic vs. where the AI decides
+
+drupilot splits the work in two. **Deterministic scripts** do the mechanical, repeatable work and measure the result; **the AI (Claude) supplies the judgment** — it reviews, decides what to apply, fixes whatever isn't mechanical, and chains the steps together. The consequential decisions are still yours to approve (the tabbed choices).
+
+**Done by scripts, no AI:**
+
+- *Change code:* official Rector (`palantirnet/drupal-rector`), the digests Rector layer (AI-authored rules, but run as a frozen, version-pinned config), `phpcbf` (auto-fixable coding-standards), and the `PostToolUse` hook (runs `phpcbf` on every Drupal file you edit).
+- *Only measure / report:* `phpcs` (reports what `phpcbf` couldn't fix), PHPStan (deprecations + type errors), the preflight requirements gate, PHP/core detection, the dependency-readiness panel, and the patch and report generators. These **never touch your code**.
+
+**Where the AI acts:**
+
+- **Reviews each Rector dry-run** and decides whether to apply it — never applies blind.
+- **Picks which digests rules to apply**, pre-flagging the ones that would silently raise your core floor.
+- **Fixes what Rector doesn't cover** — generates an ad-hoc rule or edits by hand (`DRUPILOT_GENERATE_RULES`).
+- **Makes the manual changes Rector can't** — `core_version_requirement`, `require.php`, Twig 3, CKEditor 5, jQuery UI.
+- **Drives the validate loop** — reads what `phpcs` / PHPStan report and fixes it until clean.
+- **Adapts the tests** to D11; on a behavioral failure it fixes the **code**, never the test.
+- **Rewrites to the "Drupal 11 way"** in Phase 2 — attributes, dependency injection, strict types, deprecation removal.
+- **Proposes the consequential decisions** (core target, refactor scope, contribute or not) — you choose.
+
+**When the AI acts — the pattern.** The AI is the conductor: the scripts don't call each other. The AI runs one, reads its output, decides the next, and runs it. So it acts **before** every script (decide whether and how to run it) and **after** it (read the result and fix what's left), plus at the decision tabs. The single exception is the **`PostToolUse` hook**, which runs `phpcbf` on its own after each file edit — no AI in the loop.
+
+**The hooks — automatic, triggered by the harness.** Hooks are deterministic scripts that **Claude Code itself fires on an event** — neither the AI nor you invoke them. The hook is the automation; the AI or you are the *recipients* of what it decides:
+
+| Hook | When it acts | What it does | Output goes to |
+| --- | --- | --- | --- |
+| `session-detect-env` | session start | summarizes your environment + PHP target | the **AI** (as context) |
+| `post-edit-lint` | after every file edit (Write/Edit) | runs `phpcbf` → **edits the file**, then reports what's left | the **AI** (to fix the rest) |
+| `guard-contrib` | before every Bash command | detects an outward-facing `git push` / MR | **you** (asks for confirmation) |
+
+So a hook is never AI and never a human decision in itself — it is the automation. `post-edit-lint` is the only piece that changes code entirely on its own; `guard-contrib` is an automation whose whole purpose is to put **you** back in the loop before anything leaves your machine. Toggle them with `DRUPILOT_POST_EDIT_LINT` and `DRUPILOT_SESSION_CONTEXT` (see [Configuration](#configuration)); the contribution guard always asks in `semi` mode and in any autonomous run.
 
 ---
 
@@ -340,6 +375,8 @@ When the issue still has to be created, it generates the **issue summary** (the 
   - `PreToolUse` (Bash) → asks for confirmation before any outward-facing git push / MR action in `semi` mode, and **always** in an autonomous run (which must never push on its own).
 - **Scripts** (`scripts/`) are a robust, idempotent shell library: a shared `lib/common.sh`, the `env/preflight.sh` requirements engine, and the `analysis/`, `tests/` and `contrib/` wrappers the skills and commands invoke.
 - **Templates** (`templates/`) are parameterized configs (`rector.php`, `phpstan.neon`, `phpcs.xml.dist`, DDEV config + test environment, report templates) tuned by the PHP target.
+
+See **[FLOW.md](FLOW.md)** for a visual, end-to-end diagram of the flow — which tool runs at each step, where the AI steps in, and the two porting phases.
 
 ---
 
