@@ -11,7 +11,7 @@ release, rename `[Unreleased]` to the new version with a date, bump `version`
 in `.claude-plugin/plugin.json` (and the `marketplace.json` entry) to match, and
 tag the commit `vX.Y.Z`.
 
-## [Unreleased]
+## [0.8.1] - 2026-06-21
 
 ### Added
 - **README section "What's automatic vs. where the AI decides"** (mirrored in
@@ -550,7 +550,8 @@ verdict, what-changed report card, frozen lock), and new insight tools
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/thebrokenbrain/drupilot/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.6.0...v0.7.0
