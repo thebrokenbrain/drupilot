@@ -11,6 +11,21 @@ release, rename `[Unreleased]` to the new version with a date, bump `version`
 in `.claude-plugin/plugin.json` (and the `marketplace.json` entry) to match, and
 tag the commit `vX.Y.Z`.
 
+## [Unreleased]
+
+### Added
+- **README section "What's automatic vs. where the AI decides"** (mirrored in
+  `README_es.md`) — documents the split between the deterministic, scripted code
+  fixes (official Rector, the frozen digests layer, `phpcbf`, the `PostToolUse`
+  hook) and the report-only analyzers (`phpcs`, PHPStan, preflight, detection,
+  insight tools), then enumerates where the AI applies judgment and the
+  conductor pattern (AI runs a script, reads the result, decides the next),
+  including the lone hook exception. Fills a documented gap: the README explained
+  the deterministic side well but never stated where the AI acts. Includes a
+  **hooks sub-table** framing what a hook is (an automation the harness fires —
+  neither the AI nor the user), when each one acts, what it does, and whether its
+  output goes to the AI or to the user.
+
 ## [0.8.0] - 2026-06-20
 
 ### Changed
