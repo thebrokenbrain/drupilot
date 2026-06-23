@@ -12,9 +12,10 @@
  *   {{PHP_TARGET}}   — the PHP target driving ->withPhpSets() (default 8.3)
  *
  * Drupal sets:
- *   Drupal10SetList::DRUPAL_10  (D9/10 -> D10 deprecations)
- *   Drupal11SetList::DRUPAL_11  (-> D11 deprecations)
- * These run cumulatively so a D9/10 extension is carried up to D11.
+ *   Drupal10SetList::DRUPAL_10  — APIs deprecated in D9/D10 that are removed in D11.
+ *                                 This is the correct set for porting to D11.
+ *   Drupal11SetList::DRUPAL_11  — NOT included: covers D11 deprecations for a future
+ *                                 D12 port, and does not exist in palantirnet/drupal-rector ^0.21.
  *
  * PHP sets are selected from the configured PHP target:
  *   8.3 -> php83: true
@@ -37,7 +38,6 @@
 declare(strict_types=1);
 
 use DrupalRector\Set\Drupal10SetList;
-use DrupalRector\Set\Drupal11SetList;
 use Rector\Config\RectorConfig;
 
 return RectorConfig::configure()
@@ -51,10 +51,9 @@ return RectorConfig::configure()
     '*/vendor/*',
     '*/node_modules/*',
   ])
-  // Drupal deprecation sets, applied cumulatively D9/10 -> D11.
+  // Drupal deprecation sets: covers APIs deprecated in D9/D10 removed in D11.
   ->withSets([
     Drupal10SetList::DRUPAL_10,
-    Drupal11SetList::DRUPAL_11,
   ])
   // PHP language-level upgrades for the configured target.
   // drupilot rewrites the argument below to match {{PHP_TARGET}}:

@@ -133,10 +133,23 @@ VENDOR_RECTOR="$DRUPAL_ROOT/vendor/palantirnet/drupal-rector/rector.php"
 TEMPLATE_RECTOR="$(plugin_root)/templates/rector.php.tmpl"
 
 if [[ -f "$RECTOR_PHP" ]]; then
-  log_ok "rector.php already present at the Drupal root (left untouched)."
-elif [[ -f "$VENDOR_RECTOR" ]]; then
-  cp "$VENDOR_RECTOR" "$RECTOR_PHP"
-  log_ok "Copied rector.php from vendor/palantirnet/drupal-rector/rector.php."
+  # Detect legacy API: the old format uses `$rectorConfig->sets([` instead of
+  # `RectorConfig::configure()`. If found, regenerate from the drupilot template
+  # so the port is not silently run with an incomplete ruleset.
+  if ! grep -q "RectorConfig::configure" "$RECTOR_PHP"; then
+    log_warn "rector.php uses the legacy API. Regenerating from the drupilot template..."
+    if [[ -f "$TEMPLATE_RECTOR" ]]; then
+      sed -e "s|{{SUBJECT_PATH}}|${SUBJECT_REL}|g" \
+          -e "s|{{PHP_TARGET}}|${PHP_TARGET}|g" \
+          -e "s|{{DRUPAL_TARGET}}|$(resolve_drupal_target)|g" \
+          "$TEMPLATE_RECTOR" > "$RECTOR_PHP"
+      log_ok "rector.php regenerated from the drupilot template (subject: $SUBJECT_REL)."
+    else
+      die "rector.php uses the legacy API and no template is available to regenerate it. Run /drupilot-setup first." 2
+    fi
+  else
+    log_ok "rector.php already present at the Drupal root (left untouched)."
+  fi
 elif [[ -f "$TEMPLATE_RECTOR" ]]; then
   # The template uses {{PLACEHOLDER}} tokens; substitute the ones we know.
   sed -e "s|{{SUBJECT_PATH}}|${SUBJECT_REL}|g" \
@@ -144,8 +157,13 @@ elif [[ -f "$TEMPLATE_RECTOR" ]]; then
       -e "s|{{DRUPAL_TARGET}}|$(resolve_drupal_target)|g" \
       "$TEMPLATE_RECTOR" > "$RECTOR_PHP"
   log_ok "Wrote rector.php from the drupilot template (subject: $SUBJECT_REL)."
+elif [[ -f "$VENDOR_RECTOR" ]]; then
+  # Fallback: vendor example file. It uses the legacy API and may be incomplete;
+  # prefer the drupilot template whenever available.
+  cp "$VENDOR_RECTOR" "$RECTOR_PHP"
+  log_warn "rector.php copied from vendor/palantirnet/drupal-rector/rector.php (legacy fallback). Run /drupilot-setup to regenerate it from the drupilot template."
 else
-  die "No rector.php found and no source to create one (neither $VENDOR_RECTOR nor $TEMPLATE_RECTOR exists)." 2
+  die "No rector.php found and no source to create one (neither $TEMPLATE_RECTOR nor $VENDOR_RECTOR exists)." 2
 fi
 
 # --- Helpers --------------------------------------------------------------
