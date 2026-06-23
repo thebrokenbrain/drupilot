@@ -11,6 +11,29 @@ release, rename `[Unreleased]` to the new version with a date, bump `version`
 in `.claude-plugin/plugin.json` (and the `marketplace.json` entry) to match, and
 tag the commit `vX.Y.Z`.
 
+## [0.8.4] - 2026-06-23
+
+### Fixed
+- **`run-rector.sh`: drupilot template now takes precedence over the vendor fallback.**
+  The previous priority (`vendor/palantirnet/drupal-rector/rector.php` before the
+  template) caused a race condition: if `run-rector.sh` ran after `composer install`
+  completed, it would copy the vendor example file — which uses the legacy procedural
+  API (`$rectorConfig->sets([…])`) and includes Drupal 8/9 sets not needed for a
+  D10→D11 port — instead of the correct drupilot template. Modules set up in that
+  window received an incomplete ruleset without any warning.
+- **`run-rector.sh`: existing `rector.php` files using the legacy API are automatically
+  regenerated.** If a `rector.php` is already present but does not use
+  `RectorConfig::configure()`, it is now replaced from the drupilot template instead
+  of being left untouched, preventing silent re-runs with an outdated configuration.
+  If the template is unavailable in that scenario, the script aborts with an
+  actionable error.
+- **`rector.php.tmpl`: removed `Drupal11SetList::DRUPAL_11`.** That set does not exist
+  in `palantirnet/drupal-rector ^0.21` (the pinned constraint) and belongs to a future
+  D12 port, not to porting to D11. Referencing it caused a fatal class-not-found error
+  on any sandbox that used the template path. `Drupal10SetList::DRUPAL_10` is the
+  correct and sufficient set for a D10→D11 port (covers APIs deprecated in D9/D10
+  that are removed in D11).
+
 ## [0.8.3] - 2026-06-21
 
 ### Fixed
@@ -567,6 +590,7 @@ verdict, what-changed report card, frozen lock), and new insight tools
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
+[0.8.4]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.0...v0.8.1

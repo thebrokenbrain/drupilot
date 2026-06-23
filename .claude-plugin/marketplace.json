@@ -7,14 +7,14 @@
   },
   "metadata": {
     "description": "Single-plugin marketplace for drupilot, the Drupal 9/10 → 11 porting assistant.",
-    "version": "0.8.3"
+    "version": "0.8.4"
   },
   "plugins": [
     {
       "name": "drupilot",
       "source": "./",
       "description": "Port Drupal 9/10 modules and themes to Drupal 11 (assess, minimal port, full refactor, tests in DDEV, Drupal.org contribution).",
-      "version": "0.8.3",
+      "version": "0.8.4",
       "category": "development",
       "keywords": [
         "drupal",
