@@ -116,9 +116,12 @@ tag the commit `vX.Y.Z`.
 - **`scripts/lib/php-scan.sh`** — shared PHP class heuristics (namespace, imports,
   class headers, traits, methods with parameter counts, properties incl. promoted
   ones, `new self`/`new static`, `#[\Override]`) for analysis scripts.
-- **`git_port_base_ref` in `common.sh`** — the pre-port git base (upstream, then
-  `origin/HEAD`, then `HEAD`); `make-patch.sh --local` now uses it (same
-  semantics) so the patch and the port-safety checks judge the same diff.
+- **`git_port_base_ref` in `common.sh`** — the pre-port git base, shared by
+  `make-patch.sh --local` and the port-safety checks so both judge the same
+  diff. It resolves the fork point (the upstream only when it is an ancestor of
+  `HEAD`, else the closest of `origin/HEAD`, the other remote branches and the
+  nearest tag); see the "`make-patch.sh --local` diffed against an unrelated
+  base" entry under Fixed.
 - **Port-safety rules in the prompts** (`minimal-port` §0, `full-refactor`,
   `drupal-port-orchestrator`): never remove `ContainerFactoryPluginInterface` from
   a class with `create()` (`QueueWorkerBase`, `BlockBase`, `FilterBase`,
