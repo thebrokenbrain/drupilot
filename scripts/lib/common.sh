@@ -1016,6 +1016,128 @@ negative_controls_summary() {
   return 0
 }
 
+# --- Per-subject state (state.json) ------------------------------------------
+# One small JSON record per subject in its hidden state dir, next to
+# last-test.json: which porting stages were reached and when. Written by the
+# deterministic scripts (port-report.sh records ported/refactored from the
+# manifest's phase, run-phpunit.sh records tested on a verified run), read by
+# next-step.sh, the post-edit hook and /drupilot-status. Shape:
+#   {subject, updated, stage, stages: {<stage>: <ISO time>, ...}}
+# `stage` is the highest-ranked stage reached and never goes down (re-running
+# /drupilot-port after a refactor does not undo it; DRUPILOT_STATE_FORCE=1
+# lets a record lower it). The legacy plain-text `<state_dir>/phase` marker is
+# kept in sync with `stage` for older readers. Further keys are reserved for
+# the per-module registry (effort, origin, toolchain, ...): writers merge and
+# never drop keys they do not own.
+
+# subject_state_file <subject> -> path of the subject's state.json.
+subject_state_file() { printf '%s/state.json' "$(project_state_dir "${1:-$PWD}")"; }
+
+# stage_normalize <word> -> the canonical stage name (ported, refactored, ...)
+# for the verbs and legacy markers in use (port, refactor, ...); empty when
+# unknown.
+stage_normalize() {
+  case "$(lc "${1:-}")" in
+    setup) printf 'setup';;
+    assess|assessed) printf 'assessed';;
+    port|ported) printf 'ported';;
+    refactor|refactored) printf 'refactored';;
+    test|tested) printf 'tested';;
+    contribute|contributed) printf 'contributed';;
+  esac
+  return 0
+}
+
+# stage_rank <stage> -> its position on the ladder (0 when unknown).
+stage_rank() {
+  case "$(stage_normalize "${1:-}")" in
+    setup) printf 1;; assessed) printf 2;; ported) printf 3;;
+    refactored) printf 4;; tested) printf 5;; contributed) printf 6;;
+    *) printf 0;;
+  esac
+}
+
+# state_get <subject> <jq-path> [default] -> a value from state.json (strings
+# raw, other JSON compact), or the default. STDOUT only; never fails.
+state_get() {
+  local f v
+  f="$(subject_state_file "${1:-$PWD}")"
+  if [[ -r "$f" ]] && have_cmd jq; then
+    v="$(jq -r "(${2}) // empty | if type == \"string\" then . else tojson end" "$f" 2>/dev/null || true)"
+    if [[ -n "$v" ]]; then printf '%s' "$v"; return 0; fi
+  fi
+  printf '%s' "${3:-}"
+  return 0
+}
+
+# state_set <subject> <jq-path> <string> / state_set_json <subject> <jq-path>
+# <json> -> set one key in state.json (created when absent) and stamp
+# `.updated` and `.subject`. Atomic (temp file + mv); returns 1 without jq or on
+# a write error. <jq-path> is plugin-controlled, never user input.
+state_set() { _state_write "${1:-$PWD}" "$2" "--arg" "$3"; }
+state_set_json() { _state_write "${1:-$PWD}" "$2" "--argjson" "$3"; }
+_state_write() {
+  local subj="$1" path="$2" kind="$3" val="$4" f tmp abs
+  have_cmd jq || return 1
+  f="$(subject_state_file "$subj")"
+  abs="$(cd "$subj" 2>/dev/null && pwd || printf '%s' "$subj")"
+  [[ -s "$f" ]] || printf '{}\n' > "$f" 2>/dev/null || return 1
+  tmp="$(mktemp "${f}.XXXXXX" 2>/dev/null)" || return 1
+  if jq "$kind" v "$val" --arg s "$abs" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+       "${path} = \$v | .subject = \$s | .updated = \$at" "$f" > "$tmp" 2>/dev/null; then
+    mv -f "$tmp" "$f"
+  else
+    rm -f "$tmp" 2>/dev/null || true; return 1
+  fi
+}
+
+# phase_record <subject> <stage> -> mark <stage> as reached now
+# (.stages[stage]), raise .stage when it ranks higher (monotonic, see above)
+# and rewrite the legacy phase marker. Returns 1 for an unknown stage or a
+# write error. Callers in a flow wrap it in `|| true`: recording is never a
+# reason to fail a port.
+phase_record() {
+  local subj="${1:-$PWD}" st cur force
+  st="$(stage_normalize "${2:-}")"
+  [[ -n "$st" ]] || return 1
+  state_set "$subj" ".stages[\"$st\"]" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" || return 1
+  cur="$(state_get "$subj" .stage "")"
+  force="$(config_get DRUPILOT_STATE_FORCE "")"
+  if [[ -z "$cur" || "$(stage_rank "$st")" -gt "$(stage_rank "$cur")" || "$force" == "1" || "$(lc "$force")" == "true" ]]; then
+    state_set "$subj" .stage "$st" || return 1
+    cur="$st"
+  fi
+  printf '%s\n' "$cur" > "$(project_state_dir "$subj")/phase" 2>/dev/null || true
+  return 0
+}
+
+# phase_get <subject> -> the current stage: state.json's .stage, else the
+# legacy phase marker (normalized: refactor -> refactored). Empty when none.
+phase_get() {
+  local subj="${1:-$PWD}" st
+  st="$(state_get "$subj" .stage "")"
+  if [[ -z "$st" ]]; then
+    st="$({ tr -d '[:space:]' < "$(project_state_dir "$subj")/phase"; } 2>/dev/null || true)"
+  fi
+  stage_normalize "$st"
+  return 0
+}
+
+# phase_reached <subject> <stage> -> 0 when <stage> was reached: recorded in
+# state.json's .stages, or (a subject without state.json) implied by the legacy
+# marker's rank, as before.
+phase_reached() {
+  local subj="${1:-$PWD}" st cur
+  st="$(stage_normalize "${2:-}")"
+  [[ -n "$st" ]] || return 1
+  if [[ -r "$(subject_state_file "$subj")" ]] && have_cmd jq; then
+    [[ -n "$(state_get "$subj" ".stages[\"$st\"]" "")" ]]
+    return
+  fi
+  cur="$(phase_get "$subj")"
+  [[ -n "$cur" && "$(stage_rank "$cur")" -ge "$(stage_rank "$st")" ]]
+}
+
 # core_matrix_fresh <subject> -> 0 when a core-matrix result exists for the
 # subject AND was computed on its current sources (same subject_digest), so a
 # report never presents a verdict about code that changed since.

@@ -5,7 +5,8 @@
 # (/drupilot) and /drupilot-status recommend the SAME step instead of each
 # restating the rules in prose (which drift apart).
 #
-# It reads the per-project state (assess.json, the phase marker, last-test.json,
+# It reads the per-project state (assess.json, the stages in state.json — or the
+# legacy phase marker — last-test.json,
 # the lockfile) and the subject facts (extension? type? DDEV configured?), and
 # the four readiness booleans — either passed in by a caller that already ran
 # `preflight --json`, or read by this script itself with --from-preflight. It
@@ -146,11 +147,11 @@ ddev_running "$ROOT" 2>/dev/null && DDEV_RUNNING="true"
 
 ASSESSED="false"; [[ -f "$STATE_DIR/assess.json" ]] && ASSESSED="true"
 
-PHASE=""; [[ -f "$STATE_DIR/phase" ]] && PHASE="$(tr -d '[:space:]' < "$STATE_DIR/phase" 2>/dev/null || true)"
-PORTED="false"
-case "$PHASE" in ported|refactored|tested|contributed) PORTED="true";; esac
-REFACTORED="false"
-case "$PHASE" in refactored|tested|contributed) REFACTORED="true";; esac
+# Stages from state.json (recorded by port-report.sh / run-phpunit.sh through
+# phase_record), falling back to the legacy <state_dir>/phase marker.
+PHASE="$(phase_get "$SUBJECT")"
+PORTED="false"; phase_reached "$SUBJECT" ported && PORTED="true"
+REFACTORED="false"; phase_reached "$SUBJECT" refactored && REFACTORED="true"
 
 # Test outcome / preservation verdict from the persisted record.
 TESTS="unknown"; PRESERVATION="unknown"

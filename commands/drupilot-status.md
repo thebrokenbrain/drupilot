@@ -36,8 +36,11 @@ Read these if they exist (do not recompute anything):
 
 - `@<state_dir>/assess.json` and `@<artifacts_dir>/viability-report.md` — verdict,
   effort (S/M/L/XL), auto-fixable vs manual counts, and the assessment timestamp.
-- `@<state_dir>/phase` — the current phase marker (e.g. setup / assessed / ported /
-  refactored / tested / contributed).
+- `@<state_dir>/state.json` — the stages reached: `stage` (the highest one:
+  setup / assessed / ported / refactored / tested / contributed) and `stages`
+  (each with the time it was recorded). `port-report.sh` records ported /
+  refactored and `run-phpunit.sh` records tested. An older project may only
+  have the plain-text `<state_dir>/phase` marker.
 - `@<state_dir>/last-test.json` — the last PHPUnit run: groups run, pass/fail counts,
   the **`preservation`** verdict (`verified` / `verified-partial` / `regression` /
   `pre-existing-failures` / `not-verified-unbaselined` / `not-verified-blocked` /
@@ -80,7 +83,8 @@ Render an English summary covering:
   (e.g. 8.5) — never claim an unconfirmed version is supported.
 - **Reproducibility:** deterministic mode on/off, and if a lockfile exists, the
   frozen Drupal core and digests SHA it pins (what a re-run will reuse).
-- **Current phase:** from the phase marker (or "not assessed yet").
+- **Current phase:** `stage` from `state.json` (or the legacy phase marker; else
+  "not assessed yet").
 - **Last assessment:** verdict + effort + counts + when, or "none cached".
 - **Last test result:** pass/fail summary, the **preservation** verdict, and when —
   or "tests not run yet". With a baseline, say how many failures are regressions

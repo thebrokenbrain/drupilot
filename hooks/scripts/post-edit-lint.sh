@@ -115,7 +115,11 @@ case "$(lc "$MODE")" in off) exit 0;; report|autofix) : ;; *) MODE="autofix";; e
 # (compatibility), not DrupalPractice WARNINGS — premature style nagging belongs
 # to Phase 2. In the refactor phase, surface both.
 # (Braces so a missing phase file's redirection error is silenced too.)
-PHASE="$({ tr -d '[:space:]' < "$(project_state_dir "$EXT_DIR" 2>/dev/null)/phase"; } 2>/dev/null || true)"
+# The refactor stage comes from state.json (phase_reached reads its .stages,
+# falling back to the legacy phase marker, where "refactor" and "refactored"
+# both count). Fail-safe: any error leaves Phase 1 strictness.
+PHASE="port"
+{ phase_reached "$EXT_DIR" refactored; } 2>/dev/null && PHASE="refactor"
 
 # Run from the Drupal root so relative paths resolve identically on host/in DDEV.
 REL="$FILE"

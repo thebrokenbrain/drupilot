@@ -71,6 +71,10 @@
 # (core_dev_requirement in common.sh), e.g.:
 #   ddev composer require --dev "drupal/core-dev:~11.4.8" -W
 #
+# Stage: a recorded whole-suite run (--type all, no --filter) whose
+# preservation is verified or verified-partial also marks the subject's
+# `tested` stage in state.json (phase_record in common.sh).
+#
 # Exit codes:
 #   0  -> all selected test groups passed (or there was nothing to run); with
 #         --baseline / --baseline-from-last: the baseline was recorded, even red.
@@ -708,6 +712,13 @@ else
 
   if [[ "$RECORD" == "1" && -n "$RECORD_JSON" ]]; then
     printf '%s\n' "$RECORD_JSON" > "$STATE_DIR/last-test.json" 2>/dev/null || true
+    # A whole-suite run (--type all, no --filter) that verified preservation
+    # marks the subject's `tested` stage (state.json); a partial run does not.
+    if [[ "$TYPE" == "all" && -z "$FILTER" ]]; then
+      case "$PRESERVATION" in
+        verified|verified-partial) phase_record "$SUBJECT" tested 2>/dev/null || true;;
+      esac
+    fi
   fi
 fi
 

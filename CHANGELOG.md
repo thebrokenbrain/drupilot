@@ -423,6 +423,20 @@ tag the commit `vX.Y.Z`.
   PHPCS reports a processing error instead of counting it as a violation.
 
 ### Fixed
+- **`/drupilot-status` and the router kept recommending `/drupilot-port` after
+  a finished port.** `next-step.sh` treated the port as done only when a
+  `<state_dir>/phase` marker existed, and nothing ever wrote it. The two
+  readers also disagreed on its words (`refactor` vs `refactored`). New
+  per-subject state helpers in `common.sh` (`subject_state_file`,
+  `state_get`/`state_set`/`state_set_json`, `stage_rank`,
+  `phase_record`/`phase_get`/`phase_reached`) keep a hidden `state.json` with
+  the highest stage reached and when each stage was recorded. That stage is
+  monotonic; `DRUPILOT_STATE_FORCE=true` allows lowering it. The record also
+  keeps the legacy marker in sync. `port-report.sh` records `ported` /
+  `refactored` from the manifest's phase. A whole-suite `run-phpunit.sh` run
+  with a verified (or partially verified) preservation records `tested`.
+  `next-step.sh` and the post-edit hook read the stages, falling back to the
+  legacy marker; the hook stays fail-safe.
 - **The core matrix corrupted the test-bed's PHPStan setup on its first run.**
   `verify-core-matrix.sh` ran `ddev exec "timeout … composer …"` to build a
   reference core. Under `timeout`, `composer` resolved to the test-bed's own

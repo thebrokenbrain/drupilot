@@ -74,6 +74,10 @@
 # migration area (Entity API, Twig 3, CKEditor 5, ...) with what changed, the fix
 # and a drupal.org change-record link — turning the report into a teaching aid.
 #
+# Stage: with a --manifest whose phase is "port" (the default) or "refactor",
+# the report also records that stage (ported / refactored) in the subject's
+# state.json via phase_record (common.sh), which next-step.sh reads.
+#
 # Usage:
 #   port-report.sh --subject DIR [--manifest FILE] [--output DIR] [--changes-log FILE]
 #
@@ -483,5 +487,19 @@ D10_VERSIONS=""; D10_FLOOR=""
 } > "$REPORT"
 
 log_ok "Port report written: $REPORT"
+
+# Record the stage the manifest's phase completed (port -> ported, refactor ->
+# refactored) in the subject's state.json, so /drupilot-status and the router
+# stop recommending a step already done. Only a real manifest counts: a report
+# rendered from cached state alone records nothing. Never fails the report.
+if [[ -n "$MANIFEST" && -r "$MANIFEST" ]]; then
+  case "$(stage_normalize "$PHASE")" in
+    ported|refactored)
+      phase_record "$SUBJECT" "$PHASE" 2>/dev/null \
+        && log_info "Recorded stage '$(stage_normalize "$PHASE")' for $(basename "$SUBJECT")." \
+        || log_warn "Could not record the '$PHASE' stage in $(subject_state_file "$SUBJECT")."
+      ;;
+  esac
+fi
 printf '%s\n' "$REPORT"
 exit 0
