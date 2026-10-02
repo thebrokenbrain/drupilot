@@ -51,10 +51,18 @@
 # not given), every failing test is compared with the baseline: a test that
 # failed before AND fails now is "pre-existing"; a test that passed before and
 # fails now is a regression; a failing test the baseline never ran counts as a
-# regression too (it cannot be shown to pre-exist), unless its whole baseline
-# group crashed without per-test results. The record's `baseline` object lists
-# regressions / pre_existing / fixed, and flags a pre-existing failure whose
-# message changed (it may now fail for another reason).
+# regression too (it cannot be shown to pre-exist). A failing test the baseline
+# could not MEANINGFULLY run is "not-baselined" (an explicit unverified bucket,
+# never pre-existing): its baseline group crashed without per-test results
+# (basis baseline-group-crashed), or its baseline failure was the environment
+# refusing the un-ported module — "Unable to install modules: module 'x' is
+# incompatible with this version of Drupal core" on the Drupal 11 test-bed —
+# rather than the behavior under test (basis baseline-not-installable). Its
+# post-port failure says nothing about what the port changed, so it blocks a
+# pre-existing-failures verdict (see not-verified-unbaselined below). The
+# record's `baseline` object lists regressions / not_baselined / pre_existing /
+# fixed, and flags a failure whose message changed (it may now fail for another
+# reason).
 #
 # PHPUnit itself comes from drupal/core-dev, which a plain recommended-project
 # does not ship. When the subject has tests but vendor/bin/phpunit is missing,
@@ -501,6 +509,12 @@ fi
 #                            to fix in code, never a test relaxed to fake green).
 #                            With a baseline: a test that passed in the baseline
 #                            (or that the baseline never ran) fails now.
+#   not-verified-unbaselined -> tests fail, no test regressed, but some failing
+#                            tests were never meaningfully run by the baseline
+#                            (`baseline.not_baselined`: its group crashed, or the
+#                            un-ported module could not even be installed then).
+#                            Their failures may be regressions or not: neither
+#                            pre-existing nor verified. Exit 3.
 #   pre-existing-failures -> tests fail, but every failing test already failed in
 #                            the pre-port baseline (test-baseline.json) and nothing
 #                            that passed before fails now. The port introduced no
@@ -565,6 +579,9 @@ else
     BASELINE_JSON="$(jq -c -n --slurpfile b "$BASELINE_FILE" --slurpfile curf "$TESTS_JSON_FILE" --argjson cg "$GROUPRES_JSON" \
         --arg file "$BASELINE_FILE" --arg digest "$DIGEST" '
       def bad: .status == "fail" or .status == "error";
+      # The baseline failure was the environment refusing the un-ported
+      # extension (install-time), not the behavior under test.
+      def env_fail: ((.message // "") | test("Unable to install (modules|themes)|incompatible with this version of Drupal core|MissingDependencyException|Missing dependency"; "i"));
       $curf[0] as $cur
       | $b[0] as $base
       | (reduce ($base.tests // [])[] as $t ({}; .[$t.id] = $t)) as $bm
@@ -572,15 +589,20 @@ else
       | [ $cur[] | select(bad) | . as $t | ($bm[$t.id]) as $p
           | if $p == null then
               (if $bgs[$t.group] == "crashed"
-               then {id: $t.id, group: $t.group, class: "pre-existing", basis: "baseline-group-crashed", now: $t.message}
+               then {id: $t.id, group: $t.group, class: "not-baselined", basis: "baseline-group-crashed", now: $t.message}
                else {id: $t.id, group: $t.group, class: "regression", basis: "not-in-baseline", now: $t.message} end)
+            elif ($p | bad) and ($p | env_fail) then
+              {id: $t.id, group: $t.group, class: "not-baselined", basis: "baseline-not-installable",
+               message_changed: (($p.message // "") != ($t.message // "")), before: $p.message, now: $t.message}
             elif ($p | bad) then
               {id: $t.id, group: $t.group, class: "pre-existing", basis: "test",
                message_changed: (($p.message // "") != ($t.message // "")), before: $p.message, now: $t.message}
             else {id: $t.id, group: $t.group, class: "regression", basis: "passed-before", now: $t.message} end ] as $cls
       | [ $cg[] | select(.status == "failed" or .status == "crashed") | .group as $g
           | select([ $cur[] | select(.group == $g) | select(bad) ] | length == 0)
-          | if ($bgs[$g] == "failed" or $bgs[$g] == "crashed")
+          | if $bgs[$g] == "crashed"
+            then {id: null, group: $g, class: "not-baselined", basis: "group-\(.status)-baseline-crashed"}
+            elif $bgs[$g] == "failed"
             then {id: null, group: $g, class: "pre-existing", basis: "group-\(.status)"}
             else {id: null, group: $g, class: "regression", basis: "group-\(.status)"} end ] as $grp
       | ($cls + $grp) as $all
@@ -588,6 +610,7 @@ else
          type: ($base.type // null), filter: ($base.filter // null),
          same_code: (($base.subject_digest // "") != "" and $base.subject_digest == $digest),
          regressions: [ $all[] | select(.class == "regression") | del(.class) ],
+         not_baselined: [ $all[] | select(.class == "not-baselined") | del(.class) ],
          pre_existing: [ $all[] | select(.class == "pre-existing") | del(.class) ],
          fixed: [ $cur[] | select(.status == "pass") | .id as $i | select(($bm[$i] // {status: "pass"}) | bad) | $i ]}' \
         2>/dev/null || echo null)"
@@ -596,11 +619,16 @@ else
       N_REG="$(printf '%s' "$BASELINE_JSON" | jq '.regressions | length')"
       N_PRE="$(printf '%s' "$BASELINE_JSON" | jq '.pre_existing | length')"
       N_FIX="$(printf '%s' "$BASELINE_JSON" | jq '.fixed | length')"
-      log_info "Compared with the baseline ($(printf '%s' "$BASELINE_JSON" | jq -r '.taken_at // "?"')): $N_REG regression(s), $N_PRE pre-existing failure(s), $N_FIX fixed."
+      N_NOB="$(printf '%s' "$BASELINE_JSON" | jq '.not_baselined | length')"
+      log_info "Compared with the baseline ($(printf '%s' "$BASELINE_JSON" | jq -r '.taken_at // "?"')): $N_REG regression(s), $N_NOB not baselined, $N_PRE pre-existing failure(s), $N_FIX fixed."
       if [[ "$(printf '%s' "$BASELINE_JSON" | jq -r '.same_code')" == "true" ]]; then
         log_warn "The baseline was taken on the current code: it cannot tell what the port changed (take it with --baseline BEFORE porting)."
       fi
-      if [[ "$FAILED" -gt 0 && "$N_REG" -eq 0 ]]; then
+      if [[ "$FAILED" -gt 0 && "$N_REG" -eq 0 && "$N_NOB" -gt 0 ]]; then
+        PRESERVATION="not-verified-unbaselined"
+        log_warn "$N_NOB failing test(s) were never meaningfully run by the baseline (their group crashed, or the un-ported module could not be installed): they may be regressions, so preservation is NOT verified."
+        printf '%s' "$BASELINE_JSON" | jq -r '.not_baselined[] | "  not baselined: \(.id // ("group " + .group)) (\(.basis))" + (if (.now // "") != "" then " — now: \(.now)" else "" end)' >&2
+      elif [[ "$FAILED" -gt 0 && "$N_REG" -eq 0 ]]; then
         PRESERVATION="pre-existing-failures"
         log_warn "Every failing test already failed in the baseline (pre-existing): no regression, but the suite is not green."
       fi
@@ -663,6 +691,10 @@ else
       > "$BASELINE_FILE.tmp" && mv "$BASELINE_FILE.tmp" "$BASELINE_FILE"
     log_ok "Baseline recorded: $BASELINE_FILE ($EXECUTED test(s); $(printf '%s' "$RECORD_JSON" | jq '[.tests[] | select(.status == "fail" or .status == "error")] | length') failing before the port)."
     [[ "$SKIPPED" -gt 0 ]] && log_warn "Groups skipped in the baseline (${SKIPPED_GROUPS[*]}): their failures after the port cannot be shown to pre-exist."
+    _nb_env="$(printf '%s' "$RECORD_JSON" | jq '[.tests[] | select(.status == "fail" or .status == "error") | select((.message // "") | test("Unable to install (modules|themes)|incompatible with this version of Drupal core|MissingDependencyException|Missing dependency"; "i"))] | length' 2>/dev/null || echo 0)"
+    _nb_crash="$(printf '%s' "$RECORD_JSON" | jq -r '[.group_results[] | select(.status == "crashed") | .group] | join(" ")' 2>/dev/null || true)"
+    [[ "${_nb_env:-0}" -gt 0 ]] && log_warn "$_nb_env baseline test(s) failed because the un-ported module could not be installed on this core: they never exercised its behavior, so a failure there after the port is reported as not-baselined, never pre-existing."
+    [[ -n "$_nb_crash" ]] && log_warn "Groups that crashed in the baseline ($_nb_crash): a failure there after the port is reported as not-baselined, never pre-existing."
     log_info "last-test.json is untouched. Later runs compare every failure with this baseline (--no-baseline to ignore it)."
     exit 0
   fi
@@ -674,7 +706,9 @@ fi
 
 if [[ "$FAILED" -gt 0 ]]; then
   log_err "Failing groups: ${FAILED_GROUPS[*]}"
-  if [[ "${PRESERVATION:-}" == "pre-existing-failures" ]]; then
+  if [[ "${PRESERVATION:-}" == "not-verified-unbaselined" ]]; then
+    log_err "Tests did not pass; no test that passed before fails now, but the failures the baseline never meaningfully ran prove nothing either way (see above): fix them in the code or show they pre-exist."
+  elif [[ "${PRESERVATION:-}" == "pre-existing-failures" ]]; then
     log_err "Tests did not pass, although every failure pre-exists the port (see the baseline comparison above). They stay documented, never hidden."
   else
     log_err "Tests did not pass. Review the output above and iterate — failures are never hidden."

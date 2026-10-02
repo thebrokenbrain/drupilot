@@ -146,7 +146,11 @@ reinvent their logic.
    `preservation: pre-existing-failures` means the suite is red only on tests
    that already failed before the port (`baseline.pre_existing`), while any test
    that passed before and fails now is in `baseline.regressions` and makes the
-   verdict `regression`. Exit 3 still means "not green" in both cases. A group
+   verdict `regression`. A failing test the baseline never meaningfully ran
+   (its group crashed then, or the un-ported module could not be installed) is
+   in `baseline.not_baselined` and makes the verdict
+   `not-verified-unbaselined`: treat it as a possible regression and fix the
+   code, never call it pre-existing. Exit 3 still means "not green" in every case. A group
    whose PHPUnit ran no test (a `--filter` matching nothing) counts as `empty`,
    never as passed.
 5. **Iterate** until the applicable suite is green. Read the actual failure output;

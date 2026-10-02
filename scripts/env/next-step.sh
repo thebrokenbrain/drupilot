@@ -180,6 +180,9 @@ elif [[ "$PORTED" == "false" ]]; then
 elif [[ "$WANT_REFACTOR" == "true" && "$REFACTORED" == "false" ]]; then
   NEXT="refactor"; CMD="/drupilot-refactor"
   REASON="Ported, and you opted into the full Drupal 11 way — run the refactor (opt-in)."
+elif [[ "$TESTS" == "failed" && "$PRESERVATION" == "not-verified-unbaselined" ]]; then
+  NEXT="test"; CMD="/drupilot-test"
+  REASON="The last run is red on tests the pre-port baseline never meaningfully ran (their group crashed, or the un-ported module could not be installed) — they may be regressions: fix them in the code (never the test)."
 elif [[ "$TESTS" == "failed" && "$PRESERVATION" == "pre-existing-failures" ]]; then
   NEXT="test"; CMD="/drupilot-test"
   REASON="The last run is red only on failures that already failed before the port (no regression against the baseline) — they prove nothing either way: fix them in the code or document them, and review any that now fail differently."

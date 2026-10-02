@@ -439,6 +439,20 @@ tag the commit `vX.Y.Z`.
   regenerates it with `composer install`, and rebuilds the reference core if
   that is not enough. The rollback `composer install` no longer passes
   `--no-audit`, which `install` does not accept.
+- **The preservation verdict counted failures the baseline never really ran
+  as pre-existing.** The pre-port baseline runs on the Drupal 11 test-bed, where
+  an un-ported `^9 || ^10` module cannot even be installed. Every Functional/JS
+  test "failed" there with "module 'x' is incompatible with this version of
+  Drupal core", and a crashed Kernel group recorded no test at all. After the
+  port, real behavior failures in those tests (for example `Undefined array
+  key "Drupal_visitor_autologout_login"`) were all filed as pre-existing, and
+  the verdict was `pre-existing-failures` with 0 regressions. Such tests are now
+  `not-baselined`, with basis `baseline-not-installable` or
+  `baseline-group-crashed`. They are listed in the new `baseline.not_baselined`
+  (the changed-message flag is kept) and never count as pre-existing. With no
+  regression they make the new verdict `not-verified-unbaselined` (exit 3).
+  `--baseline` warns when it records such failures. `port-report.md`,
+  `next-step.sh` and the docs name the new bucket.
 - **A failed Drupal 11 baseline leg made the Drupal 10 leg "fail".** With no
   baseline, every reference-leg finding counted as an incompatibility, because
   that check ran before the no-baseline check. A reference leg with findings is

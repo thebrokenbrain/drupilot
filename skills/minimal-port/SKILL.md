@@ -132,7 +132,11 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject "<path>" --t
 It writes `test-baseline.json` (state dir; `last-test.json` is untouched) and
 exits `0` even when red. Every later run then classifies each failing test as
 `pre-existing` (red before the port too) or a `regression` (green before), and
-the verdict becomes `pre-existing-failures` when no test regressed. Exit `2`
+the verdict becomes `pre-existing-failures` when no test regressed. A test the
+baseline could not meaningfully run (the un-ported module refused on Drupal 11
+— "incompatible with this version of Drupal core" — or a crashed group) is
+`not-baselined`, never pre-existing, and keeps the verdict at
+`not-verified-unbaselined`. Exit `2`
 (the test environment is not up) never blocks the port: report that no baseline
 was taken (every later failure then counts as a regression).
 
@@ -563,7 +567,9 @@ adapted suite **green** (or its red tests documented as external blockers) — t
 green is the evidence the original behavior is preserved. If the module ships
 **no tests**, say so plainly: preservation is **not verified**, the changes rest
 on Rector's equivalences + the minimal diff, and adding tests is recommended
-(drupilot does not fabricate them in Phase 1). A `pre-existing-failures` verdict
+(drupilot does not fabricate them in Phase 1). A `not-verified-unbaselined`
+verdict lists failures the baseline never meaningfully ran: report them as
+possible regressions, never as pre-existing. A `pre-existing-failures` verdict
 (every red test was already red in the pre-port baseline) is reported with its
 list, never as green: those failures prove nothing either way, and one that
 now fails with a different message is reviewed as a possible regression. Then hand off to `test-adaptation`,

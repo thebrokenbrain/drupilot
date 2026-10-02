@@ -54,8 +54,10 @@
 # flagged, and a control run on sources that changed since is marked stale.
 # Pre-existing failures: when last-test.json carries a baseline comparison
 # (run-phpunit.sh --baseline before the port), the preservation section lists
-# regressions, failures that pre-exist the port (flagging those that now fail
-# with a different message) and tests the port fixed.
+# regressions, failures the baseline never meaningfully ran (not baselined:
+# a crashed group, or the un-ported module refused by the core), failures that
+# pre-exist the port (flagging those that now fail with a different message)
+# and tests the port fixed.
 # d10_support: declared-not-verified | verified-static (PHPStan + php -l clean on
 # a Drupal 10 core including the declared floor minor, runtime not tested) |
 # verified-static-above-floor (clean, but only on cores newer than the declared
@@ -159,6 +161,7 @@ case "$PRESERVATION" in
   verified)              PRES_LINE="✅ **verified** — the adapted test suite is green; behavior is preserved.";;
   verified-partial)      PRES_LINE="🟡 **partially verified** — the groups that ran are green, but some were skipped (an external blocker), so part of the behavior is unproven.";;
   regression)            PRES_LINE="❌ **regression** — a behavioral test is red. Fix the production code (never the test).";;
+  not-verified-unbaselined) PRES_LINE="⚠️ **not verified (not baselined)** — no test that passed before the port fails now, but some failing tests were never meaningfully run by the pre-port baseline (their group crashed, or the un-ported module could not be installed on this core), so they may be regressions (listed below). Not green; never counted as pre-existing.";;
   pre-existing-failures) PRES_LINE="🟠 **pre-existing failures** — no test that passed before the port fails now, but tests that already failed in the pre-port baseline still fail (listed below). They are not proof of preservation either way: documented, never hidden.";;
   not-verified-blocked)
     PRES_LINE="⚠️ **not verified (blocked)** — tests exist but could not run"
@@ -256,9 +259,12 @@ D10_VERSIONS=""; D10_FLOOR=""
   printf '## Preservation gate\n\n%s\n\n' "$PRES_LINE"
   if [[ -n "$T_BASE" ]]; then
     printf '%s' "$T_BASE" | jq -r '
-      "Compared with the pre-port baseline (`run-phpunit.sh --baseline`, taken \(.taken_at // "?")): **\(.regressions | length)** regression(s), **\(.pre_existing | length)** pre-existing failure(s), **\(.fixed | length)** test(s) fixed by the port."
+      "Compared with the pre-port baseline (`run-phpunit.sh --baseline`, taken \(.taken_at // "?")): **\(.regressions | length)** regression(s), **\(.not_baselined // [] | length)** not baselined, **\(.pre_existing | length)** pre-existing failure(s), **\(.fixed | length)** test(s) fixed by the port."
         + (if .same_code then " _The baseline was taken on the current code, so it cannot show what the port changed._" else "" end) + "\n",
       ( if (.regressions | length) > 0 then "**Regressions** (passed before, or not in the baseline, and fail now):\n" + ([ .regressions[] | "- `\(.id // ("group " + .group))` (\(.basis))" + (if (.now // "") != "" then " — \(.now)" else "" end) ] | join("\n")) + "\n" else empty end ),
+      ( if ((.not_baselined // []) | length) > 0 then "**Not baselined** (fail now; the baseline never meaningfully ran them, so they may be regressions):\n" + ([ .not_baselined[] | "- `\(.id // ("group " + .group))`"
+          + (if .basis == "baseline-not-installable" then " — before the port the module could not even be installed (\(.before // "?"))" elif (.basis | test("crashed")) then " — the whole group crashed before the port" else " (\(.basis))" end)
+          + (if (.now // "") != "" then "; now: \(.now)" else "" end) ] | join("\n")) + "\n" else empty end ),
       ( if (.pre_existing | length) > 0 then "**Pre-existing failures** (already failing before the port):\n" + ([ .pre_existing[] | "- `\(.id // ("group " + .group))`"
           + (if .basis == "baseline-group-crashed" then " — the whole group crashed before the port, so this test never ran then" elif (.basis | startswith("group")) then " — group-level failure" else "" end)
           + (if .message_changed == true then " — **fails differently now** (before: \(.before // "?"); now: \(.now // "?")): review it" elif (.now // "") != "" then " — \(.now)" else "" end) ] | join("\n")) + "\n" else empty end )

@@ -309,7 +309,8 @@ the full suite inside DDEV (Selenium for JS), and iterates until green. In Phase
 also adds missing tests for coverage and reports `--coverage-text`/`--coverage-html`.
 It never silences failures; externally-blocked tests are documented. Against the
 pre-port baseline it reports regressions and pre-existing failures separately
-(`preservation: pre-existing-failures` is not green), and every test it adds
+(`preservation: pre-existing-failures` is not green; `not-verified-unbaselined`
+marks failures the baseline never meaningfully ran, never pre-existing), and every test it adds
 carries an `effective` negative control (`negative-control.sh`).
 
 ### Stage 6 — contribute (gate: `contribute`; conditional) -> delegate
@@ -350,6 +351,6 @@ subject's own ruleset when it ships one, else Drupal,DrupalPractice — the repo
 says which),
 `check-port-safety.sh --subject <path>` and `scan-signature-changes.sh --subject
 <path>` exit 0, and the applicable test suite is
-green (a `pre-existing-failures` verdict is reported with its list, never as
-green; every new test has an `effective` negative control). Always end with a concise English summary:
+green (a `pre-existing-failures` or `not-verified-unbaselined` verdict is
+reported with its list, never as green; every new test has an `effective` negative control). Always end with a concise English summary:
 current phase, what changed, gate status, and the suggested next step.

@@ -198,7 +198,11 @@ It writes `test-baseline.json` (state dir; `last-test.json` untouched) and exits
 `0` even when red. Every later run compares each failing test with it: failed
 before AND now → `pre-existing`; passed before and fails now → `regression`; a
 failing test the baseline never ran → `regression` (it cannot be shown to
-pre-exist), unless its whole baseline group crashed. When every failure is
+pre-exist). A failing test whose baseline group crashed, or whose baseline
+failure was only the un-ported module being refused ("incompatible with this
+version of Drupal core"), → `not-baselined` (`baseline.not_baselined`), never
+pre-existing; with no regression the verdict is `not-verified-unbaselined`
+(exit 3) — treat each as a possible regression. When every failure is
 pre-existing the verdict is `pre-existing-failures`. That is not green and not
 proof of preservation: a pre-existing failure is still fixed in the code or
 documented, and one flagged `message_changed` (it fails differently now — e.g.
@@ -295,7 +299,8 @@ Final report (English, concise) must state:
 `run-phpunit.sh` already writes the machine-readable summary to `last-test.json`
 in `project_state_dir "$SUBJECT"` for `/drupilot-status` and the flow: `type`,
 `status`, the **`preservation`** verdict (`verified` / `verified-partial` /
-`regression` / `pre-existing-failures` / `not-verified-blocked` /
+`regression` / `pre-existing-failures` / `not-verified-unbaselined` /
+`not-verified-blocked` /
 `not-verified-no-tests`), per-group counts, `tests` (every executed test with
 its status) and `group_results`, the `baseline` comparison (`regressions`,
 `pre_existing`, `fixed`; `null` without a baseline), the `negative_controls`

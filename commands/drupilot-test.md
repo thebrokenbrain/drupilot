@@ -103,7 +103,13 @@ takes it with `run-phpunit.sh --baseline` before Rector), every run compares eac
 failing test with it. `preservation: pre-existing-failures` (still exit `3`)
 means every failure already failed before the port and nothing that passed
 before fails now; `baseline.regressions` lists any test that did pass before (or
-that the baseline never ran) and makes the verdict `regression`. Pre-existing
+that the baseline never ran) and makes the verdict `regression`.
+`baseline.not_baselined` lists failing tests the baseline never meaningfully
+ran (their group crashed then, or the un-ported module could not even be
+installed: "incompatible with this version of Drupal core"). They are never
+pre-existing: with no regression, they make the verdict
+`not-verified-unbaselined` (exit `3`). Treat each as a possible regression and
+fix it in the code. Pre-existing
 failures are not proof of preservation: fix them in the code or document them,
 and review each one flagged as failing with a different message now. A group
 whose PHPUnit executed no test (e.g. a `--filter` matching nothing) counts as

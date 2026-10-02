@@ -234,8 +234,8 @@ Before declaring the module refactored, all must hold:
   has no tests, state that preservation is **not verified** for the refactor and
   recommend adding tests before/with it.
   Against the post-port baseline the verdict must not be `regression`; a
-  `pre-existing-failures` verdict is reported with its list, never presented as
-  green.
+  `pre-existing-failures` or `not-verified-unbaselined` verdict is reported with
+  its list, never presented as green.
 - Every test added in Phase 2 has an `effective` negative control.
 - Plugins use attributes; services are injected; strict types are in place where
   appropriate.
