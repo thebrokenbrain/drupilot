@@ -111,7 +111,8 @@ All output you produce — messages, summaries, plans — is in **English**.
   allows PHP 8.1, so without it a D10 + low-PHP site would fatal); the helper sets
   it via `DRUPILOT_REQUIRE_PHP_FLOOR` (`detect` default → the real floor, e.g.
   `>=8.1`; `target` → `>=<target>`). It also reports `php_floor_target_compatible`
-  (false when the code uses a construct newer than the target). The choice also yields a SemVer **version-bump**
+  (false when the code uses a construct newer than the target), and `verify_cores`
+  (the core legs `verify-core-matrix.sh` checks: `^10 || ^11` -> 10, 11). The choice also yields a SemVer **version-bump**
   verdict (drop a core major / break the API → major; add D11 → minor). The old
   `core: 8.x` key no longer exists; a missing `core_version_requirement` is
   blocking. (Legacy `DRUPILOT_KEEP_D10` still overrides.)
@@ -132,7 +133,8 @@ Read via the scripts (which call `config_get`/`config_json`); env vars override
 `DRUPILOT_PHPSTAN_LEVEL_REFACTOR` (6), `DRUPILOT_VIABILITY_THRESHOLD` (medium),
 `DRUPILOT_CONTRIB_MODE` (semi), `DRUPILOT_USE_DIGESTS_RULES` (true),
 `DRUPILOT_DIGESTS_REF` (main), `DRUPILOT_GENERATE_RULES` (ask),
-`DRUPILOT_SOFT_DEPRECATIONS` (report), `DRUPILOT_AUTONOMOUS` (false).
+`DRUPILOT_SOFT_DEPRECATIONS` (report), `DRUPILOT_VERIFY_CORES` (auto),
+`DRUPILOT_AUTONOMOUS` (false).
 
 ## Autonomous mode (hands-off)
 
@@ -262,7 +264,18 @@ Phase 2) or `fix` (each item's `action`: `fix` when the replacement exists at th
 declared core floor, `fix-guarded` through
 `DeprecationHelper::backwardsCompatibleCall()`, `defer` otherwise). Autonomous
 mode applies the configured policy as is — it never upgrades `report` to `fix`.
-Store the final classification as `soft_deprecations` in the port manifest. No architectural changes. Report the summarized diff, which rules
+Store the final classification as `soft_deprecations` in the port manifest.
+When the final requirement still admits Drupal 10 (`verify_cores` has a `10…`
+leg) and `DRUPILOT_VERIFY_CORES` is not `off`, run
+`scripts/analysis/verify-core-matrix.sh --subject <path> --json` once the loop is
+clean: PHPStan + `php -l` against a cached Drupal 10 reference core (built via
+`ddev exec composer`, frozen in the lockfile) compared with the Drupal 11
+baseline. Exit 3 = a Drupal 10 incompatibility (e.g. an `#[\Override]` on a
+method only 11.3+ core declares): fix it the D10-safe way, raise the floor or
+drop to `^11` (the "Drupal 10 check" tab of `minimal-port` §6a; autonomous mode
+fixes the code, else recommends `^11` in the report). A skipped leg (no network)
+leaves `d10_support` `declared-not-verified` and never blocks. Record
+`d10_support` and `verification.core_matrix` in the manifest. No architectural changes. Report the summarized diff, which rules
 (official/digests/ad-hoc) were applied, and what is deferred to Phase 2.
 
 When the subject validates, write the local preview patch (offline, git-only;

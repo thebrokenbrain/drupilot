@@ -149,7 +149,12 @@ from the assessment if useful, but keep that structure.
 If the port kept **`^10 || ^11`** (Drupal 10 support is `declared-not-verified`,
 per `core-strategy.sh`), pass `--d10-unverified` so "verify Drupal 10
 compatibility" is added to **Remaining tasks** — the dual-support claim must not
-be silently trusted in the issue.
+be silently trusted in the issue. With `--subject`, `make-issue.sh` also reads the
+subject's fresh `verify-core-matrix.sh` result: when Drupal 10 is
+`verified-static` the item narrows to "run the test suite on Drupal 10" (static
+check passed on 10.x.y); when it `failed`, a "fix the Drupal 10
+incompatibilities, or drop `^10`" item is added even without the flag. A matrix
+computed on older sources is ignored (with a warning).
 
 Relay the recommended fields and the summary to the user to paste into the
 issue, and keep `NAME-issue-comment.md` for the MR/patch step below.

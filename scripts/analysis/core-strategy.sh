@@ -107,6 +107,7 @@ if [[ "$JSON_ONLY" -eq 0 ]]; then
   TCOMPAT="$(printf '%s' "$JSON" | jq -r '.php_floor_target_compatible | if . == null then "- (no constructs scanned)" elif . then "yes" else "NO — uses constructs newer than the target" end')"
   log_plain "  Compatible with PHP target       : $TCOMPAT"
   log_plain "  Drupal 10 support                : $(get '.d10_support')"
+  log_plain "  Core legs to verify              : $(printf '%s' "$JSON" | jq -r '(.verify_cores // []) | if length == 0 then "-" else join(", ") end')"
   log_plain "  Version bump (SemVer)            : $(get '.version_bump')"
 
   log_plain ""

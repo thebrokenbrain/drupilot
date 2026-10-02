@@ -147,6 +147,11 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/check-port-safety.sh" --subject "<p
 # Core signature changes vs the declared core floor (gate: must exit 0):
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/scan-signature-changes.sh" --subject "<path>" --json
 
+# Only while ^10 is still declared: static check on a Drupal 10 core (gate: exit 0;
+# a skipped leg, e.g. no network, exits 0 and stays declared-not-verified):
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/verify-core-matrix.sh" --subject "<path>" --json \
+  --level "$(config_get DRUPILOT_PHPSTAN_LEVEL_REFACTOR 6)"
+
 # Re-run the affected test group(s) (see test-adaptation for the full flow):
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject "<path>" --type all
 ```
@@ -199,6 +204,10 @@ Before declaring the module refactored, all must hold:
   `create()`); its warnings are reviewed and listed in the report.
 - `scan-signature-changes.sh --subject <path>` exits **0** (no collision with a
   core signature change at the declared floor).
+- When the result still declares `^10`, `verify-core-matrix.sh --subject <path>`
+  exits **0** (no Drupal 10 leg failed; see `minimal-port` §6a for the tab when
+  one does) and its `d10_support` goes into the manifest with
+  `verification.core_matrix`.
 - `classify-deprecations.sh --file <phpstan.json> --subject <path> --phase refactor
   --json` reports `blocking: 0` and every soft item fixed, or documented with its
   `defer` reason (no replacement usable at the declared core floor).

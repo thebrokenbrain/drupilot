@@ -69,6 +69,13 @@ config_enum DRUPILOT_GENERATE_RULES       ask    ask auto off           >/dev/nu
 config_enum DRUPILOT_TOOLCHAIN_SOURCE     auto   auto reference range   >/dev/null || true
 config_enum DRUPILOT_SOFT_DEPRECATIONS    report report defer fix        >/dev/null || true
 config_enum DRUPILOT_HOOKS_GUARD          ask    ask off                >/dev/null || true
+# DRUPILOT_VERIFY_CORES is auto | off | a comma list of MAJOR[.MINOR] legs.
+_vc="$(config_get DRUPILOT_VERIFY_CORES auto)"
+case "$_vc" in
+  auto|off) : ;;
+  *) printf '%s' "$_vc" | grep -qE '^[[:space:]]*[0-9]+(\.[0-9]+)?(\.x)?[[:space:]]*(,[[:space:]]*[0-9]+(\.[0-9]+)?(\.x)?[[:space:]]*)*$' \
+       || log_err "DRUPILOT_VERIFY_CORES='$_vc' is invalid. Allowed: auto, off, or a comma list of core legs such as 10,11 or 10.3,11";;
+esac
 
 TARGET="$(resolve_php_target)"
 COMPOSER_MIN="$(req_version composer_min "2.2.0")"

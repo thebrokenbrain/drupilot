@@ -60,7 +60,8 @@ the JSON (`recommended_core_version_requirement`, `require_php`, `version_bump`)
 
 - **Keep Drupal 10 + 11** (`^10 || ^11`) — widest support; declares a
   `require.php` floor (`<require_php>`); Drupal 10 compatibility is
-  *declared, not verified*.
+  *declared* until Step 7b checks it statically on a Drupal 10 core (first run
+  builds a cached reference core: ~200 MB, needs network).
 - **Drupal 11 only** (`^11`) — simplest; no `require.php`; drops D10 (a **major**
   version bump if it was supported).
 - **Let drupilot decide** — apply the helper's `strategy` verdict as-is.
@@ -74,7 +75,7 @@ to `composer.json` using the **exact** `require_php` value the helper returns
 (`DRUPILOT_REQUIRE_PHP_FLOOR=detect`, the default, derives the real floor such as
 `>=8.1`; `target` keeps `>=<target>`). Also relay `php_floor_target_compatible`
 (false → the code uses a construct newer than the target) and the
-`declared-not-verified` Drupal 10 status. Note the `version_bump` verdict for the
+`declared-not-verified` Drupal 10 status (Step 7b checks it). Note the `version_bump` verdict for the
 final summary. This target also drives which digests rules are safe (see Pass 2).
 The legacy `DRUPILOT_KEEP_D10` still works as an explicit override.
 
@@ -280,6 +281,40 @@ re-run. Warnings (a method that silently becomes an override of core, a call to
 an API newer than the floor) are decided and listed in the report; `info`
 findings need no change. Tee the human output into `<state_dir>/change-log.txt`.
 
+## Step 7b — Core matrix: verify every declared core (when `^10` is kept)
+
+The validate loop only ever sees the Drupal 11 test-bed. When the requirement set
+in Step 6 still admits Drupal 10 (`verify_cores` in the Step 1 JSON has a `10…`
+leg) and `DRUPILOT_VERIFY_CORES` is not `off`, verify it statically on a real
+Drupal 10 core once the loop is clean (see the `minimal-port` skill §6a):
+
+```bash
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/verify-core-matrix.sh" --subject "$1" --json
+```
+
+It runs the same PHPStan (the test-bed's exact phpstan-drupal toolchain) and
+`php -l` on a cached reference core per extra leg (built once via `ddev exec
+composer` in `<drupal_root>/.drupilot/cores/`, frozen in the lockfile), and lints
+on the leg's lowest PHP (Drupal 10's own minimum or the `require.php` floor) in a
+`php:X.Y-cli` container. Only errors the Drupal 11 baseline does not have count;
+deprecations, missing contrib dependencies (sandbox), tests-only typing
+differences and phpstan-drupal advisory rules never fail a leg.
+
+- **Exit 3 (`verdict: fail`)** — a real Drupal 10 incompatibility (e.g. an
+  `#[\Override]` on `buildRevisionCacheId()`, which only 11.3+ core declares; a
+  class only Drupal 11 ships; a PHP 8.2+ construct under a `>=8.1` floor).
+  **Decision point** — AskUserQuestion (header "Drupal 10 check"), skipped in an
+  autonomous run (safe default: fix the code; if that is not mechanical, recommend
+  `^11` in the report): **Fix the code (keep `^10 || ^11`)** (default) · **Raise
+  the floor** (e.g. `^10.3 || ^11`) · **Drop to `^11`** (persist with
+  `prefs_set DRUPILOT_CORE_TARGET_STRATEGY d11-only`) · **Keep it
+  declared-not-verified** (recorded in the report). Re-run the matrix after a fix.
+- **`d10_support: verified-static`** — report it as a static verification
+  (PHPStan + `php -l` on Drupal 10.x.y); the runtime is not exercised there.
+- **A skipped leg** (network unavailable, a core that cannot install on the
+  container PHP) — exit 0; `d10_support` stays `declared-not-verified`. Never
+  block the port on it.
+
 ## Step 8 — Write the local patch (preview / test locally)
 
 Once the subject compiles and validates, write a local `.patch` of the whole
@@ -308,8 +343,9 @@ Summarize in English:
   which were filtered out and why), which ad-hoc rules / manual edits — with the
   final `core_version_requirement`.
 - **Validation**: phpcbf/phpcs and phpstan status after the work (clean vs. what
-  remains and why; sandbox-only PHPStan findings listed as such), and the
-  port-safety result (errors fixed, warnings reviewed).
+  remains and why; sandbox-only PHPStan findings listed as such), the
+  port-safety result (errors fixed, warnings reviewed), and the core matrix
+  verdict per leg (`d10_support`: verified-static / failed / declared-not-verified).
 - **Deferred to Phase 2**: anything non-mechanical (architecture, CKEditor 5 /
   jQuery UI rework, deeper API modernization) explicitly listed for
   `/drupilot-refactor`.
@@ -335,13 +371,15 @@ render:
 # Write <state_dir>/port-manifest.json with: machine_name, type, phase ("port"),
 # core_version_requirement, require_php, php_target, version_bump,
 # rector_official_files, digests {applied, rejected:[{rule,reason}], skipped},
-# manual_edits[], deprecations_remaining, deferred_to_phase2[], patch, d10_support,
+# manual_edits[], deprecations_remaining, deferred_to_phase2[], patch,
+# d10_support (from verify-core-matrix.sh when Step 7b ran, else the Step 1 value),
 # port_safety (the JSON printed by check-port-safety.sh --json),
 # signature_changes (the JSON printed by scan-signature-changes.sh --json),
 # soft_deprecations (the JSON printed by classify-deprecations.sh --json; add its
 # soft symbols with action "defer" to deferred_to_phase2, and count only hard +
 # unknown ones in deprecations_remaining),
-# verification {phpcs_ruleset (the .drupilot object of run-phpcs.sh --json:
+# verification {core_matrix (the JSON of verify-core-matrix.sh --json, Step 7b),
+# phpcs_ruleset (the .drupilot object of run-phpcs.sh --json:
 # which ruleset was used — the project's own, or drupilot's default and why),
 # commit_hooks (the JSON of git-hooks.sh --run-equivalents when a hook was
 # substituted, else {"bypassed": false, "note": "hooks ran on commit"})}.

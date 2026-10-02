@@ -777,6 +777,70 @@ core_floor_from_requirement() {
   return 0
 }
 
+# core_verify_legs <constraint> -> the core "legs" a Composer-style constraint
+# asks to verify, one per line, lowest first: the lower bound of each declared
+# major, as MAJOR.MINOR when an explicit minor above 0 is given, else MAJOR
+# ('^10 || ^11' -> 10, 11 · '^10.3 || ^11' -> 10.3, 11 · '^11' -> 11 ·
+# '>=10.2' -> 10.2). Majors below 10 are dropped (drupilot only verifies the
+# Drupal 10 / 11 range phpstan-drupal 2.x supports). Upper bounds are ignored.
+# Prints nothing when no version can be read. Pure: no I/O besides STDOUT.
+core_verify_legs() {
+  printf '%s' "${1:-}" | tr -d "\"'" | tr '|' '\n' | awk '
+    {
+      n = split($0, parts, /[[:space:],]+/)
+      for (i = 1; i <= n; i++) {
+        p = parts[i]
+        if (p == "" || p ~ /^(<|!=)/) continue
+        sub(/^(\^|~|>=|>|==|=|v)+/, "", p)
+        if (p !~ /^[0-9]+/) continue
+        split(p, v, ".")
+        maj = v[1] + 0; mn = (v[2] ~ /^[0-9]+$/) ? v[2] + 0 : 0
+        if (maj < 10) break
+        if (!(maj in best) || mn < best[maj]) best[maj] = mn
+        break
+      }
+    }
+    END {
+      for (m = 10; m <= 99; m++) {
+        if (!(m in best)) continue
+        if (best[m] > 0) printf "%d.%d\n", m, best[m]; else printf "%d\n", m
+      }
+    }'
+  return 0
+}
+
+# subject_digest <dir> -> SHA-256 over the subject's analysable sources (PHP
+# family files, *.yml, composer.json; .git/vendor/node_modules skipped), in a
+# stable order. Generated artifacts next to the module (a local .patch, the
+# issue markdown) do not change it. Prints nothing when no hasher is available.
+subject_digest() {
+  local d="${1:-$PWD}" hasher=""
+  if have_cmd sha256sum; then hasher="sha256sum"; elif have_cmd shasum; then hasher="shasum -a 256"; else return 0; fi
+  ( cd -P "$d" 2>/dev/null || exit 0
+    find . \( -name .git -o -name vendor -o -name node_modules \) -prune -o -type f \
+      \( -name '*.php' -o -name '*.module' -o -name '*.inc' -o -name '*.install' -o -name '*.theme' \
+         -o -name '*.profile' -o -name '*.engine' -o -name '*.yml' -o -name composer.json \) -print 2>/dev/null \
+      | LC_ALL=C sort | while IFS= read -r f; do printf '%s\n' "$f"; cat "$f"; done ) \
+    | $hasher | cut -d' ' -f1
+  return 0
+}
+
+# core_matrix_file <subject> -> path of the subject's persisted core-matrix
+# result (verify-core-matrix.sh), whether or not it exists yet.
+core_matrix_file() { printf '%s/core-matrix.json' "$(project_state_dir "${1:-$PWD}")"; }
+
+# core_matrix_fresh <subject> -> 0 when a core-matrix result exists for the
+# subject AND was computed on its current sources (same subject_digest), so a
+# report never presents a verdict about code that changed since.
+core_matrix_fresh() {
+  local s="${1:-$PWD}" f want have
+  f="$(core_matrix_file "$s")"
+  [[ -r "$f" ]] && have_cmd jq || return 1
+  have="$(jq -r '.subject_digest // empty' "$f" 2>/dev/null || true)"
+  want="$(subject_digest "$s")"
+  [[ -n "$have" && "$have" == "$want" ]]
+}
+
 # ddev_project_name <string> -> a DDEV/hostname-safe project name derived from
 # the input (usually a directory basename). DDEV rejects names that are not valid
 # hostname labels, so underscores, dots, spaces and uppercase all break
@@ -806,7 +870,10 @@ ddev_project_name() {
 #   { strategy, phase, current_core_version_requirement,
 #     recommended_core_version_requirement, composer_core_constraint,
 #     require_php (string|null), version_bump (major|minor|patch),
-#     bc_break (bool), php_target, rationale:[...], warnings:[...] }
+#     bc_break (bool), php_target, d10_support, verify_cores:[...],
+#     rationale:[...], warnings:[...] }
+#   verify_cores: the core legs scripts/analysis/verify-core-matrix.sh checks for
+#   the recommended requirement (core_verify_legs), e.g. ["10","11"].
 #   phase: port | refactor (default port). bc_override: auto | yes | no.
 recommend_core_target() {
   local subject="${1:-$PWD}" phase="${2:-port}" bc_override="${3:-auto}"
@@ -908,7 +975,7 @@ recommend_core_target() {
         effective_floor="$f"; require_php=">=$f"
       fi
       d10_support="declared-not-verified"
-      warnings+=("The kept requirement still allows Drupal 10 ('$current_req'); its Drupal 10 compatibility is DECLARED, not verified — install/test on Drupal 10 before relying on it.")
+      warnings+=("The kept requirement still allows Drupal 10 ('$current_req'); its Drupal 10 compatibility is DECLARED, not verified — run verify-core-matrix.sh (static check on a Drupal 10 core) and install/test on Drupal 10 before relying on it.")
     fi
     if printf '%s' "$current_req" | grep -qE '(^|[^0-9])(8|9)([^0-9]|$)'; then
       suggested+=("The requirement still lists EOL Drupal 8/9 ('$current_req'); narrow it (e.g. to '^10 || ^11' or '^11') via the core-target choice if you no longer support them.")
@@ -950,7 +1017,7 @@ recommend_core_target() {
       digests_note=" The AI digests / ad-hoc Rector layer may introduce replacements newer than Drupal 10.0, so a raised minor (e.g. '^10.3 || ^11') is more likely — check it."
     fi
     warnings+=("Drupal 10 compatibility is DECLARED, not verified. drupal-rector's standard replacements are usually available across all of Drupal 10 (deprecation contract), but this was not checked here. If the port uses an API added in a later 10.x minor, set core_version_requirement to e.g. '^10.3 || ^11'; if it uses an API absent from Drupal 10, drop to '^11'.$digests_note")
-    suggested+=("Verify Drupal 10 compatibility (install on a Drupal 10 site, or run the test suite against Drupal 10) before relying on the '^10 || ^11' declaration.")
+    suggested+=("Verify Drupal 10 compatibility before relying on the '^10 || ^11' declaration: verify-core-matrix.sh runs PHPStan + php -l against a Drupal 10 core (static); install on a Drupal 10 site or run the test suite against Drupal 10 for runtime proof.")
   else
     req="^11"; composer="^11"
     rationale+=("Strategy: d11-only ('^11')${legacy_note:+ ($legacy_note)}.")
@@ -984,6 +1051,11 @@ recommend_core_target() {
     rationale+=("No core-major change and no API break -> PATCH.")
   fi
 
+  # --- core legs to verify (verify-core-matrix.sh --cores auto) -------------
+  local verify_cores_json
+  verify_cores_json="$(core_verify_legs "$req" | jq -R . | jq -sc 'map(select(length > 0))' 2>/dev/null || printf '[]')"
+  [[ -n "$verify_cores_json" ]] || verify_cores_json='[]'
+
   # --- emit JSON ----------------------------------------------------------
   jq -n \
     --arg strategy "$resolved" \
@@ -999,6 +1071,7 @@ recommend_core_target() {
     --arg php_floor_effective "$effective_floor" \
     --argjson php_floor_target_compatible "$target_compat_json" \
     --arg d10_support "$d10_support" \
+    --argjson verify_cores "$verify_cores_json" \
     --argjson has_composer_json "$has_composer" \
     --argjson bc_break "$([[ "$bc_break" == "1" ]] && echo true || echo false)" \
     --argjson rationale "$(arr_to_json ${rationale[@]+"${rationale[@]}"})" \
@@ -1020,6 +1093,7 @@ recommend_core_target() {
       php_floor_target_compatible: $php_floor_target_compatible,
       has_composer_json: $has_composer_json,
       d10_support: $d10_support,
+      verify_cores: $verify_cores,
       rationale: $rationale,
       warnings: $warnings,
       suggested_remaining_tasks: $suggested

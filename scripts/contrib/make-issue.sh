@@ -28,6 +28,7 @@
 #                 [--patch-name FILE] [--kind mr|patch]
 #                 [--title T] [--summary T]
 #                 [--problem T] [--resolution T] [--remaining T]
+#                 [--d10-unverified] [--core-matrix FILE]
 #                 [--output DIR] [--json]
 #
 #   --project      drupal.org project machine name. Auto-detected from --subject.
@@ -49,6 +50,15 @@
 #   --remaining    Remaining tasks prose (default: review/test/merge/credit).
 #   --d10-unverified  append a "verify Drupal 10 compatibility" item to Remaining
 #                  tasks (use when keeping '^10 || ^11' without verifying it).
+#                  When a FRESH core-matrix result (verify-core-matrix.sh, same
+#                  subject sources) says Drupal 10 is verified-static, the item
+#                  becomes "run the suite on Drupal 10" (static check passed on
+#                  X.Y.Z); when it says failed, an item to fix the reported
+#                  Drupal 10 incompatibilities (or drop '^10') is added even
+#                  without this flag.
+#   --core-matrix FILE  the verify-core-matrix.sh --json result to read
+#                  (default: the subject's persisted core-matrix.json when
+#                  --subject is given).
 #   --output       directory for the generated files (default: subject dir/cwd).
 #   --json         emit a JSON object on stdout instead of the human report.
 #
@@ -74,6 +84,7 @@ PROBLEM=""
 RESOLUTION=""
 REMAINING=""
 D10_UNVERIFIED=0
+CORE_MATRIX=""
 OUTPUT=""
 JSON=0
 
@@ -116,6 +127,8 @@ while [[ $# -gt 0 ]]; do
     --remaining) REMAINING="${2:-}"; shift 2;;
     --remaining=*) REMAINING="${1#*=}"; shift;;
     --d10-unverified) D10_UNVERIFIED=1; shift;;
+    --core-matrix) CORE_MATRIX="${2:-}"; shift 2;;
+    --core-matrix=*) CORE_MATRIX="${1#*=}"; shift;;
     --output) OUTPUT="${2:-}"; shift 2;;
     --output=*) OUTPUT="${1#*=}"; shift;;
     --json) JSON=1; shift;;
@@ -222,9 +235,37 @@ fi
 - [ ] Maintainer review and merge.
 - [ ] Assign credit in the Contribution Record."
 
+# Drupal 10 verification state from the core matrix (verify-core-matrix.sh):
+# used only when it was computed on the subject's CURRENT sources.
+D10_MATRIX=""; D10_MATRIX_VERSIONS=""; D10_MATRIX_ISSUES=""
+if [[ -z "$CORE_MATRIX" && -n "$SUBJECT" && -d "$SUBJECT" ]]; then
+  CORE_MATRIX="$(core_matrix_file "$(cd "$SUBJECT" && pwd)")"
+fi
+if [[ -n "$CORE_MATRIX" && -r "$CORE_MATRIX" ]] && have_cmd jq \
+   && jq -e '.tool == "verify-core-matrix"' "$CORE_MATRIX" >/dev/null 2>&1; then
+  _fresh=1
+  if [[ -n "$SUBJECT" && -d "$SUBJECT" ]]; then
+    [[ "$(jq -r '.subject_digest // empty' "$CORE_MATRIX")" == "$(subject_digest "$SUBJECT")" ]] || _fresh=0
+  fi
+  if [[ "$_fresh" == 1 ]]; then
+    D10_MATRIX="$(jq -r '.d10_support // empty' "$CORE_MATRIX")"
+    D10_MATRIX_VERSIONS="$(jq -r '[.legs[]? | select(.core | test("^10(\\.|$)")) | (.version // .core)] | join(", ")' "$CORE_MATRIX")"
+    D10_MATRIX_ISSUES="$(jq -r '[.legs[]? | select(.core | test("^10(\\.|$)")) | (.phpstan.incompatible // 0) + ([.lint[]? | .errors // 0] | add // 0)] | add // 0' "$CORE_MATRIX")"
+  else
+    log_warn "The core-matrix result in $CORE_MATRIX was computed on different sources; ignoring it (re-run verify-core-matrix.sh)."
+  fi
+fi
+
 # When '^10 || ^11' is declared without verifying Drupal 10, make that an explicit
-# task so the dual-support claim is not silently trusted.
-if [[ "$D10_UNVERIFIED" == "1" ]]; then
+# task so the dual-support claim is not silently trusted. A fresh static check
+# narrows the task to the runtime; a failed one adds a fix task.
+if [[ "$D10_MATRIX" == "failed" ]]; then
+  REMAINING="$REMAINING
+- [ ] Fix the Drupal 10 incompatibilities the static core check found on Drupal $D10_MATRIX_VERSIONS ($D10_MATRIX_ISSUES finding(s): PHPStan / php -l), or drop '^10' from core_version_requirement."
+elif [[ "$D10_UNVERIFIED" == "1" && "$D10_MATRIX" == "verified-static" ]]; then
+  REMAINING="$REMAINING
+- [ ] Run the test suite on Drupal 10 — Drupal 10 compatibility is verified statically only (PHPStan + php -l clean on Drupal $D10_MATRIX_VERSIONS); the runtime was not tested there."
+elif [[ "$D10_UNVERIFIED" == "1" ]]; then
   REMAINING="$REMAINING
 - [ ] Verify Drupal 10 compatibility (install on a Drupal 10 site, or run the suite against Drupal 10) — the '^10 || ^11' support is declared but not verified."
 fi
@@ -296,9 +337,11 @@ if [[ "$JSON" == "1" ]]; then
     --arg version "$VERSION" --arg component "$COMPONENT" --arg assignee "$ASSIGNEE" \
     --arg summary_file "$SUMMARY_FILE" --arg comment_file "$COMMENT_FILE" \
     --arg summary "$SUMMARY_BODY" --arg comment "$COMMENT_BODY" \
+    --arg d10 "$D10_MATRIX" --arg d10v "$D10_MATRIX_VERSIONS" \
     '{fields: {title:$title, category:$category, priority:$priority,
                version:$version, component:$component, assignee:$assignee},
       summary_file:$summary_file, comment_file:$comment_file,
+      d10_verification: (if $d10 == "" then null else {d10_support: $d10, cores: $d10v} end),
       summary:$summary, comment:$comment}'
   exit 0
 fi

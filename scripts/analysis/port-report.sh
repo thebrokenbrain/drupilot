@@ -29,6 +29,7 @@
 #     "origin_hygiene": <the JSON of origin-hygiene.sh --check --json>,
 #     "soft_deprecations": <the JSON of classify-deprecations.sh --json>,
 #     "verification": {
+#       "core_matrix": <the JSON of verify-core-matrix.sh --json>,
 #       "phpcs_ruleset": <the .drupilot object of run-phpcs.sh --json>,
 #       "commit_hooks": <the JSON of git-hooks.sh --run-equivalents, or
 #                        {"bypassed": false, "note": "hooks ran on commit"}>
@@ -41,8 +42,15 @@
 # deprecations (policy: X)" table (symbol, deprecated in, removed in, effort,
 # action) and lists any hard/unknown deprecation still left.
 # verification is optional; each key falls back to the per-subject state file
-# the script records (phpcs-ruleset.json from run-phpcs.sh, hooks-substitution.json
-# from git-hooks.sh --run-equivalents) and renders "n/a" when neither exists.
+# the script records (core-matrix.json from verify-core-matrix.sh,
+# phpcs-ruleset.json from run-phpcs.sh, hooks-substitution.json from
+# git-hooks.sh --run-equivalents) and renders "n/a" when neither exists. A
+# core-matrix.json computed on different sources than the current subject is
+# reported as stale and never used for the Drupal 10 verdict.
+# d10_support: declared-not-verified | verified-static (PHPStan + php -l clean on
+# a Drupal 10 core, runtime not tested) | failed | n/a. A manifest
+# "declared-not-verified" is upgraded to the matrix's verified-static / failed
+# when a fresh core-matrix result exists.
 # origin_hygiene is optional; without it the report runs origin-hygiene.sh
 # --check itself, and renders an "Origin hygiene" section only when a baseline
 # was recorded (place-subject.sh takes it before placing).
@@ -189,6 +197,24 @@ V_PHPCS="$(printf '%s' "$M" | jq -c '.verification.phpcs_ruleset // empty' 2>/de
 [[ -z "$V_PHPCS" && -r "$STATE_DIR/phpcs-ruleset.json" ]] && V_PHPCS="$(jq -c . "$STATE_DIR/phpcs-ruleset.json" 2>/dev/null || true)"
 V_HOOKS="$(printf '%s' "$M" | jq -c '.verification.commit_hooks // empty' 2>/dev/null || true)"
 [[ -z "$V_HOOKS" && -r "$STATE_DIR/hooks-substitution.json" ]] && V_HOOKS="$(jq -c . "$STATE_DIR/hooks-substitution.json" 2>/dev/null || true)"
+# Core matrix (verify-core-matrix.sh): manifest first, else the state file.
+# Freshness is judged by the subject digest the run recorded.
+V_MATRIX="$(printf '%s' "$M" | jq -c '.verification.core_matrix // empty' 2>/dev/null || true)"
+[[ -z "$V_MATRIX" && -r "$(core_matrix_file "$SUBJECT")" ]] && V_MATRIX="$(jq -c . "$(core_matrix_file "$SUBJECT")" 2>/dev/null || true)"
+printf '%s' "$V_MATRIX" | jq -e '.tool == "verify-core-matrix"' >/dev/null 2>&1 || V_MATRIX=""
+MATRIX_STALE="false"
+if [[ -n "$V_MATRIX" ]]; then
+  _md="$(printf '%s' "$V_MATRIX" | jq -r '.subject_digest // empty')"
+  [[ -n "$_md" && "$_md" == "$(subject_digest "$SUBJECT")" ]] || MATRIX_STALE="true"
+fi
+if [[ -n "$V_MATRIX" && "$MATRIX_STALE" == "false" ]]; then
+  _mv="$(printf '%s' "$V_MATRIX" | jq -r '.d10_support // empty')"
+  if [[ -z "$D10" || "$D10" == "declared-not-verified" ]]; then
+    case "$_mv" in verified-static|failed) D10="$_mv";; declared-not-verified) [[ -n "$D10" ]] || D10="$_mv";; esac
+  fi
+fi
+D10_VERSIONS=""
+[[ -n "$V_MATRIX" ]] && D10_VERSIONS="$(printf '%s' "$V_MATRIX" | jq -r '[.legs[]? | select(.core | test("^10(\\.|$)")) | (.version // .core)] | join(", ")')"
 
 {
   printf '# Port report — %s\n\n' "$NAME"
@@ -209,7 +235,11 @@ V_HOOKS="$(printf '%s' "$M" | jq -c '.verification.commit_hooks // empty' 2>/dev
   printf '## Preservation gate\n\n%s\n\n' "$PRES_LINE"
   if [[ -n "$D10" ]]; then
     printf '> Drupal 10 compatibility: **%s**. ' "$D10"
-    [[ "$D10" == "declared-not-verified" ]] && printf 'The `^10` half is declared, not verified — install/test on Drupal 10 before relying on it.'
+    case "$D10" in
+      declared-not-verified) printf 'The `^10` half is declared, not verified — run `verify-core-matrix.sh` (static check on a Drupal 10 core) and install/test on Drupal 10 before relying on it.';;
+      verified-static) printf 'PHPStan + `php -l` are clean on Drupal %s (static verification by `verify-core-matrix.sh`); the runtime (the test suite) was not exercised on Drupal 10.' "${D10_VERSIONS:-10}";;
+      failed) printf '**The static check on Drupal %s found incompatibilities** — fix them the Drupal 10-safe way, raise the floor, or drop to `^11` (see "Core matrix" below).' "${D10_VERSIONS:-10}";;
+    esac
     printf '\n\n'
   fi
 
@@ -323,8 +353,33 @@ V_HOOKS="$(printf '%s' "$M" | jq -c '.verification.commit_hooks // empty' 2>/dev
     printf '\n'
   fi
 
+  if [[ -n "$V_MATRIX" ]]; then
+    printf '## Core matrix\n\n'
+    if [[ "$MATRIX_STALE" == "true" ]]; then
+      printf '_Stale: the subject changed after this run (%s); re-run `verify-core-matrix.sh` before relying on it._\n\n' "$(printf '%s' "$V_MATRIX" | jq -r '.generated_at // "unknown time"')"
+    fi
+    printf '%s' "$V_MATRIX" | jq -r '
+      "Static verification (PHPStan level \(.level // "?") + `php -l`) on every declared core — verdict **\(.verdict)**, Drupal 10 support **\(.d10_support)**.\n",
+      "| Core | Role | Result | Leg-only PHPStan errors | php -l |",
+      "|---|---|---|---|---|",
+      ( .legs[]? | "| \(.version // .core) | \(.role) | \(.status)" + (if .reason then " — \(.reason)" else "" end)
+          + " | \(.phpstan.incompatible // 0) incompatible, \(.phpstan.deprecations // 0) deprecation(s), \(.phpstan.sandbox_missing_dependency // 0) missing dependency (sandbox), \(.phpstan.test_only // 0) test-only, \(.phpstan.advisory // 0) advisory"
+          + " | " + ([.lint[]? | "PHP \(.php): \(.status)"] | join(", ")) + " |" ),
+      ( [ .legs[]? | (.version // .core) as $v | .phpstan.findings[]? | select(.kind == "incompatible")
+          | "- `\(.file):\(.line)` (Drupal \($v)) — \(.message | split("\n")[0])" ] | if length > 0 then "\n**Incompatibilities:**\n" + join("\n") else empty end ),
+      ( [ .legs[]? | .lint[]? | .php as $p | .files[]? | "- `\(.file)` (PHP \($p)) — \(.error)" ] | if length > 0 then "\n**Lint failures:**\n" + join("\n") else empty end )
+    ' 2>/dev/null || printf '_unreadable_\n'
+    printf '\n'
+  fi
+
   printf '## Verification\n\n'
   printf '| Check | Result |\n|---|---|\n'
+  if [[ -n "$V_MATRIX" ]]; then
+    printf '| Core matrix | %s (Drupal 10 support: %s)%s |\n' "$(printf '%s' "$V_MATRIX" | jq -r '[.legs[]? | "\(.version // .core): \(.status)"] | join(", ")')" \
+      "$(printf '%s' "$V_MATRIX" | jq -r '.d10_support // "n/a"')" "$([[ "$MATRIX_STALE" == "true" ]] && printf ' — stale')"
+  else
+    printf '| Core matrix | n/a (verify-core-matrix.sh has not run for this subject) |\n'
+  fi
   if [[ -n "$V_PHPCS" ]]; then
     printf '%s' "$V_PHPCS" | jq -r '
       "| PHPCS ruleset | "

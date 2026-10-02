@@ -144,6 +144,23 @@ callables, and `#[\Override]` is only added when the core range is `^11`-only an
 the parent method exists in its lowest minor. Never change semantics just to make
 the sandbox PHPStan pass; document sandbox-only findings instead.
 
+**Core matrix (only while `^10` is still declared).** A refactor normally moves to
+`^11`; if the final `core_version_requirement` still admits Drupal 10 (and
+`DRUPILOT_VERIFY_CORES` is not `off`), verify the modernized code statically on a
+Drupal 10 core too — attributes, DI and new APIs are exactly what drifts past the
+Drupal 10 floor:
+
+```bash
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/verify-core-matrix.sh" --subject "$1" --json --level "$(bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; config_get DRUPILOT_PHPSTAN_LEVEL_REFACTOR 6')"
+```
+
+Exit 3 = a leg failed (an `incompatible` finding, or `php -l` failing on the
+leg's PHP floor): fix it the Drupal 10-safe way, raise the floor, or drop to
+`^11` — the same "Drupal 10 check" tab and autonomous default as the
+`minimal-port` skill §6a. A skipped leg (no network) leaves `d10_support`
+`declared-not-verified` and never blocks the refactor. Record the JSON as
+`verification.core_matrix` and `d10_support` in the manifest.
+
 ## Step 6 — Refresh the local patch
 
 Phase 2 changes more code, so regenerate the local preview patch to reflect the
@@ -178,7 +195,9 @@ Summarize in English:
 decisions as a manifest (`phase: "refactor"`, the modern patterns applied, the new
 `core_version_requirement` / `version_bump`, the deferred items now done, and
 `port_safety` = the JSON printed by `check-port-safety.sh --json`,
-`signature_changes` = the JSON printed by `scan-signature-changes.sh --json`;
+`signature_changes` = the JSON printed by `scan-signature-changes.sh --json`,
+`d10_support` + `verification.core_matrix` from `verify-core-matrix.sh --json`
+when `^10` is kept;
 `manual_edits` items may be `{edit, why, change_record}` objects so the report
 explains each change) and re-render so the report reflects Phase 2. As Phase 2
 ran, **tee** the Rector + final validate-loop PHPStan deprecation output into

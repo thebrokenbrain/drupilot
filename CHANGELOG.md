@@ -270,6 +270,44 @@ tag the commit `vX.Y.Z`.
   testVersion) and the commit hooks (ran normally, or what substituted them and
   what stayed uncovered), from the new optional manifest key `verification`
   (`phpcs_ruleset`, `commit_hooks`) or the state files the scripts write.
+- **Core matrix: `scripts/analysis/verify-core-matrix.sh` verifies the Drupal 10
+  half of `^10 || ^11`.** The validate loop only ever saw the Drupal 11 test-bed,
+  so a kept `^10` stayed "declared, not verified". The new script runs the same
+  PHPStan (phpstan-drupal + deprecation rules + every PHPStan extension of the
+  test-bed, at its exact versions) and `php -l` against a cached reference core
+  per extra leg — the latest 10.x for `^10`, 10.3.x for `^10.3 || ^11`, or an
+  explicit `--cores 10.3,11` — built once through `ddev exec composer` in
+  `<drupal_root>/.drupilot/cores/` (drupal/recommended-project +
+  core-recommended pinned to the leg, plus the test runtime that core's
+  `drupal/core-dev` requires; never the host PHP). Each leg is compared with the
+  Drupal 11 baseline: an error only one leg has is an incompatibility (e.g.
+  "has #[\Override] attribute but does not override any method" on
+  `buildRevisionCacheId()`, which only 11.3+ core declares; `RequirementSeverity`,
+  a class only 11.2+ ships), while deprecations, contrib classes the reference
+  core lacks (`sandbox_missing_dependency`), test-only typing differences and
+  phpstan-drupal advisory rules never fail a leg. `php -l` also runs on each
+  leg's lowest PHP (its core's minimum or the subject's `require.php` floor) in a
+  `php:X.Y-cli` container, which checks the detected PHP floor for real. The
+  reference version is frozen in the lockfile (`.verify_cores`) in deterministic
+  mode; no network leaves the leg `skipped` (exit 0) and Drupal 10 support
+  `declared-not-verified`. `--json`, `--dry-run`, `--refresh`, `--level`,
+  `--lint-floor auto|off`; the result persists to `core-matrix.json` with a
+  digest of the subject's sources so later readers can tell when it is stale.
+  New key `DRUPILOT_VERIFY_CORES` (`auto` | `off` | a leg list), validated by
+  `preflight.sh`. Wired into `/drupilot-port` (Step 7b, with a "Drupal 10 check"
+  tab on failure), `/drupilot-refactor` while `^10` is kept, the `minimal-port`
+  (§6a) and `full-refactor` skills, the orchestrator and `/drupilot-status`.
+- **`d10_support: verified-static` and `failed`.** `core-strategy.sh` adds a
+  `verify_cores` field (the legs the recommended requirement declares) and points
+  its Drupal 10 warning at the matrix. `port-report.sh` reads
+  `verification.core_matrix` (or the state file), renders a "Core matrix" section
+  and table row, upgrades a `declared-not-verified` manifest to the matrix verdict
+  when the result is fresh, and marks a stale one. `make-issue.sh --d10-unverified`
+  narrows the remaining task to "run the suite on Drupal 10" when the static
+  check passed and adds a "fix the Drupal 10 incompatibilities, or drop `^10`"
+  task when it failed (new `--core-matrix FILE`; `d10_verification` in `--json`).
+  New `common.sh` helpers `core_verify_legs`, `subject_digest`,
+  `core_matrix_file`, `core_matrix_fresh`.
 ### Changed
 - **Only hard deprecations count as must-fix work.** The viability assessment
   used to count every PHPStan deprecation message as "must-fix to run on D11",

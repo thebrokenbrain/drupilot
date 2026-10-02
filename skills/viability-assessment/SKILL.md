@@ -225,8 +225,8 @@ bash "$ROOT/scripts/analysis/core-strategy.sh" --subject "$SUBJECT" --phase port
 
 It returns `{ strategy, recommended_core_version_requirement,
 composer_core_constraint, require_php, php_floor_detected,
-php_floor_target_compatible, d10_support, version_bump, rationale[], warnings[],
-suggested_remaining_tasks[] }`. The strategy comes from
+php_floor_target_compatible, d10_support, verify_cores[], version_bump,
+rationale[], warnings[], suggested_remaining_tasks[] }`. The strategy comes from
 `DRUPILOT_CORE_TARGET_STRATEGY` (`auto` | `d11-only` | `keep-d10`; legacy
 `DRUPILOT_KEEP_D10` still overrides). **Policy:** keeping Drupal 10 (`^10 || ^11`)
 carries a `require.php` floor — Drupal 10 allows PHP 8.1, so without it a D10 +
@@ -234,7 +234,9 @@ low-PHP site would install and then fatal. `DRUPILOT_REQUIRE_PHP_FLOOR` (`detect
 default) sets that floor to the real minimum the code needs (e.g. `>=8.1`); `target`
 keeps `>=<target>`. `php_floor_target_compatible` is false when the code uses a
 construct newer than the target, and a kept `^10 || ^11` is reported
-`declared-not-verified` — relay both. `auto` keeps the widest
+`declared-not-verified` — relay both (the port's core matrix,
+`verify-core-matrix.sh`, later checks the `verify_cores` legs statically on a real
+Drupal 10 core; the assessment does not build one). `auto` keeps the widest
 BC-preserving set and switches to `^11` (a **major** version bump) on a BC break.
 Use `--phase port` for the assessment; an opt-in Phase 2 refactor
 (`--phase refactor`) would recommend `^11` + a major bump. Carry every field

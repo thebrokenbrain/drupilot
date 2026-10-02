@@ -49,6 +49,12 @@ Read these if they exist (do not recompute anything):
   visible, not hidden:
 
   !`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; ROOT="$(find_drupal_root "$SUBJ" 2>/dev/null || echo "$SUBJ")"; DRUPILOT_PROJECT_DIR="$ROOT" lock_show || true' _ "$1"`
+- the core matrix — the last `verify-core-matrix.sh` result (static PHPStan +
+  `php -l` per declared core; `d10_support` `verified-static` / `failed` /
+  `declared-not-verified`), and whether it is still fresh (computed on the
+  current sources). Read-only: this never runs the matrix.
+
+  !`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; SUBJ="$(cd "$SUBJ" && pwd)"; F="$(core_matrix_file "$SUBJ")"; if [[ -r "$F" ]]; then printf "core_matrix_fresh=%s\n" "$(core_matrix_fresh "$SUBJ" && echo yes || echo no)"; jq -c "{d10_support, verdict, generated_at, legs: [.legs[] | {core: (.version // .core), role, status, reason}]}" "$F"; else echo "core_matrix=none"; fi' _ "$1"`
 - `@<state_dir>/port-manifest.json` and `@<artifacts_dir>/port-report.md` if present
   — the per-port "what changed and why" record and its human report card.
 - origin hygiene — whether drupilot left anything behind in the developer's origin
@@ -74,6 +80,10 @@ Render an English summary covering:
 - **Last assessment:** verdict + effort + counts + when, or "none cached".
 - **Last test result:** pass/fail summary, the **preservation** verdict, and when —
   or "tests not run yet".
+- **Core matrix:** one line per core leg (version, pass/fail/skipped and why) and
+  the Drupal 10 support verdict; say "stale — re-run verify-core-matrix.sh" when
+  `core_matrix_fresh=no`, or "not run" when there is none. `verified-static` means
+  PHPStan + `php -l` were clean on that core; it is not a runtime test.
 - **Origin hygiene:** one line — "clean", the drupilot-attributable residue it lists
   (`attributable`), or "no baseline" when `clean` is null. Never suggest deleting
   anything automatically.
