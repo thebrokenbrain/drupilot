@@ -1,0 +1,10 @@
+# drupilot — shellcheck configuration (read by `shellcheck` and scripts/dev/check.sh).
+#
+# Resolve `. "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"` relative to the
+# script being checked, so group scripts and hook scripts both find common.sh.
+source-path=SCRIPTDIR
+external-sources=true
+#
+# No check is disabled globally. scripts/dev/check.sh runs shellcheck at
+# severity "warning" (errors + warnings); intentional exceptions are inline
+# `# shellcheck disable=SCxxxx  # reason` directives next to the code they cover.

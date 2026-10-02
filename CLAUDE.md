@@ -12,13 +12,18 @@ All **functional content** of the plugin is **English only**: comments, log line
 
 ## Developing / validating the plugin
 
-There is no test runner for the plugin itself. The verification gates are:
+There is no test runner for the plugin's behavior, but there is **one local developer gate** — run it before every commit:
 
 ```bash
-claude plugin validate .            # manifest + command/agent/skill frontmatter + hooks.json
-bash -n path/to/script.sh           # syntax-check a shell script (shellcheck is not assumed present)
-chmod +x scripts/*/*.sh hooks/scripts/*.sh   # scripts and hook scripts must be executable
+bash scripts/dev/check.sh            # all gates; exit 0 ok / 1 a gate failed
+bash scripts/dev/check.sh --json     # per-gate {name,status,detail,findings} on stdout
+bash scripts/dev/check.sh --only shellcheck,bang-lint   # or --skip ...
+bash scripts/dev/check.sh --allow-known   # report the failures already tracked in its KNOWN_FAILING list without failing
 ```
+
+Gates: `validate` (`claude plugin validate .`), `syntax` (`bash -n` on `scripts/*/*.sh` + `hooks/scripts/*.sh`), `exec-bit` (those scripts must be executable — git mode `100755`), `shellcheck` (`-S warning`, configured by `.shellcheckrc`; no check is disabled globally — intentional exceptions are inline `# shellcheck disable=SCxxxx  # reason`), `bang-lint` (no `<placeholder>` inside a ``!`...` `` exec span in `commands/*.md`, `skills/*/SKILL.md`, `agents/*.md`), `templates` (every `templates/*.tmpl` rendered with dummy values; XML outputs must pass `xmllint --noout`) and `json` (`jq empty` on `config/`, `hooks/`, `.claude-plugin/` JSON). A missing optional tool (`claude`, `shellcheck`, `xmllint`) is a skip, or a failure with `--ci`. It is bash 3.2-compatible, read-only, and never writes to the tree. Add a gate there rather than a parallel script.
+
+A ``!`...` `` line in a command/skill/agent runs at command load, **before** the model sees it: it must be fully resolvable from `$1`/`$ARGUMENTS`/env. Anything that needs a `<placeholder>` must be written as an instruction for the model to run (a fenced block or a `!bash ...` line without backticks). `bang-lint` enforces this.
 
 Smoke-test a script directly (set `CLAUDE_PLUGIN_ROOT` so path/config resolution works outside an installed plugin):
 

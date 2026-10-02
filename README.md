@@ -29,6 +29,7 @@
 - [The drupal-digests complementary layer](#the-drupal-digests-complementary-layer)
 - [Safety and conventions](#safety-and-conventions)
 - [Troubleshooting](#troubleshooting)
+- [Developing drupilot](#developing-drupilot)
 - [License](#license)
 
 ---
@@ -410,6 +411,19 @@ Enable/disable it with `DRUPILOT_USE_DIGESTS_RULES` (default `true`).
 - **FunctionalJavascript tests are skipped.** Install the Selenium add-on: `ddev add-on get ddev/ddev-selenium-standalone-chrome && ddev restart`.
 - **The GitLab API is blocked.** Expected — drupalcode's API is restricted by default. `drupilot` degrades to a one-click MR URL; just open it to create the MR.
 - **Plugin not loading.** Run `claude plugin validate /path/to/drupilot` to check the manifest and component frontmatter.
+
+---
+
+## Developing drupilot
+
+Run the developer gate before every commit to the plugin itself:
+
+```bash
+bash scripts/dev/check.sh          # human report; exit 0 ok / 1 a gate failed
+bash scripts/dev/check.sh --json   # machine-readable per-gate summary
+```
+
+It validates the plugin manifest, syntax-checks and `shellcheck`s every script, checks the executable bits, rejects `<placeholder>` literals inside load-time `` !`...` `` lines of commands/skills/agents, checks that the rendered XML templates are well-formed, and validates every JSON file. Optional tools (`claude`, `shellcheck`, `xmllint`) are skipped when absent (`--ci` makes them mandatory). See `--help` for `--only`/`--skip`/`--allow-known`.
 
 ---
 

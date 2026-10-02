@@ -31,6 +31,7 @@
 - [La capa complementaria drupal-digests](#la-capa-complementaria-drupal-digests)
 - [Seguridad y convenciones](#seguridad-y-convenciones)
 - [Resolución de problemas](#resolución-de-problemas)
+- [Desarrollo de drupilot](#desarrollo-de-drupilot)
 - [Licencia](#licencia)
 
 ---
@@ -412,6 +413,19 @@ Actívalo/desactívalo con `DRUPILOT_USE_DIGESTS_RULES` (por defecto `true`).
 - **Los tests FunctionalJavascript se omiten.** Instala el add-on de Selenium: `ddev add-on get ddev/ddev-selenium-standalone-chrome && ddev restart`.
 - **La API de GitLab está bloqueada.** Es lo esperado — la API de drupalcode está restringida por defecto. `drupilot` degrada a una URL de MR de un clic; solo ábrela para crear el MR.
 - **El plugin no carga.** Ejecuta `claude plugin validate /ruta/a/drupilot` para revisar el manifiesto y el frontmatter de los componentes.
+
+---
+
+## Desarrollo de drupilot
+
+Ejecuta la puerta de desarrollo antes de cada commit sobre el propio plugin:
+
+```bash
+bash scripts/dev/check.sh          # informe legible; exit 0 ok / 1 alguna puerta falló
+bash scripts/dev/check.sh --json   # resumen por puerta legible por máquina
+```
+
+Valida el manifiesto del plugin, comprueba la sintaxis y pasa `shellcheck` por todos los scripts, verifica los bits de ejecución, rechaza literales `<placeholder>` dentro de las líneas `` !`...` `` que se ejecutan al cargar commands/skills/agents, comprueba que las plantillas XML renderizadas estén bien formadas y valida todos los ficheros JSON. Las herramientas opcionales (`claude`, `shellcheck`, `xmllint`) se omiten si no están (`--ci` las hace obligatorias). Consulta `--help` para `--only`/`--skip`/`--allow-known`.
 
 ---
 

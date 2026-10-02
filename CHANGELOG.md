@@ -11,6 +11,29 @@ release, rename `[Unreleased]` to the new version with a date, bump `version`
 in `.claude-plugin/plugin.json` (and the `marketplace.json` entry) to match, and
 tag the commit `vX.Y.Z`.
 
+## [Unreleased]
+
+### Added
+- **`scripts/dev/check.sh` — one local developer gate for the plugin.** Runs
+  `claude plugin validate .`, `bash -n` and an executable-bit check on every
+  script, `shellcheck -S warning`, a lint that rejects `<placeholder>` literals
+  inside `` !`...` `` exec spans of commands/skills/agents (they run at command
+  load, before the model can substitute them), renders every template with dummy
+  values and runs `xmllint --noout` on the XML outputs, and `jq empty` on every
+  JSON manifest/config. `--json` summary, `--only`/`--skip`, `--allow-fail` /
+  `--allow-known` for failures already tracked, `--ci` to make missing optional
+  tools fatal. Read-only and bash 3.2-compatible.
+- **`.shellcheckrc`** so `shellcheck` resolves `common.sh` from both group
+  scripts and hook scripts; no check is disabled globally.
+
+### Fixed
+- Cleared the 12 `shellcheck -S warning` findings with no behavior change: dropped
+  the unused `PHP_MIN` (`preflight.sh`) and `PF_RC` (`check-prereqs.sh`), collapsed
+  the redundant `drupal/core*|drupal/core-*` pattern (`deps-status.sh`), and
+  documented the intentional cases inline (`HAS_*` in `preflight.sh`, the
+  compatibility `--ready-test`/`--ready-contribute` flags in `next-step.sh`, the
+  runner word-split in `run-phpunit.sh`).
+
 ## [0.8.4] - 2026-06-23
 
 ### Fixed
@@ -590,6 +613,7 @@ verdict, what-changed report card, frozen lock), and new insight tools
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.4...HEAD
 [0.8.4]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.1...v0.8.2
