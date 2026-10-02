@@ -135,6 +135,10 @@ Exit `0` effective · `4` ineffective (the test stayed green: strengthen it and
 re-run the control — never accept it) · `1` inconclusive · `2` environment
 blocked. Tests under `tests/` are never mutated, and adapted existing tests are
 exempt (their intent is unchanged). The control never touches `last-test.json`.
+If a control was killed before it could restore the code (SIGKILL, a Bash-tool
+timeout), the next control refuses to start: run `negative-control.sh --subject
+"$1" --recover` first, which restores each file from the backup manifest while
+it still holds the recorded mutation.
 
 ## Step 6 — Report
 

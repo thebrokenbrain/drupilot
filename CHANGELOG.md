@@ -414,6 +414,22 @@ tag the commit `vX.Y.Z`.
   PHPCS reports a processing error instead of counting it as a violation.
 
 ### Fixed
+- **`negative-control.sh` kept its state under the physical subject path.**
+  It resolved the subject with `cd -P` and keyed `negative-controls.json` and
+  the `last-test.json` summary update by it, while `run-phpunit.sh` and
+  `port-report.sh` key by the logical path: behind a symlink (symlink placement,
+  a symlinked parent) the controls landed in another state dir and the report
+  showed "n/a". The logical path now keys the state and is what
+  `run-phpunit.sh` receives; the physical one is used only for git and hashes.
+- **A killed negative control left mutated production code with no way back.**
+  A SIGKILL (e.g. a tool timeout during a long Functional run) skips the
+  restore trap; the next control then hashed the mutation as the "original".
+  Each backup dir now carries a manifest (index -> path, original and mutated
+  hash, pid); a control refuses to start while a dead control's backup exists,
+  and the new `--recover` restores every file whose hash is still the recorded
+  mutation (leaving anything edited since untouched). The "backup kept"
+  message lists the index -> path mapping, and the red/green result temp files
+  are removed on every exit path, not only on success.
 - **A composer timeout left composer running inside the DDEV container.**
   `run_with_timeout` (GNU `timeout`) only killed the host-side `ddev exec` /
   `ddev composer` client; the process kept running in the web container. After

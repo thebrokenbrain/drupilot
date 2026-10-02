@@ -244,7 +244,11 @@ bash "$ROOT/scripts/tests/negative-control.sh" --subject "$SUBJECT" --type kerne
 The script backs up and hashes the target files, undoes the change, runs the
 test (it must go **red**), restores the files and checks they are byte-identical
 (`git hash-object`), then runs the test again (it must go **green**). It traps
-EXIT/INT/TERM so the code is restored even on an error or Ctrl-C, refuses any
+EXIT/INT/TERM so the code is restored even on an error or Ctrl-C (a SIGKILL —
+e.g. a Bash-tool timeout on a slow Functional run — cannot be trapped: the
+backup dir keeps a manifest, the next control refuses to start over it, and
+`negative-control.sh --subject "$SUBJECT" --recover` restores each file whose
+hash is still the recorded mutation), refuses any
 path under `tests/` (mutating the test is not a control), and runs PHPUnit with
 `--no-record`, so `last-test.json` and the baseline are never touched. Verdicts:
 `effective` (exit 0) · `ineffective` (exit 4 — the test stayed green: strengthen

@@ -32,6 +32,7 @@
 #                       (--revert-to REF --path FILE [--path FILE ...]
 #                        | --mutation-patch FILE)
 #                       [--label TEXT] [--manifest FILE] [--json] [--dry-run]
+#   negative-control.sh --subject DIR --recover
 #
 #   --filter EXPR   the test(s) under control (PHPUnit --filter: a class, a
 #                   method, Class::method). Required: a control is about a test.
@@ -42,6 +43,14 @@
 #                   .verification.negative_controls array (a port-manifest.json).
 #   --dry-run       validate the inputs and show the planned mutation; no run,
 #                   no file touched.
+#   --recover       restore the code left mutated by a control that was killed
+#                   before its trap could run (SIGKILL, a harness timeout), then
+#                   exit. Each backup dir carries a manifest (index -> path, the
+#                   original and the mutated hash, the pid); a file is restored
+#                   only while its current hash is still the recorded mutated
+#                   one. A normal run REFUSES to start while such a leftover
+#                   backup exists, so the mutated code is never taken for the
+#                   original.
 #
 # Output: with --json the record on STDOUT:
 #   {test, type, label, mutation:{kind, ref|patch, paths}, mutated_rc,
@@ -73,6 +82,7 @@ LABEL=""
 MANIFEST=""
 JSON=0
 DRY_RUN=0
+RECOVER=0
 declare -a PATHS=()
 
 usage() { print_usage "$0"; }
@@ -97,6 +107,7 @@ while [[ $# -gt 0 ]]; do
     --manifest=*) MANIFEST="${1#*=}"; shift;;
     --json) JSON=1; shift;;
     --dry-run) DRY_RUN=1; shift;;
+    --recover) RECOVER=1; shift;;
     -h|--help) usage; exit 0;;
     *) die "Unknown argument: $1 (see --help)." 1;;
   esac
@@ -106,10 +117,10 @@ have_cmd jq  || die "jq is required." 1
 have_cmd git || die "git is required (git hash-object / git apply)." 1
 [[ -n "$SUBJECT" ]] || die "Missing --subject DIR." 1
 [[ -d "$SUBJECT" ]] || die "Subject directory not found: $SUBJECT" 1
-[[ -n "$FILTER" ]]  || die "Missing --filter EXPR: name the test under control." 1
+[[ "$RECOVER" == "1" || -n "$FILTER" ]] || die "Missing --filter EXPR: name the test under control." 1
 case "$TYPE" in unit|kernel|functional|js|all) : ;; *) die "Invalid --type '$TYPE' (use unit|kernel|functional|js|all)." 1;; esac
 if [[ -n "$REF" && -n "$PATCH_FILE" ]]; then die "Give either --revert-to REF --path FILE... or --mutation-patch FILE, not both." 1; fi
-if [[ -z "$REF" && -z "$PATCH_FILE" ]]; then die "Missing the change to undo: --revert-to REF --path FILE... or --mutation-patch FILE." 1; fi
+if [[ "$RECOVER" == "0" && -z "$REF" && -z "$PATCH_FILE" ]]; then die "Missing the change to undo: --revert-to REF --path FILE... or --mutation-patch FILE." 1; fi
 if [[ -n "$REF" && ${#PATHS[@]} -eq 0 ]]; then die "--revert-to needs at least one --path FILE (the production file(s) the change touched)." 1; fi
 if [[ -n "$PATCH_FILE" && ${#PATHS[@]} -gt 0 ]]; then die "--path is only for --revert-to; a mutation patch names its own files." 1; fi
 if [[ -n "$PATCH_FILE" ]]; then
@@ -117,12 +128,93 @@ if [[ -n "$PATCH_FILE" ]]; then
   PATCH_FILE="$(cd "$(dirname "$PATCH_FILE")" && pwd)/$(basename "$PATCH_FILE")"
 fi
 
-# The physical subject path: git and the hashes see the real files even for a
-# symlink placement.
-SUBJECT="$(cd -P "$SUBJECT" 2>/dev/null && pwd)" || die "Cannot resolve subject path." 1
+# Two forms of the subject path. The LOGICAL one keys the state dir (as
+# run-phpunit.sh, port-report.sh and project_state_dir do) and is what
+# run-phpunit.sh gets, so it finds the Drupal root above a symlink placement.
+# The PHYSICAL one is used for git and the file hashes/copies, so they see the
+# real files even when the subject is reached through a symlink.
+SUBJECT_PHYS="$(cd -P "$SUBJECT" 2>/dev/null && pwd)" || die "Cannot resolve subject path." 1
+SUBJECT="$(cd "$SUBJECT" 2>/dev/null && pwd)" || die "Cannot resolve subject path." 1
 STATE_DIR="$(project_state_dir "$SUBJECT")"
 RUNNER_SH="$(plugin_root)/scripts/tests/run-phpunit.sh"
 [[ -r "$RUNNER_SH" ]] || die "run-phpunit.sh not found at $RUNNER_SH" 1
+
+# ---------------------------------------------------------------------------
+# Leftover backups. A control killed with SIGKILL (no trap runs) leaves the
+# production code mutated and its backup dir behind. Never start over such a
+# state (the mutation would be hashed as the "original"): recover it first.
+# ---------------------------------------------------------------------------
+# blob_hash <file> -> git blob hash of an absolute path, or "absent".
+blob_hash() { if [[ -f "$1" ]]; then git hash-object -- "$1"; else printf 'absent'; fi; return 0; }
+
+# recover_backup <dir> -> restore the files a dead control left mutated. Returns
+# 0 when every file is back to its original (the dir is then removed), 1 when a
+# file is in an unknown state (left untouched, the dir kept).
+recover_backup() {
+  local dir="$1" m="$1/manifest.json" n i rel orig mut cur ok=0
+  n="$(jq -r '.files | length' "$m")"
+  i=0
+  while [[ "$i" -lt "$n" ]]; do
+    rel="$(jq -r ".files[$i].path" "$m")"
+    orig="$(jq -r ".files[$i].orig_hash" "$m")"
+    mut="$(jq -r ".files[$i].mutated_hash // empty" "$m")"
+    cur="$(blob_hash "$SUBJECT_PHYS/$rel")"
+    if [[ "$cur" == "$orig" ]]; then
+      log_ok "  $rel: already the original."
+    elif [[ -n "$mut" && "$cur" == "$mut" ]]; then
+      if [[ "$orig" == "absent" ]]; then
+        rm -f "$SUBJECT_PHYS/$rel"
+      else
+        mkdir -p "$(dirname "$SUBJECT_PHYS/$rel")"
+        cp -p "$dir/$i" "$SUBJECT_PHYS/$rel"
+      fi
+      if [[ "$(blob_hash "$SUBJECT_PHYS/$rel")" == "$orig" ]]; then
+        log_ok "  $rel: restored from $dir/$i."
+      else
+        log_err "  $rel: the restore did not reproduce the original hash; the backup is $dir/$i."; ok=1
+      fi
+    else
+      log_err "  $rel: neither the original nor the recorded mutation (edited since?): left as is; the original is $dir/$i."
+      ok=1
+    fi
+    i=$((i + 1))
+  done
+  [[ "$ok" == "0" ]] && rm -rf "$dir"
+  return "$ok"
+}
+
+declare -a LEFTOVER=()
+for _d in "$STATE_DIR"/negative-controls/backup.*; do
+  [[ -d "$_d" ]] || continue
+  if [[ ! -r "$_d/manifest.json" ]]; then
+    log_warn "Backup dir without a manifest (an older drupilot, or killed before it was written): $_d — check it by hand, then delete it."
+    continue
+  fi
+  _pid="$(jq -r '.pid // empty' "$_d/manifest.json" 2>/dev/null || true)"
+  if [[ -n "$_pid" ]] && kill -0 "$_pid" 2>/dev/null; then
+    die "Another negative control (pid $_pid) is running on $SUBJECT: wait for it to finish." 1
+  fi
+  LEFTOVER+=("$_d")
+done
+
+if [[ "$RECOVER" == "1" ]]; then
+  if [[ ${#LEFTOVER[@]} -eq 0 ]]; then log_ok "Nothing to recover for $SUBJECT."; exit 0; fi
+  _rc=0
+  for _d in "${LEFTOVER[@]}"; do
+    log_step "Recovering the code left mutated by an interrupted control ($_d)"
+    recover_backup "$_d" || _rc=1
+  done
+  [[ "$_rc" == "0" ]] && log_ok "Recovered: the production code is back to its original." \
+    || log_err "Some files could not be recovered automatically (see above): restore them from the backup by hand."
+  exit "$_rc"
+fi
+if [[ ${#LEFTOVER[@]} -gt 0 ]]; then
+  for _d in "${LEFTOVER[@]}"; do
+    log_err "An interrupted negative control left its backup behind: $_d"
+    jq -r '.files[] | "  \(.index) -> \(.path)"' "$_d/manifest.json" >&2 2>/dev/null || true
+  done
+  die "The production code may still be mutated. Run: negative-control.sh --subject '$SUBJECT' --recover" 1
+fi
 
 # ---------------------------------------------------------------------------
 # Target paths (relative to the subject) and their validation.
@@ -138,7 +230,7 @@ if [[ -n "$PATCH_FILE" ]]; then
 fi
 
 IN_GIT=0
-git -C "$SUBJECT" rev-parse --is-inside-work-tree >/dev/null 2>&1 && IN_GIT=1
+git -C "$SUBJECT_PHYS" rev-parse --is-inside-work-tree >/dev/null 2>&1 && IN_GIT=1
 
 declare -a REL=()
 for p in "${PATHS[@]}"; do
@@ -150,7 +242,7 @@ for p in "${PATHS[@]}"; do
     */../*) die "Path escapes the subject: '$p'" 1;;
     */tests/*) die "Refusing to mutate '$p': it is test code. A negative control mutates the PRODUCTION code the test guards, never the test." 1;;
   esac
-  if [[ "$IN_GIT" == "1" && -n "$(git -C "$SUBJECT" ls-files -u -- "$p" 2>/dev/null)" ]]; then
+  if [[ "$IN_GIT" == "1" && -n "$(git -C "$SUBJECT_PHYS" ls-files -u -- "$p" 2>/dev/null)" ]]; then
     die "Refusing to mutate '$p': it is in a git conflict state. Resolve it first." 1
   fi
   REL+=("$p")
@@ -158,19 +250,19 @@ done
 
 if [[ -n "$REF" ]]; then
   [[ "$IN_GIT" == "1" ]] || die "--revert-to needs the subject to be a git checkout ($SUBJECT is not)." 1
-  git -C "$SUBJECT" rev-parse --verify --quiet "${REF}^{commit}" >/dev/null || die "Unknown git ref: $REF" 1
+  git -C "$SUBJECT_PHYS" rev-parse --verify --quiet "${REF}^{commit}" >/dev/null || die "Unknown git ref: $REF" 1
 fi
 
 # hash_of <rel> -> the git blob hash of the file, or "absent".
 hash_of() {
-  if [[ -f "$SUBJECT/$1" ]]; then git hash-object -- "$SUBJECT/$1"; else printf 'absent'; fi
+  if [[ -f "$SUBJECT_PHYS/$1" ]]; then git hash-object -- "$SUBJECT_PHYS/$1"; else printf 'absent'; fi
   return 0
 }
 # ref_has <rel> -> 0 when REF has the path (run in the subject dir: ./ is relative).
-ref_has() { ( cd "$SUBJECT" && git cat-file -e "$REF:./$1" ) 2>/dev/null; }
+ref_has() { ( cd "$SUBJECT_PHYS" && git cat-file -e "$REF:./$1" ) 2>/dev/null; }
 # ref_hash <rel> -> blob hash of the path at REF, or "absent".
 ref_hash() {
-  if ref_has "$1"; then ( cd "$SUBJECT" && git rev-parse "$REF:./$1" ); else printf 'absent'; fi
+  if ref_has "$1"; then ( cd "$SUBJECT_PHYS" && git rev-parse "$REF:./$1" ); else printf 'absent'; fi
   return 0
 }
 
@@ -187,7 +279,7 @@ if [[ -n "$REF" && "$CHANGES" -eq 0 ]]; then
   die "Nothing to undo: every --path is identical at $REF. Name the ref BEFORE the change the test guards." 1
 fi
 if [[ -n "$PATCH_FILE" ]]; then
-  ( cd "$SUBJECT" && git apply --check "$PATCH_FILE" ) >/dev/null 2>&1 \
+  ( cd "$SUBJECT_PHYS" && git apply --check "$PATCH_FILE" ) >/dev/null 2>&1 \
     || die "The mutation patch does not apply to the current code: $PATCH_FILE (paths must be relative to the subject)." 1
 fi
 
@@ -202,10 +294,10 @@ log_info "Undoing the guarded change ($MUT_KIND${REF:+ $REF}${PATCH_FILE:+ $PATC
 if [[ "$DRY_RUN" == "1" ]]; then
   if [[ -n "$REF" ]]; then
     for p in "${REL[@]}"; do
-      ( cd "$SUBJECT" && git --no-pager diff --stat "$REF" -- "$p" ) >&2 2>/dev/null || true
+      ( cd "$SUBJECT_PHYS" && git --no-pager diff --stat "$REF" -- "$p" ) >&2 2>/dev/null || true
     done
   else
-    ( cd "$SUBJECT" && git apply --stat "$PATCH_FILE" ) >&2 || true
+    ( cd "$SUBJECT_PHYS" && git apply --stat "$PATCH_FILE" ) >&2 || true
   fi
   log_info "Dry run: no file touched, no test run. A real run does: red run, byte-identical restore, green run."
   if [[ "$JSON" == "1" ]]; then
@@ -221,10 +313,28 @@ fi
 mkdir -p "$STATE_DIR/negative-controls/logs"
 BACKUP_DIR="$(mktemp -d "$STATE_DIR/negative-controls/backup.XXXXXX")"
 for i in "${!REL[@]}"; do
-  if [[ -f "$SUBJECT/${REL[i]}" ]]; then cp -p "$SUBJECT/${REL[i]}" "$BACKUP_DIR/$i"; fi
+  if [[ -f "$SUBJECT_PHYS/${REL[i]}" ]]; then cp -p "$SUBJECT_PHYS/${REL[i]}" "$BACKUP_DIR/$i"; fi
 done
 
 declare -a MUT_HASH=()
+# write_manifest -> BACKUP_DIR/manifest.json: index -> path, original hash,
+# mutated hash (null until the mutation is applied) and this pid, so --recover
+# can undo a control that was killed before its trap ran.
+write_manifest() {
+  local i files='[]'
+  for i in "${!REL[@]}"; do
+    files="$(printf '%s' "$files" | jq -c --argjson i "$i" --arg p "${REL[i]}" --arg o "${ORIG_HASH[i]}" \
+      --arg m "${MUT_HASH[i]:-}" '. + [{index:$i, path:$p, orig_hash:$o, mutated_hash:($m | select(. != "") // null)}]')"
+  done
+  jq -n --argjson pid "$$" --arg subject "$SUBJECT" --arg phys "$SUBJECT_PHYS" --arg test "$FILTER" \
+    --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson files "$files" \
+    '{pid:$pid, subject:$subject, subject_physical:$phys, test:$test, at:$at, files:$files}' \
+    > "$BACKUP_DIR/manifest.json.tmp" && mv "$BACKUP_DIR/manifest.json.tmp" "$BACKUP_DIR/manifest.json"
+  return 0
+}
+write_manifest
+RES_RED=""
+RES_GREEN=""
 MUTATED=0
 RESTORED=0
 RESTORE_OK=1
@@ -245,10 +355,10 @@ restore() {
       continue
     fi
     if [[ "${ORIG_HASH[i]}" == "absent" ]]; then
-      rm -f "$SUBJECT/${REL[i]}"
+      rm -f "$SUBJECT_PHYS/${REL[i]}"
     else
-      mkdir -p "$(dirname "$SUBJECT/${REL[i]}")"
-      cp -p "$BACKUP_DIR/$i" "$SUBJECT/${REL[i]}"
+      mkdir -p "$(dirname "$SUBJECT_PHYS/${REL[i]}")"
+      cp -p "$BACKUP_DIR/$i" "$SUBJECT_PHYS/${REL[i]}"
     fi
   done
   return 0
@@ -258,7 +368,11 @@ on_exit() {
   local rc=$?
   restore
   if [[ "$RESTORE_OK" == "1" ]]; then rm -rf "$BACKUP_DIR" 2>/dev/null || true
-  else log_err "Backup kept for manual recovery: $BACKUP_DIR"; fi
+  else
+    log_err "Backup kept for manual recovery: $BACKUP_DIR (or run with --recover)"
+    for i in "${!REL[@]}"; do log_plain "  $BACKUP_DIR/$i -> ${REL[i]}"; done
+  fi
+  rm -f "${RES_RED:-}" "${RES_GREEN:-}" 2>/dev/null || true
   return "$rc"
 }
 trap on_exit EXIT
@@ -269,18 +383,19 @@ MUTATED=1
 if [[ -n "$REF" ]]; then
   for i in "${!REL[@]}"; do
     if ref_has "${REL[i]}"; then
-      mkdir -p "$(dirname "$SUBJECT/${REL[i]}")"
-      ( cd "$SUBJECT" && git show "$REF:./${REL[i]}" ) > "$BACKUP_DIR/ref.$i" \
+      mkdir -p "$(dirname "$SUBJECT_PHYS/${REL[i]}")"
+      ( cd "$SUBJECT_PHYS" && git show "$REF:./${REL[i]}" ) > "$BACKUP_DIR/ref.$i" \
         || die "Could not read ${REL[i]} at $REF." 1
-      cat "$BACKUP_DIR/ref.$i" > "$SUBJECT/${REL[i]}"
+      cat "$BACKUP_DIR/ref.$i" > "$SUBJECT_PHYS/${REL[i]}"
     else
-      rm -f "$SUBJECT/${REL[i]}"
+      rm -f "$SUBJECT_PHYS/${REL[i]}"
     fi
   done
 else
-  ( cd "$SUBJECT" && git apply "$PATCH_FILE" ) || die "Could not apply the mutation patch (nothing was left changed)." 1
+  ( cd "$SUBJECT_PHYS" && git apply "$PATCH_FILE" ) || die "Could not apply the mutation patch (nothing was left changed)." 1
 fi
 for i in "${!REL[@]}"; do MUT_HASH[i]="$(hash_of "${REL[i]}")"; done
+write_manifest
 
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 SLUG="$(printf '%s' "$FILTER" | tr -c 'A-Za-z0-9' '_' | cut -c1-60)"
