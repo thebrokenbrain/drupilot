@@ -456,6 +456,47 @@ tag the commit `vX.Y.Z`.
     `core_requirement_admits <constraint> <major>`.
   - `scripts/lib/ext-scan.sh`: the extension-set scanner (bash + POSIX awk +
     jq, verified with gawk, mawk and busybox awk under bash 3.2).
+- **Decision log (`scripts/analysis/log-decision.sh`).** Records, the moment
+  it happens, every place a port does not keep a tool's output or does not
+  follow the flow, with what and why. Until now these choices only survived in
+  hand-written report prose, so a reverted Rector change looked like a kept
+  one.
+  - Kinds: `rector-revert` (needs `--rule`), `post-port-fix`,
+    `script-divergence`, `skip`, `manual-override`, `tooling-deviation`,
+    `test-adaptation`, `behavior-change` (with `--review-hint`),
+    `preexisting-bug`. `--what` and `--why` are required.
+  - Each entry is one JSON line in `<root>/.drupilot/decisions.jsonl` (one log
+    per Drupal root, every entry names its subject); `decisions.md` beside it
+    is regenerated as a table per module (temp file + `mv`). `--list`,
+    `--render`, `--json` and `--dry-run` modes.
+  - The minimal-port and full-refactor skills, the orchestrator and test
+    engineer agents, and `/drupilot-port` / `/drupilot-refactor` tell the
+    agent to log each divergence as it happens.
+- **Structured port outcome fields.** The port manifest takes optional
+  `rector_rules`, `rector_reversions`, `post_port_fixes`, `preexisting_bugs`,
+  `behavior_changes`, `tooling_deviations` and `validation`, so reverted Rector
+  rules and post-port fixes aggregate across modules and layers.
+  `port_record_json` (common.sh) normalizes them and merges the decision log
+  (deduplicated). `port-report.sh` renders a section for each only when it has
+  content, so a report from an older manifest is byte-identical.
+- **Rector rule counts.** `run-rector.sh --json` adds `rule_hits`
+  (`{official: {Rule: files}, digests: {...}}`, from Rector's "Applied rules"
+  lines; `{}` when the format is not recognized). An `--apply` that changes
+  files keeps it as `rector-rules.json` in the subject's state dir, the
+  report's fallback when the manifest has no `rector_rules`.
+- **One template for the consolidated layer report (4.2).**
+  `layer-report.sh` now renders `templates/layer-report.md.tmpl` with fixed
+  sections: per-module result, frequent Rector rules with hits and reversions,
+  manual changes, post-port fixes, pre-existing bugs, behavior changes to
+  review in the PR, tooling and flow deviations, and how it was validated.
+  Layer reports used to differ in format from one layer to the next.
+  - `--json` keeps every existing key and adds `modules[].port`, an
+    `aggregate` object and new totals.
+  - `--subject DIR` (repeatable) with `--name LABEL` reports on any set of
+    modules, e.g. ported in separate test-beds, without a `layers.json`.
+  - `render_template_files` (common.sh) substitutes `{{KEY}}` tokens with file
+    contents in one left-to-right pass: values may be multi-line, hold `|`,
+    `&` or `\`, exceed the environment's size limit, and are never re-scanned.
 ### Changed
 - **The port bumps submodules too.** `/drupilot-port`, `minimal-port` and
   the orchestrator apply the recommended `core_version_requirement` with

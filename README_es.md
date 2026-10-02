@@ -129,7 +129,11 @@ Cómo llega el sujeto ahí lo controla `DRUPILOT_PLACEMENT` (`move` / `symlink` 
 
 ### La carpeta `.drupilot/`
 
-Las salidas destinadas al desarrollador viven en un único directorio **visible e ignorado en git** `.drupilot/` en la raíz de Drupal: el **boletín** del port (`port-report.md`), el **informe de viabilidad** (`viability-report.md`), el HTML de cobertura de tests y el `.patch` local. Se ignora en git automáticamente para que nunca acabe en tu parche, y puedes apuntarlo a otro sitio con `DRUPILOT_ARTIFACTS_DIR`. La caché legible por máquina y el lockfile de determinismo se quedan deliberadamente **ocultos bajo `$HOME`** para que no puedan filtrarse a un parche.
+Las salidas destinadas al desarrollador viven en un único directorio **visible e ignorado en git** `.drupilot/` en la raíz de Drupal: el **boletín** del port (`port-report.md`), el **informe de viabilidad** (`viability-report.md`), el HTML de cobertura de tests, el `.patch` local, los informes consolidados por capa (`layer-N-report.md`) y el **registro de decisiones** (`decisions.md`, con su gemelo para máquinas `decisions.jsonl`). Se ignora en git automáticamente para que nunca acabe en tu parche, y puedes apuntarlo a otro sitio con `DRUPILOT_ARTIFACTS_DIR`. La caché legible por máquina y el lockfile de determinismo se quedan deliberadamente **ocultos bajo `$HOME`** para que no puedan filtrarse a un parche.
+
+### Registro de decisiones
+
+Cada punto en el que un port no conserva lo que produjo una herramienta, o no sigue el flujo, queda registrado en el momento en que ocurre con `scripts/analysis/log-decision.sh`, con **qué** y **por qué**: un cambio de Rector revertido o reescrito a mano, el veredicto de un script descartado, un paso omitido, un arreglo hecho después de que la validación o los tests detectaran un problema, un test al que se le cambió la forma, un bug previo que se deja sin arreglar, un cambio de comportamiento que un revisor debe comprobar. Cada entrada es una línea JSON en `.drupilot/decisions.jsonl` (un registro por raíz de Drupal; cada entrada indica su módulo), y `decisions.md`, a su lado, se regenera como una tabla por módulo. El informe de port y el de capa combinan estas entradas con los campos estructurados del manifiesto del port (`rector_rules`, `rector_reversions`, `post_port_fixes`, `preexisting_bugs`, `behavior_changes`, `tooling_deviations`, `validation`), de modo que las reglas de Rector revertidas y los arreglos post-port se suman entre módulos y capas. `log-decision.sh --subject <dir> --list` muestra las entradas de un módulo.
 
 ### Estado por módulo
 
@@ -220,6 +224,7 @@ drupilot reparte el trabajo en dos. **Los scripts deterministas** hacen el traba
 - **Adapta los tests** a D11; ante un fallo de comportamiento arregla el **código**, nunca el test.
 - **Reescribe al "estilo Drupal 11"** en la Fase 2 — atributos, inyección de dependencias, tipados estrictos, eliminación de deprecaciones.
 - **Propone las decisiones de peso** (target de core, alcance del refactor, contribuir o no) — eliges tú.
+- **Registra cada desviación en el momento** — cada cambio de Rector que revierte, cada veredicto de script que descarta, cada paso que omite, con su porqué (`log-decision.sh`), para que el informe nunca presente como conservada la salida de una herramienta que no lo fue.
 
 **Cuándo actúa la IA — el patrón.** La IA es el director de orquesta: los scripts no se llaman entre sí. La IA ejecuta uno, lee su salida, decide el siguiente y lo ejecuta. Así que actúa **antes** de cada script (decidir si lo lanza y cómo) y **después** de él (leer el resultado y arreglar lo que queda), además de en las pestañas de decisión. La única excepción es el **hook `PostToolUse`**, que pasa `phpcbf` por su cuenta tras cada edición de fichero — sin IA en el bucle.
 
@@ -428,11 +433,17 @@ La primera llamada es de solo lectura. Imprime y guarda `.drupilot/layers.md`, q
 
 Un módulo que solo declara parte de lo que usa aparece donde de verdad le corresponde, con una nota de que con solo sus dependencias declaradas se portaría demasiado pronto. Las entradas propuestas nunca se aplican sin tu confirmación.
 
-`run` porta una capa, un módulo cada vez, con el flujo habitual setup → assess → port → test, y escribe `.drupilot/layer-N-report.md`. Ese informe tiene una fila por módulo, con:
-- fase, esfuerzo y veredicto de preservación;
-- veredicto de Drupal 10;
-- higiene previa y dependencias no declaradas;
-- parche, y un enlace al informe de port del módulo.
+`run` porta una capa, un módulo cada vez, con el flujo habitual setup → assess → port → test, y escribe `.drupilot/layer-N-report.md` a partir de una única plantilla (`templates/layer-report.md.tmpl`), así que todas las capas tienen las mismas secciones:
+1. resultado por módulo: fase, esfuerzo, veredictos de preservación y de Drupal 10, higiene previa, dependencias no declaradas, ficheros de Rector, cambios de Rector revertidos, arreglos post-port, parche y un enlace al informe de port del módulo;
+2. reglas de Rector frecuentes, con sus aciertos (ficheros cambiados) **y** cuántas veces se revirtió cada una;
+3. cambios manuales;
+4. arreglos post-port;
+5. bugs previos (no corregidos);
+6. cambios de comportamiento a revisar en el PR;
+7. desviaciones de tooling y de flujo;
+8. cómo se validó.
+
+Las secciones 2-8 salen del manifiesto del port y del registro de decisiones de cada módulo, así que una regla revertida en varios módulos salta a la vista. `--json` añade el `aggregate` entre módulos.
 
 Una regresión detiene la siguiente capa. Los scripts también funcionan por separado:
 
@@ -440,6 +451,7 @@ Una regresión detiene la siguiente capa. Los scripts también funcionan por sep
 bash scripts/analysis/layers.sh --dir web/modules/custom --json           # capas, ciclos, dependencias no declaradas
 bash scripts/analysis/lint-extension-metadata.sh --subject web/modules/custom/acme_api --json
 bash scripts/analysis/layer-report.sh --dir web/modules/custom --layer 1  # informe consolidado
+bash scripts/analysis/layer-report.sh --subject ../a-d11/web/modules/custom/a --subject ../b-d11/web/modules/custom/b --name "lote 1"  # cualquier conjunto de módulos
 ```
 
 ### 8. Contribuir el arreglo de vuelta a Drupal.org

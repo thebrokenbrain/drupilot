@@ -51,7 +51,20 @@ All output you produce — messages, summaries, coverage reports — is in **Eng
    strengthened, never accepted. Adapted existing tests are exempt (their intent
    is unchanged). Never mutate code by hand for a control: only the script, so the
    restore is guaranteed.
-7. **Tell pre-existing failures from regressions.** When a pre-port baseline
+7. **Log what you change and why.** Record each test adaptation (a test's
+   form changed: namespace, trait, PHPUnit 10/11 API — never what it
+   verifies), each production fix a red test forced after the port, and each
+   pre-existing failure you leave documented, the moment you make the call:
+
+   ```bash
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/log-decision.sh" --subject <path> \
+     --kind <test-adaptation|post-port-fix|preexisting-bug|skip> \
+     --what "<what>" --why "<why>" [--file <path>] [--detected-by phpunit] [--phase refactor]
+   ```
+
+   The port report lists them ("How it was validated", "Post-port fixes",
+   "Pre-existing bugs"), and the layer report aggregates them across modules.
+8. **Tell pre-existing failures from regressions.** When a pre-port baseline
    exists (`run-phpunit.sh --baseline`), a test that failed before AND after is
    `pre-existing`, a test that passed before and fails now is a `regression`.
    Report both honestly: pre-existing failures are not proof of preservation, and

@@ -43,7 +43,14 @@
 #                      errors is [{pass, exit_code, message}]; digests_status is
 #                      "off", "ok", "error" or "skipped". rules is the
 #                      sorted list of Rector rule names Rector reported as
-#                      applied (its "Applied rules:" sections, both passes).
+#                      applied (its "Applied rules:" sections, both passes);
+#                      rule_hits counts them per pass, {official: {Rule: n},
+#                      digests: {Rule: n}} (n = files the rule changed; the
+#                      digests key only when that pass changed something) —
+#                      copy it into the port manifest's rector_rules. An
+#                      --apply that changes files also keeps it in the
+#                      subject's state dir (rector-rules.json), the fallback
+#                      port-report.sh / layer-report.sh read.
 #   -h, --help         Show this help.
 #
 # Gate: `analyze` profile (git + jq + composer/php).
@@ -444,6 +451,21 @@ CHANGED="$( { printf '%s\n' "$PASS1_FILES"; printf '%s\n' "$PASS2_FILES"; } | gr
 APPLIED_RULES="$(printf '%s\n%s\n' "$PASS1_RAW" "$PASS2_RAW" \
   | grep -E '^ \* [A-Za-z0-9_\\]+Rector$' | sed -E 's/^ \* //' | sort -u || true)"
 
+# rule_hits_json <raw> -> {Rule: files} from one pass's "Applied rules:"
+# sections (Rector lists the rules once per changed file). `{}` when none or
+# when the output format is not recognized: never fails the run.
+rule_hits_json() {
+  have_cmd jq || { printf '{}'; return 0; }
+  local out
+  out="$(printf '%s\n' "${1:-}" | { grep -E '^ \* [A-Za-z0-9_\\]+Rector$' || true; } | sed -E 's/^ \* //' \
+    | jq -R . | jq -s -c 'group_by(.) | map({key: .[0], value: length}) | from_entries' 2>/dev/null || true)"
+  [[ -n "$out" ]] || out='{}'
+  printf '%s' "$out"
+  return 0
+}
+RULE_HITS="$(jq -nc --argjson o "$(rule_hits_json "$PASS1_RAW")" --argjson d "$(rule_hits_json "$PASS2_RAW")" \
+  '{official: $o} + (if ($d | length) > 0 then {digests: $d} else {} end)' 2>/dev/null || printf '{}')"
+
 COUNT=0
 [[ -n "$CHANGED" ]] && COUNT="$(printf '%s\n' "$CHANGED" | grep -c . || true)"
 
@@ -480,6 +502,19 @@ else
   log_info "Re-run with --apply once you have reviewed the proposed diff."
 fi
 
+# An --apply that changed files records its rule counts in the subject's
+# hidden state dir (rector-rules.json), the fallback for the port manifest's
+# rector_rules in port-report.sh / layer-report.sh. A later apply that changes
+# nothing (a re-run on ported code) keeps the record of the real port.
+if [[ "$APPLY" == "1" && "$FAILED" == "0" && "$COUNT" != "0" ]] && have_cmd jq; then
+  jq -n --arg s "$SUBJECT_ABS" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson h "$RULE_HITS" \
+    --arg dsha "$DIGESTS_SHA" --argjson n "$COUNT" \
+    '{tool: "run-rector", subject: $s, generated_at: $at, changed_files: $n,
+      digests_sha: (if $dsha == "" then null else $dsha end), rule_hits: $h}' \
+    > "$(project_state_dir "$SUBJECT_ABS")/rector-rules.json" 2>/dev/null \
+    || log_warn "Could not record the applied Rector rules in $(rector_rules_file "$SUBJECT_ABS")."
+fi
+
 # STDOUT: a JSON summary (--json) or the parseable changed-files list.
 # Build the JSON arrays by splitting on NEWLINES only (jq -R reads whole lines),
 # so a file path containing a space is never split into two bogus entries.
@@ -493,7 +528,7 @@ if [[ "$AS_JSON" == "1" ]]; then
       --argjson count "$COUNT" --argjson digests "$([[ "$USE_DIGESTS" == "1" ]] && echo true || echo false)" \
       --argjson applied "$([[ "$APPLY" == "1" ]] && echo true || echo false)" \
       --argjson errors "$ERRORS_JSON" \
-      --argjson rules "$(lines_to_json "$APPLIED_RULES")" \
+      --argjson rules "$(lines_to_json "$APPLIED_RULES")" --argjson hits "$RULE_HITS" \
       --arg dstatus "$DIGESTS_STATUS" --arg dsha "$DIGESTS_SHA" \
       --argjson p1ok "$([[ "$PASS1_OK" == "1" ]] && echo true || echo false)" \
       '{tool:"rector",
@@ -501,7 +536,8 @@ if [[ "$AS_JSON" == "1" ]]; then
         ok:$p1ok, errors:$errors,
         digests_status:$dstatus, digests_sha:(if $dsha == "" then null else $dsha end),
         applied:$applied, digests_pass:$digests, changed_files:$count,
-        files:$files, pass1_files:$pass1, pass2_files:$pass2, rules:$rules}'
+        files:$files, pass1_files:$pass1, pass2_files:$pass2, rules:$rules,
+        rule_hits:$hits}'
   fi
 elif [[ -n "$CHANGED" ]]; then
   printf '%s\n' "$CHANGED"

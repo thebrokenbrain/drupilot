@@ -151,9 +151,18 @@ Ask with **AskUserQuestion** (skip when `autonomous=true`: print the plan and st
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/layer-report.sh" --dir <dir> --layer <N>
    ```
 
-   It writes `.drupilot/layer-<N>-report.md` (one row per module: stage, effort,
-   preservation, Drupal 10 verdict, pre-existing hygiene, undeclared
-   dependencies, patch, link to its port report) and prints the path. Relay its
+   It writes `.drupilot/layer-<N>-report.md` from `templates/layer-report.md.tmpl`
+   — the same fixed sections for every layer, so layers compare: per-module
+   result (stage, effort, preservation, Drupal 10 verdict, pre-existing
+   hygiene, undeclared dependencies, Rector files, reverted Rector changes,
+   post-port fixes, patch, link to its port report), frequent Rector rules
+   with hits AND reversions, manual changes, post-port fixes, pre-existing
+   bugs, behavior changes to review in the PR, tooling/flow deviations and how
+   it was validated — and prints the path. Sections 2-8 come from each
+   module's port manifest and decision log (`log-decision.sh`), so they are
+   only as complete as what the module's flow recorded; `--json` gives the
+   cross-module `aggregate`. A set ported outside `/drupilot-layers` is
+   reported with `layer-report.sh --subject <dir> --subject <dir> --name <label>`. Relay its
    totals, then ask with **AskUserQuestion** (autonomous: stop after the layer and
    recommend the next one): **Port layer N+1** (recommended when the layer is clean)
    / **Stop here**.

@@ -35,6 +35,23 @@ with APIs Drupal 11 now provides natively. Anything bigger is deferred to Phase 
 - **Resolve the PHP and Drupal targets** via `resolve_php_target` /
   `resolve_drupal_target` (see the `php-target-tuning` skill). The PHP set is
   chosen from the target.
+- **Log every divergence the moment it happens.** Whenever you revert or
+  hand-edit a change Rector made, ignore or override a script's verdict, skip
+  a step this flow prescribes, fix something validation caught after the port,
+  change a test's form, leave a pre-existing bug unfixed, or introduce a
+  behavior difference a reviewer must check, record it with WHAT and WHY. A
+  divergence that is not logged is a defect: the report would present the
+  tool's output as kept.
+
+  ```bash
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/log-decision.sh" --subject <path> \
+    --kind <rector-revert|post-port-fix|script-divergence|skip|manual-override|tooling-deviation|test-adaptation|behavior-change|preexisting-bug> \
+    --what "<what you did>" --why "<why>" [--rule <Rector rule>] [--file <path>] \
+    [--script <script>] [--detected-by <tool>] [--review-hint "<how to review>"]
+  ```
+
+  It appends to `<root>/.drupilot/decisions.jsonl` and regenerates
+  `decisions.md` beside it; `port-report.sh` and `layer-report.sh` read it.
 
 ### Port-safety rules (each one broke a real port)
 
@@ -569,7 +586,15 @@ and unknown ones in `deprecations_remaining`; `d10_support` from the core matrix
 (§6a) when it ran; and `verification`: `{core_matrix, phpcs_ruleset,
 commit_hooks}` — the JSON of `verify-core-matrix.sh --json`, the `.drupilot`
 object of `run-phpcs.sh --json` and the hook record from §3; all fall back to the
-state files the scripts write) and render the report:
+state files the scripts write; and the **structured outcome fields** that
+aggregate across modules and layers: `rector_rules` (the `rule_hits` of the
+applying `run-rector.sh --json`; falls back to the `rector-rules.json` it
+keeps), `rector_reversions` `[{rule, file, why}]`, `post_port_fixes`
+`[{fix, file, why, detected_by}]`, `preexisting_bugs` `[{issue, file, note}]`,
+`behavior_changes` `[{change, why, review_hint}]`, `tooling_deviations`
+`[{what, why}]` and `validation` (strings: how the result was validated). The
+entries you logged with `log-decision.sh` are merged in (deduplicated), so a
+decision logged there need not be repeated in the manifest) and render the report:
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" \

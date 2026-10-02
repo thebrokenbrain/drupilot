@@ -1436,6 +1436,229 @@ core_matrix_fresh() {
   [[ -n "$have" && "$have" == "$want" ]]
 }
 
+# ---------------------------------------------------------------------------
+# Port record: structured outcome fields + the decision log
+# ---------------------------------------------------------------------------
+# A port's outcome is recorded in two machine sources that aggregate across
+# modules and layers (layer-report.sh, port-report.sh):
+#   * the port MANIFEST (<state_dir>/port-manifest.json, written by the flow at
+#     the end of a port/refactor) — its optional structured fields:
+#       rector_rules       run-rector.sh --json `.rule_hits` ({official:{Rule:n},
+#                          digests:{...}}), or {Rule: n}, or [Rule...], or
+#                          [{rule, hits?, pass?}] (hits = files changed)
+#       rector_reversions  [{rule, file?, why}]  a Rector change undone by hand
+#       post_port_fixes    [{fix, file?, why, detected_by?}]  a fix made after
+#                          the validate loop / tests / core matrix found a problem
+#       preexisting_bugs   [{issue, file?, note?}]  found, NOT fixed by the port
+#       behavior_changes   [{change, why?, review_hint?}]  to review in the PR
+#       tooling_deviations [{what, why}]  the flow or a tool's output not followed
+#       validation         [string]  how the result was validated
+#     (a plain string is accepted for any list item);
+#   * the DECISION LOG (log-decision.sh): one JSON line per decision in
+#     <artifacts_dir>/decisions.jsonl (with a human decisions.md beside it),
+#     written the moment the agent reverts a Rector change, diverges from a
+#     script's output, skips a step, etc. Entry (schema 1): {schema, ts,
+#     subject, machine_name, drupal_root, phase, kind, what, why, rule, file,
+#     script, detected_by, review_hint}. Kinds map onto the manifest fields:
+#     rector-revert -> rector_reversions, post-port-fix -> post_port_fixes,
+#     preexisting-bug -> preexisting_bugs, behavior-change -> behavior_changes,
+#     script-divergence | skip | manual-override | tooling-deviation ->
+#     tooling_deviations, test-adaptation -> test_adaptations.
+# port_record_json merges both (manifest items first, deduplicated), so the
+# flow may record a decision in either place, or both.
+
+# project_artifacts_path [base_dir] -> the directory project_artifacts_dir
+# resolves, WITHOUT creating it (for read-only callers).
+project_artifacts_path() {
+  local base="${1:-$PWD}" override root
+  override="$(config_get DRUPILOT_ARTIFACTS_DIR "")"
+  if [[ -n "$override" ]]; then
+    ( cd "$override" 2>/dev/null && pwd ) || printf '%s' "$override"
+    return 0
+  fi
+  root="${DRUPILOT_PROJECT_DIR:-}"
+  [[ -z "$root" ]] && root="$(find_drupal_root "$base" 2>/dev/null || true)"
+  [[ -z "$root" ]] && root="$base"
+  root="$(cd "$root" 2>/dev/null && pwd || printf '%s' "$root")"
+  printf '%s/.drupilot' "$root"
+  return 0
+}
+
+# decisions_log_file <subject> -> the decision log (JSONL) the subject's
+# decisions go to: <artifacts_dir>/decisions.jsonl. One file per Drupal root;
+# every entry names its subject, so modules sharing a test-bed stay apart.
+decisions_log_file() { printf '%s/decisions.jsonl' "$(project_artifacts_path "${1:-$PWD}")"; }
+
+# rector_rules_file <subject> -> the rule counts of the last Rector --apply run
+# that changed files (run-rector.sh), the fallback for manifest.rector_rules.
+rector_rules_file() { printf '%s/rector-rules.json' "$(project_state_path "${1:-$PWD}")"; }
+
+# decisions_for_subject <subject> -> JSON array of the decision-log entries of
+# the subject (matched by path, or by machine name within the same log, which
+# survives a moved subject). `[]` when there is no log or no jq. Read-only.
+decisions_for_subject() {
+  local subj="${1:-$PWD}" abs f mn
+  have_cmd jq || { printf '[]'; return 0; }
+  abs="$(cd "$subj" 2>/dev/null && pwd || printf '%s' "$subj")"
+  f="$(decisions_log_file "$abs")"
+  [[ -r "$f" ]] || { printf '[]'; return 0; }
+  mn="$(subject_machine_name "$abs" 2>/dev/null || true)"
+  # -R + fromjson? skips a damaged line instead of failing the whole log.
+  jq -R -c -s --arg s "$abs" --arg mn "$mn" '
+    [ split("\n")[] | select(length > 0) | (fromjson? // empty) | select(type == "object")
+      | select(.subject == $s or ($mn != "" and .machine_name == $mn)) ]' "$f" 2>/dev/null || printf '[]'
+  return 0
+}
+
+# The jq definitions that normalize a manifest + decision entries into the
+# port record (see the block comment above).
+_PORT_RECORD_JQ_DEFS='
+def _short: tostring | split("\\") | last;
+def _list: if . == null then [] elif type == "array" then . else [.] end;
+def _str: if . == null then null elif type == "string" then (if . == "" then null else . end) else tojson end;
+def _rules:
+  if . == null then []
+  elif type == "object" and has("rule_hits") then (.rule_hits | _rules)
+  elif type == "object" and (.rules | type) == "array" then (.rules | _rules)
+  elif type == "array" then
+    map(if type == "string" then {rule: ., hits: null, pass: null}
+        elif type == "object" then {rule: (.rule // .name // null), hits: (.hits // .files // null), pass: (.pass // null)}
+        else empty end)
+  elif type == "object" then
+    (if length > 0 and ([.[] | type] | all(. == "object"))
+     then [to_entries[] | .key as $p | .value | to_entries[] | {rule: .key, hits: .value, pass: $p}]
+     else [to_entries[] | {rule: .key, hits: .value, pass: null}] end)
+  else [] end
+  | map(select((.rule // "") != "") | .hits = (if (.hits | type) == "number" then .hits elif (.hits | type) == "array" then (.hits | length) else null end));
+def _merge_rules:
+  group_by(.rule | _short)
+  | map({rule: (.[0].rule | _short),
+         hits: (if all(.[]; .hits == null) then null else (map(.hits // 0) | add) end),
+         passes: ([.[] | .pass | select(. != null)] | unique)});
+def _items($k):
+  _list | map(if type == "object" then . elif . == null then empty else {($k): tostring} end
+              | . + {source: "manifest"} | with_entries(.value |= (if type == "string" or . == null then _str else . end)));
+def _dedupe(f): reduce .[] as $i ([]; if any(.[]; (. | f) == ($i | f)) then . else . + [$i] end);
+def port_record($m; $d; $rr; $subject; $mn):
+  ($d | _list) as $d
+  | (if ($m.rector_rules // null) != null then {src: "manifest", r: ($m.rector_rules | _rules)}
+     elif $rr != null then {src: "run-rector", r: ($rr | _rules)}
+     else {src: null, r: []} end) as $rules
+  | def dec($kinds): [$d[] | select(.kind as $k | any($kinds[]; . == $k))];
+  {subject: $subject, machine_name: ($m.machine_name // (if $mn == "" then null else $mn end)),
+   phase: ($m.phase // null), manifest: ($m != {}),
+   rector_files: ($m.rector_official_files // null),
+   rector_rules: ($rules.r | _merge_rules), rector_rules_source: $rules.src,
+   rector_reversions: (($m.rector_reversions | _items("rule"))
+       + [dec(["rector-revert"])[] | {rule, file, why, what, source: "decision-log", ts}]
+       | map(select((.rule // "") != "")) | _dedupe([(.rule | _short), (.file // "")])),
+   post_port_fixes: (($m.post_port_fixes | _items("fix") | map(.fix = (.fix // .what)))
+       + [dec(["post-port-fix"])[] | {fix: .what, file, why, detected_by, source: "decision-log", ts}]
+       | map(select((.fix // "") != "")) | _dedupe([.fix, (.file // "")])),
+   preexisting_bugs: (($m.preexisting_bugs | _items("issue") | map(.issue = (.issue // .what)))
+       + [dec(["preexisting-bug"])[] | {issue: .what, file, note: .why, source: "decision-log", ts}]
+       | map(select((.issue // "") != "")) | _dedupe([.issue, (.file // "")])),
+   behavior_changes: (($m.behavior_changes | _items("change") | map(.change = (.change // .what)))
+       + [dec(["behavior-change"])[] | {change: .what, why, review_hint, file, source: "decision-log", ts}]
+       | map(select((.change // "") != "")) | _dedupe([.change])),
+   tooling_deviations: (($m.tooling_deviations | _items("what"))
+       + [dec(["script-divergence", "skip", "manual-override", "tooling-deviation"])[]
+          | {what, why, kind, script, file, source: "decision-log", ts}]
+       | map(select((.what // "") != "")) | _dedupe([.what])),
+   test_adaptations: [dec(["test-adaptation"])[] | {what, why, file, ts}],
+   validation: ($m.validation | _list | map(if type == "string" then . else tojson end)),
+   manual_edits: ($m.manual_edits | _list
+       | map(if type == "string" then {edit: ., why: null, change_record: null}
+             elif type == "object" then {edit: (.edit // .what // "edit"), why: (.why // null), change_record: (.change_record // null)}
+             else empty end)),
+   decisions: ($d | length)};
+'
+
+# port_record_json <subject> [manifest] -> the subject's port record: the
+# manifest (default <state_dir>/port-manifest.json) and the decision log merged
+# into the normalized structured fields (see above), plus `manifest` (one was
+# read) and `decisions` (how many log entries). Read-only; `null` without jq.
+port_record_json() {
+  local subj="${1:-$PWD}" man="${2:-}" abs mn m='{}' d rr="null"
+  have_cmd jq || { printf 'null'; return 0; }
+  abs="$(cd "$subj" 2>/dev/null && pwd || printf '%s' "$subj")"
+  [[ -n "$man" ]] || man="$(project_state_path "$abs")/port-manifest.json"
+  if [[ -r "$man" ]]; then
+    m="$(jq -c 'if type == "object" then . else {} end' "$man" 2>/dev/null || true)"
+    [[ -n "$m" ]] || m='{}'
+  fi
+  d="$(decisions_for_subject "$abs")"
+  [[ -r "$(rector_rules_file "$abs")" ]] && rr="$(jq -c '.rule_hits // null' "$(rector_rules_file "$abs")" 2>/dev/null || printf 'null')"
+  [[ -n "$rr" ]] || rr="null"
+  mn="$(subject_machine_name "$abs" 2>/dev/null || true)"
+  jq -nc --argjson m "$m" --argjson d "$d" --argjson rr "$rr" --arg s "$abs" --arg mn "$mn" \
+    "${_PORT_RECORD_JQ_DEFS} port_record(\$m; \$d; \$rr; \$s; \$mn)" 2>/dev/null || printf 'null'
+  return 0
+}
+
+# render_template_files TEMPLATE DEST KEY=FILE... -> like render_template, but
+# each {{KEY}} is replaced by the CONTENT of FILE (one trailing newline
+# dropped), so a value may be multi-line and hold any character (|, &, \, /)
+# and any size (render_template passes values through the environment, which
+# caps one value at 128 KiB on Linux). DEST "-" prints to STDOUT; otherwise the
+# render goes to a temp file next to DEST first. Returns non-zero on a bad
+# argument or I/O error.
+render_template_files() {
+  local tpl="${1:-}" dest="${2:-}"
+  shift 2 2>/dev/null || { log_err "render_template_files: usage: render_template_files TEMPLATE DEST [KEY=FILE...]"; return 1; }
+  [[ -f "$tpl" ]] || { log_err "render_template_files: template not found: '$tpl'"; return 1; }
+  [[ -n "$dest" ]] || { log_err "render_template_files: missing destination for '$tpl'"; return 1; }
+  local spec="" pair k v
+  for pair in "$@"; do
+    k="${pair%%=*}"; v="${pair#*=}"
+    case "$k" in
+      ''|*[!A-Z0-9_]*) log_err "render_template_files: invalid token name in '$pair'"; return 1;;
+    esac
+    [[ "$pair" == *=* && -r "$v" ]] || { log_err "render_template_files: unreadable value file in '$pair'"; return 1; }
+    spec="$spec$k"$'\x1f'"$v"$'\x1e'
+  done
+  # shellcheck disable=SC2016  # awk program, not a shell expansion
+  local prog='
+    BEGIN {
+      n = split(ENVIRON["_DRUPILOT_TPLF_SPEC"], pairs, "\036"); m = 0
+      for (i = 1; i <= n; i++) {
+        if (pairs[i] == "") continue
+        split(pairs[i], kv, "\037"); m++
+        tok[m] = "{{" kv[1] "}}"; val[m] = ""; first = 1
+        while ((getline l < kv[2]) > 0) { val[m] = (first ? l : val[m] "\n" l); first = 0 }
+        close(kv[2])
+      }
+    }
+    {
+      # Left to right, one token at a time: a value is never re-scanned, so
+      # content that happens to contain "{{KEY}}" is printed as is.
+      line = $0; out = ""
+      while (1) {
+        best = 0; bp = 0
+        for (i = 1; i <= m; i++) {
+          p = index(line, tok[i])
+          if (p > 0 && (bp == 0 || p < bp)) { bp = p; best = i }
+        }
+        if (best == 0) break
+        out = out substr(line, 1, bp - 1) val[best]
+        line = substr(line, bp + length(tok[best]))
+      }
+      print out line
+    }'
+  if [[ "$dest" == "-" ]]; then
+    _DRUPILOT_TPLF_SPEC="$spec" awk "$prog" "$tpl"
+    return $?
+  fi
+  local tmp
+  tmp="$(mktemp "${dest}.drupilot.XXXXXX" 2>/dev/null)" \
+    || { log_err "render_template_files: cannot create a temp file next to '$dest'"; return 1; }
+  if _DRUPILOT_TPLF_SPEC="$spec" awk "$prog" "$tpl" > "$tmp" && cat "$tmp" > "$dest"; then
+    rm -f "$tmp"; return 0
+  fi
+  rm -f "$tmp"
+  return 1
+}
+
 # ddev_project_name <string> -> a DDEV/hostname-safe project name derived from
 # the input (usually a directory basename). DDEV rejects names that are not valid
 # hostname labels, so underscores, dots, spaces and uppercase all break

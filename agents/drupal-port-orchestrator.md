@@ -73,6 +73,26 @@ All output you produce — messages, summaries, plans — is in **English**.
    included) as `verification.commit_hooks` in the port manifest. The guard
    hook asks before such a commit, so an autonomous run never skips a hook (it
    keeps a hook-free checkpoint with `make-patch.sh --local`).
+10. **Every divergence is logged as it happens.** Whenever you (or a subagent)
+    revert or hand-edit a change Rector made, ignore or override a script's
+    verdict, skip a step the flow prescribes, fix something validation caught
+    after the port, change a test's form, leave a pre-existing bug unfixed, or
+    introduce a behavior difference a reviewer must check, record it at once
+    with WHAT and WHY — an autonomous run included. A divergence that is not
+    logged is a defect:
+
+    ```bash
+    bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/log-decision.sh" --subject <path> \
+      --kind <rector-revert|post-port-fix|script-divergence|skip|manual-override|tooling-deviation|test-adaptation|behavior-change|preexisting-bug> \
+      --what "<what>" --why "<why>" [--rule <Rector rule>] [--file <path>] \
+      [--script <script>] [--detected-by <tool>] [--review-hint "<how>"] [--phase refactor]
+    ```
+
+    It appends to `<root>/.drupilot/decisions.jsonl` (+ `decisions.md`). The
+    port manifest's structured fields (`rector_rules`, `rector_reversions`,
+    `post_port_fixes`, `preexisting_bugs`, `behavior_changes`,
+    `tooling_deviations`, `validation`) and these entries feed the port report
+    and the consolidated layer report (`layer-report.sh`).
 
 ## Verified ecosystem facts (June 2026 — do not re-research)
 
@@ -396,5 +416,6 @@ says which),
 other pre-existing hygiene findings are listed in the port report (not fixed in
 Phase 1), and the applicable test suite is
 green (a `pre-existing-failures` or `not-verified-unbaselined` verdict is
-reported with its list, never as green; every new test has an `effective` negative control). Always end with a concise English summary:
+reported with its list, never as green; every new test has an `effective` negative control), and every divergence from a tool's output or the flow is
+in the decision log (`log-decision.sh --subject <path> --list` shows it). Always end with a concise English summary:
 current phase, what changed, gate status, and the suggested next step.

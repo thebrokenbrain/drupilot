@@ -127,7 +127,11 @@ How the subject gets there is controlled by `DRUPILOT_PLACEMENT` (`move` / `syml
 
 ### The `.drupilot/` folder
 
-Developer-facing outputs live in a single **visible, gitignored** `.drupilot/` directory at the Drupal root: the port **report card** (`port-report.md`), the **viability report** (`viability-report.md`), the test-coverage HTML, and the local `.patch`. It is gitignored automatically so it never lands in your patch, and you can point it elsewhere with `DRUPILOT_ARTIFACTS_DIR`. The machine-readable cache and the determinism lockfile deliberately stay **hidden under `$HOME`** so they can't leak into a patch.
+Developer-facing outputs live in a single **visible, gitignored** `.drupilot/` directory at the Drupal root: the port **report card** (`port-report.md`), the **viability report** (`viability-report.md`), the test-coverage HTML, the local `.patch`, the consolidated layer reports (`layer-N-report.md`) and the **decision log** (`decisions.md`, with its machine twin `decisions.jsonl`). It is gitignored automatically so it never lands in your patch, and you can point it elsewhere with `DRUPILOT_ARTIFACTS_DIR`. The machine-readable cache and the determinism lockfile deliberately stay **hidden under `$HOME`** so they can't leak into a patch.
+
+### Decision log
+
+Every place a port does not keep what a tool produced, or does not follow the flow, is recorded the moment it happens by `scripts/analysis/log-decision.sh`, with **what** and **why**: a Rector change reverted or rewritten by hand, a script's verdict overridden, a step skipped, a fix made after validation or the tests caught a problem, a test whose form changed, a pre-existing bug left unfixed, a behavior change a reviewer must check. Each entry is one JSON line in `.drupilot/decisions.jsonl` (one log per Drupal root; every entry names its module), and `decisions.md` beside it is regenerated as a table per module. The port report and the layer report merge these entries with the port manifest's structured fields (`rector_rules`, `rector_reversions`, `post_port_fixes`, `preexisting_bugs`, `behavior_changes`, `tooling_deviations`, `validation`), so reverted Rector rules and post-port fixes add up across modules and layers. `log-decision.sh --subject <dir> --list` prints a module's entries.
 
 ### Per-module state
 
@@ -218,6 +222,7 @@ drupilot splits the work in two. **Deterministic scripts** do the mechanical, re
 - **Adapts the tests** to D11; on a behavioral failure it fixes the **code**, never the test.
 - **Rewrites to the "Drupal 11 way"** in Phase 2 — attributes, dependency injection, strict types, deprecation removal.
 - **Proposes the consequential decisions** (core target, refactor scope, contribute or not) — you choose.
+- **Logs every divergence as it happens** — each Rector change it reverts, each script verdict it overrides, each step it skips, with why (`log-decision.sh`), so the report never shows a tool's output as kept when it was not.
 
 **When the AI acts — the pattern.** The AI is the conductor: the scripts don't call each other. The AI runs one, reads its output, decides the next, and runs it. So it acts **before** every script (decide whether and how to run it) and **after** it (read the result and fix what's left), plus at the decision tabs. The single exception is the **`PostToolUse` hook**, which runs `phpcbf` on its own after each file edit — no AI in the loop.
 
@@ -426,11 +431,17 @@ The first call is read-only. It prints and saves `.drupilot/layers.md`, which ho
 
 A module that only declares part of what it uses is shown where it really belongs, with a note that its declared dependencies alone would have it ported too early. The proposed entries are never applied without your confirmation.
 
-`run` ports one layer, one module at a time, through the usual setup → assess → port → test flow, and writes `.drupilot/layer-N-report.md`. That report has one row per module, with:
-- stage, effort and preservation verdict;
-- Drupal 10 verdict;
-- pre-existing hygiene and undeclared dependencies;
-- patch, and a link to the module's port report.
+`run` ports one layer, one module at a time, through the usual setup → assess → port → test flow, and writes `.drupilot/layer-N-report.md` from one template (`templates/layer-report.md.tmpl`), so every layer has the same sections:
+1. per-module result: stage, effort, preservation and Drupal 10 verdicts, pre-existing hygiene, undeclared dependencies, Rector files, reverted Rector changes, post-port fixes, patch and a link to the module's port report;
+2. frequent Rector rules, with their hits (files changed) **and** how often each was reverted;
+3. manual changes;
+4. post-port fixes;
+5. pre-existing bugs (not fixed);
+6. behavior changes to review in the PR;
+7. tooling and flow deviations;
+8. how it was validated.
+
+Sections 2-8 come from each module's port manifest and decision log, so a rule reverted in several modules stands out. `--json` adds the cross-module `aggregate`.
 
 A regression stops the next layer. The scripts also work on their own:
 
@@ -438,6 +449,7 @@ A regression stops the next layer. The scripts also work on their own:
 bash scripts/analysis/layers.sh --dir web/modules/custom --json           # layers, cycles, undeclared deps
 bash scripts/analysis/lint-extension-metadata.sh --subject web/modules/custom/acme_api --json
 bash scripts/analysis/layer-report.sh --dir web/modules/custom --layer 1  # consolidated report
+bash scripts/analysis/layer-report.sh --subject ../a-d11/web/modules/custom/a --subject ../b-d11/web/modules/custom/b --name "batch 1"  # any set of modules
 ```
 
 ### 8. Contribute the fix back to Drupal.org

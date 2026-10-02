@@ -101,6 +101,18 @@ behavior is preserved):
 - Keep the public behavior and the module/theme's contract stable; this is a
   rewrite of *how*, not *what*.
 
+**Log every divergence as it happens** (a Rector change reverted or rewritten,
+a script's verdict overridden, a step skipped, a fix a gate or a test forced, a
+test whose form changed, a behavior change a reviewer must check — e.g. a
+public method that became `final` or private):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/log-decision.sh" --subject <subject> \
+  --kind <rector-revert|post-port-fix|script-divergence|skip|manual-override|tooling-deviation|test-adaptation|behavior-change|preexisting-bug> \
+  --what "<what you did>" --why "<why>" [--rule <Rector rule>] [--file <path>] \
+  [--script <script>] [--detected-by <tool>] [--review-hint "<how to review>"] --phase refactor
+```
+
 ## Step 4 — Keep the suite green (coordinate with the test engineer)
 
 A refactor is only done when the tests still pass. Before the first change,
@@ -206,7 +218,10 @@ decisions as a manifest (`phase: "refactor"`, the modern patterns applied, the n
 `d10_support` + `verification.core_matrix` from `verify-core-matrix.sh --json`
 when `^10` is kept;
 `manual_edits` items may be `{edit, why, change_record}` objects so the report
-explains each change) and re-render so the report reflects Phase 2. As Phase 2
+explains each change; and the structured outcome fields `rector_rules`,
+`rector_reversions`, `post_port_fixes`, `preexisting_bugs`, `behavior_changes`,
+`tooling_deviations`, `validation` — shapes in `port-report.sh`'s header; the
+`log-decision.sh` entries are merged in) and re-render so the report reflects Phase 2. As Phase 2
 ran, **tee** the Rector + final validate-loop PHPStan deprecation output into
 `<state_dir>/change-log.txt` (under `$HOME`, never in the project tree) so the
 report's "Drupal 9/10 → 11 changes, explained" section is populated:

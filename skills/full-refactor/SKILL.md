@@ -32,6 +32,18 @@ quality: modern Drupal 11 idioms, zero deprecations, PHPStan level 5–6, clean
   on. Never silence a failing test.
 - **Explain every significant change.** Phase 2 changes architecture; the user
   must understand each one. Nothing changes silently.
+- **Log every divergence the moment it happens** (as in `minimal-port` §0):
+  a Rector change reverted or rewritten by hand, a script's verdict
+  overridden, a prescribed step skipped, a fix made after a gate or a test
+  caught a problem, a test whose form changed, a behavior change a reviewer
+  must check. A divergence that is not logged is a defect.
+
+  ```bash
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/log-decision.sh" --subject <path> \
+    --kind <rector-revert|post-port-fix|script-divergence|skip|manual-override|tooling-deviation|test-adaptation|behavior-change|preexisting-bug> \
+    --what "<what you did>" --why "<why>" [--rule <Rector rule>] [--file <path>] \
+    [--script <script>] [--detected-by <tool>] [--review-hint "<how to review>"] --phase refactor
+  ```
 - **Raise the bar deliberately.** Use `DRUPILOT_PHPSTAN_LEVEL_REFACTOR`
   (default `6`) for this phase, not the Phase 1 default of 2.
 - **Respect the PHP target.** Modern syntax (attributes, typed properties,
@@ -257,7 +269,11 @@ merge-verified contribution patch stays the job of `drupal-contribution`.
 **Refresh the didactic report.** Tee the Phase 2 Rector + final PHPStan
 deprecation output into `<state_dir>/change-log.txt` (under `$HOME`, never in the
 project tree), update `<state_dir>/port-manifest.json` (`phase: "refactor"`, `soft_deprecations`
-= the final `classify-deprecations.sh --phase refactor --json`), and
+= the final `classify-deprecations.sh --phase refactor --json`, and the
+structured outcome fields of `minimal-port` §8 for this phase: `rector_rules`,
+`rector_reversions`, `post_port_fixes`, `preexisting_bugs`, `behavior_changes`
+— every architectural change a reviewer must check —, `tooling_deviations`,
+`validation`; the `log-decision.sh` entries are merged in), and
 re-render with `port-report.sh --subject <path> --manifest <manifest>
 --changes-log <state_dir>/change-log.txt` so `port-report.md` in the visible
 `.drupilot/` dir reflects Phase 2 and its "changes, explained" section.

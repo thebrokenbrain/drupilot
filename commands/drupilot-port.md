@@ -13,6 +13,24 @@ mechanical compatibility is explicitly deferred to Phase 2 (`/drupilot-refactor`
 
 Subject path argument: `$1` (fallback: the current working directory).
 
+**Decision log — throughout the port.** The moment you revert or hand-edit a
+change Rector made, ignore or override a script's verdict (port-safety,
+classify, core matrix, a digests rule kept against its flag...), skip a step
+this command prescribes, fix something validation or the tests caught after
+the port, change a test's form, leave a pre-existing bug unfixed, or introduce
+a behavior difference a reviewer must check, record WHAT and WHY:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/log-decision.sh" --subject <subject> \
+  --kind <rector-revert|post-port-fix|script-divergence|skip|manual-override|tooling-deviation|test-adaptation|behavior-change|preexisting-bug> \
+  --what "<what you did>" --why "<why>" [--rule <Rector rule>] [--file <path>] \
+  [--script <script>] [--detected-by <tool>] [--review-hint "<how to review>"]
+```
+
+It appends to `<root>/.drupilot/decisions.jsonl` and regenerates `decisions.md`
+beside it; the port report and the layer report merge the entries. A divergence
+that is not logged is a defect: the report would show the tool's output as kept.
+
 ## Step 0 — Gate (profile `analyze`)
 
 ```bash
@@ -113,7 +131,11 @@ hand-written one is left alone with a warning) and uses the `DRUPAL_10` set plus
 the PHP set for the resolved target, minus the risky rules the template skips
 (Form API callbacks → closures, `#[\Override]`, `readonly`, `(string)` casts —
 see the `minimal-port` skill §0). `--json` lists the applied rule names in
-`rules`.
+`rules` and counts them per pass in `rule_hits` (`{official: {Rule: files},
+digests: {...}}`): copy it into the manifest's `rector_rules` (Step 9); an
+`--apply` that changed files also keeps it as `rector-rules.json` in the state
+dir, the report's fallback. Undo or rewrite any applied hunk only with a
+`--kind rector-revert --rule <Rule>` decision-log entry.
 
 ```bash
 # Review what it would change:
@@ -432,6 +454,13 @@ render:
 # Each manual_edits item may be a plain string OR an object
 # {edit, why?, change_record?} so the report can explain WHY each manual change
 # was made (and link its change record).
+# Structured outcome fields (aggregated across modules and layers by
+# layer-report.sh; the log-decision.sh entries are merged in, deduplicated):
+# rector_rules (the rule_hits of the applying run-rector.sh --json),
+# rector_reversions [{rule, file, why}], post_port_fixes [{fix, file, why,
+# detected_by}], preexisting_bugs [{issue, file, note}], behavior_changes
+# [{change, why, review_hint}], tooling_deviations [{what, why}], validation
+# [strings: how the result was validated].
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" --subject "$1" --manifest "<state_dir>/port-manifest.json" --changes-log "<state_dir>/change-log.txt"
 ```
 
