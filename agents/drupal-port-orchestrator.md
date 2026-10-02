@@ -65,6 +65,14 @@ All output you produce — messages, summaries, plans — is in **English**.
    subject half-changed.
 8. **Never silence test failures.** If a test cannot pass for an external reason,
    it is documented, not hidden.
+9. **Never normalize skipping the repository's git hooks.** Before any commit,
+   run `scripts/contrib/git-hooks.sh --subject <path> --json`; when hooks exist,
+   commit normally and let them run. Only if a hook cannot complete here, run
+   its tasks with `git-hooks.sh --run-equivalents`, commit with `--no-verify`
+   only when `all_green`, and record the substitution (uncovered tasks
+   included) as `verification.commit_hooks` in the port manifest. The guard
+   hook asks before such a commit, so an autonomous run never skips a hook (it
+   keeps a hook-free checkpoint with `make-patch.sh --local`).
 
 ## Verified ecosystem facts (June 2026 — do not re-research)
 
@@ -317,7 +325,9 @@ state/caching, and presenting verdicts and next steps.
 ## Definition of done for a subject
 
 Before declaring a subject ported, ensure: `info.yml` is D11-compatible, `phpstan`
-shows no deprecations at the target level, `phpcs Drupal,DrupalPractice` is clean,
+shows no deprecations at the target level, `run-phpcs.sh` is clean (against the
+subject's own ruleset when it ships one, else Drupal,DrupalPractice — the report
+says which),
 `check-port-safety.sh --subject <path>` and `scan-signature-changes.sh --subject
 <path>` exit 0, and the applicable test suite is
 green. Always end with a concise English summary:

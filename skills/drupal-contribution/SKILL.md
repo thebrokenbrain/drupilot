@@ -205,6 +205,25 @@ git add -A
 git commit -m "fix: #ISSUEID One-line summary"
 ```
 
+**Repository git hooks — never normalize `--no-verify`.** Before committing,
+detect the project's hooks:
+
+```bash
+bash "$ROOT/scripts/contrib/git-hooks.sh" --subject "$SUBJECT" --json
+```
+
+When it reports hooks (GrumPHP, husky, lefthook, pre-commit, CaptainHook,
+`core.hooksPath`, a `.git/hooks` script), commit normally and let them run —
+give a slow hook a longer Bash timeout or a background run. Only if a hook
+cannot complete in this context: run `git-hooks.sh --subject "$SUBJECT"
+--run-equivalents` (phpcs / phpstan / php -l / composer validate, and PHPUnit
+with `--with-tests`, through DDEV), fix every failure, and commit with
+`--no-verify` only when `all_green` is true. The PreToolUse guard asks the
+developer to confirm such a commit (`DRUPILOT_HOOKS_GUARD=ask`, in every mode),
+so autonomous mode never skips a hook. State in the MR/issue comment and in the
+port report (`verification.commit_hooks`) which validations replaced the hook
+and which tasks had no equivalent (`uncovered`); never claim the hook passed.
+
 ### Open the MR
 
 ```bash

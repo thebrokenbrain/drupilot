@@ -98,7 +98,15 @@ the code will run on. `render-templates.sh` substitutes `{{PHPSTAN_LEVEL}}` in
 
 ### PHPCS — sniffs (`phpcs.xml.dist`)
 
-The standard is always `Drupal,DrupalPractice`. The coder branch is chosen by
+`run-phpcs.sh` uses the subject's own ruleset when it ships a loadable one
+(`DRUPILOT_PHPCS_RULESET=auto`, the default), else `Drupal,DrupalPractice`
+(`DRUPILOT_PHPCS_RULESET=drupilot` forces the latter). The PHP target reaches
+PHPCompatibility through `--runtime-set testVersion <target>-`, passed on every
+run (override with `DRUPILOT_PHPCS_TEST_VERSION`, e.g. `8.1-` while Drupal 10 is
+kept); a ruleset's own `<config name="testVersion">` is never overridden, and a
+testVersion wrongly declared as a `<property>` inside a `<rule>` is passed
+through, which avoids PHPCompatibility's "trim(): Passing null" failure. The
+coder branch is chosen by
 `DRUPILOT_CODER_CONSTRAINT` (default `^8.3` → PHPCS 3.x; `^9.0` → PHPCS 4.x), not
 by the PHP target — but a higher PHP target can surface additional sniff results
 (e.g. new syntax). Keep coder and the PHP target consistent so sniffs match the

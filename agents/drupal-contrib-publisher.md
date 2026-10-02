@@ -97,6 +97,15 @@ git push PROJECT-ISSUEID ISSUEID-description
 - **Branch name**: `ISSUEID-lowercase-description-with-hyphens`
   (e.g. `3982435-ckeditor-5-compatibility`).
 
+**Repository git hooks.** Before each `git commit` above, run
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/git-hooks.sh" --subject <DIR> --json`.
+When it reports hooks, commit normally and let them run (a longer timeout or a
+background run for a slow hook); never normalize `--no-verify`. Only when a hook
+cannot complete here: `git-hooks.sh --subject <DIR> --run-equivalents`, fix any
+failure, commit with `--no-verify` only when `all_green` is true (the guard hook
+asks the developer to confirm), and say in the MR/issue comment and the port
+report which validations replaced the hook and which tasks were uncovered.
+
 ### Legacy flow — patch (for unmigrated projects)
 ```bash
 git checkout -b ISSUEID-short-description

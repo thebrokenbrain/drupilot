@@ -68,6 +68,7 @@ config_enum DRUPILOT_REQUIRE_PHP_FLOOR    detect detect target          >/dev/nu
 config_enum DRUPILOT_GENERATE_RULES       ask    ask auto off           >/dev/null || true
 config_enum DRUPILOT_TOOLCHAIN_SOURCE     auto   auto reference range   >/dev/null || true
 config_enum DRUPILOT_SOFT_DEPRECATIONS    report report defer fix        >/dev/null || true
+config_enum DRUPILOT_HOOKS_GUARD          ask    ask off                >/dev/null || true
 
 TARGET="$(resolve_php_target)"
 COMPOSER_MIN="$(req_version composer_min "2.2.0")"

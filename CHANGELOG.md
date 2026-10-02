@@ -229,6 +229,47 @@ tag the commit `vX.Y.Z`.
   unknown and adds the same table. Wired into the minimal-port,
   viability-assessment and full-refactor skills, the orchestrator and analyst
   agents and `/drupilot-port` / `/drupilot-assess`.
+- **Project PHPCS ruleset in `run-phpcs.sh`.** It now lints with the subject's
+  own `.phpcs.xml` / `phpcs.xml` / `.phpcs.xml.dist` / `phpcs.xml.dist` (PHPCS's
+  discovery order), looked up from the subject to the Drupal root, then to its
+  git top level, then in the origin checkout of a copy placement. drupilot's
+  generated `phpcs.xml.dist` never counts. A ruleset PHPCS cannot load (e.g. it
+  references PHPCompatibility, not installed in the test-bed) is probed with
+  `phpcs -e` and falls back to `Drupal,DrupalPractice` with a warning. New
+  `--ruleset auto|drupilot|PATH` and `--test-version` options, new keys
+  `DRUPILOT_PHPCS_RULESET` (default `auto`; `drupilot` restores the old
+  behavior) and `DRUPILOT_PHPCS_TEST_VERSION`. `--json` adds a `drupilot` key
+  (`ruleset`, `source`, `location`, `fallback_reason`, `test_version`,
+  `test_version_source`); `.totals`/`.files` are unchanged. The resolution is
+  kept in the hidden state dir (`phpcs-ruleset.json`). New helpers
+  `find_phpcs_ruleset`, `phpcs_ruleset_is_drupilot`, `phpcs_ruleset_value`.
+- **`scripts/contrib/git-hooks.sh` — the repository's git hooks.** Detects
+  GrumPHP (also via `composer.json` `extra.grumphp.config-default-path`), husky,
+  lefthook, pre-commit, CaptainHook, `core.hooksPath` and plain `.git/hooks`
+  scripts, the commit hooks git would really run, each task's drupilot
+  equivalent and the tasks with none (`uncovered`). `--run-equivalents` runs
+  phpcs (with the hook's ruleset file), PHPStan (with the hook's level),
+  `php -l` on the changed PHP files and `composer validate` through
+  `drupal_runner`, plus PHPUnit with `--with-tests`, and records the outcome in
+  `hooks-substitution.json`; exit 3 when one fails. `--dry-run` prints the plan.
+  New helpers `git_hooks_dir`, `git_active_commit_hooks`.
+- **Hook policy in the flow: never normalize `--no-verify`.** The minimal-port,
+  full-refactor and drupal-contribution skills, `/drupilot-port`, the
+  orchestrator and the contrib-publisher agent check the hooks before a commit,
+  let them run, and substitute them only when a hook cannot complete in the
+  session, recording which validations replaced it.
+- **`guard-contrib` asks before a commit that skips the git hooks.** A
+  `git commit` with `--no-verify`, `-n` in a short-option cluster, or
+  `git -c core.hooksPath=…` now gets `permissionDecision: "ask"` when the
+  repository has an installed pre-commit or commit-msg hook, in every
+  contribution mode and in autonomous mode. Quoted messages are ignored
+  (`-m "-n"` is not a flag). New key `DRUPILOT_HOOKS_GUARD` (`ask` | `off`),
+  validated by `preflight.sh`. The push / Merge Request guard is unchanged.
+- **Verification section in `port-report.md`.** Lists the PHPCS ruleset used
+  (project, explicit, drupilot default, or the fallback and why, plus the
+  testVersion) and the commit hooks (ran normally, or what substituted them and
+  what stayed uncovered), from the new optional manifest key `verification`
+  (`phpcs_ruleset`, `commit_hooks`) or the state files the scripts write.
 ### Changed
 - **Only hard deprecations count as must-fix work.** The viability assessment
   used to count every PHPStan deprecation message as "must-fix to run on D11",
@@ -282,6 +323,16 @@ tag the commit `vX.Y.Z`.
   a preview under the old hyphenated name is still next to the module,
   `make-patch.sh --local` warns about it instead of deleting it. New helper:
   `patch_project_slug` in `common.sh`.
+- **`post-edit-lint` uses the ruleset `run-phpcs.sh` resolved.** The hook reads
+  `phpcs-ruleset.json` and lints with the project's ruleset and testVersion
+  when one was recorded and the file has not changed since. It never discovers
+  or probes a ruleset itself; otherwise it keeps `Drupal,DrupalPractice`.
+- **`run-phpcs.sh` always passes `--runtime-set testVersion`.** The value is
+  `<DRUPILOT_PHP_TARGET>-` by default. A ruleset's own
+  `<config name="testVersion">` is never overridden, and a testVersion declared
+  as a `<property>` inside a `<rule>` is passed through. This avoids
+  PHPCompatibility's "trim(): Passing null" failure, and the script warns when
+  PHPCS reports a processing error instead of counting it as a violation.
 
 ### Fixed
 - **Rector broke Form API callbacks and Drupal 10 compatibility.** The template

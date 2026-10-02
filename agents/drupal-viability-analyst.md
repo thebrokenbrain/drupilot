@@ -129,6 +129,9 @@ not reinvent their logic; capture and interpret their output.
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpcs.sh" --subject <DIR>
    # add --json for native {totals:{errors,warnings,fixable}, files:{...}}
    ```
+   It lints with the subject's own PHPCS ruleset when it ships a loadable one,
+   else Drupal,DrupalPractice; state which one in the report (`.drupilot.source`
+   and `.drupilot.ruleset` in the `--json` output).
 
 Prefer the `--json` counts for the S/M/L/XL verdict so it is **reproducible**
 (the same module yields the same numbers) rather than estimated from the human

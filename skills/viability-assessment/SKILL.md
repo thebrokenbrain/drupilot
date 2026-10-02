@@ -193,9 +193,12 @@ bash "$ROOT/scripts/analysis/run-phpcs.sh" --subject "$SUBJECT"
 ```
 
 Do **not** pass `--fix` during assessment. Use the error/warning counts to gauge
-code-quality distance to a clean `Drupal,DrupalPractice` (relevant to a Phase 2
-estimate, not to Phase 1 viability). `--json` (PHPCS's `--report=json`) gives the
-exact `.totals.errors` / `.totals.warnings` / `.totals.fixable` for the report.
+code-quality distance to a clean ruleset (relevant to a Phase 2 estimate, not to
+Phase 1 viability). The ruleset is the subject's own when it ships a loadable
+one, else `Drupal,DrupalPractice`; name the one used in the report (`--json` →
+`.drupilot.source` / `.drupilot.ruleset`, or the "Ruleset" log line).
+`--json` (PHPCS's `--report=json`) gives the exact `.totals.errors` /
+`.totals.warnings` / `.totals.fixable` for the report.
 
 ### 3.4 Upgrade Status (only if Drupal is installed)
 

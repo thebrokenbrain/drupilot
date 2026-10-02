@@ -146,7 +146,20 @@ to **skip** flagged rules:
 - **Skip the digests pass** — apply nothing from this layer.
 
 Before applying, suggest a git checkpoint (`git add -A && git commit`) so a
-disliked digests pass can be dropped cleanly. Then apply the accepted subset:
+disliked digests pass can be dropped cleanly. **Never normalize `--no-verify`:**
+check the repository's git hooks first —
+
+```bash
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/git-hooks.sh" --subject "$1" --json
+```
+
+— and when it reports hooks, commit normally and let them run (a longer Bash
+timeout or a background run for a slow hook). Only if a hook cannot complete
+here, run `git-hooks.sh --subject <path> --run-equivalents`, fix any failure,
+commit with `--no-verify` only when `all_green` is true (the guard hook asks the
+developer to confirm), and record it as `verification.commit_hooks` in the
+manifest. An autonomous run never skips a hook: it keeps a hook-free checkpoint
+with `make-patch.sh --local` instead. Then apply the accepted subset:
 
 ```bash
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "$1" --digests --apply
@@ -198,7 +211,8 @@ analyzer, then the port-safety gate. Leave the subject compiling with no blockin
 deprecations.
 
 ```bash
-# Autofix coding standards, then check what remains:
+# Autofix coding standards, then check what remains (uses the subject's own
+# PHPCS ruleset when it ships one; the log says which ruleset was used):
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpcs.sh" --subject "$1" --fix
 # Deprecation-level static analysis (DRUPILOT_PHPSTAN_LEVEL, default 2):
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "$1"
@@ -326,7 +340,11 @@ render:
 # signature_changes (the JSON printed by scan-signature-changes.sh --json),
 # soft_deprecations (the JSON printed by classify-deprecations.sh --json; add its
 # soft symbols with action "defer" to deferred_to_phase2, and count only hard +
-# unknown ones in deprecations_remaining).
+# unknown ones in deprecations_remaining),
+# verification {phpcs_ruleset (the .drupilot object of run-phpcs.sh --json:
+# which ruleset was used — the project's own, or drupilot's default and why),
+# commit_hooks (the JSON of git-hooks.sh --run-equivalents when a hook was
+# substituted, else {"bypassed": false, "note": "hooks ran on commit"})}.
 # Each manual_edits item may be a plain string OR an object
 # {edit, why?, change_record?} so the report can explain WHY each manual change
 # was made (and link its change record).

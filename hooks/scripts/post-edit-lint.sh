@@ -4,10 +4,17 @@
 # PostToolUse hook for Write|Edit (incremental Drupal lint, PROMPT 5.9).
 #
 # When the just-edited file is a Drupal source file inside a Drupal extension,
-# run phpcbf (autofix) then phpcs (Drupal,DrupalPractice) best-effort through
-# `drupal_runner`. If violations remain, return them as English
-# `additionalContext` so the model can fix them. Skip silently when phpcs is
-# unavailable or the file is not applicable.
+# run phpcbf (autofix) then phpcs best-effort through `drupal_runner`. If
+# violations remain, return them as English `additionalContext` so the model can
+# fix them. Skip silently when phpcs is unavailable or the file is not applicable.
+#
+# Ruleset: the one scripts/analysis/run-phpcs.sh resolved and verified for this
+# extension (the project's own ruleset when it ships a loadable one), read from
+# the phpcs-ruleset.json it records in the hidden state dir, so the hook and the
+# validate loop lint with the same rules. The hook never probes or discovers a
+# ruleset itself (it runs on every edit): with no record yet, with
+# DRUPILOT_PHPCS_RULESET=drupilot, or when the ruleset changed since it was
+# recorded, it uses Drupal,DrupalPractice as before.
 #
 # Fail-safe contract (CONTRACT 5.4):
 #   * never `set -e`, never exit non-zero;
@@ -78,6 +85,25 @@ fi
 
 STD="Drupal,DrupalPractice"
 EXTS="php,module,inc,install,test,profile,theme,info,txt,md,yml"
+declare -a TV_ARGS=()
+RS_JSON="$(project_state_dir "$EXT_DIR" 2>/dev/null || true)/phpcs-ruleset.json"
+RS_MODE="$(config_get DRUPILOT_PHPCS_RULESET auto 2>/dev/null || echo auto)"
+if [[ "$(lc "$RS_MODE")" != "drupilot" && -r "$RS_JSON" ]]; then
+  RS_SRC="$(jq -r '.source // empty' "$RS_JSON" 2>/dev/null || true)"
+  RS_FILE="$(jq -r '.ruleset // empty' "$RS_JSON" 2>/dev/null || true)"
+  RS_STD="$(jq -r '.standard // empty' "$RS_JSON" 2>/dev/null || true)"
+  RS_CK="$(jq -r '.cksum // empty' "$RS_JSON" 2>/dev/null || true)"
+  if [[ ( "$RS_SRC" == "project" || "$RS_SRC" == "explicit" ) && -n "$RS_STD" && -f "$RS_FILE" ]] \
+     && [[ "$(cksum < "$RS_FILE" 2>/dev/null | awk '{print $1}')" == "$RS_CK" ]]; then
+    STD="$RS_STD"
+    [[ "$(jq -r '.pass_extensions' "$RS_JSON" 2>/dev/null || true)" == "false" ]] && EXTS=""
+    RS_TV="$(jq -r '.test_version // empty' "$RS_JSON" 2>/dev/null || true)"
+    RS_TVS="$(jq -r '.test_version_source // empty' "$RS_JSON" 2>/dev/null || true)"
+    [[ -n "$RS_TV" && "$RS_TVS" != "ruleset-config" ]] && TV_ARGS=(--runtime-set testVersion "$RS_TV")
+  fi
+fi
+declare -a EXT_ARGS=()
+[[ -n "$EXTS" ]] && EXT_ARGS=("--extensions=$EXTS")
 
 # --- Behavior toggle + phase awareness ---------------------------------------
 # DRUPILOT_POST_EDIT_LINT: autofix (default) | report (run phpcs, never modify
@@ -103,13 +129,13 @@ esac
 CHANGED_NOTE=""
 if [[ "$MODE" == "autofix" ]]; then
   BEFORE="$(cksum "$FILE" 2>/dev/null || true)"
-  ( cd "$DRUPAL_ROOT" 2>/dev/null && $RUNNER "$PHPCBF_BIN" --standard="$STD" "$REL" >/dev/null 2>&1 ) || true
+  ( cd "$DRUPAL_ROOT" 2>/dev/null && $RUNNER "$PHPCBF_BIN" --standard="$STD" ${TV_ARGS[@]+"${TV_ARGS[@]}"} "$REL" >/dev/null 2>&1 ) || true
   AFTER="$(cksum "$FILE" 2>/dev/null || true)"
   [[ -n "$BEFORE" && "$BEFORE" != "$AFTER" ]] && \
     CHANGED_NOTE="phpcbf auto-corrected coding-standard issues in ${REL} (the file on disk was modified). "
 fi
 
-PHPCS_OUT="$(cd "$DRUPAL_ROOT" 2>/dev/null && $RUNNER "$PHPCS_BIN" --standard="$STD" --extensions="$EXTS" --report=full --no-colors "$REL" 2>/dev/null || true)"
+PHPCS_OUT="$(cd "$DRUPAL_ROOT" 2>/dev/null && $RUNNER "$PHPCS_BIN" --standard="$STD" ${EXT_ARGS[@]+"${EXT_ARGS[@]}"} ${TV_ARGS[@]+"${TV_ARGS[@]}"} --report=full --no-colors "$REL" 2>/dev/null || true)"
 
 # Nothing from phpcs -> only surface an autofix note, if any.
 if [[ -z "$PHPCS_OUT" ]] || ! printf '%s' "$PHPCS_OUT" | grep -qiE 'ERROR|WARNING'; then

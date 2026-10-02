@@ -212,8 +212,27 @@ run `run-rector.sh --subject <path> --digests --json` for the structured
 → files) with floor-exceeding rules **pre-flagged**, and apply only what the
 developer keeps. Before applying, suggest a **git checkpoint**
 (`git add -A && git commit -m "wip: before digests"`) so a disliked pass can be
-dropped with a single `git reset --hard`. In an autonomous run the safe default
-is to skip the pre-flagged rules and report them.
+dropped with a single `git reset --hard`. The checkpoint commit runs the
+repository's own git hooks like any other commit (see below). In an autonomous
+run the safe default is to skip the pre-flagged rules and report them.
+
+**Repository git hooks — never normalize `--no-verify`.** Before any commit
+(a checkpoint or the contribution), run
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/git-hooks.sh" --subject "<path>" --json`.
+It reports the hook managers (GrumPHP, husky, lefthook, pre-commit, CaptainHook,
+`core.hooksPath`, plain `.git/hooks` scripts), the commit hooks git would really
+run (`active_hooks`), each task's drupilot equivalent and the tasks with none
+(`uncovered`). When hooks exist, commit normally and let them run; a slow hook
+gets a longer Bash timeout or a background run, not `--no-verify`. Only when a
+hook cannot complete in this context: run `git-hooks.sh --subject "<path>"
+--run-equivalents`, fix every failure (exit 3), and commit with `--no-verify`
+only when `all_green` is true. The PreToolUse guard asks the developer to
+confirm that commit (`DRUPILOT_HOOKS_GUARD`), so an autonomous run never skips a
+hook: it keeps a hook-free checkpoint with `make-patch.sh --local` instead.
+Record what replaced the hook as `verification.commit_hooks` in
+`port-manifest.json` (the JSON `--run-equivalents` printed, also kept in
+`hooks-substitution.json`), uncovered tasks included; when the hooks simply ran,
+record `{"bypassed": false, "note": "hooks ran on commit"}`.
 
 ## 4. Pass 3 — ad-hoc rule generation (optional, the "Dries approach")
 
@@ -352,8 +371,22 @@ the floor (warn). **Exit 3 = error findings: fix them** with each entry's `fix`
 (`[signature:<id>] ...` lines) into `change-log.txt` so the report explains it.
 
 `run-phpcs.sh --fix` runs `phpcbf` first then `phpcs` with
-`--standard=Drupal,DrupalPractice` and the extension list from PROMPT §2.3
-(`php,module,inc,install,test,profile,theme,info,txt,md,yml`). `run-phpstan.sh`
+the subject's **own** PHPCS ruleset when it ships one (`.phpcs.xml`,
+`phpcs.xml`, `.phpcs.xml.dist` or `phpcs.xml.dist`, found from the subject up to
+the Drupal root, its git top level, or the origin checkout of a copy placement;
+drupilot's generated `phpcs.xml.dist` never counts), else
+`--standard=Drupal,DrupalPractice` with the extension list from PROMPT §2.3
+(`php,module,inc,install,test,profile,theme,info,txt,md,yml`). It always passes
+`--runtime-set testVersion <target>-` (PHPCompatibility otherwise fails with
+"trim(): Passing null" when a ruleset declares testVersion as a `<property>`
+inside a `<rule>`), never overriding a ruleset's own `<config name="testVersion">`.
+A project ruleset PHPCS cannot load (e.g. it references PHPCompatibility, not
+installed in the test-bed) is reported and the run falls back to
+Drupal,DrupalPractice. `--json` says which one was used (`.drupilot.source`:
+project / explicit / drupilot / fallback); **report it** and record it as
+`verification.phpcs_ruleset` in the manifest. If the project ruleset makes
+`--fix` reformat lines the port did not touch, revert those hunks (smallest
+diff) or run that pass with `--ruleset drupilot`. `run-phpstan.sh`
 runs `$RUNNER vendor/bin/phpstan analyse --level N <subject>` against the
 `phpstan.neon` at the Drupal root. Exit 3 means PHPStan crashed or could
 not analyse (invalid config, fatal error): there is no verdict — fix the cause
@@ -428,7 +461,10 @@ so it never leaks into a patch). Then write `<state_dir>/port-manifest.json`
 of `check-port-safety.sh --json` / `scan-signature-changes.sh --json` — and
 `soft_deprecations`, the final `classify-deprecations.sh --json`; add every soft
 symbol whose `action` is `defer` to `deferred_to_phase2`, and count only the hard
-and unknown ones in `deprecations_remaining`) and render the report:
+and unknown ones in `deprecations_remaining`; and `verification`:
+`{phpcs_ruleset, commit_hooks}` — the `.drupilot` object of `run-phpcs.sh --json`
+and the hook record from §3; both fall back to the state files the scripts
+write) and render the report:
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" \

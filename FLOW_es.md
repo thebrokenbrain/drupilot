@@ -199,7 +199,7 @@ flowchart LR
     end
 
     subgraph S3["Antes de cada comando Bash"]
-      H3["PreToolUse (Bash)<br/>guard-contrib.sh<br/>detecta push / Merge Request"]:::hook
+      H3["PreToolUse (Bash)<br/>guard-contrib.sh<br/>detecta push / Merge Request<br/>y commits que se saltan git hooks"]:::hook
     end
 
     AI(("IA")):::ai

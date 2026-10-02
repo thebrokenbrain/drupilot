@@ -151,8 +151,14 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/scan-signature-changes.sh" --subjec
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject "<path>" --type all
 ```
 
-`run-phpcs.sh --fix` runs `phpcbf` then `phpcs --standard=Drupal,DrupalPractice`
-with the PROMPT §2.3 extension list. `run-phpstan.sh` runs against the
+`run-phpcs.sh --fix` runs `phpcbf` then `phpcs` with the subject's own PHPCS
+ruleset when it ships a loadable one (else `--standard=Drupal,DrupalPractice`
+with the PROMPT §2.3 extension list), always passing `--runtime-set testVersion
+<target>-` unless the ruleset sets its own `<config name="testVersion">`; report
+which ruleset was used (`--json` → `.drupilot`). "Fully clean" means clean
+against that ruleset. Commits follow the repository's git hooks exactly as in
+`minimal-port` §3: `scripts/contrib/git-hooks.sh` first, never a normalized
+`--no-verify`, and any substitution recorded as `verification.commit_hooks`. `run-phpstan.sh` runs against the
 `phpstan.neon` at the Drupal root. Exit 3 means PHPStan crashed or could
 not analyse (invalid config, fatal error): there is no verdict — fix the cause
 shown on stderr, never read it as "issues found" or as clean. Reference commands:

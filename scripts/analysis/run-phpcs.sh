@@ -1,16 +1,36 @@
 #!/usr/bin/env bash
 # =============================================================================
 # drupilot — scripts/analysis/run-phpcs.sh
-# Run PHP_CodeSniffer with the Drupal + DrupalPractice coding standards against
-# a module/theme. With --fix, run phpcbf (autofix) first and then phpcs to
-# report whatever remains.
+# Run PHP_CodeSniffer against a module/theme. With --fix, run phpcbf (autofix)
+# first and then phpcs to report whatever remains.
+#
+# Ruleset: the subject's OWN ruleset wins when it ships one (.phpcs.xml,
+# phpcs.xml, .phpcs.xml.dist or phpcs.xml.dist — PHPCS's discovery order),
+# looked up from the subject up to the Drupal root, then from its physical path
+# up to its git top level, then in the origin checkout a copy placement left
+# behind (find_phpcs_ruleset in common.sh). drupilot's own generated
+# phpcs.xml.dist (<ruleset name="drupilot">) is never treated as the project's.
+# Without a project ruleset it uses Drupal,DrupalPractice (drupal/coder), as
+# before. A project ruleset that PHPCS cannot load (e.g. it references a
+# standard such as PHPCompatibility that is not installed in the test-bed) is
+# reported and drupilot falls back to Drupal,DrupalPractice for the run.
+#
+# testVersion: `--runtime-set testVersion <target>-` is always passed (target =
+# DRUPILOT_PHP_TARGET), so a ruleset using PHPCompatibility never runs with a
+# null testVersion (PHPCompatibility then fails with "trim(): Passing null").
+# Two exceptions keep a project's deliberate choice: a ruleset that sets
+# <config name="testVersion"> is left alone (a CLI --runtime-set would override
+# it), and a ruleset that wrongly declares testVersion as a <property> inside a
+# <rule> gets that value passed through --runtime-set. --test-version or
+# DRUPILOT_PHPCS_TEST_VERSION force a value in every case.
 #
 # The Drupal/DrupalPractice standards come from drupal/coder. The coder branch
 # (PHPCS 3.x vs 4.x) is selected at setup time via DRUPILOT_CODER_CONSTRAINT;
 # this script does not install anything, it only runs the binaries.
 #
 # Usage:
-#   run-phpcs.sh --subject DIR [--fix] [--json]
+#   run-phpcs.sh --subject DIR [--fix] [--json] [--ruleset auto|drupilot|PATH]
+#                [--test-version VER]
 #
 # Options:
 #   --subject DIR   Path to the module/theme to check (relative to the Drupal
@@ -19,11 +39,28 @@
 #   --json          Emit PHPCS's native JSON (`--report=json`) on STDOUT —
 #                   `{totals:{errors,warnings,fixable}, files:{...}}` — for a
 #                   reproducible count. With --fix, phpcbf output is kept off
-#                   stdout so it stays pure JSON.
+#                   stdout so it stays pure JSON. drupilot adds one key,
+#                   `drupilot`: {ruleset, source: project|explicit|drupilot|
+#                   fallback, location: subject|drupal-root|origin|
+#                   outside-root|null,
+#                   fallback_reason, test_version, test_version_source:
+#                   explicit|ruleset-config|ruleset-property|php-target}.
+#   --ruleset R     auto (default, DRUPILOT_PHPCS_RULESET): the project ruleset
+#                   when found, else Drupal,DrupalPractice. drupilot: always
+#                   Drupal,DrupalPractice (the pre-0.9 behavior). PATH: that
+#                   ruleset file (absolute, or relative to the Drupal root).
+#   --test-version V  Force PHPCompatibility's testVersion (e.g. 8.1-).
+#                   Default: DRUPILOT_PHPCS_TEST_VERSION, else see above.
 #   -h, --help      Show this help.
+#
+# The resolved choice is also written to the hidden per-subject state dir
+# (phpcs-ruleset.json): port-report.sh renders it in its Verification section
+# and the post-edit-lint hook reuses it, so both lint with the same rules.
 #
 # Gate: `analyze` profile (git + jq + composer/php).
 # Output: status/logging on STDERR; phpcs/phpcbf reports (or JSON) on STDOUT.
+# Exit codes: PHPCS's own (0 clean, non-zero violations or a PHPCS error) ·
+# 1 usage · 2 requirements/toolchain missing.
 # =============================================================================
 set -euo pipefail
 
@@ -37,6 +74,8 @@ PHPCS_STANDARD="Drupal,DrupalPractice"
 SUBJECT=""
 FIX=0
 AS_JSON=0
+RULESET_OPT=""
+TV_OPT=""
 
 usage() { print_usage "$0"; }
 
@@ -46,12 +85,17 @@ while [[ $# -gt 0 ]]; do
     --subject=*) SUBJECT="${1#*=}"; shift;;
     --fix) FIX=1; shift;;
     --json) AS_JSON=1; shift;;
+    --ruleset) RULESET_OPT="${2:-}"; shift 2 || die "--ruleset needs a value (auto|drupilot|PATH)." 1;;
+    --ruleset=*) RULESET_OPT="${1#*=}"; shift;;
+    --test-version) TV_OPT="${2:-}"; shift 2 || die "--test-version needs a value (e.g. 8.3-)." 1;;
+    --test-version=*) TV_OPT="${1#*=}"; shift;;
     -h|--help) usage; exit 0;;
     *) log_warn "Unknown argument: $1"; shift;;
   esac
 done
 
 [[ -n "$SUBJECT" ]] || die "Missing --subject DIR (the module/theme to check)." 1
+CALLER_PWD="$PWD"
 
 # --- Gate: analyze --------------------------------------------------------
 PREFLIGHT="$(plugin_root)/scripts/env/preflight.sh"
@@ -85,7 +129,6 @@ RUNNER="$(drupal_runner "$DRUPAL_ROOT")"
 
 log_info "Drupal root : $DRUPAL_ROOT"
 log_info "Subject     : $SUBJECT_REL"
-log_info "Standard    : $PHPCS_STANDARD"
 if [[ -n "$RUNNER" ]]; then
   log_info "Runner      : DDEV ($RUNNER)"
 else
@@ -118,12 +161,148 @@ if ! ${ICMD[@]+"${ICMD[@]}"} vendor/bin/phpcs -i 2>/dev/null | grep -qi 'DrupalP
   fi
 fi
 
-# run_tool <bin> [extra args...] -> run phpcs/phpcbf with the Drupal standards.
+# --- Resolve the ruleset (project vs drupilot) and testVersion -------------
+RS_MODE="$RULESET_OPT"
+[[ -n "$RS_MODE" ]] || RS_MODE="$(config_get DRUPILOT_PHPCS_RULESET auto)"
+[[ -n "$RS_MODE" ]] || RS_MODE="auto"
+RS_SOURCE="drupilot"     # project | explicit | drupilot | fallback
+RS_FILE=""               # host absolute path of the chosen ruleset file
+RS_ARG=""                # what --standard gets (relative to the root under DDEV)
+RS_LOCATION=""           # subject | drupal-root | origin
+RS_REASON=""             # why a project ruleset was not used (fallback)
+case "$RS_MODE" in
+  drupilot) : ;;
+  auto)
+    RS_FILE="$(find_phpcs_ruleset "$SUBJECT_ABS" "$DRUPAL_ROOT" 2>/dev/null || true)"
+    [[ -n "$RS_FILE" ]] && RS_SOURCE="project"
+    ;;
+  *)
+    for _c in "$RS_MODE" "$DRUPAL_ROOT/$RS_MODE" "$CALLER_PWD/$RS_MODE"; do
+      case "$_c" in /*) : ;; *) continue;; esac
+      if [[ -f "$_c" ]]; then RS_FILE="$(cd "$(dirname "$_c")" && pwd)/$(basename "$_c")"; break; fi
+    done
+    [[ -n "$RS_FILE" ]] || die "PHPCS ruleset not found: '$RS_MODE' (expected auto, drupilot, or a ruleset file path)." 1
+    RS_SOURCE="explicit"
+    ;;
+esac
+
+if [[ -n "$RS_FILE" ]]; then
+  case "$RS_FILE" in
+    "$SUBJECT_ABS"/*) RS_LOCATION="subject";;
+    "$DRUPAL_ROOT"/*) RS_LOCATION="drupal-root";;
+    *) if [[ "$RS_SOURCE" == "explicit" ]]; then RS_LOCATION="outside-root"; else RS_LOCATION="origin"; fi;;
+  esac
+  case "$RS_FILE" in
+    "$DRUPAL_ROOT"/*) RS_ARG="${RS_FILE#"$DRUPAL_ROOT"/}";;
+    *)
+      if [[ -z "$RUNNER" ]]; then
+        RS_ARG="$RS_FILE"
+      else
+        # DDEV only mounts the Drupal root: stage a copy of an outside ruleset in
+        # the gitignored artifacts dir. A ruleset whose relative references do
+        # not survive the move fails the load probe below and falls back.
+        _art="$(project_artifacts_dir "$DRUPAL_ROOT")"
+        case "$_art" in
+          "$DRUPAL_ROOT"/*)
+            cp "$RS_FILE" "$_art/phpcs-project-ruleset.xml" 2>/dev/null               && RS_ARG="${_art#"$DRUPAL_ROOT"/}/phpcs-project-ruleset.xml"
+            ;;
+        esac
+        [[ -n "$RS_ARG" ]] || RS_REASON="the ruleset is outside the Drupal root, which is all DDEV mounts"
+      fi
+      ;;
+  esac
+fi
+
+# testVersion (PHPCompatibility). See the header for the precedence.
+TV="$TV_OPT"; TV_SRC=""
+[[ -n "$TV" ]] || TV="$(config_get DRUPILOT_PHPCS_TEST_VERSION "")"
+if [[ -n "$TV" ]]; then
+  TV_SRC="explicit"
+elif [[ -n "$RS_FILE" && -n "$(phpcs_ruleset_value "$RS_FILE" config testVersion)" ]]; then
+  TV="$(phpcs_ruleset_value "$RS_FILE" config testVersion)"; TV_SRC="ruleset-config"
+elif [[ -n "$RS_FILE" && -n "$(phpcs_ruleset_value "$RS_FILE" property testVersion)" ]]; then
+  TV="$(phpcs_ruleset_value "$RS_FILE" property testVersion)"; TV_SRC="ruleset-property"
+else
+  TV="$(resolve_php_target)-"; TV_SRC="php-target"
+fi
+
+# standard_args -> fill the global STD_ARGS for the resolved ruleset.
+declare -a STD_ARGS=()
+standard_args() {
+  STD_ARGS=()
+  if [[ "$RS_SOURCE" == "project" || "$RS_SOURCE" == "explicit" ]]; then
+    STD_ARGS+=("--standard=$RS_ARG")
+    # A ruleset that sets its own extensions keeps them; otherwise use the list
+    # drupilot has always passed.
+    grep -q '<arg[^>]*name="extensions"' "$RS_FILE" 2>/dev/null       || STD_ARGS+=("--extensions=$PHPCS_EXTENSIONS")
+  else
+    STD_ARGS+=("--standard=$PHPCS_STANDARD" "--extensions=$PHPCS_EXTENSIONS")
+  fi
+  [[ "$TV_SRC" == "ruleset-config" ]] || STD_ARGS+=("--runtime-set" "testVersion" "$TV")
+  return 0
+}
+
+# A project ruleset must load (every referenced standard/sniff installed)
+# before it is trusted: `phpcs -e` only explains the ruleset, it checks no file.
+if [[ -n "$RS_FILE" && -z "$RS_REASON" ]]; then
+  standard_args
+  set +e
+  _probe="$(${ICMD[@]+"${ICMD[@]}"} vendor/bin/phpcs "${STD_ARGS[@]}" -e 2>&1)"
+  _prc=$?
+  set -e
+  if [[ "$_prc" -ne 0 ]]; then
+    RS_REASON="PHPCS cannot load it (exit $_prc): $(printf '%s\n' "$_probe" | grep -m 1 -E 'ERROR|does not exist|not installed' | cut -c1-200)"
+    RS_REASON="${RS_REASON%: }"; RS_REASON="${RS_REASON%.}"
+  fi
+fi
+if [[ -n "$RS_REASON" ]]; then
+  log_warn "Project PHPCS ruleset ${RS_FILE} cannot be used: ${RS_REASON}."
+  log_warn "Falling back to ${PHPCS_STANDARD} for this run (install the missing standard in the test-bed, or set DRUPILOT_PHPCS_RULESET=drupilot to silence this)."
+  RS_SOURCE="fallback"
+fi
+standard_args
+if [[ "$RS_SOURCE" == "project" || "$RS_SOURCE" == "explicit" ]]; then
+  log_info "Ruleset     : ${RS_SOURCE} (${RS_FILE}, found in the ${RS_LOCATION})"
+elif [[ "$RS_SOURCE" == "fallback" ]]; then
+  log_info "Ruleset     : fallback to drupilot default (${PHPCS_STANDARD})"
+else
+  log_info "Ruleset     : drupilot default (${PHPCS_STANDARD})"
+fi
+if [[ "$TV_SRC" == "ruleset-config" ]]; then
+  log_info "testVersion : ${TV} (the ruleset's own <config>, not overridden)"
+else
+  log_info "testVersion : ${TV} (${TV_SRC}, passed with --runtime-set)"
+fi
+
+# Record the resolution (hidden state): the port report and the post-edit-lint
+# hook read it back. The checksum lets the hook notice a ruleset edited since.
+RS_CKSUM=""
+[[ -n "$RS_FILE" ]] && RS_CKSUM="$(cksum < "$RS_FILE" 2>/dev/null | awk '{print $1}')"
+_pass_ext=true
+case " ${STD_ARGS[*]} " in *" --extensions="*) : ;; *) _pass_ext=false;; esac
+RS_INFO="$(jq -n \
+  --arg ruleset "$RS_FILE" --arg arg "$RS_ARG" --arg source "$RS_SOURCE" \
+  --arg location "$RS_LOCATION" --arg reason "$RS_REASON" --arg tv "$TV" \
+  --arg tvs "$TV_SRC" --arg ck "$RS_CKSUM" --arg mode "$RS_MODE" \
+  --argjson ext "$_pass_ext" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '{ruleset: (if $ruleset == "" then null else $ruleset end),
+    standard: (if ($source == "project" or $source == "explicit") then $arg else "Drupal,DrupalPractice" end),
+    source: $source, mode: $mode,
+    location: (if $location == "" then null else $location end),
+    fallback_reason: (if $reason == "" then null else $reason end),
+    test_version: $tv, test_version_source: $tvs,
+    pass_extensions: $ext,
+    cksum: (if $ck == "" then null else $ck end), at: $at}' 2>/dev/null || true)"
+if [[ -n "$RS_INFO" ]]; then
+  printf '%s\n' "$RS_INFO" > "$(project_state_dir "$SUBJECT_ABS")/phpcs-ruleset.json" 2>/dev/null || true
+fi
+
+# run_tool <bin> [extra args...] -> run phpcs/phpcbf with the resolved ruleset.
 run_tool() {
   local bin="$1"; shift
   declare -a cmd=()
   [[ -n "$RUNNER" ]] && read -r -a cmd <<<"$RUNNER"
-  cmd+=("vendor/bin/$bin" "--standard=$PHPCS_STANDARD" "--extensions=$PHPCS_EXTENSIONS" "$@" "$SUBJECT_REL")
+  cmd+=("vendor/bin/$bin" "${STD_ARGS[@]}" "$@" "$SUBJECT_REL")
   log_step "$bin: ${cmd[*]}"
   set +e
   "${cmd[@]}"
@@ -148,15 +327,31 @@ if [[ "$AS_JSON" == "1" ]]; then
   OUT="$(run_tool phpcs --report=json 2>/dev/null)"
   RC=$?
   set -e
-  [[ -n "$OUT" ]] && printf '%s\n' "$OUT"
+  # Add the ruleset resolution as one extra top-level key (existing consumers
+  # read .totals/.files, untouched); non-JSON output is relayed as is.
+  if [[ -n "$OUT" && -n "$RS_INFO" ]] && printf '%s' "$OUT" | jq -e 'type == "object"' >/dev/null 2>&1; then
+    printf '%s' "$OUT" | jq -c --argjson d "$RS_INFO" '. + {drupilot: ($d | del(.cksum, .at))}'
+  elif [[ -n "$OUT" ]]; then
+    printf '%s\n' "$OUT"
+  fi
+  PHPCS_TEXT="$OUT"
 else
-  run_tool phpcs
+  set +e
+  PHPCS_TEXT="$(run_tool phpcs)"
   RC=$?
+  set -e
+  [[ -n "$PHPCS_TEXT" ]] && printf '%s\n' "$PHPCS_TEXT"
+fi
+
+# A ruleset bug surfaces as a processing error, not as a violation: say so
+# instead of letting it read like a coding-standard finding.
+if printf '%s' "${PHPCS_TEXT:-}" | grep -qE 'An error occurred during processing|trim\(\): Passing null'; then
+  log_warn "PHPCS reported a processing error (not a coding-standard violation). With PHPCompatibility this usually means testVersion is unset or malformed: pass --test-version X- (or set DRUPILOT_PHPCS_TEST_VERSION), or fix the ruleset."
 fi
 
 hr
 if [[ "$RC" -eq 0 ]]; then
-  log_ok "PHPCS clean: no Drupal/DrupalPractice violations in $SUBJECT_REL."
+  log_ok "PHPCS clean: no violations of the resolved ruleset in $SUBJECT_REL."
 else
   if [[ "$FIX" == "1" ]]; then
     log_warn "PHPCS still reports violations after phpcbf (exit $RC); these need manual fixes."
