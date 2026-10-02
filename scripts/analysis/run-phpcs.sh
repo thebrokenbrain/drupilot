@@ -48,7 +48,9 @@
 #   --ruleset R     auto (default, DRUPILOT_PHPCS_RULESET): the project ruleset
 #                   when found, else Drupal,DrupalPractice. drupilot: always
 #                   Drupal,DrupalPractice (the pre-0.9 behavior). PATH: that
-#                   ruleset file (absolute, or relative to the Drupal root).
+#                   ruleset file (absolute, or relative to the Drupal root);
+#                   unlike an auto-detected one, an explicit ruleset that PHPCS
+#                   cannot load is an error (exit 2), never a silent fallback.
 #   --test-version V  Force PHPCompatibility's testVersion (e.g. 8.1-).
 #                   Default: DRUPILOT_PHPCS_TEST_VERSION, else see above.
 #   -h, --help      Show this help.
@@ -255,6 +257,13 @@ if [[ -n "$RS_FILE" && -z "$RS_REASON" ]]; then
     RS_REASON="PHPCS cannot load it (exit $_prc): $(printf '%s\n' "$_probe" | grep -m 1 -E 'ERROR|does not exist|not installed' | cut -c1-200)"
     RS_REASON="${RS_REASON%: }"; RS_REASON="${RS_REASON%.}"
   fi
+fi
+if [[ -n "$RS_REASON" && "$RS_SOURCE" == "explicit" ]]; then
+  # An explicitly named ruleset (--ruleset PATH / DRUPILOT_PHPCS_RULESET=PATH)
+  # runs as given or not at all: silently checking another standard would let
+  # a caller (e.g. git-hooks.sh substituting a hook's phpcs task) report rules
+  # that never ran as passing. Only an auto-detected ruleset falls back.
+  die "The PHPCS ruleset ${RS_FILE} given explicitly cannot be used: ${RS_REASON}. Not falling back to ${PHPCS_STANDARD}: install the missing standard in the test-bed, or pass --ruleset auto|drupilot." 2
 fi
 if [[ -n "$RS_REASON" ]]; then
   log_warn "Project PHPCS ruleset ${RS_FILE} cannot be used: ${RS_REASON}."

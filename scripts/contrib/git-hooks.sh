@@ -415,6 +415,12 @@ for _k in $(printf '%s' "$REPORT" | jq -r '.equivalents[] | select(.covered) | .
     phpcs)
       declare -a _a=(--subject "$SUBJECT_ABS")
       [[ -n "$PHPCS_RULESET_ARG" ]] && _a+=(--ruleset "$PHPCS_RULESET_ARG")
+      # run-phpcs.sh records the ruleset it resolved (phpcs-ruleset.json) only
+      # once it gets to run PHPCS: set the previous record aside to tell "PHPCS
+      # ran" from "it stopped before" (both can exit 2 — PHPCS 3 exits 2 for
+      # unfixable violations), and read back whether it fell back.
+      _rsj="$(project_state_dir "$SUBJECT_ABS")/phpcs-ruleset.json"
+      rm -f "$_rsj.prev"; [[ -f "$_rsj" ]] && mv "$_rsj" "$_rsj.prev"
       bash "$PR/scripts/analysis/run-phpcs.sh" "${_a[@]}" >&2;;
     phpstan)
       declare -a _a=(--subject "$SUBJECT_ABS")
@@ -431,8 +437,23 @@ for _k in $(printf '%s' "$REPORT" | jq -r '.equivalents[] | select(.covered) | .
   _st="pass"
   if [[ "$_rc" -ne 0 ]]; then
     _st="fail"
-    case "$_k:$_rc" in phpcs:2|phpstan:2|phpstan:3|phplint:2|composer:2|phpunit:2) _st="not-runnable";; esac
+    case "$_k:$_rc" in phpstan:2|phpstan:3|phplint:2|composer:2|phpunit:2) _st="not-runnable";; esac
     FAILED=1
+  fi
+  if [[ "$_k" == "phpcs" ]]; then
+    if [[ ! -f "$_rsj" ]]; then
+      # Stopped before running PHPCS (toolchain missing, ruleset unusable).
+      [[ -f "$_rsj.prev" ]] && mv "$_rsj.prev" "$_rsj"
+      if [[ "$_rc" -ne 0 ]]; then _st="not-runnable"; FAILED=1; fi
+    else
+      rm -f "$_rsj.prev"
+      if [[ "$(jq -r '.source // empty' "$_rsj" 2>/dev/null || true)" == "fallback" ]]; then
+        # The hook's own ruleset did not load: a run with another standard
+        # proves nothing about the hook's task.
+        log_warn "phpcs: run-phpcs.sh fell back to the default standard (the project/hook ruleset could not be loaded): not counted as the hook's phpcs task."
+        _st="not-runnable"; FAILED=1
+      fi
+    fi
   fi
   jq -n -c --arg k "$_k" --arg by "$(by_for "$_k")" --argjson rc "$_rc" --arg st "$_st" \
     '{kind:$k, by:$by, rc:$rc, status:$st}' >> "$TMP/ran.jsonl"

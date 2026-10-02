@@ -414,6 +414,16 @@ tag the commit `vX.Y.Z`.
   PHPCS reports a processing error instead of counting it as a violation.
 
 ### Fixed
+- **A hook's phpcs task could be recorded as passing although its ruleset never
+  ran.** An explicit `run-phpcs.sh --ruleset PATH` that PHPCS could not load
+  (e.g. it references PHPCompatibility, absent from the test-bed) only warned
+  and fell back to `Drupal,DrupalPractice`, so `git-hooks.sh --run-equivalents`
+  stored `{kind: phpcs, status: pass}` in `hooks-substitution.json`. An
+  explicit ruleset that cannot load is now an error (exit 2); the warn-and-
+  fallback stays for auto-detected rulesets, and `git-hooks.sh` marks a phpcs
+  run that fell back, or stopped before running PHPCS, as `not-runnable`. A
+  phpcs exit 2 from real violations (PHPCS 3 exits 2 for unfixable ones) is now
+  `fail` instead of `not-runnable`.
 - **`classify-deprecations.sh` dropped hook, service and class deprecations.**
   Only `Call to deprecated <kind> X`, `Function X not found` and `X() is
   deprecated in` were recognized; phpstan-drupal's
