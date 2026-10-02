@@ -160,7 +160,10 @@ fi
 
 have_cmd git || die "git is not installed." 1
 
-MODULE_SLUG="$(slugify "$MODULE")"
+# The project keeps its machine name (underscores included), per the Drupal.org
+# patch naming convention; before 0.9.0 drupilot hyphenated it.
+MODULE_SLUG="$(patch_project_slug "$MODULE")"
+LEGACY_MODULE_SLUG="$(slugify "$MODULE")"
 DESC_SLUG="$(slugify "$DESCRIPTION")"
 [[ -n "$DESC_SLUG" ]] || DESC_SLUG="patch"
 
@@ -203,6 +206,13 @@ if [[ "$LOCAL" == "1" ]]; then
     PATCH_NAME="$MODULE_SLUG-$DESC_SLUG.patch"
   fi
   PATCH_PATH="$OUTPUT_ABS/$PATCH_NAME"
+  # A preview written by an older drupilot under the hyphenated name is not
+  # replaced by this one; point at it so the stale copy is not mistaken for it.
+  if [[ "$LEGACY_MODULE_SLUG" != "$MODULE_SLUG" ]]; then
+    LEGACY_NAME="$LEGACY_MODULE_SLUG-${PATCH_NAME#"$MODULE_SLUG"-}"
+    [[ -f "$OUTPUT_ABS/$LEGACY_NAME" ]] \
+      && log_warn "An older drupilot patch name is still there: $OUTPUT_ABS/$LEGACY_NAME (the machine name is now kept as-is: $PATCH_NAME). Delete the old file once you no longer need it."
+  fi
 
   if [[ -n "$ISSUE" ]]; then
     log_step "Local patch for issue #$ISSUE (comment #$COMMENT): $MODULE — offline, no push, scoped to $PATHSPEC"

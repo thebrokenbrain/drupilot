@@ -479,6 +479,17 @@ find_drupal_root() {
   return 1
 }
 
+# patch_project_slug <name> -> the project part of a patch file name. Drupal.org's
+# convention is [project]-[short-description]-[issue]-[comment].patch with the
+# project machine name kept AS IS, underscores included (the documented example
+# is "some_module-some-bug-123456-3.patch", https://www.drupal.org/node/707484).
+# So it lowercases and keeps [a-z0-9_]; any other run of characters becomes '-'.
+patch_project_slug() {
+  printf '%s' "$1" \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[^a-z0-9_]+/-/g; s/^[-_]+//; s/[-_]+$//'
+}
+
 # run_with_timeout <seconds> <cmd> [args...] -> runs cmd with a wall-clock limit
 # when `timeout` (GNU coreutils) or `gtimeout` (Homebrew coreutils on macOS) is
 # available, else runs it unbounded. <seconds> 0 (or empty) means no limit.

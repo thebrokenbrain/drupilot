@@ -183,6 +183,18 @@ tag the commit `vX.Y.Z`.
 - **`make-patch.sh --local` leaves out local-environment residue** (`.ddev/`,
   top-level `vendor/`, `.phpstan-cache/`, `node_modules/` anywhere) when it
   captures untracked files.
+- **Patch file names keep the project machine name as-is.** `make-patch.sh`
+  (both `--local` and the contribution mode) and `make-issue.sh` used to turn
+  underscores into hyphens (`legacy-widgets-port-to-drupal-11.patch`); they now
+  follow the Drupal.org convention `[project]-[short-description]-[issue]-[comment].patch`
+  with the machine name unchanged (`legacy_widgets-port-to-drupal-11.patch`,
+  `legacy_widgets-port-to-drupal-11-123456-3.patch`; the documented example is
+  `some_module-some-bug-123456-3.patch`). The issue summary/comment files follow
+  (`legacy_widgets-issue-summary.md`). Names without an underscore do not
+  change, and the `.git/info/exclude` / `.gitignore` patterns still match. When
+  a preview under the old hyphenated name is still next to the module,
+  `make-patch.sh --local` warns about it instead of deleting it. New helper:
+  `patch_project_slug` in `common.sh`.
 
 ### Fixed
 - **Rector broke Form API callbacks and Drupal 10 compatibility.** The template

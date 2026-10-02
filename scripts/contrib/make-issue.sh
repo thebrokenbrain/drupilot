@@ -139,7 +139,9 @@ esac
 [[ -z "$ISSUE" || "$ISSUE" =~ ^[0-9]+$ ]] || die "Issue id must be numeric: '$ISSUE'" 1
 [[ "$COMMENT" =~ ^[0-9]+$ ]] || die "Comment number must be numeric: '$COMMENT'" 1
 
-MODULE_SLUG="$(slugify "$PROJECT")"
+# Same project slug as make-patch.sh: the machine name is kept as-is
+# (underscores included), per the Drupal.org patch naming convention.
+MODULE_SLUG="$(patch_project_slug "$PROJECT")"
 
 # ---------------------------------------------------------------------------
 # Recommended field values (DRUPILOT_ISSUE_* defaults; env overrides win).
