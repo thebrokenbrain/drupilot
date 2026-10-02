@@ -66,7 +66,7 @@ SELENIUM_ADDON="ddev/ddev-selenium-standalone-chrome"
 # GATE: setup profile (Docker daemon + DDEV). No side effects before this.
 # ---------------------------------------------------------------------------
 log_step "Checking environment requirements (profile: setup)"
-if ! bash "$PLUGIN_ROOT_DIR/scripts/env/preflight.sh" --profile setup; then
+if ! bash "$PLUGIN_ROOT_DIR/scripts/env/preflight.sh" --profile setup >&2; then
   die "Cannot install DDEV add-ons: a hard requirement is missing (see report above). Run /drupilot-doctor." 2
 fi
 

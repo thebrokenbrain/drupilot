@@ -46,7 +46,7 @@ done
 PREFLIGHT="$(plugin_root)/scripts/env/preflight.sh"
 if ! bash "$PREFLIGHT" --profile setup --quiet >/dev/null 2>&1; then
   log_err "The 'setup' requirements (Docker daemon + DDEV) are not satisfied; Upgrade Status needs a DDEV site."
-  bash "$PREFLIGHT" --profile setup || true
+  bash "$PREFLIGHT" --profile setup >&2 || true
   exit 2
 fi
 

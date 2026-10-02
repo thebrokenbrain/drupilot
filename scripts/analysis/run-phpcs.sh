@@ -57,7 +57,7 @@ done
 PREFLIGHT="$(plugin_root)/scripts/env/preflight.sh"
 if ! bash "$PREFLIGHT" --profile analyze --quiet >/dev/null 2>&1; then
   log_err "The 'analyze' requirements are not satisfied; cannot run PHPCS."
-  bash "$PREFLIGHT" --profile analyze || true
+  bash "$PREFLIGHT" --profile analyze >&2 || true
   exit 2
 fi
 

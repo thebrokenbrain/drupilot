@@ -410,6 +410,11 @@ tag the commit `vX.Y.Z`.
   `origin-missing`; the baseline is now found under `DRUPILOT_WORKSPACE_DIR` or
   the `<name>-d11` sibling by its recorded source path, and the moved tree is
   checked.
+- **More scripts printed the human preflight report on stdout**: `ddev-add-ons.sh`
+  on every run, and `run-rector.sh` / `run-phpstan.sh` / `run-phpcs.sh` /
+  `run-upgrade-status.sh` when their gate failed, so a caller parsing `--json`
+  got the report instead of a payload. It goes to stderr now, as in
+  `ddev-up.sh` and `run-phpunit.sh`.
 
 ## [0.8.4] - 2026-06-23
 
