@@ -414,6 +414,19 @@ tag the commit `vX.Y.Z`.
   PHPCS reports a processing error instead of counting it as a violation.
 
 ### Fixed
+- **`classify-deprecations.sh` dropped hook, service and class deprecations.**
+  Only `Call to deprecated <kind> X`, `Function X not found` and `X() is
+  deprecated in` were recognized; phpstan-drupal's
+  `Function x_foo implements hook_foo which is deprecated in drupal:A and is
+  removed from drupal:B` (`deprecatedHookImplementation.*`) and `The "S"
+  service is deprecated ...` (`getDeprecatedService.deprecated` /
+  `staticServiceDeprecatedService.deprecated`) fell into `other`, so even a
+  HARD one never blocked Phase 1; runtime notices (`The X class is deprecated
+  ...`, `... without the $x argument is deprecated in drupal:A and it will be
+  required in drupal:B`) vanished. These forms are now classified (removal from
+  "is removed from" / "will be required in" / "will be removed in" ...), and any
+  message or identifier that says "deprecated" but cannot be parsed is
+  `unknown` (blocking), never `other`.
 - **The hooks guard missed `--no-verify` in common command shapes.** The
   `guard-contrib` parser reset its quote state on every line, so a heredoc
   commit message (`git commit -m "$(cat <<'EOF' ... EOF)" --no-verify`) and a

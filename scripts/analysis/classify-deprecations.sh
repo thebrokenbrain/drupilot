@@ -182,12 +182,14 @@ elif [[ -s "$TMP" ]]; then
     {
       line = $0; gsub(/[|]/, " ", line); gsub(/[[:space:]]+/, " ", line)
       if (line ~ /^ ?Line [^ ]/) { flush(); cur = line; sub(/^ ?Line /, "", cur); sub(/ .*$/, "", cur); next }
-      if (line ~ /[Dd]eprecated (function|method|static method|class|interface|trait|constant|class constant|property|static property) / || line ~ /Function [A-Za-z0-9_\\]+ not found/ || line ~ /[A-Za-z0-9_]\(\) is deprecated in [a-z0-9_]+:/) {
+      if (line ~ /[Dd]eprecated (function|method|static method|class|interface|trait|constant|class constant|property|static property) / || line ~ /Function [A-Za-z0-9_\\]+ not found/ || line ~ / is deprecated in [a-z0-9_]+:[0-9]/ || line ~ /implements hook_[A-Za-z0-9_]+ which is deprecated/ || line ~ /" service is deprecated/) {
         flush(); msg = line; left = 6; ln = ""
         if (match(line, /^ ?[0-9]+ /)) { ln = substr(line, RSTART, RLENGTH); gsub(/ /, "", ln); sub(/^ ?[0-9]+ /, "", msg) }
+        # A one-line notice that already carries both versions is complete.
+        if (line ~ / in [a-z0-9_]+:[0-9][0-9.]* and [^.:]* [a-z0-9_]+:[0-9]/) flush()
         next
       }
-      if (left > 0) { msg = msg " " line; left--; if (line ~ /is removed from/) flush() }
+      if (left > 0) { msg = msg " " line; left--; if (line ~ /is removed from/ || line ~ / and [^.:]* [a-z0-9_]+:[0-9]/) flush() }
     }
     END { flush() }' "$TMP" \
     | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t")
@@ -216,17 +218,36 @@ RESULT="$(jq -n \
       | ($m | capture("Function (?<sym>[A-Za-z0-9_\\\\]+) not found")? // null) as $nf
       | (if $d == null then ($m | capture("(?<sym>[A-Za-z0-9_\\\\:]+)\\(\\) is deprecated in [a-z0-9_]+:")? // null) else null end) as $rt
       | (if $d == null and $rt != null then {kind: (if ($rt.sym | test("::")) then "method" else "function" end), sym: $rt.sym} else $d end) as $d
-      | ($m | capture("in (?<p1>[a-z0-9_]+):(?<dep>[0-9][0-9.]*[0-9]) and is removed from (?<p2>[a-z0-9_]+):(?<rem>[0-9][0-9.]*[0-9])")? // null) as $v
+      # phpstan-drupal forms (DeprecatedHookImplementation, Get/StaticService-
+      # DeprecatedServiceRule) and core runtime notices for classes / arguments.
+      | ($m | capture("Function (?<fn>[A-Za-z0-9_]+) implements (?<hook>[A-Za-z0-9_]+) which is deprecated")? // null) as $hk
+      | ($m | capture("The \"(?<svc>[^\"]+)\" service is deprecated")? // null) as $sv
+      | ($m | capture("The (?<cls>[A-Za-z0-9_\\\\]+)( base)? class is deprecated")? // null) as $cl
+      # Anything else that is a deprecation but cannot be parsed is NOT "other":
+      # it is classified (unknown -> blocking) so it is never silently dropped.
+      | ((($r.identifier // "") | test("deprecat"; "i")) or ($m | test("deprecat"; "i"))) as $isdep
+      # Removal: core writes "in drupal:A and is removed from drupal:B", and for
+      # arguments/behaviors "... and it will be required in / will be removed in
+      # / will be unsupported in drupal:B": B is when the old code stops working.
+      | ($m | capture("in (?<p1>[a-z0-9_]+):(?<dep>[0-9][0-9.]*[0-9]) and [^.:]*? ?(?<p2>[a-z0-9_]+):(?<rem>[0-9][0-9.]*[0-9])")? // null) as $v
       | ($m | capture(" of (class|interface|trait) (?<cls>[A-Za-z0-9_\\\\]+)")? // null) as $of
       | (if $d != null then
            (if ($d.kind | test("method")) and $of != null and (($d.sym | test("::")) | not)
             then ($of.cls | norm) + "::" + ($d.sym | norm) else ($d.sym | norm) end)
-         elif $nf != null then ($nf.sym | norm) else null end) as $sym
+         elif $nf != null then ($nf.sym | norm)
+         elif $hk != null then $hk.hook
+         elif $sv != null then $sv.svc
+         elif $cl != null then ($cl.cls | norm)
+         elif $isdep then
+           (($m | capture("(?<s>[A-Za-z0-9_\\\\]+::[A-Za-z0-9_]+\\(\\)|[A-Za-z0-9_\\\\]+\\(\\))")? // null)
+            | if . != null then (.s | norm) else ($m | .[0:80]) end)
+         else null end) as $sym
       | (if $sym == null then null else lookup($sym) end) as $c
-      | (if $d == null and $nf == null then null
+      | (if $d == null and $nf == null and ($isdep | not) then null
          else
            { file: (if $r.file == null then null else ($r.file | sub("^/var/www/html/"; "")) end), line: $r.line, symbol: $sym,
-             kind: (if $d != null then $d.kind else "function" end),
+             kind: (if $d != null then $d.kind elif $nf != null then "function" elif $hk != null then "hook"
+                    elif $sv != null then "service" elif $cl != null then "class" else "other" end),
              not_found: ($nf != null),
              message: ($r.message | split("\n") | map(gsub("^\\s+|\\s+$"; "")) | map(select(. != "")) | join(" ")),
              project: (if $v != null then $v.p2 else (if $c != null then "drupal" else null end) end),
