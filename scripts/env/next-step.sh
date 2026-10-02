@@ -20,6 +20,9 @@
 #                [--ready-test BOOL] [--ready-contribute BOOL]
 #                [--from-preflight] [--json|--human]
 #   BOOL is true|false (also 1/0, yes/no, on/off).
+#   --subject DIR     defaults to the current directory; a value that is not a
+#                     directory (e.g. a router mode word such as "auto" passed
+#                     as $1) falls back to it with a warning on STDERR.
 #   --from-preflight  run `preflight.sh --profile all --json` once (~0.5 s) and
 #                     take every readiness value NOT given explicitly from its
 #                     `.ready` object. Use it from a load-time !`...` line, where
@@ -84,7 +87,14 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "$SUBJECT" ]] || SUBJECT="$PWD"
-[[ -d "$SUBJECT" ]] || die "Subject directory not found: $SUBJECT" 1
+# The router passes its first argument here, which is often a mode word
+# (`/drupilot auto`) or the first word of a request (`/drupilot port this ...`)
+# rather than a path. Fall back to the current directory, as the router's own
+# state detection does, instead of failing the command load.
+if [[ ! -d "$SUBJECT" ]]; then
+  log_warn "'$SUBJECT' is not a directory; using the current directory as the subject."
+  SUBJECT="$PWD"
+fi
 SUBJECT="$(cd "$SUBJECT" && pwd)"
 
 # --- Readiness ---------------------------------------------------------------

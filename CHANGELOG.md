@@ -383,6 +383,12 @@ tag the commit `vX.Y.Z`.
   services to a form passed the gate. The pattern no longer uses an interval,
   and the `check.sh` portability gate now rejects regex intervals in awk
   regex literals.
+- **`/drupilot auto` (or `next`, `status`, or a natural-language request) broke
+  the router's load-time next-step line**: it passes `$1` as `--subject`, and
+  `next-step.sh` died with "Subject directory not found: auto". A `--subject`
+  that is not a directory now falls back to the current directory with a
+  warning, matching the router's own state detection (also covers
+  `/drupilot-status`).
 
 ## [0.8.4] - 2026-06-23
 
