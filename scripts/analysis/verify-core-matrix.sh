@@ -110,7 +110,15 @@ LINT_FLOOR=""
 REFRESH=0
 AS_JSON=0
 DRY_RUN=0
+# Composer runs INSIDE the web container (ddev exec). A host-side `timeout`
+# only kills the docker-exec client and leaves composer running in the
+# container, so the limit is applied in the container itself (GNU timeout in
+# the ddev-webserver image, which kills the whole process group); the host
+# limit is a later backstop for a hung `ddev exec` client.
 COMPOSER_TIMEOUT=900
+COMPOSER_HOST_TIMEOUT=$((COMPOSER_TIMEOUT + 60))
+VCM_COMPOSER_LIMIT="$COMPOSER_TIMEOUT"
+export VCM_COMPOSER_LIMIT
 
 usage() { print_usage "$0"; }
 
@@ -353,7 +361,7 @@ build_reference() {
   log="$TMP/build-$leg.log"; : > "$log"
   rm -rf "$tmpdir"
   log_step "Building the reference Drupal $leg core ($want) in $CORES_REL/drupal-$leg (once; cached)"
-  if ! run_with_timeout "$COMPOSER_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "composer create-project --no-interaction --no-install --no-progress '"'"'drupal/recommended-project:$3'"'"' $4" </dev/null' \
+  if ! run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT composer create-project --no-interaction --no-install --no-progress '"'"'drupal/recommended-project:$3'"'"' $4" </dev/null' \
        _ "$ROOT" "$CONTAINER_ROOT" "$want" "$CORES_REL/$tmpname" >>"$log" 2>&1; then
     BUILD_REASON="$(network_reason "$log")"; [[ -n "$BUILD_REASON" ]] || BUILD_REASON="composer create-project failed: $(tail_reason "$log")"
     rm -rf "$tmpdir"; return 1
@@ -373,7 +381,7 @@ build_reference() {
     BUILD_REASON="could not edit the reference composer.json"; rm -rf "$tmpdir"; return 1
   fi
   cp "$TMP/composer.json" "$tmpdir/composer.json"
-  if ! run_with_timeout "$COMPOSER_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "composer update --no-interaction --no-progress --no-audit" </dev/null' \
+  if ! run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT composer update --no-interaction --no-progress --no-audit" </dev/null' \
        _ "$ROOT" "$CONTAINER_ROOT/$CORES_REL/$tmpname" >>"$log" 2>&1; then
     BUILD_REASON="$(network_reason "$log")"
     if [[ -z "$BUILD_REASON" ]]; then
@@ -395,13 +403,13 @@ build_reference() {
     cp "$tmpdir/composer.json" "$TMP/composer.json.bak"; cp "$tmpdir/composer.lock" "$TMP/composer.lock.bak" 2>/dev/null || true
     jq --argjson d "$devreq" '."require-dev" = ((."require-dev" // {}) + $d)' "$tmpdir/composer.json" > "$TMP/composer.json" \
       && cp "$TMP/composer.json" "$tmpdir/composer.json"
-    if run_with_timeout "$COMPOSER_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "composer update --no-interaction --no-progress --no-audit" </dev/null' \
+    if run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT composer update --no-interaction --no-progress --no-audit" </dev/null' \
          _ "$ROOT" "$CONTAINER_ROOT/$CORES_REL/$tmpname" >>"$log" 2>&1; then
       test_deps=true
     else
       log_warn "Could not add drupal/core-dev $ver's test runtime to the reference core; the subject's tests/ are left out of every leg."
       cp "$TMP/composer.json.bak" "$tmpdir/composer.json"; cp "$TMP/composer.lock.bak" "$tmpdir/composer.lock" 2>/dev/null || true
-      run_with_timeout "$COMPOSER_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "composer install --no-interaction --no-progress --no-audit" </dev/null' \
+      run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT composer install --no-interaction --no-progress --no-audit" </dev/null' \
         _ "$ROOT" "$CONTAINER_ROOT/$CORES_REL/$tmpname" >>"$log" 2>&1 || true
     fi
   fi
@@ -435,7 +443,7 @@ ensure_reference() {
           && "$(printf '%s' "$mtool" | jq -cS . 2>/dev/null)" == "$(printf '%s' "$TOOLCHAIN" | jq -cS .)" ]]; then
       if ! deterministic_mode; then
         # Floating mode: refresh within the constraint (best effort, offline-safe).
-        if ! run_with_timeout "$COMPOSER_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "composer update --no-interaction --no-progress --no-audit" </dev/null' \
+        if ! run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT composer update --no-interaction --no-progress --no-audit" </dev/null' \
              _ "$ROOT" "$CONTAINER_ROOT/$CORES_REL/drupal-$leg" >"$TMP/refresh-$leg.log" 2>&1; then
           log_warn "Could not refresh the reference Drupal $leg core ($(network_reason "$TMP/refresh-$leg.log")); using the cached $mver."
         fi

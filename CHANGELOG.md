@@ -414,6 +414,17 @@ tag the commit `vX.Y.Z`.
   PHPCS reports a processing error instead of counting it as a violation.
 
 ### Fixed
+- **A composer timeout left composer running inside the DDEV container.**
+  `run_with_timeout` (GNU `timeout`) only killed the host-side `ddev exec` /
+  `ddev composer` client; the process kept running in the web container. After
+  a `DRUPILOT_DDEV_CREATE_TIMEOUT` hit, `ddev-up.sh` told the user to delete
+  `composer.json`/`vendor/`/`web/` while the orphaned `create-project` kept
+  writing them, and `verify-core-matrix.sh` removed a half-built reference core
+  that the orphan kept recreating. `ddev-up.sh` now stops the in-container
+  composer (new `ddev_stop_composer`) before printing the cleanup advice, and
+  `verify-core-matrix.sh` applies its composer limit with the container's own
+  `timeout` (the host limit is only a later backstop). `run_with_timeout`
+  documents that it does not propagate through `docker exec`.
 - **Rector / PHPStan / PHPCS failed instead of using the host toolchain when
   DDEV could not start.** Since the explicit `ddev_ensure_running` start, a
   project with `.ddev/config.yaml` and the Docker daemon down made the analysis

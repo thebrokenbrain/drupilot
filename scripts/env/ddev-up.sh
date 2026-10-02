@@ -256,6 +256,12 @@ else
       ddev composer "$CREATE_SUBCMD" --no-interaction "drupal/recommended-project:${DRUPAL_TARGET}" </dev/null >&2 ) \
     || CREATE_RC=$?
   if [[ "$CREATE_RC" == "124" ]]; then
+    # The limit only killed the host-side client: composer keeps running in
+    # the web container and would go on writing the files the user is told to
+    # remove. Stop it first.
+    if ! ddev_stop_composer "$PROJECT_DIR"; then
+      log_err "composer is still running in the web container of $PROJECT_DIR; stop the project ('ddev stop') before cleaning up."
+    fi
     die "'ddev composer $CREATE_SUBCMD' did not finish within ${CREATE_TIMEOUT}s and was stopped. Check network access and 'ddev logs -s web', remove the partial project it left in $PROJECT_DIR (keep only .ddev/ and .git/: composer.json, composer.lock, vendor/, $DOCROOT/, recipes/ and the scaffolded dotfiles such as .editorconfig must go), then re-run; raise DRUPILOT_DDEV_CREATE_TIMEOUT (0 = no limit) for a slow network." 1
   elif [[ "$CREATE_RC" != "0" ]]; then
     die "'ddev composer $CREATE_SUBCMD' failed (exit $CREATE_RC). Check network access and the DDEV web container ('ddev logs -s web')." 1

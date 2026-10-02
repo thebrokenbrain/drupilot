@@ -495,6 +495,11 @@ patch_project_slug() {
 # available, else runs it unbounded. <seconds> 0 (or empty) means no limit.
 # Returns cmd's exit code, or 124 when the limit was hit. stdin is NOT
 # redirected; callers that must never wait on input pass </dev/null.
+# CAVEAT: the limit does NOT propagate through `ddev exec` / `ddev composer`
+# (docker exec): only the host-side client is killed and the process keeps
+# running in the web container. Bound in-container work with the container's
+# own `timeout` (ddev exec "timeout -k 20 N composer ..."), or stop it after a
+# 124 with ddev_stop_composer before cleaning up the files it writes.
 run_with_timeout() {
   local secs="${1:-0}"; shift
   local t=""
@@ -508,6 +513,30 @@ run_with_timeout() {
   else
     "$@"
   fi
+}
+
+# ddev_stop_composer <root> -> best effort: stop every composer process left
+# running in the project's web container (e.g. after run_with_timeout killed
+# only the host-side `ddev composer` client). TERM, up to ~10 s of grace, then
+# KILL. Returns 0 when none is left, 1 otherwise (or when it cannot tell).
+# Never starts a stopped project.
+ddev_stop_composer() {
+  local r="${1:-}" n=0
+  ddev_running "$r" || return 0
+  # '[c]omposer' matches "composer" but not the pkill/pgrep command line itself.
+  ( cd "$r" 2>/dev/null && ddev exec "pkill -TERM -f '[c]omposer' || true" </dev/null >/dev/null 2>&1 ) || true
+  while [[ "$n" -lt 10 ]]; do
+    if ! ( cd "$r" 2>/dev/null && ddev exec "pgrep -f '[c]omposer' >/dev/null" </dev/null >/dev/null 2>&1 ); then
+      return 0
+    fi
+    sleep 1; n=$((n + 1))
+  done
+  ( cd "$r" 2>/dev/null && ddev exec "pkill -KILL -f '[c]omposer' || true" </dev/null >/dev/null 2>&1 ) || true
+  sleep 1
+  if ( cd "$r" 2>/dev/null && ddev exec "pgrep -f '[c]omposer' >/dev/null" </dev/null >/dev/null 2>&1 ); then
+    return 1
+  fi
+  return 0
 }
 
 # ddev_project_status [root] -> echoes the DDEV project status for the project
