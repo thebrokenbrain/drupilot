@@ -414,6 +414,16 @@ tag the commit `vX.Y.Z`.
   PHPCS reports a processing error instead of counting it as a violation.
 
 ### Fixed
+- **`run-phpunit.sh` stopped recording large suites.** The per-test results
+  and the baseline comparison were passed to `jq` as `--argjson` arguments; a
+  suite of roughly 1000+ test cases (data sets included) exceeds the kernel's
+  per-argument limit (128 KiB), so `jq` failed and, behind `|| true`, nothing
+  was written: `last-test.json` kept the previous verdict, `--baseline` wrote an
+  EMPTY `test-baseline.json` and still reported success, and `--result-file`
+  (read by `negative-control.sh`) came back empty. Those payloads now go to `jq`
+  as files (`--slurpfile`); a record that still cannot be built is an error
+  (no file is written, `--baseline` exits 1, a green run exits 1) instead of a
+  silent skip.
 - **`run-phpunit.sh` no longer counts a group that executed no test as
   passed.** PHPUnit exits 0 on "No tests executed!" (e.g. a `--filter` that
   matches nothing in a group); such a group is now `empty`, is not counted in

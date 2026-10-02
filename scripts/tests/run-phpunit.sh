@@ -85,6 +85,7 @@ RECORD=1
 BASELINE_MODE=""      # "" | run | from-last
 USE_BASELINE=1
 RESULT_FILE=""
+RECORD_FAILED=0
 
 usage() { print_usage "$0"; }
 
@@ -306,7 +307,13 @@ mkdir -p "$DRUPAL_ROOT/$JUNIT_REL" 2>/dev/null || true
 [[ -f "$DRUPAL_ROOT/.drupilot/.gitignore" ]] || printf '*\n' > "$DRUPAL_ROOT/.drupilot/.gitignore" 2>/dev/null || true
 TESTS_TSV="$(mktemp "${TMPDIR:-/tmp}/drupilot-phpunit.XXXXXX")"
 GROUPS_TSV="$(mktemp "${TMPDIR:-/tmp}/drupilot-phpunit-groups.XXXXXX")"
-_rp_cleanup() { rm -f "$TESTS_TSV" "$GROUPS_TSV" "$DRUPAL_ROOT/$JUNIT_REL"/junit-$$-*.xml 2>/dev/null; return 0; }
+# The per-test JSON (and the baseline comparison built from it) grows with the
+# suite: a large one exceeds the kernel's per-argument limit (MAX_ARG_STRLEN,
+# 128 KiB on Linux) if passed as `jq --argjson`. Those payloads therefore go
+# to jq as files (--slurpfile), never on the command line.
+TESTS_JSON_FILE="$(mktemp "${TMPDIR:-/tmp}/drupilot-phpunit-tests.XXXXXX")"
+BASELINE_JSON_FILE="$(mktemp "${TMPDIR:-/tmp}/drupilot-phpunit-baseline.XXXXXX")"
+_rp_cleanup() { rm -f "$TESTS_TSV" "$GROUPS_TSV" "$TESTS_JSON_FILE" "$BASELINE_JSON_FILE" "$DRUPAL_ROOT/$JUNIT_REL"/junit-$$-*.xml 2>/dev/null; return 0; }
 trap _rp_cleanup EXIT
 
 # parse_junit <group> <file> -> TSV lines on stdout, one per <testcase>:
@@ -537,10 +544,13 @@ else
     if [[ ${#RUNNER[@]} -gt 0 ]]; then COV_HTML_PATH="$DRUPAL_ROOT/${COV_HTML_REL:-}"; else COV_HTML_PATH="${COV_HTML_DIR:-}"; fi
   fi
 
-  TESTS_JSON="$(jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t")
+  if ! jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t")
       | {group: .[0], id: .[1], status: .[2],
          message: (if (.[2] == "fail" or .[2] == "error") and ((.[3] // "") != "") then .[3] else null end)})' \
-      "$TESTS_TSV" 2>/dev/null || echo '[]')"
+      "$TESTS_TSV" > "$TESTS_JSON_FILE" 2>/dev/null; then
+    log_warn "Could not parse the per-test results: the record lists no individual test."
+    echo '[]' > "$TESTS_JSON_FILE"
+  fi
   GROUPRES_JSON="$(jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t")
       | {group: .[0], rc: (.[1] | tonumber? // null), status: .[2], executed: (.[3] | tonumber? // 0)})' \
       "$GROUPS_TSV" 2>/dev/null || echo '[]')"
@@ -552,10 +562,11 @@ else
   BASELINE_JSON="null"
   if [[ -z "$BASELINE_MODE" && "$USE_BASELINE" == "1" && -r "$BASELINE_FILE" ]] \
      && jq -e '(.tests | type) == "array"' "$BASELINE_FILE" >/dev/null 2>&1; then
-    BASELINE_JSON="$(jq -c -n --slurpfile b "$BASELINE_FILE" --argjson cur "$TESTS_JSON" --argjson cg "$GROUPRES_JSON" \
+    BASELINE_JSON="$(jq -c -n --slurpfile b "$BASELINE_FILE" --slurpfile curf "$TESTS_JSON_FILE" --argjson cg "$GROUPRES_JSON" \
         --arg file "$BASELINE_FILE" --arg digest "$DIGEST" '
       def bad: .status == "fail" or .status == "error";
-      $b[0] as $base
+      $curf[0] as $cur
+      | $b[0] as $base
       | (reduce ($base.tests // [])[] as $t ({}; .[$t.id] = $t)) as $bm
       | (reduce ($base.group_results // [])[] as $g ({}; .[$g.group] = $g.status)) as $bgs
       | [ $cur[] | select(bad) | . as $t | ($bm[$t.id]) as $p
@@ -581,6 +592,7 @@ else
          fixed: [ $cur[] | select(.status == "pass") | .id as $i | select(($bm[$i] // {status: "pass"}) | bad) | $i ]}' \
         2>/dev/null || echo null)"
     if [[ "$BASELINE_JSON" != "null" && -n "$BASELINE_JSON" ]]; then
+      printf '%s\n' "$BASELINE_JSON" > "$BASELINE_JSON_FILE"
       N_REG="$(printf '%s' "$BASELINE_JSON" | jq '.regressions | length')"
       N_PRE="$(printf '%s' "$BASELINE_JSON" | jq '.pre_existing | length')"
       N_FIX="$(printf '%s' "$BASELINE_JSON" | jq '.fixed | length')"
@@ -613,8 +625,8 @@ else
     --argjson subject_has_tests "$SUBJECT_HAS_TESTS" \
     --argjson groups_with_tests "$(arr_to_json ${GROUPS_WITH_TESTS[@]+"${GROUPS_WITH_TESTS[@]}"})" \
     --argjson cov_requested "$COV_REQUESTED" --arg cov_html "$COV_HTML_PATH" \
-    --argjson group_results "$GROUPRES_JSON" --argjson tests "$TESTS_JSON" \
-    --argjson baseline "$BASELINE_JSON" \
+    --argjson group_results "$GROUPRES_JSON" --slurpfile testsf "$TESTS_JSON_FILE" \
+    --slurpfile baselinef "$BASELINE_JSON_FILE" \
     --argjson negative_controls "$(negative_controls_summary "$SUBJECT")" \
     '{type:$type, status:$status, preservation:$preservation,
       ran:$ran, passed:$passed, failed:$failed,
@@ -626,8 +638,15 @@ else
       coverage: {requested:$cov_requested, html: ($cov_html | select(. != "") // null), percent: null},
       filter: ($filter | select(. != "") // null), recorded_at:$at,
       subject_digest: ($digest | select(. != "") // null), git_head: ($head | select(. != "") // null),
-      baseline:$baseline, negative_controls:$negative_controls,
-      group_results:$group_results, tests:$tests}' 2>/dev/null || true)"
+      baseline: ($baselinef[0] // null), negative_controls:$negative_controls,
+      group_results:$group_results, tests: ($testsf[0] // [])}' 2>/dev/null || true)"
+  if [[ -z "$RECORD_JSON" ]]; then
+    # Never fall through silently: an empty record would leave last-test.json
+    # stale and write an empty baseline / result file.
+    log_err "Could not build the run record (jq failed): last-test.json, the baseline and --result-file are NOT updated."
+    [[ "$BASELINE_MODE" == "run" ]] && exit 1
+    RECORD_FAILED=1
+  fi
 
   if [[ -n "$RESULT_FILE" && -n "$RECORD_JSON" ]]; then
     printf '%s\n' "$RECORD_JSON" > "$RESULT_FILE" 2>/dev/null || log_warn "Could not write --result-file $RESULT_FILE"
@@ -682,5 +701,9 @@ if [[ "$RAN" -eq 0 ]]; then
   exit 0
 fi
 
+if [[ "$RECORD_FAILED" == "1" ]]; then
+  log_err "The tests passed, but the run could not be recorded (see above)."
+  exit 1
+fi
 log_ok "All executed test groups passed."
 exit 0
