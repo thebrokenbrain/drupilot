@@ -53,8 +53,8 @@ Read these if they exist (do not recompute anything):
 
   !`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; ROOT="$(find_drupal_root "$SUBJ" 2>/dev/null || echo "$SUBJ")"; DRUPILOT_PROJECT_DIR="$ROOT" lock_show || true' _ "$1"`
 - the core matrix — the last `verify-core-matrix.sh` result (static PHPStan +
-  `php -l` per declared core; `d10_support` `verified-static` / `failed` /
-  `declared-not-verified`), and whether it is still fresh (computed on the
+  `php -l` per declared core; `d10_support` `verified-static` /
+  `verified-static-above-floor` / `failed` / `declared-not-verified`), and whether it is still fresh (computed on the
   current sources). Read-only: this never runs the matrix.
 
   !`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; SUBJ="$(cd "$SUBJ" && pwd)"; F="$(core_matrix_file "$SUBJ")"; if [[ -r "$F" ]]; then printf "core_matrix_fresh=%s\n" "$(core_matrix_fresh "$SUBJ" && echo yes || echo no)"; jq -c "{d10_support, verdict, generated_at, legs: [.legs[] | {core: (.version // .core), role, status, reason}]}" "$F"; else echo "core_matrix=none"; fi' _ "$1"`
@@ -88,7 +88,9 @@ Render an English summary covering:
 - **Core matrix:** one line per core leg (version, pass/fail/skipped and why) and
   the Drupal 10 support verdict; say "stale — re-run verify-core-matrix.sh" when
   `core_matrix_fresh=no`, or "not run" when there is none. `verified-static` means
-  PHPStan + `php -l` were clean on that core; it is not a runtime test.
+  PHPStan + `php -l` were clean on that core (including the declared floor
+  minor); `verified-static-above-floor` means clean only on a newer 10.x — the
+  floor (`d10_floor`) was not checked. Neither is a runtime test.
 - **Origin hygiene:** one line — "clean", the drupilot-attributable residue it lists
   (`attributable`), or "no baseline" when `clean` is null. Never suggest deleting
   anything automatically.

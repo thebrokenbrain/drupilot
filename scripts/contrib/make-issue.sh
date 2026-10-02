@@ -53,7 +53,9 @@
 #                  When a FRESH core-matrix result (verify-core-matrix.sh, same
 #                  subject sources) says Drupal 10 is verified-static, the item
 #                  becomes "run the suite on Drupal 10" (static check passed on
-#                  X.Y.Z); when it says failed, an item to fix the reported
+#                  X.Y.Z); verified-static-above-floor (clean only on a 10.x
+#                  newer than the declared floor) keeps an item to verify the
+#                  floor and run the suite; when it says failed, an item to fix the reported
 #                  Drupal 10 incompatibilities (or drop '^10') is added even
 #                  without this flag.
 #   --core-matrix FILE  the verify-core-matrix.sh --json result to read
@@ -262,6 +264,9 @@ fi
 if [[ "$D10_MATRIX" == "failed" ]]; then
   REMAINING="$REMAINING
 - [ ] Fix the Drupal 10 incompatibilities the static core check found on Drupal $D10_MATRIX_VERSIONS ($D10_MATRIX_ISSUES finding(s): PHPStan / php -l), or drop '^10' from core_version_requirement."
+elif [[ "$D10_UNVERIFIED" == "1" && "$D10_MATRIX" == "verified-static-above-floor" ]]; then
+  REMAINING="$REMAINING
+- [ ] Verify the declared Drupal 10 floor ($(jq -r '.d10_floor // "10.0"' "$CORE_MATRIX")): the static core check is clean on Drupal $D10_MATRIX_VERSIONS only, so an API added after the floor would still fail there. Also run the test suite on Drupal 10 (the runtime was not tested)."
 elif [[ "$D10_UNVERIFIED" == "1" && "$D10_MATRIX" == "verified-static" ]]; then
   REMAINING="$REMAINING
 - [ ] Run the test suite on Drupal 10 — Drupal 10 compatibility is verified statically only (PHPStan + php -l clean on Drupal $D10_MATRIX_VERSIONS); the runtime was not tested there."

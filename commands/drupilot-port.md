@@ -328,7 +328,13 @@ differences and phpstan-drupal advisory rules never fail a leg.
   `prefs_set DRUPILOT_CORE_TARGET_STRATEGY d11-only`) · **Keep it
   declared-not-verified** (recorded in the report). Re-run the matrix after a fix.
 - **`d10_support: verified-static`** — report it as a static verification
-  (PHPStan + `php -l` on Drupal 10.x.y); the runtime is not exercised there.
+  (PHPStan + `php -l` on Drupal 10.x.y, including the declared floor minor); the
+  runtime is not exercised there.
+- **`d10_support: verified-static-above-floor`** — clean, but only on a 10.x
+  newer than the declared floor (`d10_floor`; a `^10` leg resolves to the newest
+  10.x). Report that the floor itself was not checked: an API added after it
+  would still fatal there. Offer `verify-core-matrix.sh --cores <floor>,11`, or
+  raising the floor to the checked minor.
 - **A skipped leg** (network unavailable, a core that cannot install on the
   container PHP) — exit 0; `d10_support` stays `declared-not-verified`. Never
   block the port on it.
@@ -363,7 +369,8 @@ Summarize in English:
 - **Validation**: phpcbf/phpcs and phpstan status after the work (clean vs. what
   remains and why; sandbox-only PHPStan findings listed as such), the
   port-safety result (errors fixed, warnings reviewed), and the core matrix
-  verdict per leg (`d10_support`: verified-static / failed / declared-not-verified).
+  verdict per leg (`d10_support`: verified-static / verified-static-above-floor /
+  failed / declared-not-verified).
 - **Deferred to Phase 2**: anything non-mechanical (architecture, CKEditor 5 /
   jQuery UI rework, deeper API modernization) explicitly listed for
   `/drupilot-refactor`.

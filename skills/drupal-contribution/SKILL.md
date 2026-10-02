@@ -152,7 +152,9 @@ compatibility" is added to **Remaining tasks** — the dual-support claim must n
 be silently trusted in the issue. With `--subject`, `make-issue.sh` also reads the
 subject's fresh `verify-core-matrix.sh` result: when Drupal 10 is
 `verified-static` the item narrows to "run the test suite on Drupal 10" (static
-check passed on 10.x.y); when it `failed`, a "fix the Drupal 10
+check passed on 10.x.y); when it is `verified-static-above-floor` the item asks
+to verify the declared floor (only a newer 10.x was checked) and run the suite;
+when it `failed`, a "fix the Drupal 10
 incompatibilities, or drop `^10`" item is added even without the flag. A matrix
 computed on older sources is ignored (with a warning).
 

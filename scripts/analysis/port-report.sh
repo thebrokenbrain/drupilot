@@ -57,9 +57,11 @@
 # regressions, failures that pre-exist the port (flagging those that now fail
 # with a different message) and tests the port fixed.
 # d10_support: declared-not-verified | verified-static (PHPStan + php -l clean on
-# a Drupal 10 core, runtime not tested) | failed | n/a. A manifest
-# "declared-not-verified" is upgraded to the matrix's verified-static / failed
-# when a fresh core-matrix result exists.
+# a Drupal 10 core including the declared floor minor, runtime not tested) |
+# verified-static-above-floor (clean, but only on cores newer than the declared
+# floor, e.g. the newest 10.x for ^10) | failed | n/a. A manifest
+# "declared-not-verified" is upgraded to the matrix's verdict when a fresh
+# core-matrix result exists.
 # origin_hygiene is optional; without it the report runs origin-hygiene.sh
 # --check itself, and renders an "Origin hygiene" section only when a baseline
 # was recorded (place-subject.sh takes it before placing).
@@ -228,11 +230,12 @@ fi
 if [[ -n "$V_MATRIX" && "$MATRIX_STALE" == "false" ]]; then
   _mv="$(printf '%s' "$V_MATRIX" | jq -r '.d10_support // empty')"
   if [[ -z "$D10" || "$D10" == "declared-not-verified" ]]; then
-    case "$_mv" in verified-static|failed) D10="$_mv";; declared-not-verified) [[ -n "$D10" ]] || D10="$_mv";; esac
+    case "$_mv" in verified-static|verified-static-above-floor|failed) D10="$_mv";; declared-not-verified) [[ -n "$D10" ]] || D10="$_mv";; esac
   fi
 fi
-D10_VERSIONS=""
+D10_VERSIONS=""; D10_FLOOR=""
 [[ -n "$V_MATRIX" ]] && D10_VERSIONS="$(printf '%s' "$V_MATRIX" | jq -r '[.legs[]? | select(.core | test("^10(\\.|$)")) | (.version // .core)] | join(", ")')"
+[[ -n "$V_MATRIX" ]] && D10_FLOOR="$(printf '%s' "$V_MATRIX" | jq -r '.d10_floor // empty')"
 
 {
   printf '# Port report — %s\n\n' "$NAME"
@@ -266,6 +269,7 @@ D10_VERSIONS=""
     case "$D10" in
       declared-not-verified) printf 'The `^10` half is declared, not verified — run `verify-core-matrix.sh` (static check on a Drupal 10 core) and install/test on Drupal 10 before relying on it.';;
       verified-static) printf 'PHPStan + `php -l` are clean on Drupal %s (static verification by `verify-core-matrix.sh`); the runtime (the test suite) was not exercised on Drupal 10.' "${D10_VERSIONS:-10}";;
+      verified-static-above-floor) printf 'PHPStan + `php -l` are clean on Drupal %s only (static verification by `verify-core-matrix.sh`); the declared floor **Drupal %s was not checked**, so an API added after it would still fatal there. Check it with `verify-core-matrix.sh --cores %s` or raise the floor; the runtime (the test suite) was not exercised on Drupal 10.' "${D10_VERSIONS:-10}" "${D10_FLOOR:-10.0}" "${D10_FLOOR:-10.0}";;
       failed) printf '**The static check on Drupal %s found incompatibilities** — fix them the Drupal 10-safe way, raise the floor, or drop to `^11` (see "Core matrix" below).' "${D10_VERSIONS:-10}";;
     esac
     printf '\n\n'

@@ -301,7 +301,7 @@ Apply only the mechanical, behavior-preserving fixes:
     analysis against a real Drupal 10 core proves it. Relay the helper's
     `warnings` (if the port uses an API added in a later minor, it should be
     `^10.3 || ^11`; if absent from D10, `^11`), run §6a, and report the verdict it
-    returns (`verified-static` / `failed` / still `declared-not-verified` when it
+    returns (`verified-static` / `verified-static-above-floor` / `failed` / still `declared-not-verified` when it
     could not run). Carry the helper's `suggested_remaining_tasks` into the
     contribution issue (`make-issue.sh --d10-unverified`; it reads the matrix and
     narrows the item to "run the suite on Drupal 10" once the static check passed).
@@ -467,8 +467,13 @@ container, which checks the detected PHP floor for real.
   - **Keep it declared-not-verified** — record the failure in the report.
   An autonomous run takes the safe default: fix the code; if that is not
   mechanical, recommend dropping to `^11` in the report (no tab).
-- **`d10_support: verified-static`** — PHPStan + `php -l` are clean on Drupal 10;
-  report it as *static*: the runtime (the test suite on Drupal 10) is not exercised.
+- **`d10_support: verified-static`** — PHPStan + `php -l` are clean on Drupal 10,
+  including the declared floor minor; report it as *static*: the runtime (the
+  test suite on Drupal 10) is not exercised.
+- **`d10_support: verified-static-above-floor`** — clean only on a 10.x newer than
+  the declared floor (`d10_floor`; `^10` resolves to the newest 10.x): say the
+  floor itself was not checked (an API added after it still fatals there) and
+  offer `--cores <floor>,11` or raising the floor to the checked minor.
 - **A leg `skipped`** (no network, a core that cannot install on the container
   PHP) — exit 0, `d10_support` stays `declared-not-verified`; report the reason.
   Never block the port on it.

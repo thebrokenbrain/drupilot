@@ -86,10 +86,15 @@
 #           deprecations, sandbox_missing_dependency, test_only, advisory,
 #           findings:[{file, line, identifier, message, kind}]},
 #           lint:[{php, via, status, errors, files:[{file, error}]}]}],
-#    d10_support: verified-static|failed|declared-not-verified|n/a,
+#    d10_support: verified-static|verified-static-above-floor|failed|
+#                 declared-not-verified|n/a,
+#    d10_floor, d10_checked:[versions], d10_floor_checked,
 #    verdict: pass|fail|not-verified|off, tests_analysed, notes:[...]}
-#   d10_support is verified-static only when every Drupal 10 leg passed: PHPStan
-#   + php -l clean on that core — runtime (the test suite) is NOT exercised.
+#   d10_support is verified-static only when every Drupal 10 leg passed (PHPStan
+#   + php -l clean on that core — runtime, the test suite, is NOT exercised)
+#   AND one of them is the declared floor minor (d10_floor, e.g. 10.3 for
+#   ^10.3). A '^10' leg resolves to the newest 10.x, so a clean run there is
+#   verified-static-above-floor: the floor (10.0) itself was not checked.
 #
 # Gate: `test` profile (Docker + daemon + DDEV); the test-bed DDEV project is
 # started when stopped. Output: logs and the human table on STDERR.
@@ -794,6 +799,21 @@ D10_SUPPORT="$(printf '%s' "$LEGS_JSON" | jq -r '
 if [[ "$D10_SUPPORT" == "n/a" ]] && printf '%s' "$CORE_REQ" | grep -qE '(^|[^0-9])10([^0-9.]|\.|$)'; then
   D10_SUPPORT="declared-not-verified"
 fi
+# The declared Drupal 10 FLOOR (^10 -> 10.0, ^10.3 -> 10.3). A '^10' leg
+# resolves to the NEWEST 10.x, so a clean leg does not prove the floor: an API
+# added in 10.1-10.x passes there and still fatals on 10.0. verified-static is
+# kept for a run that checked the floor minor itself; otherwise the verdict is
+# verified-static-above-floor and names what was (not) checked.
+D10_FLOOR="$(core_verify_legs "$CORE_REQ" | awk -F. '$1 == "10" { print ($2 == "" ? "10.0" : $0); exit }')"
+D10_CHECKED="$(printf '%s' "$LEGS_JSON" | jq -c '[.[] | select(.core | test("^10(\\.|$)")) | select(.status == "pass") | (.version // .core)]')"
+D10_FLOOR_CHECKED="null"
+if [[ -n "$D10_FLOOR" ]]; then
+  D10_FLOOR_CHECKED="$(printf '%s' "$D10_CHECKED" | jq --arg f "$D10_FLOOR" \
+    'any(.[]; (split(".") | .[0:2] | join(".")) == $f)')"
+fi
+if [[ "$D10_SUPPORT" == "verified-static" && "$D10_FLOOR_CHECKED" == "false" ]]; then
+  D10_SUPPORT="verified-static-above-floor"
+fi
 VERDICT="$(printf '%s' "$LEGS_JSON" | jq -r '
   if any(.[]; .status == "fail") then "fail"
   elif all(.[]; .status == "pass") then "pass"
@@ -805,11 +825,14 @@ OUT="$(jq -n --arg s "$SUBJECT_ABS" --arg n "$NAME" --arg r "$ROOT" --arg req "$
   --arg lvl "$LEVEL" --arg php "$CONTAINER_PHP" --arg dg "$DIGEST" \
   --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson legs "$LEGS_JSON" \
   --arg d10 "$D10_SUPPORT" --arg v "$VERDICT" --argjson notes "$NOTES_JSON" \
+  --arg d10f "$D10_FLOOR" --argjson d10c "$D10_CHECKED" --argjson d10fc "$D10_FLOOR_CHECKED" \
   --argjson tests "$([[ "$EXCLUDE_TESTS" == 1 ]] && echo false || echo true)" \
   '{tool: "verify-core-matrix", subject: $s, machine_name: $n, drupal_root: $r,
     core_version_requirement: ($req | select(. != "") // null), level: $lvl,
     container_php: $php, subject_digest: $dg, generated_at: $at, dry_run: false,
-    legs: $legs, d10_support: $d10, verdict: $v, tests_analysed: $tests, notes: $notes}')"
+    legs: $legs, d10_support: $d10,
+    d10_floor: ($d10f | select(. != "") // null), d10_checked: $d10c, d10_floor_checked: $d10fc,
+    verdict: $v, tests_analysed: $tests, notes: $notes}')"
 printf '%s\n' "$OUT" > "$STATE_FILE" 2>/dev/null || log_warn "Could not persist $STATE_FILE."
 
 # --- Human summary (STDERR) -------------------------------------------------------
@@ -822,7 +845,11 @@ printf '%s' "$OUT" | jq -r '.legs[] |
   + "\n    php -l : " + ([.lint[] | "PHP \(.php) \(.status)" + (if .errors > 0 then " (\(.errors) file(s))" else "" end)] | join(", "))
   + ([.phpstan.findings[] | select(.kind == "incompatible") | "\n      ✗ \(.file):\(.line) \(.message | split("\n")[0])"] | .[0:10] | join(""))
   + ([.lint[] | .php as $p | .files[]? | "\n      ✗ php -l (PHP \($p)) \(.file): \(.error)"] | .[0:10] | join(""))' >&2
-log_plain "  Drupal 10 support: $D10_SUPPORT"
+if [[ "$D10_SUPPORT" == "verified-static-above-floor" ]]; then
+  log_plain "  Drupal 10 support: $D10_SUPPORT (clean on $(printf '%s' "$D10_CHECKED" | jq -r 'join(", ")'); the declared floor $D10_FLOOR was NOT checked: an API newer than $D10_FLOOR would still fatal there)"
+else
+  log_plain "  Drupal 10 support: $D10_SUPPORT"
+fi
 case "$VERDICT" in
   pass) log_ok "Every core leg passed (static: PHPStan + php -l; runtime not exercised).";;
   fail) log_err "At least one core leg FAILED: the declared core range is not met. Fix the code the core-safe way, raise the floor, or drop the failing major.";;

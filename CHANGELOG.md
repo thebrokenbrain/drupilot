@@ -414,6 +414,15 @@ tag the commit `vX.Y.Z`.
   PHPCS reports a processing error instead of counting it as a violation.
 
 ### Fixed
+- **The core matrix called a `^10` module "verified-static" after checking only
+  the newest 10.x.** A `^10` leg resolves to the latest 10.x (10.6), so a call
+  to an API added in 10.1-10.6 passed while 10.0 would fatal, and `--cores
+  10.3,11` on a `^10` module printed "verified-static" too. `verify-core-matrix.sh`
+  now reports `verified-static` only when a clean leg is the declared floor
+  minor; otherwise `d10_support` is the new `verified-static-above-floor`, and
+  the JSON adds `d10_floor`, `d10_checked` and `d10_floor_checked`.
+  `port-report.md` says the floor was not checked, and `make-issue.sh` keeps a
+  "verify the declared Drupal 10 floor" remaining task.
 - **A hook's phpcs task could be recorded as passing although its ruleset never
   ran.** An explicit `run-phpcs.sh --ruleset PATH` that PHPCS could not load
   (e.g. it references PHPCompatibility, absent from the test-bed) only warned
