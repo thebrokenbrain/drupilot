@@ -414,6 +414,11 @@ tag the commit `vX.Y.Z`.
   PHPCS reports a processing error instead of counting it as a violation.
 
 ### Fixed
+- **`render-templates.sh --dry-run --json` reported `restart_needed: false`
+  for a testing YAML it would write, replace or upgrade.** The real run then
+  said `true`. The dry run now sets `restart_needed` for `would-write` /
+  `would-replace` / `would-upgrade` of `.ddev/config.testing.yaml`, so a preview
+  announces the `ddev restart` the change will need.
 - **The core matrix called a `^10` module "verified-static" after checking only
   the newest 10.x.** A `^10` leg resolves to the latest 10.x (10.6), so a call
   to an API added in 10.1-10.6 passed while 10.0 would fatal, and `--cores

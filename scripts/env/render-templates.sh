@@ -68,7 +68,9 @@
 #   is rejected with a clear error instead of being treated as a path.
 #
 # restart_needed is true when .ddev/config.testing.yaml was written, replaced or
-# upgraded (run `ddev restart` so the web container picks it up).
+# upgraded (run `ddev restart` so the web container picks it up) — and, with
+# --dry-run, when it WOULD be (would-write / would-replace / would-upgrade), so
+# the preview announces the restart the real run will need.
 #
 # Exit codes: 0 ok · 1 usage/error · 3 a file differs (not replaced without
 # --force) or a rendered file failed validation.
@@ -368,7 +370,9 @@ for name in $SELECTED; do
       fi
     fi
     if [[ "$name" == "testing" ]]; then
-      case "$status" in written|replaced|upgraded) RESTART=1;; esac
+      # A dry run reports the restart the planned change WILL need, so a caller
+      # planning from it is not told the opposite of the real run.
+      case "$status" in written|replaced|upgraded|would-write|would-replace|would-upgrade) RESTART=1;; esac
     fi
   fi
 
@@ -376,7 +380,13 @@ for name in $SELECTED; do
   FILES_JSON="${FILES_JSON:+$FILES_JSON,}$entry"
 done
 
-[[ "$RESTART" == "1" ]] && log_info ".ddev/config.testing.yaml changed: run 'ddev restart' so the web container picks it up."
+if [[ "$RESTART" == "1" ]]; then
+  if [[ "$DRY" == "1" ]]; then
+    log_info ".ddev/config.testing.yaml would change: applying it needs a 'ddev restart' so the web container picks it up."
+  else
+    log_info ".ddev/config.testing.yaml changed: run 'ddev restart' so the web container picks it up."
+  fi
+fi
 
 if [[ "$AS_JSON" == "1" ]]; then
   ok=true; [[ "$RC" == "0" ]] || ok=false
