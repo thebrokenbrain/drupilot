@@ -338,6 +338,11 @@ tag the commit `vX.Y.Z`.
   documented the intentional cases inline (`HAS_*` in `preflight.sh`, the
   compatibility `--ready-test`/`--ready-contribute` flags in `next-step.sh`, the
   runner word-split in `run-phpunit.sh`).
+- **`check-port-safety.sh` scanned nothing when the subject was a symlink**
+  (`DRUPILOT_PLACEMENT=symlink`): `find` does not descend into a symlinked
+  starting point, so the gate reported "0 PHP file(s)" and passed. The subject is
+  now scanned (and matched against git) by its physical path; its logical path
+  is still used to locate the Drupal root it sits in.
 
 ## [0.8.4] - 2026-06-23
 

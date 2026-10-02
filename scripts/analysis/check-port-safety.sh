@@ -116,8 +116,15 @@ done
 
 [[ -n "$SUBJECT" ]] || die "Missing --subject DIR (the module/theme to check)." 1
 case "$SUBJECT" in *"<"*">"*) die "--subject looks like an unsubstituted placeholder: '$SUBJECT'." 1;; esac
-SUBJECT_ABS="$(cd "$SUBJECT" 2>/dev/null && pwd || true)"
-[[ -n "$SUBJECT_ABS" && -d "$SUBJECT_ABS" ]] || die "Subject directory not found: '$SUBJECT'." 1
+# Two spellings of the subject: the logical path (may end in a symlink, e.g. a
+# DRUPILOT_PLACEMENT=symlink test-bed) locates the Drupal root it sits in; the
+# physical path is what gets scanned. `find` does not descend into a symlinked
+# starting point, and git reports the physical toplevel, so scanning, rel()
+# and the git pathspecs must all use the physical spelling.
+SUBJECT_LOGICAL="$(cd "$SUBJECT" 2>/dev/null && pwd || true)"
+[[ -n "$SUBJECT_LOGICAL" && -d "$SUBJECT_LOGICAL" ]] || die "Subject directory not found: '$SUBJECT'." 1
+SUBJECT_ABS="$(cd "$SUBJECT" 2>/dev/null && pwd -P || true)"
+[[ -n "$SUBJECT_ABS" ]] || SUBJECT_ABS="$SUBJECT_LOGICAL"
 have_cmd jq || die "jq is required for check-port-safety.sh." 1
 CFG="$(plugin_root)/config/port-checks.json"
 [[ -f "$CFG" ]] || die "Missing $CFG." 1
@@ -137,7 +144,8 @@ if [[ -n "$ROOT_OPT" ]]; then
   DRUPAL_ROOT="$(cd "$ROOT_OPT" 2>/dev/null && pwd || true)"
   [[ -n "$DRUPAL_ROOT" ]] || die "--drupal-root not found: '$ROOT_OPT'." 1
 else
-  DRUPAL_ROOT="$(find_drupal_root "$SUBJECT_ABS" 2>/dev/null || true)"
+  DRUPAL_ROOT="$(find_drupal_root "$SUBJECT_LOGICAL" 2>/dev/null || true)"
+  [[ -n "$DRUPAL_ROOT" ]] || DRUPAL_ROOT="$(find_drupal_root "$SUBJECT_ABS" 2>/dev/null || true)"
 fi
 DOCROOT=""
 if [[ -n "$DRUPAL_ROOT" ]]; then
