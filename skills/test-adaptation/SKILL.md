@@ -119,11 +119,13 @@ tree in §5).
 
 ## 4. Ensure the JS test prerequisites (Selenium + Mink)
 
-FunctionalJavascript tests need the Selenium add-on (v2) and the
-`MINK_DRIVER_ARGS_WEBDRIVER` environment from PROMPT 2.5, written to a separate
-`.ddev/config.testing.yaml -> web_environment` (ddev-drupal-contrib already
-supplies `SIMPLETEST_BASE_URL=http://web` and the DB/browsertest vars; keep the
-MINK value's escaped-quote form so `ddev start` stays valid). If JS tests exist:
+FunctionalJavascript tests need the Selenium add-on (v2), which supplies
+`MINK_DRIVER_ARGS_WEBDRIVER` (with `"w3c":true`) itself; ddev-drupal-contrib
+supplies `SIMPLETEST_BASE_URL=http://web` and the DB/browsertest vars, and
+drupilot's separate `.ddev/config.testing.yaml` adds only
+`SYMFONY_DEPRECATIONS_HELPER`. Do not override the MINK value there: Drupal
+11.4 forces `w3c` to false when it is missing and every JS session then fails
+with "No nodes support the capabilities in the request". If JS tests exist:
 
 ```bash
 bash "$ROOT/scripts/env/ddev-add-ons.sh" --selenium
@@ -245,8 +247,10 @@ re-running; do not write a second record under a different name.
 
 - `KernelTestBase` needs the modules' dependencies installed in the test DB
   schema; a missing `static $modules` entry is the most common Kernel failure.
-- JS tests are flaky without the right `MINK_DRIVER_ARGS_WEBDRIVER` host — read
-  the generated YAML, never assume `selenium-chrome` vs `selenium-chrome-2`.
+- JS tests fail without the right `MINK_DRIVER_ARGS_WEBDRIVER` — check it with
+  `ddev exec printenv MINK_DRIVER_ARGS_WEBDRIVER`: it must carry `"w3c":true` and
+  the host from the generated YAML (never assume `selenium-chrome` vs
+  `selenium-chrome-2`).
 - `SYMFONY_DEPRECATIONS_HELPER=disabled` (PROMPT 2.5) keeps deprecation notices
   from failing the run while you port; do not rely on it to mask *your* new
   deprecations — those belong to the port/refactor skills to remove.

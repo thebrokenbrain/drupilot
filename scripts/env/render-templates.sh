@@ -13,8 +13,10 @@
 # 8.5 -> php84), {{DRUPAL_TARGET}} (resolve_drupal_target),
 # {{PHPSTAN_LEVEL}} (DRUPILOT_PHPSTAN_LEVEL, default 2) and {{WEBDRIVER_HOST}}
 # (the Selenium service read from .ddev/docker-compose.selenium-chrome.yaml,
-# default selenium-chrome:4444). Substitution is literal (render_template in
-# common.sh), so no path character can break it.
+# default selenium-chrome:4444; no current template uses it — the testing
+# template leaves MINK_DRIVER_ARGS_WEBDRIVER to the Selenium add-on — but
+# --set WEBDRIVER_HOST=... is still accepted). Substitution is literal
+# (render_template in common.sh), so no path character can break it.
 #
 # Every rendered file is validated BEFORE it is written: no {{TOKEN}} may be
 # left, phpcs.xml.dist must be well-formed XML (`xmllint --noout`; without
@@ -65,8 +67,8 @@
 #   A value that is still an unsubstituted <placeholder> (e.g. "<drupal_root>")
 #   is rejected with a clear error instead of being treated as a path.
 #
-# restart_needed is true when .ddev/config.testing.yaml was written or replaced
-# (run `ddev restart` so the web container picks it up).
+# restart_needed is true when .ddev/config.testing.yaml was written, replaced or
+# upgraded (run `ddev restart` so the web container picks it up).
 #
 # Exit codes: 0 ok · 1 usage/error · 3 a file differs (not replaced without
 # --force) or a rendered file failed validation.
@@ -366,7 +368,7 @@ for name in $SELECTED; do
       fi
     fi
     if [[ "$name" == "testing" ]]; then
-      case "$status" in written|replaced) RESTART=1;; esac
+      case "$status" in written|replaced|upgraded) RESTART=1;; esac
     fi
   fi
 

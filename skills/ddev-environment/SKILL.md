@@ -286,28 +286,35 @@ rector,phpstan,phpcs,testing` limits the set; `--set KEY=VALUE` overrides a toke
 | `phpstan.neon.tmpl` | `phpstan.neon` | `{{PHPSTAN_LEVEL}}`, `{{SUBJECT_PATH}}` |
 | `phpcs.xml.dist.tmpl` | `phpcs.xml.dist` | `{{SUBJECT_PATH}}` |
 | `ddev-config.yaml.tmpl` | (reference for `.ddev/config.yaml`) | `{{PROJECT_NAME}}`, `{{PHP_TARGET}}` |
-| `ddev-web-environment.yaml.tmpl` | `.ddev/config.testing.yaml` (separate file) | `{{WEBDRIVER_HOST}}` |
+| `ddev-web-environment.yaml.tmpl` | `.ddev/config.testing.yaml` (separate file) | — |
 
 `ddev-config.yaml.tmpl` is reference only (`ddev-up.sh` configures the project);
 `render-templates.sh` renders the other four.
 
 `{{SUBJECT_PATH}}` is the in-docroot path, e.g. `web/modules/custom/foo`.
 `{{PHP_TARGET}}` = `resolve_php_target`; `{{PHPSTAN_LEVEL}}` =
-`DRUPILOT_PHPSTAN_LEVEL` (default 2 for Phase 1); `{{WEBDRIVER_HOST}}` is read
-from `.ddev/docker-compose.selenium-chrome.yaml` (default `selenium-chrome:4444`).
+`DRUPILOT_PHPSTAN_LEVEL` (default 2 for Phase 1). `{{WEBDRIVER_HOST}}` (read
+from `.ddev/docker-compose.selenium-chrome.yaml`, default `selenium-chrome:4444`)
+is still accepted by `--set` but no current template uses it.
 The generated `phpstan.neon` intentionally has no `drupal: drupal_root:` block:
 phpstan-drupal >= 1.3 discovers the root itself and deprecates that parameter.
 
 Write the testing `web_environment:` to a SEPARATE `.ddev/config.testing.yaml` so
-it merges with what ddev-drupal-contrib already provides (`SIMPLETEST_DB`,
-`SIMPLETEST_BASE_URL=http://web`, `BROWSERTEST_*`, `DTT_*`,
-`DRUPAL_TEST_WEBDRIVER_*`). The template adds only `MINK_DRIVER_ARGS_WEBDRIVER`
-(Drupal core's WebDriverTestBase) and `SYMFONY_DEPRECATIONS_HELPER=disabled`.
-The renderer reads `.ddev/docker-compose.selenium-chrome.yaml` for the real
-webdriver host (typically `selenium-chrome:4444`) instead of assuming it. Keep the template's
-escaped-quote / YAML single-quote form for the MINK value verbatim: DDEV wraps
-each web_environment value in double quotes WITHOUT escaping the inner quotes, so
-a raw JSON value produces invalid compose YAML ("did not find expected key") and
+it merges with what the add-ons already provide: ddev-drupal-contrib
+(`SIMPLETEST_DB`, `SIMPLETEST_BASE_URL=http://web`, `BROWSERTEST_*`, `DTT_*`)
+and the Selenium add-on (`MINK_DRIVER_ARGS_WEBDRIVER` with `"w3c":true`,
+`DRUPAL_TEST_WEBDRIVER_*`). The template adds only
+`SYMFONY_DEPRECATIONS_HELPER=disabled`. It deliberately does NOT set
+`MINK_DRIVER_ARGS_WEBDRIVER`: DDEV loads `config.testing.yaml` after the add-on's
+`config.selenium-standalone-chrome.yaml`, so an override replaces the add-on's
+working value, and Drupal 11.4's `WebDriverTestBase::getMinkDriverArgs()` forces
+`w3c` to false when the value omits it (deprecated in drupal:11.4.0,
+https://www.drupal.org/node/3460567) — the Selenium image then refuses every
+FunctionalJavascript session. A copy rendered by an older template is upgraded
+automatically (template marker). If you ever hand-write a MINK value, include
+`"w3c":true` and keep the escaped-quote / YAML single-quote form: DDEV wraps each
+web_environment value in double quotes WITHOUT escaping the inner quotes, so a
+raw JSON value produces invalid compose YAML ("did not find expected key") and
 `ddev start` fails. When the JSON says `restart_needed: true`, run `ddev restart`.
 
 ## 8. Verify and report

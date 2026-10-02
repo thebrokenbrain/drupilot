@@ -418,6 +418,18 @@ tag the commit `vX.Y.Z`.
   `run-upgrade-status.sh` when their gate failed, so a caller parsing `--json`
   got the report instead of a payload. It goes to stderr now, as in
   `ddev-up.sh` and `run-phpunit.sh`.
+- **Every FunctionalJavascript test failed to open a browser session** ("No
+  nodes support the capabilities in the request"). The rendered
+  `.ddev/config.testing.yaml` re-declared `MINK_DRIVER_ARGS_WEBDRIVER` without
+  `"w3c":true`; DDEV loads it after the Selenium add-on's config, so it replaced
+  the add-on's working value, and Drupal 11.4's `WebDriverTestBase` forces `w3c`
+  to false when the value omits it. The template no longer sets the variable
+  (the add-on owns it) and only adds `SYMFONY_DEPRECATIONS_HELPER`. It now
+  carries `drupilot-template-version: 2`, so `render-templates.sh` upgrades an
+  older generated copy on its own (after a backup), and an upgrade now reports
+  `restart_needed: true` like a write does. The header no longer prints its own
+  substituted Selenium host ("selenium-chrome:4444 is the ... e.g.
+  selenium-chrome:4444").
 
 ## [0.8.4] - 2026-06-23
 

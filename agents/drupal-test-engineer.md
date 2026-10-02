@@ -62,18 +62,23 @@ All output you produce — messages, summaries, coverage reports — is in **Eng
   **v2** Selenium add-on: `ddev/ddev-selenium-standalone-chrome`.
 - **Testing environment variables**: `ddev-drupal-contrib` already provides
   `SIMPLETEST_DB`, `SIMPLETEST_BASE_URL=http://web`, `BROWSERTEST_*` and `DTT_*`
-  in its `config.contrib.yaml`. Add only the rest in a SEPARATE
-  `.ddev/config.testing.yaml` (PROMPT §2.5):
+  in its `config.contrib.yaml`, and the Selenium add-on provides
+  `MINK_DRIVER_ARGS_WEBDRIVER` (with `"w3c":true`). drupilot's SEPARATE
+  `.ddev/config.testing.yaml` (rendered by `render-templates.sh`) adds only:
   ```yaml
   web_environment:
-    - 'MINK_DRIVER_ARGS_WEBDRIVER=[\"chrome\",{\"browserName\":\"chrome\",\"goog:chromeOptions\":{\"args\":[\"--disable-gpu\",\"--headless\",\"--no-sandbox\"]}},\"http://selenium-chrome:4444/wd/hub\"]'
     - SYMFONY_DEPRECATIONS_HELPER=disabled
   ```
-  The MINK value MUST keep its inner double quotes escaped (`\"`) inside YAML
-  single quotes: DDEV serializes `web_environment` into the generated
-  docker-compose wrapped in double quotes WITHOUT escaping inner quotes, so a raw
-  JSON value makes `ddev start` fail ("did not find expected key"). The webdriver
-  hostname (and a PHP 8.5 image) depend on the add-on / DDEV version: **read the
+  Never re-declare `MINK_DRIVER_ARGS_WEBDRIVER` there: that file loads after the
+  add-on's and would replace its value; Drupal 11.4's
+  `WebDriverTestBase::getMinkDriverArgs()` forces `w3c` to false when the value
+  omits it, and the Selenium image then answers "No nodes support the
+  capabilities in the request" for every FunctionalJavascript test. If you must
+  hand-write a MINK value, include `"w3c":true` and keep its inner double quotes
+  escaped (`\"`) inside YAML single quotes: DDEV serializes `web_environment` into
+  the generated docker-compose wrapped in double quotes WITHOUT escaping inner
+  quotes, so a raw JSON value makes `ddev start` fail ("did not find expected
+  key"). The webdriver hostname (and a PHP 8.5 image) depend on the add-on / DDEV version: **read the
   generated `.ddev/docker-compose.selenium-chrome.yaml`** rather than assuming.
 - **Running tests** (PROMPT §2.5):
   ```bash

@@ -220,14 +220,19 @@ It renders, validates and writes, at the Drupal root:
 - `templates/ddev-web-environment.yaml.tmpl` -> a SEPARATE `.ddev/config.testing.yaml`
   (never merged into the generated `config.yaml`). ddev-drupal-contrib already provides
   `SIMPLETEST_DB`, `SIMPLETEST_BASE_URL=http://web`, `BROWSERTEST_*` and `DTT_*` in its
-  `config.contrib.yaml`; this file only adds `MINK_DRIVER_ARGS_WEBDRIVER` and
-  `SYMFONY_DEPRECATIONS_HELPER`, so it merges cleanly instead of clobbering them.
+  `config.contrib.yaml`, and the Selenium add-on provides `MINK_DRIVER_ARGS_WEBDRIVER`
+  (with `"w3c":true`) in its own config; this file only adds `SYMFONY_DEPRECATIONS_HELPER`,
+  so it merges cleanly instead of clobbering them. It must NOT re-declare
+  `MINK_DRIVER_ARGS_WEBDRIVER`: it loads after the add-on's file and would replace its
+  working value (Drupal 11.4 forces `w3c` to false when the value omits it, and the
+  Selenium image then refuses every FunctionalJavascript session). An older generated
+  copy is upgraded automatically; run `ddev restart` when `restart_needed` is true.
 
 Token values come from the resolved config: `{{PHP_TARGET}}` (`resolve_php_target`), `{{PHP_SET}}`
 (the Rector `->withPhpSets()` argument derived from it: `php83`/`php84`),
-`{{DRUPAL_TARGET}}`, `{{PHPSTAN_LEVEL}}` (`DRUPILOT_PHPSTAN_LEVEL`), `{{SUBJECT_PATH}}`
-and `{{WEBDRIVER_HOST}}`, which the script reads from the generated
-`.ddev/docker-compose.selenium-chrome.yaml` (typically `selenium-chrome:4444`). Override one
+`{{DRUPAL_TARGET}}`, `{{PHPSTAN_LEVEL}}` (`DRUPILOT_PHPSTAN_LEVEL`) and `{{SUBJECT_PATH}}`
+(`{{WEBDRIVER_HOST}}` is still resolved and accepted by `--set`, but no current template
+uses it). Override one
 with `--set KEY=VALUE` only if it is genuinely wrong. Use `--dry-run` to preview.
 
 Read the JSON (`files[].status`, `ok`, `restart_needed`) and act on it:

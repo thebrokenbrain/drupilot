@@ -221,8 +221,8 @@ fi
 # Reminder: read the generated config for the real webdriver host (PROMPT 2.5).
 # ---------------------------------------------------------------------------
 if [[ "$WANT_SELENIUM" == "1" && "$SELENIUM_OK" == "1" ]]; then
-  log_info "When configuring MINK_DRIVER_ARGS_WEBDRIVER, read the generated DDEV YAML for the real"
-  log_info "webdriver host instead of assuming 'selenium-chrome' (PROMPT 2.5 / 7.1)."
+  log_info "The Selenium add-on sets MINK_DRIVER_ARGS_WEBDRIVER (with \"w3c\":true); do not override it."
+  log_info "Read the generated DDEV YAML for the real webdriver host instead of assuming 'selenium-chrome' (PROMPT 2.5 / 7.1)."
 fi
 
 # Record the installed add-on versions in the reproducibility lockfile (best-effort).
