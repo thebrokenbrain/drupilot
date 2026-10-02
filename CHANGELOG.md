@@ -97,6 +97,43 @@ tag the commit `vX.Y.Z`.
   `toolchain_reference_version`, `installed_package_version`.
 - **`DRUPILOT_TOOLCHAIN_SOURCE`** (`auto` / `reference` / `range`), validated
   non-fatally by `preflight.sh`.
+- **`scripts/analysis/check-port-safety.sh` — deterministic post-port safety
+  checks** (read-only, no toolchain, bash 3.2 + POSIX awk). Flags a class with
+  `create()` that does not implement `ContainerFactoryPluginInterface` (4-arg) /
+  `ContainerInjectionInterface` (1-arg) itself or through its real ancestry, read
+  from the Drupal root's core/contrib (a small verified fallback list covers a
+  missing root); a `use` the port removed while still referenced; `new self(` in
+  `create()` of a non-final class; first-class callables/closures under Form/Render
+  API callback keys; `private`/`readonly` properties in classes using
+  `DependencySerializationTrait`; `#[\Override]` while the core range still spans
+  Drupal 10; and services/routing/PSR-4 class names whose case differs from the
+  file. Every finding is attributed to the port or marked pre-existing by diffing
+  against the same base as `make-patch.sh --local` (`--base REF` overrides), and
+  its severity comes from the per-check matrix in the new `config/port-checks.json`.
+  Tagged lines or `--json`; exit 3 on error findings. Wired as a gate into
+  `/drupilot-port` (Step 7), `/drupilot-refactor` (Step 5), the `minimal-port` /
+  `full-refactor` skills and the orchestrator's definition of done.
+- **`scripts/lib/php-scan.sh`** — shared PHP class heuristics (namespace, imports,
+  class headers, traits, methods with parameter counts, properties incl. promoted
+  ones, `new self`/`new static`, `#[\Override]`) for analysis scripts.
+- **`git_port_base_ref` in `common.sh`** — the pre-port git base (upstream, then
+  `origin/HEAD`, then `HEAD`); `make-patch.sh --local` now uses it (same
+  semantics) so the patch and the port-safety checks judge the same diff.
+- **Port-safety rules in the prompts** (`minimal-port` §0, `full-refactor`,
+  `drupal-port-orchestrator`): never remove `ContainerFactoryPluginInterface` from
+  a class with `create()` (`QueueWorkerBase`, `BlockBase`, `FilterBase`,
+  `ActionBase`, `ConditionPluginBase`, core `PluginBase` do not provide it), never
+  drop a still-referenced `use`, never `new static` → `new self`, never "fix" a
+  sandbox PHPStan finding by changing semantics (sandbox-only findings are
+  documented), symbols newer than the kept core floor only via
+  `DeprecationHelper::backwardsCompatibleCall()`, promoted services `protected`
+  (never `private`/`readonly`) in serialized classes, `#[\Override]` only when
+  true on every declared core.
+- **`run-rector.sh --json` gains `rules`** — the sorted rule names from Rector's
+  "Applied rules" sections (existing keys unchanged).
+- **Port report: optional `port_safety` manifest section** (the checker's JSON)
+  rendered as "Port-safety checks"; `config/deprecations.json` explains the
+  checker's tags (new `port-safety` / `serialization` categories).
 ### Changed
 - **`rector/rector` is an explicit toolchain package** (`.packages.rector`,
   `^2.0 <2.6.2`), so it is installed with a range that excludes the releases that
@@ -109,6 +146,25 @@ tag the commit `vX.Y.Z`.
   `render-templates.sh`.
 
 ### Fixed
+- **Rector broke Form API callbacks and Drupal 10 compatibility.** The template
+  `rector.php` enabled the whole PHP 8.x level set, whose
+  `ArrayToFirstClassCallableRector` turned `[$this, 'method']` under `#ajax`,
+  `#submit`, `#validate`, `#element_validate` ... into `$this->method(...)`
+  closures (not serializable: cached/AJAX forms fatal),
+  `AddOverrideAttributeToOverriddenMethodsRector` added `#[\Override]` against
+  the sandbox core only (e.g. `buildRevisionCacheId()`, a parent method only from
+  11.3 — a compile-time fatal on Drupal 10 / PHP 8.3+), `ReadOnlyPropertyRector`
+  / `ReadOnlyClassRector` made properties readonly (breaks
+  `DependencySerializationTrait::__wakeup()`), and `NullToStrictStringFuncCallArgRector`
+  added `(string)` casts. These rules are now skipped (class_exists-filtered so the
+  config loads on any Rector 2.x); `FunctionFirstClassCallableRector` stays — it
+  only rewrites string arguments of PHP built-ins typed `callable`, never a Form
+  API array. The template carries `drupilot-template-version: 2`; `run-rector.sh`
+  backs up and regenerates a `rector.php` from an older drupilot template, and
+  warns when a hand-written one does not skip `ArrayToFirstClassCallableRector`.
+- **Doc drift:** the `minimal-port` skill, `/drupilot-port` and the orchestrator
+  claimed `Drupal11SetList::DRUPAL_11` was applied; the template uses `DRUPAL_10`
+  only.
 - **`run-rector.sh` swallowed Rector crashes.** Each pass ran as `... || true`,
   so `[ERROR] Could not detect twig set.` (rector/rector >= 2.6.2 with
   drupal-rector 0.21.2) or a PHP fatal (rector 2.5.2 with PHPStan 2.2.16) was

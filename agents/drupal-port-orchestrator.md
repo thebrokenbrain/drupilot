@@ -34,7 +34,18 @@ All output you produce — messages, summaries, plans — is in **English**.
    when the user explicitly asks for it. Never slide from Phase 1 into Phase 2 on
    your own.
 2. **Preserve original functionality** in Phase 1. Make the smallest changes that
-   make the subject run on D11 without colliding with native D11 APIs.
+   make the subject run on D11 without colliding with native D11 APIs. Port-safety
+   rules (both phases; details in `minimal-port` §0): never remove
+   `implements ContainerFactoryPluginInterface`/`ContainerInjectionInterface` from
+   a class that defines `create()` (`QueueWorkerBase`, `BlockBase`, `FilterBase`,
+   `ActionBase`, `ConditionPluginBase` and core `PluginBase` do NOT provide it);
+   never drop a `use` whose short name is still referenced; never change
+   `new static` to `new self` in `create()`; never turn Form/Render API callbacks
+   into closures/first-class callables; no `private`/`readonly` properties in
+   serialized classes; a sandbox PHPStan finding is never "fixed" by changing
+   semantics unless the original project tolerates it (sandbox-only findings
+   are documented, not patched); symbols newer than the kept core floor only
+   through `DeprecationHelper::backwardsCompatibleCall()`.
 3. **Viability is a decision gate, not a veto.** Before porting, an assessment must
    exist. If the effort exceeds `DRUPILOT_VIABILITY_THRESHOLD`, flag it clearly but
    **still deliver a staged plan** and let the developer decide. drupilot never
@@ -61,8 +72,13 @@ All output you produce — messages, summaries, plans — is in **English**.
   runtime, never assume.
 - **drupal-rector**: `palantirnet/drupal-rector` **0.21.x** (community-maintained;
   the `palantirnet/` namespace is kept, `palantirnet/drupal8-rector` is obsolete).
-  Covers D10.0 -> D11.4 deprecations. Sets: `Drupal10SetList::DRUPAL_10`,
-  `Drupal11SetList::DRUPAL_11`.
+  Covers D10.0 -> D11.4 deprecations. drupilot's `rector.php` uses
+  `Drupal10SetList::DRUPAL_10` (APIs removed in D11) plus the target PHP set
+  minus the risky rules it skips (`ArrayToFirstClassCallableRector`,
+  `AddOverrideAttributeToOverriddenMethodsRector`, `ReadOnlyPropertyRector`,
+  `ReadOnlyClassRector`, `NullToStrictStringFuncCallArgRector`);
+  `Drupal11SetList::DRUPAL_11` (D11 deprecations, for a future D12 port) is not
+  included.
 - **drupal-digests** (`dbuytaert/drupal-digests`): a complementary, AI-generated
   Rector rule layer. **It is a Git repo, NOT a Composer package. No license** ->
   clone into a runtime cache, never vendor or redistribute. Experimental: dry-run ->
@@ -201,8 +217,8 @@ so plainly, but always hand over the staged plan and let the user choose.
 ### Stage 3 — port (gate: `analyze`; Phase 1) — minimal compatibility
 
 Use the `minimal-port` skill. Three passes (PROMPT §5.4):
-1. **Official Rector** — `palantirnet/drupal-rector` with `DRUPAL_10` + `DRUPAL_11`
-   and the PHP set for the target.
+1. **Official Rector** — `palantirnet/drupal-rector` with `DRUPAL_10` and the PHP
+   set for the target (minus the risky rules the template skips).
 2. **Complementary digests rules (optional)** — only if
    `DRUPILOT_USE_DIGESTS_RULES=true`. Clone/update the digests cache,
    **filter out** rules whose target API does not exist in the supported core range
@@ -218,8 +234,11 @@ add `"require": { "php": "<require_php>" }` to `composer.json` using the exact
 value returned (`DRUPILOT_REQUIRE_PHP_FLOOR` controls whether it is the real
 detected floor or `>=<target>`). Apply
 the remaining mechanical Twig/CKEditor/jQuery fixes. After each batch, run
-`phpcbf` + `phpcs` + `phpstan` and leave the subject compiling **without blocking
-deprecations**. No architectural changes. Report the summarized diff, which rules
+`phpcbf` + `phpcs` + `phpstan` + `scripts/analysis/check-port-safety.sh --subject
+<path> --json` and leave the subject compiling **without blocking deprecations**
+and with the port-safety check at exit 0 (exit 3 = error findings: fix them — in
+autonomous mode too, restoring the interface/`use`/`new static`/array callable —
+never ignore them). No architectural changes. Report the summarized diff, which rules
 (official/digests/ad-hoc) were applied, and what is deferred to Phase 2.
 
 When the subject validates, write the local preview patch (offline, git-only;
@@ -233,7 +252,9 @@ before any contribution.
 Only when the user explicitly opts in (this includes autonomous mode, which opts
 in by design). Use the `full-refactor` skill: PHP 8 attribute plugins, dependency
 injection, strict typing, modern APIs, zero deprecations, raise PHPStan to level
-5-6, and clean `Drupal` + `DrupalPractice`. **Coordinate closely with
+5-6, and clean `Drupal` + `DrupalPractice`, with `check-port-safety.sh` at exit 0
+(promoted services stay `protected`, never `private`/`readonly`, in serialized
+classes). **Coordinate closely with
 `drupal-test-engineer`** so the suite stays/turns green as the architecture
 changes. Explain every significant change. When done, **refresh the local patch**
 (`make-patch.sh --local --subject <path>`) so it reflects the refactor.
@@ -280,5 +301,6 @@ state/caching, and presenting verdicts and next steps.
 
 Before declaring a subject ported, ensure: `info.yml` is D11-compatible, `phpstan`
 shows no deprecations at the target level, `phpcs Drupal,DrupalPractice` is clean,
-and the applicable test suite is green. Always end with a concise English summary:
+`check-port-safety.sh --subject <path>` exits 0, and the applicable test suite is
+green. Always end with a concise English summary:
 current phase, what changed, gate status, and the suggested next step.

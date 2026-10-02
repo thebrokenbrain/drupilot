@@ -180,25 +180,10 @@ if [[ "$LOCAL" == "1" ]]; then
     log_step "Local patch: $MODULE (preview of the port, scoped to $PATHSPEC)"
   fi
 
-  # Resolve the base ref WITHOUT touching the network or the working tree.
-  BASE_REF=""
-  if [[ -n "$BASE" ]]; then
-    if git -C "$REPO" rev-parse --verify --quiet "origin/$BASE" >/dev/null 2>&1; then
-      BASE_REF="origin/$BASE"
-    elif git -C "$REPO" rev-parse --verify --quiet "$BASE" >/dev/null 2>&1; then
-      BASE_REF="$BASE"
-    else
-      die "Base '$BASE' not found locally (tried origin/$BASE and $BASE). Pass an existing --base." 1
-    fi
-  else
-    UPSTREAM="$(git -C "$REPO" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
-    if [[ -n "$UPSTREAM" ]]; then
-      BASE_REF="$UPSTREAM"
-    else
-      DEF="$(git -C "$REPO" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)"
-      if [[ -n "$DEF" ]]; then BASE_REF="$DEF"; else BASE_REF="HEAD"; fi
-    fi
-  fi
+  # Resolve the base ref WITHOUT touching the network or the working tree
+  # (git_port_base_ref in common.sh; check-port-safety.sh uses the same base).
+  BASE_REF="$(git_port_base_ref "$REPO" "$BASE")" \
+    || die "Base '$BASE' not found locally (tried origin/$BASE and $BASE). Pass an existing --base." 1
   log_info "Diffing against base '$BASE_REF' (no fetch, no rebase)."
 
   # Build the diff in a throwaway index so untracked (new) files are included

@@ -23,9 +23,11 @@
 #     "deprecations_remaining": 0,
 #     "deferred_to_phase2": ["CKEditor 5 plugin rewrite"],
 #     "patch": "foo-port-to-drupal-11.patch",
-#     "d10_support": "declared-not-verified"
+#     "d10_support": "declared-not-verified",
+#     "port_safety": <the JSON of check-port-safety.sh --json>
 #   }
 # manual_edits items may be a plain string OR an object {edit, why?, change_record?}.
+# port_safety is optional; when present the report lists its findings.
 #
 # Didactic "changes explained": when a --changes-log file (captured Rector +
 # PHPStan deprecation output) is available, the report adds a section that runs it
@@ -204,6 +206,20 @@ EXPLAINED_N="$(printf '%s' "$EXPLAINED" | jq 'length' 2>/dev/null || echo 0)"
   printf '\n'
   printf '### Remaining deprecations\n\n%s\n\n' "$DEPR"
 
+  if [[ "$(printf '%s' "$M" | jq -r 'has("port_safety")' 2>/dev/null)" == "true" ]]; then
+    printf '### Port-safety checks\n\n'
+    printf '%s' "$M" | jq -r '
+      .port_safety as $p
+      | "\($p.errors // 0) error(s), \($p.warnings // 0) warning(s)"
+        + (if ($p.base // "") != "" then " — attributed against `\($p.base)`." else "." end) + "\n",
+        ( ($p.findings // [])[]
+          | "- **\(.severity)** `[\(.check)]` `\(.file):\(.line)`"
+            + (if .introduced == true then " (introduced by the port)" else "" end)
+            + " — \(.message)" )
+    ' 2>/dev/null || printf '_unreadable_\n'
+    printf '\n'
+  fi
+
   if [[ "$EXPLAINED_N" -gt 0 ]]; then
     printf '## Drupal 9/10 → 11 changes, explained\n\n'
     printf '_A best-effort teaching aid: each recognized change with what moved, the fix, and a drupal.org change record. Not exhaustive — see the patch for the exact diff._\n\n'
@@ -212,7 +228,8 @@ EXPLAINED_N="$(printf '%s' "$EXPLAINED" | jq 'length' 2>/dev/null || echo 0)"
         "entity-api":"Entity API","database-api":"Database API","time":"Time service",
         "dependency-injection":"Dependency injection","forms":"Forms & controllers","twig":"Twig 3",
         "jquery-ui":"jQuery UI","ckeditor":"CKEditor 5","assertion":"Assertions",
-        "phpunit":"PHPUnit 10/11","update-hooks":"Update hooks","other":"Other"}) as $t
+        "phpunit":"PHPUnit 10/11","update-hooks":"Update hooks","port-safety":"Port safety",
+        "serialization":"Serialization (DependencySerializationTrait)","other":"Other"}) as $t
       | group_by(.category)[]
       | "### " + ($t[(.[0].category)] // (.[0].category)) + "\n\n"
         + ( map("- **\(.symbol)** (\(.hits) hit(s)) — \(.why)\n    - Fix: \(.fix)\n    - Learn more: \(.change_record)") | join("\n") )

@@ -37,6 +37,16 @@ quality: modern Drupal 11 idioms, zero deprecations, PHPStan level 5–6, clean
 - **Respect the PHP target.** Modern syntax (attributes, typed properties,
   constructor property promotion) is gated by `DRUPILOT_PHP_TARGET`; see the
   `php-target-tuning` skill (and the 8.5 caveat — never assume it).
+- **The Phase 1 port-safety rules still apply** (`minimal-port` §0): never
+  remove `ContainerFactoryPluginInterface`/`ContainerInjectionInterface` from a
+  class with `create()` (and do not assume a `*Base` class provides it), never
+  drop a `use` that is still referenced, never `new static` → `new self` to
+  quiet PHPStan, never turn Form/Render API callbacks into closures, and symbols
+  newer than the kept core floor only through
+  `DeprecationHelper::backwardsCompatibleCall()`.
+- **A PHPStan finding is never fixed by changing semantics** unless the original
+  project tolerates the change. Sandbox-only findings (classes from modules that
+  are not installed here) are documented, not patched.
 
 ## 1. What "Drupal 11 way" means (concrete rules, applied uniformly)
 
@@ -53,11 +63,21 @@ no-op — that is the only discretion.
   `\Drupal::` accessor in a class that can receive services is injected:
   `ContainerFactoryPluginInterface::create()` for plugins,
   `ContainerInjectionInterface::create()` for controllers/forms, a `services.yml`
-  argument for services. Use constructor property promotion. Leave `\Drupal::`
-  only in procedural `.module`/`.install` hooks where DI is unavailable.
+  argument for services. Use constructor property promotion — **`protected`,
+  never `private` or `readonly`, in any class using `DependencySerializationTrait`**
+  (forms, plugins): its `__sleep()` runs in the base-class scope and drops private
+  child properties, and `__wakeup()` cannot re-initialize a readonly one. Leave
+  `\Drupal::` only in procedural `.module`/`.install` hooks where DI is
+  unavailable; once a service is injected, use the injected property everywhere
+  in that class.
 - **`declare(strict_types=1);` in EVERY `.php` file** under `src/` and `tests/`.
   Add parameter, return and property types wherever the type is known and
   unambiguous.
+- **`#[\Override]` only when it is true on every declared core.** Add it only
+  when `core_version_requirement` is `^11`-only AND the parent method exists in
+  the lowest declared 11.x minor (e.g. `ContentEntityStorageBase::buildRevisionCacheId()`
+  exists only from 11.3). An `#[\Override]` without a parent method is a
+  compile-time fatal on PHP 8.3+.
 - **`final` by default.** Mark a class `final` UNLESS it is abstract, an
   interface, a `*Base` class, or another class in the module/its tests extends it.
   (Plugins and services are normally `final`.)
@@ -104,6 +124,9 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpcs.sh" --subject "<path>" --
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "<path>" \
   --level "$(config_get DRUPILOT_PHPSTAN_LEVEL_REFACTOR 6)"
 
+# Deterministic port-safety checks (gate: must exit 0):
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/check-port-safety.sh" --subject "<path>" --json
+
 # Re-run the affected test group(s) (see test-adaptation for the full flow):
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject "<path>" --type all
 ```
@@ -144,6 +167,10 @@ Before declaring the module refactored, all must hold:
 - `phpstan analyse --level 5-6` clean — **zero** deprecations, no errors at the
   target level.
 - `phpcs --standard=Drupal,DrupalPractice` **clean**.
+- `check-port-safety.sh --subject <path>` exits **0** (no error findings: DI
+  interfaces in place, no closures under Form/Render API keys, no
+  private/readonly properties in serialized classes, no `new self` in
+  `create()`); its warnings are reviewed and listed in the report.
 - The full applicable test suite **green** (anything skipped is documented). Because
   Phase 2 changes more code, this is the **preservation gate**: the same tests that
   passed after Phase 1 must still pass, unchanged in what they verify. If the module
@@ -189,7 +216,8 @@ the tests, get the patch, or contribute (opt-in) — a candidate for
   annotation imports; a half-converted plugin can fail discovery.
 - DI via `create()` requires the right interface
   (`ContainerFactoryPluginInterface` for plugins vs `ContainerInjectionInterface`
-  for controllers/forms) — mismatching them breaks instantiation.
+  for controllers/forms) — mismatching them breaks instantiation. Converting a
+  plugin to attributes never removes `implements ContainerFactoryPluginInterface`.
 - `declare(strict_types=1);` can surface latent type bugs; run the tests right
   after adding it.
 - Jumping straight to PHPStan level 6 can bury you in findings — ratchet up one

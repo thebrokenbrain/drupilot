@@ -114,7 +114,7 @@ D11 release), document it explicitly.
 You can drive the test run via `/drupilot-test`, or call the test scripts the
 engineer uses; let the subagent own the iteration loop.
 
-## Step 5 — Quality gates: PHPStan 5-6 + clean PHPCS
+## Step 5 — Quality gates: PHPStan 5-6 + clean PHPCS + port safety
 
 Push static analysis to the refactor level and require clean coding standards:
 
@@ -125,8 +125,22 @@ Push static analysis to the refactor level and require clean coding standards:
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "$1" --level "$(bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; config_get DRUPILOT_PHPSTAN_LEVEL_REFACTOR 6')"
 ```
 
-Iterate until: zero deprecations, PHPStan clean at level 5-6, and `phpcs
---standard=Drupal,DrupalPractice` reports no violations.
+Then the deterministic port-safety gate (it must exit 0):
+
+```bash
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/check-port-safety.sh" --subject "$1" --json
+```
+
+Iterate until: zero deprecations, PHPStan clean at level 5-6, `phpcs
+--standard=Drupal,DrupalPractice` reports no violations, and
+`check-port-safety.sh` exits 0. The refactor is where most of its findings get
+introduced: constructor promotion must stay `protected` (never `private` or
+`readonly`) in forms/plugins (`DependencySerializationTrait`), a plugin converted
+to attributes keeps `implements ContainerFactoryPluginInterface`, `create()` keeps
+`new static(` unless the class is made `final`, Form API callbacks stay array
+callables, and `#[\Override]` is only added when the core range is `^11`-only and
+the parent method exists in its lowest minor. Never change semantics just to make
+the sandbox PHPStan pass; document sandbox-only findings instead.
 
 ## Step 6 — Refresh the local patch
 
@@ -149,7 +163,7 @@ Summarize in English:
 - The modern patterns applied (attributes, DI, strict types, API updates), with a
   brief rationale for each significant change.
 - Final quality state: PHPStan level reached and clean, PHPCS Drupal +
-  DrupalPractice clean, zero deprecations.
+  DrupalPractice clean, zero deprecations, port-safety exit 0 (warnings listed).
 - Test status: which groups ran, the pass result, coverage, and any test
   documented as un-passable for an external reason.
 - A reviewable summary of the diff.
@@ -160,7 +174,8 @@ Summarize in English:
 
 **Refresh the port report card (trust + teaching).** Record the refactor's
 decisions as a manifest (`phase: "refactor"`, the modern patterns applied, the new
-`core_version_requirement` / `version_bump`, the deferred items now done;
+`core_version_requirement` / `version_bump`, the deferred items now done, and
+`port_safety` = the JSON printed by `check-port-safety.sh --json`;
 `manual_edits` items may be `{edit, why, change_record}` objects so the report
 explains each change) and re-render so the report reflects Phase 2. As Phase 2
 ran, **tee** the Rector + final validate-loop PHPStan deprecation output into

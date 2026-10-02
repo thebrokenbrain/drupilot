@@ -1259,3 +1259,27 @@ PHP
 
 # trim surrounding whitespace from a string
 trim() { local s="$*"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }
+
+# git_port_base_ref <repo> [base] -> print the git ref a port is diffed against,
+# WITHOUT touching the network or the working tree (shared by make-patch.sh
+# --local and check-port-safety.sh so both judge "what the port changed"
+# against the same base). An explicit base resolves to origin/<base>, then
+# <base>; it returns 1 (printing nothing) when neither exists. Without a base:
+# the branch upstream, then origin/HEAD, then HEAD.
+git_port_base_ref() {
+  local repo="$1" base="${2:-}" ref=""
+  if [[ -n "$base" ]]; then
+    if git -C "$repo" rev-parse --verify --quiet "origin/$base" >/dev/null 2>&1; then
+      printf 'origin/%s' "$base"; return 0
+    elif git -C "$repo" rev-parse --verify --quiet "$base" >/dev/null 2>&1; then
+      printf '%s' "$base"; return 0
+    fi
+    return 1
+  fi
+  ref="$(git -C "$repo" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+  if [[ -z "$ref" ]]; then
+    ref="$(git -C "$repo" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)"
+  fi
+  printf '%s' "${ref:-HEAD}"
+  return 0
+}
