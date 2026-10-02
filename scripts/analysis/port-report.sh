@@ -395,10 +395,12 @@ D10_VERSIONS=""; D10_FLOOR=""
       "| Core | Role | Result | Leg-only PHPStan errors | php -l |",
       "|---|---|---|---|---|",
       ( .legs[]? | "| \(.version // .core) | \(.role) | \(.status)" + (if .reason then " — \(.reason)" else "" end)
-          + " | \(.phpstan.incompatible // 0) incompatible, \(.phpstan.deprecations // 0) deprecation(s), \(.phpstan.sandbox_missing_dependency // 0) missing dependency (sandbox), \(.phpstan.test_only // 0) test-only, \(.phpstan.advisory // 0) advisory"
+          + " | \(.phpstan.incompatible // 0) incompatible, \(.phpstan.deprecations // 0) deprecation(s), \(.phpstan.sandbox_missing_dependency // 0) missing dependency (sandbox), \(.phpstan.test_only // 0) test-only, \(.phpstan.advisory // 0) advisory, \(.phpstan.tolerated // 0) runtime-tolerated"
           + " | " + ([.lint[]? | "PHP \(.php): \(.status)"] | join(", ")) + " |" ),
       ( [ .legs[]? | (.version // .core) as $v | .phpstan.findings[]? | select(.kind == "incompatible")
           | "- `\(.file):\(.line)` (Drupal \($v)) — \(.message | split("\n")[0])" ] | if length > 0 then "\n**Incompatibilities:**\n" + join("\n") else empty end ),
+      ( [ .legs[]? | (.version // .core) as $v | .phpstan.findings[]? | select(.kind == "tolerated")
+          | "- `\(.file):\(.line)` (Drupal \($v)) — \(.message | split("\n")[0])" ] | if length > 0 then "\n**Runtime-tolerated (not an incompatibility; review):**\n" + join("\n") else empty end ),
       ( [ .legs[]? | .lint[]? | .php as $p | .files[]? | "- `\(.file)` (PHP \($p)) — \(.error)" ] | if length > 0 then "\n**Lint failures:**\n" + join("\n") else empty end )
     ' 2>/dev/null || printf '_unreadable_\n'
     printf '\n'

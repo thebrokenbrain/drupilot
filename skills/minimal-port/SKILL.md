@@ -479,8 +479,12 @@ container, which checks the detected PHP floor for real.
   Never block the port on it.
 - Findings of kind `deprecation`, `sandbox_missing_dependency` (a contrib module
   the reference core does not have — documented, never "fixed"), `test_only`
-  (tests/ on an older core: its test API typing differs) and `advisory`
-  (phpstan-drupal best-practice rules) never fail a leg.
+  (tests/ on an older core: its test API typing differs), `advisory`
+  (phpstan-drupal best-practice rules) and `tolerated` (PHP accepts it at
+  runtime: MORE arguments than an older core's method takes, or the result of
+  a method a newer core declares `: void` used — review it, never "fix" it
+  by dropping the argument the newer core needs) never fail a leg. When the
+  Drupal 11 baseline leg errors, the other legs are `skipped`, not `failed`.
 
 The result persists to `<state_dir>/core-matrix.json`; put it in the manifest as
 `verification.core_matrix` and set `d10_support` from it. `--dry-run` prints the

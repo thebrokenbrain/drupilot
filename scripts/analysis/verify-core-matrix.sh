@@ -24,11 +24,28 @@
 #     Drupal 10 belongs to the test phase;
 #   * a finding from one of phpstan-drupal's own best-practice rules (identifiers
 #     read from the installed extension) is reported as `advisory`;
+#   * a finding PHP tolerates at runtime is reported as `tolerated`, never as an
+#     incompatibility. A leg differs from another only through core (same PHP,
+#     same analyser), so the callee is userland code, and the matrix answers
+#     "does it break on that core?", not "is it tidy?". Two cases qualify:
+#       - `arguments.count` with MORE arguments than the callee takes ("invoked
+#         with 2 parameters, 1 required", e.g. a Drupal 11 two-argument
+#         ConfigFormBase::__construct() call on 10.0, whose constructor takes
+#         one): PHP drops extra arguments to a userland function or method.
+#         TOO FEW arguments stays incompatible (ArgumentCountError);
+#       - `method.void` / `staticMethod.void` / `function.void` ("Result of
+#         method ...::set() (void) is used"), typically a `: void` return type a
+#         newer core/Symfony declares on a method that never returned a value:
+#         the expression is null and nothing is raised. Review it, since the
+#         value is always null on that core;
 #   * findings both legs share are pre-existing analysis findings, not a core
 #     difference (run-phpstan.sh / the validate loop own those).
 # A finding's `kind` is one of: incompatible, deprecation,
-# sandbox_missing_dependency, test_only, advisory (shared ones are counted in
-# `errors` but not listed).
+# sandbox_missing_dependency, test_only, advisory, tolerated (shared ones are
+# counted in `errors` but not listed).
+# When the baseline leg itself cannot be analysed (status error), a reference
+# leg with findings is `skipped` (its findings cannot be told apart from
+# pre-existing ones), never `fail`; d10_support then stays declared-not-verified.
 # The baseline leg likewise fails on errors the reference legs do not have
 # (code that breaks only on the newer core).
 # `php -l` runs with the container PHP, and — when a leg's lowest PHP (the max of
@@ -84,6 +101,7 @@
 #           constraint, version, php_floor, status: pass|fail|skipped|error,
 #           reason, phpstan:{status, errors, leg_only, incompatible,
 #           deprecations, sandbox_missing_dependency, test_only, advisory,
+#           tolerated,
 #           findings:[{file, line, identifier, message, kind}]},
 #           lint:[{php, via, status, errors, files:[{file, error}]}]}],
 #    d10_support: verified-static|verified-static-above-floor|failed|
@@ -120,10 +138,17 @@ DRY_RUN=0
 # container, so the limit is applied in the container itself (GNU timeout in
 # the ddev-webserver image, which kills the whole process group); the host
 # limit is a later backstop for a hung `ddev exec` client.
+# Under `timeout`, a bare `composer` would resolve to the TEST-BED's
+# vendor/bin/composer (drupal/core-dev ships one; EXECIGNORE only hides it from
+# the top-level shell), whose plugins then rewrite the test-bed's vendor while
+# building a reference core. Every call therefore names the container's own
+# Composer by absolute path (VCM_COMPOSER_BIN, see ddev_global_composer).
 COMPOSER_TIMEOUT=900
 COMPOSER_HOST_TIMEOUT=$((COMPOSER_TIMEOUT + 60))
 VCM_COMPOSER_LIMIT="$COMPOSER_TIMEOUT"
 export VCM_COMPOSER_LIMIT
+VCM_COMPOSER_BIN="/usr/local/bin/composer"
+export VCM_COMPOSER_BIN
 
 usage() { print_usage "$0"; }
 
@@ -290,6 +315,8 @@ fi
 [[ -f "$ROOT/.ddev/config.yaml" ]] || die "'$ROOT' has no DDEV project; the core matrix runs through DDEV. Run /drupilot-setup first." 2
 ddev_ensure_running "$ROOT" || die "Could not start the DDEV project at $ROOT." 2
 [[ -f "$ROOT/vendor/bin/phpstan" ]] || die "vendor/bin/phpstan is missing in the test-bed. Install the toolchain first (/drupilot-setup)." 2
+VCM_COMPOSER_BIN="$(ddev_global_composer "$ROOT")"
+export VCM_COMPOSER_BIN
 
 STATE_FILE="$(core_matrix_file "$SUBJECT_ABS")"
 mkdir -p "$CORES_DIR" "$MATRIX_DIR"
@@ -322,6 +349,36 @@ tail_reason() {
   sed -e $'s/\x1b\\[[0-9;]*m//g' "$1" 2>/dev/null | grep -vE 'Failed to execute command|^[[:space:]]*$' | tail -n 3 | tr '\n' ' ' | cut -c1-300
   return 0
 }
+
+# heal_extension_config <host dir> <container dir> <label> -> 0 when the
+# project's phpstan/extension-installer GeneratedConfig.php is sound, repairing
+# it first when needed. A broken one makes PHPStan crash (an include that no
+# longer exists) or run WITHOUT phpstan-drupal (the package's stub left in
+# place), which reports bogus "unknown class Drupal\..." errors. `composer
+# install` against the unchanged lock reinstalls nothing and re-runs the
+# installer plugin, which rewrites the file. Sets HEAL_REASON when it stays
+# broken.
+HEAL_REASON=""
+heal_extension_config() {
+  local host="$1" cdir="$2" label="$3" why
+  HEAL_REASON=""
+  why="$(phpstan_extension_config_problem "$host")" && return 0
+  log_warn "The PHPStan extension config of $label is broken ($why); regenerating it with composer install."
+  run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT $VCM_COMPOSER_BIN install --no-interaction --no-progress" </dev/null' \
+    _ "$ROOT" "$cdir" >"$TMP/heal.log" 2>&1 || true
+  if why="$(phpstan_extension_config_problem "$host")"; then
+    log_ok "Regenerated the PHPStan extension config of $label."
+    return 0
+  fi
+  HEAL_REASON="the PHPStan extension config of $label is broken ($why) and composer install did not repair it"
+  return 1
+}
+
+# The test-bed first: a broken config there (e.g. left by an older drupilot
+# that ran the test-bed's own vendor/bin/composer for a reference core) would
+# make the baseline leg crash.
+heal_extension_config "$ROOT" "$CONTAINER_ROOT" "the test-bed" \
+  || log_err "$HEAL_REASON. Run 'ddev composer install' in $ROOT."
 
 # PHPStan toolchain of the reference cores = the test-bed's exact versions (so
 # both legs run the same analyser), else the configured ranges. Every PHPStan
@@ -366,7 +423,7 @@ build_reference() {
   log="$TMP/build-$leg.log"; : > "$log"
   rm -rf "$tmpdir"
   log_step "Building the reference Drupal $leg core ($want) in $CORES_REL/drupal-$leg (once; cached)"
-  if ! run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT composer create-project --no-interaction --no-install --no-progress '"'"'drupal/recommended-project:$3'"'"' $4" </dev/null' \
+  if ! run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT $VCM_COMPOSER_BIN create-project --no-interaction --no-install --no-progress '"'"'drupal/recommended-project:$3'"'"' $4" </dev/null' \
        _ "$ROOT" "$CONTAINER_ROOT" "$want" "$CORES_REL/$tmpname" >>"$log" 2>&1; then
     BUILD_REASON="$(network_reason "$log")"; [[ -n "$BUILD_REASON" ]] || BUILD_REASON="composer create-project failed: $(tail_reason "$log")"
     rm -rf "$tmpdir"; return 1
@@ -386,7 +443,7 @@ build_reference() {
     BUILD_REASON="could not edit the reference composer.json"; rm -rf "$tmpdir"; return 1
   fi
   cp "$TMP/composer.json" "$tmpdir/composer.json"
-  if ! run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT composer update --no-interaction --no-progress --no-audit" </dev/null' \
+  if ! run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT $VCM_COMPOSER_BIN update --no-interaction --no-progress --no-audit" </dev/null' \
        _ "$ROOT" "$CONTAINER_ROOT/$CORES_REL/$tmpname" >>"$log" 2>&1; then
     BUILD_REASON="$(network_reason "$log")"
     if [[ -z "$BUILD_REASON" ]]; then
@@ -402,21 +459,24 @@ build_reference() {
   # Test runtime: the packages THIS core's drupal/core-dev requires, minus its
   # static-analysis tools (they would downgrade PHPStan to the D10 1.x line).
   local test_deps=false
-  devreq="$(dexec "$CONTAINER_ROOT/$CORES_REL/$tmpname" "composer show --all --format=json drupal/core-dev $ver" 2>>"$log" \
+  devreq="$(dexec "$CONTAINER_ROOT/$CORES_REL/$tmpname" "$VCM_COMPOSER_BIN show --all --format=json drupal/core-dev $ver" 2>>"$log" \
             | sed -n '/^{/,$p' | jq -c '(.requires // {}) | with_entries(select(.key | test("^(phpstan/|mglaman/|drupal/coder$|micheh/|squizlabs/)") | not))' 2>/dev/null || true)"
   if [[ -n "$devreq" && "$devreq" != "{}" && "$devreq" != "null" ]]; then
     cp "$tmpdir/composer.json" "$TMP/composer.json.bak"; cp "$tmpdir/composer.lock" "$TMP/composer.lock.bak" 2>/dev/null || true
     jq --argjson d "$devreq" '."require-dev" = ((."require-dev" // {}) + $d)' "$tmpdir/composer.json" > "$TMP/composer.json" \
       && cp "$TMP/composer.json" "$tmpdir/composer.json"
-    if run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT composer update --no-interaction --no-progress --no-audit" </dev/null' \
+    if run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT $VCM_COMPOSER_BIN update --no-interaction --no-progress --no-audit" </dev/null' \
          _ "$ROOT" "$CONTAINER_ROOT/$CORES_REL/$tmpname" >>"$log" 2>&1; then
       test_deps=true
     else
       log_warn "Could not add drupal/core-dev $ver's test runtime to the reference core; the subject's tests/ are left out of every leg."
       cp "$TMP/composer.json.bak" "$tmpdir/composer.json"; cp "$TMP/composer.lock.bak" "$tmpdir/composer.lock" 2>/dev/null || true
-      run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT composer install --no-interaction --no-progress --no-audit" </dev/null' \
+      run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT $VCM_COMPOSER_BIN install --no-interaction --no-progress" </dev/null' \
         _ "$ROOT" "$CONTAINER_ROOT/$CORES_REL/$tmpname" >>"$log" 2>&1 || true
     fi
+  fi
+  if ! heal_extension_config "$tmpdir" "$CONTAINER_ROOT/$CORES_REL/$tmpname" "the reference Drupal $want core"; then
+    BUILD_REASON="$HEAL_REASON"; rm -rf "$tmpdir"; return 1
   fi
   jq -n --arg leg "$leg" --arg c "$(leg_constraint "$leg")" --arg want "$want" --arg v "$ver" \
      --arg php "$CONTAINER_PHP" --argjson t "$TOOLCHAIN" --argjson td "$test_deps" \
@@ -448,12 +508,22 @@ ensure_reference() {
           && "$(printf '%s' "$mtool" | jq -cS . 2>/dev/null)" == "$(printf '%s' "$TOOLCHAIN" | jq -cS .)" ]]; then
       if ! deterministic_mode; then
         # Floating mode: refresh within the constraint (best effort, offline-safe).
-        if ! run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT composer update --no-interaction --no-progress --no-audit" </dev/null' \
+        if ! run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT $VCM_COMPOSER_BIN update --no-interaction --no-progress --no-audit" </dev/null' \
              _ "$ROOT" "$CONTAINER_ROOT/$CORES_REL/drupal-$leg" >"$TMP/refresh-$leg.log" 2>&1; then
           log_warn "Could not refresh the reference Drupal $leg core ($(network_reason "$TMP/refresh-$leg.log")); using the cached $mver."
         fi
         mver="$(drupal_core_version "$d")"
         jq --arg v "$mver" '.version = $v' "$marker" > "$TMP/marker.json" && cp "$TMP/marker.json" "$marker"
+      fi
+      # A cached core built by an older drupilot can carry a stub or foreign
+      # extension config (it then analyses without phpstan-drupal): repair it,
+      # else rebuild it.
+      if ! heal_extension_config "$d" "$CONTAINER_ROOT/$CORES_REL/drupal-$leg" "the cached reference Drupal $mver core"; then
+        log_warn "$HEAL_REASON; rebuilding it."
+        build_reference "$leg" "$want" || return 1
+        REF_VERSION="$(jq -r '.version // empty' "$d/.drupilot-core.json" 2>/dev/null || true)"
+        lock_set_json "$(lock_key "$leg")" "$(jq -nc --arg c "$constraint" --arg v "$REF_VERSION" '{constraint: $c, version: $v}')" 2>/dev/null || true
+        return 0
       fi
       REF_VERSION="$mver"
       log_info "Reusing the reference Drupal core $mver ($CORES_REL/drupal-$leg)."
@@ -644,6 +714,15 @@ CLASSIFY='
   def key: "\(.file)|\(.line)|\(.identifier)|\(.message)";
   def is_depr: ((.identifier | test("deprecat"; "i")) or (.message | test("\\bdeprecated\\b"; "i")));
   def is_test: (.file | test("(^|/)tests/"));
+  # Runtime-tolerated (see the header): more arguments than the callee accepts
+  # (PHP drops extra arguments to a userland callable), or the result of a void
+  # call used (it evaluates to null; no error is raised).
+  def too_many_args:
+    (.identifier == "arguments.count")
+    and ((.message | capture("invoked with (?<n>[0-9]+) parameters?, (?:[0-9]+-)?(?<m>[0-9]+) required")
+          | (.n | tonumber) > (.m | tonumber)) // false);
+  def void_used: (.identifier | test("^(method|staticMethod|function)\\.void$"));
+  def tolerated: too_many_args or void_used;
   def missing_class:
     ([.message | capture("(?<c>Drupal\\\\[A-Za-z0-9_]+\\\\[A-Za-z0-9_\\\\]+)") | .c] | .[0]) as $c
     | if ($c != null) and (.message | test("Class [^ ]+ not found|unknown class|unknown interface|unknown trait|class [^ ]+ does not exist|invalid (return |parameter |property )?type|Reflection error"; "i"))
@@ -660,6 +739,7 @@ CLASSIFY='
          elif is_depr then "deprecation"
          elif (missing_class) != null then "sandbox_missing_dependency"
          elif ($adv | index($f.identifier)) != null then "advisory"
+         elif tolerated then "tolerated"
          elif $ref and is_test then "test_only"
          else "incompatible" end) as $kind
       | $f + {kind: $kind})
@@ -749,19 +829,21 @@ for l in "${LEGS[@]}"; do
     lint_fail="$(printf '%s' "$lint" | jq '[.[] | select(.status == "fail")] | length')"
     if [[ "$lint_fail" -gt 0 ]]; then
       status="fail"; reason="php -l failed on $(printf '%s' "$lint" | jq -r '[.[] | select(.status == "fail") | "PHP " + .php] | join(", ")')"
+    elif [[ "$role" == "reference" && "$BASE_OK" == 0 ]]; then
+      # Without a baseline every finding looks leg-only, so none can be judged
+      # an incompatibility (checked BEFORE the incompatible count): only a leg
+      # with no finding at all (deprecations aside) counts as passing.
+      if [[ "$(printf '%s' "$classified" | jq '[.[] | select(.kind != "deprecation")] | length')" -gt 0 ]]; then
+        status="skipped"; reason="the Drupal $TESTBED_VERSION baseline produced no verdict (${L_REASON[BI]:-it did not run}), so this leg's findings cannot be told apart from pre-existing ones"
+      else
+        status="pass"
+      fi
     elif [[ "$incompat" -gt 0 ]]; then
       status="fail"
       if [[ "$role" == "baseline" ]]; then
         reason="$incompat PHPStan error(s) only on this core, absent from the other legs"
       else
         reason="$incompat PHPStan error(s) only on Drupal ${L_VER[i]}, absent from the Drupal $TESTBED_VERSION baseline"
-      fi
-    elif [[ "$role" == "reference" && "$BASE_OK" == 0 ]]; then
-      # Without a baseline every finding looks leg-only: only a clean leg counts.
-      if [[ "$(printf '%s' "$classified" | jq '[.[] | select(.kind != "deprecation")] | length')" -gt 0 ]]; then
-        status="skipped"; reason="the Drupal $TESTBED_VERSION baseline produced no verdict, so this leg's findings cannot be told apart from pre-existing ones"
-      else
-        status="pass"
       fi
     else
       status="pass"
@@ -782,6 +864,7 @@ for l in "${LEGS[@]}"; do
                      sandbox_missing_dependency: ([$f[] | select(.kind == "sandbox_missing_dependency")] | length),
                      test_only: ([$f[] | select(.kind == "test_only")] | length),
                      advisory: ([$f[] | select(.kind == "advisory")] | length),
+                     tolerated: ([$f[] | select(.kind == "tolerated")] | length),
                      findings: ([$f[] | select(.kind != "shared")] | .[0:50])},
            lint: $lint}]')"
   i=$((i + 1))
@@ -841,9 +924,10 @@ log_step "Core matrix — $NAME (${CORE_REQ:-no requirement}), PHPStan level $LE
 printf '%s' "$OUT" | jq -r '.legs[] |
   "  Drupal \(.version // .core) [\(.role)] — \(.status | ascii_upcase)"
   + (if .reason then ": \(.reason)" else "" end)
-  + "\n    PHPStan: \(.phpstan.errors) error(s), \(.phpstan.incompatible) incompatible, \(.phpstan.deprecations) deprecation(s) only here, \(.phpstan.sandbox_missing_dependency) missing-dependency (sandbox), \(.phpstan.test_only // 0) in tests only, \(.phpstan.advisory // 0) advisory (reported)"
+  + "\n    PHPStan: \(.phpstan.errors) error(s), \(.phpstan.incompatible) incompatible, \(.phpstan.deprecations) deprecation(s) only here, \(.phpstan.sandbox_missing_dependency) missing-dependency (sandbox), \(.phpstan.test_only // 0) in tests only, \(.phpstan.advisory // 0) advisory, \(.phpstan.tolerated // 0) runtime-tolerated (reported)"
   + "\n    php -l : " + ([.lint[] | "PHP \(.php) \(.status)" + (if .errors > 0 then " (\(.errors) file(s))" else "" end)] | join(", "))
   + ([.phpstan.findings[] | select(.kind == "incompatible") | "\n      ✗ \(.file):\(.line) \(.message | split("\n")[0])"] | .[0:10] | join(""))
+  + ([.phpstan.findings[] | select(.kind == "tolerated") | "\n      ~ \(.file):\(.line) \(.message | split("\n")[0]) (runtime-tolerated; review)"] | .[0:5] | join(""))
   + ([.lint[] | .php as $p | .files[]? | "\n      ✗ php -l (PHP \($p)) \(.file): \(.error)"] | .[0:10] | join(""))' >&2
 if [[ "$D10_SUPPORT" == "verified-static-above-floor" ]]; then
   log_plain "  Drupal 10 support: $D10_SUPPORT (clean on $(printf '%s' "$D10_CHECKED" | jq -r 'join(", ")'); the declared floor $D10_FLOOR was NOT checked: an API newer than $D10_FLOOR would still fatal there)"

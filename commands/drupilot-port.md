@@ -316,7 +316,10 @@ composer` in `<drupal_root>/.drupilot/cores/`, frozen in the lockfile), and lint
 on the leg's lowest PHP (Drupal 10's own minimum or the `require.php` floor) in a
 `php:X.Y-cli` container. Only errors the Drupal 11 baseline does not have count;
 deprecations, missing contrib dependencies (sandbox), tests-only typing
-differences and phpstan-drupal advisory rules never fail a leg.
+differences, phpstan-drupal advisory rules and runtime-tolerated findings (more
+arguments than an older core's method takes; the result of a newer core's
+`: void` method used) never fail a leg. A baseline leg that cannot be analysed
+makes the other legs `skipped` (declared-not-verified), never `failed`.
 
 - **Exit 3 (`verdict: fail`)** — a real Drupal 10 incompatibility (e.g. an
   `#[\Override]` on `buildRevisionCacheId()`, which only 11.3+ core declares; a

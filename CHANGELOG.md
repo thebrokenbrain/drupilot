@@ -423,6 +423,36 @@ tag the commit `vX.Y.Z`.
   PHPCS reports a processing error instead of counting it as a violation.
 
 ### Fixed
+- **The core matrix corrupted the test-bed's PHPStan setup on its first run.**
+  `verify-core-matrix.sh` ran `ddev exec "timeout … composer …"` to build a
+  reference core. Under `timeout`, `composer` resolved to the test-bed's own
+  `vendor/bin/composer` (drupal/core-dev ships one; the container hides it only
+  from the top-level shell, through `EXECIGNORE`). That copy's
+  phpstan/extension-installer plugin then rewrote the test-bed's
+  `GeneratedConfig.php` with paths into the temporary build dir, and left the
+  reference core with the package stub. The test-bed's PHPStan crashed from then
+  on, and the Drupal 10 leg ran without phpstan-drupal and reported dozens of
+  bogus errors (`d10_support: failed`). Every Composer call now names the
+  container's own binary by absolute path (new `ddev_global_composer` helper).
+  A new `phpstan_extension_config_problem` check verifies that file in the
+  test-bed and in each cached reference core. When it is broken the matrix
+  regenerates it with `composer install`, and rebuilds the reference core if
+  that is not enough. The rollback `composer install` no longer passes
+  `--no-audit`, which `install` does not accept.
+- **A failed Drupal 11 baseline leg made the Drupal 10 leg "fail".** With no
+  baseline, every reference-leg finding counted as an incompatibility, because
+  that check ran before the no-baseline check. A reference leg with findings is
+  now `skipped`, its reason naming the baseline error, and `d10_support` stays
+  `declared-not-verified` (exit 0).
+- **The core matrix failed legs on findings PHP tolerates at runtime.** A new
+  finding kind, `tolerated`, is reported (counted, listed with `~` in the
+  summary and in `port-report.md`) but never fails a leg. It covers
+  `arguments.count` with *more* arguments than the callee takes (for example
+  the Drupal 11 two-argument `ConfigFormBase::__construct()` call on 10.0.11,
+  whose constructor takes one: PHP drops extra arguments to userland code,
+  while too few stays incompatible). It also covers `method.void` /
+  `staticMethod.void` / `function.void` (for example Symfony 7's
+  `SessionInterface::set(): void` result used on the Drupal 11 leg).
 - **`render-templates.sh --dry-run --json` reported `restart_needed: false`
   for a testing YAML it would write, replace or upgrade.** The real run then
   said `true`. The dry run now sets `restart_needed` for `would-write` /

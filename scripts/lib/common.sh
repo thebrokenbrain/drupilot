@@ -498,8 +498,11 @@ patch_project_slug() {
 # CAVEAT: the limit does NOT propagate through `ddev exec` / `ddev composer`
 # (docker exec): only the host-side client is killed and the process keeps
 # running in the web container. Bound in-container work with the container's
-# own `timeout` (ddev exec "timeout -k 20 N composer ..."), or stop it after a
-# 124 with ddev_stop_composer before cleaning up the files it writes.
+# own `timeout` (ddev exec "timeout -k 20 N /usr/local/bin/composer ...": name
+# Composer by the absolute path ddev_global_composer returns, since under
+# `timeout` a bare `composer` resolves to a test-bed's vendor/bin/composer), or
+# stop it after a 124 with ddev_stop_composer before cleaning up the files it
+# writes.
 run_with_timeout() {
   local secs="${1:-0}"; shift
   local t=""
@@ -535,6 +538,100 @@ ddev_stop_composer() {
   sleep 1
   if ( cd "$r" 2>/dev/null && ddev exec "pgrep -f '[c]omposer' >/dev/null" </dev/null >/dev/null 2>&1 ); then
     return 1
+  fi
+  return 0
+}
+
+# ddev_global_composer <root> -> echoes the absolute path of the web
+# container's OWN composer (normally /usr/local/bin/composer), for a composer
+# call that is NOT the first word of the `ddev exec` command line.
+# Why: a Drupal test-bed with drupal/core-dev ships vendor/bin/composer, and
+# vendor/bin comes first on the container PATH. The ddev-webserver image only
+# hides it from the interactive shell through EXECIGNORE, which a wrapper such
+# as `timeout N composer ...`, `sh -c` or a child `bash -c` does not inherit.
+# That copy runs on the test-bed's autoloader, so its Composer plugins (e.g.
+# phpstan/extension-installer, which writes its GeneratedConfig.php next to its
+# own class) rewrite the TEST-BED's vendor while working on another project.
+# The path is asked from the top-level `ddev exec` shell (where EXECIGNORE
+# applies) and rejected when it still points into /var/www/html; the fallback is
+# the image's documented location. Never starts a stopped project.
+ddev_global_composer() {
+  local r="${1:-}" p=""
+  if ddev_running "$r"; then
+    p="$( cd "$r" 2>/dev/null && ddev exec -d / 'command -v composer' </dev/null 2>/dev/null | tr -d '\r' | tail -n 1 || true)"
+  fi
+  case "$p" in
+    /*) case "$p" in /var/www/html/*) p="";; esac;;
+    *) p="";;
+  esac
+  printf '%s' "${p:-/usr/local/bin/composer}"
+  return 0
+}
+
+# run_dropping_ddev_failure_line <cmd> [args...] -> runs the command with its
+# stdout untouched and its stderr streamed back WITHOUT `ddev exec`'s own red
+# "Failed to execute command ...: exit status N" wrapper line, and returns the
+# command's exit code. For tools whose non-zero exit is a normal verdict
+# (phpcs: violations found; PHPUnit: failing tests), where the caller already
+# reports the outcome; the wrapper line only repeats the exit status. Works on
+# every DDEV version (filtering, not `ddev exec --quiet`). bash 3.2-safe.
+run_dropping_ddev_failure_line() {
+  local had_e=0 rc
+  case "$-" in *e*) had_e=1;; esac
+  set +e
+  { "$@" 2>&1 1>&3 3>&- | { grep -vE 'Failed to execute command .*: exit status [0-9]+' || true; } >&2; } 3>&1
+  rc=${PIPESTATUS[0]}
+  [[ "$had_e" == 1 ]] && set -e
+  return "$rc"
+}
+
+# phpstan_extension_config_problem <project_dir> -> checks the
+# phpstan/extension-installer GeneratedConfig.php of a Composer project (a
+# test-bed or a core-matrix reference core). Prints a one-line reason on STDOUT
+# and returns 1 when it is broken: an extension include that does not resolve
+# (PHPStan resolves `relative_install_path` from the file's directory, then the
+# absolute `install_path`), or an installed `phpstan-extension` package the file
+# does not list (e.g. the stub the package ships, left in place when another
+# Composer's plugin ran instead). Returns 0, printing nothing, when the file is
+# sound or the project has no extension-installer. Host-side and read-only.
+phpstan_extension_config_problem() {
+  local d="${1:-}" src gc listed missing name mount=""
+  src="$d/vendor/phpstan/extension-installer/src"
+  gc="$src/GeneratedConfig.php"
+  [[ -d "$src" ]] || return 0
+  if [[ ! -f "$gc" ]]; then printf 'vendor/phpstan/extension-installer/src/GeneratedConfig.php is missing'; return 1; fi
+  mount="$(cd "$d" 2>/dev/null && pwd || true)"
+  while [[ -n "$mount" && "$mount" != "/" && ! -f "$mount/.ddev/config.yaml" ]]; do mount="$(dirname "$mount")"; done
+  [[ "$mount" == "/" ]] && mount=""
+  # Each extension entry -> "name<TAB>relative_install_path<TAB>install_path<TAB>include".
+  missing="$(awk '
+    function val(s,   i) { i = index(s, "=>"); s = substr(s, i + 2); gsub(/^[ \t]*\047|\047,?[ \t]*$/, "", s); return s }
+    /^  \047[^\047]+\047 => *$/ { name = $0; sub(/^  \047/, "", name); sub(/\047.*$/, "", name); rel = ""; abs = ""; next }
+    name != "" && /\047relative_install_path\047 =>/ { rel = val($0); next }
+    name != "" && /\047install_path\047 =>/ { abs = val($0); next }
+    name != "" && /^        [0-9]+ => \047/ { printf "%s\t%s\t%s\t%s\n", name, rel, abs, val($0); next }
+  ' "$gc" 2>/dev/null | while IFS="$(printf '\t')" read -r name rel abs inc; do
+      [[ -n "$inc" ]] || continue
+      if [[ -n "$rel" && -f "$src/$rel/$inc" ]]; then continue; fi
+      # install_path is a container path (/var/www/html/...): map it to the
+      # host through the DDEV project that mounts it.
+      case "$abs" in /var/www/html/*) [[ -n "$mount" ]] && abs="$mount/${abs#/var/www/html/}";; esac
+      [[ -n "$abs" && -f "$abs/$inc" ]] && continue
+      printf '%s (%s)\n' "$name" "$inc"
+    done | head -n 3 | tr '\n' ' ' || true)"
+  if [[ -n "$missing" ]]; then
+    printf 'it points to extension files that do not exist: %s' "$missing"
+    return 1
+  fi
+  if have_cmd jq && [[ -f "$d/vendor/composer/installed.json" ]]; then
+    listed="$(grep -oE "^  '[^']+' =>" "$gc" 2>/dev/null | sed -E "s/^  '//; s/' =>\$//" || true)"
+    while IFS= read -r name; do
+      [[ -n "$name" ]] || continue
+      if ! printf '%s\n' "$listed" | grep -qxF "$name"; then
+        printf 'it does not list the installed PHPStan extension %s' "$name"
+        return 1
+      fi
+    done < <(jq -r '(if type == "object" then (.packages // []) else . end)[] | select(.type == "phpstan-extension") | .name' "$d/vendor/composer/installed.json" 2>/dev/null || true)
   fi
   return 0
 }
