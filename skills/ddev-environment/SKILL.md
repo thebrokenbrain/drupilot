@@ -99,9 +99,12 @@ project is already up, do not restart it.
 
 After it runs, confirm the environment with the shared helpers (these come from
 `common.sh`): `find_drupal_root` to locate the Drupal root, `ddev_running` to
-confirm the container is up, and `drupal_runner` which echoes `ddev exec` when
-the environment is up (empty otherwise) — that prefix is what every toolchain
-command should use.
+confirm the container is up (read-only: it reads `ddev describe`, so it never
+starts a stopped project — never probe with `ddev exec`, which does), and
+`drupal_runner` which echoes `ddev exec` when the environment is up (empty
+otherwise) — that prefix is what every toolchain command should use. Scripts
+that run the toolchain call `ddev_ensure_running` first, which starts a stopped
+project explicitly and logs it.
 
 ## 4. Place the subject module/theme
 

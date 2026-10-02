@@ -430,6 +430,23 @@ tag the commit `vX.Y.Z`.
   `restart_needed: true` like a write does. The header no longer prints its own
   substituted Selenium host ("selenium-chrome:4444 is the ... e.g.
   selenium-chrome:4444").
+- **Read-only checks started stopped DDEV projects.** `ddev_running` probed with
+  `ddev exec true`, which starts a stopped project, so `preflight.sh`,
+  `/drupilot-status`, `/drupilot-doctor`, `next-step.sh` and `drupal_runner`
+  could bring containers up as a side effect, and `ddev-up.sh` always logged
+  "already running — skipping 'ddev start'" for a project it had just woken.
+  `ddev_running` now reads the project status from `ddev describe -j` (or
+  `docker ps` by the project's labels without jq) and never starts anything;
+  the new `ddev_project_status` returns the raw status. The scripts that run the
+  toolchain (`run-rector.sh`, `run-phpstan.sh`, `run-phpcs.sh`, `run-phpunit.sh`,
+  `run-upgrade-status.sh`, `install-toolchain.sh`) call the new
+  `ddev_ensure_running`, which starts a stopped project explicitly and logs it.
+- **`ddev-up.sh` could hang for good on `ddev composer create-project`.** The
+  step now runs with stdin closed and a wall-clock limit,
+  `DRUPILOT_DDEV_CREATE_TIMEOUT` (default 900 s, `0` = no limit, through
+  `timeout`/`gtimeout` via the new `run_with_timeout` helper), and stops with
+  an actionable error. `ddev start` is a real start of a stopped project, and
+  the status is checked again afterwards.
 
 ## [0.8.4] - 2026-06-23
 

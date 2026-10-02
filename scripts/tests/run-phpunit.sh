@@ -96,6 +96,9 @@ DRUPAL_ROOT="$(find_drupal_root "$SUBJECT" 2>/dev/null || true)"
 
 cd "$DRUPAL_ROOT" || die "Cannot enter Drupal root: $DRUPAL_ROOT" 1
 
+# Tests need the DDEV stack (DB, Selenium): start a stopped project explicitly.
+ddev_ensure_running "$DRUPAL_ROOT" \
+  || die "The DDEV environment for $DRUPAL_ROOT is not running and could not be started. Start it with: ddev start" 2
 if ! ddev_running "$DRUPAL_ROOT"; then
   die "The DDEV environment for $DRUPAL_ROOT is not running. Start it with: ddev start" 2
 fi

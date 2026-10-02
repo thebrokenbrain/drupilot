@@ -144,6 +144,9 @@ esac
 
 cd "$DRUPAL_ROOT"
 export DRUPILOT_PROJECT_DIR="$DRUPAL_ROOT"  # so the lockfile lands in this project's state dir
+# A configured but stopped DDEV project is started explicitly (drupal_runner
+# itself never starts one); without DDEV the host toolchain is used.
+ddev_ensure_running "$DRUPAL_ROOT" || die "Could not start the DDEV project at $DRUPAL_ROOT." 1
 RUNNER="$(drupal_runner "$DRUPAL_ROOT")"   # "ddev exec" when DDEV is up, else ""
 PHP_TARGET="$(resolve_php_target)"
 

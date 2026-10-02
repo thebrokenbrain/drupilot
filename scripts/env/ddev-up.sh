@@ -11,9 +11,13 @@
 #
 # Idempotent (PROMPT 5.2 / 7.7):
 #   - If .ddev/config.yaml already exists we do NOT re-run `ddev config`.
-#   - If the project is already running we skip `ddev start`.
+#   - If the project is already running we skip `ddev start`. "Running" is the
+#     real status from `ddev describe` (ddev_running never starts a project), and
+#     after `ddev start` the status is checked again.
 #   - If composer.json already exists we skip `ddev composer create-project`
-#     (`ddev composer create` on DDEV < 1.24.2).
+#     (`ddev composer create` on DDEV < 1.24.2). That step runs with stdin
+#     closed and a wall-clock limit of DRUPILOT_DDEV_CREATE_TIMEOUT seconds
+#     (default 900, 0 = no limit; needs `timeout`/`gtimeout`, else unbounded).
 #   - We READ the generated .ddev/config.yaml for the real values rather than
 #     assuming hostnames/images (PROMPT 2.5 / 7.1).
 #
@@ -191,12 +195,18 @@ fi
 # ---------------------------------------------------------------------------
 # Step 2 — ddev start (idempotent: skip if already running)
 # ---------------------------------------------------------------------------
+# ddev_running reads the real project status (`ddev describe`), so a stopped or
+# paused project is started here explicitly instead of being woken up as a side
+# effect of a probe.
+_STATUS="$(ddev_project_status "$PROJECT_DIR")"
 if ddev_running "$PROJECT_DIR"; then
-  log_ok "DDEV project is already running — skipping 'ddev start'."
+  log_ok "DDEV project is already running (status: ${_STATUS:-running}) — skipping 'ddev start'."
 else
-  log_step "Starting DDEV (this may pull container images on first run)"
-  ( cd "$PROJECT_DIR" && ddev start >&2 ) \
+  log_step "Starting DDEV (status: ${_STATUS:-not created}; this may pull container images on first run)"
+  ( cd "$PROJECT_DIR" && ddev start </dev/null >&2 ) \
     || die "'ddev start' failed. Check the Docker daemon and the DDEV logs ('ddev logs')." 1
+  ddev_running "$PROJECT_DIR" \
+    || die "'ddev start' returned but the project is not running (status: $(ddev_project_status "$PROJECT_DIR")). Check 'ddev describe' and 'ddev logs'." 1
   log_ok "DDEV started."
 fi
 
@@ -235,8 +245,21 @@ else
   CREATE_SUBCMD="create"
   DDEV_VER="$(tool_version ddev 2>/dev/null || true)"
   if [[ -n "$DDEV_VER" ]] && version_ge "$DDEV_VER" "1.24.2"; then CREATE_SUBCMD="create-project"; fi
-  ( cd "$PROJECT_DIR" && ddev composer "$CREATE_SUBCMD" --no-interaction "drupal/recommended-project:${DRUPAL_TARGET}" >&2 ) \
-    || die "'ddev composer $CREATE_SUBCMD' failed. Check network access and the DDEV web container ('ddev logs -s web')." 1
+  # Bounded and non-interactive: stdin is closed so nothing can wait on a
+  # prompt, and DRUPILOT_DDEV_CREATE_TIMEOUT (seconds, 0 = no limit) stops a
+  # hung run with a clear error instead of blocking setup indefinitely.
+  CREATE_TIMEOUT="$(config_get DRUPILOT_DDEV_CREATE_TIMEOUT 900)"
+  [[ "$CREATE_TIMEOUT" =~ ^[0-9]+$ ]] \
+    || die "DRUPILOT_DDEV_CREATE_TIMEOUT must be a number of seconds (got '$CREATE_TIMEOUT')." 1
+  CREATE_RC=0
+  ( cd "$PROJECT_DIR" && run_with_timeout "$CREATE_TIMEOUT" \
+      ddev composer "$CREATE_SUBCMD" --no-interaction "drupal/recommended-project:${DRUPAL_TARGET}" </dev/null >&2 ) \
+    || CREATE_RC=$?
+  if [[ "$CREATE_RC" == "124" ]]; then
+    die "'ddev composer $CREATE_SUBCMD' did not finish within ${CREATE_TIMEOUT}s and was stopped. Check network access and 'ddev logs -s web', remove the partial project it left in $PROJECT_DIR (keep only .ddev/ and .git/: composer.json, composer.lock, vendor/, $DOCROOT/, recipes/ and the scaffolded dotfiles such as .editorconfig must go), then re-run; raise DRUPILOT_DDEV_CREATE_TIMEOUT (0 = no limit) for a slow network." 1
+  elif [[ "$CREATE_RC" != "0" ]]; then
+    die "'ddev composer $CREATE_SUBCMD' failed (exit $CREATE_RC). Check network access and the DDEV web container ('ddev logs -s web')." 1
+  fi
   log_ok "Composer project created."
 fi
 

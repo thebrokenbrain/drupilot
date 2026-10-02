@@ -78,6 +78,9 @@ case "$SUBJECT_ABS" in
 esac
 
 cd "$DRUPAL_ROOT"
+# A configured but stopped DDEV project is started explicitly (drupal_runner
+# itself never starts one); without DDEV the host toolchain is used.
+ddev_ensure_running "$DRUPAL_ROOT" || die "Could not start the DDEV project at $DRUPAL_ROOT." 1
 RUNNER="$(drupal_runner "$DRUPAL_ROOT")"
 
 log_info "Drupal root : $DRUPAL_ROOT"

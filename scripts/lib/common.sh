@@ -466,13 +466,91 @@ find_drupal_root() {
   return 1
 }
 
-# ddev_running [root] -> 0 if a DDEV web container is up for the project at root.
-# Functional check (`ddev exec true` only succeeds when the container runs).
-ddev_running() {
-  have_cmd ddev || return 1
+# run_with_timeout <seconds> <cmd> [args...] -> runs cmd with a wall-clock limit
+# when `timeout` (GNU coreutils) or `gtimeout` (Homebrew coreutils on macOS) is
+# available, else runs it unbounded. <seconds> 0 (or empty) means no limit.
+# Returns cmd's exit code, or 124 when the limit was hit. stdin is NOT
+# redirected; callers that must never wait on input pass </dev/null.
+run_with_timeout() {
+  local secs="${1:-0}"; shift
+  local t=""
+  if [[ "$secs" =~ ^[0-9]+$ && "$secs" -gt 0 ]]; then
+    if have_cmd timeout; then t="timeout"
+    elif have_cmd gtimeout; then t="gtimeout"
+    fi
+  fi
+  if [[ -n "$t" ]]; then
+    "$t" "$secs" "$@"
+  else
+    "$@"
+  fi
+}
+
+# ddev_project_status [root] -> echoes the DDEV project status for the project
+# at root ("running", "stopped", "paused", "unhealthy", ...) or nothing when
+# there is no DDEV project / it cannot be determined. READ-ONLY: it asks
+# `ddev describe -j` (which never starts a project) and, without jq, falls back
+# to `docker ps` filtered by the project's labels. It must never use `ddev exec`
+# (that STARTS a stopped project).
+ddev_project_status() {
+  have_cmd ddev || return 0
   local r="${1:-$(find_drupal_root 2>/dev/null || true)}"
-  [[ -n "$r" && -f "$r/.ddev/config.yaml" ]] || return 1
-  ( cd "$r" 2>/dev/null && ddev exec true >/dev/null 2>&1 )
+  [[ -n "$r" && -f "$r/.ddev/config.yaml" ]] || return 0
+  local st=""
+  if have_cmd jq; then
+    st="$( (cd "$r" 2>/dev/null && ddev describe -j 2>/dev/null) \
+      | jq -r 'select(.raw != null) | .raw.status // empty' 2>/dev/null | head -n1 || true)"
+  elif have_cmd docker; then
+    local name
+    name="$(grep -E '^name:' "$r/.ddev/config.yaml" 2>/dev/null | head -n1 \
+      | sed -E 's/^name:[[:space:]]*//; s/[[:space:]]*(#.*)?$//' | tr -d '"'"'"'')"
+    [[ -n "$name" ]] || name="$(basename "$r")"
+    if docker ps --filter "label=com.ddev.site-name=$name" \
+         --filter "label=com.docker.compose.service=web" --format '{{.ID}}' 2>/dev/null \
+         | grep -q .; then
+      st="running"
+    else
+      st="stopped"
+    fi
+  fi
+  printf '%s' "$st"
+  return 0
+}
+
+# ddev_running [root] -> 0 if the DDEV project at root is up: status "running",
+# "starting" or "unhealthy" (DDEV's SiteRunning/SiteStarting/SiteUnhealthy —
+# the containers exist and run, so `ddev exec` works). Read-only: it never
+# starts a stopped or paused project (see ddev_project_status).
+ddev_running() {
+  local st
+  st="$(ddev_project_status "${1:-}")"
+  case "$st" in running|starting|unhealthy) return 0;; esac
+  return 1
+}
+
+# ddev_ensure_running [root] -> for scripts that RUN the toolchain (Rector,
+# PHPStan, PHPCS, PHPUnit, Composer): when root has a DDEV project that is not
+# up, start it explicitly with `ddev start` (logged on stderr, stdin closed) and
+# verify the status afterwards. Returns 0 when the project is running (or there
+# is no DDEV project / no ddev at all, so the caller falls back to the host),
+# 1 when the start failed. Read-only flows (status, doctor, preflight, hooks)
+# must use ddev_running instead and never call this.
+ddev_ensure_running() {
+  have_cmd ddev || return 0
+  local r="${1:-$(find_drupal_root 2>/dev/null || true)}" st
+  [[ -n "$r" && -f "$r/.ddev/config.yaml" ]] || return 0
+  ddev_running "$r" && return 0
+  st="$(ddev_project_status "$r")"
+  log_step "Starting the DDEV project at $r (status: ${st:-unknown})"
+  if ! ( cd "$r" 2>/dev/null && ddev start </dev/null >&2 ); then
+    log_err "'ddev start' failed for $r. Check the Docker daemon and 'ddev logs'."
+    return 1
+  fi
+  if ! ddev_running "$r"; then
+    log_err "'ddev start' returned but the project is not running (status: $(ddev_project_status "$r"))."
+    return 1
+  fi
+  return 0
 }
 
 # drupal_runner [root] -> echoes a command prefix to run the toolchain:

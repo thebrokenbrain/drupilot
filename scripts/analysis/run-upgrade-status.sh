@@ -56,7 +56,8 @@ DRUPAL_ROOT="$(find_drupal_root "$PWD" 2>/dev/null || true)"
 
 cd "$DRUPAL_ROOT"
 
-# --- DDEV must be running -------------------------------------------------
+# --- DDEV must be running (a stopped project is started explicitly) --------
+ddev_ensure_running "$DRUPAL_ROOT" || true
 if ! ddev_running "$DRUPAL_ROOT"; then
   log_warn "DDEV is not running for this project. Start it with 'ddev start' (or /drupilot-setup)."
   log_warn "Soft-skipping Upgrade Status (it needs a running, installed Drupal site)."

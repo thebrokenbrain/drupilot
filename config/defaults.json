@@ -27,6 +27,9 @@
   "DRUPILOT_WORKSPACE_DIR": "",
   "DRUPILOT_ARTIFACTS_DIR": "",
 
+  "_ddev_timeout_comment": "DRUPILOT_DDEV_CREATE_TIMEOUT: wall-clock limit, in seconds, for the 'ddev composer create-project' step of scripts/env/ddev-up.sh (default 900; 0 = no limit). A hung create is stopped with a clear error instead of blocking setup indefinitely. Enforced through 'timeout' (GNU coreutils) or 'gtimeout' (macOS Homebrew coreutils); without either the step runs unbounded.",
+  "DRUPILOT_DDEV_CREATE_TIMEOUT": 900,
+
   "_hooks_comment": "Hook behavior toggles. DRUPILOT_POST_EDIT_LINT controls the PostToolUse incremental lint (hooks/scripts/post-edit-lint.sh): 'autofix' (default) runs phpcbf then phpcs and reports when it modified the file; 'report' runs phpcs only (never edits files in place); 'off' disables it. The hook is also phase-aware: during Phase 1 (minimal port) it surfaces compatibility ERRORS only, deferring DrupalPractice style WARNINGS to /drupilot-refactor. DRUPILOT_SESSION_CONTEXT toggles the SessionStart environment summary (hooks/scripts/session-detect-env.sh): 'on' (default) or 'off'.",
   "DRUPILOT_POST_EDIT_LINT": "autofix",
   "DRUPILOT_SESSION_CONTEXT": "on",

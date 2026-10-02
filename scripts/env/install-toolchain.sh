@@ -124,6 +124,8 @@ if [[ "$DRY" != "1" ]]; then
     bash "$(plugin_root)/scripts/env/preflight.sh" --profile setup >&2 || true
     exit 2
   fi
+  ddev_ensure_running "$ROOT" \
+    || die "The DDEV project at $ROOT is not running and could not be started (run ddev-up.sh, or 'ddev start')." 2
   ddev_running "$ROOT" || die "The DDEV project at $ROOT is not running (run ddev-up.sh, or 'ddev start')." 2
 fi
 
