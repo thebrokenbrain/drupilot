@@ -12,7 +12,8 @@
 # Idempotent (PROMPT 5.2 / 7.7):
 #   - If .ddev/config.yaml already exists we do NOT re-run `ddev config`.
 #   - If the project is already running we skip `ddev start`.
-#   - If composer.json already exists we skip `ddev composer create`.
+#   - If composer.json already exists we skip `ddev composer create-project`
+#     (`ddev composer create` on DDEV < 1.24.2).
 #   - We READ the generated .ddev/config.yaml for the real values rather than
 #     assuming hostnames/images (PROMPT 2.5 / 7.1).
 #
@@ -121,7 +122,7 @@ if [[ "$DO_CREATE" == "1" && ! -f "$PROJECT_DIR/composer.json" ]]; then
     log_plain "If you pointed drupilot at a module/theme directly, you do NOT need to fix this by"
     log_plain "hand: re-run /drupilot-setup and drupilot builds Drupal in a sibling directory, then"
     log_plain "place-subject.sh moves the extension under '$DOCROOT/modules/custom/<name>' for you."
-    die "Project root not clean for 'ddev composer create' (stray: ${STRAY[*]})." 1
+    die "Project root not clean for 'ddev composer create-project' (stray: ${STRAY[*]})." 1
   fi
 fi
 
@@ -201,14 +202,19 @@ log_info "Generated config  : $DDEV_CONFIG"
 # ---------------------------------------------------------------------------
 DRUPAL_TARGET="$(resolve_drupal_target)"
 if [[ -f "$PROJECT_DIR/composer.json" ]]; then
-  log_ok "composer.json already present — not running 'ddev composer create'."
+  log_ok "composer.json already present — not running 'ddev composer create-project'."
 else
   log_step "Creating the Drupal $DRUPAL_TARGET Composer project"
-  # `ddev composer create` requires an almost-empty root (only "$DOCROOT/" and
+  # `ddev composer create-project` requires an almost-empty root (only "$DOCROOT/" and
   # dotfiles). The clean-root guard ran up front — before any .ddev/ was written —
   # so by here the root is known clean.
-  ( cd "$PROJECT_DIR" && ddev composer create --no-interaction "drupal/recommended-project:${DRUPAL_TARGET}" ) \
-    || die "'ddev composer create' failed. Check network access and the DDEV web container ('ddev logs -s web')." 1
+  # DDEV >= 1.24.2 provides `ddev composer create-project` (and 1.25 deprecates
+  # the older `create` spelling with a warning); keep `create` for older DDEV.
+  CREATE_SUBCMD="create"
+  DDEV_VER="$(tool_version ddev 2>/dev/null || true)"
+  if [[ -n "$DDEV_VER" ]] && version_ge "$DDEV_VER" "1.24.2"; then CREATE_SUBCMD="create-project"; fi
+  ( cd "$PROJECT_DIR" && ddev composer "$CREATE_SUBCMD" --no-interaction "drupal/recommended-project:${DRUPAL_TARGET}" ) \
+    || die "'ddev composer $CREATE_SUBCMD' failed. Check network access and the DDEV web container ('ddev logs -s web')." 1
   log_ok "Composer project created."
 fi
 

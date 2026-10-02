@@ -15,7 +15,7 @@
 #           ddev-drupal-contrib; fine for a host-side port.
 #   copy    duplicate the checkout into the test-bed; the original is untouched.
 #
-# Runs AFTER the Drupal root exists (composer create needs an empty root, so the
+# Runs AFTER the Drupal root exists (composer create-project needs an empty root, so the
 # subject is placed once Drupal is scaffolded). Persists the resolved root as
 # DRUPILOT_WORKSPACE_DIR (.drupilot.json) so every later find_drupal_root agrees,
 # and ensures the root's .gitignore covers drupilot's artifacts.

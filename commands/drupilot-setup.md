@@ -52,7 +52,7 @@ reuses it without re-asking. Never silently proceed on an unconfirmed target.
 Before acting, state in English what you will do: create/start the DDEV Drupal 11
 project, install add-ons, install the Composer dev toolchain, place/symlink the subject
 under `web/modules/custom` or `web/themes/custom`, and write the tool configs. Note that
-the heavy steps (composer create/require, add-on installs) may run in the background.
+the heavy steps (composer create-project/require, add-on installs) may run in the background.
 
 Use the **ddev-environment** skill for the operating procedure and gotchas, then run the
 leaf scripts in order. Each is idempotent.
@@ -62,7 +62,7 @@ lives at the project root and the subject lives under `web/modules/custom/<machi
 (or `web/themes/custom/...`). A LOOSE checkout (a module/theme that is NOT already inside a
 Drupal site) is never scaffolded on top of — that would intermix the module with Drupal's
 own `composer.json`/`web/`/`vendor/`. Two scripts handle placement: resolve the workspace
-first, then place the subject AFTER 3a creates Drupal (`composer create` needs an empty
+first, then place the subject AFTER 3a creates Drupal (`composer create-project` needs an empty
 root). Run the read-only resolver to decide WHERE:
 
 ```bash
@@ -114,7 +114,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-up.sh" --subject "<subject_dir>" --
 ```
 
 This configures `--project-type=drupal11 --docroot=web --php-version=$(resolve_php_target)`,
-starts DDEV, runs `ddev composer create drupal/recommended-project:^11` when there is no
+starts DDEV, runs `ddev composer create-project drupal/recommended-project:^11` (`create` on DDEV < 1.24.2) when there is no
 composer.json, ensures `drush:^13`, and reads the generated `.ddev/config.yaml` rather
 than assuming hostnames/images. It skips if the project is already configured/running.
 

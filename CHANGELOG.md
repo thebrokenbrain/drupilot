@@ -40,6 +40,9 @@ tag the commit `vX.Y.Z`.
   the bash version from `BASH_VERSINFO` against the supported minimum 3.2.
 
 ### Changed
+- **`ddev-up.sh` uses `ddev composer create-project`** on DDEV >= 1.24.2 (DDEV
+  1.25 prints a deprecation warning for `ddev composer create`); older DDEV keeps
+  `ddev composer create`. Docs updated to match.
 - **The `ddev-environment` skill no longer suggests `envsubst`** (not shipped on
   stock macOS) for rendering templates; it shows a portable `sed ... > dest`.
 

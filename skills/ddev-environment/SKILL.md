@@ -82,7 +82,7 @@ What `ddev-up.sh` does (idempotently):
 - `ddev config --project-type=drupal11 --docroot=web --php-version=$(resolve_php_target)`
   only if the project is not already configured.
 - `ddev start`.
-- `ddev composer create drupal/recommended-project:^11` only when there is no
+- `ddev composer create-project drupal/recommended-project:^11` (`ddev composer create` on DDEV < 1.24.2) only when there is no
   `composer.json` yet (creating a project would overwrite an existing one).
 - Ensures `drush/drush:^13` is present (D11 requires Drush 13).
 - **Reads the generated `.ddev/config.yaml`** for the real project name and
@@ -118,7 +118,7 @@ subject it targets a sibling Drupal root `<parent>/<name>-d11` (or
 `loose:false` and the existing layout is kept (full back-compat). `ddev-up.sh`
 consults this resolver internally, so the subject is never scaffolded on top of.
 
-Then, AFTER Drupal is created (`ddev composer create` needs an almost-empty root),
+Then, AFTER Drupal is created (`ddev composer create-project` needs an almost-empty root),
 place the subject into `web/<modules|themes|profiles>/custom/<name>`:
 
 ```bash
@@ -251,7 +251,7 @@ already in place, say "already configured — skipped". Hand off to the
 
 ## Gotchas
 
-- `ddev composer create` overwrites — only run it when there is no
+- `ddev composer create-project` overwrites — only run it when there is no
   `composer.json`. `ddev-up.sh` already guards this; do not call it manually
   inside a populated project.
 - The PHP 8.5 DDEV image may not exist yet; `detect-php.sh` flags this. Fall back
@@ -259,7 +259,7 @@ already in place, say "already configured — skipped". Hand off to the
 - The webdriver hostname differs by add-on version — never hardcode
   `selenium-chrome:4444`; read the generated YAML / add-on output.
 - Rector and PHPStan need the Drupal **core tree present** (no database), so they
-  work right after `ddev composer create`. `upgrade_status` additionally needs an
+  work right after `ddev composer create-project`. `upgrade_status` additionally needs an
   **installed** site (DB) — defer it until `ddev drush site:install` has run.
 - All status messages go to stderr via the `log_*` helpers; stdout stays clean
   for parseable payloads (e.g. `detect-php.sh --json`).
