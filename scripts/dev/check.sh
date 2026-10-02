@@ -15,7 +15,10 @@
 #                 must run on bash 3.2 + BSD tools, i.e. stock macOS): ${x,,},
 #                 ${x^^}, declare/local -A|-n|-g, mapfile/readarray, sed -i,
 #                 readlink -f, realpath, grep -P, date -d, xargs -r, stat -c,
-#                 find -printf, envsubst. Comment text is ignored; a line can
+#                 find -printf, envsubst, and a regex interval ({n}, {n,m})
+#                 in an awk regex literal (mawk 1.3.4-20200120, the default awk
+#                 on Debian 12 / Ubuntu 22.04, matches it as literal text).
+#                 Comment text is ignored; a line can
 #                 opt out with a trailing `# portability-ok` and a reason
 #   - special-vars no script assigns, declares, reads into or loops over a bash
 #                 special variable (GROUPS, RANDOM, SECONDS, LINENO, UID, EUID,
@@ -191,7 +194,9 @@ gate_portability() {
             line ~ /(^|[^A-Za-z_])sed[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-i/ ||
             line ~ /readlink[[:space:]]+-f/ || line ~ /grep[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*P/ ||
             line ~ /date[[:space:]]+-d/ || line ~ /xargs[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-r/ ||
-            line ~ /stat[[:space:]]+-c/ || line ~ /find[[:space:]].*-printf/)
+            line ~ /stat[[:space:]]+-c/ || line ~ /find[[:space:]].*-printf/ ||
+            (line !~ /=~/ && (line ~ /(~|match\(|sub\(|split\()[[:space:]]*[^\/]*\// || line ~ /^[[:space:]]*!?\//) &&
+             line ~ /[^\\]\{[0-9]+(,[0-9]*)?\}/))
           printf "%s:%d: %s\n", F, NR, substr($0, 1, 140)
       }' "$f") >> "$out"
   done

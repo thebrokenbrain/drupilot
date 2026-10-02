@@ -376,6 +376,13 @@ tag the commit `vX.Y.Z`.
   values** (`#   2 — analysis level`, `web/modules/custom/foo — the extension to
   check`). The headers of `rector.php`, `phpstan.neon` and `phpcs.xml.dist` now
   describe what is filled in without spelling the tokens.
+- **The port-safety serialization check missed every promoted `private` /
+  `readonly` property on mawk** (the default awk on Debian 12 / Ubuntu 22.04):
+  `php-scan.sh` used a regex interval (`\.{0,3}`) that mawk 1.3.4-20200120
+  matches as literal text, so a port that added `private readonly` promoted
+  services to a form passed the gate. The pattern no longer uses an interval,
+  and the `check.sh` portability gate now rejects regex intervals in awk
+  regex literals.
 
 ## [0.8.4] - 2026-06-23
 

@@ -142,7 +142,7 @@ function promoted(text, line,   parts, k, m, p, mods, name, w, wn, j) {
     wn = split(p, w, /[[:space:]]+/); mods = ""; name = ""
     for (j = 1; j <= wn; j++) {
       if (w[j] ~ /^(public|protected|private|readonly)$/) mods = mods (mods == "" ? "" : ",") w[j]
-      if (name == "" && w[j] ~ /^&?\.{0,3}\$[A-Za-z_]/) { name = w[j]; sub(/^[^$]*\$/, "", name); sub(/[^A-Za-z0-9_].*$/, "", name) }
+      if (name == "" && w[j] ~ /^&?(\.\.\.)?\$[A-Za-z_]/) { name = w[j]; sub(/^[^$]*\$/, "", name); sub(/[^A-Za-z0-9_].*$/, "", name) }
     }
     if (name != "") print "PROP\t" line "\t" cls "\t" mods "\t" name "\t1\t0"
   }
