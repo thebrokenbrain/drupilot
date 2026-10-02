@@ -127,11 +127,22 @@ How the subject gets there is controlled by `DRUPILOT_PLACEMENT` (`move` / `syml
 
 ### The `.drupilot/` folder
 
-Developer-facing outputs live in a single **visible, gitignored** `.drupilot/` directory at the Drupal root: the port **report card** (`port-report.md`), the **viability report** (`viability-report.md`), the test-coverage HTML, the local `.patch`, the consolidated layer reports (`layer-N-report.md`) and the **decision log** (`decisions.md`, with its machine twin `decisions.jsonl`). It is gitignored automatically so it never lands in your patch, and you can point it elsewhere with `DRUPILOT_ARTIFACTS_DIR`. The machine-readable cache and the determinism lockfile deliberately stay **hidden under `$HOME`** so they can't leak into a patch.
+Developer-facing outputs live in a single **visible, gitignored** `.drupilot/` directory at the Drupal root: the port **report card** (`port-report.md`), the **viability report** (`viability-report.md`), the test-coverage HTML, the local `.patch`, the consolidated layer reports (`layer-N-report.md`), the **decision log** (`decisions.md`, with its machine twin `decisions.jsonl`) and the **learned-pattern catalog** (`patterns.json`). It is gitignored automatically so it never lands in your patch, and you can point it elsewhere with `DRUPILOT_ARTIFACTS_DIR`. The machine-readable cache and the determinism lockfile deliberately stay **hidden under `$HOME`** so they can't leak into a patch.
 
 ### Decision log
 
 Every place a port does not keep what a tool produced, or does not follow the flow, is recorded the moment it happens by `scripts/analysis/log-decision.sh`, with **what** and **why**: a Rector change reverted or rewritten by hand, a script's verdict overridden, a step skipped, a fix made after validation or the tests caught a problem, a test whose form changed, a pre-existing bug left unfixed, a behavior change a reviewer must check. Each entry is one JSON line in `.drupilot/decisions.jsonl` (one log per Drupal root; every entry names its module), and `decisions.md` beside it is regenerated as a table per module. The port report and the layer report merge these entries with the port manifest's structured fields (`rector_rules`, `rector_reversions`, `post_port_fixes`, `preexisting_bugs`, `behavior_changes`, `tooling_deviations`, `validation`), so reverted Rector rules and post-port fixes add up across modules and layers. `log-decision.sh --subject <dir> --list` prints a module's entries.
+
+### Learned patterns
+
+The same pitfalls tend to come back module after module. drupilot keeps one **catalog of learned patterns** per project, `.drupilot/patterns.json` at the Drupal root (`scripts/analysis/patterns.sh`). Each entry is a pitfall an earlier port hit: a **detector** (a POSIX ERE run over the source, and/or a deterministic rule such as `port-safety:fapi-callable` or `signature:entity-get-original` that reuses `check-port-safety.sh` / `scan-signature-changes.sh`), the **fix** that worked, why it was needed, the module and layer it was learned from, and how many times it was recorded (`hits`).
+
+- **Before** a port or a refactor, `patterns.sh scan --subject <dir>` runs every detector on the untouched module; each hit becomes a must-check item, so the pitfall is prevented instead of repaired.
+- **At the end**, `patterns.sh harvest` lists candidates (the reverted Rector changes and post-port fixes of the manifest and the decision log), you pick which ones to keep, and `patterns.sh add` records them. An existing id is updated in place: its `hits` go up and the module is added to `seen_in`. Autonomous runs record only detectors they checked and list them for review.
+- `/drupilot-layers` shares one catalog for the whole set, so what layer N learned is checked on layer N+1, even with one test-bed per module.
+- `patterns.sh export` prints entries in `config/deprecations.json` format, ready to propose upstream (without the module names unless `--with-source`).
+
+The catalog is plain JSON, meant to be read and edited by hand (`patterns.sh list`, `patterns.sh remove --id <id>`). Like the rest of `.drupilot/`, it is gitignored. Point `DRUPILOT_PATTERNS_FILE` at a committed file to share it with a team.
 
 ### Per-module state
 
@@ -222,6 +233,7 @@ drupilot splits the work in two. **Deterministic scripts** do the mechanical, re
 - **Adapts the tests** to D11; on a behavioral failure it fixes the **code**, never the test.
 - **Rewrites to the "Drupal 11 way"** in Phase 2 — attributes, dependency injection, strict types, deprecation removal.
 - **Proposes the consequential decisions** (core target, refactor scope, contribute or not) — you choose.
+- **Learns from each port** — checks the next module against the pitfalls earlier ports of the project hit, and records new ones with a detector and the fix (`patterns.sh`).
 - **Logs every divergence as it happens** — each Rector change it reverts, each script verdict it overrides, each step it skips, with why (`log-decision.sh`), so the report never shows a tool's output as kept when it was not.
 
 **When the AI acts — the pattern.** The AI is the conductor: the scripts don't call each other. The AI runs one, reads its output, decides the next, and runs it. So it acts **before** every script (decide whether and how to run it) and **after** it (read the result and fix what's left), plus at the decision tabs. The single exception is the **`PostToolUse` hook**, which runs `phpcbf` on its own after each file edit — no AI in the loop.
@@ -284,6 +296,7 @@ Defaults live in `config/defaults.json`. **Every `DRUPILOT_*` key can be overrid
 | `DRUPILOT_WORKSPACE_DIR` | _(empty)_ | Explicit path for the Drupal test-bed root. Empty means a sibling `<parent>/<machine_name>-d11`. |
 | `DRUPILOT_LAYERS_SANDBOX` | _(asked)_ | Applies to `/drupilot-layers` runs on a **loose** folder of modules (a set inside a Drupal root is always ported in place, in that one site). `per-module` gives each module its own `<name>-d11` test-bed. `shared` uses one test-bed for the whole set, `<parent>/<dir>-d11`, so a module and the modules it depends on are installed together. Empty means the command asks; autonomous runs use `per-module`. The answer is remembered in `.drupilot.json`. |
 | `DRUPILOT_ARTIFACTS_DIR` | _(empty)_ | Override for the visible `.drupilot/` outputs directory. Empty means `<root>/.drupilot`. |
+| `DRUPILOT_PATTERNS_FILE` | _(empty)_ | The learned-pattern catalog. Empty means `<root>/.drupilot/patterns.json`; a module ported by `/drupilot-layers` uses the set's catalog. A relative path is taken from the Drupal root, so a team can share a committed file. |
 | `DRUPILOT_DDEV_CREATE_TIMEOUT` | `900` | Seconds `/drupilot-setup` lets `ddev composer create-project` run before stopping it with a clear error (`0` = no limit). Needs `timeout` (or `gtimeout` on macOS); without it the step is unbounded. |
 | `DRUPILOT_CODER_CONSTRAINT` | `^8.3` | `drupal/coder` branch (PHPCS 3.x vs 4.x). |
 | `DRUPILOT_PHPSTAN_LEVEL` | `2` | Base PHPStan level (deprecation detection). |
@@ -443,12 +456,15 @@ A module that only declares part of what it uses is shown where it really belong
 
 Sections 2-8 come from each module's port manifest and decision log, so a rule reverted in several modules stands out. `--json` adds the cross-module `aggregate`.
 
+The whole set shares one [learned-pattern catalog](#learned-patterns). Each module is scanned with it before it is ported, and what its port teaches is recorded there, so later layers are checked for the pitfalls earlier layers hit.
+
 A regression stops the next layer. The scripts also work on their own:
 
 ```bash
 bash scripts/analysis/layers.sh --dir web/modules/custom --json           # layers, cycles, undeclared deps
 bash scripts/analysis/lint-extension-metadata.sh --subject web/modules/custom/acme_api --json
 bash scripts/analysis/layer-report.sh --dir web/modules/custom --layer 1  # consolidated report
+bash scripts/analysis/patterns.sh scan --subject web/modules/custom/acme_invoice  # pitfalls earlier layers learned
 bash scripts/analysis/layer-report.sh --subject ../a-d11/web/modules/custom/a --subject ../b-d11/web/modules/custom/b --name "batch 1"  # any set of modules
 ```
 

@@ -154,6 +154,7 @@ Read via the scripts (which call `config_get`/`config_json`); env vars override
 `DRUPILOT_CONTRIB_MODE` (semi), `DRUPILOT_USE_DIGESTS_RULES` (true),
 `DRUPILOT_DIGESTS_REF` (main), `DRUPILOT_GENERATE_RULES` (ask),
 `DRUPILOT_SOFT_DEPRECATIONS` (report), `DRUPILOT_VERIFY_CORES` (auto),
+`DRUPILOT_PATTERNS_FILE` ('' = `<Drupal root>/.drupilot/patterns.json`),
 `DRUPILOT_AUTONOMOUS` (false).
 
 ## Autonomous mode (hands-off)
@@ -221,8 +222,11 @@ re-run of an earlier stage does not undo a later one.
 ### Batch context (`/drupilot-layers`)
 
 When `/drupilot-layers` delegates a module to you it passes `portfolio=<dir>`,
-`layer=<N>` and a per-module artifacts directory
-(`<Drupal root>/.drupilot/modules/<machine>`). Then: run the module's normal flow
+`layer=<N>`, the set's pattern catalog `catalog=<file>` and a per-module
+artifacts directory (`<Drupal root>/.drupilot/modules/<machine>`). Then: pass
+`--catalog <file>` to every `patterns.sh` call (and `--layer <N>` to `add`), so
+the pitfalls earlier layers learned are checked on this module before it is
+ported and what it teaches is checked on the later layers; run the module's normal flow
 (Phase 1; refactor and contribute stay opt-in, and you never contribute from a
 layer run); pass that directory to `port-report.sh --output` so modules sharing a
 site do not overwrite each other's report; treat the modules of earlier layers as
@@ -289,7 +293,11 @@ so plainly, but always hand over the staged plan and let the user choose.
 Use the `minimal-port` skill. First, when the subject ships tests and the test
 environment is up, record the pre-port baseline on the untouched code
 (`run-phpunit.sh --subject <path> --type all --baseline`; exit 2 never blocks the
-port), so Stage 5 can tell pre-existing failures from regressions. Three passes
+port), so Stage 5 can tell pre-existing failures from regressions. Then check
+the untouched subject against the project's learned-pattern catalog
+(`scripts/analysis/patterns.sh scan --subject <path> --json`, read-only): every
+hit — a pitfall an earlier port of the project hit, with the fix that worked —
+is a must-check item to prevent while porting. Three passes
 (PROMPT §5.4):
 1. **Official Rector** — `palantirnet/drupal-rector` with `DRUPAL_10` and the PHP
    set for the target (minus the risky rules the template skips).
@@ -347,7 +355,13 @@ When the subject validates, write the local preview patch (offline, git-only;
 skips with a warning if the module is not under git):
 `scripts/contrib/make-patch.sh --local --subject <path>` →
 `MODULE-port-to-drupal-11.patch` next to the module, for local review/testing
-before any contribution.
+before any contribution. Before the report, record what the port learned:
+`patterns.sh harvest --subject <path> --json` lists the reverted Rector changes
+and post-port fixes; give each pitfall worth preventing a detector that matches
+the PRE-port code (a POSIX ERE and/or `port-safety:<check>` / `signature:<id>`)
+and `patterns.sh add` it — after the developer picks which (`minimal-port` §8),
+or, in autonomous mode, only detectors you checked, listing their ids in the
+summary. Put `learned_patterns {scan, recorded}` in the manifest.
 
 ### Stage 4 — refactor (gate: `analyze`/`test`; Phase 2, OPT-IN ONLY)
 
@@ -359,7 +373,9 @@ raise PHPStan to level 5-6, and clean `Drupal` + `DrupalPractice`, with `check-p
 (promoted services stay `protected`, never `private`/`readonly`, in serialized
 classes). **Coordinate closely with
 `drupal-test-engineer`** so the suite stays/turns green as the architecture
-changes. Explain every significant change. When done, **refresh the local patch**
+changes. Explain every significant change. Scan the learned patterns before the
+first change and record what the refactor taught at the end, as in Stage 3. When
+done, **refresh the local patch**
 (`make-patch.sh --local --subject <path>`) so it reflects the refactor.
 
 ### Stage 5 — test (gate: `test`) -> delegate
@@ -417,5 +433,7 @@ other pre-existing hygiene findings are listed in the port report (not fixed in
 Phase 1), and the applicable test suite is
 green (a `pre-existing-failures` or `not-verified-unbaselined` verdict is
 reported with its list, never as green; every new test has an `effective` negative control), and every divergence from a tool's output or the flow is
-in the decision log (`log-decision.sh --subject <path> --list` shows it). Always end with a concise English summary:
+in the decision log (`log-decision.sh --subject <path> --list` shows it), every
+hit of the pre-port `patterns.sh scan` was checked, and the pitfalls this port
+hit are in the pattern catalog (or the developer declined them). Always end with a concise English summary:
 current phase, what changed, gate status, and the suggested next step.

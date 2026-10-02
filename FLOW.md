@@ -70,12 +70,13 @@ flowchart TD
     GATE1{"Continue with<br/>the port?"}:::human
 
     subgraph F1["PHASE 1 · Minimal port — make the module run on Drupal 11 (may keep Drupal 10)"]
+      PAT["patterns.sh scan<br/>the pitfalls earlier ports<br/>of the project hit"]:::script
       PORT(("The AI orchestrates Rector's 3 passes<br/>(official → digests → ad-hoc),<br/>the manual changes and validation<br/>— see diagram 2")):::ai
-      ART1[("Artifacts:<br/>MODULE-port-to-drupal-11.patch<br/>port-report.md")]:::result
+      ART1[("Artifacts:<br/>MODULE-port-to-drupal-11.patch<br/>port-report.md<br/>patterns.json (what it learned)")]:::result
       TST1["Tests in DDEV · run-phpunit<br/>Unit · Kernel · Functional · JS (Selenium)"]:::script
       TST2(("The AI adapts the form of the tests;<br/>on a behavioral failure it<br/>fixes the code, never the test")):::ai
       DONE1(["Module ported to Drupal 11<br/>compatible · behavior preserved · tests green"]):::milestone
-      PORT --> ART1 --> TST1 --> TST2 --> DONE1
+      PAT --> PORT --> ART1 --> TST1 --> TST2 --> DONE1
     end
 
     GATE2{"What next?"}:::human
@@ -120,6 +121,8 @@ flowchart TD
 > **Stage record.** Each stage leaves its mark in the module's hidden `state.json` (setup, assessed, ported, refactored, tested, contributed, plus effort, test and core-matrix verdicts, toolchain and patch). The deterministic scripts write most of it (`port-report.sh`, `run-phpunit.sh`, `verify-core-matrix.sh`, `make-patch.sh`); the setup, assess and contribute commands call `state.sh record`. The router reads it to propose the next step, and `/drupilot-status --all` turns the records of several modules and workspaces into one table.
 >
 > **Decision log.** Whenever the AI does not keep a tool's output or does not follow the flow — reverts a Rector change, overrides a script's verdict, skips a step, fixes what validation caught after the port, changes a test's form, leaves a pre-existing bug, introduces a behavior change to review — it records what and why at that moment with `log-decision.sh` (`.drupilot/decisions.jsonl` + `decisions.md`). `port-report.sh` and `layer-report.sh` merge those entries with the port manifest.
+>
+> **Learned patterns.** Before a port or a refactor touches code, `patterns.sh scan` checks the module against the project's catalog (`.drupilot/patterns.json`) of pitfalls earlier ports hit, each with a detector and the fix that worked; every hit is a must-check item. At the end, the AI proposes the new pitfalls (reverted Rector changes, post-port fixes) with a detector, you pick which to keep, and `patterns.sh add` records them for the next module.
 >
 > If Phase 2 is skipped, the final result is the **ported module** (the Phase 1 milestone). Phase 2 and contribution are always optional.
 >
@@ -233,12 +236,14 @@ flowchart TD
     LAI(("The AI presents the plan and the<br/>proposed dependencies: entries")):::ai
     LD{"Decision: port layer N ·<br/>add the proposed dependencies ·<br/>stop"}:::human
     LP(("For each module of the layer, one at a time:<br/>the orchestrator runs setup → assess<br/>→ port → test (diagram 1)")):::ai
+    LC[("patterns.json · one catalog for the set<br/>scanned before each port,<br/>fed by what each port learned")]:::result
     LR["layer-report.sh<br/>consolidated layer-N-report.md<br/>(fixed sections: results · Rector hits and reversions<br/>· fixes · pre-existing bugs · behavior changes<br/>· deviations · validation)"]:::script
     LN{"Next layer?<br/>(not after a regression)"}:::human
 
     L0 --> LS --> LAI --> LD
     LD -->|port| LP --> LR --> LN
     LN -->|yes| LP
+    LC <-.-> LP
 
     classDef script fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
     classDef ai fill:#ede9fe,stroke:#7c3aed,color:#4c1d95;

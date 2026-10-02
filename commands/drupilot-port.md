@@ -121,6 +121,25 @@ blocks on it, but every later failure will then count as a regression. Re-taking
 it after Rector ran would compare the port with itself (the run warns when the
 baseline was taken on the current code).
 
+## Step 2c — Check the learned patterns (prevention, before any code change)
+
+Pitfalls earlier ports of this project already hit are recorded in its pattern
+catalog (`<Drupal root>/.drupilot/patterns.json`, or `DRUPILOT_PATTERNS_FILE`;
+a `/drupilot-layers` set shares one, so what layer N learned is checked on layer
+N+1). Scan the untouched subject with it (add `--catalog <file>` when a batch
+context passes one):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/patterns.sh" scan --subject "<subject>" --json
+```
+
+Read-only, always exit `0`. Show the hits grouped by pattern (`by_pattern`: id,
+hits, the fix that worked before, the module/layer it was learned from). Each
+hit is a **must-check item** for the steps below: prevent it while porting
+instead of repairing it after (the recorded fix is the starting point; the
+`minimal-port` golden rules still decide). No catalog or no hit is normal for a
+first module. Keep the JSON for the manifest's `learned_patterns.scan` (Step 9).
+
 ## Step 3 — Pass 1: official `palantirnet/drupal-rector` (apply)
 
 The stable, maintained layer first. Always dry-run, let the user (or you, on their
@@ -397,6 +416,39 @@ Request later: pass `--issue ID [--comment N]` (this is what `/drupilot-patch`
 does). The merge-verified patch (rebased onto `origin/BASE` and hard-gated to
 apply cleanly) is the separate thing produced by `/drupilot-contribute`.
 
+## Step 8b — Record what this port learned
+
+List the candidates — the reverted Rector changes and post-port fixes of the
+manifest and the decision log:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/patterns.sh" harvest --subject "<subject>" --json
+```
+
+For each candidate worth preventing (and any other pitfall the port hit — a
+signature change, a hygiene defect that broke the tests), write a detector that
+matches the **pre-port** code: a POSIX ERE (`grep -E`; no `\d`, no lookarounds;
+check it with `git show <base>:<file> | grep -nE '<ERE>'`) and/or a
+deterministic rule (`port-safety:<check>` of `check-port-safety.sh`,
+`signature:<id>` of `scan-signature-changes.sh`). **Unless the run is
+autonomous**, ask with **AskUserQuestion** (multiSelect, header "Learn"; every
+proposed pattern pre-selected, plus "None"): which ones to record. In an
+autonomous run, record only those whose detector you checked, and list the ids
+in the summary for review. Record each:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/patterns.sh" add --subject "<subject>" \
+  --id <slug> --kind <rector-reversion|post-port-fix|signature-change|port-safety|hygiene|other> \
+  --pattern '<ERE>' [--files '<globs>'] [--rule <ref>] \
+  --why "<why it was needed>" --fix "<the fix that worked>" [--layer <N>] --json
+```
+
+A known id is upserted (`hits` + 1, this module appended to `seen_in`). The
+catalog is a local, self-gitignored, hand-editable file — never part of a patch;
+`patterns.sh remove --id <id>` undoes an entry and `patterns.sh export` prints
+entries in `config/deprecations.json` format to propose upstream. Nothing new
+learned → record nothing.
+
 ## Step 9 — Report
 
 Summarize in English:
@@ -460,7 +512,8 @@ render:
 # rector_reversions [{rule, file, why}], post_port_fixes [{fix, file, why,
 # detected_by}], preexisting_bugs [{issue, file, note}], behavior_changes
 # [{change, why, review_hint}], tooling_deviations [{what, why}], validation
-# [strings: how the result was validated].
+# [strings: how the result was validated], learned_patterns {scan (the JSON of
+# patterns.sh scan --json, Step 2c), recorded [the ids added in Step 8b]}.
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" --subject "$1" --manifest "<state_dir>/port-manifest.json" --changes-log "<state_dir>/change-log.txt"
 ```
 

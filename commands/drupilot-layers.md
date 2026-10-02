@@ -58,6 +58,26 @@ Present, concisely:
 5. **Outside the set** — core and contrib modules the set needs (run
    `deps-status.sh --subject <module dir>` for a contrib module's Drupal 11 readiness).
 
+**Learned patterns.** The set shares ONE pattern catalog (`patterns.sh`): the
+pitfalls a module's port hit, with a detector and the fix, recorded at the end
+of its port and checked on every later module BEFORE it is ported — so layer
+N+1 prevents what layer N had to repair. Resolve it once for the set and use
+that path as `<catalog>` below:
+
+```bash
+bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; patterns_file "$1"' _ <dir>
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/patterns.sh" list --catalog <catalog> --json
+```
+
+(`<Drupal root>/.drupilot/patterns.json` for a set inside a Drupal root; for a
+loose folder, the `.drupilot/` of its git toplevel or of the folder;
+`DRUPILOT_PATTERNS_FILE` overrides it.) When the catalog has entries, scan the
+modules of the next layer to port and list the hits per module (read-only):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/patterns.sh" scan --subject <module dir> --catalog <catalog> --json
+```
+
 Also run the metadata lint for each module when the user wants the full picture
 (`plan` with "hygiene", or before `run`), and summarize the totals per module:
 
@@ -127,7 +147,9 @@ Ask with **AskUserQuestion** (skip when `autonomous=true`: print the plan and st
    - the run mode: `auto` when `autonomous=true`, else `full` (its confirmations
      stay on; `auto` never pushes or opens an MR — contribution is never part of
      a layer run);
-   - **batch context**: `portfolio=<dir>`, `layer=<N>`, and the per-module
+   - **batch context**: `portfolio=<dir>`, `layer=<N>`, `catalog=<catalog>` (the
+     set's pattern catalog: the module is scanned with it before porting and
+     records what it teaches into it, `--layer <N>`), and the per-module
      artifacts directory `<Drupal root>/.drupilot/modules/<machine>` to pass to
      `port-report.sh --output` (several modules share one site, so they must not
      overwrite each other's `port-report.md`);
@@ -163,7 +185,9 @@ Ask with **AskUserQuestion** (skip when `autonomous=true`: print the plan and st
    only as complete as what the module's flow recorded; `--json` gives the
    cross-module `aggregate`. A set ported outside `/drupilot-layers` is
    reported with `layer-report.sh --subject <dir> --subject <dir> --name <label>`. Relay its
-   totals, then ask with **AskUserQuestion** (autonomous: stop after the layer and
+   totals and the patterns this layer added to the catalog (entries of
+   `patterns.sh list --catalog <catalog> --json` whose `seen_in` has `layer: N`
+   — they will be checked on the next layer), then ask with **AskUserQuestion** (autonomous: stop after the layer and
    recommend the next one): **Port layer N+1** (recommended when the layer is clean)
    / **Stop here**.
 

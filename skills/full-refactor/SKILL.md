@@ -151,6 +151,18 @@ that already existed (`pre-existing-failures`):
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject "<path>" --baseline-from-last
 ```
 
+Then check the subject against the project's learned-pattern catalog — the
+pitfalls earlier ports and refactors of this project hit (read-only, exit 0;
+`--catalog <file>` when a batch context passes one):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/patterns.sh" scan --subject "<path>" --json
+```
+
+Every hit is a must-check item for this refactor (the recorded fix is the
+starting point, the golden rules still decide); keep the JSON for the
+manifest's `learned_patterns.scan`.
+
 Work one concern at a time. After each change, re-run the validate loop and the
 relevant tests:
 
@@ -266,6 +278,15 @@ It rewrites `MODULE-port-to-drupal-11.patch` next to the module; add
 `--issue ID [--comment N]` for an issue-comment-named one (still offline). The
 merge-verified contribution patch stays the job of `drupal-contribution`.
 
+**Record what this refactor learned** (before the report), exactly as
+`minimal-port` §8: `patterns.sh harvest --subject "<path>" --json` lists the
+candidates, each pitfall worth preventing gets a detector matching the
+pre-refactor code (a POSIX ERE and/or `port-safety:<check>` /
+`signature:<id>`), and `patterns.sh add --subject "<path>" --id <slug> --kind
+<kind> --pattern '<ERE>' [--rule <ref>] --why "<why>" --fix "<fix>"` records
+it (the command asks which; an autonomous run records only detectors it
+checked and lists their ids).
+
 **Refresh the didactic report.** Tee the Phase 2 Rector + final PHPStan
 deprecation output into `<state_dir>/change-log.txt` (under `$HOME`, never in the
 project tree), update `<state_dir>/port-manifest.json` (`phase: "refactor"`, `soft_deprecations`
@@ -273,7 +294,8 @@ project tree), update `<state_dir>/port-manifest.json` (`phase: "refactor"`, `so
 structured outcome fields of `minimal-port` §8 for this phase: `rector_rules`,
 `rector_reversions`, `post_port_fixes`, `preexisting_bugs`, `behavior_changes`
 — every architectural change a reviewer must check —, `tooling_deviations`,
-`validation`; the `log-decision.sh` entries are merged in), and
+`validation`, and `learned_patterns` `{scan, recorded}`; the `log-decision.sh`
+entries are merged in), and
 re-render with `port-report.sh --subject <path> --manifest <manifest>
 --changes-log <state_dir>/change-log.txt` so `port-report.md` in the visible
 `.drupilot/` dir reflects Phase 2 and its "changes, explained" section.

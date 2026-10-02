@@ -129,11 +129,22 @@ Cómo llega el sujeto ahí lo controla `DRUPILOT_PLACEMENT` (`move` / `symlink` 
 
 ### La carpeta `.drupilot/`
 
-Las salidas destinadas al desarrollador viven en un único directorio **visible e ignorado en git** `.drupilot/` en la raíz de Drupal: el **boletín** del port (`port-report.md`), el **informe de viabilidad** (`viability-report.md`), el HTML de cobertura de tests, el `.patch` local, los informes consolidados por capa (`layer-N-report.md`) y el **registro de decisiones** (`decisions.md`, con su gemelo para máquinas `decisions.jsonl`). Se ignora en git automáticamente para que nunca acabe en tu parche, y puedes apuntarlo a otro sitio con `DRUPILOT_ARTIFACTS_DIR`. La caché legible por máquina y el lockfile de determinismo se quedan deliberadamente **ocultos bajo `$HOME`** para que no puedan filtrarse a un parche.
+Las salidas destinadas al desarrollador viven en un único directorio **visible e ignorado en git** `.drupilot/` en la raíz de Drupal: el **boletín** del port (`port-report.md`), el **informe de viabilidad** (`viability-report.md`), el HTML de cobertura de tests, el `.patch` local, los informes consolidados por capa (`layer-N-report.md`), el **registro de decisiones** (`decisions.md`, con su gemelo para máquinas `decisions.jsonl`) y el **catálogo de patrones aprendidos** (`patterns.json`). Se ignora en git automáticamente para que nunca acabe en tu parche, y puedes apuntarlo a otro sitio con `DRUPILOT_ARTIFACTS_DIR`. La caché legible por máquina y el lockfile de determinismo se quedan deliberadamente **ocultos bajo `$HOME`** para que no puedan filtrarse a un parche.
 
 ### Registro de decisiones
 
 Cada punto en el que un port no conserva lo que produjo una herramienta, o no sigue el flujo, queda registrado en el momento en que ocurre con `scripts/analysis/log-decision.sh`, con **qué** y **por qué**: un cambio de Rector revertido o reescrito a mano, el veredicto de un script descartado, un paso omitido, un arreglo hecho después de que la validación o los tests detectaran un problema, un test al que se le cambió la forma, un bug previo que se deja sin arreglar, un cambio de comportamiento que un revisor debe comprobar. Cada entrada es una línea JSON en `.drupilot/decisions.jsonl` (un registro por raíz de Drupal; cada entrada indica su módulo), y `decisions.md`, a su lado, se regenera como una tabla por módulo. El informe de port y el de capa combinan estas entradas con los campos estructurados del manifiesto del port (`rector_rules`, `rector_reversions`, `post_port_fixes`, `preexisting_bugs`, `behavior_changes`, `tooling_deviations`, `validation`), de modo que las reglas de Rector revertidas y los arreglos post-port se suman entre módulos y capas. `log-decision.sh --subject <dir> --list` muestra las entradas de un módulo.
+
+### Patrones aprendidos
+
+Los mismos fallos suelen repetirse de un módulo a otro. drupilot mantiene un **catálogo de patrones aprendidos** por proyecto, `.drupilot/patterns.json` en la raíz de Drupal (`scripts/analysis/patterns.sh`). Cada entrada es un fallo que ya sufrió un port anterior: un **detector** (una ERE POSIX que se pasa sobre el código y/o una regla determinista como `port-safety:fapi-callable` o `signature:entity-get-original`, que reutiliza `check-port-safety.sh` / `scan-signature-changes.sh`), el **arreglo** que funcionó, por qué hizo falta, el módulo y la capa de donde se aprendió, y cuántas veces se ha registrado (`hits`).
+
+- **Antes** de un port o un refactor, `patterns.sh scan --subject <dir>` ejecuta todos los detectores sobre el módulo intacto; cada coincidencia pasa a ser un punto que hay que comprobar, de modo que el fallo se previene en vez de repararse.
+- **Al final**, `patterns.sh harvest` lista candidatos (los cambios de Rector revertidos y los arreglos post-port del manifiesto y del registro de decisiones), tú eliges cuáles conservar y `patterns.sh add` los registra. Un id existente se actualiza en su sitio: sus `hits` suben y el módulo se añade a `seen_in`. Las ejecuciones autónomas solo registran detectores que han comprobado y los listan para revisión.
+- `/drupilot-layers` comparte un único catálogo para todo el conjunto, así que lo que aprendió la capa N se comprueba en la capa N+1, aunque cada módulo tenga su propio banco de pruebas.
+- `patterns.sh export` imprime las entradas en el formato de `config/deprecations.json`, listas para proponerlas upstream (sin los nombres de módulo salvo con `--with-source`).
+
+El catálogo es JSON plano, pensado para leerlo y editarlo a mano (`patterns.sh list`, `patterns.sh remove --id <id>`). Como el resto de `.drupilot/`, está ignorado en git. Apunta `DRUPILOT_PATTERNS_FILE` a un fichero versionado para compartirlo con un equipo.
 
 ### Estado por módulo
 
@@ -224,6 +235,7 @@ drupilot reparte el trabajo en dos. **Los scripts deterministas** hacen el traba
 - **Adapta los tests** a D11; ante un fallo de comportamiento arregla el **código**, nunca el test.
 - **Reescribe al "estilo Drupal 11"** en la Fase 2 — atributos, inyección de dependencias, tipados estrictos, eliminación de deprecaciones.
 - **Propone las decisiones de peso** (target de core, alcance del refactor, contribuir o no) — eliges tú.
+- **Aprende de cada port** — comprueba el siguiente módulo contra los fallos que ya sufrieron los ports anteriores del proyecto, y registra los nuevos con un detector y el arreglo (`patterns.sh`).
 - **Registra cada desviación en el momento** — cada cambio de Rector que revierte, cada veredicto de script que descarta, cada paso que omite, con su porqué (`log-decision.sh`), para que el informe nunca presente como conservada la salida de una herramienta que no lo fue.
 
 **Cuándo actúa la IA — el patrón.** La IA es el director de orquesta: los scripts no se llaman entre sí. La IA ejecuta uno, lee su salida, decide el siguiente y lo ejecuta. Así que actúa **antes** de cada script (decidir si lo lanza y cómo) y **después** de él (leer el resultado y arreglar lo que queda), además de en las pestañas de decisión. La única excepción es el **hook `PostToolUse`**, que pasa `phpcbf` por su cuenta tras cada edición de fichero — sin IA en el bucle.
@@ -286,6 +298,7 @@ Los valores por defecto están en `config/defaults.json`. **Cada clave `DRUPILOT
 | `DRUPILOT_WORKSPACE_DIR` | _(vacío)_ | Ruta explícita para la raíz del banco de pruebas de Drupal. Vacío significa un hermano `<padre>/<machine_name>-d11`. |
 | `DRUPILOT_LAYERS_SANDBOX` | _(se pregunta)_ | Se aplica a las ejecuciones de `/drupilot-layers` sobre una carpeta **suelta** de módulos (un conjunto dentro de una raíz de Drupal siempre se porta en su sitio, en ese único sitio). `per-module` da a cada módulo su propio banco de pruebas `<nombre>-d11`. `shared` usa un único banco de pruebas para todo el conjunto, `<padre>/<dir>-d11`, para que un módulo y los módulos de los que depende se instalen juntos. Vacío significa que el comando pregunta; las ejecuciones autónomas usan `per-module`. La respuesta se recuerda en `.drupilot.json`. |
 | `DRUPILOT_ARTIFACTS_DIR` | _(vacío)_ | Override del directorio de salidas visible `.drupilot/`. Vacío significa `<raíz>/.drupilot`. |
+| `DRUPILOT_PATTERNS_FILE` | _(vacío)_ | El catálogo de patrones aprendidos. Vacío significa `<raíz>/.drupilot/patterns.json`; un módulo portado por `/drupilot-layers` usa el catálogo del conjunto. Una ruta relativa se toma desde la raíz de Drupal, para que un equipo pueda compartir un fichero versionado. |
 | `DRUPILOT_DDEV_CREATE_TIMEOUT` | `900` | Segundos que `/drupilot-setup` deja correr `ddev composer create-project` antes de pararlo con un error claro (`0` = sin límite). Necesita `timeout` (o `gtimeout` en macOS); sin él el paso no tiene límite. |
 | `DRUPILOT_CODER_CONSTRAINT` | `^8.3` | Rama de `drupal/coder` (PHPCS 3.x vs 4.x). |
 | `DRUPILOT_PHPSTAN_LEVEL` | `2` | Nivel base de PHPStan (detección de deprecaciones). |
@@ -445,12 +458,15 @@ Un módulo que solo declara parte de lo que usa aparece donde de verdad le corre
 
 Las secciones 2-8 salen del manifiesto del port y del registro de decisiones de cada módulo, así que una regla revertida en varios módulos salta a la vista. `--json` añade el `aggregate` entre módulos.
 
+Todo el conjunto comparte un único [catálogo de patrones aprendidos](#patrones-aprendidos). Cada módulo se analiza con él antes de portarlo, y lo que enseña su port se registra ahí, así que las capas posteriores se comprueban contra los fallos que sufrieron las anteriores.
+
 Una regresión detiene la siguiente capa. Los scripts también funcionan por separado:
 
 ```bash
 bash scripts/analysis/layers.sh --dir web/modules/custom --json           # capas, ciclos, dependencias no declaradas
 bash scripts/analysis/lint-extension-metadata.sh --subject web/modules/custom/acme_api --json
 bash scripts/analysis/layer-report.sh --dir web/modules/custom --layer 1  # informe consolidado
+bash scripts/analysis/patterns.sh scan --subject web/modules/custom/acme_invoice  # fallos que aprendieron las capas anteriores
 bash scripts/analysis/layer-report.sh --subject ../a-d11/web/modules/custom/a --subject ../b-d11/web/modules/custom/b --name "lote 1"  # cualquier conjunto de módulos
 ```
 

@@ -83,6 +83,21 @@ still wins). Apply **only** the selected modernizations in Step 3, and use the
 chosen PHPStan level in Step 5. If the developer dropped "final by default" or
 "remove all deprecations", say so in the report (the bar was lowered by choice).
 
+## Step 2b — Check the learned patterns (before the first change)
+
+Phase 2 has its own recurring pitfalls (a promoted service made `private
+readonly` in a serialized form, `new static` turned into `new self`, an
+`#[\Override]` while Drupal 10 is still declared...). Scan the subject with the
+project's pattern catalog (`--catalog <file>` when a batch context passes one):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/patterns.sh" scan --subject "<subject>" --json
+```
+
+Read-only, exit `0`. Treat each hit as a must-check item while modernizing (the
+recorded fix is the starting point), and keep the JSON for the manifest's
+`learned_patterns.scan`.
+
 ## Step 3 — Modernize, change by change
 
 Apply **only the modernizations selected in Step 2** (`DRUPILOT_REFACTOR_SCOPE`),
@@ -194,6 +209,17 @@ preview/test patch (add `--issue ID` for an issue-comment-named one, as
 `/drupilot-patch` does); the merge-verified contribution patch is produced by
 `/drupilot-contribute`.
 
+## Step 6b — Record what this refactor learned
+
+Same as `/drupilot-port` Step 8b: list the candidates
+(`patterns.sh harvest --subject "<subject>" --json`), write a detector that
+matches the pre-refactor code for each pitfall worth preventing (a POSIX ERE
+and/or `port-safety:<check>` / `signature:<id>`), ask which to record with
+**AskUserQuestion** (multiSelect, header "Learn"; skipped in an autonomous run,
+which records only detectors it checked and lists their ids), and record each
+with `patterns.sh add --subject "<subject>" --id <slug> --kind <kind> --pattern
+'<ERE>' [--rule <ref>] --why "<why>" --fix "<fix>" --json`.
+
 ## Step 7 — Report
 
 Summarize in English:
@@ -220,7 +246,8 @@ when `^10` is kept;
 `manual_edits` items may be `{edit, why, change_record}` objects so the report
 explains each change; and the structured outcome fields `rector_rules`,
 `rector_reversions`, `post_port_fixes`, `preexisting_bugs`, `behavior_changes`,
-`tooling_deviations`, `validation` — shapes in `port-report.sh`'s header; the
+`tooling_deviations`, `validation`, and `learned_patterns` {scan (Step 2b),
+recorded (Step 6b)} — shapes in `port-report.sh`'s header; the
 `log-decision.sh` entries are merged in) and re-render so the report reflects Phase 2. As Phase 2
 ran, **tee** the Rector + final validate-loop PHPStan deprecation output into
 `<state_dir>/change-log.txt` (under `$HOME`, never in the project tree) so the

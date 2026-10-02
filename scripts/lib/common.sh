@@ -1489,6 +1489,58 @@ project_artifacts_path() {
 # every entry names its subject, so modules sharing a test-bed stay apart.
 decisions_log_file() { printf '%s/decisions.jsonl' "$(project_artifacts_path "${1:-$PWD}")"; }
 
+# patterns_file [base_dir] -> path of the LEARNED-PATTERN CATALOG
+# (scripts/analysis/patterns.sh): the pitfalls a port of this project already
+# hit, each with a detector and a fix, so the next module is checked BEFORE it
+# is ported. It is human-reviewable and editable, so it is a visible artifact,
+# not hidden state. ONE catalog per project, shared by its modules:
+#   1. DRUPILOT_PATTERNS_FILE (a team can point it at a committed file; a
+#      relative path is taken from the Drupal root, else from base);
+#   2. the base is replaced by the portfolio the subject was ported in
+#      (state.json .portfolio.dir, from /drupilot-layers), so a set ported with
+#      one test-bed per module still shares one catalog;
+#   3. <Drupal root>/.drupilot/patterns.json (project_artifacts_path);
+#   4. no Drupal root yet (a loose module, a monorepo before setup): the
+#      nearest directory from base up to its git toplevel that already has
+#      .drupilot/patterns.json, else <git toplevel or base>/.drupilot/, so a
+#      submodule and its parent share the catalog.
+# Nothing is created (read-only callers must not leave a dir behind).
+patterns_file() {
+  local base="${1:-$PWD}" f root p top d
+  f="$(config_get DRUPILOT_PATTERNS_FILE "")"
+  if [[ -n "$f" ]]; then
+    case "$f" in
+      /*) ;;
+      *) root="${DRUPILOT_PROJECT_DIR:-}"
+         [[ -z "$root" ]] && root="$(find_drupal_root "$base" 2>/dev/null || true)"
+         [[ -z "$root" ]] && root="$base"
+         root="$(cd "$root" 2>/dev/null && pwd || printf '%s' "$root")"
+         f="$root/$f";;
+    esac
+    printf '%s' "$f"
+    return 0
+  fi
+  p="$(state_get "$base" '.portfolio.dir' '')"
+  [[ -n "$p" && -d "$p" ]] && base="$p"
+  base="$(cd "$base" 2>/dev/null && pwd || printf '%s' "$base")"
+  root="${DRUPILOT_PROJECT_DIR:-}"
+  [[ -z "$root" ]] && root="$(find_drupal_root "$base" 2>/dev/null || true)"
+  if [[ -n "$root" || -n "$(config_get DRUPILOT_ARTIFACTS_DIR "")" ]]; then
+    printf '%s/patterns.json' "$(project_artifacts_path "$base")"
+    return 0
+  fi
+  top=""
+  have_cmd git && top="$(cd "$base" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null || true)"
+  [[ -n "$top" ]] && top="$(cd "$top" 2>/dev/null && pwd -P || printf '%s' "$top")"
+  d="$(cd "$base" 2>/dev/null && pwd -P || printf '%s' "$base")"
+  while [[ -n "$top" && "$d" == "$top"/* ]]; do
+    if [[ -f "$d/.drupilot/patterns.json" ]]; then printf '%s/.drupilot/patterns.json' "$d"; return 0; fi
+    d="$(dirname "$d")"
+  done
+  printf '%s/.drupilot/patterns.json' "${top:-$base}"
+  return 0
+}
+
 # rector_rules_file <subject> -> the rule counts of the last Rector --apply run
 # that changed files (run-rector.sh), the fallback for manifest.rector_rules.
 rector_rules_file() { printf '%s/rector-rules.json' "$(project_state_path "${1:-$PWD}")"; }

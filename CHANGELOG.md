@@ -497,6 +497,41 @@ tag the commit `vX.Y.Z`.
   - `render_template_files` (common.sh) substitutes `{{KEY}}` tokens with file
     contents in one left-to-right pass: values may be multi-line, hold `|`,
     `&` or `\`, exceed the environment's size limit, and are never re-scanned.
+- **Learned-pattern catalog (`scripts/analysis/patterns.sh`, 4.3).** The same
+  port failures kept coming back module after module and layer after layer,
+  and the lessons lived only in hand-kept FAQs outside drupilot. Each project
+  now has one catalog, `<root>/.drupilot/patterns.json` (visible,
+  self-gitignored, editable by hand; `DRUPILOT_PATTERNS_FILE` points it at a
+  committed file). Each entry holds a detector, the fix that worked, why it was
+  needed, its source module/layer and `hits`.
+  - Detectors: a POSIX ERE run over the source (`--files` globs,
+    `--ignore-case`) and/or a reference to a deterministic rule,
+    `port-safety:<check>` (check-port-safety.sh) or `signature:<id>`
+    (scan-signature-changes.sh). `add` refuses an invalid ERE, a PCRE
+    construct (`\d`, `(?`), an ERE that matches an empty line (it would match
+    every line) and an unknown rule.
+  - `scan` runs every detector on a subject before it is ported (read-only,
+    exit 0; `[pattern:<id>] file:line fix` lines or `--json`). `add` upserts by
+    id (`hits` + 1, the module appended to `seen_in`; atomic temp file + `mv`;
+    `--dry-run`). `harvest` proposes candidates from the port record
+    (reverted Rector changes, post-port fixes). `export` prints the ERE entries
+    in `config/deprecations.json` format for upstream (module names only with
+    `--with-source`). `list` and `remove` complete it.
+  - `patterns_file` (common.sh) resolves one catalog per project: the env/config
+    override, then the portfolio recorded in the subject's `state.json` (so a
+    `/drupilot-layers` set shares one catalog even with one test-bed per
+    module), then the Drupal root's `.drupilot/`, then (no root yet) the
+    nearest catalog up to the git toplevel, so a submodule shares its parent's.
+  - Flow: `/drupilot-port` (Step 2c scan, Step 8b record), `/drupilot-refactor`
+    (Steps 2b and 6b), the minimal-port and full-refactor skills and the
+    orchestrator scan before changing code and offer, as a multi-select, to
+    record what the port taught. An autonomous run records only detectors it
+    checked and lists them. `/drupilot-layers` passes the set's catalog to each
+    module and reports what a layer added, so layer N+1 is checked for what
+    layer N hit.
+  - `port-report.sh` renders a "Learned patterns" section from an optional
+    manifest key `learned_patterns {scan, recorded}`. Without it, the report
+    is unchanged.
 ### Changed
 - **The port bumps submodules too.** `/drupilot-port`, `minimal-port` and
   the orchestrator apply the recommended `core_version_requirement` with

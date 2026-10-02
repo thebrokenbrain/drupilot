@@ -35,6 +35,8 @@
   "DRUPILOT_LAYERS_SANDBOX": "",
   "DRUPILOT_WORKSPACE_DIR": "",
   "DRUPILOT_ARTIFACTS_DIR": "",
+  "_patterns_comment": "Learned-pattern catalog (scripts/analysis/patterns.sh): the pitfalls a port of this project already hit, each with a detector (a POSIX ERE and/or a check-port-safety / scan-signature-changes rule) and the fix. /drupilot-port and /drupilot-refactor scan the subject with it BEFORE changing code and offer to record new patterns at the end; /drupilot-layers shares one catalog across the whole set, so what layer N learned is checked on layer N+1. DRUPILOT_PATTERNS_FILE: the catalog file (default '' = <Drupal root>/.drupilot/patterns.json, the visible self-gitignored artifacts dir; for a module ported by /drupilot-layers, the set's catalog). Point it at a committed file (a relative path is taken from the Drupal root) to share the catalog with a team.",
+  "DRUPILOT_PATTERNS_FILE": "",
 
   "_ddev_timeout_comment": "DRUPILOT_DDEV_CREATE_TIMEOUT: wall-clock limit, in seconds, for the 'ddev composer create-project' step of scripts/env/ddev-up.sh (default 900; 0 = no limit). A hung create is stopped with a clear error instead of blocking setup indefinitely. Enforced through 'timeout' (GNU coreutils) or 'gtimeout' (macOS Homebrew coreutils); without either the step runs unbounded.",
   "DRUPILOT_DDEV_CREATE_TIMEOUT": 900,

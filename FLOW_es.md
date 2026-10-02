@@ -70,12 +70,13 @@ flowchart TD
     GATE1{"¿Continuar con<br/>la portabilidad?"}:::human
 
     subgraph F1["FASE 1 · Portabilidad mínima — que el módulo funcione en Drupal 11 (puede mantener Drupal 10)"]
+      PAT["patterns.sh scan<br/>los fallos que ya sufrieron<br/>los ports anteriores del proyecto"]:::script
       PORT(("La IA conduce las 3 pasadas de Rector<br/>(oficial → digests → ad-hoc),<br/>los cambios manuales y la validación<br/>— detalle en el diagrama 2")):::ai
-      ART1[("Artefactos:<br/>MODULE-port-to-drupal-11.patch<br/>port-report.md")]:::result
+      ART1[("Artefactos:<br/>MODULE-port-to-drupal-11.patch<br/>port-report.md<br/>patterns.json (lo aprendido)")]:::result
       TST1["Tests en DDEV · run-phpunit<br/>Unit · Kernel · Functional · JS (Selenium)"]:::script
       TST2(("La IA adapta la forma de los tests;<br/>ante un fallo de comportamiento<br/>corrige el código, nunca el test")):::ai
       DONE1(["Módulo portado a Drupal 11<br/>compatible · comportamiento preservado · tests en verde"]):::milestone
-      PORT --> ART1 --> TST1 --> TST2 --> DONE1
+      PAT --> PORT --> ART1 --> TST1 --> TST2 --> DONE1
     end
 
     GATE2{"¿Qué sigue?"}:::human
@@ -120,6 +121,8 @@ flowchart TD
 > **Registro de etapas.** Cada etapa deja su marca en el `state.json` oculto del módulo (setup, assessed, ported, refactored, tested, contributed, más el esfuerzo, los veredictos de tests y de la matriz de cores, el toolchain y el parche). La mayor parte la escriben los scripts deterministas (`port-report.sh`, `run-phpunit.sh`, `verify-core-matrix.sh`, `make-patch.sh`); los comandos de setup, assess y contribute llaman a `state.sh record`. El router lo lee para proponer el siguiente paso, y `/drupilot-status --all` convierte los registros de varios módulos y workspaces en una sola tabla.
 >
 > **Registro de decisiones.** Siempre que la IA no conserva la salida de una herramienta o no sigue el flujo — revierte un cambio de Rector, descarta el veredicto de un script, omite un paso, arregla lo que la validación detectó tras el port, cambia la forma de un test, deja un bug previo, introduce un cambio de comportamiento a revisar — registra qué y por qué en ese momento con `log-decision.sh` (`.drupilot/decisions.jsonl` + `decisions.md`). `port-report.sh` y `layer-report.sh` combinan esas entradas con el manifiesto del port.
+>
+> **Patrones aprendidos.** Antes de que un port o un refactor toque el código, `patterns.sh scan` comprueba el módulo contra el catálogo del proyecto (`.drupilot/patterns.json`) de fallos que ya sufrieron los ports anteriores, cada uno con un detector y el arreglo que funcionó; cada coincidencia es un punto que hay que comprobar. Al final, la IA propone los fallos nuevos (cambios de Rector revertidos, arreglos post-port) con un detector, tú eliges cuáles conservar y `patterns.sh add` los registra para el siguiente módulo.
 >
 > Si no se hace la Fase 2, el resultado final es el **módulo portado** (hito de la Fase 1). La Fase 2 y la contribución son siempre opcionales.
 >
@@ -233,12 +236,14 @@ flowchart TD
     LAI(("La IA presenta el plan y las<br/>entradas de dependencies: propuestas")):::ai
     LD{"Decisión: portar la capa N ·<br/>añadir las dependencias propuestas ·<br/>parar"}:::human
     LP(("Para cada módulo de la capa, de uno en uno:<br/>el orquestador ejecuta setup → assess<br/>→ port → test (diagrama 1)")):::ai
+    LC[("patterns.json · un catálogo para el conjunto<br/>se analiza antes de cada port,<br/>se alimenta de lo que aprende cada port")]:::result
     LR["layer-report.sh<br/>layer-N-report.md consolidado<br/>(secciones fijas: resultados · aciertos y reversiones de Rector<br/>· arreglos · bugs previos · cambios de comportamiento<br/>· desviaciones · validación)"]:::script
     LN{"¿Siguiente capa?<br/>(no tras una regresión)"}:::human
 
     L0 --> LS --> LAI --> LD
     LD -->|portar| LP --> LR --> LN
     LN -->|sí| LP
+    LC <-.-> LP
 
     classDef script fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
     classDef ai fill:#ede9fe,stroke:#7c3aed,color:#4c1d95;

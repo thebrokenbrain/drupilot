@@ -157,6 +157,24 @@ baseline could not meaningfully run (the un-ported module refused on Drupal 11
 (the test environment is not up) never blocks the port: report that no baseline
 was taken (every later failure then counts as a regression).
 
+**Learned patterns (prevention).** Before Pass 1, check the subject against the
+project's catalog of pitfalls earlier ports already hit (`patterns.sh`; one
+catalog per project at `<Drupal root>/.drupilot/patterns.json`, shared by a
+`/drupilot-layers` set — pass `--catalog <file>` when the batch context gives
+one):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/patterns.sh" scan --subject "<path>" --json
+```
+
+Read-only, always exit `0`. Each hit (`hits[]`: `id`, `file:line`, `why`, `fix`,
+`via` = the ERE or the `port-safety:`/`signature:` rule that matched) is a
+**must-check item**: keep it in your running list, apply the recorded fix where
+it fits as you go (the fix is the starting point, not an automatic edit — the
+golden rules above still decide), and confirm each one is resolved before §8.
+No catalog yet, or no hit, is normal for the first module. Keep the JSON for the
+manifest (`learned_patterns.scan`, §8).
+
 ## 2. Pass 1 — official Rector (palantirnet/drupal-rector)
 
 The stable, community-maintained pass. Covers deprecations D10.0 → D11.4. Always
@@ -568,6 +586,40 @@ phpcs/phpstan state, the **local patch path** (or that it was skipped), and what
 was **deferred to Phase 2** (any architectural work, DI, attributes, strict
 types, missing tests).
 
+**Record what this port learned (before the report).** Every pitfall that cost
+a fix here — a Rector change you reverted, a post-port fix, a signature change,
+a hygiene defect that bit the tests — is worth a detector so the next module is
+checked before it is ported. List the candidates from the manifest's
+`rector_reversions` / `post_port_fixes` and the decision log:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/patterns.sh" harvest --subject "<path>" --json
+```
+
+Each candidate needs a detector that matches the **pre-port** code (so a scan
+finds it before the next port): a POSIX ERE (`--pattern`, `grep -E`, no `\d` or
+lookarounds; `--files '*.php'` narrows it) and/or a deterministic checker
+(`--rule port-safety:<check>` from `check-port-safety.sh`, or
+`--rule signature:<id>` from `.signature_changes` in `config/deprecations.json`).
+The command asks which ones to keep (multi-select); then record each, with its
+fix and why (an existing id is upserted: `hits` + 1, the module appended to
+`seen_in`):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/patterns.sh" add --subject "<path>" \
+  --id <slug> --kind <rector-reversion|post-port-fix|signature-change|port-safety|hygiene|other> \
+  --pattern '<ERE>' [--rule <ref>] --why "<why>" --fix "<the fix that worked>" [--layer <N>] --json
+```
+
+Prove an ERE before keeping it: it must match the PRE-port line, read without
+touching the working tree (`git show <base>:<file> | grep -nE '<ERE>'`, where
+`<base>` is the ref the local patch diffs against), and an ERE that matches
+every line is refused by `add`. A
+module with nothing new to teach records nothing. In autonomous mode, record
+only candidates with a detector you proved and list the recorded ids in the
+summary for review (the catalog is local, self-gitignored, and
+`patterns.sh remove --id <id>` undoes an entry).
+
 **Write the report card (trust + teaching artifact).** While the passes ran you
 should have **tee'd** the official Rector output, the digests pass output and the
 final validate-loop PHPStan deprecation report into `<state_dir>/change-log.txt`
@@ -592,7 +644,9 @@ applying `run-rector.sh --json`; falls back to the `rector-rules.json` it
 keeps), `rector_reversions` `[{rule, file, why}]`, `post_port_fixes`
 `[{fix, file, why, detected_by}]`, `preexisting_bugs` `[{issue, file, note}]`,
 `behavior_changes` `[{change, why, review_hint}]`, `tooling_deviations`
-`[{what, why}]` and `validation` (strings: how the result was validated). The
+`[{what, why}]`, `validation` (strings: how the result was validated) and
+`learned_patterns` `{scan: <the patterns.sh scan --json of §1>, recorded: [ids]}`
+(rendered as "Learned patterns"). The
 entries you logged with `log-decision.sh` are merged in (deduplicated), so a
 decision logged there need not be repeated in the manifest) and render the report:
 

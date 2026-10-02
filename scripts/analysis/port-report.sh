@@ -44,7 +44,9 @@
 #     "preexisting_bugs": [{"issue": "...", "file": "...", "note": "..."}],
 #     "behavior_changes": [{"change": "...", "why": "...", "review_hint": "..."}],
 #     "tooling_deviations": [{"what": "...", "why": "..."}],
-#     "validation": ["how the result was validated", ...]
+#     "validation": ["how the result was validated", ...],
+#     "learned_patterns": {"scan": <the JSON of patterns.sh scan --json, run
+#                          before the port>, "recorded": ["pattern-id", ...]}
 #   }
 # manual_edits items may be a plain string OR an object {edit, why?, change_record?}.
 # port_safety and signature_changes are optional; when present the report lists
@@ -85,6 +87,9 @@
 # metadata_lint is optional; it falls back to the state file metadata-lint.json
 # (lint-extension-metadata.sh) and renders a "Pre-existing hygiene (not fixed
 # in Phase 1)" table, marked stale when the subject changed since the lint.
+# learned_patterns is optional; when present the report renders a "Learned
+# patterns" section: the catalog hits found before the port (patterns.sh scan:
+# pitfalls earlier ports of the project hit) and the ids recorded at its end.
 # origin_hygiene is optional; without it the report runs origin-hygiene.sh
 # --check itself, and renders an "Origin hygiene" section only when a baseline
 # was recorded (place-subject.sh takes it before placing).
@@ -464,6 +469,25 @@ printf '%s' "$PREC" | jq -e 'type == "object"' >/dev/null 2>&1 || PREC=""
       printf '## Decision log\n\n%s decision(s) were logged for this module as they happened (`log-decision.sh`): see `%s`.\n\n' \
         "$(printf '%s' "$PREC" | jq -r '.decisions')" "$(dirname "$(decisions_log_file "$SUBJECT")")/decisions.md"
     fi
+  fi
+
+  # Learned patterns (patterns.sh): only when the manifest carries them.
+  LP="$(printf '%s' "$M" | jq -c '.learned_patterns // empty | select(type == "object")' 2>/dev/null || true)"
+  if [[ -n "$LP" ]]; then
+    printf '%s' "$LP" | jq -r '
+      def cell: if . == null or . == "" then "—" else tostring | gsub("\\|"; "\\|") | gsub("\r?\n"; " ") end;
+      (.scan // {}) as $s | (.recorded // []) as $r
+      | "## Learned patterns\n",
+        "_Pitfalls earlier ports of this project hit (`patterns.sh`, catalog `\($s.catalog // "n/a")`), checked before this port._\n",
+        (if ($s.by_pattern // [] | length) > 0 then
+           "| Pattern | Kind | Hits before the port | Fix that worked before | Learned from |", "|---|---|---|---|---|",
+           ($s.by_pattern[] | "| `\(.id)` | \(.kind // "other") | \(.hits) | \(.fix | cell) | \(if .source.module then "\(.source.module)\(if .source.layer != null then " (layer \(.source.layer))" else "" end)" else "—" end) |"),
+           ""
+         elif $s.catalog_exists == true then "No known pattern matched this module (\($s.patterns // 0) checked).\n"
+         else "No pattern catalog existed yet.\n" end),
+        (if ($r | length) > 0 then "**Recorded from this port:** " + ([$r[] | "`\(.)`"] | join(", ")) else empty end)
+    ' 2>/dev/null || true
+    printf '\n'
   fi
 
   if [[ "$EXPLAINED_N" -gt 0 ]]; then
