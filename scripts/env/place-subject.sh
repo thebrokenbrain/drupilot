@@ -21,7 +21,9 @@
 #           .drupilot/, .drupilot.json, .phpstan-cache/, .drupilot-coverage/
 #           (top level) and node_modules/ (anywhere). Symlinks whose target
 #           escapes the checkout are dropped from the copy (the origin keeps
-#           them). --no-exclude restores the old verbatim copy.
+#           them). Anything git tracks is part of the module and is always
+#           copied (e.g. a bundled vendor/ library, a committed symlink).
+#           --no-exclude restores the old verbatim copy.
 #
 # Origin hygiene: before placing, the origin's git status is recorded with
 # origin-hygiene.sh --snapshot (hidden state, keyed by the Drupal root) so a
@@ -196,7 +198,7 @@ if [[ "$DRY" == "1" ]]; then
   log_plain "  from : $SUBJECT_ABS"
   log_plain "  to   : $DEST_ABS"
   if [[ "$PLACEMENT" == "copy" && "$NO_EXCLUDE" != "1" ]]; then
-    log_plain "  excluded from the copy : ${COPY_EXCLUDE_TOP[*]} (top level), node_modules/ (anywhere)"
+    log_plain "  excluded from the copy (untracked only) : ${COPY_EXCLUDE_TOP[*]} (top level), node_modules/ (anywhere)"
     _esc="$(escaping_links "$SUBJECT_ABS")"
     [[ -n "$_esc" ]] && log_plain "  symlinks escaping the tree, dropped from the copy: $(printf '%s' "$_esc" | tr '\n' ' ')"
   fi
@@ -235,27 +237,54 @@ fi
 # only the kept top-level entries (tar --exclude anchoring differs between GNU
 # tar, bsdtar and busybox: bsdtar's './vendor' also drops js/vendor/);
 # node_modules is excluded at any depth. The prune afterwards is the safety net.
+# Same rule as residue_list: an entry git TRACKS is part of the module (e.g. a
+# bundled vendor/ library, a committed symlink) and is always copied; only
+# untracked residue is excluded.
+src_tracks() {
+  local src="$1" path="$2"
+  git -C "$src" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
+  [[ -n "$(git -C "$src" ls-files -- "$path" 2>/dev/null | head -n1)" ]]
+}
 copy_filtered() {
-  local src="$1" dest="$2" n l e skip
-  local -a keep=()
+  local src="$1" dest="$2" n l e skip nm_tracked=0
+  local -a keep=() excl=() tarx=()
+  if git -C "$src" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+     && git -C "$src" ls-files 2>/dev/null | grep -qE '(^|/)node_modules/'; then
+    nm_tracked=1
+  fi
+  for n in "${COPY_EXCLUDE_TOP[@]}"; do
+    src_tracks "$src" "$n" || excl+=("$n")
+  done
+  if [[ "$nm_tracked" == "1" ]]; then
+    log_warn "The checkout tracks files under node_modules/; copying node_modules as-is."
+  else
+    excl+=(node_modules); tarx=(--exclude=node_modules)
+  fi
   for e in "$src"/* "$src"/.[!.]* "$src"/..?*; do
     [[ -e "$e" || -L "$e" ]] || continue
     n="${e##*/}"; skip=0
-    for l in "${COPY_EXCLUDE_TOP[@]}" node_modules; do [[ "$n" == "$l" ]] && skip=1; done
+    for l in ${excl[@]+"${excl[@]}"}; do [[ "$n" == "$l" ]] && skip=1; done
     [[ "$skip" == "1" ]] || keep+=("./$n")
   done
   mkdir -p "$dest" || return 1
   if [[ "${#keep[@]}" -gt 0 ]]; then
-    ( cd "$src" && tar -cf - --exclude=node_modules "${keep[@]}" ) | ( cd "$dest" && tar -xpf - ) || return 1
+    ( cd "$src" && tar -cf - ${tarx[@]+"${tarx[@]}"} "${keep[@]}" ) | ( cd "$dest" && tar -xpf - ) || return 1
   fi
-  for n in "${COPY_EXCLUDE_TOP[@]}"; do
+  for n in ${excl[@]+"${excl[@]}"}; do
+    [[ "$n" == "node_modules" ]] && continue
     if [[ -e "$dest/$n" || -L "$dest/$n" ]]; then rm -rf "${dest:?}/$n"; fi
   done
-  find "$dest" -name node_modules -prune -type d -exec rm -rf {} + 2>/dev/null || true
+  if [[ "$nm_tracked" != "1" ]]; then
+    find "$dest" -name node_modules -prune -type d -exec rm -rf {} + 2>/dev/null || true
+  fi
   while IFS= read -r l; do
     [[ -n "$l" ]] || continue
+    if src_tracks "$src" "$l"; then
+      log_warn "Kept a tracked symlink that escapes the checkout (it may not resolve in the test-bed): $l"
+      continue
+    fi
     rm -f "${dest:?}/$l"
-    log_warn "Dropped from the copy (symlink escapes the checkout): $l"
+    log_warn "Dropped from the copy (untracked symlink escapes the checkout): $l"
   done < <(escaping_links "$dest")
   return 0
 }

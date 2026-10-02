@@ -395,6 +395,13 @@ tag the commit `vX.Y.Z`.
   method may exist only on newer cores, and PHP 8.3+ fatals at compile time). A
   port-introduced one is now an error (exit 3); an unattributed one stays a
   review warning and a pre-existing one is still skipped.
+- **A `copy` placement dropped files the module ships**: the residue
+  exclusions (top-level `vendor/`, `.ddev/`, ..., `node_modules/`, symlinks
+  escaping the tree) were applied without checking git, so a module that
+  commits a bundled `vendor/` library arrived in the test-bed without it.
+  Anything git tracks is now always copied (a tracked escaping symlink is kept
+  with a warning); only untracked residue is excluded, the same rule
+  `residue_list` already used.
 
 ## [0.8.4] - 2026-06-23
 
