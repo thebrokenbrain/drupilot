@@ -229,7 +229,11 @@ so plainly, but always hand over the staged plan and let the user choose.
 
 ### Stage 3 — port (gate: `analyze`; Phase 1) — minimal compatibility
 
-Use the `minimal-port` skill. Three passes (PROMPT §5.4):
+Use the `minimal-port` skill. First, when the subject ships tests and the test
+environment is up, record the pre-port baseline on the untouched code
+(`run-phpunit.sh --subject <path> --type all --baseline`; exit 2 never blocks the
+port), so Stage 5 can tell pre-existing failures from regressions. Three passes
+(PROMPT §5.4):
 1. **Official Rector** — `palantirnet/drupal-rector` with `DRUPAL_10` and the PHP
    set for the target (minus the risky rules the template skips).
 2. **Complementary digests rules (optional)** — only if
@@ -303,7 +307,10 @@ changes. Explain every significant change. When done, **refresh the local patch*
 Kernel / Functional / FunctionalJavascript), adapts them to D11/PHPUnit 10-11, runs
 the full suite inside DDEV (Selenium for JS), and iterates until green. In Phase 2 it
 also adds missing tests for coverage and reports `--coverage-text`/`--coverage-html`.
-It never silences failures; externally-blocked tests are documented.
+It never silences failures; externally-blocked tests are documented. Against the
+pre-port baseline it reports regressions and pre-existing failures separately
+(`preservation: pre-existing-failures` is not green), and every test it adds
+carries an `effective` negative control (`negative-control.sh`).
 
 ### Stage 6 — contribute (gate: `contribute`; conditional) -> delegate
 
@@ -343,5 +350,6 @@ subject's own ruleset when it ships one, else Drupal,DrupalPractice — the repo
 says which),
 `check-port-safety.sh --subject <path>` and `scan-signature-changes.sh --subject
 <path>` exit 0, and the applicable test suite is
-green. Always end with a concise English summary:
+green (a `pre-existing-failures` verdict is reported with its list, never as
+green; every new test has an `effective` negative control). Always end with a concise English summary:
 current phase, what changed, gate status, and the suggested next step.

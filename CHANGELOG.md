@@ -308,6 +308,47 @@ tag the commit `vX.Y.Z`.
   task when it failed (new `--core-matrix FILE`; `d10_verification` in `--json`).
   New `common.sh` helpers `core_verify_legs`, `subject_digest`,
   `core_matrix_file`, `core_matrix_fresh`.
+- **Negative controls for new tests (`scripts/tests/negative-control.sh`).** A
+  test only proves something once it has been seen to fail. The script undoes
+  the production change a test guards (`--revert-to REF --path FILE...`, or a
+  minimal `--mutation-patch`), requires the test to go red, restores the files
+  and checks them byte for byte with `git hash-object`, then requires it to go
+  green: `effective` (exit 0), `ineffective` (exit 4 — the test stays green
+  without its change), `error` (exit 1 — the filter ran no test, the restored
+  code is not green, or the restore was not identical), exit 2 when the test
+  environment is blocked. It backs up and hashes every target before touching
+  it, restores from an EXIT/INT/TERM trap, refuses paths under `tests/`, outside
+  the subject or in a git conflict, never overwrites a file someone edited during
+  the run, and runs PHPUnit with `--no-record` so `last-test.json` and the
+  baseline are never touched. `--json`, `--dry-run`, `--label`, `--manifest`.
+  Results go to `negative-controls.json` (state dir), into `last-test.json`'s
+  `negative_controls` summary and into a "Negative controls" table and
+  Verification row in `port-report.md` (an ineffective control is flagged, a
+  control on code that changed since is marked stale). The test-adaptation and
+  full-refactor skills, the drupal-test-engineer agent and `/drupilot-test` /
+  `/drupilot-refactor` now require an effective control for every new test.
+  New `common.sh` helpers `negative_controls_file` and
+  `negative_controls_summary`.
+- **Pre-existing test failures are told apart from regressions.**
+  `run-phpunit.sh --baseline` records the suite on the untouched code as
+  `test-baseline.json` (exit 0 even when red; `last-test.json` untouched), and
+  `--baseline-from-last` promotes the last run (e.g. before a refactor). Every
+  later run compares each failing test with it: failed before and now →
+  `pre-existing`, passed before → regression, not in the baseline → regression
+  unless its whole baseline group crashed. A new preservation verdict,
+  `pre-existing-failures`, applies when tests fail but none regressed; the
+  record's `baseline` object lists `regressions`, `pre_existing` (with
+  `message_changed` when a test now fails differently) and `fixed`, and
+  `port-report.md`, `/drupilot-status` and `next-step.sh` report it as not
+  green. `/drupilot-port`, the minimal-port skill and the orchestrator take the
+  baseline before Rector. `--no-baseline` ignores it for one run. Existing
+  verdict values keep their meaning.
+- **Per-test results in `last-test.json`.** Each group runs with PHPUnit's
+  `--log-junit` (a scratch file under `<drupal_root>/.drupilot/phpunit/`), so the
+  record carries `tests` (every executed test with pass/fail/error/skipped and
+  the first line of its failure), `group_results`, `executed`, `filter`,
+  `recorded_at`, `subject_digest` and `git_head`. New `--no-record` and
+  `--result-file FILE` options.
 ### Changed
 - **Only hard deprecations count as must-fix work.** The viability assessment
   used to count every PHPStan deprecation message as "must-fix to run on D11",
@@ -373,6 +414,11 @@ tag the commit `vX.Y.Z`.
   PHPCS reports a processing error instead of counting it as a violation.
 
 ### Fixed
+- **`run-phpunit.sh` no longer counts a group that executed no test as
+  passed.** PHPUnit exits 0 on "No tests executed!" (e.g. a `--filter` that
+  matches nothing in a group); such a group is now `empty`, is not counted in
+  `ran`/`passed`, and a run where every group was empty is `not-verified-no-tests`
+  instead of `verified`.
 - **Rector broke Form API callbacks and Drupal 10 compatibility.** The template
   `rector.php` enabled the whole PHP 8.x level set, whose
   `ArrayToFirstClassCallableRector` turned `[$this, 'method']` under `#ajax`,

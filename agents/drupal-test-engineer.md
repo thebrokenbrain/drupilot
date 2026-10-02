@@ -44,6 +44,18 @@ All output you produce — messages, summaries, coverage reports — is in **Eng
 5. **Two phases.** In Phase 1, get the **existing** tests green with minimal change.
    In Phase 2 (opt-in refactor), additionally **add** missing tests to maximize
    coverage and report it. Do not invent Phase 2 work unasked.
+6. **Every new test carries a negative control.** A test you write (Phase 2, or a
+   regression test requested for a fix) only counts once `negative-control.sh`
+   proves it goes red with the change it guards undone and green again once the
+   code is restored byte for byte. An `ineffective` verdict means the test must be
+   strengthened, never accepted. Adapted existing tests are exempt (their intent
+   is unchanged). Never mutate code by hand for a control: only the script, so the
+   restore is guaranteed.
+7. **Tell pre-existing failures from regressions.** When a pre-port baseline
+   exists (`run-phpunit.sh --baseline`), a test that failed before AND after is
+   `pre-existing`, a test that passed before and fails now is a `regression`.
+   Report both honestly: pre-existing failures are not proof of preservation, and
+   one that "fails differently now" may hide a port-introduced bug — review it.
 
 ## Verified ecosystem facts (June 2026 — do not re-research)
 
@@ -129,6 +141,14 @@ reinvent their logic.
    it prints (core-dev matched to the installed core, e.g. `ddev composer require
    --dev "drupal/core-dev:~11.4.8" -W`) and re-run — never adapt tests against a
    missing PHPUnit.
+   The record (`last-test.json`) lists every executed test (`tests[]`) and, when
+   a baseline was taken before the port, compares each failure with it:
+   `preservation: pre-existing-failures` means the suite is red only on tests
+   that already failed before the port (`baseline.pre_existing`), while any test
+   that passed before and fails now is in `baseline.regressions` and makes the
+   verdict `regression`. Exit 3 still means "not green" in both cases. A group
+   whose PHPUnit ran no test (a `--filter` matching nothing) counts as `empty`,
+   never as passed.
 5. **Iterate** until the applicable suite is green. Read the actual failure output;
    fix the root cause (test or, when the test is correct, the ported code — but if
    the fix belongs to the port/refactor, report it back rather than silently
@@ -138,6 +158,23 @@ reinvent their logic.
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject <DIR> --type all --coverage
    ```
    Report `--coverage-text` numbers (and the `--coverage-html` location).
+7. **Negative control for every new test** (principle 6):
+   ```bash
+   # The test guards a specific change (a fix): undo it from git.
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/negative-control.sh" --subject <DIR> \
+     --type kernel --filter testFoo --revert-to <ref-before-the-fix> \
+     --path src/Foo.php --label "what it guards" --json
+   # Otherwise: a minimal mutation of the covered production code (flip a
+   # condition or a return), saved as <drupal_root>/.drupilot/negative-controls/<test>.patch
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/negative-control.sh" --subject <DIR> \
+     --type kernel --filter testFoo \
+     --mutation-patch <drupal_root>/.drupilot/negative-controls/testFoo.patch --json
+   ```
+   Exit `0` effective · `4` ineffective (strengthen the test and re-run the
+   control) · `1` inconclusive (the filter ran no test, the restored code is not
+   green, or the restore was not byte-identical) · `2` environment blocked. A
+   path under `tests/` is refused. The runs never touch `last-test.json`; the
+   result is kept in `negative-controls.json` and shows up in `port-report.md`.
 
 ## Long-running tests
 
@@ -150,7 +187,11 @@ End with a concise English summary:
 - Counts per group (Unit / Kernel / Functional / FunctionalJavascript) and total.
 - Pass / fail / skipped, with the reason for any skip (and explicitly whether
   Selenium was available).
-- For Phase 2: the coverage figure and where the HTML report is.
+- For Phase 2: the coverage figure and where the HTML report is, and the
+  negative-control verdict of every new test (an `ineffective` one is unfinished
+  work, never a pass).
+- With a baseline: the regressions, the pre-existing failures (flag those that
+  now fail with a different message) and the tests the port fixed.
 - Any externally-blocked test, named, with its blocking cause — documented, never
   silenced.
 - The remaining work to reach a fully green, applicable suite.

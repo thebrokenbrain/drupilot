@@ -85,6 +85,24 @@ Invoke the **minimal-port** skill for the exact commands, the three-pass order,
 and the digests caveats. Keep a running list of which rules/changes get applied so
 you can report it at the end.
 
+## Step 2b — Record the pre-port test baseline (before any code change)
+
+So that a red test after the port can be told apart from one that was already
+red before it (e.g. a kernel suite that fatals on Drupal 11 before the port),
+record the suite on the UNTOUCHED code, before Pass 1:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject "<subject>" --type all --baseline
+```
+
+It writes `test-baseline.json` in the state dir (never `last-test.json`) and
+exits `0` even when the suite is red. Skip it when the subject ships no tests.
+When it exits `2` (DDEV down, PHPUnit not installed — the port only gates
+`analyze`), say that no baseline could be taken and continue: the port never
+blocks on it, but every later failure will then count as a regression. Re-taking
+it after Rector ran would compare the port with itself (the run warns when the
+baseline was taken on the current code).
+
 ## Step 3 — Pass 1: official `palantirnet/drupal-rector` (apply)
 
 The stable, maintained layer first. Always dry-run, let the user (or you, on their
@@ -382,7 +400,9 @@ render:
 # phpcs_ruleset (the .drupilot object of run-phpcs.sh --json:
 # which ruleset was used — the project's own, or drupilot's default and why),
 # commit_hooks (the JSON of git-hooks.sh --run-equivalents when a hook was
-# substituted, else {"bypassed": false, "note": "hooks ran on commit"})}.
+# substituted, else {"bypassed": false, "note": "hooks ran on commit"}),
+# negative_controls (the records of negative-control.sh --json, when a test was
+# written for a fix; port-report.sh falls back to negative-controls.json)}.
 # Each manual_edits item may be a plain string OR an object
 # {edit, why?, change_record?} so the report can explain WHY each manual change
 # was made (and link its change record).
@@ -390,8 +410,9 @@ render:
 ```
 
 It writes `port-report.md` into the visible `.drupilot/` artifacts dir at the
-Drupal root (and pulls the `preservation` verdict from `last-test.json` and the
-assessment verdict from `assess.json`). `port-report.sh` already defaults
+Drupal root (and pulls the `preservation` verdict — with the baseline
+comparison: regressions, pre-existing failures, tests the port fixed — from
+`last-test.json` and the assessment verdict from `assess.json`). `port-report.sh` already defaults
 `--changes-log` to `<state_dir>/change-log.txt`, so teeing the analyzer output
 there is enough. `SendUserFile` it so it surfaces as a deliverable. Every field
 is optional — the report still renders from partial data, and never invents a value.

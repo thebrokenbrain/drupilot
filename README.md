@@ -155,6 +155,10 @@ A **viability assessment** always runs first as a decision gate. If the refactor
 
 **How "respecting the original functionality" is verified.** The adapted test suite staying **green is the preservation gate** for both phases — that green is the evidence the behavior is preserved. Test adaptations only update a test's *form* (PHPUnit/Drupal API), never *what it verifies*; a behavioral regression is fixed in the code, never by relaxing a test. If the module ships **no tests**, `drupilot` reports preservation as **not verified** and recommends adding them — it does not fabricate them. If tests exist but cannot run (PHPUnit/`drupal/core-dev` missing, Selenium unreachable), it reports **not verified (blocked)** with the reason — never a false regression or a false "no tests".
 
+**Pre-existing failures are not regressions.** Before Rector touches the code, `/drupilot-port` records the suite as a **baseline** (`run-phpunit.sh --baseline`; `--baseline-from-last` promotes the last run, e.g. before a refactor). Every later run compares each failing test with it: a test that failed before **and** after the port is **pre-existing**, a test that passed before and fails now is a **regression**. When every failure pre-exists, the verdict is **pre-existing failures** — not green and not proof of anything, so the failures are listed in `port-report.md`, and one that now fails with a different message (e.g. before the port the module could not even install) is flagged for review. A group in which PHPUnit executed no test counts as empty, never as passed.
+
+**New tests must be able to fail (negative controls).** Every test drupilot writes (Phase 2, or a regression test for a fix) gets a negative control: `scripts/tests/negative-control.sh` undoes the production change the test guards (`--revert-to REF --path FILE`, or a minimal `--mutation-patch`), requires the test to go **red**, restores the code and checks it is byte-identical (`git hash-object`), then requires it to go **green** again. A test that stays green without its change is **ineffective** and gets strengthened, never accepted. The script never mutates test code, restores the files even on an error or Ctrl-C, never touches the recorded test verdict, and its results appear in `port-report.md` and `/drupilot-status`.
+
 **How the Drupal 10 half of `^10 || ^11` is verified.** The test-bed runs Drupal 11 only, so a port that keeps Drupal 10 would otherwise just *declare* it. `scripts/analysis/verify-core-matrix.sh` (run by `/drupilot-port`, and by `/drupilot-refactor` while `^10` is kept) analyses the module on every core its `core_version_requirement` declares: the same PHPStan (phpstan-drupal + deprecation rules, the test-bed's exact versions) and `php -l` against a cached Drupal 10 reference core — the latest 10.x for `^10`, 10.3.x for `^10.3 || ^11` — built once through `ddev exec composer` in `<drupal_root>/.drupilot/cores/` (about 200 MB and a minute the first time; never your host PHP). A Drupal 10 leg **fails** on an error the Drupal 11 baseline does not have — an `#[\Override]` on `buildRevisionCacheId()` (a method only 11.3+ core declares), a class only Drupal 11 ships — and `php -l` also runs on the lowest PHP a Drupal 10 site may use for the module (Drupal 10's own 8.1 minimum, or a higher `require.php` floor) in a `php:X.Y-cli` container. A clean run makes the Drupal 10 support **verified-static**: proven by static analysis, not by running the suite on Drupal 10, and `port-report.md`, the issue text and `/drupilot-status` say exactly that. Without network the leg is skipped and the support stays **declared-not-verified**; it never blocks a port.
 
 ---
@@ -344,6 +348,15 @@ Converts annotations to PHP 8 attributes, introduces dependency injection and st
 ```
 
 Runs Unit, Kernel, Functional and FunctionalJavascript (Selenium) inside DDEV and reports coverage. If a test can't pass because of an external cause (e.g. a contrib dependency without D11 support), it is documented explicitly rather than silenced.
+
+To prove a new test guards the change it was written for (a negative control):
+
+```bash
+bash scripts/tests/negative-control.sh --subject web/modules/custom/my_module \
+  --type kernel --filter testQueueWorker --revert-to HEAD --path src/Plugin/QueueWorker/MyWorker.php --json
+```
+
+Exit `0` effective (red with the change undone, green restored) · `4` ineffective · `1` inconclusive · `2` environment blocked.
 
 ### 6. Get the patch — test locally now, contribute later
 

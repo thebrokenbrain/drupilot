@@ -17,11 +17,44 @@
 #   run-phpunit.sh --subject DIR
 #                  [--type unit|kernel|functional|js|all]
 #                  [--coverage] [--filter EXPR]
+#                  [--baseline | --baseline-from-last | --no-baseline]
+#                  [--no-record] [--result-file FILE]
+#
+#   --baseline           record this run as the PRE-PORT test baseline
+#                        (test-baseline.json in the subject's state dir) instead
+#                        of last-test.json. Take it before Rector touches the
+#                        code. A red baseline is expected and still exits 0 once
+#                        recorded (2 when the environment blocked the run).
+#   --baseline-from-last promote the current last-test.json (it must carry
+#                        per-test results) to the baseline without running
+#                        anything, e.g. the green post-port run before a refactor.
+#   --no-baseline        ignore a recorded baseline for this run's verdict.
+#   --no-record          write neither last-test.json nor the baseline (used by
+#                        negative-control.sh so a deliberate red run never
+#                        clobbers the real preservation verdict).
+#   --result-file FILE   also write this run's JSON record to FILE (works with
+#                        --no-record).
 #
 # Output:
 #   The PHPUnit output streams through to STDOUT/STDERR unmodified, followed by
 #   a short English pass/fail summary on STDERR. The verdict is persisted to
 #   last-test.json in the subject's state dir (see "preservation" below).
+#
+# Per-test results: each group also runs with PHPUnit's --log-junit (a scratch
+# file under <drupal_root>/.drupilot/phpunit/, removed after parsing), so the
+# record lists every executed test as pass/fail/error/skipped. A group whose
+# PHPUnit exits 0 but executed no test ("No tests executed!", e.g. a --filter
+# that matches nothing in it) counts as EMPTY, never as passed. A group that
+# failed without writing any test result (PHPUnit itself died) is "crashed".
+#
+# Baseline comparison (N6): when test-baseline.json exists (and --no-baseline is
+# not given), every failing test is compared with the baseline: a test that
+# failed before AND fails now is "pre-existing"; a test that passed before and
+# fails now is a regression; a failing test the baseline never ran counts as a
+# regression too (it cannot be shown to pre-exist), unless its whole baseline
+# group crashed without per-test results. The record's `baseline` object lists
+# regressions / pre_existing / fixed, and flags a pre-existing failure whose
+# message changed (it may now fail for another reason).
 #
 # PHPUnit itself comes from drupal/core-dev, which a plain recommended-project
 # does not ship. When the subject has tests but vendor/bin/phpunit is missing,
@@ -31,11 +64,13 @@
 #   ddev composer require --dev "drupal/core-dev:~11.4.8" -W
 #
 # Exit codes:
-#   0  -> all selected test groups passed (or there was nothing to run).
+#   0  -> all selected test groups passed (or there was nothing to run); with
+#         --baseline / --baseline-from-last: the baseline was recorded, even red.
 #   1  -> usage/internal error.
 #   2  -> a hard 'test' requirement is missing: the preflight gate failed, DDEV
 #         is down, or PHPUnit (drupal/core-dev) is not installed.
-#   3  -> at least one test group failed.
+#   3  -> at least one test group failed (also when every failure is
+#         pre-existing: the suite is not green; read `preservation`).
 # =============================================================================
 set -euo pipefail
 
@@ -46,6 +81,10 @@ SUBJECT=""
 TYPE="all"
 COVERAGE=0
 FILTER=""
+RECORD=1
+BASELINE_MODE=""      # "" | run | from-last
+USE_BASELINE=1
+RESULT_FILE=""
 
 usage() { print_usage "$0"; }
 
@@ -58,6 +97,12 @@ while [[ $# -gt 0 ]]; do
     --coverage) COVERAGE=1; shift;;
     --filter) FILTER="${2:-}"; shift 2;;
     --filter=*) FILTER="${1#*=}"; shift;;
+    --baseline) BASELINE_MODE="run"; shift;;
+    --baseline-from-last) BASELINE_MODE="from-last"; shift;;
+    --no-baseline) USE_BASELINE=0; shift;;
+    --no-record) RECORD=0; shift;;
+    --result-file) RESULT_FILE="${2:-}"; shift 2;;
+    --result-file=*) RESULT_FILE="${1#*=}"; shift;;
     -h|--help) usage; exit 0;;
     *) log_warn "Unknown argument: $1"; shift;;
   esac
@@ -71,6 +116,29 @@ case "$TYPE" in
   unit|kernel|functional|js|all) : ;;
   *) die "Invalid --type '$TYPE' (use unit|kernel|functional|js|all)." 1;;
 esac
+[[ -n "$BASELINE_MODE" && "$RECORD" == "0" ]] && die "--baseline/--baseline-from-last record a baseline; they cannot be combined with --no-record." 1
+if [[ -n "$BASELINE_MODE" ]] && ! have_cmd jq; then die "jq is required to record a test baseline." 1; fi
+
+STATE_DIR="$(project_state_dir "$SUBJECT")"
+BASELINE_FILE="$STATE_DIR/test-baseline.json"
+
+# --baseline-from-last: promote the last recorded run (it must carry per-test
+# results, i.e. it was written by this version) to the baseline. No test runs,
+# so no gate is needed.
+if [[ "$BASELINE_MODE" == "from-last" ]]; then
+  have_cmd jq || die "jq is required to promote last-test.json to the baseline." 1
+  [[ -r "$STATE_DIR/last-test.json" ]] || die "No last-test.json for $SUBJECT yet: run the suite first (or use --baseline)." 1
+  jq -e '(.tests | type) == "array"' "$STATE_DIR/last-test.json" >/dev/null 2>&1 \
+    || die "last-test.json has no per-test results (recorded by an older drupilot): re-run with --baseline instead." 1
+  jq --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{source:"last-test", taken_at:$at, recorded_at:(.recorded_at // null),
+      subject_digest:(.subject_digest // null), git_head:(.git_head // null),
+      type, filter:(.filter // null), status, ran, passed, failed, skipped,
+      executed:(.executed // null), group_results:(.group_results // []), tests}' \
+    "$STATE_DIR/last-test.json" > "$BASELINE_FILE.tmp" && mv "$BASELINE_FILE.tmp" "$BASELINE_FILE"
+  log_ok "Baseline recorded from last-test.json: $BASELINE_FILE ($(jq '.tests | length' "$BASELINE_FILE") test result(s))."
+  exit 0
+fi
 
 # ---------------------------------------------------------------------------
 # Gate: the 'test' profile (Docker + daemon + DDEV).
@@ -228,12 +296,57 @@ declare -a FILTER_ARGS=()
 [[ -n "$FILTER" ]] && FILTER_ARGS=(--filter "$FILTER")
 
 # ---------------------------------------------------------------------------
+# Per-test results. PHPUnit writes a JUnit XML per group under the Drupal root
+# (.drupilot/phpunit/, the gitignored artifacts dir) so the same relative path
+# resolves on the host and inside the container; it is parsed on the host and
+# removed. TESTS_TSV accumulates "group<TAB>id<TAB>status<TAB>message" lines.
+# ---------------------------------------------------------------------------
+JUNIT_REL=".drupilot/phpunit"
+mkdir -p "$DRUPAL_ROOT/$JUNIT_REL" 2>/dev/null || true
+[[ -f "$DRUPAL_ROOT/.drupilot/.gitignore" ]] || printf '*\n' > "$DRUPAL_ROOT/.drupilot/.gitignore" 2>/dev/null || true
+TESTS_TSV="$(mktemp "${TMPDIR:-/tmp}/drupilot-phpunit.XXXXXX")"
+GROUPS_TSV="$(mktemp "${TMPDIR:-/tmp}/drupilot-phpunit-groups.XXXXXX")"
+_rp_cleanup() { rm -f "$TESTS_TSV" "$GROUPS_TSV" "$DRUPAL_ROOT/$JUNIT_REL"/junit-$$-*.xml 2>/dev/null; return 0; }
+trap _rp_cleanup EXIT
+
+# parse_junit <group> <file> -> TSV lines on stdout, one per <testcase>:
+# group, Class::method (data-set suffix kept), pass|fail|error|skipped, and the
+# first meaningful line of the failure message (entities decoded, <= 240 chars).
+# Line-based on purpose: PHPUnit writes one element per line. mawk/BSD-safe.
+parse_junit() {
+  [[ -s "$2" ]] || return 0
+  awk -v grp="$1" '
+    function attr(s, a,   i, r) { i = index(s, " " a "=\""); if (!i) return ""; r = substr(s, i + length(a) + 3); i = index(r, "\""); return substr(r, 1, i - 1) }
+    function dec(s) { gsub(/&quot;/, "\"", s); gsub(/&#039;|&apos;/, "\047", s); gsub(/&lt;/, "<", s); gsub(/&gt;/, ">", s); gsub(/&#10;/, " ", s); gsub(/&amp;/, "\\&", s); gsub(/\t/, " ", s); return s }
+    function flush() { if (cur != "") printf "%s\t%s\t%s\t%s\n", grp, cur, st, substr(msg, 1, 240); cur = ""; inmsg = 0 }
+    /<testcase / { flush(); cur = dec(attr($0, "class")) "::" dec(attr($0, "name")); nm = dec(attr($0, "name")); st = "pass"; msg = ""; if ($0 ~ /\/>[ \t]*$/) flush(); next }
+    cur == "" { next }
+    /<failure|<error/ {
+      st = ($0 ~ /<failure/) ? "fail" : "error"
+      m = $0; sub(/^[^>]*>/, "", m); sub(/<\/(failure|error)>.*$/, "", m); m = dec(m)
+      inmsg = 1
+      if (m != "" && index(m, "::" nm) == 0) { msg = m; inmsg = 0 }
+      if ($0 ~ /<\/(failure|error)>/) inmsg = 0
+      next
+    }
+    /<skipped/ { if (st == "pass") st = "skipped"; next }
+    /<\/testcase>/ { flush(); next }
+    inmsg == 1 { m = $0; sub(/<\/(failure|error)>.*$/, "", m); m = dec(m); if (m != "") { msg = m; inmsg = 0 } }
+    END { flush() }
+  ' "$2"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # Run each group. Never silence failures: stream output and record the result.
 # ---------------------------------------------------------------------------
 RAN=0
 PASSED=0
 FAILED=0
 SKIPPED=0
+EMPTY=0
+EXECUTED=0
+declare -a EMPTY_GROUPS=()
 SELENIUM_NOTE=""
 BLOCKED_REASON=""
 PHPUNIT_MISSING=0
@@ -272,6 +385,7 @@ run_group() {
     log_warn "$group: not run — PHPUnit is not installed (external blocker, see above)."
     SKIPPED=$((SKIPPED + 1))
     SKIPPED_GROUPS+=("$group")
+    printf '%s\t-\tskipped\t0\n' "$group" >> "$GROUPS_TSV"
     return 0
   fi
 
@@ -282,6 +396,7 @@ run_group() {
       SELENIUM_NOTE="Selenium add-on not reachable; FunctionalJavascript tests skipped (external blocker)."
       SKIPPED=$((SKIPPED + 1))
       SKIPPED_GROUPS+=("$group")
+      printf '%s\t-\tskipped\t0\n' "$group" >> "$GROUPS_TSV"
       return 0
     fi
   fi
@@ -290,8 +405,10 @@ run_group() {
   RAN=$((RAN + 1))
 
   # Assemble the full command. PHPUnit's own exit code drives pass/fail; we do
-  # not redirect or swallow its output.
-  local -a cmd=(${RUNNER[@]+"${RUNNER[@]}"} "${PHPUNIT[@]}" ${COVERAGE_ARGS[@]+"${COVERAGE_ARGS[@]}"} ${FILTER_ARGS[@]+"${FILTER_ARGS[@]}"} "$path")
+  # not redirect or swallow its output. --log-junit only adds the per-test file.
+  local junit="$JUNIT_REL/junit-$$-$group.xml"
+  rm -f "$DRUPAL_ROOT/$junit" 2>/dev/null || true
+  local -a cmd=(${RUNNER[@]+"${RUNNER[@]}"} "${PHPUNIT[@]}" --log-junit "$junit" ${COVERAGE_ARGS[@]+"${COVERAGE_ARGS[@]}"} ${FILTER_ARGS[@]+"${FILTER_ARGS[@]}"} "$path")
 
   # Temporarily relax errexit around the test run so a failing group does not
   # abort the script before we summarise it.
@@ -300,9 +417,33 @@ run_group() {
   local rc=$?
   set -e
 
-  if [[ "$rc" -eq 0 ]]; then
-    log_ok "$group: passed"
+  local executed=0 parsed have_log=0
+  [[ -f "$DRUPAL_ROOT/$junit" ]] && have_log=1
+  parsed="$(parse_junit "$group" "$DRUPAL_ROOT/$junit")"
+  if [[ -n "$parsed" ]]; then
+    printf '%s\n' "$parsed" >> "$TESTS_TSV"
+    executed="$(printf '%s\n' "$parsed" | grep -c . || true)"
+  fi
+  rm -f "$DRUPAL_ROOT/$junit" 2>/dev/null || true
+  EXECUTED=$((EXECUTED + executed))
+
+  local gstatus
+  if [[ "$rc" -eq 0 && "$have_log" == "0" ]]; then
+    # PHPUnit passed but left no JUnit log (e.g. the artifacts dir is not
+    # writable in the container): keep the exit-code verdict, without per-test data.
+    log_ok "$group: passed (no per-test results: PHPUnit wrote no JUnit log to $junit)"
     PASSED=$((PASSED + 1))
+    gstatus="passed"
+  elif [[ "$rc" -eq 0 && "$executed" -eq 0 ]]; then
+    # PHPUnit exits 0 on "No tests executed!" (e.g. a --filter that matches
+    # nothing in this group): that proves nothing, so it is not a pass.
+    RAN=$((RAN - 1)); EMPTY=$((EMPTY + 1)); EMPTY_GROUPS+=("$group")
+    log_warn "$group: no test was executed${FILTER:+ (--filter '$FILTER' matched nothing here)} — not counted as passed."
+    gstatus="empty"
+  elif [[ "$rc" -eq 0 ]]; then
+    log_ok "$group: passed ($executed test(s))"
+    PASSED=$((PASSED + 1))
+    gstatus="passed"
   elif [[ "$rc" -eq 126 || "$rc" -eq 127 ]]; then
     # The runner could not execute PHPUnit at all (not found / not executable):
     # an environment blocker, not a behavioral failure — never a regression.
@@ -311,11 +452,16 @@ run_group() {
     [[ -n "$BLOCKED_REASON" ]] || BLOCKED_REASON="PHPUnit could not be executed (exit $rc): check vendor/bin/phpunit inside the DDEV web container (drupal/core-dev: $(core_dev_requirement "$DRUPAL_ROOT"))."
     SKIPPED=$((SKIPPED + 1))
     SKIPPED_GROUPS+=("$group")
+    gstatus="blocked"
   else
     log_err "$group: FAILED (phpunit exit $rc) — see the output above"
     FAILED=$((FAILED + 1))
     FAILED_GROUPS+=("$group")
+    gstatus="failed"
+    # No per-test result at all: PHPUnit died before writing its log.
+    [[ "$executed" -eq 0 ]] && gstatus="crashed"
   fi
+  printf '%s\t%s\t%s\t%s\n' "$group" "$rc" "$gstatus" "$executed" >> "$GROUPS_TSV"
   return 0
 }
 
@@ -329,9 +475,12 @@ done
 # ---------------------------------------------------------------------------
 hr
 log_plain "PHPUnit summary for $(subject_machine_name "$SUBJECT" 2>/dev/null || basename "$SUBJECT"):"
-log_plain "  groups run: $RAN   passed: $PASSED   failed: $FAILED   skipped: $SKIPPED"
+log_plain "  groups run: $RAN   passed: $PASSED   failed: $FAILED   skipped: $SKIPPED   empty: $EMPTY   tests executed: $EXECUTED"
 if [[ "$SKIPPED" -gt 0 ]]; then
   log_warn "Skipped (documented, not silenced): ${SKIPPED_GROUPS[*]}"
+fi
+if [[ "$EMPTY" -gt 0 ]]; then
+  log_warn "Executed no test (not counted as passed): ${EMPTY_GROUPS[*]}"
 fi
 
 # Persist a machine-readable record so /drupilot-status and the flow read the
@@ -343,6 +492,14 @@ fi
 #                            external blocker), so part of the behavior is unproven.
 #   regression            -> at least one group failed (a production-code defect
 #                            to fix in code, never a test relaxed to fake green).
+#                            With a baseline: a test that passed in the baseline
+#                            (or that the baseline never ran) fails now.
+#   pre-existing-failures -> tests fail, but every failing test already failed in
+#                            the pre-port baseline (test-baseline.json) and nothing
+#                            that passed before fails now. The port introduced no
+#                            regression the suite can see, but the pre-existing
+#                            failures prove nothing either way: they are listed in
+#                            `baseline.pre_existing`, never hidden.
 #   not-verified-blocked  -> tests exist but none could run (e.g. Selenium absent,
 #                            PHPUnit/drupal-core-dev not installed); see blocked_reason.
 #   not-verified-no-tests -> no test exists in the selected --type scope, so
@@ -350,10 +507,15 @@ fi
 #                            tests in Phase 1). subject_has_tests tells whether the
 #                            subject ships tests in OTHER groups (a narrower --type)
 #                            or none at all.
+# tests lists every executed test ({group, id, status, message}); group_results
+# the per-group outcome (passed/failed/crashed/empty/skipped/blocked).
+# negative_controls carries the summary of negative-control.sh's records (or
+# null): the proof that new tests can fail, kept next to the verdict.
 # coverage records only what was actually collected (requested + the HTML path);
 # a percentage is NOT computed in Phase 1, so the field stays honest about that.
-if have_cmd jq; then
-  STATE_DIR="$(project_state_dir "$SUBJECT")"
+if ! have_cmd jq; then
+  log_warn "jq not found: the run is not recorded (last-test.json / baseline untouched)."
+else
   RUN_STATUS="passed"
   [[ "$FAILED" -gt 0 ]] && RUN_STATUS="failed"
   [[ "$RAN" -eq 0 && "$FAILED" -eq 0 ]] && RUN_STATUS="none-run"
@@ -375,30 +537,129 @@ if have_cmd jq; then
     if [[ ${#RUNNER[@]} -gt 0 ]]; then COV_HTML_PATH="$DRUPAL_ROOT/${COV_HTML_REL:-}"; else COV_HTML_PATH="${COV_HTML_DIR:-}"; fi
   fi
 
-  jq -n \
+  TESTS_JSON="$(jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t")
+      | {group: .[0], id: .[1], status: .[2],
+         message: (if (.[2] == "fail" or .[2] == "error") and ((.[3] // "") != "") then .[3] else null end)})' \
+      "$TESTS_TSV" 2>/dev/null || echo '[]')"
+  GROUPRES_JSON="$(jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t")
+      | {group: .[0], rc: (.[1] | tonumber? // null), status: .[2], executed: (.[3] | tonumber? // 0)})' \
+      "$GROUPS_TSV" 2>/dev/null || echo '[]')"
+  DIGEST="$(subject_digest "$SUBJECT")"
+  GIT_HEAD="$(git -C "$SUBJECT" rev-parse HEAD 2>/dev/null || true)"
+  NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  # Baseline comparison (N6): classify each failure against the pre-port run.
+  BASELINE_JSON="null"
+  if [[ -z "$BASELINE_MODE" && "$USE_BASELINE" == "1" && -r "$BASELINE_FILE" ]] \
+     && jq -e '(.tests | type) == "array"' "$BASELINE_FILE" >/dev/null 2>&1; then
+    BASELINE_JSON="$(jq -c -n --slurpfile b "$BASELINE_FILE" --argjson cur "$TESTS_JSON" --argjson cg "$GROUPRES_JSON" \
+        --arg file "$BASELINE_FILE" --arg digest "$DIGEST" '
+      def bad: .status == "fail" or .status == "error";
+      $b[0] as $base
+      | (reduce ($base.tests // [])[] as $t ({}; .[$t.id] = $t)) as $bm
+      | (reduce ($base.group_results // [])[] as $g ({}; .[$g.group] = $g.status)) as $bgs
+      | [ $cur[] | select(bad) | . as $t | ($bm[$t.id]) as $p
+          | if $p == null then
+              (if $bgs[$t.group] == "crashed"
+               then {id: $t.id, group: $t.group, class: "pre-existing", basis: "baseline-group-crashed", now: $t.message}
+               else {id: $t.id, group: $t.group, class: "regression", basis: "not-in-baseline", now: $t.message} end)
+            elif ($p | bad) then
+              {id: $t.id, group: $t.group, class: "pre-existing", basis: "test",
+               message_changed: (($p.message // "") != ($t.message // "")), before: $p.message, now: $t.message}
+            else {id: $t.id, group: $t.group, class: "regression", basis: "passed-before", now: $t.message} end ] as $cls
+      | [ $cg[] | select(.status == "failed" or .status == "crashed") | .group as $g
+          | select([ $cur[] | select(.group == $g) | select(bad) ] | length == 0)
+          | if ($bgs[$g] == "failed" or $bgs[$g] == "crashed")
+            then {id: null, group: $g, class: "pre-existing", basis: "group-\(.status)"}
+            else {id: null, group: $g, class: "regression", basis: "group-\(.status)"} end ] as $grp
+      | ($cls + $grp) as $all
+      | {file: $file, source: ($base.source // "run"), taken_at: ($base.taken_at // null),
+         type: ($base.type // null), filter: ($base.filter // null),
+         same_code: (($base.subject_digest // "") != "" and $base.subject_digest == $digest),
+         regressions: [ $all[] | select(.class == "regression") | del(.class) ],
+         pre_existing: [ $all[] | select(.class == "pre-existing") | del(.class) ],
+         fixed: [ $cur[] | select(.status == "pass") | .id as $i | select(($bm[$i] // {status: "pass"}) | bad) | $i ]}' \
+        2>/dev/null || echo null)"
+    if [[ "$BASELINE_JSON" != "null" && -n "$BASELINE_JSON" ]]; then
+      N_REG="$(printf '%s' "$BASELINE_JSON" | jq '.regressions | length')"
+      N_PRE="$(printf '%s' "$BASELINE_JSON" | jq '.pre_existing | length')"
+      N_FIX="$(printf '%s' "$BASELINE_JSON" | jq '.fixed | length')"
+      log_info "Compared with the baseline ($(printf '%s' "$BASELINE_JSON" | jq -r '.taken_at // "?"')): $N_REG regression(s), $N_PRE pre-existing failure(s), $N_FIX fixed."
+      if [[ "$(printf '%s' "$BASELINE_JSON" | jq -r '.same_code')" == "true" ]]; then
+        log_warn "The baseline was taken on the current code: it cannot tell what the port changed (take it with --baseline BEFORE porting)."
+      fi
+      if [[ "$FAILED" -gt 0 && "$N_REG" -eq 0 ]]; then
+        PRESERVATION="pre-existing-failures"
+        log_warn "Every failing test already failed in the baseline (pre-existing): no regression, but the suite is not green."
+      fi
+      [[ "$N_REG" -gt 0 ]] && printf '%s' "$BASELINE_JSON" | jq -r '.regressions[] | "  regression: \(.id // ("group " + .group)) (\(.basis))"' >&2
+    else
+      BASELINE_JSON="null"
+      log_warn "Could not compare with the baseline $BASELINE_FILE (unreadable): verdict computed without it."
+    fi
+  fi
+
+  RECORD_JSON="$(jq -n -c \
     --arg type "$TYPE" --arg status "$RUN_STATUS" --arg preservation "$PRESERVATION" \
+    --arg filter "$FILTER" --arg at "$NOW" --arg digest "$DIGEST" --arg head "$GIT_HEAD" \
     --argjson ran "$RAN" --argjson passed "$PASSED" \
     --argjson failed "$FAILED" --argjson skipped "$SKIPPED" \
+    --argjson empty "$EMPTY" --argjson executed "$EXECUTED" \
     --argjson failed_groups "$(arr_to_json ${FAILED_GROUPS[@]+"${FAILED_GROUPS[@]}"})" \
     --argjson skipped_groups "$(arr_to_json ${SKIPPED_GROUPS[@]+"${SKIPPED_GROUPS[@]}"})" \
+    --argjson empty_groups "$(arr_to_json ${EMPTY_GROUPS[@]+"${EMPTY_GROUPS[@]}"})" \
     --arg js_skipped_reason "$SELENIUM_NOTE" \
     --arg blocked_reason "$BLOCKED_REASON" \
     --argjson subject_has_tests "$SUBJECT_HAS_TESTS" \
     --argjson groups_with_tests "$(arr_to_json ${GROUPS_WITH_TESTS[@]+"${GROUPS_WITH_TESTS[@]}"})" \
     --argjson cov_requested "$COV_REQUESTED" --arg cov_html "$COV_HTML_PATH" \
+    --argjson group_results "$GROUPRES_JSON" --argjson tests "$TESTS_JSON" \
+    --argjson baseline "$BASELINE_JSON" \
+    --argjson negative_controls "$(negative_controls_summary "$SUBJECT")" \
     '{type:$type, status:$status, preservation:$preservation,
       ran:$ran, passed:$passed, failed:$failed,
       skipped:$skipped, failed_groups:$failed_groups, skipped_groups:$skipped_groups,
+      empty:$empty, empty_groups:$empty_groups, executed:$executed,
       js_skipped_reason: ($js_skipped_reason | select(. != "") // null),
       blocked_reason: ($blocked_reason | select(. != "") // null),
       subject_has_tests:$subject_has_tests, groups_with_tests:$groups_with_tests,
-      coverage: {requested:$cov_requested, html: ($cov_html | select(. != "") // null), percent: null}}' \
-    > "$STATE_DIR/last-test.json" 2>/dev/null || true
+      coverage: {requested:$cov_requested, html: ($cov_html | select(. != "") // null), percent: null},
+      filter: ($filter | select(. != "") // null), recorded_at:$at,
+      subject_digest: ($digest | select(. != "") // null), git_head: ($head | select(. != "") // null),
+      baseline:$baseline, negative_controls:$negative_controls,
+      group_results:$group_results, tests:$tests}' 2>/dev/null || true)"
+
+  if [[ -n "$RESULT_FILE" && -n "$RECORD_JSON" ]]; then
+    printf '%s\n' "$RECORD_JSON" > "$RESULT_FILE" 2>/dev/null || log_warn "Could not write --result-file $RESULT_FILE"
+  fi
+
+  if [[ "$BASELINE_MODE" == "run" ]]; then
+    if [[ "$RAN" -eq 0 && "$FAILED" -eq 0 ]]; then
+      log_err "No test executed, so no baseline was recorded${BLOCKED_REASON:+: $BLOCKED_REASON}."
+      [[ "$ENV_BLOCKED" == "1" ]] && exit 2
+      exit 1
+    fi
+    printf '%s' "$RECORD_JSON" | jq '{source:"run", taken_at:.recorded_at, recorded_at, subject_digest, git_head,
+        type, filter, status, ran, passed, failed, skipped, executed, group_results, tests}' \
+      > "$BASELINE_FILE.tmp" && mv "$BASELINE_FILE.tmp" "$BASELINE_FILE"
+    log_ok "Baseline recorded: $BASELINE_FILE ($EXECUTED test(s); $(printf '%s' "$RECORD_JSON" | jq '[.tests[] | select(.status == "fail" or .status == "error")] | length') failing before the port)."
+    [[ "$SKIPPED" -gt 0 ]] && log_warn "Groups skipped in the baseline (${SKIPPED_GROUPS[*]}): their failures after the port cannot be shown to pre-exist."
+    log_info "last-test.json is untouched. Later runs compare every failure with this baseline (--no-baseline to ignore it)."
+    exit 0
+  fi
+
+  if [[ "$RECORD" == "1" && -n "$RECORD_JSON" ]]; then
+    printf '%s\n' "$RECORD_JSON" > "$STATE_DIR/last-test.json" 2>/dev/null || true
+  fi
 fi
 
 if [[ "$FAILED" -gt 0 ]]; then
   log_err "Failing groups: ${FAILED_GROUPS[*]}"
-  log_err "Tests did not pass. Review the output above and iterate — failures are never hidden."
+  if [[ "${PRESERVATION:-}" == "pre-existing-failures" ]]; then
+    log_err "Tests did not pass, although every failure pre-exists the port (see the baseline comparison above). They stay documented, never hidden."
+  else
+    log_err "Tests did not pass. Review the output above and iterate — failures are never hidden."
+  fi
   exit 3
 fi
 
@@ -411,6 +672,8 @@ fi
 if [[ "$RAN" -eq 0 ]]; then
   if [[ -n "$BLOCKED_REASON" ]]; then
     log_warn "No test groups were executed for --type '$TYPE': $BLOCKED_REASON"
+  elif [[ "$EMPTY" -gt 0 ]]; then
+    log_warn "No test was executed for --type '$TYPE'${FILTER:+ with --filter '$FILTER'}: nothing is verified."
   elif [[ "$SUBJECT_HAS_TESTS" == "true" ]]; then
     log_warn "No tests in the selected --type '$TYPE' scope (the subject has tests in other groups; try --type all)."
   else

@@ -130,6 +130,15 @@ version-bump implication (new major branch) in the summary.
 
 ## 2. Refactor loop
 
+Before the first change, freeze the post-port suite as the refactor's baseline,
+so a later red test is classified as a regression of the refactor or as a failure
+that already existed (`pre-existing-failures`):
+
+```bash
+# Promote the last (post-port) run; or take a fresh one with --baseline.
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject "<path>" --baseline-from-last
+```
+
 Work one concern at a time. After each change, re-run the validate loop and the
 relevant tests:
 
@@ -185,6 +194,14 @@ Coordinate with `test-adaptation` / the `drupal-test-engineer` agent:
   FunctionalJavascript, run inside DDEV with Selenium for JS).
 - After the refactor lands, **add** missing tests to maximize coverage of the
   modernized code paths (new attribute-driven plugins, injected services).
+- **Every new test carries a negative control** before it counts: run
+  `scripts/tests/negative-control.sh --subject <path> --type <group> --filter
+  <test> (--revert-to <ref> --path <file> | --mutation-patch <file>) --json`
+  (see `test-adaptation` §6.1). It must be `effective` (red with the guarded
+  change undone, green once the code is restored byte for byte); an
+  `ineffective` test is strengthened and re-controlled, never accepted. Record
+  the results under `verification.negative_controls` in the manifest (or pass
+  `--manifest <manifest>`); `port-report.md` lists them.
 - Report coverage with `run-phpunit.sh --coverage` (`--coverage-text` /
   `--coverage-html`).
 - If a test cannot pass for an external reason (e.g. a contrib dependency without
@@ -216,6 +233,10 @@ Before declaring the module refactored, all must hold:
   passed after Phase 1 must still pass, unchanged in what they verify. If the module
   has no tests, state that preservation is **not verified** for the refactor and
   recommend adding tests before/with it.
+  Against the post-port baseline the verdict must not be `regression`; a
+  `pre-existing-failures` verdict is reported with its list, never presented as
+  green.
+- Every test added in Phase 2 has an `effective` negative control.
 - Plugins use attributes; services are injected; strict types are in place where
   appropriate.
 

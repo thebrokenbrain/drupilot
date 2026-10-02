@@ -157,6 +157,10 @@ Un **estudio de viabilidad** siempre se ejecuta primero como gate de decisión. 
 
 **Cómo se verifica que «se respeta la funcionalidad original».** Que la suite de tests adaptada siga en **verde es el gate de preservación** en ambas fases — ese verde es la prueba de que el comportamiento se preserva. Las adaptaciones de los tests solo cambian la *forma* del test (API de PHPUnit/Drupal), nunca *lo que verifica*; una regresión de comportamiento se arregla en el código, nunca relajando un test. Si el módulo **no tiene tests**, `drupilot` informa de que la preservación **no está verificada** y recomienda añadirlos — no los inventa. Si hay tests pero no pueden ejecutarse (falta PHPUnit/`drupal/core-dev`, Selenium inaccesible), informa **no verificada (bloqueada)** con el motivo — nunca una regresión falsa ni un falso «sin tests».
 
+**Los fallos preexistentes no son regresiones.** Antes de que Rector toque el código, `/drupilot-port` registra la suite como **línea base** (`run-phpunit.sh --baseline`; `--baseline-from-last` promueve la última ejecución, p. ej. antes de un refactor). Cada ejecución posterior compara cada test que falla con ella: un test que fallaba antes **y** después del port es **preexistente**; un test que pasaba antes y ahora falla es una **regresión**. Cuando todos los fallos son preexistentes, el veredicto es **pre-existing failures** — no es verde ni prueba nada, así que los fallos se listan en `port-report.md`, y uno que ahora falla con un mensaje distinto (p. ej. antes del port el módulo ni siquiera se podía instalar) se marca para revisarlo. Un grupo en el que PHPUnit no ejecutó ningún test cuenta como vacío, nunca como superado.
+
+**Los tests nuevos tienen que poder fallar (controles negativos).** Todo test que escribe drupilot (Fase 2, o un test de regresión para un arreglo) lleva un control negativo: `scripts/tests/negative-control.sh` deshace el cambio de producción que protege el test (`--revert-to REF --path FICHERO`, o un `--mutation-patch` mínimo), exige que el test se ponga en **rojo**, restaura el código y comprueba que es idéntico byte a byte (`git hash-object`), y después exige que vuelva a **verde**. Un test que sigue en verde sin su cambio es **ineffective** y se refuerza, nunca se acepta. El script nunca muta código de test, restaura los ficheros incluso ante un error o Ctrl-C, nunca toca el veredicto de tests registrado, y sus resultados aparecen en `port-report.md` y en `/drupilot-status`.
+
 **Cómo se verifica la mitad Drupal 10 de `^10 || ^11`.** El banco de pruebas solo ejecuta Drupal 11, así que un port que conserva Drupal 10 se limitaría a *declararlo*. `scripts/analysis/verify-core-matrix.sh` (lo ejecuta `/drupilot-port`, y `/drupilot-refactor` mientras se conserve `^10`) analiza el módulo en cada core que declara su `core_version_requirement`: el mismo PHPStan (phpstan-drupal + reglas de deprecación, con las versiones exactas del banco de pruebas) y `php -l` contra un core de referencia de Drupal 10 en caché — la última 10.x para `^10`, la 10.3.x para `^10.3 || ^11` — construido una sola vez mediante `ddev exec composer` en `<drupal_root>/.drupilot/cores/` (unos 200 MB y un minuto la primera vez; nunca con el PHP de tu equipo). Una pata de Drupal 10 **falla** ante un error que la línea base de Drupal 11 no tiene — un `#[\Override]` en `buildRevisionCacheId()` (un método que solo declara el core 11.3+), una clase que solo trae Drupal 11 — y `php -l` también se ejecuta en el PHP más bajo que un sitio Drupal 10 puede usar con el módulo (el mínimo propio de Drupal 10, 8.1, o un suelo `require.php` más alto) en un contenedor `php:X.Y-cli`. Una ejecución limpia deja el soporte de Drupal 10 como **verified-static**: probado por análisis estático, no ejecutando la suite en Drupal 10, y `port-report.md`, el texto del issue y `/drupilot-status` lo dicen exactamente así. Sin red, la pata se omite y el soporte sigue como **declared-not-verified**; nunca bloquea un port.
 
 ---
@@ -346,6 +350,15 @@ Convierte anotaciones a atributos PHP 8, introduce inyección de dependencias y 
 ```
 
 Ejecuta Unit, Kernel, Functional y FunctionalJavascript (Selenium) dentro de DDEV y reporta cobertura. Si un test no puede pasar por una causa externa (p. ej. una dependencia contrib sin soporte D11), se documenta explícitamente en vez de silenciarlo.
+
+Para demostrar que un test nuevo protege el cambio para el que se escribió (un control negativo):
+
+```bash
+bash scripts/tests/negative-control.sh --subject web/modules/custom/my_module \
+  --type kernel --filter testQueueWorker --revert-to HEAD --path src/Plugin/QueueWorker/MyWorker.php --json
+```
+
+Código de salida `0` efectivo (rojo con el cambio deshecho, verde al restaurar) · `4` inefectivo · `1` no concluyente · `2` entorno bloqueado.
 
 ### 6. Obtén el parche — prueba en local ahora, contribuye después
 

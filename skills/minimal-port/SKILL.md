@@ -122,6 +122,20 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile analyze
 
 Exit `2` → show the report and stop, no side effects.
 
+**Pre-port test baseline.** Before Pass 1 touches anything, record the suite on
+the untouched code (skip it when the subject ships no tests):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject "<path>" --type all --baseline
+```
+
+It writes `test-baseline.json` (state dir; `last-test.json` is untouched) and
+exits `0` even when red. Every later run then classifies each failing test as
+`pre-existing` (red before the port too) or a `regression` (green before), and
+the verdict becomes `pre-existing-failures` when no test regressed. Exit `2`
+(the test environment is not up) never blocks the port: report that no baseline
+was taken (every later failure then counts as a regression).
+
 ## 2. Pass 1 — official Rector (palantirnet/drupal-rector)
 
 The stable, community-maintained pass. Covers deprecations D10.0 → D11.4. Always
@@ -540,7 +554,10 @@ adapted suite **green** (or its red tests documented as external blockers) — t
 green is the evidence the original behavior is preserved. If the module ships
 **no tests**, say so plainly: preservation is **not verified**, the changes rest
 on Rector's equivalences + the minimal diff, and adding tests is recommended
-(drupilot does not fabricate them in Phase 1). Then hand off to `test-adaptation`,
+(drupilot does not fabricate them in Phase 1). A `pre-existing-failures` verdict
+(every red test was already red in the pre-port baseline) is reported with its
+list, never as green: those failures prove nothing either way, and one that
+now fails with a different message is reviewed as a possible regression. Then hand off to `test-adaptation`,
 and offer `full-refactor` if the user opts into Phase 2.
 
 ## Gotchas

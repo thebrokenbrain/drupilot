@@ -40,7 +40,10 @@ Read these if they exist (do not recompute anything):
   refactored / tested / contributed).
 - `@<state_dir>/last-test.json` — the last PHPUnit run: groups run, pass/fail counts,
   the **`preservation`** verdict (`verified` / `verified-partial` / `regression` /
-  `not-verified-blocked` / `not-verified-no-tests` — the behavior-preservation gate), and the `coverage`
+  `pre-existing-failures` / `not-verified-blocked` / `not-verified-no-tests` — the
+  behavior-preservation gate), the `baseline` comparison against the pre-port run
+  (`regressions`, `pre_existing`, `fixed`; `null` without a baseline), the
+  `negative_controls` summary (effective / ineffective / error / stale), and the `coverage`
   object (`requested` / `html` / `percent`; `percent` is `null` in Phase 1, so do
   not invent a figure).
 - the `lockfile` path reported in Step 2 (if any) — the reproducibility lock:
@@ -79,7 +82,9 @@ Render an English summary covering:
 - **Current phase:** from the phase marker (or "not assessed yet").
 - **Last assessment:** verdict + effort + counts + when, or "none cached".
 - **Last test result:** pass/fail summary, the **preservation** verdict, and when —
-  or "tests not run yet".
+  or "tests not run yet". With a baseline, say how many failures are regressions
+  and how many pre-exist the port (`pre-existing-failures` is not green). Mention
+  the negative controls when any exist, and name every `ineffective` one.
 - **Core matrix:** one line per core leg (version, pass/fail/skipped and why) and
   the Drupal 10 support verdict; say "stale — re-run verify-core-matrix.sh" when
   `core_matrix_fresh=no`, or "not run" when there is none. `verified-static` means

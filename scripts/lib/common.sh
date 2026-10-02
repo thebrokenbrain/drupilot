@@ -829,6 +829,35 @@ subject_digest() {
 # result (verify-core-matrix.sh), whether or not it exists yet.
 core_matrix_file() { printf '%s/core-matrix.json' "$(project_state_dir "${1:-$PWD}")"; }
 
+# negative_controls_file <subject> -> path of the subject's negative-control
+# records (negative-control.sh), whether or not it exists yet. Hidden state,
+# like last-test.json: a deliberate red run is never a project artifact.
+negative_controls_file() { printf '%s/negative-controls.json' "$(project_state_dir "${1:-$PWD}")"; }
+
+# negative_controls_summary <subject> -> compact JSON summary of the recorded
+# negative controls ({total, effective, ineffective, error, stale, controls:
+# [{test, type, label, verdict, at, stale}]}), or "null" when none was recorded.
+# A control is "stale" when the subject's sources changed after it ran (its
+# subject_digest differs), so a report never presents it as current proof.
+negative_controls_summary() {
+  local s="${1:-$PWD}" f digest
+  f="$(negative_controls_file "$s")"
+  if [[ ! -r "$f" ]] || ! have_cmd jq; then printf 'null'; return 0; fi
+  digest="$(subject_digest "$s")"
+  jq -c --arg d "$digest" '
+    if (type == "array") and (length > 0) then
+      [ .[] | {test, type, label, verdict, at, mutation: (.mutation.kind // null),
+               stale: ((.subject_digest // "") != "" and $d != "" and .subject_digest != $d)} ] as $c
+      | {total: ($c | length),
+         effective: ([ $c[] | select(.verdict == "effective") ] | length),
+         ineffective: ([ $c[] | select(.verdict == "ineffective") ] | length),
+         error: ([ $c[] | select(.verdict == "error") ] | length),
+         stale: ([ $c[] | select(.stale) ] | length),
+         controls: $c}
+    else null end' "$f" 2>/dev/null || printf 'null'
+  return 0
+}
+
 # core_matrix_fresh <subject> -> 0 when a core-matrix result exists for the
 # subject AND was computed on its current sources (same subject_digest), so a
 # report never presents a verdict about code that changed since.

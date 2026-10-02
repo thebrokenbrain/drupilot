@@ -103,11 +103,18 @@ behavior is preserved):
 
 ## Step 4 — Keep the suite green (coordinate with the test engineer)
 
-A refactor is only done when the tests still pass. After each meaningful batch of
+A refactor is only done when the tests still pass. Before the first change,
+freeze the post-port suite as the baseline the refactor is judged against
+(`run-phpunit.sh --subject <path> --baseline-from-last`, or `--baseline` for a
+fresh run), so a red test afterwards is classified as a refactor regression or
+as a failure that already existed. After each meaningful batch of
 changes, delegate to the **drupal-test-engineer** subagent (via the Task tool) to
 adapt and re-run the relevant tests in DDEV (Unit / Kernel / Functional /
 FunctionalJavascript), and iterate until green. In Phase 2 the engineer also
-**adds missing tests** to raise coverage. Do not silence failing tests — if
+**adds missing tests** to raise coverage, and every new test must carry an
+`effective` negative control (`scripts/tests/negative-control.sh`: red with the
+guarded change undone, green once the code is restored byte for byte; an
+`ineffective` test is strengthened, never accepted). Do not silence failing tests — if
 something cannot pass for an external reason (e.g. a contrib dependency without a
 D11 release), document it explicitly.
 

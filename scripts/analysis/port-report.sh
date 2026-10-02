@@ -32,7 +32,8 @@
 #       "core_matrix": <the JSON of verify-core-matrix.sh --json>,
 #       "phpcs_ruleset": <the .drupilot object of run-phpcs.sh --json>,
 #       "commit_hooks": <the JSON of git-hooks.sh --run-equivalents, or
-#                        {"bypassed": false, "note": "hooks ran on commit"}>
+#                        {"bypassed": false, "note": "hooks ran on commit"}>,
+#       "negative_controls": [<records of negative-control.sh --json>]
 #     }
 #   }
 # manual_edits items may be a plain string OR an object {edit, why?, change_record?}.
@@ -44,9 +45,17 @@
 # verification is optional; each key falls back to the per-subject state file
 # the script records (core-matrix.json from verify-core-matrix.sh,
 # phpcs-ruleset.json from run-phpcs.sh, hooks-substitution.json from
-# git-hooks.sh --run-equivalents) and renders "n/a" when neither exists. A
+# git-hooks.sh --run-equivalents, negative-controls.json from
+# negative-control.sh) and renders "n/a" when neither exists. A
 # core-matrix.json computed on different sources than the current subject is
 # reported as stale and never used for the Drupal 10 verdict.
+# Negative controls: every new test drupilot writes must carry one (red with
+# the guarded change undone, green restored); an `ineffective` control is
+# flagged, and a control run on sources that changed since is marked stale.
+# Pre-existing failures: when last-test.json carries a baseline comparison
+# (run-phpunit.sh --baseline before the port), the preservation section lists
+# regressions, failures that pre-exist the port (flagging those that now fail
+# with a different message) and tests the port fixed.
 # d10_support: declared-not-verified | verified-static (PHPStan + php -l clean on
 # a Drupal 10 core, runtime not tested) | failed | n/a. A manifest
 # "declared-not-verified" is upgraded to the matrix's verified-static / failed
@@ -148,6 +157,7 @@ case "$PRESERVATION" in
   verified)              PRES_LINE="✅ **verified** — the adapted test suite is green; behavior is preserved.";;
   verified-partial)      PRES_LINE="🟡 **partially verified** — the groups that ran are green, but some were skipped (an external blocker), so part of the behavior is unproven.";;
   regression)            PRES_LINE="❌ **regression** — a behavioral test is red. Fix the production code (never the test).";;
+  pre-existing-failures) PRES_LINE="🟠 **pre-existing failures** — no test that passed before the port fails now, but tests that already failed in the pre-port baseline still fail (listed below). They are not proof of preservation either way: documented, never hidden.";;
   not-verified-blocked)
     PRES_LINE="⚠️ **not verified (blocked)** — tests exist but could not run"
     if [[ -n "$TEST_BLOCKED" ]]; then PRES_LINE="$PRES_LINE: ${TEST_BLOCKED%.}."
@@ -202,6 +212,14 @@ V_HOOKS="$(printf '%s' "$M" | jq -c '.verification.commit_hooks // empty' 2>/dev
 V_MATRIX="$(printf '%s' "$M" | jq -c '.verification.core_matrix // empty' 2>/dev/null || true)"
 [[ -z "$V_MATRIX" && -r "$(core_matrix_file "$SUBJECT")" ]] && V_MATRIX="$(jq -c . "$(core_matrix_file "$SUBJECT")" 2>/dev/null || true)"
 printf '%s' "$V_MATRIX" | jq -e '.tool == "verify-core-matrix"' >/dev/null 2>&1 || V_MATRIX=""
+# Negative controls (negative-control.sh): manifest first, else the state file.
+V_NC="$(printf '%s' "$M" | jq -c '.verification.negative_controls // empty' 2>/dev/null || true)"
+[[ -z "$V_NC" && -r "$(negative_controls_file "$SUBJECT")" ]] && V_NC="$(jq -c . "$(negative_controls_file "$SUBJECT")" 2>/dev/null || true)"
+printf '%s' "$V_NC" | jq -e 'type == "array" and length > 0' >/dev/null 2>&1 || V_NC=""
+CUR_DIGEST=""
+[[ -n "$V_NC" ]] && CUR_DIGEST="$(subject_digest "$SUBJECT")"
+# Baseline comparison recorded by run-phpunit.sh (null without a baseline).
+T_BASE="$(printf '%s' "$TEST" | jq -c '.baseline // empty | select(type == "object")' 2>/dev/null || true)"
 MATRIX_STALE="false"
 if [[ -n "$V_MATRIX" ]]; then
   _md="$(printf '%s' "$V_MATRIX" | jq -r '.subject_digest // empty')"
@@ -233,6 +251,16 @@ D10_VERSIONS=""
   printf '\n'
 
   printf '## Preservation gate\n\n%s\n\n' "$PRES_LINE"
+  if [[ -n "$T_BASE" ]]; then
+    printf '%s' "$T_BASE" | jq -r '
+      "Compared with the pre-port baseline (`run-phpunit.sh --baseline`, taken \(.taken_at // "?")): **\(.regressions | length)** regression(s), **\(.pre_existing | length)** pre-existing failure(s), **\(.fixed | length)** test(s) fixed by the port."
+        + (if .same_code then " _The baseline was taken on the current code, so it cannot show what the port changed._" else "" end) + "\n",
+      ( if (.regressions | length) > 0 then "**Regressions** (passed before, or not in the baseline, and fail now):\n" + ([ .regressions[] | "- `\(.id // ("group " + .group))` (\(.basis))" + (if (.now // "") != "" then " — \(.now)" else "" end) ] | join("\n")) + "\n" else empty end ),
+      ( if (.pre_existing | length) > 0 then "**Pre-existing failures** (already failing before the port):\n" + ([ .pre_existing[] | "- `\(.id // ("group " + .group))`"
+          + (if .basis == "baseline-group-crashed" then " — the whole group crashed before the port, so this test never ran then" elif (.basis | startswith("group")) then " — group-level failure" else "" end)
+          + (if .message_changed == true then " — **fails differently now** (before: \(.before // "?"); now: \(.now // "?")): review it" elif (.now // "") != "" then " — \(.now)" else "" end) ] | join("\n")) + "\n" else empty end )
+    ' 2>/dev/null || true
+  fi
   if [[ -n "$D10" ]]; then
     printf '> Drupal 10 compatibility: **%s**. ' "$D10"
     case "$D10" in
@@ -406,7 +434,31 @@ D10_VERSIONS=""
   else
     printf '| Commit hooks | n/a (no hook substitution recorded) |\n'
   fi
+  if [[ -n "$V_NC" ]]; then
+    printf '%s' "$V_NC" | jq -r --arg d "$CUR_DIGEST" '
+      "| Negative controls | \(length) recorded: \([.[] | select(.verdict == "effective")] | length) effective, \([.[] | select(.verdict == "ineffective")] | length) ineffective, \([.[] | select(.verdict == "error")] | length) error"
+      + (if ([.[] | select(.verdict == "ineffective")] | length) > 0 then " — **an ineffective test does not guard its change**" else "" end)
+      + (if ([.[] | select((.subject_digest // "") != "" and $d != "" and .subject_digest != $d)] | length) > 0 then " (some are stale)" else "" end) + " |"' 2>/dev/null \
+      || printf '| Negative controls | _unreadable_ |\n'
+  else
+    printf '| Negative controls | n/a (negative-control.sh has not run for this subject) |\n'
+  fi
   printf '\n'
+  if [[ -n "$V_NC" ]]; then
+    printf '### Negative controls\n\n'
+    printf '_Each new test must fail when the change it guards is undone and pass once the code is restored byte for byte (`negative-control.sh`)._\n\n'
+    printf '| Test | Guards | Undone by | Verdict |\n|---|---|---|---|\n'
+    printf '%s' "$V_NC" | jq -r --arg d "$CUR_DIGEST" '.[] |
+      "| `\(.test)` (\(.type)) | \(.label // "—") | "
+      + (if .mutation.kind == "patch" then "patch `\(.mutation.patch | split("/") | last)`" else "`git \(.mutation.ref)` of " + ((.mutation.paths // []) | map("`" + . + "`") | join(", ")) end)
+      + " | "
+      + (if .verdict == "effective" then "✅ effective (\(.red_tests | length) red)"
+         elif .verdict == "ineffective" then "❌ **ineffective** — strengthen the test"
+         else "⚠️ error — \(.reason // "inconclusive")" end)
+      + (if (.subject_digest // "") != "" and $d != "" and .subject_digest != $d then " _(stale: the code changed since)_" else "" end)
+      + " |"' 2>/dev/null || printf '_unreadable_\n'
+    printf '\n'
+  fi
 
   printf '## Deferred to Phase 2 (the Drupal 11 way)\n\n'; mlist '.deferred_to_phase2' | bullets; printf '\n'
 
