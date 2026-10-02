@@ -72,8 +72,15 @@ PHP sets are cumulative; target exactly **one** PHP version per run:
 - `8.5` → **verify `UP_TO_PHP_85` / `php85` exists in the installed Rector
   version before using it.** If absent, fall back to `php84` and note the gap.
 
-The Drupal sets (`Drupal10SetList::DRUPAL_10` + `Drupal11SetList::DRUPAL_11`) are
-independent of the PHP target — always include both. The `rector.php.tmpl`
+The Drupal set (`Drupal10SetList::DRUPAL_10`: APIs removed in D11) is independent
+of the PHP target; `Drupal11SetList::DRUPAL_11` (D11 deprecations, for a future
+D12 port) is deliberately not included. The PHP level set is applied minus the
+rules the template skips (`ArrayToFirstClassCallableRector`,
+`AddOverrideAttributeToOverriddenMethodsRector`, `ReadOnlyPropertyRector`,
+`ReadOnlyClassRector`, `NullToStrictStringFuncCallArgRector`): they are not
+compatibility fixes, they break Form API callbacks / serialization / Drupal 10,
+and the `#[\Override]` and `readonly` they add would also raise the PHP floor
+`detect-php-floor.sh` reports. The `rector.php.tmpl`
 template encodes this; `scripts/env/render-templates.sh` substitutes `{{PHP_TARGET}}`. (The digests complementary
 pass runs separately via `--config`, see the `minimal-port` skill.)
 
