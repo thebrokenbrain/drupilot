@@ -105,6 +105,9 @@ not reinvent their logic; capture and interpret their output.
    # add --json for {status, ok, errors, changed_files, files, pass1_files, pass2_files}
    # exit 3 = Rector crashed (status "error"): no verdict, never "0 files would
    # change" — report it and repair with install-toolchain.sh --source reference
+   # exit 4 = only the digests pass crashed (status "partial", digests_status
+   # "error"): the official count stands; the toolchain is fine — pin
+   # --digests-ref <sha> or set DRUPILOT_USE_DIGESTS_RULES=false
    ```
 4. **PHPStan at the deprecation level** (`DRUPILOT_PHPSTAN_LEVEL`, default 2):
    ```bash

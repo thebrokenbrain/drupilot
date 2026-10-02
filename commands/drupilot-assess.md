@@ -101,6 +101,9 @@ from `DRUPILOT_PHP_TARGET` (default `8.3`) and auto-detect whether to run throug
    !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "$1" --digests
    ```
 
+   **Exit 4 means only the digests pass crashed** (`status: "partial"`, `digests_status: "error"` with `--json`; e.g. a broken upstream rule file): the official count from step 1 stands, the toolchain is fine — do **not** reinstall it. Pin a known-good digests commit (`--digests-ref <sha>` / `DRUPILOT_DIGESTS_REF`) or skip the layer (`DRUPILOT_USE_DIGESTS_RULES=false`); the broken SHA is never frozen in the lockfile.
+   Record the digests line as "not available (digests ruleset crash)" and go on.
+
 3. **PHPStan** at the deprecation level (`DRUPILOT_PHPSTAN_LEVEL`, default `2`):
 
    ```bash

@@ -1156,18 +1156,27 @@ rector_output_ok() {
 
 # rector_error_excerpt <raw_output> -> the lines that explain a failed Rector run
 # (at most 8), for logs and the --json "errors" payload. Diff hunks are skipped,
-# so a module string such as 'Fatal error:' can never be mistaken for a crash;
-# falls back to the last non-empty lines when no known marker is found.
+# so a module string such as 'Fatal error:' can never be mistaken for a crash.
+# A boxed "[ERROR] ..." message wraps onto indented continuation lines (e.g.
+# 'Expected an existing class name. Got:' + '"SomeRector"'); those are joined
+# into the same excerpt line up to the closing blank line, so the offending
+# class/rule name is kept. Falls back to the last non-empty lines when no known
+# marker is found.
 rector_error_excerpt() {
   local raw="${1:-}" out
   out="$(printf '%s\n' "$raw" | awk '
-      /-+ begin diff -+/ { indiff = 1; next }
+      function clean(s) { gsub(/\033\[[0-9;]*[A-Za-z]/, "", s); sub(/[[:space:]]+$/, "", s); sub(/^[[:space:]]+/, "", s); return s }
+      function flush() { if (length(cur) > 0) print cur; cur = ""; inbox = 0 }
+      /-+ begin diff -+/ { flush(); indiff = 1; next }
       /-+ end diff -+/   { indiff = 0; next }
       indiff { next }
-      /\[ERROR\]|Fatal error|Uncaught|Exception|Could not |not found|Failed to execute command/ {
-        gsub(/\033\[[0-9;]*[A-Za-z]/, ""); sub(/[[:space:]]+$/, ""); sub(/^[[:space:]]+/, "")
-        if (length($0) > 0) print
-      }' | head -n 8)"
+      /\[ERROR\]/ { flush(); cur = clean($0); inbox = 1; next }
+      inbox && /^[[:space:]]+[^[:space:]]/ && !/\[[A-Z]+\]/ { cur = cur " " clean($0); next }
+      inbox { flush() }
+      /Fatal error|Uncaught|Exception|Could not |not found|Failed to execute command/ {
+        l = clean($0); if (length(l) > 0) print l
+      }
+      END { flush() }' | head -n 8)"
   if [[ -z "$out" ]]; then
     out="$(printf '%s\n' "$raw" | sed -e "s/$(printf '\033')\\[[0-9;]*[A-Za-z]//g" | grep -v '^[[:space:]]*$' | tail -n 5 || true)"
   fi

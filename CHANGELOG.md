@@ -343,6 +343,20 @@ tag the commit `vX.Y.Z`.
   starting point, so the gate reported "0 PHP file(s)" and passed. The subject is
   now scanned (and matched against git) by its physical path; its logical path
   is still used to locate the Drupal root it sits in.
+- **A crash of the digests Rector pass failed the whole run and was blamed on the
+  toolchain.** A broken upstream `drupal-digests` commit (a rule file without
+  `<?php`) made `run-rector.sh --digests` exit 3 with `status: "error"` even
+  though the official pass succeeded, printed toolchain-repair advice, and froze
+  the broken SHA in the lockfile so every later run crashed the same way. A
+  digests-only crash is now `status: "partial"`, `ok: true` (the official result
+  stands), `digests_status: "error"` and exit 4, with advice to pin
+  `--digests-ref`/`DRUPILOT_DIGESTS_REF` or set `DRUPILOT_USE_DIGESTS_RULES=false`;
+  the SHA is frozen only after the digests pass finishes normally. The `--json`
+  payload gains `digests_status` and `digests_sha`. Exit 3 now means only that
+  the official pass crashed.
+- **The Rector crash excerpt dropped the offending class name**: the indented
+  continuation lines of a boxed `[ERROR]` message are now joined into it (e.g.
+  `Expected an existing class name. Got: "ReplaceDrupalAttachTabledragRector"`).
 
 ## [0.8.4] - 2026-06-23
 

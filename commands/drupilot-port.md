@@ -103,7 +103,7 @@ see the `minimal-port` skill §0). `--json` lists the applied rule names in
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "$1" --apply
 ```
 
-**Exit 3 means Rector crashed** (`[ERROR] Could not detect twig set.`, a PHP fatal,
+**Exit 3 means the official Rector pass crashed** (`[ERROR] Could not detect twig set.`, a PHP fatal,
 per-file errors): its output is not a "no changes" result and nothing should be
 applied on top of it. Show the diagnostic (installed vs known-good toolchain),
 repair with `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-toolchain.sh" --dir <drupal_root> --source reference`
@@ -151,6 +151,8 @@ disliked digests pass can be dropped cleanly. Then apply the accepted subset:
 ```bash
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "$1" --digests --apply
 ```
+
+**Exit 4 means only the digests pass crashed** (`status: "partial"`, `digests_status: "error"` with `--json`; e.g. a broken upstream rule file): the official result stands, the toolchain is fine — do **not** reinstall it. Pin a known-good digests commit (`--digests-ref <sha>` / `DRUPILOT_DIGESTS_REF`) or skip the layer (`DRUPILOT_USE_DIGESTS_RULES=false`); the broken SHA is never frozen in the lockfile.
 
 If the developer picked a subset (not "apply all"), apply the kept rules via an
 explicit `--config` pointing at a trimmed rule set, or apply all then revert the

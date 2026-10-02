@@ -118,7 +118,7 @@ For a **reproducible** auto-fixable count (instead of eyeballing the diff), add
 official rector, `pass2` = digests. Use `changed_files` and the pass split for the
 verdict, but only when `status` is `"ok"`.
 
-**Exit 3 = Rector crashed** (e.g. `[ERROR] Could not detect twig set.` from an
+**Exit 3 = the official Rector pass crashed** (e.g. `[ERROR] Could not detect twig set.` from an
 incompatible `rector/rector`, a PHP fatal, or per-file processing errors): the
 `--json` payload has `status: "error"` and `errors[]` with the message, and there
 is **no auto-fixable verdict** — never read it as "0 files would change". Stop, show the
@@ -127,6 +127,9 @@ diagnostic (installed vs known-good versions), repair the toolchain with
 when the toolchain already matches the known-good set), and re-run.
 In the report, record the Rector line as "not available (toolchain crash)" rather
 than an auto-fixable share of 0%.
+
+**Exit 4 means only the digests pass crashed** (`status: "partial"`, `digests_status: "error"` with `--json`; e.g. a broken upstream rule file): `pass1_files`/the official count stand, the toolchain is fine — do **not** reinstall it. Pin a known-good digests commit (`--digests-ref <sha>` / `DRUPILOT_DIGESTS_REF`) or skip the layer (`DRUPILOT_USE_DIGESTS_RULES=false`); the broken SHA is never frozen in the lockfile. In the report, record only the digests
+line as "not available (digests ruleset crash)".
 
 ### 3.2 PHPStan at deprecation level
 

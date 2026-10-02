@@ -102,7 +102,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "<path>"
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "<path>" --apply
 ```
 
-**Exit 3 = Rector crashed** (e.g. `[ERROR] Could not detect twig set.` from an
+**Exit 3 = the official Rector pass crashed** (e.g. `[ERROR] Could not detect twig set.` from an
 incompatible `rector/rector`, a PHP fatal, or per-file processing errors): the
 `--json` payload has `status: "error"` and `errors[]` with the message, and there
 is **no verdict** — never read it as "0 files would change". Stop, show the
@@ -168,6 +168,8 @@ runs, so the same project always applies the same digests rules.
    rules whose target API does not exist there. When in doubt, prefer not
    applying a rule that would lift the floor above what the project promises.
 4. **Order** → official `drupal-rector` first, digests second.
+
+**Exit 4 means only the digests pass crashed** (`status: "partial"`, `digests_status: "error"` with `--json`; e.g. a broken upstream rule file): the official result stands, the toolchain is fine — do **not** reinstall it. Pin a known-good digests commit (`--digests-ref <sha>` / `DRUPILOT_DIGESTS_REF`) or skip the layer (`DRUPILOT_USE_DIGESTS_RULES=false`); the broken SHA is never frozen in the lockfile.
 
 The `issues/*.md` summaries in the repo explain *why* an API changed — useful
 context when reviewing a diff, but they are not rules.
