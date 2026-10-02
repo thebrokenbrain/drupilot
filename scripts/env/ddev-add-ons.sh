@@ -46,7 +46,7 @@ while [[ $# -gt 0 ]]; do
     --dir) PROJECT_DIR="${2:-}"; shift 2;;
     --dir=*) PROJECT_DIR="${1#*=}"; shift;;
     -h|--help)
-      grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; exit 0;;
+      print_usage "$0"; exit 0;;
     *) log_warn "Unknown argument: $1"; shift;;
   esac
 done

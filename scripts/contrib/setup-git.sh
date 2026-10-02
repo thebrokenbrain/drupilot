@@ -23,7 +23,7 @@ set -euo pipefail
 NAME=""
 EMAIL=""
 
-usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
+usage() { print_usage "$0"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

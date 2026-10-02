@@ -47,6 +47,19 @@ die() { log_err "$1"; exit "${2:-1}"; }
 # ---------------------------------------------------------------------------
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
 
+# print_usage <script> -> prints the script's header comment block (the lines
+# between its first two "# ====" rules, without the leading "# ") on STDOUT, for
+# -h/--help. Only the header is printed: later comments, shellcheck directives
+# and the rule lines themselves are not part of the help.
+print_usage() {
+  awk 'NR == 1 && /^#!/ { next }
+       /^# =+[[:space:]]*$/ { if (inhdr) exit; inhdr = 1; next }
+       !inhdr { next }
+       !/^#/ { exit }
+       /^#[[:space:]]*shellcheck[[:space:]]/ { next }
+       { sub(/^# ?/, ""); print }' "$1"
+}
+
 # extract_semver <string> -> first X.Y(.Z) found
 extract_semver() {
   printf '%s' "$1" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1

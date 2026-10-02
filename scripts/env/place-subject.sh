@@ -57,7 +57,7 @@ NO_EXCLUDE=0
 # Copy-mode exclusions: top-level local-environment residue, plus node_modules
 # at any depth. (vendor/ is top-level only: a module may ship js/vendor/.)
 COPY_EXCLUDE_TOP=(.ddev vendor .drupilot .drupilot.json .phpstan-cache .drupilot-coverage)
-usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
+usage() { print_usage "$0"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

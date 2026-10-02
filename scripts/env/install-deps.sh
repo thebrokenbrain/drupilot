@@ -45,7 +45,7 @@ while [[ $# -gt 0 ]]; do
     --dry-run) DRY_RUN=1; shift;;
     git|jq|php|composer|docker|ddev|all) REQUESTED+=("$1"); shift;;
     -h|--help)
-      grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; exit 0;;
+      print_usage "$0"; exit 0;;
     *) log_warn "Unknown argument: $1"; shift;;
   esac
 done

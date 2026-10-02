@@ -44,7 +44,7 @@ set -euo pipefail
 
 SUBJECT=""
 JSON_ONLY=0
-usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
+usage() { print_usage "$0"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

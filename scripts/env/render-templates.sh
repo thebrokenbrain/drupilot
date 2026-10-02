@@ -87,7 +87,7 @@ DRY=0
 AS_JSON=0
 declare -a OVERRIDES=()
 
-usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
+usage() { print_usage "$0"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

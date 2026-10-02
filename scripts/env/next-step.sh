@@ -52,7 +52,7 @@ R_ANALYZE=""; R_SETUP=""; R_TEST=""; R_CONTRIBUTE=""
 FROM_PREFLIGHT=0
 AS_JSON=1
 
-usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
+usage() { print_usage "$0"; }
 # norm_bool VALUE -> true | false | unknown (anything not boolean-like).
 norm_bool() {
   case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in

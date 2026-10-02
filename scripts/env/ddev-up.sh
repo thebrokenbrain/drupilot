@@ -67,7 +67,7 @@ while [[ $# -gt 0 ]]; do
     --no-create) DO_CREATE=0; shift;;
     --json) JSON_OUT=1; shift;;
     -h|--help)
-      grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; exit 0;;
+      print_usage "$0"; exit 0;;
     *) log_warn "Unknown argument: $1"; shift;;
   esac
 done

@@ -447,6 +447,11 @@ tag the commit `vX.Y.Z`.
   `timeout`/`gtimeout` via the new `run_with_timeout` helper), and stops with
   an actionable error. `ddev start` is a real start of a stopped project, and
   the status is checked again afterwards.
+- **`--help` printed far more than the help.** Every script's usage printer
+  grepped all `# ` comment lines of the file, so the output carried the
+  `# shellcheck source=...` directive, section separators and internal
+  comments. A shared `print_usage` helper in `common.sh` now prints only the
+  header block between the two `# ====` rules, and every script uses it.
 
 ## [0.8.4] - 2026-06-23
 

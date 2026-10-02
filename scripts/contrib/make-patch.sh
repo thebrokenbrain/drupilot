@@ -76,7 +76,7 @@ DESCRIPTION="port-to-drupal-11"
 OUTPUT=""
 LOCAL=0
 
-usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
+usage() { print_usage "$0"; }
 
 # slugify <string> -> lowercase, hyphen-separated, safe for a filename.
 slugify() {

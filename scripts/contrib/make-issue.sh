@@ -77,7 +77,7 @@ D10_UNVERIFIED=0
 OUTPUT=""
 JSON=0
 
-usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
+usage() { print_usage "$0"; }
 
 slugify() {
   printf '%s' "$1" \
