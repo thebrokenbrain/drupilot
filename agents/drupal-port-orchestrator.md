@@ -45,7 +45,10 @@ All output you produce — messages, summaries, plans — is in **English**.
    serialized classes; a sandbox PHPStan finding is never "fixed" by changing
    semantics unless the original project tolerates it (sandbox-only findings
    are documented, not patched); symbols newer than the kept core floor only
-   through `DeprecationHelper::backwardsCompatibleCall()`.
+   through `DeprecationHelper::backwardsCompatibleCall()`; soft deprecations
+   (removed only in a later major, e.g. `user_load_by_name()`/`text_summary()`/
+   `check_markup()`, deprecated in 11.4.0 and removed from 13.0.0) follow
+   `DRUPILOT_SOFT_DEPRECATIONS` — never an ad-hoc call per module.
 3. **Viability is a decision gate, not a veto.** Before porting, an assessment must
    exist. If the effort exceeds `DRUPILOT_VIABILITY_THRESHOLD`, flag it clearly but
    **still deliver a staged plan** and let the developer decide. drupilot never
@@ -121,7 +124,7 @@ Read via the scripts (which call `config_get`/`config_json`); env vars override
 `DRUPILOT_PHPSTAN_LEVEL_REFACTOR` (6), `DRUPILOT_VIABILITY_THRESHOLD` (medium),
 `DRUPILOT_CONTRIB_MODE` (semi), `DRUPILOT_USE_DIGESTS_RULES` (true),
 `DRUPILOT_DIGESTS_REF` (main), `DRUPILOT_GENERATE_RULES` (ask),
-`DRUPILOT_AUTONOMOUS` (false).
+`DRUPILOT_SOFT_DEPRECATIONS` (report), `DRUPILOT_AUTONOMOUS` (false).
 
 ## Autonomous mode (hands-off)
 
@@ -240,7 +243,18 @@ the remaining mechanical Twig/CKEditor/jQuery fixes. After each batch, run
 and with both checks at exit 0 (exit 3 = error findings: fix them — in
 autonomous mode too, restoring the interface/`use`/`new static`/array callable,
 forwarding `config.typed` to `ConfigFormBase`, renaming a helper core adds later,
-keeping a new hook parameter optional — never ignore them). No architectural changes. Report the summarized diff, which rules
+keeping a new hook parameter optional — never ignore them). Classify what PHPStan
+still reports with `scripts/analysis/classify-deprecations.sh --file <phpstan.json>
+--subject <path> --json` (PHPStan JSON from `run-phpstan.sh --json`): **hard**
+deprecations (removed in a major ≤ the target, e.g. `user_roles()`, removed in
+11.0.0) and **unknown** ones are blocking — `blocking` must reach 0; **soft** ones
+(removed in a later major) follow `DRUPILOT_SOFT_DEPRECATIONS`: `report` (default:
+listed in the port report, code untouched), `defer` (listed under deferred to
+Phase 2) or `fix` (each item's `action`: `fix` when the replacement exists at the
+declared core floor, `fix-guarded` through
+`DeprecationHelper::backwardsCompatibleCall()`, `defer` otherwise). Autonomous
+mode applies the configured policy as is — it never upgrades `report` to `fix`.
+Store the final classification as `soft_deprecations` in the port manifest. No architectural changes. Report the summarized diff, which rules
 (official/digests/ad-hoc) were applied, and what is deferred to Phase 2.
 
 When the subject validates, write the local preview patch (offline, git-only;
@@ -253,8 +267,9 @@ before any contribution.
 
 Only when the user explicitly opts in (this includes autonomous mode, which opts
 in by design). Use the `full-refactor` skill: PHP 8 attribute plugins, dependency
-injection, strict typing, modern APIs, zero deprecations, raise PHPStan to level
-5-6, and clean `Drupal` + `DrupalPractice`, with `check-port-safety.sh` at exit 0
+injection, strict typing, modern APIs, zero deprecations (soft ones included:
+`classify-deprecations.sh --phase refactor`, still respecting the core floor),
+raise PHPStan to level 5-6, and clean `Drupal` + `DrupalPractice`, with `check-port-safety.sh` at exit 0
 (promoted services stay `protected`, never `private`/`readonly`, in serialized
 classes). **Coordinate closely with
 `drupal-test-engineer`** so the suite stays/turns green as the architecture

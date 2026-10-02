@@ -114,7 +114,16 @@ not reinvent their logic; capture and interpret their output.
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject <DIR>
    # add --json for native {totals:{errors,file_errors}, files:{...}} + drupilot.status
    # (clean|findings|crashed); exit 3 = crashed: no verdict, never "0 errors"
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject <DIR> --json \
+     | bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/classify-deprecations.sh" --subject <DIR> --json
+   # hard (removed in a major <= target: must fix) / soft (removed later: works on
+   # every D11 core, per DRUPILOT_SOFT_DEPRECATIONS) / unknown (counted as hard)
    ```
+   Only **hard + unknown** deprecations count in the verdict. Soft ones (e.g.
+   `user_load_by_name()`, `text_summary()`, `check_markup()`: deprecated in 11.4.0,
+   removed from 13.0.0) are listed in the report's "Soft deprecations" table
+   (symbol, deprecated in, removed in, effort, Phase 1 action) — never as
+   must-fix work.
 5. **PHPCS** (read-only, no `--fix`) for coding-standard distance:
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpcs.sh" --subject <DIR>

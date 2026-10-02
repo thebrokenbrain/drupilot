@@ -92,7 +92,16 @@ no-op — that is the only discretion.
 - **Zero deprecations.** Replace every API deprecated through D11.4 with its
   current equivalent (entity query `->accessCheck(TRUE)`, the `messenger` service,
   typed config, current routing/event APIs). Target the refactor PHPStan level
-  clean with **no** deprecation notices.
+  clean with **no** deprecation notices. This includes the **soft** deprecations
+  Phase 1 reported or deferred under `DRUPILOT_SOFT_DEPRECATIONS` (removed only in
+  a later major, e.g. `user_load_by_name()`/`text_summary()`/`check_markup()`,
+  deprecated in 11.4.0): run `classify-deprecations.sh --phase refactor`, which
+  turns every soft item into a fix regardless of the Phase 1 policy, and follow
+  each item's `action` — `fix` (replacement exists at the declared core floor),
+  `fix-guarded` (wrap it in `DeprecationHelper::backwardsCompatibleCall()`, the
+  replacement exists only on newer cores, e.g. `TextSummary` from 11.4) or `defer`
+  (no replacement usable at the floor: keep it, document it, or raise the floor
+  in §1b). The core floor still wins over "zero deprecations".
 - **Finish deferred hard breaks.** Complete any Twig 3 / CKEditor 5 / jQuery-UI
   migration left mechanical-only in Phase 1 (custom Twig extensions, editor
   plugins, JS without jQuery UI).
@@ -184,6 +193,9 @@ Before declaring the module refactored, all must hold:
   `create()`); its warnings are reviewed and listed in the report.
 - `scan-signature-changes.sh --subject <path>` exits **0** (no collision with a
   core signature change at the declared floor).
+- `classify-deprecations.sh --file <phpstan.json> --subject <path> --phase refactor
+  --json` reports `blocking: 0` and every soft item fixed, or documented with its
+  `defer` reason (no replacement usable at the declared core floor).
 - The full applicable test suite **green** (anything skipped is documented). Because
   Phase 2 changes more code, this is the **preservation gate**: the same tests that
   passed after Phase 1 must still pass, unchanged in what they verify. If the module
@@ -208,7 +220,8 @@ merge-verified contribution patch stays the job of `drupal-contribution`.
 
 **Refresh the didactic report.** Tee the Phase 2 Rector + final PHPStan
 deprecation output into `<state_dir>/change-log.txt` (under `$HOME`, never in the
-project tree), update `<state_dir>/port-manifest.json` (`phase: "refactor"`), and
+project tree), update `<state_dir>/port-manifest.json` (`phase: "refactor"`, `soft_deprecations`
+= the final `classify-deprecations.sh --phase refactor --json`), and
 re-render with `port-report.sh --subject <path> --manifest <manifest>
 --changes-log <state_dir>/change-log.txt` so `port-report.md` in the visible
 `.drupilot/` dir reflects Phase 2 and its "changes, explained" section.

@@ -192,7 +192,50 @@ tag the commit `vX.Y.Z`.
   resolver (`php_scan_index`, `php_scan_extmap`, `php_class_file`,
   `php_class_records`, `php_chain_has`) that `check-port-safety.sh` had inline,
   so both scanners share one implementation (its output is unchanged).
+- **Soft-deprecation policy: `DRUPILOT_SOFT_DEPRECATIONS`** (`report` default |
+  `defer` | `fix`; `config/defaults.json`, validated non-fatally by
+  `preflight.sh`). A deprecation is *hard* when it is removed in a Drupal major
+  <= the target major (e.g. `user_roles()`/`user_role_names()`, removed in
+  11.0.0) and *soft* when it is removed only in a later one (e.g.
+  `user_load_by_name()`, `user_load_by_mail()`, `text_summary()`,
+  `check_markup()`, `user_cookie_save()`/`user_cookie_delete()`: deprecated in
+  11.4.0, removed from 13.0.0, so they work on every Drupal 11 core). Hard ones
+  are always fixed in Phase 1; soft ones are listed (`report`), deferred to
+  Phase 2 (`defer`) or fixed (`fix`) only in a way that keeps the declared core
+  floor working: directly when the replacement exists there, through
+  `DeprecationHelper::backwardsCompatibleCall()` when it exists only on newer
+  cores (the `TextSummary` service is 11.4+), deferred otherwise. Phase 2
+  removes soft ones too, still respecting the floor.
+- **`scripts/analysis/classify-deprecations.sh`** (`[--file F | -] [--subject
+  DIR] [--core-req STR] [--core-floor X.Y] [--target-major N] [--policy P]
+  [--phase port|refactor] [--json]`, read-only, no toolchain). Reads PHPStan's
+  JSON (or its plain-text table) and returns `{policy, blocking, counts,
+  symbols, hard, soft, unknown}` with, per item, deprecated-in/removed-in (from
+  the message), the replacement, the first core that has it, whether the
+  declared core floor has it, the effort and the Phase 1 action
+  (`fix`/`fix-guarded`/`report`/`defer`). A deprecation without a readable Drupal
+  removal version, or a missing function the catalog does not date, is
+  *unknown* and counted as blocking.
+- **`lifecycle` catalog in `config/deprecations.json`** for the classifier:
+  replacement, `replacement_since`, effort and removal facts for the eight
+  functions above, each checked against core source on 10.3.x-12.0.x and the
+  installed 11.4.8 core (PHPStan reports a removed function only as
+  "Function user_roles not found.", without versions). Explainer entries for
+  them too (groups "Soft deprecations" and "Removed APIs").
+- **Soft deprecations in the reports.** `port-report.sh` renders a "Soft
+  deprecations (policy: X)" table (symbol, deprecated in, removed in, effort,
+  occurrences, action) from the new optional manifest key `soft_deprecations`;
+  the viability report template splits the PHPStan count into hard / soft /
+  unknown and adds the same table. Wired into the minimal-port,
+  viability-assessment and full-refactor skills, the orchestrator and analyst
+  agents and `/drupilot-port` / `/drupilot-assess`.
 ### Changed
+- **Only hard deprecations count as must-fix work.** The viability assessment
+  used to count every PHPStan deprecation message as "must-fix to run on D11",
+  which overstated the effort of modules that only use APIs deprecated in 11.4
+  (they keep working until Drupal 13). The verdict now counts hard and unknown
+  deprecations only, and Phase 1's "no blocking deprecations" means
+  `classify-deprecations.sh` reports `blocking: 0`.
 - **`check-port-safety.sh` override-attribute uses the signature catalog.** An
   `#[\Override]` on a method the catalog dates above the declared core floor
   (e.g. `buildRevisionCacheId()`, 11.3) is now an error whatever its

@@ -206,7 +206,25 @@ deprecations.
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/check-port-safety.sh" --subject "$1" --json
 # Core signature changes vs the declared core floor (gate):
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/scan-signature-changes.sh" --subject "$1" --json
+# Hard vs soft deprecations under DRUPILOT_SOFT_DEPRECATIONS (gate: blocking == 0):
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "$1" --json | bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/classify-deprecations.sh" --subject "$1" --json
 ```
+
+**What "blocking" means — the soft-deprecation policy.** `classify-deprecations.sh`
+splits PHPStan's deprecations: **hard** = removed in a Drupal major ≤ the target
+major (e.g. `user_roles()`, removed in 11.0.0 — PHPStan reports "Function
+user_roles not found."), **unknown** = no readable Drupal removal version (treated
+as hard), and **soft** = removed in a later major (e.g. `user_load_by_name()`,
+`user_load_by_mail()`, `text_summary()`, `check_markup()`, `user_cookie_save()`:
+deprecated in 11.4.0, removed from 13.0.0 — they work on every Drupal 11 core).
+Hard and unknown ones are blocking (`blocking` must be 0). Soft ones follow
+`DRUPILOT_SOFT_DEPRECATIONS` (read it, do not ask): `report` (default) — leave the
+code alone, list them in the report; `defer` — list them under deferred to Phase 2;
+`fix` — follow each item's `action`: `fix` (the replacement exists at the declared
+core floor, e.g. `loadByProperties()`), `fix-guarded` (it exists only on newer
+cores, e.g. the `TextSummary` service from 11.4 → wrap it in
+`DeprecationHelper::backwardsCompatibleCall()`), `defer` (nothing usable at the
+floor). Never break a core the module still declares to remove a soft deprecation.
 
 If PHPStan still reports blocking deprecations, iterate (back to the relevant
 pass) until they are resolved or clearly attributable to something deferred to
@@ -305,7 +323,10 @@ render:
 # rector_official_files, digests {applied, rejected:[{rule,reason}], skipped},
 # manual_edits[], deprecations_remaining, deferred_to_phase2[], patch, d10_support,
 # port_safety (the JSON printed by check-port-safety.sh --json),
-# signature_changes (the JSON printed by scan-signature-changes.sh --json).
+# signature_changes (the JSON printed by scan-signature-changes.sh --json),
+# soft_deprecations (the JSON printed by classify-deprecations.sh --json; add its
+# soft symbols with action "defer" to deferred_to_phase2, and count only hard +
+# unknown ones in deprecations_remaining).
 # Each manual_edits item may be a plain string OR an object
 # {edit, why?, change_record?} so the report can explain WHY each manual change
 # was made (and link its change record).

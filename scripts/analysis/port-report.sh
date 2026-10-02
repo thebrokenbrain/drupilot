@@ -26,11 +26,15 @@
 #     "d10_support": "declared-not-verified",
 #     "port_safety": <the JSON of check-port-safety.sh --json>,
 #     "signature_changes": <the JSON of scan-signature-changes.sh --json>,
-#     "origin_hygiene": <the JSON of origin-hygiene.sh --check --json>
+#     "origin_hygiene": <the JSON of origin-hygiene.sh --check --json>,
+#     "soft_deprecations": <the JSON of classify-deprecations.sh --json>
 #   }
 # manual_edits items may be a plain string OR an object {edit, why?, change_record?}.
 # port_safety and signature_changes are optional; when present the report lists
 # their findings.
+# soft_deprecations is optional; when present the report renders a "Soft
+# deprecations (policy: X)" table (symbol, deprecated in, removed in, effort,
+# action) and lists any hard/unknown deprecation still left.
 # origin_hygiene is optional; without it the report runs origin-hygiene.sh
 # --check itself, and renders an "Origin hygiene" section only when a baseline
 # was recorded (place-subject.sh takes it before placing).
@@ -249,6 +253,26 @@ printf '%s' "$HYG" | jq -e '.baseline != null and .clean != null' >/dev/null 2>&
     printf '\n'
   fi
 
+  if [[ "$(printf '%s' "$M" | jq -r '.soft_deprecations | type == "object"' 2>/dev/null)" == "true" ]]; then
+    printf '### Soft deprecations (policy: `%s`)\n\n' "$(mget '.soft_deprecations.policy' 'report')"
+    printf '_Deprecated APIs that are removed only in a later major, so they keep working on every core of the target major. `DRUPILOT_SOFT_DEPRECATIONS` decides what Phase 1 does with them: `report` lists them here, `defer` hands them to Phase 2, `fix` fixes them when the replacement exists at the declared core floor._\n\n'
+    printf '%s' "$M" | jq -r '
+      .soft_deprecations as $c
+      | ([ ($c.symbols // [])[] | select(.class == "soft") ]) as $soft
+      | ([ ($c.symbols // [])[] | select(.class == "hard" or .class == "unknown") ]) as $left
+      | (if ($soft | length) == 0 then "_none_"
+         else ( "| Symbol | Deprecated in | Removed in | Effort | Occurrences | Action |",
+                "|---|---|---|---|---|---|",
+                ( $soft[] | "| `\(.symbol)` | \(.deprecated_in // "?") | \(.removed_in // "?") | \(.effort // "n/a") | \(.occurrences // 1) | \(.action) |" ) )
+         end),
+        (if ($left | length) > 0
+         then "\n**Hard or unknown deprecations still reported (blocking):** "
+              + ([ $left[] | "`\(.symbol)` (\(.class), \(.occurrences // 1)x)" ] | join(", "))
+         else empty end)
+    ' 2>/dev/null || printf '_unreadable_\n'
+    printf '\n'
+  fi
+
   if [[ "$EXPLAINED_N" -gt 0 ]]; then
     printf '## Drupal 9/10 → 11 changes, explained\n\n'
     printf '_A best-effort teaching aid: each recognized change with what moved, the fix, and a drupal.org change record. Not exhaustive — see the patch for the exact diff._\n\n'
@@ -259,7 +283,8 @@ printf '%s' "$HYG" | jq -e '.baseline != null and .clean != null' >/dev/null 2>&
         "jquery-ui":"jQuery UI","ckeditor":"CKEditor 5","assertion":"Assertions",
         "phpunit":"PHPUnit 10/11","update-hooks":"Update hooks","port-safety":"Port safety",
         "serialization":"Serialization (DependencySerializationTrait)",
-        "signature-change":"Core signature changes","other":"Other"}) as $t
+        "signature-change":"Core signature changes",
+        "soft-deprecation":"Soft deprecations (still work on Drupal 11)","removed-api":"Removed APIs","other":"Other"}) as $t
       | group_by(.category)[]
       | "### " + ($t[(.[0].category)] // (.[0].category)) + "\n\n"
         + ( map("- **\(.symbol)** (\(.hits) hit(s)) — \(.why)\n    - Fix: \(.fix)\n    - Learn more: \(.change_record)") | join("\n") )

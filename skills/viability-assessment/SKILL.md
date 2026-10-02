@@ -138,9 +138,11 @@ bash "$ROOT/scripts/analysis/run-phpstan.sh" --subject "$SUBJECT" \
      --level "$(config_get DRUPILOT_PHPSTAN_LEVEL 2)"
 ```
 
-Level 2 is the deprecation-detection level (what drupal-check pins). Count
-deprecation messages: those are the "must-fix to run on D11" items. Distinguish
-deprecations Rector already covers (in §3.1) from those it does not (manual). For
+Level 2 is the deprecation-detection level (what drupal-check pins). Not every
+deprecation message is a "must-fix to run on D11" item: classify them first
+(below) — only the **hard** ones (and the **unknown** ones, conservatively) are.
+Distinguish the hard deprecations Rector already covers (in §3.1) from those it
+does not (manual). For
 a reproducible count, add `--json` (PHPStan's native `--error-format=json`) and
 read `.totals.file_errors` / `.totals.errors` rather than estimating from the
 human report. Check `.drupilot.status` first: `findings` / `clean` are a real
@@ -148,6 +150,29 @@ verdict, but `crashed` (exit 3, `totals: null`, reason in `.drupilot.crash`) mea
 PHPStan could not analyse at all (invalid config, fatal error) — report that as a
 blocker to fix, never as "0 deprecations" or "found issues". `.drupilot.notices`
 lists PHP/config deprecation notices PHPStan printed (e.g. a stale `drupal_root`).
+
+**Hard vs soft (`DRUPILOT_SOFT_DEPRECATIONS`).** Classify the PHPStan JSON:
+
+```bash
+STATE="$(bash -c '. "$1/scripts/lib/common.sh"; project_state_dir "$2"' _ "$ROOT" "$SUBJECT")"
+mkdir -p "$STATE"
+bash "$ROOT/scripts/analysis/run-phpstan.sh" --subject "$SUBJECT" --json > "$STATE/phpstan.json" || true
+bash "$ROOT/scripts/analysis/classify-deprecations.sh" --file "$STATE/phpstan.json" \
+  --subject "$SUBJECT" --json
+```
+
+**hard** = removed in a Drupal major ≤ the target major (e.g. `user_roles()`,
+removed in 11.0.0, which PHPStan reports as "Function user_roles not found.");
+**soft** = removed in a later major (e.g. `user_load_by_name()`,
+`user_load_by_mail()`, `text_summary()`, `check_markup()`, `user_cookie_save()`:
+deprecated in 11.4.0, removed from 13.0.0) — they still work on every Drupal 11
+core; **unknown** = no readable Drupal removal version (treated as hard). Only
+`counts.hard + counts.unknown` count as deprecations in the verdict (§5); list the
+soft ones in the report's "Soft deprecations" table (`symbols[]` with
+`class: soft`: symbol, deprecated in, removed in, effort — `n/a` when the catalog
+has none, never invented — replacement at the core floor, and the Phase 1
+`action` the policy gives: `report` by default). Record `deprecations_hard`,
+`deprecations_soft` and `soft_deprecations_policy` in `assess.json`.
 
 Make the deprecations a **teaching aid**, not a wall of red: pipe the analyzer
 output through the explainer, which annotates each known deprecated symbol with
@@ -319,8 +344,9 @@ copied/redistributed (unlicensed), never the sole basis for a verdict.
 The verdict is computed from three integer counts (no subjective weighting), so
 two assessments of the same module reach the same verdict:
 
-- `manual` — deprecations PHPStan flags that **no** Rector rule (official or
-  digests) covers, plus the mechanical edits Rector cannot make, plus the
+- `manual` — **hard** (and unknown) deprecations PHPStan flags that **no**
+  Rector rule (official or digests) covers — soft ones never count, whatever
+  `DRUPILOT_SOFT_DEPRECATIONS` says (§3.2) — plus the mechanical edits Rector cannot make, plus the
   **error** findings of `scan-signature-changes.sh` (§3.6). (`info.yml` is not
   counted — it is always required.)
 - `hard_breaks` — how many of the four categories are actually present (0–4),

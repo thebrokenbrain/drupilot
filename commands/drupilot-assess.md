@@ -110,6 +110,20 @@ from `DRUPILOT_PHP_TARGET` (default `8.3`) and auto-detect whether to run throug
    !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "$1"
    ```
 
+   Then split its deprecations into **hard** (removed in a major ≤ the target,
+   e.g. `user_roles()`, removed in 11.0.0: must fix), **soft** (removed in a later
+   major, e.g. `user_load_by_name()`/`text_summary()`/`check_markup()`, deprecated
+   in 11.4.0 and removed from 13.0.0: they work on every Drupal 11 core) and
+   **unknown** (no readable removal version: counted as hard):
+
+   ```bash
+   !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "$1" --json | bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/classify-deprecations.sh" --subject "$1" --json
+   ```
+
+   Only hard + unknown deprecations feed the effort verdict; soft ones go to the
+   report's "Soft deprecations" table with the action `DRUPILOT_SOFT_DEPRECATIONS`
+   gives them in Phase 1 (`report` by default).
+
 4. **PHPCS** (`Drupal` + `DrupalPractice`, no autofix during assessment):
 
    ```bash
@@ -149,6 +163,8 @@ Hand the collected output to the analyst. Produce:
 
 - **Auto-fixable vs manual**: how many findings Rector (official + digests) can
   fix automatically vs. what needs hand work. Express it as a rough percentage.
+  Count only **hard** (and unknown) deprecations; list the **soft** ones
+  separately with symbol, deprecated in, removed in, effort and the policy action.
 - **Hard breaks**: Twig 3 (removed filters/functions, `spaceless`), CKEditor 5
   (CKEditor 4 gone), jQuery / jQuery UI (`core/jquery.ui.*` removed), Symfony 7
   (event subscriber / type-hint changes), PHPUnit 10/11, Guzzle 7, Drush 13.

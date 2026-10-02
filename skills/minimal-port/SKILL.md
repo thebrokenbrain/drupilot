@@ -88,6 +88,23 @@ with APIs Drupal 11 now provides natively. Anything bigger is deferred to Phase 
   keeping `^10 || ^11`, a replacement API that does not exist on the lowest
   declared core (e.g. the `TextSummary` service, `getOriginal()` from 11.2)
   breaks Drupal 10; wrap it, or leave the soft-deprecated call and report it.
+- **Soft deprecations follow one policy, `DRUPILOT_SOFT_DEPRECATIONS`
+  (`report` default | `defer` | `fix`).** `classify-deprecations.sh` (§6) splits
+  what PHPStan reports: **hard** = removed in a major ≤ the target major (e.g.
+  `user_roles()`/`user_role_names()`, removed in 11.0.0 — PHPStan then says
+  "Function user_roles not found.") — always fixed, Phase 1 is not done while one
+  is left; **soft** = removed in a later major (e.g. `user_load_by_name()`,
+  `user_load_by_mail()`, `text_summary()`, `check_markup()`,
+  `user_cookie_save()`: deprecated in 11.4.0, removed from 13.0.0) — they keep
+  working on every Drupal 11 core. `report` leaves soft calls untouched and lists
+  them in the report; `defer` lists them under "deferred to Phase 2"; `fix` follows
+  each item's `action`: `fix` (replacement exists at the declared core floor, e.g.
+  `loadByProperties()`), `fix-guarded` (replacement only on newer cores, e.g. the
+  `TextSummary` service from 11.4 → `DeprecationHelper::backwardsCompatibleCall()`)
+  or `defer` (no replacement usable at the floor). Never "fix" a soft deprecation
+  in a way that breaks a core the module still declares, and never silence one
+  (no baseline/ignore entries). An **unknown** item (removal version unreadable,
+  or a missing symbol the catalog does not date) is blocking until reviewed.
 
 The template `rector.php` already skips the Rector rules behind several of these
 (`ArrayToFirstClassCallableRector`, `AddOverrideAttributeToOverriddenMethodsRector`,
@@ -285,7 +302,22 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/check-port-safety.sh" --subject "<p
 
 # 4. Core signature changes vs the declared core floor (gate: must exit 0):
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/scan-signature-changes.sh" --subject "<path>" --json
+
+# 5. Hard vs soft deprecations under DRUPILOT_SOFT_DEPRECATIONS (gate: blocking == 0):
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "<path>" --json \
+  > "<state_dir>/phpstan.json" || true
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/classify-deprecations.sh" \
+  --file "<state_dir>/phpstan.json" --subject "<path>" --json
 ```
+
+`classify-deprecations.sh` (read-only, no toolchain) reads PHPStan's JSON (or
+plain text), takes deprecated-in/removed-in from each message and the
+replacement, its first core and the effort from the verified `lifecycle` catalog
+in `config/deprecations.json`, and returns `{policy, blocking, counts, symbols,
+hard, soft, unknown}`. **`blocking` must be 0** (no hard or unknown item left);
+the soft items are handled per their `action` (see §0) — under the default
+`report` they stay as they are. Run it again after any fix, and keep its JSON for
+the manifest (§8).
 
 `check-port-safety.sh` (read-only, no toolchain) flags: a `create()` without
 `ContainerFactoryPluginInterface`/`ContainerInjectionInterface` in the class or
@@ -339,7 +371,8 @@ Iterate: read remaining violations, apply the smallest fix, re-run. A PHPStan
 error that only exists because of the sandbox (a class from a module that is not
 installed here, an unknown contrib type) is documented as *sandbox-only*, not
 patched — see §0. Phase 1 is done when the module compiles with **no blocking
-deprecations** at level 2, no *real* PHPStan errors (sandbox-only ones
+deprecations** at level 2 (`classify-deprecations.sh` → `blocking: 0`; soft ones
+handled per `DRUPILOT_SOFT_DEPRECATIONS`), no *real* PHPStan errors (sandbox-only ones
 documented), PHPCS is clean (or remaining items are explicitly noted as
 out-of-scope) and `check-port-safety.sh` and `scan-signature-changes.sh` exit 0. If a
 running Drupal site exists, `run-upgrade-status.sh --module NAME` gives a
@@ -392,8 +425,10 @@ so it never leaks into a patch). Then write `<state_dir>/port-manifest.json`
 `core_version_requirement`, `rector_official_files`, `digests`, `manual_edits`
 [each a string or `{edit, why, change_record}`], `deprecations_remaining`,
 `deferred_to_phase2`, `patch`, `port_safety` and `signature_changes` — the JSON
-of `check-port-safety.sh --json` / `scan-signature-changes.sh --json`) and render
-the report:
+of `check-port-safety.sh --json` / `scan-signature-changes.sh --json` — and
+`soft_deprecations`, the final `classify-deprecations.sh --json`; add every soft
+symbol whose `action` is `defer` to `deferred_to_phase2`, and count only the hard
+and unknown ones in `deprecations_remaining`) and render the report:
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" \
