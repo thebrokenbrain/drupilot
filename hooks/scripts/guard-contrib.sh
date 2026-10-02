@@ -51,31 +51,54 @@ CMD="$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null |
 
 # --- Does a `git commit` skip the repository's hooks? -------------------------
 # commit_hook_bypass <cmd> -> prints "<what>\t<git -C dir or empty>" for the first
-# `git ... commit` segment that skips hooks, nothing otherwise. Quoted strings
-# are blanked first (so `-m "-n"` is a message, not a flag), the command is cut
-# at ; & | and newlines, and each commit's options are walked like git does:
-# --no-verify or an unambiguous prefix (--no-veri...), -n anywhere in a short
-# cluster before a value-taking letter (m F C c t take the rest of the cluster
-# or the next word; u S an attached value), `--` ends the options.
+# `git ... commit` segment that skips hooks, nothing otherwise. The WHOLE command
+# is scanned as one buffer, so the quote state carries across lines (a
+# `-m "$(cat <<EOF ... EOF)"` message is one blanked string) and a
+# backslash-newline continuation joins its lines. Quoted strings are blanked
+# (so `-m "-n"` is a message, not a flag), the command is cut at unquoted
+# ; & | and newlines, and a segment counts only when `git` is its command word
+# (after VAR=value assignments and sudo/command/env/time/exec/nohup or a shell
+# keyword), so `echo git commit -n` is not a commit. Each commit's options are
+# walked like git does: --no-verify or an unambiguous prefix (--no-veri...), -n
+# anywhere in a short cluster before a value-taking letter (m F C c t take the
+# rest of the cluster or the next word; u S an attached value), `--` ends the
+# options.
 commit_hook_bypass() {
   printf '%s\n' "$1" | awk '
-    {
-      out = ""; q = ""
-      for (i = 1; i <= length($0); i++) {
-        c = substr($0, i, 1)
-        if (q != "") { if (c == q) { q = "" } else if (c == "\\" && q == "\"") { i++ }; continue }
+    { buf = buf $0 "\n" }
+    END {
+      out = ""; q = ""; L = length(buf)
+      for (i = 1; i <= L; i++) {
+        c = substr(buf, i, 1)
+        if (q == "\047") { if (c == q) q = ""; continue }
+        if (q == "\"") {
+          if (c == "\\") { i++; continue }
+          if (c == q) q = ""
+          continue
+        }
+        if (c == "\\") {
+          # Outside quotes: a backslash-newline is a line continuation; any
+          # other escaped character is a literal (never a quote or separator).
+          if (substr(buf, i + 1, 1) == "\n") { out = out " " } else { out = out "E" }
+          i++; continue
+        }
         if (c == "\"" || c == "\047") { q = c; out = out "Q"; continue }
-        if (c == ";" || c == "&" || c == "|") { out = out "\n"; continue }
+        if (c == ";" || c == "&" || c == "|" || c == "\n") { out = out "\n"; continue }
         out = out c
       }
-      buf = buf out "\n"
-    }
-    END {
-      nseg = split(buf, segs, "\n")
+      nseg = split(out, segs, "\n")
       for (s = 1; s <= nseg; s++) {
         n = split(segs[s], t, /[ \t]+/)
         g = 0
-        for (k = 1; k <= n; k++) if (t[k] == "git" || t[k] ~ /\/git$/) { g = k; break }
+        for (k = 1; k <= n; k++) {
+          w = t[k]
+          sub(/^[({]+/, "", w)
+          if (w == "") continue
+          if (w ~ /^[A-Za-z_][A-Za-z0-9_]*=/) continue
+          if (w ~ /^(sudo|command|env|time|exec|nohup|then|do|else|elif|if|while|until|!)$/) continue
+          if (w == "git" || w ~ /\/git$/) g = k
+          break
+        }
         if (!g) continue
         dir = ""; hp = 0; k = g + 1
         while (k <= n && t[k] ~ /^-/) {

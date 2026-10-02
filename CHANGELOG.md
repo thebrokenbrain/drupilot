@@ -414,6 +414,14 @@ tag the commit `vX.Y.Z`.
   PHPCS reports a processing error instead of counting it as a violation.
 
 ### Fixed
+- **The hooks guard missed `--no-verify` in common command shapes.** The
+  `guard-contrib` parser reset its quote state on every line, so a heredoc
+  commit message (`git commit -m "$(cat <<'EOF' ... EOF)" --no-verify`) and a
+  backslash-continued flag line skipped the "ask before skipping hooks" check,
+  while `echo git commit -n` asked. It now scans the whole command as one
+  buffer (quote state across lines, continuations joined) and requires `git` to
+  be the segment's command word (after `VAR=value`, `sudo`, `env`, `command`,
+  shell keywords ...).
 - **`negative-control.sh` kept its state under the physical subject path.**
   It resolved the subject with `cd -P` and keyed `negative-controls.json` and
   the `last-test.json` summary update by it, while `run-phpunit.sh` and
