@@ -416,6 +416,8 @@ Actívalo/desactívalo con `DRUPILOT_USE_DIGESTS_RULES` (por defecto `true`).
 - **Aparece una carpeta de symlinks espuria `web/modules/custom/<proyecto>/` tras `ddev restart`.** La provoca el hook `symlink-project` de `ddev-drupal-contrib` en el layout recommended-project; `ddev-add-ons.sh` lo desactiva en `.ddev/config.contrib.yaml`. Ese fichero es `#ddev-generated`, así que un `ddev add-on get ddev/ddev-drupal-contrib` posterior restaura el hook — vuelve a ejecutar `/drupilot-setup` (o `ddev-add-ons.sh --contrib`) después.
 - **La API de GitLab está bloqueada.** Es lo esperado — la API de drupalcode está restringida por defecto. `drupilot` degrada a una URL de MR de un clic; solo ábrela para crear el MR.
 - **El plugin no carga.** Ejecuta `claude plugin validate /ruta/a/drupilot` para revisar el manifiesto y el frontmatter de los componentes.
+- **`phpcs` en la raíz de Drupal falla con "Ruleset … is not valid … Comment must not contain '--'", o PHPStan muestra "The drupal_root parameter is deprecated".** Tus `phpcs.xml.dist` / `phpstan.neon` los generó drupilot 0.8.4 o anterior. Regenéralos (las copias antiguas se guardan en `.drupilot/backups/`): `bash "$CLAUDE_PLUGIN_ROOT/scripts/env/render-templates.sh" --root <raiz_drupal> --subject-path web/modules/custom/<nombre> --only phpstan,phpcs --force`. Sin `--force` solo muestra el diff.
+- **`run-phpstan.sh` termina con código 3.** PHPStan falló o no pudo analizar (configuración inválida, ruta inexistente, error fatal), así que no hay veredicto; la causa se muestra en stderr (y en `drupilot.crash` con `--json`). Corrígela y vuelve a ejecutarlo: no es un recuento de hallazgos.
 
 ---
 

@@ -150,29 +150,47 @@ not just `coder_sniffer`, or phpcs aborts with "Referenced sniff ... does not ex
 
 ## Step 4 — Write the tool configs from templates
 
-Write the configuration files at the Drupal root by substituting the template
-placeholders (`{{PHP_TARGET}}`, `{{DRUPAL_TARGET}}`, `{{CODER_CONSTRAINT}}`,
-`{{PHPSTAN_LEVEL}}`, `{{SUBJECT_PATH}}`, `{{PROJECT_NAME}}`, `{{WEBDRIVER_HOST}}`)
-with the resolved values. `{{SUBJECT_PATH}}` is the in-tree
-path (e.g. `web/modules/custom/<machine_name>`). Use the templates:
+Render the config templates with the deterministic renderer — do NOT substitute the
+`{{PLACEHOLDER}}` tokens by hand. Run it yourself via the Bash tool, substituting
+`<drupal_root>` with the `drupal_root` from the resolve-workspace.sh JSON and
+`<machine_name>` / `<modules|themes|profiles>` with the placed subject's in-tree path
+(do not run it verbatim — the script rejects an unsubstituted placeholder):
 
-- `@${CLAUDE_PLUGIN_ROOT}/templates/rector.php.tmpl` -> `<drupal_root>/rector.php`
-- `@${CLAUDE_PLUGIN_ROOT}/templates/phpstan.neon.tmpl` -> `<drupal_root>/phpstan.neon`
-- `@${CLAUDE_PLUGIN_ROOT}/templates/phpcs.xml.dist.tmpl` -> `<drupal_root>/phpcs.xml.dist`
-- `@${CLAUDE_PLUGIN_ROOT}/templates/ddev-web-environment.yaml.tmpl` -> write to a
-  SEPARATE `<drupal_root>/.ddev/config.testing.yaml` (do NOT merge into the generated
-  `config.yaml`). ddev-drupal-contrib already provides `SIMPLETEST_DB`,
-  `SIMPLETEST_BASE_URL=http://web`, `BROWSERTEST_*` and `DTT_*` in its
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/render-templates.sh" --root "<drupal_root>" \
+  --subject-path "web/<modules|themes|profiles>/custom/<machine_name>" --json
+```
+
+It renders, validates and writes, at the Drupal root:
+
+- `templates/rector.php.tmpl` -> `rector.php` (checked with `php -l`)
+- `templates/phpstan.neon.tmpl` -> `phpstan.neon`
+- `templates/phpcs.xml.dist.tmpl` -> `phpcs.xml.dist` (checked with `xmllint --noout`,
+  or `phpcs --standard=<file> -e` when xmllint is absent)
+- `templates/ddev-web-environment.yaml.tmpl` -> a SEPARATE `.ddev/config.testing.yaml`
+  (never merged into the generated `config.yaml`). ddev-drupal-contrib already provides
+  `SIMPLETEST_DB`, `SIMPLETEST_BASE_URL=http://web`, `BROWSERTEST_*` and `DTT_*` in its
   `config.contrib.yaml`; this file only adds `MINK_DRIVER_ARGS_WEBDRIVER` and
   `SYMFONY_DEPRECATIONS_HELPER`, so it merges cleanly instead of clobbering them.
 
-`{{WEBDRIVER_HOST}}` is the Selenium service host:port — **read the generated
-`.ddev/docker-compose.selenium-chrome.yaml`** for it (typically `selenium-chrome:4444`)
-instead of assuming. Keep the MINK value's escaped-quote / single-quote form from the
-template verbatim — DDEV does not escape inner quotes when it serializes
-`web_environment`, so an unescaped JSON value breaks `ddev start`. After writing the file,
-run `ddev restart`. Do not overwrite a config the user has hand-edited without saying so;
-if a file already exists and differs, show the diff and confirm before replacing.
+Token values come from the resolved config: `{{PHP_TARGET}}` (`resolve_php_target`),
+`{{DRUPAL_TARGET}}`, `{{PHPSTAN_LEVEL}}` (`DRUPILOT_PHPSTAN_LEVEL`), `{{SUBJECT_PATH}}`
+and `{{WEBDRIVER_HOST}}`, which the script reads from the generated
+`.ddev/docker-compose.selenium-chrome.yaml` (typically `selenium-chrome:4444`). Override one
+with `--set KEY=VALUE` only if it is genuinely wrong. Use `--dry-run` to preview.
+
+Read the JSON (`files[].status`, `ok`, `restart_needed`) and act on it:
+
+- `written` / `unchanged` — done. If `restart_needed` is true, run `ddev restart`.
+- `differs` (exit 3) — the file exists and is not what the template renders (hand-edited,
+  or written by an older drupilot; a pre-0.9.0 `phpstan.neon` still has the deprecated
+  `drupal_root` and a pre-0.9.0 `phpcs.xml.dist` is invalid XML). The unified diff is on
+  stderr. Do not overwrite a config the user has hand-edited without saying so: show the
+  diff and ask (`AskUserQuestion`: replace / keep). On "replace", re-run with
+  `--only <name> --force` (the old copy is backed up under `<drupal_root>/.drupilot/backups/`).
+  An autonomous run keeps the existing file and reports it.
+- `invalid` (exit 3) — the rendered file failed validation and was NOT written; report the
+  validator output from stderr. Never hand-write the file to work around it.
 
 Then ensure drupilot's generated artifacts are git-ignored at the Drupal root, so a
 coverage run or the `.drupilot.json` preference file can never leak into a contribution

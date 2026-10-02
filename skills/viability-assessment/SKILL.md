@@ -129,7 +129,11 @@ deprecation messages: those are the "must-fix to run on D11" items. Distinguish
 deprecations Rector already covers (in §3.1) from those it does not (manual). For
 a reproducible count, add `--json` (PHPStan's native `--error-format=json`) and
 read `.totals.file_errors` / `.totals.errors` rather than estimating from the
-human report.
+human report. Check `.drupilot.status` first: `findings` / `clean` are a real
+verdict, but `crashed` (exit 3, `totals: null`, reason in `.drupilot.crash`) means
+PHPStan could not analyse at all (invalid config, fatal error) — report that as a
+blocker to fix, never as "0 deprecations" or "found issues". `.drupilot.notices`
+lists PHP/config deprecation notices PHPStan printed (e.g. a stale `drupal_root`).
 
 Make the deprecations a **teaching aid**, not a wall of red: pipe the analyzer
 output through the explainer, which annotates each known deprecated symbol with

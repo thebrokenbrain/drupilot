@@ -110,7 +110,9 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject "<path>" --t
 
 `run-phpcs.sh --fix` runs `phpcbf` then `phpcs --standard=Drupal,DrupalPractice`
 with the PROMPT §2.3 extension list. `run-phpstan.sh` runs against the
-`phpstan.neon` at the Drupal root. Reference commands:
+`phpstan.neon` at the Drupal root. Exit 3 means PHPStan crashed or could
+not analyse (invalid config, fatal error): there is no verdict — fix the cause
+shown on stderr, never read it as "issues found" or as clean. Reference commands:
 
 ```bash
 vendor/bin/phpstan analyse --level 6 web/modules/custom/MODULE

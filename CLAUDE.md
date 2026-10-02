@@ -78,7 +78,7 @@ The flow is **command → (gate) → skill + subagent → scripts → templates*
 - **New command:** `commands/<name>.md` with YAML frontmatter (`description`, `argument-hint`, `allowed-tools`; add `disable-model-invocation: true` for outward-facing/destructive commands like `drupilot-contribute`). Body is a prompt template that gates requirements, loads the relevant skill, drives scripts, and summarizes in English.
 - **New decision point:** surface a consequential fork as a tab — add `AskUserQuestion` to the command's `allowed-tools`, make the recommendation the default option, persist the answer with `prefs_set` (`.drupilot.json`), gate outward-facing options on `autonomous=false`, and mirror the choice in the relevant skill/agent. The shell-side counterpart is `choose_one()`.
 - **New skill/subagent:** `skills/<dir>/SKILL.md` / `agents/<name>.md` — embed the relevant versions/commands from `../PROMPT.md` §1–§3 so they never re-research.
-- **Templates** (`templates/*.tmpl`) use `{{PLACEHOLDER}}` tokens substituted at setup time and are parameterized by the PHP target.
+- **Templates** (`templates/*.tmpl`) use `{{PLACEHOLDER}}` tokens substituted at setup time and are parameterized by the PHP target. Render them only through `render_template TPL DEST KEY=VAL...` (`common.sh`; literal, awk-based) — `scripts/env/render-templates.sh` (`--dry-run`/`--json`/`--force`, validates with `xmllint`/`php -l`, exit 3 on differs/invalid) for the setup configs — never with ad-hoc `sed` or model-side substitution. An XML template's comments must never contain `--`.
 
 ## Changelog and releases
 

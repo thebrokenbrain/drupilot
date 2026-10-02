@@ -213,7 +213,9 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "<path>" 
 `--standard=Drupal,DrupalPractice` and the extension list from PROMPT §2.3
 (`php,module,inc,install,test,profile,theme,info,txt,md,yml`). `run-phpstan.sh`
 runs `$RUNNER vendor/bin/phpstan analyse --level N <subject>` against the
-`phpstan.neon` at the Drupal root. Reference commands:
+`phpstan.neon` at the Drupal root. Exit 3 means PHPStan crashed or could
+not analyse (invalid config, fatal error): there is no verdict — fix the cause
+shown on stderr, never read it as "issues found" or as clean. Reference commands:
 
 ```bash
 vendor/bin/phpcbf --standard=Drupal,DrupalPractice web/modules/custom/MODULE

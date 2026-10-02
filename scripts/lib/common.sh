@@ -974,5 +974,66 @@ sed_inplace() {
   return 1
 }
 
+# render_template <template> <dest|-> [KEY=VALUE...] -> substitute every
+# {{KEY}} token of <template> with VALUE, literally, and write the result to
+# <dest> ('-' = stdout). Values are taken verbatim: no sed delimiter, '&',
+# backslash or regex metacharacter can break them, and envsubst is not needed.
+# The substitution runs in awk with the values passed through the environment
+# (awk -v would interpret backslash escapes, and bash's ${x//pat/rep} differs
+# between 3.2 and 5.2 in how it treats quotes and '&'). Tokens without a
+# KEY=VALUE pair are left as-is, so the caller can detect them. The render goes
+# to a temp file next to <dest> first, so <dest> is only touched once rendering
+# succeeded. Returns non-zero on a bad argument or I/O error.
+render_template() {
+  local tpl="${1:-}" dest="${2:-}"
+  shift 2 2>/dev/null || { log_err "render_template: usage: render_template TEMPLATE DEST [KEY=VALUE...]"; return 1; }
+  [[ -f "$tpl" ]] || { log_err "render_template: template not found: '$tpl'"; return 1; }
+  [[ -n "$dest" ]] || { log_err "render_template: missing destination for '$tpl'"; return 1; }
+  local -a envs=()
+  local keys="" pair k
+  for pair in "$@"; do
+    k="${pair%%=*}"
+    case "$k" in
+      ''|*[!A-Z0-9_]*) log_err "render_template: invalid token name in '$pair' (expected KEY=VALUE, KEY in [A-Z0-9_])"; return 1;;
+    esac
+    [[ "$pair" == *=* ]] || { log_err "render_template: missing '=' in '$pair'"; return 1; }
+    keys="$keys $k"
+    envs+=("_DRUPILOT_TPL_V_$k=${pair#*=}")
+  done
+  envs+=("_DRUPILOT_TPL_KEYS=$keys")
+  # shellcheck disable=SC2016  # awk program, not a shell expansion
+  local prog='
+    BEGIN {
+      n = split(ENVIRON["_DRUPILOT_TPL_KEYS"], ks, " ")
+      for (i = 1; i <= n; i++) { tok[i] = "{{" ks[i] "}}"; val[i] = ENVIRON["_DRUPILOT_TPL_V_" ks[i]] }
+    }
+    {
+      line = $0
+      for (i = 1; i <= n; i++) {
+        out = ""
+        while ((p = index(line, tok[i])) > 0) {
+          out = out substr(line, 1, p - 1) val[i]
+          line = substr(line, p + length(tok[i]))
+        }
+        line = out line
+      }
+      print line
+    }'
+  if [[ "$dest" == "-" ]]; then
+    env "${envs[@]}" awk "$prog" "$tpl"
+    return $?
+  fi
+  local tmp
+  tmp="$(mktemp "${dest}.drupilot.XXXXXX" 2>/dev/null)" \
+    || { log_err "render_template: cannot create a temp file next to '$dest'"; return 1; }
+  # `cat >` (not mv) so a new file gets the umask mode and an existing one keeps
+  # its mode/inode, exactly like the plain `> dest` redirect this replaces.
+  if env "${envs[@]}" awk "$prog" "$tpl" > "$tmp" && cat "$tmp" > "$dest"; then
+    rm -f "$tmp"; return 0
+  fi
+  rm -f "$tmp"
+  return 1
+}
+
 # trim surrounding whitespace from a string
 trim() { local s="$*"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }

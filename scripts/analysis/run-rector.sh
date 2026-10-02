@@ -139,10 +139,9 @@ if [[ -f "$RECTOR_PHP" ]]; then
   if ! grep -q "RectorConfig::configure" "$RECTOR_PHP"; then
     log_warn "rector.php uses the legacy API. Regenerating from the drupilot template..."
     if [[ -f "$TEMPLATE_RECTOR" ]]; then
-      sed -e "s|{{SUBJECT_PATH}}|${SUBJECT_REL}|g" \
-          -e "s|{{PHP_TARGET}}|${PHP_TARGET}|g" \
-          -e "s|{{DRUPAL_TARGET}}|$(resolve_drupal_target)|g" \
-          "$TEMPLATE_RECTOR" > "$RECTOR_PHP"
+      render_template "$TEMPLATE_RECTOR" "$RECTOR_PHP" \
+        "SUBJECT_PATH=$SUBJECT_REL" "PHP_TARGET=$PHP_TARGET" "DRUPAL_TARGET=$(resolve_drupal_target)" \
+        || die "Could not render $TEMPLATE_RECTOR into $RECTOR_PHP." 1
       log_ok "rector.php regenerated from the drupilot template (subject: $SUBJECT_REL)."
     else
       die "rector.php uses the legacy API and no template is available to regenerate it. Run /drupilot-setup first." 2
@@ -151,11 +150,11 @@ if [[ -f "$RECTOR_PHP" ]]; then
     log_ok "rector.php already present at the Drupal root (left untouched)."
   fi
 elif [[ -f "$TEMPLATE_RECTOR" ]]; then
-  # The template uses {{PLACEHOLDER}} tokens; substitute the ones we know.
-  sed -e "s|{{SUBJECT_PATH}}|${SUBJECT_REL}|g" \
-      -e "s|{{PHP_TARGET}}|${PHP_TARGET}|g" \
-      -e "s|{{DRUPAL_TARGET}}|$(resolve_drupal_target)|g" \
-      "$TEMPLATE_RECTOR" > "$RECTOR_PHP"
+  # The template uses {{PLACEHOLDER}} tokens; substitute the ones we know
+  # (literally, via the same renderer as render-templates.sh).
+  render_template "$TEMPLATE_RECTOR" "$RECTOR_PHP" \
+    "SUBJECT_PATH=$SUBJECT_REL" "PHP_TARGET=$PHP_TARGET" "DRUPAL_TARGET=$(resolve_drupal_target)" \
+    || die "Could not render $TEMPLATE_RECTOR into $RECTOR_PHP." 1
   log_ok "Wrote rector.php from the drupilot template (subject: $SUBJECT_REL)."
 elif [[ -f "$VENDOR_RECTOR" ]]; then
   # Fallback: vendor example file. It uses the legacy API and may be incomplete;

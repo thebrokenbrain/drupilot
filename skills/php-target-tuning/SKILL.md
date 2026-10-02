@@ -74,7 +74,7 @@ PHP sets are cumulative; target exactly **one** PHP version per run:
 
 The Drupal sets (`Drupal10SetList::DRUPAL_10` + `Drupal11SetList::DRUPAL_11`) are
 independent of the PHP target — always include both. The `rector.php.tmpl`
-template encodes this; substitute `{{PHP_TARGET}}`. (The digests complementary
+template encodes this; `scripts/env/render-templates.sh` substitutes `{{PHP_TARGET}}`. (The digests complementary
 pass runs separately via `--config`, see the `minimal-port` skill.)
 
 ### PHPStan — level and expectations (`phpstan.neon`)
@@ -83,7 +83,8 @@ pass runs separately via `--config`, see the `minimal-port` skill.)
 detection; Phase 2 raises it to 5–6 via `DRUPILOT_PHPSTAN_LEVEL_REFACTOR`
 (default `6`). The PHP target itself does not change the level number, but it
 changes which language-level findings are valid — analyze against the same PHP
-the code will run on. Substitute `{{PHPSTAN_LEVEL}}` in `phpstan.neon.tmpl`.
+the code will run on. `render-templates.sh` substitutes `{{PHPSTAN_LEVEL}}` in
+`phpstan.neon.tmpl` (or pass `--set PHPSTAN_LEVEL=N`).
 
 ### PHPCS — sniffs (`phpcs.xml.dist`)
 
@@ -113,7 +114,8 @@ export DRUPILOT_PHP_TARGET=8.4
 
 Then re-derive: re-run `detect-php.sh --json`, regenerate `rector.php`,
 `phpstan.neon` and `phpcs.xml.dist` from the templates with the new
-`{{PHP_TARGET}}`, and reconfigure DDEV (`ddev config --php-version=8.4` then
+`{{PHP_TARGET}}` (`render-templates.sh --root <drupal_root> --subject-path <path>
+--force`), and reconfigure DDEV (`ddev config --php-version=8.4` then
 `ddev restart`). Keep all four in lockstep — a mismatch between the Rector PHP
 set, PHPStan, PHPCS and the DDEV runtime produces confusing, inconsistent
 findings.

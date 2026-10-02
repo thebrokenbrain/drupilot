@@ -52,9 +52,7 @@ export CLAUDE_PLUGIN_ROOT="$REPO"
 ALL_GATES="validate syntax exec-bit shellcheck portability bang-lint templates json"
 # Gates known to fail on the current tree, with a fix tracked for 0.9.0. Empty
 # this list as the fixes land so --allow-known stops hiding them.
-#   templates: phpcs.xml.dist.tmpl has `--config-set` (a double hyphen) inside
-#              an XML comment, which is invalid XML.
-KNOWN_FAILING="templates"
+KNOWN_FAILING=""
 
 AS_JSON=0; ONLY=""; SKIP=""; ALLOW=""; CI=0
 

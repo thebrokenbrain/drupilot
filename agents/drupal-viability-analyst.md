@@ -106,7 +106,8 @@ not reinvent their logic; capture and interpret their output.
 4. **PHPStan at the deprecation level** (`DRUPILOT_PHPSTAN_LEVEL`, default 2):
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject <DIR>
-   # add --json for native {totals:{errors,file_errors}, files:{...}}
+   # add --json for native {totals:{errors,file_errors}, files:{...}} + drupilot.status
+   # (clean|findings|crashed); exit 3 = crashed: no verdict, never "0 errors"
    ```
 5. **PHPCS** (read-only, no `--fix`) for coding-standard distance:
    ```bash

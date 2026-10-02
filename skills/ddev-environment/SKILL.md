@@ -210,11 +210,24 @@ for core and add-ons.
 ## 7. Write the toolchain config from templates
 
 Templates live in `${CLAUDE_PLUGIN_ROOT}/templates/` and use `{{PLACEHOLDER}}`
-tokens; substitute them portably by rendering to the destination, e.g.
-`sed -e 's|{{PHP_TARGET}}|8.3|g' -e 's|{{SUBJECT_PATH}}|web/modules/custom/foo|g' rector.php.tmpl > rector.php`
-(never `envsubst`, which stock macOS does not ship, and never `sed -i`, whose
-argument differs between GNU and BSD sed). Write only if missing or out of date
-(idempotent — do not clobber a file the user already tuned without saying so).
+tokens. Render them with the deterministic renderer — never by hand-substituting
+(no `sed` one-liners, no `envsubst`):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/render-templates.sh" --root "<drupal_root>" \
+  --subject-path "web/modules/custom/<machine_name>" --json   # add --dry-run to preview
+```
+
+It substitutes the tokens literally (`render_template` in `common.sh`, shared with
+`run-rector.sh`), validates every output before writing it (no token left;
+`xmllint --noout` — or `phpcs --standard=<file> -e` — for `phpcs.xml.dist`; `php -l`
+for `rector.php`), and is idempotent: missing -> `written`, identical ->
+`unchanged`, different -> `differs` (diff on stderr, file untouched, exit 3) unless
+`--force`, which backs the old copy up to `<drupal_root>/.drupilot/backups/` first.
+A file that fails validation is reported `invalid` and never written. Do not
+clobber a file the user already tuned without saying so: on `differs`, show the
+diff and ask before re-running with `--only <name> --force`. `--only
+rector,phpstan,phpcs,testing` limits the set; `--set KEY=VALUE` overrides a token.
 
 | Template | Destination (Drupal root) | Key placeholders |
 |---|---|---|
@@ -224,22 +237,27 @@ argument differs between GNU and BSD sed). Write only if missing or out of date
 | `ddev-config.yaml.tmpl` | (reference for `.ddev/config.yaml`) | `{{PROJECT_NAME}}`, `{{PHP_TARGET}}` |
 | `ddev-web-environment.yaml.tmpl` | `.ddev/config.testing.yaml` (separate file) | `{{WEBDRIVER_HOST}}` |
 
+`ddev-config.yaml.tmpl` is reference only (`ddev-up.sh` configures the project);
+`render-templates.sh` renders the other four.
+
 `{{SUBJECT_PATH}}` is the in-docroot path, e.g. `web/modules/custom/foo`.
 `{{PHP_TARGET}}` = `resolve_php_target`; `{{PHPSTAN_LEVEL}}` =
-`DRUPILOT_PHPSTAN_LEVEL` (default 2 for Phase 1). `{{CODER_CONSTRAINT}}` =
-`DRUPILOT_CODER_CONSTRAINT`.
+`DRUPILOT_PHPSTAN_LEVEL` (default 2 for Phase 1); `{{WEBDRIVER_HOST}}` is read
+from `.ddev/docker-compose.selenium-chrome.yaml` (default `selenium-chrome:4444`).
+The generated `phpstan.neon` intentionally has no `drupal: drupal_root:` block:
+phpstan-drupal >= 1.3 discovers the root itself and deprecates that parameter.
 
 Write the testing `web_environment:` to a SEPARATE `.ddev/config.testing.yaml` so
 it merges with what ddev-drupal-contrib already provides (`SIMPLETEST_DB`,
 `SIMPLETEST_BASE_URL=http://web`, `BROWSERTEST_*`, `DTT_*`,
 `DRUPAL_TEST_WEBDRIVER_*`). The template adds only `MINK_DRIVER_ARGS_WEBDRIVER`
 (Drupal core's WebDriverTestBase) and `SYMFONY_DEPRECATIONS_HELPER=disabled`.
-**Read `.ddev/docker-compose.selenium-chrome.yaml`** for the real webdriver host
-(typically `selenium-chrome:4444`) instead of assuming it. Keep the template's
+The renderer reads `.ddev/docker-compose.selenium-chrome.yaml` for the real
+webdriver host (typically `selenium-chrome:4444`) instead of assuming it. Keep the template's
 escaped-quote / YAML single-quote form for the MINK value verbatim: DDEV wraps
 each web_environment value in double quotes WITHOUT escaping the inner quotes, so
 a raw JSON value produces invalid compose YAML ("did not find expected key") and
-`ddev start` fails. After writing the file, run `ddev restart`.
+`ddev start` fails. When the JSON says `restart_needed: true`, run `ddev restart`.
 
 ## 8. Verify and report
 

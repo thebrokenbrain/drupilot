@@ -88,7 +88,8 @@ case "$(lc "$MODE")" in off) exit 0;; report|autofix) : ;; *) MODE="autofix";; e
 # Phase-aware strictness: during Phase 1 (minimal port) surface only ERRORS
 # (compatibility), not DrupalPractice WARNINGS — premature style nagging belongs
 # to Phase 2. In the refactor phase, surface both.
-PHASE="$(tr -d '[:space:]' < "$(project_state_dir "$EXT_DIR" 2>/dev/null)/phase" 2>/dev/null || true)"
+# (Braces so a missing phase file's redirection error is silenced too.)
+PHASE="$({ tr -d '[:space:]' < "$(project_state_dir "$EXT_DIR" 2>/dev/null)/phase"; } 2>/dev/null || true)"
 
 # Run from the Drupal root so relative paths resolve identically on host/in DDEV.
 REL="$FILE"
