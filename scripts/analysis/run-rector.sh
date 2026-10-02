@@ -258,6 +258,14 @@ run_rector_pass() {
   # that finds changes exits 2), so it is classified below instead.
   local rc=0
   RECTOR_RAW="$("${cmd[@]}" 2>&1)" || rc=$?
+  # `ddev exec` reports ANY non-zero exit with a red "Failed to execute command
+  # ...: exit status N" line. For a dry run that found changes (exit 2) that is
+  # not a failure, so drop the wrapper's line when the run finished normally;
+  # a real crash keeps it.
+  if [[ "$rc" != "0" && -n "$RUNNER" ]] && rector_output_ok "$rc" "$RECTOR_RAW"; then
+    RECTOR_RAW="$(printf '%s\n' "$RECTOR_RAW" \
+      | grep -vE 'Failed to execute command .*: exit status [0-9]+' || true)"
+  fi
   printf '%s\n' "$RECTOR_RAW" >&2
   if ! rector_output_ok "$rc" "$RECTOR_RAW"; then
     local msg; msg="$(rector_error_excerpt "$RECTOR_RAW")"

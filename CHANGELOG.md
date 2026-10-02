@@ -464,6 +464,10 @@ tag the commit `vX.Y.Z`.
   `# shellcheck source=...` directive, section separators and internal
   comments. A shared `print_usage` helper in `common.sh` now prints only the
   header block between the two `# ====` rules, and every script uses it.
+- **A Rector dry run that found changes printed a red "Failed to execute
+  command ... exit status 2"** from `ddev exec` on stderr, although exit 2 is
+  Rector's normal "changes found" result. `run-rector.sh` drops that wrapper
+  line when the run finished normally; a real crash keeps it.
 
 ## [0.8.4] - 2026-06-23
 
