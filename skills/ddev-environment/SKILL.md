@@ -104,7 +104,11 @@ starts a stopped project — never probe with `ddev exec`, which does), and
 `drupal_runner` which echoes `ddev exec` when the environment is up (empty
 otherwise) — that prefix is what every toolchain command should use. Scripts
 that run the toolchain call `ddev_ensure_running` first, which starts a stopped
-project explicitly and logs it.
+project explicitly and logs it. The analysis scripts (Rector, PHPStan, PHPCS —
+the `analyze` profile does not require Docker) use `ddev_ensure_running_or_host`
+instead: when DDEV cannot start (e.g. the Docker daemon is down) they warn and
+run the host `vendor/bin` tool rather than failing. PHPUnit, the toolchain
+install and the core matrix still require DDEV.
 
 ## 4. Place the subject module/theme
 

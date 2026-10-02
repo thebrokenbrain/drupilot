@@ -414,6 +414,14 @@ tag the commit `vX.Y.Z`.
   PHPCS reports a processing error instead of counting it as a violation.
 
 ### Fixed
+- **Rector / PHPStan / PHPCS failed instead of using the host toolchain when
+  DDEV could not start.** Since the explicit `ddev_ensure_running` start, a
+  project with `.ddev/config.yaml` and the Docker daemon down made the analysis
+  scripts exit 1, although the `analyze` profile does not require Docker and
+  the host `vendor/bin` fallback is documented. They now use the new
+  `ddev_ensure_running_or_host`: when DDEV cannot be started and the host has
+  `vendor/bin/<tool>` and `php`, they warn and run on the host. PHPUnit, the
+  toolchain install and the core matrix still require DDEV.
 - **`run-phpunit.sh` stopped recording large suites.** The per-test results
   and the baseline comparison were passed to `jq` as `--argjson` arguments; a
   suite of roughly 1000+ test cases (data sets included) exceeds the kernel's

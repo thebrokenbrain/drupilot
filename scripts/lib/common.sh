@@ -577,6 +577,24 @@ ddev_ensure_running() {
   return 0
 }
 
+# ddev_ensure_running_or_host <root> <vendor/bin tool> -> for the ANALYSIS
+# scripts (Rector, PHPStan, PHPCS), which the 'analyze' profile allows without
+# Docker: try ddev_ensure_running, and when the project cannot be started (e.g.
+# the Docker daemon is down) fall back to the host toolchain instead of failing,
+# provided <root>/vendor/bin/<tool> and a host php exist. drupal_runner then
+# yields "" and the analysis runs on the host, as documented. Returns 1 only
+# when neither DDEV nor the host toolchain can run the tool. Scripts that NEED
+# DDEV (PHPUnit, toolchain install, the core matrix) keep ddev_ensure_running.
+ddev_ensure_running_or_host() {
+  local r="${1:-}" tool="${2:-}"
+  ddev_ensure_running "$r" && return 0
+  if [[ -n "$tool" && -x "$r/vendor/bin/$tool" ]] && have_cmd php; then
+    log_warn "DDEV could not be started for $r: running $tool with the host toolchain (vendor/bin/$tool, host PHP $(tool_version php 2>/dev/null || echo '?'))."
+    return 0
+  fi
+  return 1
+}
+
 # drupal_runner [root] -> echoes a command prefix to run the toolchain:
 #   "ddev exec"  when the DDEV environment is up, or
 #   ""           to run host binaries (vendor/bin/*) directly.
