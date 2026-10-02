@@ -402,6 +402,28 @@ php_target_unconfirmed() {
   [[ "$v" == "8.5" ]]
 }
 
+# rector_php_set_arg [ver] -> the named argument of Rector's ->withPhpSets()
+# for a PHP target: 8.3 -> php83, 8.4 -> php84. A target flagged unconfirmed
+# (PHP 8.5) or not recognised falls back to the highest confirmed supported
+# version (php84 by default) with a warning on STDERR: the matching Rector
+# LevelSet may not exist in the installed Rector, so it is never assumed.
+rector_php_set_arg() {
+  local v="${1:-$(resolve_php_target)}" file best=""
+  if [[ "$v" =~ ^8\.[0-9]$ ]] && ! php_target_unconfirmed "$v"; then
+    printf 'php%s' "${v//./}"; return 0
+  fi
+  file="$(drupilot_config_file)"
+  if [[ -r "$file" ]] && have_cmd jq; then
+    best="$(jq -r '(.php_support.unconfirmed // []) as $u
+                   | [(.php_support.supported // [])[] | select(. as $s | $u | index($s) | not)]
+                   | sort_by(split(".") | map(tonumber)) | last // empty' "$file" 2>/dev/null || true)"
+  fi
+  [[ "$best" =~ ^8\.[0-9]$ ]] || best="8.4"
+  log_warn "PHP target '$v' is not a confirmed Rector PHP set for Drupal 11; using php${best//./} (PHP $best)."
+  printf 'php%s' "${best//./}"
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # Drupal subject detection (module / theme) and Drupal root
 # ---------------------------------------------------------------------------

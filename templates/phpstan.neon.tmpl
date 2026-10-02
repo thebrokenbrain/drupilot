@@ -1,11 +1,11 @@
 # drupilot — phpstan.neon
+# drupilot-template-version: 2
 #
 # PHPStan configuration for analyzing a Drupal module/theme on the way to
-# Drupal 11. Generated from a template by scripts/env/render-templates.sh;
-# {{PLACEHOLDER}} tokens are substituted at setup time:
-#   {{PHPSTAN_LEVEL}} — analysis level (default 2 for deprecation detection;
-#                       drupilot raises this to 5-6 during the full refactor)
-#   {{SUBJECT_PATH}}  — the extension to analyze, e.g. web/modules/custom/foo
+# Drupal 11. Generated from a template by scripts/env/render-templates.sh, which
+# fills in the analysis level (DRUPILOT_PHPSTAN_LEVEL: default 2 for deprecation
+# detection, raised to 5-6 during the full refactor) and the extension path
+# under `paths:`.
 #
 # phpstan/extension-installer autoloads the Drupal rules and the deprecation
 # rules automatically, so no `includes:` block is needed in the common case.

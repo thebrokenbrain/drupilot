@@ -81,7 +81,10 @@ rules the template skips (`ArrayToFirstClassCallableRector`,
 compatibility fixes, they break Form API callbacks / serialization / Drupal 10,
 and the `#[\Override]` and `readonly` they add would also raise the PHP floor
 `detect-php-floor.sh` reports. The `rector.php.tmpl`
-template encodes this; `scripts/env/render-templates.sh` substitutes `{{PHP_TARGET}}`. (The digests complementary
+template encodes this; `scripts/env/render-templates.sh` (and `run-rector.sh` when it
+writes a missing `rector.php`) derives the `->withPhpSets()` argument from the
+target via `rector_php_set_arg` (`8.3` → `php83`, `8.4` → `php84`, an unconfirmed
+`8.5` → `php84` with a warning) — never edit it by hand. (The digests complementary
 pass runs separately via `--config`, see the `minimal-port` skill.)
 
 ### PHPStan — level and expectations (`phpstan.neon`)
@@ -120,9 +123,9 @@ export DRUPILOT_PHP_TARGET=8.4
 ```
 
 Then re-derive: re-run `detect-php.sh --json`, regenerate `rector.php`,
-`phpstan.neon` and `phpcs.xml.dist` from the templates with the new
-`{{PHP_TARGET}}` (`render-templates.sh --root <drupal_root> --subject-path <path>
---force`), and reconfigure DDEV (`ddev config --php-version=8.4` then
+`phpstan.neon` and `phpcs.xml.dist` from the templates for the new target
+(`export DRUPILOT_PHP_TARGET=8.4`, then `render-templates.sh --root <drupal_root>
+--subject-path <path> --force`; the Rector PHP set follows the target), and reconfigure DDEV (`ddev config --php-version=8.4` then
 `ddev restart`). Keep all four in lockstep — a mismatch between the Rector PHP
 set, PHPStan, PHPCS and the DDEV runtime produces confusing, inconsistent
 findings.

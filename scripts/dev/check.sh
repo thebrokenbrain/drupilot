@@ -263,6 +263,7 @@ dummy_for() {
   case "$1" in
     SUBJECT_PATH) printf 'web/modules/custom/example';;
     PHP_TARGET) printf '8.3';;
+    PHP_SET) printf 'php83';;
     PHPSTAN_LEVEL|PHPSTAN_LEVEL_REFACTOR) printf '5';;
     PROJECT_NAME) printf 'example';;
     WEBDRIVER_HOST) printf 'selenium-chrome';;

@@ -175,7 +175,8 @@ RECTOR_TEMPLATE_VERSION="$(grep -oE 'drupilot-template-version: [0-9]+' "$TEMPLA
 # write_rector_from_template — render the drupilot template into rector.php.
 write_rector_from_template() {
   render_template "$TEMPLATE_RECTOR" "$RECTOR_PHP" \
-    "SUBJECT_PATH=$SUBJECT_REL" "PHP_TARGET=$PHP_TARGET" "DRUPAL_TARGET=$(resolve_drupal_target)" \
+    "SUBJECT_PATH=$SUBJECT_REL" "PHP_TARGET=$PHP_TARGET" "PHP_SET=$(rector_php_set_arg "$PHP_TARGET" 2>/dev/null)" \
+    "DRUPAL_TARGET=$(resolve_drupal_target)" \
     || die "Could not render $TEMPLATE_RECTOR into $RECTOR_PHP." 1
 }
 

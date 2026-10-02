@@ -270,6 +270,11 @@ It substitutes the tokens literally (`render_template` in `common.sh`, shared wi
 for `rector.php`), and is idempotent: missing -> `written`, identical ->
 `unchanged`, different -> `differs` (diff on stderr, file untouched, exit 3) unless
 `--force`, which backs the old copy up to `<drupal_root>/.drupilot/backups/` first.
+A copy drupilot generated from an OLDER template generation (its `drupilot — <file>`
+header without the current `drupilot-template-version: N` marker) is backed up and
+regenerated automatically (`upgraded`), so the broken pre-0.9.0 `phpcs.xml.dist` /
+`phpstan.neon` heal even in an autonomous run. Bump a template's marker when existing
+projects must receive a change.
 A file that fails validation is reported `invalid` and never written. Do not
 clobber a file the user already tuned without saying so: on `differs`, show the
 diff and ask before re-running with `--only <name> --force`. `--only
@@ -277,7 +282,7 @@ rector,phpstan,phpcs,testing` limits the set; `--set KEY=VALUE` overrides a toke
 
 | Template | Destination (Drupal root) | Key placeholders |
 |---|---|---|
-| `rector.php.tmpl` | `rector.php` | `{{PHP_TARGET}}`, `{{SUBJECT_PATH}}` |
+| `rector.php.tmpl` | `rector.php` | `{{PHP_TARGET}}`, `{{PHP_SET}}`, `{{SUBJECT_PATH}}` |
 | `phpstan.neon.tmpl` | `phpstan.neon` | `{{PHPSTAN_LEVEL}}`, `{{SUBJECT_PATH}}` |
 | `phpcs.xml.dist.tmpl` | `phpcs.xml.dist` | `{{SUBJECT_PATH}}` |
 | `ddev-config.yaml.tmpl` | (reference for `.ddev/config.yaml`) | `{{PROJECT_NAME}}`, `{{PHP_TARGET}}` |

@@ -357,6 +357,25 @@ tag the commit `vX.Y.Z`.
 - **The Rector crash excerpt dropped the offending class name**: the indented
   continuation lines of a boxed `[ERROR]` message are now joined into it (e.g.
   `Expected an existing class name. Got: "ReplaceDrupalAttachTabledragRector"`).
+- **`DRUPILOT_PHP_TARGET` never reached Rector**: the rendered `rector.php`
+  always had `->withPhpSets(php83: true)`, so a PHP 8.4 target moved PHPStan,
+  PHPCS and DDEV but left Rector on 8.3. The template now uses a `{{PHP_SET}}`
+  token that `render-templates.sh` and `run-rector.sh` derive from the target
+  through the new `rector_php_set_arg` helper (`8.3` → `php83`, `8.4` → `php84`,
+  an unconfirmed `8.5` → `php84` with a warning); `--set PHP_SET=…` overrides
+  it. The template marker is now `drupilot-template-version: 3`, so existing
+  drupilot-generated copies are backed up and regenerated.
+- **Older drupilot `phpstan.neon` / `phpcs.xml.dist` were never healed in an
+  autonomous run**: `render-templates.sh` reported them as `differs` (exit 3)
+  just like a hand-edited file, and `auto` keeps those. Both templates now
+  carry a `drupilot-template-version` marker; a copy with the drupilot header
+  but an older (or no) marker is backed up and regenerated without `--force`
+  (new status `upgraded`, `would-upgrade` in `--dry-run`). A current-generation
+  copy that differs is still treated as hand-edited.
+- **Rendered template headers documented their own tokens with the substituted
+  values** (`#   2 — analysis level`, `web/modules/custom/foo — the extension to
+  check`). The headers of `rector.php`, `phpstan.neon` and `phpcs.xml.dist` now
+  describe what is filled in without spelling the tokens.
 
 ## [0.8.4] - 2026-06-23
 
