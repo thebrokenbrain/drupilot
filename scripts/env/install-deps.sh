@@ -277,7 +277,7 @@ if [[ ${#REQUESTED[@]} -eq 0 ]]; then
   # No args -> only the tools that are currently missing.
   for t in "${ALL_TOOLS[@]}"; do tool_ok "$t" || SELECTED+=("$t"); done
 else
-  for r in "${REQUESTED[@]}"; do
+  for r in ${REQUESTED[@]+"${REQUESTED[@]}"}; do
     if [[ "$r" == "all" ]]; then SELECTED=("${ALL_TOOLS[@]}"); break; fi
     SELECTED+=("$r")
   done

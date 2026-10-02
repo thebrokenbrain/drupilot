@@ -78,7 +78,7 @@ fi
 # Cheap, read-only heuristic scan; skipped when the conservative 'target'
 # strategy is selected or the caller already provided a floor.
 FLOOR_STRATEGY="$(config_get DRUPILOT_REQUIRE_PHP_FLOOR detect)"
-if [[ "${FLOOR_STRATEGY,,}" == "detect" && -z "${DRUPILOT_DETECTED_PHP_FLOOR:-}" ]]; then
+if [[ "$(lc "$FLOOR_STRATEGY")" == "detect" && -z "${DRUPILOT_DETECTED_PHP_FLOOR:-}" ]]; then
   DETECT_SCRIPT="$(plugin_root)/scripts/analysis/detect-php-floor.sh"
   if [[ -r "$DETECT_SCRIPT" ]]; then
     DF="$(bash "$DETECT_SCRIPT" --subject "$SUBJECT_ABS" --json 2>/dev/null | jq -r '.floor // empty' 2>/dev/null || true)"

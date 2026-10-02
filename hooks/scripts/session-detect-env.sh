@@ -94,7 +94,7 @@ DET="true"
 if declare -f config_get >/dev/null 2>&1; then
   DET="$(config_get DRUPILOT_DETERMINISTIC true 2>/dev/null || echo true)"
 fi
-case "${DET,,}" in
+case "$(lc "$DET")" in
   1|true|yes|on) MSG="${MSG} Deterministic mode is ON: resolved versions/refs are frozen per-project so the same module ports the same way.";;
   *) MSG="${MSG} Deterministic mode is OFF (DRUPILOT_DETERMINISTIC=${DET}); versions/refs resolve fresh each run.";;
 esac

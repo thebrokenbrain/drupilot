@@ -147,7 +147,7 @@ selenium_ready() {
   done
   [[ "$found" == "1" ]] || return 1
   local host; host="$(detect_selenium_host)"
-  "${RUNNER[@]}" sh -c "getent hosts '$host' >/dev/null 2>&1 || nc -z '$host' 4444 2>/dev/null" \
+  ${RUNNER[@]+"${RUNNER[@]}"} sh -c "getent hosts '$host' >/dev/null 2>&1 || nc -z '$host' 4444 2>/dev/null" \
     >/dev/null 2>&1
 }
 
@@ -216,7 +216,7 @@ run_group() {
 
   # Assemble the full command. PHPUnit's own exit code drives pass/fail; we do
   # not redirect or swallow its output.
-  local -a cmd=("${RUNNER[@]}" "${PHPUNIT[@]}" "${COVERAGE_ARGS[@]}" "${FILTER_ARGS[@]}" "$path")
+  local -a cmd=(${RUNNER[@]+"${RUNNER[@]}"} "${PHPUNIT[@]}" ${COVERAGE_ARGS[@]+"${COVERAGE_ARGS[@]}"} ${FILTER_ARGS[@]+"${FILTER_ARGS[@]}"} "$path")
 
   # Temporarily relax errexit around the test run so a failing group does not
   # abort the script before we summarise it.

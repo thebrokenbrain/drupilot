@@ -25,8 +25,48 @@ tag the commit `vX.Y.Z`.
   tools fatal. Read-only and bash 3.2-compatible.
 - **`.shellcheckrc`** so `shellcheck` resolves `common.sh` from both group
   scripts and hook scripts; no check is disabled globally.
+- **Portability helpers in `common.sh`:** `lc` (lowercase, replaces bash 4's
+  `${x,,}`), `sed_inplace FILE EXPR...` (temp file + `cat >`, keeps inode and
+  mode, leaves the file untouched on failure — replaces `sed -i`, whose argument
+  differs between GNU and BSD sed), and `ddev_addons_installed` /
+  `ddev_addon_version` (read `ddev add-on list --installed -j`, falling back to
+  `.ddev/addon-metadata/*/manifest.yaml`).
+- **`portability` gate in `scripts/dev/check.sh`.** Rejects bash 4-only and
+  GNU-only constructs in the scripts (`${x,,}`, `declare -A`, `mapfile`,
+  `sed -i`, `readlink -f`, `realpath`, `grep -P`, `date -d`, `xargs -r`,
+  `stat -c`, `find -printf`, `envsubst`); a line can opt out with a trailing
+  `# portability-ok` and a reason.
+- **`bash` check in `preflight.sh`** (soft, shown by `/drupilot-doctor`): reports
+  the bash version from `BASH_VERSINFO` against the supported minimum 3.2.
+
+### Changed
+- **The `ddev-environment` skill no longer suggests `envsubst`** (not shipped on
+  stock macOS) for rendering templates; it shows a portable `sed ... > dest`.
 
 ### Fixed
+- **`ddev-add-ons.sh --contrib` aborted on every platform** in the
+  recommended-project layout: `sed -i 's#ddev symlink-project#: # ...#'` used `#`
+  both as the delimiter and inside the replacement (`unknown option to 's'` on GNU
+  sed; BSD sed additionally misreads `-i`). It now uses `sed_inplace` with a `|`
+  delimiter, and a failed edit warns instead of aborting the setup.
+- **Bash 3.2 (stock macOS) compatibility.** The scripts and hooks used bash 4-only
+  syntax, so on `/bin/bash` 3.2 `config_bool` died with `${v,,}: bad substitution`.
+  The worst effect: the `guard-contrib.sh` PreToolUse hook crashed before deciding,
+  so the "an autonomous run never pushes" backstop never returned `ask`. Fixed by
+  replacing every `${x,,}` with `lc` (`common.sh`, `core-strategy.sh`,
+  `make-issue.sh`, the three hooks), `declare -A` in `deps-status.sh` with a
+  `sort -u`-deduplicated list (same output), and expanding possibly-empty arrays
+  with `${arr[@]+"${arr[@]}"}` in `run-phpcs.sh`, `run-phpunit.sh` and
+  `install-deps.sh` (a bare `"${arr[@]}"` is "unbound variable" under `set -u`
+  before bash 4.4).
+- **DDEV add-on detection read a width-truncated table.** `ddev add-on list
+  --installed` cuts long names (`ddev-selenium-stand…`), so `ddev-add-ons.sh`
+  never saw Selenium and reinstalled it, with a ~47 s `ddev restart`, on every
+  run; `lock-sync.sh` never recorded it; and `preflight.sh` always reported the
+  Selenium add-on as missing. All three now use `ddev_addons_installed` (JSON
+  output). `lock-sync.sh` also captures add-on versions when DDEV is stopped, and
+  `preflight.sh` reports the installed Selenium version when it finds a DDEV
+  project.
 - **The router and `/drupilot-status` always recommended `/drupilot-doctor`.** Their
   load-time `` !`...` `` line passed the literal placeholders `"<ready.analyze>"` etc.
   to `next-step.sh` (a load-time line runs before the model can substitute

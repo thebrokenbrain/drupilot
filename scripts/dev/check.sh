@@ -11,6 +11,12 @@
 #                 the filesystem -x bit otherwise)
 #   - shellcheck  `shellcheck -S warning` on the same scripts (reads .shellcheckrc;
 #                 skipped when shellcheck is absent)
+#   - portability no bash-4-only or GNU-only construct in those scripts (they
+#                 must run on bash 3.2 + BSD tools, i.e. stock macOS): ${x,,},
+#                 ${x^^}, declare/local -A|-n|-g, mapfile/readarray, sed -i,
+#                 readlink -f, realpath, grep -P, date -d, xargs -r, stat -c,
+#                 find -printf, envsubst. Comment text is ignored; a line can
+#                 opt out with a trailing `# portability-ok` and a reason
 #   - bang-lint   no `!`...`` exec span in commands/*.md, skills/*/SKILL.md or
 #                 agents/*.md contains a <placeholder>: those spans run at command
 #                 load, before the model can substitute anything
@@ -43,7 +49,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export CLAUDE_PLUGIN_ROOT="$REPO"
 
-ALL_GATES="validate syntax exec-bit shellcheck bang-lint templates json"
+ALL_GATES="validate syntax exec-bit shellcheck portability bang-lint templates json"
 # Gates known to fail on the current tree, with a fix tracked for 0.9.0. Empty
 # this list as the fixes land so --allow-known stops hiding them.
 #   templates: phpcs.xml.dist.tmpl has `--config-set` (a double hyphen) inside
@@ -160,6 +166,35 @@ gate_shellcheck() {
     record shellcheck pass "shellcheck -S warning clean ($(shellcheck --version | awk '/^version:/ {print $2}'))"
   else
     record shellcheck fail "shellcheck -S warning reported issues" "$out"
+  fi
+}
+
+gate_portability() {
+  local out="$TMP/portability.out" f
+  : > "$out"
+  for f in "${SCRIPTS[@]}"; do
+    [[ "$f" == "scripts/dev/check.sh" ]] && continue   # its own patterns would self-match
+    # Drop full-line comments and trailing " # ..." comments, keep line numbers.
+    (cd "$REPO" && awk -v F="$f" '
+      /# portability-ok/ { next }
+      {
+        line = $0
+        if (line ~ /^[[:space:]]*#/) next
+        sub(/[[:space:]]#[[:space:]].*$/, "", line)
+        if (line ~ /\$\{[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?(,,?|\^\^?)\}/ ||
+            line ~ /(declare|local|typeset)[[:space:]]+-[a-zA-Z]*[Ang]/ ||
+            line ~ /(^|[^A-Za-z_])(mapfile|readarray|realpath|envsubst)([^A-Za-z_]|$)/ ||
+            line ~ /(^|[^A-Za-z_])sed[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-i/ ||
+            line ~ /readlink[[:space:]]+-f/ || line ~ /grep[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*P/ ||
+            line ~ /date[[:space:]]+-d/ || line ~ /xargs[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-r/ ||
+            line ~ /stat[[:space:]]+-c/ || line ~ /find[[:space:]].*-printf/)
+          printf "%s:%d: %s\n", F, NR, substr($0, 1, 140)
+      }' "$f") >> "$out"
+  done
+  if [[ -s "$out" ]]; then
+    record portability fail "$(wc -l < "$out" | tr -d ' ') bash-4/GNU-only construct(s) (use lc, sed_inplace, ... from common.sh)" "$out"
+  else
+    record portability pass "${#SCRIPTS[@]} scripts free of bash-4/GNU-only constructs"
   fi
 }
 

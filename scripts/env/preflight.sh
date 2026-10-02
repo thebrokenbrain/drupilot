@@ -119,6 +119,10 @@ hint_for() {
     ssh) echo "ssh-keygen -t ed25519 -C \"you@example.com\", then upload the public key at $SSH_KEYS_URL and test with 'ssh -T $SSH_TEST_TARGET'";;
     pat) echo "Create a token at $PAT_URL (scopes: read_repository, write_repository) and export $PAT_ENV_VAR=...";;
     git_identity) echo "git config --global user.name \"Real Name\"  &&  git config --global user.email you@example.com (the email linked to your drupal.org account)";;
+    bash) case "$OS" in
+          macos) echo "brew install bash (any bash >= 3.2 works; stock /bin/bash 3.2 is fine)";;
+          *) echo "Install bash >= 3.2 from your package manager";;
+        esac;;
     selenium) echo "ddev add-on get ddev/ddev-selenium-standalone-chrome  &&  ddev restart";;
     drupalorg) echo "Create/verify your account at $REGISTER_URL and accept the GitLab Terms of Service in your profile's 'DrupalCode access' tab";;
     glab) echo "Optional GitLab CLI: https://gitlab.com/gitlab-org/cli  (curl is used as a fallback)";;
@@ -161,6 +165,15 @@ check_tool() {
   printf -v "HAS_${id}" '%s' "$present"
   printf -v "OK_${id}" '%s' "$ok"
 }
+
+# --- Shell ------------------------------------------------------------------
+# The scripts and hooks target bash >= 3.2 (stock macOS /bin/bash) with no GNU
+# tool assumptions. Older shells are reported (soft: nothing realistic ships
+# bash < 3.2 today, but the reason is then visible instead of an obscure crash).
+BASH_MIN="3.2"
+BASH_VER="${BASH_VERSINFO[0]:-0}.${BASH_VERSINFO[1]:-0}.${BASH_VERSINFO[2]:-0}"
+BASH_OK="false"; version_ge "$BASH_VER" "$BASH_MIN" && BASH_OK="true"
+CHECKS+=("$(emit_check bash "bash" "runs the drupilot scripts and hooks" analysis "analyze" soft true "$BASH_VER" "$BASH_MIN" "$BASH_OK" "$(hint_for bash)")")
 
 # --- Analysis tools -------------------------------------------------------
 check_tool git      "git"      "version control / patches / contribution" analysis  "analyze contribute" hard git      "$GIT_MIN"
@@ -213,8 +226,16 @@ CHECKS+=("$(emit_check docker_daemon "Docker daemon" "the engine must be running
 
 check_tool ddev     "DDEV"     "full Drupal 11 environment (web + DB + chromedriver)" environment "setup test" hard ddev "$DDEV_MIN"
 
-# Selenium add-on: cannot be detected without a DDEV project -> manual/info.
-CHECKS+=("$(emit_check selenium "Selenium add-on" "needed for FunctionalJavascript tests" environment "test" soft false "" "" false "$(hint_for selenium)")")
+# Selenium add-on: detected from the DDEV project's machine-readable add-on list
+# (`ddev add-on list --installed -j`, or .ddev/addon-metadata) when there is a
+# project; without one it cannot be known and stays a soft "missing" note.
+SEL_OK="false"; SEL_VER=""
+if [[ -n "$ANALYZE_ROOT" ]] && SEL_VER="$(ddev_addon_version ddev-selenium-standalone-chrome "$ANALYZE_ROOT")"; then
+  SEL_OK="true"
+else
+  SEL_VER=""
+fi
+CHECKS+=("$(emit_check selenium "Selenium add-on" "needed for FunctionalJavascript tests" environment "test" soft "$SEL_OK" "$SEL_VER" "" "$SEL_OK" "$(hint_for selenium)")")
 
 # --- Contribution ---------------------------------------------------------
 # SSH key present? (public key on disk)

@@ -149,7 +149,7 @@ CATEGORY="$(config_get DRUPILOT_ISSUE_CATEGORY "Task")"
 PRIORITY="$(config_get DRUPILOT_ISSUE_PRIORITY "Normal")"
 COMPONENT="$(config_get DRUPILOT_ISSUE_COMPONENT "Code")"
 ASSIGNEE_RAW="$(config_get DRUPILOT_ISSUE_ASSIGNEE "self")"
-if [[ "${ASSIGNEE_RAW,,}" == "self" ]]; then
+if [[ "$(lc "$ASSIGNEE_RAW")" == "self" ]]; then
   ASSIGNEE="Yourself (the account opening the issue)"
 else
   ASSIGNEE="$ASSIGNEE_RAW"
@@ -191,7 +191,7 @@ fi
 # "Drupal 11 way" refactor produce a different change-set, so the issue text
 # should not always claim "no behavior change". Override any of these via flags.
 # ---------------------------------------------------------------------------
-case "${PHASE,,}" in port|refactor) : ;; *) PHASE="port";; esac
+case "$(lc "$PHASE")" in port|refactor) : ;; *) PHASE="port";; esac
 
 [[ -n "$PROBLEM" ]] || PROBLEM="\`$PROJECT\` is not yet compatible with Drupal 11. It uses APIs that were deprecated in Drupal 10 and removed in Drupal 11, and/or its \`*.info.yml\` \`core_version_requirement\` does not allow \`^11\`, so it cannot be installed or run on a Drupal 11 site."
 

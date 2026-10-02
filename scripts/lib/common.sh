@@ -256,7 +256,7 @@ config_bool() {
   if [[ -z "$v" ]]; then
     [[ "${2:-0}" == "1" ]] && return 0 || return 1
   fi
-  case "${v,,}" in
+  case "$(lc "$v")" in
     1|true|yes|on) return 0;;
     *) return 1;;
   esac
@@ -478,6 +478,49 @@ ddev_php_version() {
   trim "$v"
 }
 
+# ddev_addons_installed [root] -> one line per installed DDEV add-on on STDOUT:
+# "<name><TAB><version>" (version may be empty). Sources, in order:
+#   1. `ddev add-on list --installed -j` (machine-readable; the human table is
+#      truncated to the terminal width, e.g. "ddev-selenium-stand…", so it must
+#      never be parsed);
+#   2. the project's .ddev/addon-metadata/<name>/manifest.yaml files (no ddev
+#      call needed; also covers older DDEV without `add-on list -j`).
+# Prints nothing (and returns 0) when there is no DDEV project. Never fatal.
+ddev_addons_installed() {
+  local r="${1:-$(find_drupal_root 2>/dev/null || true)}"
+  [[ -n "$r" && -f "$r/.ddev/config.yaml" ]] || return 0
+  local out=""
+  if have_cmd ddev && have_cmd jq; then
+    out="$( ( cd "$r" 2>/dev/null && ddev add-on list --installed -j 2>/dev/null ) \
+      | jq -r 'select(type=="object") | (.raw // [])[]? | select(.Name != null) | "\(.Name)\t\(.Version // "")"' 2>/dev/null || true)"
+  fi
+  if [[ -n "$out" ]]; then
+    printf '%s\n' "$out"; return 0
+  fi
+  [[ -d "$r/.ddev/addon-metadata" ]] || return 0
+  local m name ver
+  for m in "$r"/.ddev/addon-metadata/*/manifest.yaml; do
+    [[ -f "$m" ]] || continue
+    name="$(grep -E '^name:' "$m" 2>/dev/null | head -n1 | sed -E 's/^name:[[:space:]]*//; s/["'\'']//g')"
+    ver="$(grep -E '^version:' "$m" 2>/dev/null | head -n1 | sed -E 's/^version:[[:space:]]*//; s/["'\'']//g')"
+    [[ -n "$name" ]] || name="$(basename "$(dirname "$m")")"
+    printf '%s\t%s\n' "$(trim "$name")" "$(trim "$ver")"
+  done
+  return 0
+}
+
+# ddev_addon_version <name> [root] -> version of an installed add-on ("installed"
+# when present without a version); returns 1 when it is not installed. <name> is
+# the short (ddev-selenium-standalone-chrome) or org/name form.
+ddev_addon_version() {
+  local short="${1##*/}" name ver
+  while IFS=$'\t' read -r name ver; do
+    [[ "$name" == "$short" ]] || continue
+    printf '%s' "${ver:-installed}"; return 0
+  done < <(ddev_addons_installed "${2:-}")
+  return 1
+}
+
 # subject_info_file <dir> -> first *.info.yml in the directory (non-recursive)
 subject_info_file() {
   local dir="${1:-$PWD}" f
@@ -572,18 +615,18 @@ recommend_core_target() {
   # the ONLY place an info.yml-declared '^10 || ^11' module can enforce a PHP
   # floor, so we also note whether it exists.
   local floor_strategy detected_floor has_composer="false"
-  floor_strategy="$(config_get DRUPILOT_REQUIRE_PHP_FLOOR detect)"; floor_strategy="${floor_strategy,,}"
+  floor_strategy="$(config_get DRUPILOT_REQUIRE_PHP_FLOOR detect)"; floor_strategy="$(lc "$floor_strategy")"
   case "$floor_strategy" in target|detect) : ;; *) floor_strategy="detect";; esac
   detected_floor="$(trim "${DRUPILOT_DETECTED_PHP_FLOOR:-}")"
   [[ -f "$subject/composer.json" ]] && has_composer="true"
 
   # --- strategy resolution (auto default; KEEP_D10 legacy override) --------
   local strat keep_override legacy_note=""
-  strat="$(config_get DRUPILOT_CORE_TARGET_STRATEGY auto)"; strat="${strat,,}"
+  strat="$(config_get DRUPILOT_CORE_TARGET_STRATEGY auto)"; strat="$(lc "$strat")"
   case "$strat" in d11-only|keep-d10|auto) : ;; *) strat="auto";; esac
   keep_override="$(config_get DRUPILOT_KEEP_D10 "")"
   if [[ "$strat" == "auto" && -n "$keep_override" ]]; then
-    case "${keep_override,,}" in
+    case "$(lc "$keep_override")" in
       1|true|yes|on)  strat="keep-d10"; legacy_note="DRUPILOT_KEEP_D10 legacy override";;
       0|false|no|off) strat="d11-only"; legacy_note="DRUPILOT_KEEP_D10 legacy override";;
     esac
@@ -597,7 +640,7 @@ recommend_core_target() {
   # --- BC-break detection (drives the SemVer major bump) ------------------
   local bc_break=0
   [[ "$phase" == "refactor" ]] && bc_break=1
-  case "${bc_override,,}" in
+  case "$(lc "$bc_override")" in
     yes|true|1) bc_break=1;;
     no|false|0) bc_break=0;;
   esac
@@ -796,7 +839,7 @@ confirm() {
   local ans=""
   printf '%s%s' "$q" "$prompt" >&2
   read -r ans </dev/tty || true
-  ans="${ans,,}"
+  ans="$(lc "$ans")"
   if [[ -z "$ans" ]]; then [[ "$default_yes" == "1" ]] && return 0 || return 1; fi
   case "$ans" in y|yes) return 0;; *) return 1;; esac
 }
@@ -898,6 +941,37 @@ os_id() {
   else
     printf 'linux'
   fi
+}
+
+# ---------------------------------------------------------------------------
+# Portability helpers (bash 3.2 / BSD userland — stock macOS)
+# ---------------------------------------------------------------------------
+# The plugin targets bash >= 3.2 and does not assume GNU tools. So: no
+# ${x,,}/${x^^} (bash 4), no declare -A / mapfile / local -n, no `sed -i` (GNU
+# and BSD disagree on its argument), and possibly-empty arrays are expanded with
+# the ${arr[@]+"${arr[@]}"} idiom (a bare "${arr[@]}" of an empty array is an
+# "unbound variable" error under `set -u` before bash 4.4).
+
+# lc <string...> -> the string lowercased (portable replacement for ${x,,}).
+lc() { printf '%s' "$*" | tr '[:upper:]' '[:lower:]'; }
+
+# sed_inplace <file> <sed args...> -> edit <file> in place, portably. Runs
+# `sed <args...> <file>` into a temp file next to it, then copies it back with
+# `cat >` (keeps the inode, permissions and any symlink target). On failure the
+# original is left untouched, the temp file is removed and it returns non-zero.
+# Use it instead of `sed -i`, which takes a mandatory suffix on BSD/macOS.
+sed_inplace() {
+  local f="${1:-}"; shift || true
+  [[ -n "$f" && -f "$f" ]] || { log_err "sed_inplace: not a regular file: '${f}'"; return 1; }
+  [[ $# -gt 0 ]] || { log_err "sed_inplace: no sed expression given for '$f'"; return 1; }
+  local tmp
+  tmp="$(mktemp "${f}.drupilot.XXXXXX" 2>/dev/null || mktemp 2>/dev/null)" \
+    || { log_err "sed_inplace: cannot create a temp file for '$f'"; return 1; }
+  if sed "$@" "$f" > "$tmp" && cat "$tmp" > "$f"; then
+    rm -f "$tmp"; return 0
+  fi
+  rm -f "$tmp"
+  return 1
 }
 
 # trim surrounding whitespace from a string

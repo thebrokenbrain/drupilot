@@ -61,6 +61,8 @@ The default PHP target is **8.3** and is fully configurable; everything (Rector 
 
 DDEV provides the full Drupal environment (web + database + chromedriver) on top of Docker — **you do not need to set up a LAMP stack yourself**.
 
+**Shell:** the scripts and hooks run on **bash ≥ 3.2** and do not assume GNU tools, so stock macOS (`/bin/bash` 3.2, BSD `sed`/`grep`) works as-is — no Homebrew bash or GNU coreutils needed. `/drupilot-doctor` reports the bash version it found.
+
 ---
 
 ## Installation
@@ -409,6 +411,7 @@ Enable/disable it with `DRUPILOT_USE_DIGESTS_RULES` (default `true`).
 - **A command says a hard requirement is missing.** Run `/drupilot-doctor` — it shows exactly what is missing, the detected vs. required version, and the install command for your platform.
 - **Docker is installed but commands still fail.** The daemon must be running (`sudo systemctl start docker` on Linux, or launch Docker Desktop). `drupilot` checks the daemon, not just the binary.
 - **FunctionalJavascript tests are skipped.** Install the Selenium add-on: `ddev add-on get ddev/ddev-selenium-standalone-chrome && ddev restart`.
+- **A spurious `web/modules/custom/<project>/` symlink folder appears after `ddev restart`.** `ddev-drupal-contrib`'s `symlink-project` hook does this in the recommended-project layout; `ddev-add-ons.sh` disables it in `.ddev/config.contrib.yaml`. That file is `#ddev-generated`, so a later `ddev add-on get ddev/ddev-drupal-contrib` restores the hook — re-run `/drupilot-setup` (or `ddev-add-ons.sh --contrib`) afterwards.
 - **The GitLab API is blocked.** Expected — drupalcode's API is restricted by default. `drupilot` degrades to a one-click MR URL; just open it to create the MR.
 - **Plugin not loading.** Run `claude plugin validate /path/to/drupilot` to check the manifest and component frontmatter.
 
@@ -423,7 +426,7 @@ bash scripts/dev/check.sh          # human report; exit 0 ok / 1 a gate failed
 bash scripts/dev/check.sh --json   # machine-readable per-gate summary
 ```
 
-It validates the plugin manifest, syntax-checks and `shellcheck`s every script, checks the executable bits, rejects `<placeholder>` literals inside load-time `` !`...` `` lines of commands/skills/agents, checks that the rendered XML templates are well-formed, and validates every JSON file. Optional tools (`claude`, `shellcheck`, `xmllint`) are skipped when absent (`--ci` makes them mandatory). See `--help` for `--only`/`--skip`/`--allow-known`.
+It validates the plugin manifest, syntax-checks and `shellcheck`s every script, checks the executable bits, rejects bash 4-only / GNU-only constructs (`${x,,}`, `declare -A`, `sed -i`, `readlink -f`, ... — the scripts must run on stock macOS bash 3.2), rejects `<placeholder>` literals inside load-time `` !`...` `` lines of commands/skills/agents, checks that the rendered XML templates are well-formed, and validates every JSON file. Optional tools (`claude`, `shellcheck`, `xmllint`) are skipped when absent (`--ci` makes them mandatory). See `--help` for `--only`/`--skip`/`--allow-known`.
 
 ---
 

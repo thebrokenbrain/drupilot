@@ -210,7 +210,10 @@ for core and add-ons.
 ## 7. Write the toolchain config from templates
 
 Templates live in `${CLAUDE_PLUGIN_ROOT}/templates/` and use `{{PLACEHOLDER}}`
-tokens; substitute with `sed`/`envsubst`. Write only if missing or out of date
+tokens; substitute them portably by rendering to the destination, e.g.
+`sed -e 's|{{PHP_TARGET}}|8.3|g' -e 's|{{SUBJECT_PATH}}|web/modules/custom/foo|g' rector.php.tmpl > rector.php`
+(never `envsubst`, which stock macOS does not ship, and never `sed -i`, whose
+argument differs between GNU and BSD sed). Write only if missing or out of date
 (idempotent — do not clobber a file the user already tuned without saying so).
 
 | Template | Destination (Drupal root) | Key placeholders |

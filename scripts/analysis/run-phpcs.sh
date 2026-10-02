@@ -103,12 +103,12 @@ fi
 # paths ourselves (PROMPT 1.4) and re-verify. Idempotent: a no-op when present.
 declare -a ICMD=()
 [[ -n "$RUNNER" ]] && read -r -a ICMD <<<"$RUNNER"
-if ! "${ICMD[@]}" vendor/bin/phpcs -i 2>/dev/null | grep -qi 'DrupalPractice'; then
+if ! ${ICMD[@]+"${ICMD[@]}"} vendor/bin/phpcs -i 2>/dev/null | grep -qi 'DrupalPractice'; then
   log_warn "Drupal/DrupalPractice standards not registered yet — registering them now (idempotent)."
-  "${ICMD[@]}" vendor/bin/phpcs --config-set installed_paths \
+  ${ICMD[@]+"${ICMD[@]}"} vendor/bin/phpcs --config-set installed_paths \
     vendor/drupal/coder/coder_sniffer,vendor/sirbrillig/phpcs-variable-analysis,vendor/slevomat/coding-standard \
     >/dev/null 2>&1 || true
-  if "${ICMD[@]}" vendor/bin/phpcs -i 2>/dev/null | grep -qi 'DrupalPractice'; then
+  if ${ICMD[@]+"${ICMD[@]}"} vendor/bin/phpcs -i 2>/dev/null | grep -qi 'DrupalPractice'; then
     log_ok "Registered the Drupal/DrupalPractice standards."
   else
     log_warn "Could not auto-register the Drupal standards. Ensure drupal/coder is installed and its phpcodesniffer-composer-installer plugin was allowed (composer config allow-plugins)."

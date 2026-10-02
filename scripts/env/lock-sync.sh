@@ -132,16 +132,18 @@ else
 fi
 
 # --- DDEV add-ons (best-effort; secondary, never blocks) ------------------
-if have_cmd ddev && ddev_running "$PROJECT_DIR"; then
-  ADDONS_RAW="$( ( cd "$PROJECT_DIR" && ddev add-on list --installed 2>/dev/null ) || true )"
+# Read via ddev_addons_installed (common.sh): `ddev add-on list --installed -j`
+# or .ddev/addon-metadata — never the width-truncated human table, which hid
+# long names such as ddev-selenium-standalone-chrome. Needs a DDEV project, but
+# not a running one.
+if [[ -f "$PROJECT_DIR/.ddev/config.yaml" ]]; then
   for addon in ddev-drupal-contrib ddev-selenium-standalone-chrome; do
-    if printf '%s' "$ADDONS_RAW" | grep -q "$addon"; then
-      ver="$(printf '%s' "$ADDONS_RAW" | grep "$addon" | grep -oE 'v?[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1)"
+    if ver="$(ddev_addon_version "$addon" "$PROJECT_DIR")"; then
       lset_str ".ddev_addons.\"$addon\"" "${ver:-installed}"
     fi
   done
 else
-  log_info "DDEV not running — skipping add-on version capture (optional)."
+  log_info "No DDEV project at $PROJECT_DIR — skipping add-on version capture (optional)."
 fi
 
 # --- Refresh: drop the frozen digests SHA so the next run re-resolves ------

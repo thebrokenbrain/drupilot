@@ -83,7 +83,7 @@ EXTS="php,module,inc,install,test,profile,theme,info,txt,md,yml"
 # DRUPILOT_POST_EDIT_LINT: autofix (default) | report (run phpcs, never modify
 # files) | off (do nothing). The developer stays in control of in-place edits.
 MODE="$(config_get DRUPILOT_POST_EDIT_LINT autofix 2>/dev/null || echo autofix)"
-case "${MODE,,}" in off) exit 0;; report|autofix) : ;; *) MODE="autofix";; esac
+case "$(lc "$MODE")" in off) exit 0;; report|autofix) : ;; *) MODE="autofix";; esac
 
 # Phase-aware strictness: during Phase 1 (minimal port) surface only ERRORS
 # (compatibility), not DrupalPractice WARNINGS — premature style nagging belongs

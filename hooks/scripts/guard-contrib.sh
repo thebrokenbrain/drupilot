@@ -93,7 +93,7 @@ fi
 MODE="$(config_get DRUPILOT_CONTRIB_MODE "semi" 2>/dev/null || true)"
 [[ -z "$MODE" ]] && MODE="semi"
 
-case "${MODE,,}" in
+case "$(lc "$MODE")" in
   auto)
     # Fully-automated mode: allow outward-facing actions (no extra prompt).
     emit_decision "allow" "drupilot contribution mode is 'auto': outward-facing action allowed (${REASON})"
