@@ -402,6 +402,14 @@ tag the commit `vX.Y.Z`.
   Anything git tracks is now always copied (a tracked escaping symlink is kept
   with a warning); only untracked residue is excluded, the same rule
   `residue_list` already used.
+- **`origin-hygiene.sh --check` false positives and misses**: on an origin that
+  is not a git checkout, the `.drupilot.json` pointer a copy/symlink placement
+  writes on purpose was reported as drupilot residue (`clean: false`); it is now
+  listed under a new `expected` field and does not make the origin unclean.
+  After a `move`, checking the original (now gone) path reported
+  `origin-missing`; the baseline is now found under `DRUPILOT_WORKSPACE_DIR` or
+  the `<name>-d11` sibling by its recorded source path, and the moved tree is
+  checked.
 
 ## [0.8.4] - 2026-06-23
 

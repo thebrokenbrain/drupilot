@@ -44,8 +44,16 @@
 # Output (STDOUT, JSON):
 #   --snapshot: {baseline, origin, git, created}
 #   --check:    {origin, placement, baseline, git, clean, new_untracked:[...],
-#                attributable:[...], other:[...], changed_tracked:[...]}
+#                attributable:[...], other:[...], changed_tracked:[...],
+#                expected:[...]}
 #               clean is null when there is no baseline / nothing to compare.
+#               expected lists drupilot's own pointer marker (.drupilot.json,
+#               written into the origin by a copy/symlink placement), which is
+#               not residue and does not make the origin unclean.
+#
+# A --subject that no longer exists (the origin was moved into the test-bed)
+# is resolved through the baseline whose recorded source is that path, under
+# DRUPILOT_WORKSPACE_DIR or the '<name>-d11' sibling (as place-subject.sh does).
 # Exit codes: 0 always for a completed snapshot/check (report-only) · 1 usage.
 # =============================================================================
 set -euo pipefail
@@ -121,6 +129,29 @@ baseline_matches() {
 MACHINE=""
 [[ -n "$SUBJECT_ABS" ]] && MACHINE="$(subject_machine_name "$SUBJECT_ABS" 2>/dev/null || true)"
 NO_MATCH=0
+# --check on a path that no longer exists: the usual reason is a 'move'
+# placement, which relocated the origin into the test-bed. Look for the
+# baseline where place-subject.sh would have put the test-bed (the pinned
+# DRUPILOT_WORKSPACE_DIR, then the '<name>-d11' sibling) and accept it when its
+# recorded .source is the given path; .origin then points at the moved tree.
+if [[ "$MODE" == "check" && -z "$ROOT" && -z "$SUBJECT_ABS" ]]; then
+  _base="$(basename "$SUBJECT")"
+  _parent="$(cd "$(dirname "$SUBJECT")" 2>/dev/null && pwd || true)"
+  if [[ -n "$_parent" && -n "$_base" ]]; then
+    _gone="$_parent/$_base"
+    for _c in "$(config_get DRUPILOT_WORKSPACE_DIR "")" "$_parent/${_base}-d11"; do
+      [[ -n "$_c" && -d "$_c" ]] || continue
+      _c="$(cd "$_c" && pwd)"
+      _b="$(project_state_dir "$_c")/origin-baseline.json"
+      [[ -f "$_b" ]] || continue
+      if [[ "$(jq -r '.source // empty' "$_b" 2>/dev/null || true)" == "$_gone" ]]; then
+        ROOT="$_c"
+        log_info "'$SUBJECT' no longer exists; using the baseline recorded for it under $ROOT."
+        break
+      fi
+    done
+  fi
+fi
 if [[ -z "$ROOT" && -n "$SUBJECT_ABS" ]]; then
   _first=""
   while IFS=$'\t' read -r _s _c; do
@@ -230,9 +261,11 @@ emit() { # emit <clean-json> <reason>
     --arg reason "$reason" \
     --argjson new "${NEW_JSON:-[]}" --argjson attr "${ATTR_JSON:-[]}" \
     --argjson other "${OTHER_JSON:-[]}" --argjson changed "${CHANGED_JSON:-[]}" \
+    --argjson expected "${EXPECTED_JSON:-[]}" \
     '{origin:$origin, placement:$placement, baseline:(if $has then $baseline else null end),
       git:$git, clean:$clean, reason:(if $reason == "" then null else $reason end),
-      new_untracked:$new, attributable:$attr, other:$other, changed_tracked:$changed}'
+      new_untracked:$new, attributable:$attr, other:$other, changed_tracked:$changed,
+      expected:$expected}'
 }
 
 if [[ -z "$ORIGIN" || ! -d "$ORIGIN" ]]; then
@@ -251,7 +284,7 @@ jq -r '.entries[]' "$BASELINE" | sort -u > "$TMPD/before"
 origin_state "$ORIGIN" | sort -u > "$TMPD/after"
 comm -13 "$TMPD/before" "$TMPD/after" > "$TMPD/new"
 
-: > "$TMPD/untracked"; : > "$TMPD/attr"; : > "$TMPD/other"; : > "$TMPD/changed"
+: > "$TMPD/untracked"; : > "$TMPD/attr"; : > "$TMPD/other"; : > "$TMPD/changed"; : > "$TMPD/expected"
 TOP="$ORIGIN"
 [[ "$GIT" == "true" ]] && TOP="$(git -C "$ORIGIN" rev-parse --show-toplevel 2>/dev/null || echo "$ORIGIN")"
 while IFS= read -r line; do
@@ -260,6 +293,12 @@ while IFS= read -r line; do
   # porcelain v1 quotes unusual names; strip the quotes for display/matching.
   case "$rel" in \"*\") rel="${rel#\"}"; rel="${rel%\"}";; esac
   if [[ "$code" == "??" ]]; then
+    # A copy/symlink placement writes drupilot's pointer marker into the origin
+    # on purpose (hidden via .git/info/exclude when the origin is a git repo,
+    # visible otherwise): expected, not residue.
+    if [[ "$rel" == ".drupilot.json" ]]; then
+      case "$PLACE" in copy|symlink) printf '%s\n' "$rel" >> "$TMPD/expected"; continue;; esac
+    fi
     printf '%s\n' "$rel" >> "$TMPD/untracked"
     if attributable "$TOP" "$rel"; then printf '%s\n' "$rel" >> "$TMPD/attr"
     else printf '%s\n' "$rel" >> "$TMPD/other"; fi
@@ -273,6 +312,7 @@ NEW_JSON="$(tojson "$TMPD/untracked")"
 ATTR_JSON="$(tojson "$TMPD/attr")"
 OTHER_JSON="$(tojson "$TMPD/other")"
 CHANGED_JSON="$(tojson "$TMPD/changed")"
+EXPECTED_JSON="$(tojson "$TMPD/expected")"
 
 CLEAN=true
 [[ -s "$TMPD/attr" ]] && CLEAN=false
