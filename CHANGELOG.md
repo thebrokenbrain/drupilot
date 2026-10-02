@@ -71,8 +71,36 @@ tag the commit `vX.Y.Z`.
   its exact version too.
 - **`last-test.json` records why and what:** `blocked_reason` (why tests that
   exist could not run), `subject_has_tests` and `groups_with_tests`.
-
+- **`scripts/env/install-toolchain.sh` — deterministic dev-toolchain installer.**
+  Replaces the hand-written `ddev composer require --dev ...` of `/drupilot-setup`
+  (step 3c) and the `ddev-environment` skill. Installs drupal-rector,
+  `rector/rector`, PHPStan + extensions, coder, `drupal/core-dev` (matched to the
+  installed core) and optionally upgrade_status in one `ddev composer require
+  --dev -W`, pinned to the project lock when it holds the whole known-good set,
+  otherwise to the shipped reference set (`--source auto|reference|range`,
+  `DRUPILOT_TOOLCHAIN_SOURCE`); retries once with the ranges when the pinned set
+  does not resolve. Then runs a smoke test and re-syncs the lock. Idempotent (no
+  Composer run when everything is already at its pinned version); `--dry-run`,
+  `--smoke-only`, `--json`; exit 3 when the installed toolchain is broken.
+- **Known-good toolchain matrix, `config/toolchain-reference.json`** — the
+  distributed reference lock: drupal-rector 0.21.2, rector 2.5.2, PHPStan 2.2.2,
+  extension-installer 1.4.3, phpstan-drupal 2.2.2, deprecation-rules 2.0.5,
+  coder 8.3.31, Drush 13.8.0, upgrade_status 4.3.10, verified together in a fresh
+  DDEV Drupal 11.4.8 / PHP 8.3 test-bed (install, smoke test, Rector dry-run on
+  autologout 8.x-1.4, PHPStan, PHPCS). A fresh sandbox created after a broken
+  upstream release still gets a working set. It also documents the two known
+  broken combinations.
+- **Toolchain helpers in `common.sh`:** `rector_smoke` (a Rector dry-run of a
+  trivial file with the Drupal 10 set + `phpstan --version`, through DDEV),
+  `rector_output_ok` / `rector_error_excerpt` (shared Rector crash detection),
+  `toolchain_diagnostics` (installed vs known-good versions + the fix),
+  `toolchain_reference_version`, `installed_package_version`.
+- **`DRUPILOT_TOOLCHAIN_SOURCE`** (`auto` / `reference` / `range`), validated
+  non-fatally by `preflight.sh`.
 ### Changed
+- **`rector/rector` is an explicit toolchain package** (`.packages.rector`,
+  `^2.0 <2.6.2`), so it is installed with a range that excludes the releases that
+  break drupal-rector 0.21 and `lock-sync.sh` records its exact version.
 - **`ddev-up.sh` uses `ddev composer create-project`** on DDEV >= 1.24.2 (DDEV
   1.25 prints a deprecation warning for `ddev composer create`); older DDEV keeps
   `ddev composer create`. Docs updated to match.
@@ -81,6 +109,22 @@ tag the commit `vX.Y.Z`.
   `render-templates.sh`.
 
 ### Fixed
+- **`run-rector.sh` swallowed Rector crashes.** Each pass ran as `... || true`,
+  so `[ERROR] Could not detect twig set.` (rector/rector >= 2.6.2 with
+  drupal-rector 0.21.2) or a PHP fatal (rector 2.5.2 with PHPStan 2.2.16) was
+  reported as "0 file(s) would change", exit 0 — a broken toolchain looked like
+  "nothing to port". A pass now only counts when Rector exits 0/2 and prints its
+  `[OK]` line; otherwise `--json` reports `status: "error"`, `ok: false` and
+  `errors: [{pass, exit_code, message}]`, the installed vs known-good versions are
+  printed with the fix, the digests pass is skipped after a crashed official
+  pass, and the script exits 3. Successful runs keep exit 0 and their output (plus
+  the new `status`/`ok`/`errors` keys).
+- **A fresh setup installed a broken toolchain.** The ranges resolved to rector
+  2.6.7 + drupal-rector 0.21.2, which cannot run at all; setup now pins the
+  known-good set and smoke-tests it.
+- **The lock missed `rector/rector` and was never re-synced after the toolchain
+  install** (it was only captured by `ddev-up.sh`, before the toolchain existed).
+  `install-toolchain.sh` re-syncs it after every install.
 - **`run-phpunit.sh` never ran a single test.** It stored the group list in an
   array named `GROUPS`, a bash special variable (the user's group IDs) whose
   assignments bash silently ignores, so the loop iterated over GIDs (`1000 970

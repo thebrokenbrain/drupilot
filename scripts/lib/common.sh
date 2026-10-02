@@ -1095,5 +1095,167 @@ render_template() {
   return 1
 }
 
+# ---------------------------------------------------------------------------
+# Toolchain health: the known-good reference set + Rector crash detection
+# ---------------------------------------------------------------------------
+# config/toolchain-reference.json is the KNOWN-GOOD dev-toolchain matrix shipped
+# with the plugin: exact versions verified together end to end (install + a
+# Rector dry-run + PHPStan). install-toolchain.sh pins to it when a project has
+# no lock yet (deterministic mode), so a fresh test-bed created after a broken
+# upstream release still gets a set that works.
+
+# toolchain_reference_file -> path to the shipped reference matrix.
+toolchain_reference_file() { printf '%s/config/toolchain-reference.json' "$(plugin_root)"; }
+
+# toolchain_reference_version <package> -> the known-good exact version of a
+# Composer package (e.g. rector/rector -> 2.5.2), or nothing when the reference
+# does not pin it. Never fatal.
+toolchain_reference_version() {
+  local f; f="$(toolchain_reference_file)"
+  [[ -r "$f" ]] && have_cmd jq || return 0
+  jq -r --arg n "${1:-}" '.toolchain[$n] // empty' "$f" 2>/dev/null || true
+  return 0
+}
+
+# toolchain_reference_require_cmd -> the exact command that installs the
+# reference set (Rector + PHPStan core packages), printed for remediation
+# messages. Empty when the reference is unreadable.
+toolchain_reference_require_cmd() {
+  local f specs; f="$(toolchain_reference_file)"
+  [[ -r "$f" ]] && have_cmd jq || return 0
+  specs="$(jq -r '(.remediation_packages // []) as $p | .toolchain as $t
+                  | [$p[] | select($t[.] != null) | "\(.):\($t[.])"] | join(" ")' "$f" 2>/dev/null || true)"
+  [[ -n "$specs" ]] && printf 'ddev composer require --dev -W %s' "$specs"
+  return 0
+}
+
+# installed_package_version <root> <package> -> the version composer.lock
+# records for <package> (packages + packages-dev), or nothing.
+installed_package_version() {
+  local r="${1:-}" n="${2:-}"
+  [[ -n "$r" && -f "$r/composer.lock" ]] && have_cmd jq || return 0
+  jq -r --arg n "$n" '((.packages // []) + (."packages-dev" // []))
+         | map(select(.name == $n)) | (.[0].version // empty)' "$r/composer.lock" 2>/dev/null \
+    | sed 's/^v//' || true
+  return 0
+}
+
+# rector_output_ok <exit_code> <raw_output> -> 0 when a `rector process` run
+# finished normally, 1 when it crashed or reported errors. Rector exits 0 (no
+# change / applied) or 2 (dry-run found changes) and always ends with an
+# "[OK] ..." line; a configuration error ("[ERROR] Could not detect twig set."),
+# per-file processing errors (exit 1) or a PHP fatal (exit 255) do not. Both the
+# exit code AND the [OK] marker are required, so neither a wrapper that loses the
+# exit code nor a crash after partial output can pass as "no changes".
+rector_output_ok() {
+  local rc="${1:-1}" raw="${2:-}"
+  case "$rc" in 0|2) ;; *) return 1;; esac
+  printf '%s\n' "$raw" | grep -qE '^[[:space:]]*\[OK\][[:space:]]' || return 1
+  return 0
+}
+
+# rector_error_excerpt <raw_output> -> the lines that explain a failed Rector run
+# (at most 8), for logs and the --json "errors" payload. Diff hunks are skipped,
+# so a module string such as 'Fatal error:' can never be mistaken for a crash;
+# falls back to the last non-empty lines when no known marker is found.
+rector_error_excerpt() {
+  local raw="${1:-}" out
+  out="$(printf '%s\n' "$raw" | awk '
+      /-+ begin diff -+/ { indiff = 1; next }
+      /-+ end diff -+/   { indiff = 0; next }
+      indiff { next }
+      /\[ERROR\]|Fatal error|Uncaught|Exception|Could not |not found|Failed to execute command/ {
+        gsub(/\033\[[0-9;]*[A-Za-z]/, ""); sub(/[[:space:]]+$/, ""); sub(/^[[:space:]]+/, "")
+        if (length($0) > 0) print
+      }' | head -n 8)"
+  if [[ -z "$out" ]]; then
+    out="$(printf '%s\n' "$raw" | sed -e "s/$(printf '\033')\\[[0-9;]*[A-Za-z]//g" | grep -v '^[[:space:]]*$' | tail -n 5 || true)"
+  fi
+  printf '%s' "$out"
+  return 0
+}
+
+# toolchain_diagnostics <root> -> log (STDERR) the installed vs known-good
+# versions of the Rector/PHPStan packages and the exact remediation command.
+# Used after a failed smoke test and by run-rector.sh after a Rector crash.
+toolchain_diagnostics() {
+  local r="${1:-}" f pkg inst ref cmd differs=0
+  f="$(toolchain_reference_file)"
+  log_plain "   Installed vs known-good toolchain ($(basename "$f")):"
+  for pkg in rector/rector palantirnet/drupal-rector phpstan/phpstan mglaman/phpstan-drupal; do
+    inst="$(installed_package_version "$r" "$pkg")"
+    ref="$(toolchain_reference_version "$pkg")"
+    [[ -n "$ref" && "$inst" != "$ref" ]] && differs=1
+    log_plain "     $(printf '%-28s' "$pkg") installed: ${inst:-?}   known-good: ${ref:-?}"
+  done
+  if [[ "$differs" == "0" ]]; then
+    log_plain "   The installed toolchain matches the known-good set, so look at the Rector config"
+    log_plain "   (rector.php; regenerate it with render-templates.sh --only rector --force) or the error above."
+    return 0
+  fi
+  cmd="$(toolchain_reference_require_cmd)"
+  if [[ -n "$cmd" ]]; then
+    log_plain "   Fix: reinstall the known-good set (from the Drupal root):"
+    log_plain "     bash \"$(plugin_root)/scripts/env/install-toolchain.sh\" --dir \"$r\" --source reference"
+    log_plain "   or by hand:  $cmd"
+  fi
+  return 0
+}
+
+# rector_smoke <root> -> run a trivial Rector dry-run (with the Drupal 10 set
+# that drupal-rector loads at config time) plus `phpstan --version`, through
+# drupal_runner, to prove the installed toolchain actually works. Scratch files
+# go under <root>/.drupilot/rector-smoke.* (inside the project so the DDEV
+# container sees them; removed afterwards). Prints the failure excerpt on STDOUT
+# and returns 1 when broken; prints nothing and returns 0 when healthy.
+rector_smoke() {
+  local r="${1:-}" runner dir rel raw rc
+  [[ -n "$r" && -d "$r" ]] || { printf 'rector_smoke: no Drupal root'; return 1; }
+  if [[ ! -f "$r/vendor/bin/rector" ]]; then printf 'vendor/bin/rector is missing'; return 1; fi
+  runner="$(drupal_runner "$r")"
+  mkdir -p "$r/.drupilot" 2>/dev/null || true
+  [[ -f "$r/.drupilot/.gitignore" ]] || printf '*\n' > "$r/.drupilot/.gitignore" 2>/dev/null || true
+  dir="$(mktemp -d "$r/.drupilot/rector-smoke.XXXXXX" 2>/dev/null)" \
+    || { printf 'rector_smoke: cannot create a scratch dir under %s/.drupilot' "$r"; return 1; }
+  rel="${dir#"$r"/}"
+  cat > "$dir/smoke.php" <<'PHP'
+<?php
+
+function drupilot_smoke(array $items): bool {
+  return strpos('drupilot', 'pilot') !== FALSE && count($items) >= 0;
+}
+PHP
+  cat > "$dir/rector.php" <<'PHP'
+<?php
+
+declare(strict_types=1);
+
+use DrupalRector\Set\Drupal10SetList;
+use Rector\Config\RectorConfig;
+
+return RectorConfig::configure()
+  ->withPaths([__DIR__ . '/smoke.php'])
+  ->withSets([Drupal10SetList::DRUPAL_10])
+  ->withPhpSets(php80: true);
+PHP
+  # `&& rc=0 || rc=$?` keeps a failing run from tripping the caller's `set -e`.
+  # shellcheck disable=SC2086  # intentional word-split: runner is a command prefix.
+  raw="$(cd "$r" && $runner vendor/bin/rector process --config "$rel/rector.php" --dry-run --no-progress-bar --clear-cache 2>&1)" \
+    && rc=0 || rc=$?
+  if ! rector_output_ok "$rc" "$raw"; then
+    rm -rf "$dir" 2>/dev/null || true
+    printf 'rector smoke dry-run failed (exit %s): %s' "$rc" "$(rector_error_excerpt "$raw")"
+    return 1
+  fi
+  rm -rf "$dir" 2>/dev/null || true
+  # shellcheck disable=SC2086  # intentional word-split: runner is a command prefix.
+  raw="$(cd "$r" && $runner vendor/bin/phpstan --version 2>&1)" && rc=0 || rc=$?
+  if [[ "$rc" != "0" ]] || ! printf '%s' "$raw" | grep -q 'PHPStan'; then
+    printf 'phpstan --version failed (exit %s): %s' "$rc" "$(printf '%s\n' "$raw" | tail -n 5)"
+    return 1
+  fi
+  return 0
+}
+
 # trim surrounding whitespace from a string
 trim() { local s="$*"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }

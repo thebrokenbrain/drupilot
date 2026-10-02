@@ -133,30 +133,44 @@ that case.
 
 ### 3c — Install the Composer dev toolchain
 
-Inside the DDEV project, install the dev dependencies using the constraints from
-`config/defaults.json` (`.packages.*` and `DRUPILOT_CODER_CONSTRAINT`): drupal-rector,
-phpstan ^2.1 + extension-installer + phpstan-drupal ^2.0 + phpstan-deprecation-rules
-^2.0, drupal/coder (at the configured constraint), and optionally drupal/upgrade_status.
-Read the constraints first, then run `ddev composer require --dev ...`. This is
-idempotent — Composer is a no-op when the constraints are already satisfied.
-
-**Also install `drupal/core-dev` (PHPUnit + the Drupal test dependencies).** The
-`drupal/recommended-project` scaffold ships no `vendor/bin/phpunit`, and without it
-`/drupilot-test` cannot run a single test (`run-phpunit.sh` then records
-`not-verified-blocked` and exits 2). core-dev must MATCH the installed core, so do
-not use a fixed range — derive the requirement from the installed core version
-(`core_dev_requirement` in `common.sh`, e.g. `drupal/core-dev:~11.4.8`) and require
-it with `-W`. Run it yourself via the Bash tool, substituting `<drupal_root>` with
-the `drupal_root` from the resolve-workspace.sh JSON:
+Do NOT hand-write `ddev composer require --dev ...`: the toolchain is installed by a
+deterministic script that pins the versions, proves the result works and freezes it
+in the lock. Run it yourself via the Bash tool once 3a/3b are done, substituting
+`<drupal_root>` with the `drupal_root` from the resolve-workspace.sh JSON (do not run
+it verbatim — the script rejects an unsubstituted placeholder):
 
 ```bash
-cd "<drupal_root>" && ddev composer require --dev -W \
-  "$(bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; core_dev_requirement .')"
-ddev exec vendor/bin/phpunit --version   # must print PHPUnit 10/11
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-toolchain.sh" --dir "<drupal_root>" --json
 ```
 
-Then refresh the lock (`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/lock-sync.sh" --dir
-"<drupal_root>"`) so the exact toolchain, including `drupal/core-dev`, is frozen.
+Add `--with-upgrade-status` to also install `drupal/upgrade_status`; `--dry-run`
+prints the resolved package specs without running Composer.
+
+It installs drupal-rector, `rector/rector`, PHPStan + extension-installer +
+phpstan-drupal + phpstan-deprecation-rules, drupal/coder (`DRUPILOT_CODER_CONSTRAINT`)
+and **`drupal/core-dev`** (PHPUnit + the Drupal test dependencies, matched to the
+installed core by `core_dev_requirement` — without it `/drupilot-test` cannot run a
+single test). Versions come from, in order (`DRUPILOT_TOOLCHAIN_SOURCE=auto`): the
+project lock when it pins the whole known-good set, otherwise the shipped
+**known-good reference** `config/toolchain-reference.json`; with
+`DRUPILOT_DETERMINISTIC=false`, the `.packages` ranges. Then it runs a **smoke test**
+(a Rector dry-run with the Drupal 10 set + `phpstan --version`) and re-syncs the lock
+(`lock-sync.sh`), so `rector/rector`, `drupal/core-dev` and the rest are frozen. It
+is idempotent: when everything is already installed at its pinned version, Composer
+is not run.
+
+Read the JSON (`ok`, `status`, `source`, `smoke`) and act on the exit code:
+
+- `0` — installed (or `unchanged`) and the smoke test passed.
+- `3` — **the toolchain is installed but broken** (`status: "smoke-failed"`; e.g.
+  `[ERROR] Could not detect twig set.` from an incompatible `rector/rector`). Show
+  the diagnostic from stderr (installed vs known-good versions) and do NOT continue
+  to assess/port on it. The fix is the known-good set:
+  `install-toolchain.sh --dir "<drupal_root>" --source reference` (it refreshes the
+  lock). Never work around a crash by reading Rector's output as "no changes".
+- `2` — a requirement is missing or DDEV is not running (fix 3a first).
+- `1` — Composer could not resolve the set (its output is on stderr); if the pinned
+  set did not resolve it already retried once with the ranges (`fallback_to_ranges`).
 
 drupal/coder ships a Composer plugin (`*/phpcodesniffer-composer-installer`) that
 auto-registers the PHPCS `installed_paths`. Allow that plugin, let it run, then just

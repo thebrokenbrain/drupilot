@@ -66,6 +66,7 @@ config_enum DRUPILOT_CONTRIB_MODE         semi   semi auto              >/dev/nu
 config_enum DRUPILOT_CORE_TARGET_STRATEGY auto   auto d11-only keep-d10 >/dev/null || true
 config_enum DRUPILOT_REQUIRE_PHP_FLOOR    detect detect target          >/dev/null || true
 config_enum DRUPILOT_GENERATE_RULES       ask    ask auto off           >/dev/null || true
+config_enum DRUPILOT_TOOLCHAIN_SOURCE     auto   auto reference range   >/dev/null || true
 
 TARGET="$(resolve_php_target)"
 COMPOSER_MIN="$(req_version composer_min "2.2.0")"

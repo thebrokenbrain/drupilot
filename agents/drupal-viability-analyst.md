@@ -101,7 +101,9 @@ not reinvent their logic; capture and interpret their output.
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject <DIR>
    # add --digests to include the complementary digests pass (dry-run too)
-   # add --json for {changed_files, files, pass1_files, pass2_files}
+   # add --json for {status, ok, errors, changed_files, files, pass1_files, pass2_files}
+   # exit 3 = Rector crashed (status "error"): no verdict, never "0 files would
+   # change" — report it and repair with install-toolchain.sh --source reference
    ```
 4. **PHPStan at the deprecation level** (`DRUPILOT_PHPSTAN_LEVEL`, default 2):
    ```bash

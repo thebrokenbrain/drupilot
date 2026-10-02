@@ -57,6 +57,14 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "<path>"
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "<path>" --apply
 ```
 
+**Exit 3 = Rector crashed** (e.g. `[ERROR] Could not detect twig set.` from an
+incompatible `rector/rector`, a PHP fatal, or per-file processing errors): the
+`--json` payload has `status: "error"` and `errors[]` with the message, and there
+is **no verdict** — never read it as "0 files would change". Stop, show the
+diagnostic (installed vs known-good versions), repair the toolchain with
+`install-toolchain.sh --dir <drupal_root> --source reference` (or fix `rector.php`
+when the toolchain already matches the known-good set), and re-run.
+
 `run-rector.sh` `cd`s to the Drupal root, uses `RUNNER=$(drupal_runner)`
 (`ddev exec` when the env is up), and ensures a `rector.php` exists at the root
 (copied from `vendor/palantirnet/drupal-rector/rector.php` or the plugin's

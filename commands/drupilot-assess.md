@@ -84,6 +84,13 @@ from `DRUPILOT_PHP_TARGET` (default `8.3`) and auto-detect whether to run throug
    !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "$1"
    ```
 
+   **Exit 3 means Rector crashed** (`status: "error"` with `--json`; e.g.
+   `[ERROR] Could not detect twig set.`): there is no auto-fixable count — never
+   report it as "0 files would change". Show the diagnostic it prints (installed vs
+   known-good toolchain), stop the assessment and repair the toolchain with
+   `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-toolchain.sh" --dir <drupal_root> --source reference`
+   (or `/drupilot-setup`), then re-run.
+
 2. **Rector dry-run — complementary digests layer**, only if
    `DRUPILOT_USE_DIGESTS_RULES` is true. This clones/updates the unlicensed,
    AI-generated `dbuytaert/drupal-digests` repo into the plugin cache and runs it

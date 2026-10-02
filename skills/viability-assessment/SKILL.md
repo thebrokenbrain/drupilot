@@ -114,8 +114,19 @@ bash "$ROOT/scripts/analysis/run-rector.sh" --subject "$SUBJECT" --digests
 
 For a **reproducible** auto-fixable count (instead of eyeballing the diff), add
 `--json`: `run-rector.sh --subject "$SUBJECT" --json` emits
-`{changed_files, files, pass1_files, pass2_files}` — `pass1` = official rector,
-`pass2` = digests. Use `changed_files` and the pass split for the verdict.
+`{status, ok, errors, changed_files, files, pass1_files, pass2_files}` — `pass1` =
+official rector, `pass2` = digests. Use `changed_files` and the pass split for the
+verdict, but only when `status` is `"ok"`.
+
+**Exit 3 = Rector crashed** (e.g. `[ERROR] Could not detect twig set.` from an
+incompatible `rector/rector`, a PHP fatal, or per-file processing errors): the
+`--json` payload has `status: "error"` and `errors[]` with the message, and there
+is **no auto-fixable verdict** — never read it as "0 files would change". Stop, show the
+diagnostic (installed vs known-good versions), repair the toolchain with
+`install-toolchain.sh --dir <drupal_root> --source reference` (or fix `rector.php`
+when the toolchain already matches the known-good set), and re-run.
+In the report, record the Rector line as "not available (toolchain crash)" rather
+than an auto-fixable share of 0%.
 
 ### 3.2 PHPStan at deprecation level
 

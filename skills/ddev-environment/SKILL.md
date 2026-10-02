@@ -166,30 +166,55 @@ ddev restart
 
 ## 6. Install the Composer dev toolchain
 
-Install **inside DDEV** (`ddev composer require --dev ...`). Constraints come from
-`config/defaults.json` `.packages.*` — read them with `config_json` rather than
-hardcoding versions:
+Install it with the deterministic installer — never with a hand-written
+`ddev composer require --dev ...` (a fresh resolve after a broken upstream release
+silently installs a toolchain that crashes):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-toolchain.sh" --dir "<drupal_root>" --json
+#   --with-upgrade-status   also drupal/upgrade_status
+#   --dry-run               print the resolved specs, run nothing
+#   --smoke-only            only re-check an installed toolchain
+#   --source reference      force the known-good set (repair path)
+```
+
+What it installs (`config/defaults.json` `.packages.*`):
 
 - `palantirnet/drupal-rector` (the `palantirnet/` namespace is current;
-  `palantirnet/drupal8-rector` is obsolete)
-- `phpstan/phpstan:^2.1`, `phpstan/extension-installer`,
-  `mglaman/phpstan-drupal:^2.0`, `phpstan/phpstan-deprecation-rules:^2.0`
-- `drupal/coder` pinned by `DRUPILOT_CODER_CONSTRAINT` (default `^8.3` → PHPCS
-  3.x, the safe default; `^9.0` → PHPCS 4.x)
-- `drush/drush:^13`
-- optional `drupal/upgrade_status`
+  `palantirnet/drupal8-rector` is obsolete) and its engine `rector/rector`
+  (range `^2.0 <2.6.2`: drupal-rector 0.21.x throws `Could not detect twig set.`
+  with rector/rector >= 2.6.2)
+- `phpstan/phpstan`, `phpstan/extension-installer`, `mglaman/phpstan-drupal`,
+  `phpstan/phpstan-deprecation-rules`
+- `drupal/coder` at `DRUPILOT_CODER_CONSTRAINT` (default `^8.3` → PHPCS 3.x, the
+  safe default; `^9.0` → PHPCS 4.x)
 - `drupal/core-dev` (PHPUnit + the Drupal test dependencies) — **required for any
   test run**: `drupal/recommended-project` ships no `vendor/bin/phpunit`, and
   without it `run-phpunit.sh` records `not-verified-blocked` and exits 2. It must
-  MATCH the installed core, so `.packages.core_dev` carries no constraint: derive
-  it with `core_dev_requirement` (`common.sh`; e.g. `drupal/core-dev:~11.4.8`)
-  and require it with `-W`:
+  MATCH the installed core, so it is derived with `core_dev_requirement`
+  (`common.sh`; e.g. `drupal/core-dev:~11.4.8`), never a fixed range
+- optional `drupal/upgrade_status`
+- `drush/drush:^13` is NOT installed here — `ddev-up.sh` requires it (as a regular
+  dependency).
 
-```bash
-ddev composer require --dev -W \
-  "$(bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; core_dev_requirement .')"
-ddev exec vendor/bin/phpunit --version   # must print PHPUnit 10/11
-```
+Version source (`--source`, default `DRUPILOT_TOOLCHAIN_SOURCE=auto`): in
+deterministic mode the project lock when it pins the whole known-good set,
+otherwise the shipped **known-good reference** `config/toolchain-reference.json`
+as a whole (a partial lock is never mixed with it); with
+`DRUPILOT_DETERMINISTIC=false`, the `.packages` ranges. If the pinned set does not
+resolve against the project, it retries once with the ranges. It allows the
+`phpstan/extension-installer` and `dealerdirect/phpcodesniffer-composer-installer`
+Composer plugins, runs one `ddev composer require --dev -W`, then:
+
+- a **smoke test** (`rector_smoke` in `common.sh`): a Rector dry-run of a trivial
+  file with `Drupal10SetList::DRUPAL_10` plus `phpstan --version`, through DDEV;
+- `lock-sync.sh --dir <root>`, so the exact toolchain (including `rector/rector`
+  and `drupal/core-dev`) is frozen in the lock.
+
+Exit codes: `0` ok · `1` Composer failure · `2` gate (DDEV not running) · **`3` the
+toolchain is installed but broken** — the diagnostic prints installed vs known-good
+versions and the fix (`--source reference`). Do not assess or port on a toolchain
+that failed the smoke test.
 
 coder ships a Composer plugin (`*/phpcodesniffer-composer-installer`) that
 auto-registers PHPCS `installed_paths`. Allow it and just verify with `phpcs -i`.
@@ -205,20 +230,11 @@ ddev exec vendor/bin/phpcs -i   # must list Drupal and DrupalPractice
 With `phpstan/extension-installer` present, the phpstan-drupal and deprecation
 rules autoload — no manual `includes:` needed.
 
-**Freeze the toolchain for reproducibility.** drupilot is deterministic by default
-(`DRUPILOT_DETERMINISTIC`): after installing the toolchain, capture the exact
-resolved versions so later runs converge on the same toolchain:
-
-```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/lock-sync.sh" --dir "<project-root>"
-```
-
-In deterministic mode, if `drupilot-lock.json` already pins exact versions
-(`.toolchain.*`), require **those exact versions** rather than the ranges (e.g.
-`ddev composer require --dev "phpstan/phpstan:=2.1.17"`) so the port matches a
-previous one; `DRUPILOT_DETERMINISTIC=false` requires the ranges fresh and
-refreshes the lock. `ddev-up.sh` and `ddev-add-ons.sh` already call `lock-sync.sh`
-for core and add-ons.
+**Reproducibility.** `install-toolchain.sh` already re-syncs the lock
+(`lock-sync.sh`) after installing, and reuses the lock on later runs, so the same
+project converges on the same toolchain; `ddev-up.sh` and `ddev-add-ons.sh` call
+`lock-sync.sh` for core and add-ons. `DRUPILOT_DETERMINISTIC=false` resolves the
+ranges fresh and refreshes the lock.
 
 ## 7. Write the toolchain config from templates
 

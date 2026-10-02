@@ -98,6 +98,13 @@ the Drupal root (copying the official one or the plugin template) and uses the
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "$1" --apply
 ```
 
+**Exit 3 means Rector crashed** (`[ERROR] Could not detect twig set.`, a PHP fatal,
+per-file errors): its output is not a "no changes" result and nothing should be
+applied on top of it. Show the diagnostic (installed vs known-good toolchain),
+repair with `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-toolchain.sh" --dir <drupal_root> --source reference`
+(or fix `rector.php` when the toolchain already matches the known-good set), and
+re-run the pass. The digests pass is skipped automatically after such a crash.
+
 ## Step 4 — Pass 2: complementary digests layer (apply, version-filtered)
 
 Only if `DRUPILOT_USE_DIGESTS_RULES` is true. These rules are **AI-generated,

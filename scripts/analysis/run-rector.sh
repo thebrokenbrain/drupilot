@@ -33,14 +33,29 @@
 #   --config PATH      Explicit Rector config for the complementary pass
 #                      (overrides the cloned digests all.php). Implies --digests.
 #   --json             Emit a JSON summary on STDOUT instead of the plain file
-#                      list: {changed_files, files, pass1_files, pass2_files} —
-#                      pass1 = official, pass2 = digests. Used for the reproducible
-#                      verdict and the per-pass digests review.
+#                      list: {status, ok, errors, changed_files, files,
+#                      pass1_files, pass2_files} — pass1 = official, pass2 =
+#                      digests. Used for the reproducible verdict and the
+#                      per-pass digests review. status is "ok" or "error";
+#                      errors is [{pass, exit_code, message}].
 #   -h, --help         Show this help.
 #
 # Gate: `analyze` profile (git + jq + composer/php).
 # Output: status/logging on STDERR; a plain list of changed files (or, with
 #         --json, a JSON summary) on STDOUT.
+#
+# A Rector run only counts when it finished normally: exit 0 (no change /
+# applied) or 2 (dry-run found changes) AND its closing "[OK] ..." line. A
+# crash — e.g. "[ERROR] Could not detect twig set." from an incompatible
+# rector/rector, a PHP fatal, or per-file processing errors — is reported as
+# status "error" with the error text and exit 3, never as "0 files would
+# change". The file lists of a failed pass are partial at best. After a crash
+# of the official pass the digests pass is skipped.
+#
+# Exit codes: 0 ok · 1 usage error · 2 gate (requirements, Drupal root,
+# vendor/bin/rector or a source for rector.php missing) · 3 Rector crashed or
+# reported errors (toolchain/config broken; the diagnostic lists the installed
+# vs known-good versions from config/toolchain-reference.json).
 # =============================================================================
 set -euo pipefail
 
@@ -124,7 +139,7 @@ fi
 
 # --- Verify the Rector binary is present ----------------------------------
 if [[ ! -x "$DRUPAL_ROOT/vendor/bin/rector" && ! -f "$DRUPAL_ROOT/vendor/bin/rector" ]]; then
-  die "vendor/bin/rector is missing. Install the toolchain first (e.g. via /drupilot-setup, which runs 'composer require --dev palantirnet/drupal-rector')." 2
+  die "vendor/bin/rector is missing. Install the toolchain first: bash \"$(plugin_root)/scripts/env/install-toolchain.sh\" --dir \"$DRUPAL_ROOT\" (or /drupilot-setup)." 2
 fi
 
 # --- Ensure a rector.php exists at the Drupal root (idempotent) -----------
@@ -166,25 +181,38 @@ else
 fi
 
 # --- Helpers --------------------------------------------------------------
-# run_rector <dry_run:0/1> [extra args...] -> echoes captured output on STDOUT
-# of this function (we capture it to summarize and to feed the changed-files list).
+# run_rector_pass <pass:1|2> <dry_run:0/1> [extra args...] -> runs Rector,
+# leaves its combined output in RECTOR_RAW (echoed to stderr) and returns its
+# exit code. A run that did not finish normally (rector_output_ok) is recorded
+# in ERRORS_JSON with the error excerpt.
 RECTOR_RAW=""
+ERRORS_JSON="[]"
+FAILED_PASSES=""
 run_rector_pass() {
-  local dry="$1"; shift
+  local pass="$1" dry="$2"; shift 2
   local -a cmd=()
   [[ -n "$RUNNER" ]] && read -r -a cmd <<<"$RUNNER"
   cmd+=(vendor/bin/rector process "$SUBJECT_REL")
   if [[ "$dry" == "1" ]]; then cmd+=(--dry-run); fi
   cmd+=("$@")
   log_step "Rector: ${cmd[*]}"
-  # Capture combined output; do not let a non-zero rc (dry-run reports diffs as
-  # rc!=0) abort the script.
-  set +e
-  RECTOR_RAW="$("${cmd[@]}" 2>&1)"
-  local rc=$?
-  set -e
+  # Capture combined output; a non-zero rc must not abort the script (a dry-run
+  # that finds changes exits 2), so it is classified below instead.
+  local rc=0
+  RECTOR_RAW="$("${cmd[@]}" 2>&1)" || rc=$?
   printf '%s\n' "$RECTOR_RAW" >&2
-  return "$rc"
+  if ! rector_output_ok "$rc" "$RECTOR_RAW"; then
+    local msg; msg="$(rector_error_excerpt "$RECTOR_RAW")"
+    FAILED_PASSES="$FAILED_PASSES $pass"
+    if have_cmd jq; then
+      ERRORS_JSON="$(printf '%s' "$ERRORS_JSON" | jq -c --argjson p "$pass" --argjson rc "$rc" --arg m "$msg" \
+        '. + [{pass:$p, exit_code:$rc, message:$m}]')"
+    fi
+    log_err "Rector pass $pass FAILED (exit $rc) — this is a crash, not a 'no changes' result:"
+    printf '%s\n' "$msg" | sed 's/^/     /' >&2
+    return 1
+  fi
+  return 0
 }
 
 # summarize_changed <raw> -> print "[N] files would change / changed" to stderr
@@ -203,17 +231,21 @@ emit_changed_files() {
 # --- Pass 1: official palantirnet/drupal-rector ---------------------------
 hr
 log_step "Pass 1 — palantirnet/drupal-rector (official, stable)"
+PASS1_OK=1
 if [[ "$APPLY" == "1" ]]; then
-  run_rector_pass 0 || true
+  run_rector_pass 1 0 || PASS1_OK=0
 else
   log_info "Dry-run (no files modified). Use --apply to write changes."
-  run_rector_pass 1 || true
+  run_rector_pass 1 1 || PASS1_OK=0
 fi
 PASS1_RAW="$RECTOR_RAW"
 
 # --- Pass 2: complementary dbuytaert/drupal-digests (optional) ------------
 PASS2_RAW=""
-if [[ "$USE_DIGESTS" == "1" ]]; then
+if [[ "$USE_DIGESTS" == "1" && "$PASS1_OK" != "1" ]]; then
+  hr
+  log_warn "Skipping the digests pass: the official pass crashed, so the toolchain is broken (fix it first)."
+elif [[ "$USE_DIGESTS" == "1" ]]; then
   hr
   log_step "Pass 2 — dbuytaert/drupal-digests (complementary, AI-generated)"
   log_warn "Digests rules are UNLICENSED, AI-generated and target the development edge."
@@ -314,10 +346,10 @@ if [[ "$USE_DIGESTS" == "1" ]]; then
   if [[ -n "$CONFIG_PATH" ]]; then
     if [[ "$APPLY" == "1" ]]; then
       log_warn "Applying digests rules. Review the resulting diff carefully and validate with phpstan + tests."
-      RUNNER="$DIGESTS_RUNNER" run_rector_pass 0 --config "$CONFIG_PATH" || true
+      RUNNER="$DIGESTS_RUNNER" run_rector_pass 2 0 --config "$CONFIG_PATH" || true
     else
       log_info "Dry-run of the digests pass (no files modified). Use --apply only after reviewing the diff."
-      RUNNER="$DIGESTS_RUNNER" run_rector_pass 1 --config "$CONFIG_PATH" || true
+      RUNNER="$DIGESTS_RUNNER" run_rector_pass 2 1 --config "$CONFIG_PATH" || true
     fi
     PASS2_RAW="$RECTOR_RAW"
   fi
@@ -333,7 +365,14 @@ CHANGED="$( { printf '%s\n' "$PASS1_FILES"; printf '%s\n' "$PASS2_FILES"; } | gr
 COUNT=0
 [[ -n "$CHANGED" ]] && COUNT="$(printf '%s\n' "$CHANGED" | grep -c . || true)"
 
-if [[ "$APPLY" == "1" ]]; then
+FAILED=0
+[[ -n "$FAILED_PASSES" ]] && FAILED=1
+if [[ "$FAILED" == "1" ]]; then
+  log_err "Rector FAILED (pass:${FAILED_PASSES}). Its result is NOT a verdict (no '0 files would change' after a crash)."
+  [[ "$COUNT" != "0" ]] && log_warn "$COUNT file(s) were reported before the failure (partial result)."
+  toolchain_diagnostics "$DRUPAL_ROOT"
+  log_plain "   Check the installed toolchain:  bash \"$(plugin_root)/scripts/env/install-toolchain.sh\" --dir \"$DRUPAL_ROOT\" --smoke-only"
+elif [[ "$APPLY" == "1" ]]; then
   log_ok "Rector apply complete. $COUNT file(s) reported as changed."
   log_warn "Next: review the diff, then run phpstan and the test suite to validate."
 else
@@ -353,9 +392,14 @@ if [[ "$AS_JSON" == "1" ]]; then
       --argjson pass2 "$(lines_to_json "$PASS2_FILES")" \
       --argjson count "$COUNT" --argjson digests "$([[ "$USE_DIGESTS" == "1" ]] && echo true || echo false)" \
       --argjson applied "$([[ "$APPLY" == "1" ]] && echo true || echo false)" \
-      '{tool:"rector", applied:$applied, digests_pass:$digests, changed_files:$count,
+      --argjson errors "$ERRORS_JSON" \
+      '{tool:"rector", status:(if ($errors|length) > 0 then "error" else "ok" end),
+        ok:(($errors|length) == 0), errors:$errors,
+        applied:$applied, digests_pass:$digests, changed_files:$count,
         files:$files, pass1_files:$pass1, pass2_files:$pass2}'
   fi
 elif [[ -n "$CHANGED" ]]; then
   printf '%s\n' "$CHANGED"
 fi
+[[ "$FAILED" == "1" ]] && exit 3
+exit 0
