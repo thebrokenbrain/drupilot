@@ -177,9 +177,16 @@ if a file already exists and differs, show the diff and confirm before replacing
 Then ensure drupilot's generated artifacts are git-ignored at the Drupal root, so a
 coverage run or the `.drupilot.json` preference file can never leak into a contribution
 patch. This MERGES a marker-delimited block into any existing `.gitignore` (it never
-overwrites the project's own ignores) and is idempotent:
+overwrites the project's own ignores) and is idempotent. Run this yourself via the Bash
+tool, substituting `<drupal_root>` with the `drupal_root` from the resolve-workspace.sh
+JSON (do not run it verbatim — the script rejects an unsubstituted placeholder):
 
-!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ensure-gitignore.sh" --root "<drupal_root>"`
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ensure-gitignore.sh" --root "<drupal_root>"
+```
+
+Equivalently, `--subject "<subject_dir>"` derives the root itself (the enclosing Drupal
+root, or the test-bed root for a loose subject).
 
 ## Step 5 — Report
 

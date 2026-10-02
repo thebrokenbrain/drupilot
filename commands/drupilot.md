@@ -88,10 +88,11 @@ Print a concise English summary:
 - Assessment state (assessed? verdict + effort, or "not assessed yet").
 
 Then recommend exactly one **next step** as a concrete slash command. Do **not**
-restate the ladder here — call the single source of truth, passing the readiness
-booleans you already parsed from Step 1 so it does not re-run preflight:
+restate the ladder here — use the single source of truth. It runs at load (before
+you can substitute anything), so it reads the readiness booleans from preflight
+itself (`--from-preflight`, one ~0.5 s run):
 
-!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/next-step.sh" --subject "$1" --ready-analyze "<ready.analyze>" --ready-setup "<ready.setup>" --ready-test "<ready.test>" --ready-contribute "<ready.contribute>"`
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/next-step.sh" --subject "$1" --from-preflight`
 
 Relay its `command` + `reason`. The ladder it encodes is
 `doctor → setup → assess → port → [refactor] → test → [contribute]`; `refactor`

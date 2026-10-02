@@ -7,9 +7,9 @@
 #
 # It reads the per-project state (assess.json, the phase marker, last-test.json,
 # the lockfile) and the subject facts (extension? type? DDEV configured?), and
-# the four readiness booleans the caller already computed from `preflight --json`
-# (passed in to avoid a second, slow preflight run). It emits the single
-# recommended next step + a human reason.
+# the four readiness booleans — either passed in by a caller that already ran
+# `preflight --json`, or read by this script itself with --from-preflight. It
+# emits the single recommended next step + a human reason.
 #
 # Ladder (PROMPT 4.4): doctor -> setup -> assess -> port -> [refactor] -> test
 #                      -> [contribute]. refactor and contribute are opt-in.
@@ -18,9 +18,18 @@
 #   next-step.sh --subject DIR
 #                [--ready-analyze BOOL] [--ready-setup BOOL]
 #                [--ready-test BOOL] [--ready-contribute BOOL]
-#                [--json]
-#   BOOL is true|false; unknown readiness defaults to true (the ladder then just
-#   skips the /drupilot-doctor recommendation).
+#                [--from-preflight] [--json|--human]
+#   BOOL is true|false (also 1/0, yes/no, on/off).
+#   --from-preflight  run `preflight.sh --profile all --json` once (~0.5 s) and
+#                     take every readiness value NOT given explicitly from its
+#                     `.ready` object. Use it from a load-time !`...` line, where
+#                     the caller cannot substitute values it parsed earlier.
+#                     (`--ready-from-preflight` is an accepted alias.)
+#   An unparseable BOOL (e.g. an unsubstituted "<ready.analyze>" placeholder) is
+#   treated as unknown: a warning goes to STDERR and the value is filled from
+#   preflight as if --from-preflight had been given. Readiness that stays
+#   unknown (no flag, or preflight/jq unavailable) defaults to true (the ladder
+#   then just skips the /drupilot-doctor recommendation).
 #
 # Output:
 #   --json (default) -> {next, command, reason, phase, assessed, ddev_configured,
@@ -35,26 +44,38 @@ set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
 SUBJECT=""
-R_ANALYZE="true"; R_SETUP="true"; R_TEST="true"; R_CONTRIBUTE="true"
+# Readiness starts empty (= not given); see the defaulting below.
+R_ANALYZE=""; R_SETUP=""; R_TEST=""; R_CONTRIBUTE=""
+FROM_PREFLIGHT=0
 AS_JSON=1
 
 usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
-norm_bool() { case "${1,,}" in 1|true|yes|on) printf 'true';; *) printf 'false';; esac; }
+# norm_bool VALUE -> true | false | unknown (anything not boolean-like).
+norm_bool() {
+  case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on) printf 'true';;
+    0|false|no|off) printf 'false';;
+    *) printf 'unknown';;
+  esac
+}
+# ready_arg FLAG VALUE -> the normalized value, warning when it is unparseable.
+ready_arg() {
+  local v; v="$(norm_bool "$2")"
+  if [[ "$v" == "unknown" ]]; then
+    log_warn "$1: unparseable readiness value '$2' (an unsubstituted placeholder?) — reading it from preflight instead."
+  fi
+  printf '%s' "$v"
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --subject) SUBJECT="${2:-}"; shift 2;;
     --subject=*) SUBJECT="${1#*=}"; shift;;
-    --ready-analyze) R_ANALYZE="$(norm_bool "${2:-}")"; shift 2;;
-    --ready-setup) R_SETUP="$(norm_bool "${2:-}")"; shift 2;;
-    --ready-test)
-      # shellcheck disable=SC2034  # accepted for CLI compatibility; not used by the ladder.
-      R_TEST="$(norm_bool "${2:-}")"
-      shift 2;;
-    --ready-contribute)
-      # shellcheck disable=SC2034  # accepted for CLI compatibility; not used by the ladder.
-      R_CONTRIBUTE="$(norm_bool "${2:-}")"
-      shift 2;;
+    --ready-analyze) R_ANALYZE="$(ready_arg "$1" "${2:-}")"; shift 2;;
+    --ready-setup) R_SETUP="$(ready_arg "$1" "${2:-}")"; shift 2;;
+    --ready-test) R_TEST="$(ready_arg "$1" "${2:-}")"; shift 2;;
+    --ready-contribute) R_CONTRIBUTE="$(ready_arg "$1" "${2:-}")"; shift 2;;
+    --from-preflight|--ready-from-preflight) FROM_PREFLIGHT=1; shift;;
     --json) AS_JSON=1; shift;;
     --human) AS_JSON=0; shift;;
     -h|--help) usage; exit 0;;
@@ -65,6 +86,43 @@ done
 [[ -n "$SUBJECT" ]] || SUBJECT="$PWD"
 [[ -d "$SUBJECT" ]] || die "Subject directory not found: $SUBJECT" 1
 SUBJECT="$(cd "$SUBJECT" && pwd)"
+
+# --- Readiness ---------------------------------------------------------------
+# Fill the values not given (or unparseable) from one preflight run when asked
+# to, or when a caller passed garbage; whatever stays unknown defaults to true.
+NEED_PF=0
+for _r in "$R_ANALYZE" "$R_SETUP" "$R_TEST" "$R_CONTRIBUTE"; do
+  [[ "$_r" == "unknown" ]] && NEED_PF=1
+  [[ "$FROM_PREFLIGHT" == "1" && -z "$_r" ]] && NEED_PF=1
+done
+if [[ "$NEED_PF" == "1" ]]; then
+  PF_READY=""
+  if have_cmd jq; then
+    PF_READY="$(bash "$(plugin_root)/scripts/env/preflight.sh" --profile all --json --quiet 2>/dev/null \
+      | jq -r '.ready | [.analyze, .setup, .test, .contribute] | map(if . == null then "-" else tostring end) | join(" ")' 2>/dev/null || true)"
+  else
+    # No jq: preflight itself would report analyze as not ready (jq is a hard
+    # analyze requirement), so say so rather than silently assuming readiness.
+    PF_READY="false"
+  fi
+  if [[ -n "$PF_READY" ]]; then
+    # Four space-separated tokens (true/false, or "-" when preflight omitted one).
+    # shellcheck disable=SC2086  # intentional word split.
+    set -- $PF_READY
+    [[ -z "$R_ANALYZE"    || "$R_ANALYZE"    == "unknown" ]] && R_ANALYZE="$(norm_bool "${1:-}")"
+    [[ -z "$R_SETUP"      || "$R_SETUP"      == "unknown" ]] && R_SETUP="$(norm_bool "${2:-}")"
+    [[ -z "$R_TEST"       || "$R_TEST"       == "unknown" ]] && R_TEST="$(norm_bool "${3:-}")"
+    [[ -z "$R_CONTRIBUTE" || "$R_CONTRIBUTE" == "unknown" ]] && R_CONTRIBUTE="$(norm_bool "${4:-}")"
+  else
+    log_warn "Could not read readiness from preflight; assuming the environment is ready."
+  fi
+fi
+[[ -z "$R_ANALYZE"    || "$R_ANALYZE"    == "unknown" ]] && R_ANALYZE="true"
+[[ -z "$R_SETUP"      || "$R_SETUP"      == "unknown" ]] && R_SETUP="true"
+# test/contribute readiness is accepted (and filled) for CLI symmetry, but the
+# ladder does not branch on it today.
+[[ -z "$R_TEST"       || "$R_TEST"       == "unknown" ]] && R_TEST="true"
+[[ -z "$R_CONTRIBUTE" || "$R_CONTRIBUTE" == "unknown" ]] && R_CONTRIBUTE="true"
 
 # --- Gather state (read-only) ----------------------------------------------
 ROOT="$(find_drupal_root "$SUBJECT" 2>/dev/null || true)"
@@ -93,6 +151,7 @@ fi
 
 # Did the developer opt into the Phase 2 refactor? (pref / env, default false.)
 WANT_REFACTOR="$(config_get DRUPILOT_WANT_REFACTOR false)"; WANT_REFACTOR="$(norm_bool "$WANT_REFACTOR")"
+[[ "$WANT_REFACTOR" == "true" ]] || WANT_REFACTOR="false"
 
 # --- The ladder ------------------------------------------------------------
 NEXT=""; CMD=""; REASON=""

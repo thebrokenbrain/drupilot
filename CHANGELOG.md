@@ -27,6 +27,26 @@ tag the commit `vX.Y.Z`.
   scripts and hook scripts; no check is disabled globally.
 
 ### Fixed
+- **The router and `/drupilot-status` always recommended `/drupilot-doctor`.** Their
+  load-time `` !`...` `` line passed the literal placeholders `"<ready.analyze>"` etc.
+  to `next-step.sh` (a load-time line runs before the model can substitute
+  anything), and `next-step.sh` normalized any unrecognized value to `false`. Both
+  commands now pass the new `next-step.sh --from-preflight` (alias
+  `--ready-from-preflight`), which reads readiness from one `preflight.sh --profile
+  all --json` run. `next-step.sh` now treats a non-boolean readiness value as
+  *unknown* (warning on stderr, filled from preflight; still `true` if preflight or
+  `jq` is unavailable, as documented) instead of `false`; explicit
+  `true`/`false`/`1`/`0`/`yes`/`no`/`on`/`off` keep their meaning, and the ladder no
+  longer uses the bash 4-only `${x,,}`.
+- **`/drupilot-setup` failed to load (Step 4).** Its load-time line ran
+  `ensure-gitignore.sh --root "<drupal_root>"` verbatim (exit 1, "Root directory not
+  found: <drupal_root>"), and even a valid root would have written `.gitignore`
+  before the Step 1 gate. It is now a fenced block the model runs with the resolved
+  root. `ensure-gitignore.sh` rejects an unsubstituted `<placeholder>` with a clear
+  error and gains `--subject DIR` (derives the enclosing Drupal root, or the
+  test-bed root `resolve-workspace.sh` targets for a loose subject); `--root` keeps
+  precedence and `$PWD` detection is unchanged. `scripts/dev/check.sh`'s
+  `bang-lint` gate now passes and is no longer in its known-failing list.
 - Cleared the 12 `shellcheck -S warning` findings with no behavior change: dropped
   the unused `PHP_MIN` (`preflight.sh`) and `PF_RC` (`check-prereqs.sh`), collapsed
   the redundant `drupal/core*|drupal/core-*` pattern (`deps-status.sh`), and

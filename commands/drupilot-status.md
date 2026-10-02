@@ -76,10 +76,11 @@ Render an English summary covering:
   design, so it can never leak into a contribution.
 
 End with a single **suggested next step**. Do not restate the ladder here — use the
-same single source of truth the router uses, passing the readiness booleans from
-Step 1 (this is read-only and never acts on the suggestion):
+same single source of truth the router uses; it reads the readiness booleans from
+preflight itself (`--from-preflight`), since a load-time line cannot take values
+substituted from Step 1 (this is read-only and never acts on the suggestion):
 
-!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/next-step.sh" --subject "$1" --ready-analyze "<ready.analyze>" --ready-setup "<ready.setup>" --ready-test "<ready.test>" --ready-contribute "<ready.contribute>" --human`
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/next-step.sh" --subject "$1" --from-preflight --human`
 
 Relay its recommendation as a suggestion only. Add the same one-line aside as the
 router: once ported, `/drupilot-patch` produces a `.patch` any time (to test
