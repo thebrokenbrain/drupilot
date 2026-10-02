@@ -20,12 +20,21 @@
 #
 # Output:
 #   The PHPUnit output streams through to STDOUT/STDERR unmodified, followed by
-#   a short English pass/fail summary on STDERR.
+#   a short English pass/fail summary on STDERR. The verdict is persisted to
+#   last-test.json in the subject's state dir (see "preservation" below).
+#
+# PHPUnit itself comes from drupal/core-dev, which a plain recommended-project
+# does not ship. When the subject has tests but vendor/bin/phpunit is missing,
+# the run is recorded as `not-verified-blocked` (never as a false regression)
+# and the actionable install command is printed, matched to the installed core
+# (core_dev_requirement in common.sh), e.g.:
+#   ddev composer require --dev "drupal/core-dev:~11.4.8" -W
 #
 # Exit codes:
 #   0  -> all selected test groups passed (or there was nothing to run).
 #   1  -> usage/internal error.
-#   2  -> a hard 'test' requirement is missing (preflight gate failed).
+#   2  -> a hard 'test' requirement is missing: the preflight gate failed, DDEV
+#         is down, or PHPUnit (drupal/core-dev) is not installed.
 #   3  -> at least one test group failed.
 # =============================================================================
 set -euo pipefail
@@ -106,14 +115,47 @@ SUBJECT_REL="${SUBJECT#"$DRUPAL_ROOT"/}"
 # Build the list of test groups to run, in the canonical fast-to-slow order.
 # Each group maps to its tests/src/<Dir> directory under the subject.
 # ---------------------------------------------------------------------------
-declare -a GROUPS=()
+# NOTE: never name this array GROUPS — that is a bash special variable (the
+# user's group IDs) and assignments to it are silently ignored, which once made
+# this loop iterate over GIDs and run no test at all. scripts/dev/check.sh's
+# special-vars gate guards against the whole class.
+declare -a TEST_GROUPS=()
 case "$TYPE" in
-  unit)       GROUPS=(Unit);;
-  kernel)     GROUPS=(Kernel);;
-  functional) GROUPS=(Functional);;
-  js)         GROUPS=(FunctionalJavascript);;
-  all)        GROUPS=(Unit Kernel Functional FunctionalJavascript);;
+  unit)       TEST_GROUPS=(Unit);;
+  kernel)     TEST_GROUPS=(Kernel);;
+  functional) TEST_GROUPS=(Functional);;
+  js)         TEST_GROUPS=(FunctionalJavascript);;
+  all)        TEST_GROUPS=(Unit Kernel Functional FunctionalJavascript);;
 esac
+# Self-check: the list must hold test-group names, nothing else.
+for _g in "${TEST_GROUPS[@]}"; do
+  case "$_g" in
+    Unit|Kernel|Functional|FunctionalJavascript) : ;;
+    *) die "Internal error: unexpected test group '$_g' (the group list was clobbered)." 1;;
+  esac
+done
+
+# group_has_tests <group> -> 0 when tests/src/<group> holds at least one *Test.php.
+group_has_tests() {
+  local d="$SUBJECT/tests/src/$1"
+  [[ -d "$d" ]] || return 1
+  [[ -n "$(find "$d" -type f -name '*Test.php' 2>/dev/null | head -n1)" ]]
+}
+
+# Whether the subject ships ANY PHPUnit test (any group), independent of
+# --type: lets the report tell "no tests in the selected scope" apart from "the
+# subject ships no tests" (F14).
+SUBJECT_HAS_TESTS="false"
+if [[ -d "$SUBJECT/tests/src" ]] \
+   && [[ -n "$(find "$SUBJECT/tests/src" -type f -name '*Test.php' 2>/dev/null | head -n1)" ]]; then
+  SUBJECT_HAS_TESTS="true"
+fi
+
+# The selected groups that actually contain tests.
+declare -a GROUPS_WITH_TESTS=()
+for _g in "${TEST_GROUPS[@]}"; do
+  group_has_tests "$_g" && GROUPS_WITH_TESTS+=("$_g")
+done
 
 needs_selenium() {
   local g="$1"
@@ -188,15 +230,43 @@ PASSED=0
 FAILED=0
 SKIPPED=0
 SELENIUM_NOTE=""
+BLOCKED_REASON=""
+PHPUNIT_MISSING=0
+ENV_BLOCKED=0   # PHPUnit missing / not executable: an environment blocker (exit 2)
 declare -a FAILED_GROUPS=()
 declare -a SKIPPED_GROUPS=()
+
+# ---------------------------------------------------------------------------
+# PHPUnit availability. drupal/recommended-project does not ship PHPUnit; it
+# comes from drupal/core-dev. Without it every group would "fail" with exit 127
+# and be recorded as a false regression — so detect it up front and record an
+# honest not-verified-blocked verdict with the actionable install command.
+# Only checked when there is something to run.
+# ---------------------------------------------------------------------------
+if [[ ${#GROUPS_WITH_TESTS[@]} -gt 0 ]] && ! phpunit_available "$DRUPAL_ROOT"; then
+  PHPUNIT_MISSING=1; ENV_BLOCKED=1
+  CORE_DEV_REQ="$(core_dev_requirement "$DRUPAL_ROOT")"
+  BLOCKED_REASON="PHPUnit is not installed (vendor/bin/phpunit missing): install drupal/core-dev matching the installed core with: ddev composer require --dev \"$CORE_DEV_REQ\" -W"
+  log_err "PHPUnit is not installed in $DRUPAL_ROOT (vendor/bin/phpunit is missing)."
+  log_err "It ships with drupal/core-dev, which must match the installed core ($(drupal_core_version "$DRUPAL_ROOT" || true))."
+  log_plain "  Install it (inside DDEV), then re-run:"
+  log_plain "    (cd \"$DRUPAL_ROOT\" && ddev composer require --dev \"$CORE_DEV_REQ\" -W)"
+  log_plain "    bash \"$(plugin_root)/scripts/env/lock-sync.sh\" --dir \"$DRUPAL_ROOT\"   # freeze it in the lock"
+fi
 
 run_group() {
   local group="$1"
   local path="$SUBJECT_REL/tests/src/$group"
 
-  if [[ ! -d "$DRUPAL_ROOT/$path" ]]; then
+  if ! group_has_tests "$group"; then
     log_info "No $group tests under $SUBJECT_REL — skipping group."
+    return 0
+  fi
+
+  if [[ "$PHPUNIT_MISSING" == "1" ]]; then
+    log_warn "$group: not run — PHPUnit is not installed (external blocker, see above)."
+    SKIPPED=$((SKIPPED + 1))
+    SKIPPED_GROUPS+=("$group")
     return 0
   fi
 
@@ -228,6 +298,14 @@ run_group() {
   if [[ "$rc" -eq 0 ]]; then
     log_ok "$group: passed"
     PASSED=$((PASSED + 1))
+  elif [[ "$rc" -eq 126 || "$rc" -eq 127 ]]; then
+    # The runner could not execute PHPUnit at all (not found / not executable):
+    # an environment blocker, not a behavioral failure — never a regression.
+    RAN=$((RAN - 1)); ENV_BLOCKED=1
+    log_err "$group: PHPUnit could not be executed (exit $rc) — environment blocker, not a test failure."
+    [[ -n "$BLOCKED_REASON" ]] || BLOCKED_REASON="PHPUnit could not be executed (exit $rc): check vendor/bin/phpunit inside the DDEV web container (drupal/core-dev: $(core_dev_requirement "$DRUPAL_ROOT"))."
+    SKIPPED=$((SKIPPED + 1))
+    SKIPPED_GROUPS+=("$group")
   else
     log_err "$group: FAILED (phpunit exit $rc) — see the output above"
     FAILED=$((FAILED + 1))
@@ -236,9 +314,10 @@ run_group() {
   return 0
 }
 
-for g in "${GROUPS[@]}"; do
+for g in "${TEST_GROUPS[@]}"; do
   run_group "$g"
 done
+[[ -z "$BLOCKED_REASON" && -n "$SELENIUM_NOTE" ]] && BLOCKED_REASON="$SELENIUM_NOTE"
 
 # ---------------------------------------------------------------------------
 # Summary
@@ -259,10 +338,13 @@ fi
 #                            external blocker), so part of the behavior is unproven.
 #   regression            -> at least one group failed (a production-code defect
 #                            to fix in code, never a test relaxed to fake green).
-#   not-verified-blocked  -> tests exist but none could run (e.g. Selenium absent).
-#   not-verified-no-tests -> the subject ships no tests in the selected scope, so
+#   not-verified-blocked  -> tests exist but none could run (e.g. Selenium absent,
+#                            PHPUnit/drupal-core-dev not installed); see blocked_reason.
+#   not-verified-no-tests -> no test exists in the selected --type scope, so
 #                            preservation cannot be proven (drupilot never fabricates
-#                            tests in Phase 1).
+#                            tests in Phase 1). subject_has_tests tells whether the
+#                            subject ships tests in OTHER groups (a narrower --type)
+#                            or none at all.
 # coverage records only what was actually collected (requested + the HTML path);
 # a percentage is NOT computed in Phase 1, so the field stays honest about that.
 if have_cmd jq; then
@@ -295,11 +377,16 @@ if have_cmd jq; then
     --argjson failed_groups "$(arr_to_json ${FAILED_GROUPS[@]+"${FAILED_GROUPS[@]}"})" \
     --argjson skipped_groups "$(arr_to_json ${SKIPPED_GROUPS[@]+"${SKIPPED_GROUPS[@]}"})" \
     --arg js_skipped_reason "$SELENIUM_NOTE" \
+    --arg blocked_reason "$BLOCKED_REASON" \
+    --argjson subject_has_tests "$SUBJECT_HAS_TESTS" \
+    --argjson groups_with_tests "$(arr_to_json ${GROUPS_WITH_TESTS[@]+"${GROUPS_WITH_TESTS[@]}"})" \
     --argjson cov_requested "$COV_REQUESTED" --arg cov_html "$COV_HTML_PATH" \
     '{type:$type, status:$status, preservation:$preservation,
       ran:$ran, passed:$passed, failed:$failed,
       skipped:$skipped, failed_groups:$failed_groups, skipped_groups:$skipped_groups,
       js_skipped_reason: ($js_skipped_reason | select(. != "") // null),
+      blocked_reason: ($blocked_reason | select(. != "") // null),
+      subject_has_tests:$subject_has_tests, groups_with_tests:$groups_with_tests,
       coverage: {requested:$cov_requested, html: ($cov_html | select(. != "") // null), percent: null}}' \
     > "$STATE_DIR/last-test.json" 2>/dev/null || true
 fi
@@ -310,8 +397,20 @@ if [[ "$FAILED" -gt 0 ]]; then
   exit 3
 fi
 
+if [[ "$ENV_BLOCKED" == "1" ]]; then
+  log_err "Test groups were blocked: $BLOCKED_REASON"
+  log_err "Preservation is NOT verified for the blocked groups — fix the environment (see above) and re-run."
+  exit 2
+fi
+
 if [[ "$RAN" -eq 0 ]]; then
-  log_warn "No test groups were executed for the selected --type '$TYPE'."
+  if [[ -n "$BLOCKED_REASON" ]]; then
+    log_warn "No test groups were executed for --type '$TYPE': $BLOCKED_REASON"
+  elif [[ "$SUBJECT_HAS_TESTS" == "true" ]]; then
+    log_warn "No tests in the selected --type '$TYPE' scope (the subject has tests in other groups; try --type all)."
+  else
+    log_warn "No test groups were executed: the subject ships no PHPUnit tests."
+  fi
   exit 0
 fi
 

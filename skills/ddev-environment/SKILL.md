@@ -8,7 +8,8 @@ description: >-
   toolchain", "add Selenium", or "configure rector/phpstan/phpcs". It creates
   and starts a Drupal 11 DDEV project, installs the ddev-drupal-contrib and
   Selenium add-ons, installs the Composer dev toolchain (Rector, PHPStan + Drupal
-  extensions, coder, drush 13, optional upgrade_status), and writes
+  extensions, coder, drush 13, drupal/core-dev matching core for PHPUnit,
+  optional upgrade_status), and writes
   rector.php / phpstan.neon / phpcs.xml.dist plus the testing web_environment from
   templates parameterized by DRUPILOT_PHP_TARGET. Idempotent: it detects what is
   already in place and only does the missing work.
@@ -177,6 +178,18 @@ hardcoding versions:
   3.x, the safe default; `^9.0` → PHPCS 4.x)
 - `drush/drush:^13`
 - optional `drupal/upgrade_status`
+- `drupal/core-dev` (PHPUnit + the Drupal test dependencies) — **required for any
+  test run**: `drupal/recommended-project` ships no `vendor/bin/phpunit`, and
+  without it `run-phpunit.sh` records `not-verified-blocked` and exits 2. It must
+  MATCH the installed core, so `.packages.core_dev` carries no constraint: derive
+  it with `core_dev_requirement` (`common.sh`; e.g. `drupal/core-dev:~11.4.8`)
+  and require it with `-W`:
+
+```bash
+ddev composer require --dev -W \
+  "$(bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; core_dev_requirement .')"
+ddev exec vendor/bin/phpunit --version   # must print PHPUnit 10/11
+```
 
 coder ships a Composer plugin (`*/phpcodesniffer-composer-installer`) that
 auto-registers PHPCS `installed_paths`. Allow it and just verify with `phpcs -i`.

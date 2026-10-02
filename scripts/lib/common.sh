@@ -478,6 +478,66 @@ ddev_php_version() {
   trim "$v"
 }
 
+# drupal_core_version [root] -> the INSTALLED drupal/core version (e.g. 11.4.8),
+# read from the root's composer.lock (jq), else from the VERSION constant in
+# core/lib/Drupal.php. Prints nothing when unknown. Read-only, never fatal.
+drupal_core_version() {
+  local r="${1:-$(find_drupal_root 2>/dev/null || true)}" v="" f
+  [[ -n "$r" ]] || return 0
+  if [[ -f "$r/composer.lock" ]] && have_cmd jq; then
+    v="$(jq -r '((.packages // []) + (."packages-dev" // []))
+                | map(select(.name == "drupal/core")) | (.[0].version // empty)' \
+          "$r/composer.lock" 2>/dev/null || true)"
+  fi
+  if [[ -z "$v" ]]; then
+    for f in "$r/web/core/lib/Drupal.php" "$r/core/lib/Drupal.php"; do
+      [[ -f "$f" ]] || continue
+      v="$(sed -nE "s/^[[:space:]]*const VERSION = '([^']+)'.*/\1/p" "$f" 2>/dev/null | head -n1)"
+      [[ -n "$v" ]] && break
+    done
+  fi
+  printf '%s' "${v#v}"
+  return 0
+}
+
+# core_dev_requirement [root] -> the Composer requirement for drupal/core-dev
+# (PHPUnit + the Drupal test dependencies) MATCHING the installed core, so the
+# test toolchain never drifts from core:
+#   11.4.8        -> drupal/core-dev:~11.4.8   (same minor, >= that patch)
+#   11.2.0-rc1    -> drupal/core-dev:11.2.0-rc1 (pre-release: exact)
+#   11.x-dev      -> drupal/core-dev:11.x-dev   (dev branch: exact)
+#   unknown       -> drupal/core-dev:<resolve_drupal_target> (e.g. ^11)
+# The package name comes from config .packages.core_dev (default drupal/core-dev).
+core_dev_requirement() {
+  local r="${1:-$(find_drupal_root 2>/dev/null || true)}" v pkg
+  pkg="$(config_json '.packages.core_dev' 'drupal/core-dev')"
+  pkg="${pkg%%:*}"; [[ -n "$pkg" ]] || pkg="drupal/core-dev"
+  v="$(drupal_core_version "$r")"
+  if [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    printf '%s:~%s' "$pkg" "$v"
+  elif [[ -n "$v" ]]; then
+    printf '%s:%s' "$pkg" "$v"
+  else
+    printf '%s:%s' "$pkg" "$(resolve_drupal_target)"
+  fi
+  return 0
+}
+
+# phpunit_available [root] -> 0 when vendor/bin/phpunit exists for the project,
+# checked through drupal_runner (inside the container when DDEV is up), so a
+# mutagen-synced or container-only vendor is seen exactly as PHPUnit would be.
+phpunit_available() {
+  local r="${1:-$(find_drupal_root 2>/dev/null || true)}" runner
+  [[ -n "$r" ]] || return 1
+  runner="$(drupal_runner "$r")"
+  if [[ -n "$runner" ]]; then
+    # shellcheck disable=SC2086  # intentional word-split: runner is a command prefix.
+    ( cd "$r" && $runner test -f vendor/bin/phpunit ) >/dev/null 2>&1
+  else
+    [[ -f "$r/vendor/bin/phpunit" ]]
+  fi
+}
+
 # ddev_addons_installed [root] -> one line per installed DDEV add-on on STDOUT:
 # "<name><TAB><version>" (version may be empty). Sources, in order:
 #   1. `ddev add-on list --installed -j` (machine-readable; the human table is

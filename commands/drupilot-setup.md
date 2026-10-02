@@ -1,5 +1,5 @@
 ---
-description: Provision a Drupal 11 DDEV environment for porting a module/theme - start DDEV, install the contrib (+ Selenium) add-ons, install the Composer dev toolchain (drupal-rector, PHPStan + extensions, coder, drush 13), and write rector.php / phpstan.neon / phpcs.xml.dist / testing web_environment from templates. Idempotent. Use for "/drupilot-setup", "set up the environment", "spin up DDEV for this module".
+description: Provision a Drupal 11 DDEV environment for porting a module/theme - start DDEV, install the contrib (+ Selenium) add-ons, install the Composer dev toolchain (drupal-rector, PHPStan + extensions, coder, drush 13, drupal/core-dev for PHPUnit), and write rector.php / phpstan.neon / phpcs.xml.dist / testing web_environment from templates. Idempotent. Use for "/drupilot-setup", "set up the environment", "spin up DDEV for this module".
 argument-hint: "[subject-path] [--php X.Y]"
 allowed-tools: Bash, Read, Skill, Task, AskUserQuestion
 ---
@@ -139,6 +139,24 @@ phpstan ^2.1 + extension-installer + phpstan-drupal ^2.0 + phpstan-deprecation-r
 ^2.0, drupal/coder (at the configured constraint), and optionally drupal/upgrade_status.
 Read the constraints first, then run `ddev composer require --dev ...`. This is
 idempotent — Composer is a no-op when the constraints are already satisfied.
+
+**Also install `drupal/core-dev` (PHPUnit + the Drupal test dependencies).** The
+`drupal/recommended-project` scaffold ships no `vendor/bin/phpunit`, and without it
+`/drupilot-test` cannot run a single test (`run-phpunit.sh` then records
+`not-verified-blocked` and exits 2). core-dev must MATCH the installed core, so do
+not use a fixed range — derive the requirement from the installed core version
+(`core_dev_requirement` in `common.sh`, e.g. `drupal/core-dev:~11.4.8`) and require
+it with `-W`. Run it yourself via the Bash tool, substituting `<drupal_root>` with
+the `drupal_root` from the resolve-workspace.sh JSON:
+
+```bash
+cd "<drupal_root>" && ddev composer require --dev -W \
+  "$(bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; core_dev_requirement .')"
+ddev exec vendor/bin/phpunit --version   # must print PHPUnit 10/11
+```
+
+Then refresh the lock (`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/lock-sync.sh" --dir
+"<drupal_root>"`) so the exact toolchain, including `drupal/core-dev`, is frozen.
 
 drupal/coder ships a Composer plugin (`*/phpcodesniffer-composer-installer`) that
 auto-registers the PHPCS `installed_paths`. Allow that plugin, let it run, then just

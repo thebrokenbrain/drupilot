@@ -118,7 +118,12 @@ reinvent their logic.
    ```
    Use `--filter X` to isolate a single failing test while iterating. For `js`, the
    script ensures Selenium is present; if it is not, it skips JS with a clear message
-   — surface that, do not pretend the suite is fully green.
+   — surface that, do not pretend the suite is fully green. **Exit 2 with "PHPUnit
+   is not installed"** means `vendor/bin/phpunit` is missing (no `drupal/core-dev`):
+   the verdict is `not-verified-blocked`, not a regression. Run the install command
+   it prints (core-dev matched to the installed core, e.g. `ddev composer require
+   --dev "drupal/core-dev:~11.4.8" -W`) and re-run — never adapt tests against a
+   missing PHPUnit.
 5. **Iterate** until the applicable suite is green. Read the actual failure output;
    fix the root cause (test or, when the test is correct, the ported code — but if
    the fix belongs to the port/refactor, report it back rather than silently

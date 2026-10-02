@@ -56,6 +56,21 @@ tag the commit `vX.Y.Z`.
 - **`run-phpstan.sh --json` adds a `drupilot` key** — `{status:
   clean|findings|crashed, exit_code, phpstan_exit_code, notices, crash}` — next to
   PHPStan's native report.
+- **`special-vars` gate in `scripts/dev/check.sh`.** Rejects any script that
+  assigns, declares, `read`s into or loops over a bash special variable (`GROUPS`,
+  `RANDOM`, `SECONDS`, `LINENO`, `UID`, `EUID`, `PPID`, `BASHPID`, `HOSTNAME`,
+  `PWD`, `PIPESTATUS`, `BASH_SOURCE`, ...), whose assignment bash silently ignores
+  or overrides; a line can opt out with a trailing `# special-var-ok` and a reason.
+  An audit of every script found no other collision than the one fixed below.
+- **Core/test-toolchain helpers in `common.sh`:** `drupal_core_version` (installed
+  `drupal/core`, from `composer.lock` or `core/lib/Drupal.php`),
+  `core_dev_requirement` (the `drupal/core-dev` requirement matched to it, e.g.
+  `drupal/core-dev:~11.4.8`; exact for pre-release/dev cores) and
+  `phpunit_available` (checks `vendor/bin/phpunit` through `drupal_runner`).
+  `config/defaults.json` lists `.packages.core_dev`, so `lock-sync.sh` now freezes
+  its exact version too.
+- **`last-test.json` records why and what:** `blocked_reason` (why tests that
+  exist could not run), `subject_has_tests` and `groups_with_tests`.
 
 ### Changed
 - **`ddev-up.sh` uses `ddev composer create-project`** on DDEV >= 1.24.2 (DDEV
@@ -66,6 +81,30 @@ tag the commit `vX.Y.Z`.
   `render-templates.sh`.
 
 ### Fixed
+- **`run-phpunit.sh` never ran a single test.** It stored the group list in an
+  array named `GROUPS`, a bash special variable (the user's group IDs) whose
+  assignments bash silently ignores, so the loop iterated over GIDs (`1000 970
+  10`), found no `tests/src/1000`, exited 0 and recorded `not-verified-no-tests`
+  for every subject — the preservation gate never verified anything. The array is
+  now `TEST_GROUPS`, with a self-check that it holds only group names, and the new
+  `special-vars` gate keeps the whole class out. On the autologout 8.x-1.4 lab
+  subject the Kernel, Functional and FunctionalJavascript suites now really run
+  (pre-port: red, `regression`, as the module still declares `^9.2 || ^10`).
+- **PHPUnit was never installed, and its absence was reported as a regression.**
+  Nothing installed `drupal/core-dev`, which `drupal/recommended-project` does not
+  ship, so every group failed with exit 127. `/drupilot-setup` (Step 3c) and the
+  `ddev-environment` skill now install `drupal/core-dev` matched to the installed
+  core (`core_dev_requirement`, with `-W`). `run-phpunit.sh` detects a missing
+  `vendor/bin/phpunit` up front (and treats a PHPUnit exit 126/127 the same way):
+  it records `not-verified-blocked` with the reason, prints the exact install
+  command, and exits 2 instead of claiming a regression.
+- **`run-phpunit.sh` no longer counts an empty test directory as a passing group.**
+  A group runs only when `tests/src/<Group>` holds at least one `*Test.php`.
+- **The port report no longer claims "the subject ships no tests"** whenever the
+  verdict is `not-verified-no-tests`: it says so only when the test run confirmed
+  the subject has none, otherwise it names the `--type` scope that held no test
+  (and points to `--type all`); `not-verified-blocked` now shows the recorded
+  reason.
 - **`ddev-add-ons.sh --contrib` aborted on every platform** in the
   recommended-project layout: `sed -i 's#ddev symlink-project#: # ...#'` used `#`
   both as the delimiter and inside the replacement (`unknown option to 's'` on GNU

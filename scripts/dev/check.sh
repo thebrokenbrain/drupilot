@@ -17,6 +17,12 @@
 #                 readlink -f, realpath, grep -P, date -d, xargs -r, stat -c,
 #                 find -printf, envsubst. Comment text is ignored; a line can
 #                 opt out with a trailing `# portability-ok` and a reason
+#   - special-vars no script assigns, declares, reads into or loops over a bash
+#                 special variable (GROUPS, RANDOM, SECONDS, LINENO, UID, EUID,
+#                 PPID, BASHPID, HOSTNAME, PWD, PIPESTATUS, BASH_SOURCE, ...):
+#                 bash ignores or overrides such assignments silently (a
+#                 `GROUPS=(Unit ...)` once made run-phpunit.sh run no test).
+#                 A line can opt out with a trailing `# special-var-ok` and a reason
 #   - bang-lint   no `!`...`` exec span in commands/*.md, skills/*/SKILL.md or
 #                 agents/*.md contains a <placeholder>: those spans run at command
 #                 load, before the model can substitute anything
@@ -49,7 +55,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export CLAUDE_PLUGIN_ROOT="$REPO"
 
-ALL_GATES="validate syntax exec-bit shellcheck portability bang-lint templates json"
+ALL_GATES="validate syntax exec-bit shellcheck portability special-vars bang-lint templates json"
 # Gates known to fail on the current tree, with a fix tracked for 0.9.0. Empty
 # this list as the fixes land so --allow-known stops hiding them.
 KNOWN_FAILING=""
@@ -193,6 +199,34 @@ gate_portability() {
     record portability fail "$(wc -l < "$out" | tr -d ' ') bash-4/GNU-only construct(s) (use lc, sed_inplace, ... from common.sh)" "$out"
   else
     record portability pass "${#SCRIPTS[@]} scripts free of bash-4/GNU-only constructs"
+  fi
+}
+
+gate_special_vars() {
+  local out="$TMP/special-vars.out" f
+  # Bash special variables whose assignment is ignored, overridden or harmful.
+  local names='GROUPS|RANDOM|SRANDOM|SECONDS|LINENO|HOSTNAME|HOSTTYPE|MACHTYPE|OSTYPE|UID|EUID|PPID|BASHPID|PWD|OLDPWD|PIPESTATUS|FUNCNAME|DIRSTACK|SHLVL|SHELLOPTS|BASHOPTS|HISTCMD|EPOCHSECONDS|EPOCHREALTIME|COMP_WORDS|COMP_CWORD|BASH_ARGC|BASH_ARGV|BASH_ARGV0|BASH_SOURCE|BASH_LINENO|BASH_VERSINFO|BASH_VERSION|BASH_COMMAND|BASH_SUBSHELL|BASH_REMATCH|BASH_ALIASES|BASH_CMDS|BASH_EXECUTION_STRING'
+  : > "$out"
+  for f in "${SCRIPTS[@]}"; do
+    [[ "$f" == "scripts/dev/check.sh" ]] && continue   # its own patterns would self-match
+    (cd "$REPO" && awk -v F="$f" -v N="$names" '
+      BEGIN { e = "(" N ")" }
+      /# special-var-ok/ { next }
+      {
+        line = $0
+        if (line ~ /^[[:space:]]*#/) next
+        sub(/[[:space:]]#[[:space:]].*$/, "", line)
+        if (line ~ ("(^|[;&|({[:space:]])" e "(\\[[^]]*\\])?\\+?=") ||
+            line ~ ("(declare|local|typeset|readonly|export|unset)([[:space:]]+-[a-zA-Z]+)*([[:space:]]+[A-Za-z_][A-Za-z0-9_]*(=[^[:space:]]*)?)*[[:space:]]+" e "([[:space:]=;]|$)") ||
+            line ~ ("(^|[;&|({[:space:]])for[[:space:]]+" e "[[:space:]]+in([[:space:]]|$)") ||
+            line ~ ("(^|[;&|({[:space:]])read([[:space:]]+[^;|&<>]*)?[[:space:]]+" e "([[:space:];<]|$)"))
+          printf "%s:%d: %s\n", F, NR, substr($0, 1, 140)
+      }' "$f") >> "$out"
+  done
+  if [[ -s "$out" ]]; then
+    record special-vars fail "$(wc -l < "$out" | tr -d ' ') use(s) of a bash special variable as a plain variable (rename it)" "$out"
+  else
+    record special-vars pass "${#SCRIPTS[@]} scripts free of bash special-variable collisions"
   fi
 }
 

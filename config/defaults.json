@@ -66,7 +66,7 @@
     "feed_path": "feeds/rector.xml"
   },
 
-  "_packages_comment": "Composer constraints for the dev toolchain (PROMPT 1.1), installed inside DDEV. These are the verified SUPPORTED RANGES; the EXACT patch versions resolved on first install are frozen per-project in drupilot-lock.json (see _deterministic_comment) and reused while DRUPILOT_DETERMINISTIC is on. extension-installer only autoconfigures phpstan-drupal and upgrade_status only corroborates findings — neither affects the port result, so they carry a broad range and are pinned exactly by the lock rather than here.",
+  "_packages_comment": "Composer constraints for the dev toolchain (PROMPT 1.1), installed inside DDEV. These are the verified SUPPORTED RANGES; the EXACT patch versions resolved on first install are frozen per-project in drupilot-lock.json (see _deterministic_comment) and reused while DRUPILOT_DETERMINISTIC is on. extension-installer only autoconfigures phpstan-drupal and upgrade_status only corroborates findings — neither affects the port result, so they carry a broad range and are pinned exactly by the lock rather than here. core_dev (drupal/core-dev: PHPUnit + the Drupal test dependencies, required by run-phpunit.sh) carries NO constraint here on purpose: it must MATCH the installed drupal/core, so the requirement is derived at install time by core_dev_requirement (scripts/lib/common.sh), e.g. drupal/core-dev:~11.4.8.",
   "packages": {
     "drupal_rector": "palantirnet/drupal-rector:^0.21",
     "phpstan": "phpstan/phpstan:^2.1",
@@ -75,7 +75,8 @@
     "phpstan_deprecation_rules": "phpstan/phpstan-deprecation-rules:^2.0",
     "coder": "drupal/coder",
     "drush": "drush/drush:^13",
-    "upgrade_status": "drupal/upgrade_status"
+    "upgrade_status": "drupal/upgrade_status",
+    "core_dev": "drupal/core-dev"
   },
 
   "_contrib_comment": "URLs and endpoints for the Drupal.org contribution flow (PROMPT 3).",

@@ -112,12 +112,27 @@ PATCH="$(mget '.patch' '')"
 # Preservation: prefer the manifest, fall back to last-test.json.
 PRESERVATION="$(mget '.preservation' "$(printf '%s' "$TEST" | jq -r '.preservation // empty' 2>/dev/null)")"
 [[ -n "$PRESERVATION" ]] || PRESERVATION="unknown"
+# Context from last-test.json for an honest wording (absent in older records).
+TEST_TYPE="$(printf '%s' "$TEST" | jq -r '.type // empty' 2>/dev/null || true)"
+TEST_BLOCKED="$(printf '%s' "$TEST" | jq -r '.blocked_reason // .js_skipped_reason // empty' 2>/dev/null || true)"
+TEST_HAS_TESTS="$(printf '%s' "$TEST" | jq -r 'if has("subject_has_tests") then (.subject_has_tests | tostring) else empty end' 2>/dev/null || true)"
 case "$PRESERVATION" in
   verified)              PRES_LINE="✅ **verified** — the adapted test suite is green; behavior is preserved.";;
   verified-partial)      PRES_LINE="🟡 **partially verified** — the groups that ran are green, but some were skipped (an external blocker), so part of the behavior is unproven.";;
   regression)            PRES_LINE="❌ **regression** — a behavioral test is red. Fix the production code (never the test).";;
-  not-verified-blocked)  PRES_LINE="⚠️ **not verified (blocked)** — tests exist but could not run (e.g. Selenium). Documented, not hidden.";;
-  not-verified-no-tests) PRES_LINE="⚠️ **not verified** — the subject ships no tests, so preservation cannot be proven. drupilot does not fabricate tests.";;
+  not-verified-blocked)
+    PRES_LINE="⚠️ **not verified (blocked)** — tests exist but could not run"
+    if [[ -n "$TEST_BLOCKED" ]]; then PRES_LINE="$PRES_LINE: ${TEST_BLOCKED%.}."
+    else PRES_LINE="$PRES_LINE (e.g. Selenium unreachable, PHPUnit/drupal-core-dev not installed)."; fi
+    PRES_LINE="$PRES_LINE Documented, not hidden.";;
+  not-verified-no-tests)
+    # Only claim "ships no tests" when the test run confirmed it: a narrower
+    # --type can find no tests in its scope while other groups have them.
+    case "$TEST_HAS_TESTS" in
+      false) PRES_LINE="⚠️ **not verified** — the subject ships no tests, so preservation cannot be proven. drupilot does not fabricate tests.";;
+      true)  PRES_LINE="⚠️ **not verified** — no test ran in the selected scope (\`--type ${TEST_TYPE:-?}\`), although the subject has tests in other groups. Run the whole suite (\`run-phpunit.sh --type all\` / \`/drupilot-test\`) to verify preservation.";;
+      *)     PRES_LINE="⚠️ **not verified** — no test ran in the selected scope${TEST_TYPE:+ (\`--type $TEST_TYPE\`)}, so preservation cannot be proven. drupilot does not fabricate tests.";;
+    esac;;
   *)                     PRES_LINE="• preservation: not run yet (run /drupilot-test).";;
 esac
 

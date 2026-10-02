@@ -91,6 +91,13 @@ unavailable), in which case **document it explicitly** rather than hiding it.
 If Selenium could not be installed, the JS group is skipped with a clear note —
 that is a documented gap, not a pass.
 
+If `run-phpunit.sh` exits `2` with "PHPUnit is not installed", the Drupal root has
+no `vendor/bin/phpunit` (`drupal/core-dev` is missing — environments set up by
+drupilot 0.8.4 or earlier never installed it). The run is recorded as
+`not-verified-blocked`, not as a regression. Run the install command it prints
+(core-dev matched to the installed core, with `-W`), refresh the lock with
+`lock-sync.sh --dir <drupal_root>`, then re-run the groups.
+
 ## Step 5 — Coverage (especially in Phase 2)
 
 When the suite is green, report coverage. In a Phase 2 context, first add tests

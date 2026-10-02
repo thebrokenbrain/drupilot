@@ -133,7 +133,7 @@ Developer-facing outputs live in a single **visible, gitignored** `.drupilot/` d
 | --- | --- |
 | `/drupilot [subject] [full\|auto]` | **Router / guided flow.** Detects the current state (environment, last assessment, phase) and recommends the next step. `full` runs the whole flow with confirmations; `auto` runs it **hands-off** (see below). |
 | `/drupilot-doctor [install]` | **Requirements check.** Per-platform status table (Docker + daemon, DDEV, git, composer/php, jq, SSH/PAT) with install instructions and optional assisted installation (with confirmation). |
-| `/drupilot-setup` | Spins up a **Drupal 11 DDEV** site, installs the add-ons (`ddev-drupal-contrib`, Selenium) and the Composer dev toolchain, and writes `rector.php` / `phpstan.neon` / `phpcs.xml.dist` / test env from templates. Idempotent. |
+| `/drupilot-setup` | Spins up a **Drupal 11 DDEV** site, installs the add-ons (`ddev-drupal-contrib`, Selenium) and the Composer dev toolchain (including `drupal/core-dev`, matched to the installed core, which provides PHPUnit), and writes `rector.php` / `phpstan.neon` / `phpcs.xml.dist` / test env from templates. Idempotent. |
 | `/drupilot-assess [subject]` | Produces the **viability report** + staged plan with an S/M/L/XL verdict. |
 | `/drupilot-port [subject]` | **Phase 1 minimal port.** Official Rector + (optional) digests rules filtered by target + ad-hoc fixes + minimal manual changes; leaves the code compiling with no blocking deprecations. |
 | `/drupilot-refactor [subject]` | **Phase 2 full refactor** (opt-in): the "Drupal 11 way", PHPStan level 5–6, clean PHPCS. |
@@ -151,7 +151,7 @@ Developer-facing outputs live in a single **visible, gitignored** `.drupilot/` d
 
 A **viability assessment** always runs first as a decision gate. If the refactor is disproportionate (a configurable threshold), `drupilot` does not refuse — it still delivers a staged port plan that preserves the original functionality, and leaves the decision to you.
 
-**How "respecting the original functionality" is verified.** The adapted test suite staying **green is the preservation gate** for both phases — that green is the evidence the behavior is preserved. Test adaptations only update a test's *form* (PHPUnit/Drupal API), never *what it verifies*; a behavioral regression is fixed in the code, never by relaxing a test. If the module ships **no tests**, `drupilot` reports preservation as **not verified** and recommends adding them — it does not fabricate them.
+**How "respecting the original functionality" is verified.** The adapted test suite staying **green is the preservation gate** for both phases — that green is the evidence the behavior is preserved. Test adaptations only update a test's *form* (PHPUnit/Drupal API), never *what it verifies*; a behavioral regression is fixed in the code, never by relaxing a test. If the module ships **no tests**, `drupilot` reports preservation as **not verified** and recommends adding them — it does not fabricate them. If tests exist but cannot run (PHPUnit/`drupal/core-dev` missing, Selenium unreachable), it reports **not verified (blocked)** with the reason — never a false regression or a false "no tests".
 
 ---
 
@@ -269,7 +269,7 @@ export DRUPILOT_CORE_TARGET_STRATEGY=d11-only   # ^11 only (drops Drupal 10)
 
 Porting the same module twice should yield the same result. drupilot is **deterministic by default** (`DRUPILOT_DETERMINISTIC=true`): the first time it resolves the moving parts of a port it **freezes** them in a per-project `drupilot-lock.json` (kept in drupilot's state dir, not your project tree) and **reuses** them on later runs:
 
-- the exact **Drupal core** version and the **dev-toolchain** versions (`drupal-rector`, PHPStan + extensions, `coder`/PHPCS, Drush) read from the generated `composer.lock`;
+- the exact **Drupal core** version and the **dev-toolchain** versions (`drupal-rector`, PHPStan + extensions, `coder`/PHPCS, Drush, `drupal/core-dev`) read from the generated `composer.lock`;
 - the **digests commit (SHA)** that the `main` branch resolved to — so the AI-generated rule layer stays fixed for the project even though its default ref is still `main`;
 - the installed **DDEV add-on** versions.
 
@@ -410,6 +410,7 @@ Enable/disable it with `DRUPILOT_USE_DIGESTS_RULES` (default `true`).
 
 - **A command says a hard requirement is missing.** Run `/drupilot-doctor` — it shows exactly what is missing, the detected vs. required version, and the install command for your platform.
 - **Docker is installed but commands still fail.** The daemon must be running (`sudo systemctl start docker` on Linux, or launch Docker Desktop). `drupilot` checks the daemon, not just the binary.
+- **`run-phpunit.sh` exits 2 with "PHPUnit is not installed" (preservation `not-verified-blocked`).** The Drupal root has no `vendor/bin/phpunit`: `drupal/recommended-project` does not ship it. Install `drupal/core-dev` matching your core — the script prints the exact command, e.g. `ddev composer require --dev "drupal/core-dev:~11.4.8" -W` — and re-run. Environments set up by drupilot 0.8.4 or earlier never installed it.
 - **FunctionalJavascript tests are skipped.** Install the Selenium add-on: `ddev add-on get ddev/ddev-selenium-standalone-chrome && ddev restart`.
 - **A spurious `web/modules/custom/<project>/` symlink folder appears after `ddev restart`.** `ddev-drupal-contrib`'s `symlink-project` hook does this in the recommended-project layout; `ddev-add-ons.sh` disables it in `.ddev/config.contrib.yaml`. That file is `#ddev-generated`, so a later `ddev add-on get ddev/ddev-drupal-contrib` restores the hook — re-run `/drupilot-setup` (or `ddev-add-ons.sh --contrib`) afterwards.
 - **The GitLab API is blocked.** Expected — drupalcode's API is restricted by default. `drupilot` degrades to a one-click MR URL; just open it to create the MR.
@@ -428,7 +429,7 @@ bash scripts/dev/check.sh          # human report; exit 0 ok / 1 a gate failed
 bash scripts/dev/check.sh --json   # machine-readable per-gate summary
 ```
 
-It validates the plugin manifest, syntax-checks and `shellcheck`s every script, checks the executable bits, rejects bash 4-only / GNU-only constructs (`${x,,}`, `declare -A`, `sed -i`, `readlink -f`, ... — the scripts must run on stock macOS bash 3.2), rejects `<placeholder>` literals inside load-time `` !`...` `` lines of commands/skills/agents, checks that the rendered XML templates are well-formed, and validates every JSON file. Optional tools (`claude`, `shellcheck`, `xmllint`) are skipped when absent (`--ci` makes them mandatory). See `--help` for `--only`/`--skip`/`--allow-known`.
+It validates the plugin manifest, syntax-checks and `shellcheck`s every script, checks the executable bits, rejects bash 4-only / GNU-only constructs (`${x,,}`, `declare -A`, `sed -i`, `readlink -f`, ... — the scripts must run on stock macOS bash 3.2), rejects bash special variables used as plain variables (`GROUPS`, `RANDOM`, `SECONDS`, `UID`, ... — bash silently ignores such assignments), rejects `<placeholder>` literals inside load-time `` !`...` `` lines of commands/skills/agents, checks that the rendered XML templates are well-formed, and validates every JSON file. Optional tools (`claude`, `shellcheck`, `xmllint`) are skipped when absent (`--ci` makes them mandatory). See `--help` for `--only`/`--skip`/`--allow-known`.
 
 ---
 

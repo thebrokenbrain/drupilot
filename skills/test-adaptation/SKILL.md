@@ -154,7 +154,15 @@ bash "$ROOT/scripts/tests/run-phpunit.sh" --subject "$SUBJECT" --type kernel --f
 
 `run-phpunit.sh` runs `$RUNNER vendor/bin/phpunit -c web/core <paths>` for the
 selected group, ensures Selenium for `js`, and **never silences failures** — it
-surfaces the failing output. Iteration loop:
+surfaces the failing output. A group runs only when `tests/src/<Group>` holds at
+least one `*Test.php`. Exit codes: `0` passed (or nothing to run) · `2` blocked by
+the environment (preflight failed, DDEV down, or PHPUnit missing) · `3` a group
+failed. **PHPUnit comes from `drupal/core-dev`**, which `drupal/recommended-project`
+does not ship: when it is missing the script records `not-verified-blocked` (with
+`blocked_reason`) and prints the install command matched to the installed core
+(`core_dev_requirement`, e.g. `ddev composer require --dev "drupal/core-dev:~11.4.8" -W`)
+— install it and re-run; it is an environment blocker, never a regression and
+never a reason to touch a test. Iteration loop:
 
 1. Run the fastest group with a failure.
 2. Read the failing output and classify it with this DECISION TREE (first match
@@ -206,8 +214,11 @@ Final report (English, concise) must state:
 
 - **Preservation status** (the headline): `verified` when the full applicable
   suite is green (state how many tests) — that green is the evidence the original
-  functionality is respected; `not verified — no tests` when the module ships
-  none (recommend adding them; drupilot does not fabricate them here);
+  functionality is respected; `not verified — no tests` when no test exists in
+  the selected scope — say "the module ships no tests" only when
+  `subject_has_tests` is `false` (recommend adding them; drupilot does not
+  fabricate them here); `not verified — blocked` when tests exist but could not
+  run (`blocked_reason`: PHPUnit/core-dev missing, Selenium unreachable);
   `regression` if a behavioral test is red (blocking — fix the code, not the test).
 - Discovered counts per group and how many were adapted.
 - Pass/fail per group; for the whole suite, the green/red status.
@@ -223,7 +234,9 @@ Final report (English, concise) must state:
 in `project_state_dir "$SUBJECT"` for `/drupilot-status` and the flow: `type`,
 `status`, the **`preservation`** verdict (`verified` / `verified-partial` /
 `regression` / `not-verified-blocked` / `not-verified-no-tests`), per-group counts,
-`failed_groups` / `skipped_groups`, the `js_skipped_reason`, and a `coverage`
+`failed_groups` / `skipped_groups`, the `js_skipped_reason`, `blocked_reason` (why
+tests that exist could not run), `subject_has_tests` / `groups_with_tests` (whether
+the subject ships tests at all / in the selected scope), and a `coverage`
 object (`requested`, `html` path, `percent` — `percent` is `null`: Phase 1 does
 not compute a coverage figure, so never invent one). Read that file rather than
 re-running; do not write a second record under a different name.
