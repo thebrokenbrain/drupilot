@@ -921,6 +921,83 @@ subject_core_requirement() {
     | sed -E 's/^[[:space:]]*core_version_requirement:[[:space:]]*//; s/[[:space:]]*$//'
 }
 
+# info_yml_value <info_file> <key> -> the scalar value of a TOP-LEVEL key in an
+# *.info.yml (quotes and a trailing ` # comment` stripped), or nothing. Line
+# based (no YAML parser is assumed): a flow/block collection prints nothing.
+info_yml_value() {
+  local f="$1" key="$2"
+  [[ -r "$f" ]] || return 0
+  AWKV_k="$key" awk '
+    BEGIN { k = ENVIRON["AWKV_k"] }
+    index($0, k ":") == 1 {
+      v = substr($0, length(k) + 2)
+      sub(/^[ \t]+/, "", v); sub(/[ \t]+#.*$/, "", v); sub(/[ \t\r]+$/, "", v)
+      if (v ~ /^".*"$/ || v ~ /^\047.*\047$/) v = substr(v, 2, length(v) - 2)
+      if (v ~ /^[\[{|>]/) exit
+      print v; exit
+    }' "$f"
+  return 0
+}
+
+# info_yml_dependencies <info_file> -> the `dependencies:` entries of an
+# *.info.yml, one per line, normalized: quotes, a `(>=x)` version constraint and
+# comments stripped, the `project:module` form kept as written (`drupal:node`,
+# `token:token`, a bare `token`). Block lists and one-line flow lists
+# (`dependencies: [a, b]`) are read; `test_dependencies` is not. The module is
+# the part after the last `:`. Prints nothing for a missing file.
+info_yml_dependencies() {
+  local f="$1"
+  [[ -r "$f" ]] || return 0
+  awk '
+    function emit(s) {
+      gsub(/["\047]/, "", s); sub(/\(.*$/, "", s)
+      sub(/^[ \t]+/, "", s); sub(/[ \t\r]+$/, "", s)
+      if (s != "") print s
+    }
+    /^dependencies:[ \t]*\[/ {
+      s = $0; sub(/^dependencies:[ \t]*\[/, "", s); sub(/\].*$/, "", s)
+      n = split(s, a, ","); for (i = 1; i <= n; i++) emit(a[i])
+      next
+    }
+    /^dependencies:/ { inb = 1; next }
+    inb && /^[^ \t#-]/ { inb = 0 }
+    inb && /^[ \t]*-/ { s = $0; sub(/^[ \t]*-[ \t]*/, "", s); sub(/[ \t]+#.*$/, "", s); emit(s) }
+  ' "$f"
+  return 0
+}
+
+# is_drupal_core_module <machine_name> -> 0 when it is a module that ships with
+# Drupal 10/11 core (always available, so never a contrib dependency). A rare
+# omission degrades to "not core" (verify by hand), never to a false "core".
+DRUPAL_CORE_MODULES=" action announcements_feed automated_cron ban basic_auth big_pipe block block_content book breakpoint ckeditor5 comment config config_translation contact content_moderation content_translation contextual datetime datetime_range dblog dynamic_page_cache editor field field_layout field_ui file filter help help_topics history image inline_form_errors jsonapi language layout_builder layout_discovery link locale media media_library menu_link_content menu_ui migrate migrate_drupal migrate_drupal_ui mysql navigation node options package_manager page_cache path path_alias pgsql responsive_image rest search serialization settings_tray shortcut sqlite syslog system taxonomy telephone text toolbar tour update user views views_ui workflows workspaces workspaces_ui "
+is_drupal_core_module() { [[ "$DRUPAL_CORE_MODULES" == *" ${1:-} "* ]]; }
+
+# core_requirement_admits <constraint> <major> -> 0 when a Composer-style
+# core_version_requirement admits some <major>.x release ('^10 || ^11' admits
+# 11; '^8.8 || ^9 || ^10' does not; '>=10' does; '^10.3' does not). A
+# heuristic over each `||` alternative's bounds (^, ~, >=, >, <, <=, =, X.*),
+# enough to flag an obsolete requirement; an unreadable constraint returns 1.
+core_requirement_admits() {
+  printf '%s' "${1:-}" | tr -d "\"'" | tr '|' '\n' | AWKV_m="${2:-11}" awk '
+    BEGIN { m = ENVIRON["AWKV_m"] + 0; ok = 0 }
+    function maj(p,   v) { sub(/^(\^|~|>=|<=|>|<|==|=|v)+/, "", p); split(p, v, "."); return v[1] + 0 }
+    {
+      n = split($0, parts, /[[:space:],]+/); lo = -1; hi = 999; seen = 0
+      for (i = 1; i <= n; i++) {
+        p = parts[i]
+        if (p == "" || p !~ /[0-9]/) continue
+        seen = 1
+        if (p ~ /^(\^|~)/) { x = maj(p); if (x > lo) lo = x; if (x < hi) hi = x }
+        else if (p ~ /^>/) { x = maj(p); if (x > lo) lo = x }
+        else if (p ~ /^<=/) { x = maj(p); if (x < hi) hi = x }
+        else if (p ~ /^</) { x = maj(p); q = p; sub(/^</, "", q); if (q ~ /^[0-9]+(\.0)*$/) x = x - 1; if (x < hi) hi = x }
+        else { x = maj(p); if (x > lo) lo = x; if (x < hi) hi = x }
+      }
+      if (seen && lo <= m && m <= hi) ok = 1
+    }
+    END { exit ok ? 0 : 1 }'
+}
+
 # core_floor_from_requirement <constraint> -> the lowest core MAJOR.MINOR the
 # Composer-style constraint admits ('^10 || ^11' -> 10.0, '^10.3 || ^11' ->
 # 10.3, '^9.2 || ^10' -> 9.2, '>=10.2' -> 10.2, '^11' -> 11.0). Upper bounds
@@ -1062,6 +1139,8 @@ negative_controls_summary() {
 #            groups_failed, groups_skipped, recorded_at, fresh}  (last-test.json),
 #    core_matrix: {verdict, d10_support, generated_at, fresh},
 #    patch: {path, kind: local|issue|contribution, at},
+#    portfolio: {dir: ABS_PATH, layer} (state.sh record --portfolio, from
+#               /drupilot-layers: the set and porting layer the subject is in),
 #    drupilot_version}
 # `fresh` is true when the result was computed on the subject's current
 # sources (subject_digest). `stage` is the highest-ranked stage reached and never

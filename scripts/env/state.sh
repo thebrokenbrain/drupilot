@@ -22,8 +22,9 @@
 #
 # Usage:
 #   state.sh record  --subject DIR --stage STAGE [--effort S|M|L|XL] [--force]
-#                    [--dry-run] [--json]
-#   state.sh refresh --subject DIR [--dry-run] [--json]
+#                    [--portfolio DIR [--layer N]] [--dry-run] [--json]
+#   state.sh refresh --subject DIR [--portfolio DIR [--layer N]] [--dry-run]
+#                    [--json]
 #   state.sh show    [--subject DIR] [--no-next] [--json]
 #   state.sh list    [--root DIR]... [--registry FILE] [--subject DIR]...
 #                    [--depth N] [--from-preflight] [--no-next] [--json]
@@ -36,6 +37,10 @@
 #   --effort X       the assessment verdict (S/M/L/XL), stored as `effort`; the
 #                    cached assess.json, when present, stays authoritative.
 #   --force          let this record LOWER the stage (DRUPILOT_STATE_FORCE).
+#   --portfolio DIR  record/refresh: the set the subject is ported with (the
+#                    directory given to /drupilot-layers), stored as
+#                    `portfolio: {dir, layer}`; --layer N is its porting layer
+#                    (layers.sh).
 #   --root DIR       list: every module/theme under DIR (up to --depth levels,
 #                    default 8; vendor/, core/, node_modules/, tests/ and
 #                    dot-dirs are skipped) that drupilot has state for, plus
@@ -85,7 +90,7 @@ case "$CMD" in
 esac
 
 SUBJECTS=(); ROOTS=(); REGISTRY=""; STAGE=""; EFFORT=""; FORCE=0; DRY=0; AS_JSON=0
-NEXT=1; FROM_PF=0; DEPTH=8
+NEXT=1; FROM_PF=0; DEPTH=8; PORTFOLIO=""; LAYER=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     # An empty --subject (an unset "$1" in a command's load-time line) means
@@ -102,6 +107,10 @@ while [[ $# -gt 0 ]]; do
     --registry=*) REGISTRY="${1#*=}"; shift;;
     --depth) DEPTH="${2:-}"; shift 2;;
     --depth=*) DEPTH="${1#*=}"; shift;;
+    --portfolio) PORTFOLIO="${2:-}"; shift 2 || die "--portfolio needs a directory." 1;;
+    --portfolio=*) PORTFOLIO="${1#*=}"; shift;;
+    --layer) LAYER="${2:-}"; shift 2 || die "--layer needs a number." 1;;
+    --layer=*) LAYER="${1#*=}"; shift;;
     --force) FORCE=1; shift;;
     --dry-run) DRY=1; shift;;
     --json) AS_JSON=1; shift;;
@@ -114,6 +123,12 @@ done
 
 have_cmd jq || die "jq is required for the state registry." 1
 [[ "$DEPTH" =~ ^[0-9]+$ && "$DEPTH" -gt 0 ]] || die "--depth must be a positive integer: '$DEPTH'" 1
+[[ -z "$LAYER" || "$LAYER" =~ ^[0-9]+$ ]] || die "--layer must be a non-negative integer: '$LAYER'" 1
+[[ -z "$LAYER" || -n "$PORTFOLIO" ]] || die "--layer needs --portfolio DIR." 1
+if [[ -n "$PORTFOLIO" ]]; then
+  [[ -d "$PORTFOLIO" ]] || die "Portfolio directory not found: $PORTFOLIO" 1
+  PORTFOLIO="$(cd "$PORTFOLIO" && pwd)"
+fi
 
 # abs_dir DIR -> absolute logical path (the form project_state_dir keys on).
 abs_dir() { ( cd "$1" 2>/dev/null && pwd ) || printf '%s' "$1"; }
@@ -211,6 +226,10 @@ case "$CMD" in
       exit 0
     fi
     [[ -n "$EFFORT" ]] && { state_set "$SUBJ" .effort "$EFFORT" || die "Could not write $(subject_state_file "$SUBJ")." 1; }
+    if [[ -n "$PORTFOLIO" ]]; then
+      state_set_json "$SUBJ" .portfolio "$(jq -nc --arg d "$PORTFOLIO" --arg l "$LAYER" '{dir: $d, layer: (if $l == "" then null else ($l | tonumber) end)}')" \
+        || die "Could not write $(subject_state_file "$SUBJ")." 1
+    fi
     if [[ "$CMD" == "record" ]]; then
       if [[ "$FORCE" == "1" ]]; then
         DRUPILOT_STATE_FORCE=true phase_record "$SUBJ" "$ST" || die "Could not write $(subject_state_file "$SUBJ")." 1

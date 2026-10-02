@@ -62,8 +62,8 @@ flowchart TD
     end
 
     subgraph ASSESS["assess · evaluation (does not modify code)"]
-      AS1["Static analysis:<br/>run-rector --dry-run · run-phpstan<br/>run-phpcs · deps-status"]:::script
-      AS2(("The AI classifies the work<br/>(automatic vs. manual) and issues<br/>the S/M/L/XL verdict → viability-report.md")):::ai
+      AS1["Static analysis:<br/>run-rector --dry-run · run-phpstan<br/>run-phpcs · deps-status<br/>lint-extension-metadata (pre-existing hygiene)"]:::script
+      AS2(("The AI classifies the work<br/>(automatic vs. manual) and issues<br/>the S/M/L/XL verdict → viability-report.md<br/>(hygiene reported, outside the verdict)")):::ai
       AS1 --> AS2
     end
 
@@ -145,10 +145,11 @@ flowchart TD
     R2T{"Decision:<br/>which rules to apply?"}:::human
     R2A["run-rector --digests --apply<br/>only the accepted subset"]:::script
     R3(("Pass 3 · the AI generates a custom rule<br/>or manually fixes what Rector doesn't cover")):::ai
-    MAN(("The AI applies the manual changes<br/>Rector cannot make:<br/>core_version_requirement · require.php<br/>Twig 3 · CKEditor 5 · jQuery UI")):::ai
+    MAN(("The AI applies the manual changes<br/>Rector cannot make:<br/>require.php · Twig 3 · CKEditor 5 · jQuery UI")):::ai
+    SCR["set-core-requirement.sh<br/>core_version_requirement in the main<br/>and every submodule info.yml"]:::script
 
     subgraph VL["Validation loop · the AI iterates until clean"]
-      VS["run-phpcs --fix (phpcbf fixes · phpcs reports)<br/>run-phpstan (deprecations)"]:::script
+      VS["run-phpcs --fix (phpcbf fixes · phpcs reports)<br/>run-phpstan (deprecations)<br/>lint-extension-metadata (hygiene, report only)"]:::script
       VAI(("The AI reviews what's left<br/>and applies the minimal fix")):::ai
       VS --> VAI
       VAI -->|"issues remain"| VS
@@ -170,7 +171,8 @@ flowchart TD
     R2T --> R2A
     R2A --> R3
     R3 --> MAN
-    MAN --> VS
+    MAN --> SCR
+    SCR --> VS
     VAI -->|"clean"| MP
     MP --> PR
     PR --> OUT
@@ -215,6 +217,34 @@ flowchart LR
     classDef ai fill:#ede9fe,stroke:#7c3aed,color:#4c1d95;
     classDef human fill:#dcfce7,stroke:#16a34a,color:#14532d;
 ```
+
+---
+
+## 4) Many modules — `/drupilot-layers`
+
+For a set of custom modules (a monorepo's `web/modules/custom`), the order matters: a module ported before the modules it uses cannot be tested. `layers.sh` orders the set and `/drupilot-layers run` sends each module of a layer through the normal flow above, one after another.
+
+```mermaid
+flowchart TD
+    L0(["/drupilot-layers &lt;dir&gt;"]):::result
+    LS["layers.sh<br/>info.yml + composer.json dependencies<br/>+ the ones the code uses (classes, services,<br/>routes, libraries, plugins)<br/>→ layers · cycles · undeclared deps"]:::script
+    LAI(("The AI presents the plan and the<br/>proposed dependencies: entries")):::ai
+    LD{"Decision: port layer N ·<br/>add the proposed dependencies ·<br/>stop"}:::human
+    LP(("For each module of the layer, one at a time:<br/>the orchestrator runs setup → assess<br/>→ port → test (diagram 1)")):::ai
+    LR["layer-report.sh<br/>consolidated layer-N-report.md"]:::script
+    LN{"Next layer?<br/>(not after a regression)"}:::human
+
+    L0 --> LS --> LAI --> LD
+    LD -->|port| LP --> LR --> LN
+    LN -->|yes| LP
+
+    classDef script fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
+    classDef ai fill:#ede9fe,stroke:#7c3aed,color:#4c1d95;
+    classDef human fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    classDef result fill:#e5e7eb,stroke:#6b7280,color:#111827;
+```
+
+> Proposed dependencies are never applied without your confirmation, and a layer run never contributes. In a monorepo every module is ported in place in the one site, so a layer's dependencies are installed next to it.
 
 ---
 

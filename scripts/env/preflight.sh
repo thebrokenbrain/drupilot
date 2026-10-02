@@ -69,6 +69,7 @@ config_enum DRUPILOT_GENERATE_RULES       ask    ask auto off           >/dev/nu
 config_enum DRUPILOT_TOOLCHAIN_SOURCE     auto   auto reference range   >/dev/null || true
 config_enum DRUPILOT_SOFT_DEPRECATIONS    report report defer fix        >/dev/null || true
 config_enum DRUPILOT_HOOKS_GUARD          ask    ask off                >/dev/null || true
+[[ -z "$(config_get DRUPILOT_LAYERS_SANDBOX "")" ]] || config_enum DRUPILOT_LAYERS_SANDBOX "" per-module shared >/dev/null || true
 # DRUPILOT_VERIFY_CORES is auto | off | a comma list of MAJOR[.MINOR] legs.
 _vc="$(config_get DRUPILOT_VERIFY_CORES auto)"
 case "$_vc" in

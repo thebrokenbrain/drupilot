@@ -62,8 +62,8 @@ flowchart TD
     end
 
     subgraph ASSESS["assess · evaluación (no modifica el código)"]
-      AS1["Análisis estático:<br/>run-rector --dry-run · run-phpstan<br/>run-phpcs · deps-status"]:::script
-      AS2(("La IA clasifica el trabajo<br/>(automático frente a manual) y emite<br/>el veredicto S/M/L/XL → viability-report.md")):::ai
+      AS1["Análisis estático:<br/>run-rector --dry-run · run-phpstan<br/>run-phpcs · deps-status<br/>lint-extension-metadata (higiene previa)"]:::script
+      AS2(("La IA clasifica el trabajo<br/>(automático frente a manual) y emite<br/>el veredicto S/M/L/XL → viability-report.md<br/>(la higiene se informa, fuera del veredicto)")):::ai
       AS1 --> AS2
     end
 
@@ -145,10 +145,11 @@ flowchart TD
     R2T{"Decisión:<br/>¿qué reglas aplicar?"}:::human
     R2A["run-rector --digests --apply<br/>solo el subconjunto aceptado"]:::script
     R3(("Pasada 3 · la IA genera una regla a medida<br/>o corrige manualmente lo que Rector no cubre")):::ai
-    MAN(("La IA aplica los cambios manuales<br/>que Rector no puede hacer:<br/>core_version_requirement · require.php<br/>Twig 3 · CKEditor 5 · jQuery UI")):::ai
+    MAN(("La IA aplica los cambios manuales<br/>que Rector no puede hacer:<br/>require.php · Twig 3 · CKEditor 5 · jQuery UI")):::ai
+    SCR["set-core-requirement.sh<br/>core_version_requirement en el info.yml<br/>principal y en el de cada submódulo"]:::script
 
     subgraph VL["Bucle de validación · la IA itera hasta dejarlo limpio"]
-      VS["run-phpcs --fix (phpcbf corrige · phpcs informa)<br/>run-phpstan (deprecaciones)"]:::script
+      VS["run-phpcs --fix (phpcbf corrige · phpcs informa)<br/>run-phpstan (deprecaciones)<br/>lint-extension-metadata (higiene, solo informa)"]:::script
       VAI(("La IA revisa lo que queda<br/>y aplica la corrección mínima")):::ai
       VS --> VAI
       VAI -->|"quedan avisos"| VS
@@ -170,7 +171,8 @@ flowchart TD
     R2T --> R2A
     R2A --> R3
     R3 --> MAN
-    MAN --> VS
+    MAN --> SCR
+    SCR --> VS
     VAI -->|"sin avisos"| MP
     MP --> PR
     PR --> OUT
@@ -215,6 +217,34 @@ flowchart LR
     classDef ai fill:#ede9fe,stroke:#7c3aed,color:#4c1d95;
     classDef human fill:#dcfce7,stroke:#16a34a,color:#14532d;
 ```
+
+---
+
+## 4) Muchos módulos — `/drupilot-layers`
+
+En un conjunto de módulos custom (el `web/modules/custom` de un monorepo) el orden importa: un módulo portado antes que los módulos que usa no se puede probar. `layers.sh` ordena el conjunto y `/drupilot-layers run` pasa cada módulo de una capa por el flujo normal de arriba, uno detrás de otro.
+
+```mermaid
+flowchart TD
+    L0(["/drupilot-layers &lt;dir&gt;"]):::result
+    LS["layers.sh<br/>dependencias de info.yml + composer.json<br/>+ las que usa el código (clases, servicios,<br/>rutas, librerías, plugins)<br/>→ capas · ciclos · dependencias no declaradas"]:::script
+    LAI(("La IA presenta el plan y las<br/>entradas de dependencies: propuestas")):::ai
+    LD{"Decisión: portar la capa N ·<br/>añadir las dependencias propuestas ·<br/>parar"}:::human
+    LP(("Para cada módulo de la capa, de uno en uno:<br/>el orquestador ejecuta setup → assess<br/>→ port → test (diagrama 1)")):::ai
+    LR["layer-report.sh<br/>layer-N-report.md consolidado"]:::script
+    LN{"¿Siguiente capa?<br/>(no tras una regresión)"}:::human
+
+    L0 --> LS --> LAI --> LD
+    LD -->|portar| LP --> LR --> LN
+    LN -->|sí| LP
+
+    classDef script fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
+    classDef ai fill:#ede9fe,stroke:#7c3aed,color:#4c1d95;
+    classDef human fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    classDef result fill:#e5e7eb,stroke:#6b7280,color:#111827;
+```
+
+> Las dependencias propuestas nunca se aplican sin tu confirmación, y una ejecución por capas nunca contribuye. En un monorepo cada módulo se porta en su sitio, en el único sitio Drupal, así que las dependencias de una capa están instaladas a su lado.
 
 ---
 

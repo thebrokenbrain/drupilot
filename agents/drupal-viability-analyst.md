@@ -159,6 +159,17 @@ report. Fall back to reading the report only if a tool's JSON is unavailable.
    `parent::__construct()`, a local `getOriginal()` incompatible with 11.2's) is a
    manual Phase 1 item with its catalog `fix`; never plan an `#[\Override]` on a
    method that exists only in some of the declared cores.
+9. **Pre-existing hygiene** (read-only, no toolchain, always exit 0):
+   ```bash
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/lint-extension-metadata.sh" --subject <DIR> --json
+   ```
+   Config without schema, a `configure:` route that does not exist, orphan
+   services and letter-case mismatches, service arguments vs the constructor,
+   submodules whose `core_version_requirement` does not admit Drupal 11, and
+   undeclared dependencies (with the proposed entry). Report them in the
+   "Pre-existing hygiene (not fixed in Phase 1)" section and as `hygiene` totals in
+   `assess.json`; they do **not** change the S/M/L/XL verdict. Phase 1 bumps the
+   submodules' requirement (`set-core-requirement.sh`); the rest is a follow-up.
 
 ## Classification
 

@@ -44,6 +44,8 @@
 - **Tests** — descubre, adapta y ejecuta la suite PHPUnit completa (Unit / Kernel / Functional / FunctionalJavascript) dentro de DDEV (con Selenium para JS), iterando hasta verde y reportando cobertura. Los fallos **nunca** se silencian.
 - **Contribución** — prepara y (opcionalmente) publica el resultado a Drupal.org mediante el flujo moderno issue-fork + Merge Request, o un patch legacy, en modo **semi-automático** (confirma cada acción externa) o **totalmente automático**. Genera el **resumen del issue y los valores recomendados de los campos obligatorios** (Title, Category, Priority, Version, Component, Assigned) para pegarlos en el formulario web, además de un breve **comentario**. Siempre se genera un `.patch` junto al MR y se **verifica que aplica limpio** sobre la versión a la que se refiere, para que tú (o cualquiera) puedas adjuntarlo y aplicarlo en el issue antes de que el maintainer lo fusione.
 - **Patches, desacoplados de la contribución** — obtén el `.patch` de la portabilidad cuando quieras con **`/drupilot-patch`**: offline, sin push, sin cuenta de Drupal.org. Elige un patch local de pruebas (`MODULE-port-to-drupal-11.patch`) **o** uno con el nombre de la convención issue-comment para adjuntarlo a un issue y probarlo ya — y contribuye el Merge Request más tarde, como paso aparte.
+- **Muchos módulos, en orden** — **`/drupilot-layers`** toma un conjunto completo (el `web/modules/custom` de un monorepo, una carpeta de módulos), calcula las **capas de porting** a partir de las dependencias declaradas *y* de las que el código usa de verdad (clases, servicios, rutas, librerías, plugins), informa de los ciclos de dependencias y de las **dependencias no declaradas** con la entrada de `dependencies:` que hay que añadir, y porta capa a capa con el flujo normal y un informe consolidado por capa.
+- **Higiene previa, informada** — un lint de metadatos señala configuración sin schema, una ruta de `configure:` que no existe, servicios huérfanos, argumentos de servicio que no casan con el constructor, submódulos que se quedaron en un `core_version_requirement` obsoleto y dependencias no declaradas. Aparece en los informes de viabilidad y de port y nunca cambia el veredicto de esfuerzo. La Fase 1 solo arregla el requisito de core de los submódulos, que actualiza junto con el `info.yml` principal.
 - **Tú mantienes el control** — las decisiones de peso son **elecciones en pestañas** (target de core, target de PHP, qué reglas digests aplicar, alcance del refactor, hacer push o no), con la recomendación preseleccionada y tus respuestas recordadas por proyecto. Nada importante ocurre en silencio.
 - **Información, no solo salida** — un **boletín** por portabilidad (`port-report.md`: qué cambió y por qué, el veredicto de preservación), un **panel de preparación D11 de las dependencias** (qué deps contrib bloquean la portabilidad), una **búsqueda de issue upstream** (¿hay alguien ya portando esto?) y un **explicador de deprecaciones** que convierte la salida críptica en un fix + un enlace a los change-records.
 
@@ -148,6 +150,7 @@ Lo escribe el flujo, no la memoria: `port-report.sh` registra `ported` / `refact
 | `tests` | La última ejecución de PHPUnit registrada: `status`, `preservation`, `executed`, `tests_failed`, recuentos por grupo, `recorded_at` y `fresh` (calculado sobre las fuentes actuales). |
 | `core_matrix` | La última matriz de cores: `verdict`, `d10_support`, `generated_at`, `fresh`. |
 | `patch` | El último parche generado: `path`, `kind` (`local` / `issue` / `contribution`), `at`. |
+| `portfolio` | Se rellena cuando el módulo lo porta `/drupilot-layers`: `dir` (el conjunto) y `layer` (su capa de porting); lo escribe `state.sh record\|refresh --portfolio DIR --layer N`. |
 | `created`, `updated`, `drupilot_version` | Marcas de tiempo del registro y el drupilot que lo escribió por última vez. |
 
 ```bash
@@ -155,6 +158,7 @@ scripts/env/state.sh show --subject web/modules/custom/foo        # un módulo, 
 scripts/env/state.sh list --root ~/drupal-ports --json            # todos los módulos bajo un directorio de workspaces
 scripts/env/state.sh list --registry ports.txt                    # una ruta por línea (dirs de módulo o dirs a escanear)
 scripts/env/state.sh record --subject web/modules/custom/foo --stage assessed --effort M
+scripts/env/state.sh refresh --subject web/modules/custom/foo --portfolio web/modules/custom --layer 2
 ```
 
 `show` y `list` son de solo lectura (nunca crean un directorio de estado); la tabla va a stderr y `--json` pone el payload en stdout. Un módulo portado antes de que existiera este registro sigue apareciendo con `--root` o `--subject`, con su etapa derivada de sus registros anteriores.
@@ -174,6 +178,7 @@ scripts/env/state.sh record --subject web/modules/custom/foo --stage assessed --
 | `/drupilot-test [sujeto]` | Descubre, adapta y ejecuta **toda** la suite de tests en DDEV (Selenium para JS); itera hasta verde; reporta cobertura. |
 | `/drupilot-patch [sujeto] [issue]` | **Obtén el `.patch`, desacoplado de contribuir.** Offline, sin push, sin verja: un patch local de pruebas, o uno con nombre para un comentario de issue de Drupal.org. Pruébalo ya, contribuye el MR después. |
 | `/drupilot-contribute [sujeto] [issue]` | Publica a **Drupal.org**: issue fork + Merge Request (o patch legacy), en modo semi o auto. Solo invocable por el usuario; nunca expone el PAT. |
+| `/drupilot-layers <dir> [plan\|run] [--layer N]` | **Porta un conjunto de módulos en orden de dependencias.** `plan` (solo lectura, por defecto) muestra las capas de porting, los ciclos de dependencias y las dependencias no declaradas con una entrada `<proyecto>:<módulo>` propuesta y la evidencia. `run` porta una capa, módulo a módulo, con el flujo normal y luego escribe un `layer-N-report.md` consolidado. Nunca edita un `info.yml` sin tu confirmación y nunca contribuye. |
 | `/drupilot-status [sujeto] \| --all [dir\|fichero]` | Resumen de solo lectura: entorno, target de PHP, fase actual, último assess, estado de tests (con el veredicto de preservación), el lock de reproducibilidad congelado y el siguiente paso sugerido. `--all` tabula todos los módulos/workspaces de los que drupilot tiene estado (ver [Estado por módulo](#estado-por-módulo)). |
 
 ---
@@ -202,7 +207,8 @@ drupilot reparte el trabajo en dos. **Los scripts deterministas** hacen el traba
 **Lo hacen los scripts, sin IA:**
 
 - *Tocan el código:* Rector oficial (`palantirnet/drupal-rector`), la capa Rector de digests (reglas creadas por IA, pero ejecutadas como un config congelado y fijado por versión), `phpcbf` (estándares de código auto-corregibles) y el hook `PostToolUse` (pasa `phpcbf` en cada fichero Drupal que editas).
-- *Solo miden / informan:* `phpcs` (reporta lo que `phpcbf` no pudo arreglar), PHPStan (deprecaciones + errores de tipo), el gate de requisitos de preflight, la detección de PHP/core, el panel de preparación de dependencias, las **comprobaciones de seguridad del port** (`check-port-safety.sh`: un `create()` sin `ContainerFactoryPluginInterface`/`ContainerInjectionInterface` en su ascendencia real, un `use` eliminado que sigue referenciado, `new self(` en `create()`, closures bajo claves de callback de la Form/Render API, propiedades `private`/`readonly` en clases que se serializan, `#[\Override]` mientras el rango de core incluya Drupal 10, discrepancias de mayúsculas en nombres de clase — cada una atribuida al port o preexistente vía git), el **análisis de cambios de firma de core** (`scan-signature-changes.sh`: el módulo comparado con un catálogo verificado de cambios de firma de Drupal 10 → 11 en el core más bajo que declara — una subclase de `ConfigFormBase`/`ContentTranslationController` que pasa menos argumentos de los necesarios al constructor, un `getOriginal()`/`setOriginal()`/`buildRevisionCacheId()` propio que core añade en 11.2/11.3, un `hook_entity_operation()`/`_alter()` que exige el parámetro que solo pasa 11.3, un `#[\Override]` en un método que no existe en los cores declarados más antiguos), el **clasificador de deprecaciones** (`classify-deprecations.sh`: separa las deprecaciones de PHPStan en *duras* — eliminadas en una major ≤ la objetivo, p. ej. `user_roles()`, que desaparece en 11.0 — y *blandas* — eliminadas solo en una major posterior, p. ej. `user_load_by_name()`/`text_summary()`/`check_markup()`, deprecadas en 11.4 y eliminadas en 13.0 — e indica qué hace `DRUPILOT_SOFT_DEPRECATIONS` con cada una), la **matriz de cores** (`verify-core-matrix.sh`: PHPStan + `php -l` en cada core que declara el módulo, p. ej. un core de referencia de Drupal 10 en caché junto al banco de pruebas de Drupal 11) y los generadores de parche e informes. Estos **nunca tocan tu código**.
+- *Solo miden / informan:* `phpcs` (reporta lo que `phpcbf` no pudo arreglar), PHPStan (deprecaciones + errores de tipo), el gate de requisitos de preflight, la detección de PHP/core, el panel de preparación de dependencias, las **comprobaciones de seguridad del port** (`check-port-safety.sh`: un `create()` sin `ContainerFactoryPluginInterface`/`ContainerInjectionInterface` en su ascendencia real, un `use` eliminado que sigue referenciado, `new self(` en `create()`, closures bajo claves de callback de la Form/Render API, propiedades `private`/`readonly` en clases que se serializan, `#[\Override]` mientras el rango de core incluya Drupal 10, discrepancias de mayúsculas en nombres de clase — cada una atribuida al port o preexistente vía git), el **análisis de cambios de firma de core** (`scan-signature-changes.sh`: el módulo comparado con un catálogo verificado de cambios de firma de Drupal 10 → 11 en el core más bajo que declara — una subclase de `ConfigFormBase`/`ContentTranslationController` que pasa menos argumentos de los necesarios al constructor, un `getOriginal()`/`setOriginal()`/`buildRevisionCacheId()` propio que core añade en 11.2/11.3, un `hook_entity_operation()`/`_alter()` que exige el parámetro que solo pasa 11.3, un `#[\Override]` en un método que no existe en los cores declarados más antiguos), el **clasificador de deprecaciones** (`classify-deprecations.sh`: separa las deprecaciones de PHPStan en *duras* — eliminadas en una major ≤ la objetivo, p. ej. `user_roles()`, que desaparece en 11.0 — y *blandas* — eliminadas solo en una major posterior, p. ej. `user_load_by_name()`/`text_summary()`/`check_markup()`, deprecadas en 11.4 y eliminadas en 13.0 — e indica qué hace `DRUPILOT_SOFT_DEPRECATIONS` con cada una), la **matriz de cores** (`verify-core-matrix.sh`: PHPStan + `php -l` en cada core que declara el módulo, p. ej. un core de referencia de Drupal 10 en caché junto al banco de pruebas de Drupal 11), el **lint de metadatos** (`lint-extension-metadata.sh`: configuración sin `config/schema`, ajustes de plugins sin su schema, una ruta de `configure:` que ningún fichero de rutas define, clases de servicio huérfanas o con mayúsculas distintas, `arguments:` que no casan con el constructor, submódulos cuyo `core_version_requirement` no admite Drupal 11, dependencias que el código usa y `dependencies:` no declara), las **capas de porting** (`layers.sh`: el orden topológico de un conjunto de módulos, sus ciclos y sus dependencias no declaradas) y los generadores de parche e informes. Estos **nunca tocan tu código**.
+- *Cambian metadatos, de forma determinista:* `set-core-requirement.sh` escribe el `core_version_requirement` elegido en el `info.yml` principal **y en el de cada submódulo**. Quita una clave obsoleta `core: 8.x` y solo actualiza un módulo de tests cuando no admite Drupal 11.
 
 **Dónde actúa la IA:**
 
@@ -273,6 +279,7 @@ Los valores por defecto están en `config/defaults.json`. **Cada clave `DRUPILOT
 | `DRUPILOT_REQUIRE_PHP_FLOOR` | `detect` | Al mantener `^10 \|\| ^11`, cómo fijar el `require.php` de composer: `detect` deriva el suelo real de un escaneo heurístico del código portado (p. ej. `>=8.1` si no usa construcciones de PHP 8.2/8.3, para soporte real de Drupal 10); `target` mantiene el conservador `>=<target de php>`. Bajar el suelo es best-effort — confírmalo con PHPCompatibility. |
 | `DRUPILOT_PLACEMENT` | `move` | Cómo se coloca un checkout suelto en el banco de pruebas hermano: `move` lo reubica (sin pérdida — sigue siendo un repo git en la nueva ruta), `symlink` deja tu checkout donde está y lo enlaza (un destino fuera del banco de pruebas no es visible dentro del contenedor DDEV, así que las herramientas vía `ddev exec` no lo ven — úsalo para trabajo en el host), `copy` lo duplica sin los restos del entorno local (`.ddev/`, `vendor/`, `node_modules/`, …) ni los enlaces simbólicos que salen del checkout. |
 | `DRUPILOT_WORKSPACE_DIR` | _(vacío)_ | Ruta explícita para la raíz del banco de pruebas de Drupal. Vacío significa un hermano `<padre>/<machine_name>-d11`. |
+| `DRUPILOT_LAYERS_SANDBOX` | _(se pregunta)_ | Se aplica a las ejecuciones de `/drupilot-layers` sobre una carpeta **suelta** de módulos (un conjunto dentro de una raíz de Drupal siempre se porta en su sitio, en ese único sitio). `per-module` da a cada módulo su propio banco de pruebas `<nombre>-d11`. `shared` usa un único banco de pruebas para todo el conjunto, `<padre>/<dir>-d11`, para que un módulo y los módulos de los que depende se instalen juntos. Vacío significa que el comando pregunta; las ejecuciones autónomas usan `per-module`. La respuesta se recuerda en `.drupilot.json`. |
 | `DRUPILOT_ARTIFACTS_DIR` | _(vacío)_ | Override del directorio de salidas visible `.drupilot/`. Vacío significa `<raíz>/.drupilot`. |
 | `DRUPILOT_DDEV_CREATE_TIMEOUT` | `900` | Segundos que `/drupilot-setup` deja correr `ddev composer create-project` antes de pararlo con un error claro (`0` = sin límite). Necesita `timeout` (o `gtimeout` en macOS); sin él el paso no tiene límite. |
 | `DRUPILOT_CODER_CONSTRAINT` | `^8.3` | Rama de `drupal/coder` (PHPCS 3.x vs 4.x). |
@@ -407,7 +414,35 @@ Escribe `MODULE-port-to-drupal-11.patch` junto al módulo — offline, sin push,
 
 Esto está totalmente **desacoplado de contribuir**: el Merge Request upstream (que hace rebase y verifica en duro que el parche aplica sobre `origin/BASE`) sigue siendo un paso aparte y opt-in que ejecutas con `/drupilot-contribute` cuando estés listo.
 
-### 7. Contribuir el arreglo de vuelta a Drupal.org
+### 7. Portar por capas los módulos custom de un monorepo
+
+```text
+/drupilot-layers web/modules/custom
+/drupilot-layers web/modules/custom run --layer 0
+```
+
+La primera llamada es de solo lectura. Imprime y guarda `.drupilot/layers.md`, que contiene tres cosas:
+- las capas (porta primero la capa 0; una capa solo depende de las anteriores);
+- los ciclos (sus módulos se portan juntos);
+- cada dependencia no declarada, con su evidencia (`fichero:línea`, clase / servicio / ruta / librería / plugin) y la entrada que hay que añadir: `- acme_core:acme_core` para un módulo del conjunto, `- drupal:node` para core, `- pathauto:pathauto` para contrib (comprueba el nombre del proyecto).
+
+Un módulo que solo declara parte de lo que usa aparece donde de verdad le corresponde, con una nota de que con solo sus dependencias declaradas se portaría demasiado pronto. Las entradas propuestas nunca se aplican sin tu confirmación.
+
+`run` porta una capa, un módulo cada vez, con el flujo habitual setup → assess → port → test, y escribe `.drupilot/layer-N-report.md`. Ese informe tiene una fila por módulo, con:
+- fase, esfuerzo y veredicto de preservación;
+- veredicto de Drupal 10;
+- higiene previa y dependencias no declaradas;
+- parche, y un enlace al informe de port del módulo.
+
+Una regresión detiene la siguiente capa. Los scripts también funcionan por separado:
+
+```bash
+bash scripts/analysis/layers.sh --dir web/modules/custom --json           # capas, ciclos, dependencias no declaradas
+bash scripts/analysis/lint-extension-metadata.sh --subject web/modules/custom/acme_api --json
+bash scripts/analysis/layer-report.sh --dir web/modules/custom --layer 1  # informe consolidado
+```
+
+### 8. Contribuir el arreglo de vuelta a Drupal.org
 
 Semi-automático (recomendado — confirma cada push / MR):
 

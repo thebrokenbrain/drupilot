@@ -153,6 +153,17 @@ from `DRUPILOT_PHP_TARGET` (default `8.3`) and auto-detect whether to run throug
    !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/scan-signature-changes.sh" --subject "$1" --json
    ```
 
+7. **Pre-existing hygiene** — no toolchain needed. Config without schema, a
+   `configure:` route that does not exist, orphan services / letter-case
+   mismatches, service arguments vs the constructor, submodules on an obsolete
+   `core_version_requirement`, and dependencies the code uses but `dependencies:`
+   does not declare (with the proposed `<project>:<module>` entry). Always exit
+   0; it **reports, never fixes**, and does **not** feed the effort verdict:
+
+   ```bash
+   !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/lint-extension-metadata.sh" --subject "$1" --json
+   ```
+
 Capture each tool's raw output for the report appendix. If a tool's prerequisites
 are missing (e.g. the dev toolchain is not installed because `/drupilot-setup`
 has not run), note it as "not measured" rather than inventing numbers.
@@ -171,6 +182,11 @@ Hand the collected output to the analyst. Produce:
 - **`info.yml` status**: is `core_version_requirement` present and D11-compatible?
 - **Contrib dependencies**: do the declared `dependencies:` have D11-ready
   releases? Flag any that do not.
+- **Pre-existing hygiene**: the lint's findings (step 7) go into the report's
+  "Pre-existing hygiene (not fixed in Phase 1)" table and `assess.json`'s
+  `hygiene: {error, warn, info}` — outside the S/M/L/XL rubric. Plan the
+  submodule `core_version_requirement` bump into Phase 1; list the rest as
+  follow-ups.
 - **Effort verdict**: one of **S / M / L / XL**, with a one-paragraph rationale.
   Compare against `DRUPILOT_VIABILITY_THRESHOLD` (default `medium`); if the effort
   exceeds the threshold, say so plainly — but **still deliver a plan**. drupilot

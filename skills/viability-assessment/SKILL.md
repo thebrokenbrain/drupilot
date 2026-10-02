@@ -336,6 +336,51 @@ items. `#[\Override]` on a method that exists only in some of the declared cores
 breaks the older ones (PHP 8.3+ compile-time fatal): never plan to add it while
 the floor is below the minor that introduced the parent method.
 
+### 3.7 Pre-existing hygiene (report, do not fix in Phase 1)
+
+Metadata problems the module already has, which no analyzer of the validate loop
+reports and which keep resurfacing as "pre-existing bugs" during a port. Read-only,
+no toolchain:
+
+```bash
+bash "$ROOT/scripts/analysis/lint-extension-metadata.sh" --subject "$SUBJECT" --json
+# --set-dir DIR  resolve services/routes/plugins of sibling modules (default: the
+#                subject's parent when it is a modules|themes|profiles/custom dir)
+```
+
+It reports `{checks_run, findings:[{check, severity, extension, file, line,
+message, suggestion}], totals:{error, warn, info}}`, always exit 0, and saves it as
+`metadata-lint.json` in the subject's state dir (the port report renders it):
+
+- `config-schema` — `config/install|optional/<machine>.*.yml` without a matching
+  `config/schema` key (exact or trailing wildcard, as core's
+  `TypedConfigManager::getFallbackName()` resolves it): strict schema checks in
+  Kernel/Functional tests fail on it.
+- `plugin-schema` — a Block/Condition/Filter/FieldFormatter/FieldWidget plugin
+  with its own settings and no `block.settings.<id>` / `condition.plugin.<id>` /
+  `filter_settings.<id>` / `field.formatter.settings.<id>` /
+  `field.widget.settings.<id>` schema.
+- `configure-route` — the info.yml `configure:` route is defined nowhere (core's
+  modules page silently drops the link: it checks it with `checkNamedRoute()`).
+- `services-class` — a service class with no file (orphan) or a letter-case
+  mismatch (error).
+- `services-arity` — `arguments:` count vs the constructor: fewer than required is
+  an ArgumentCountError (error); extra ones are silently ignored by PHP (warn).
+- `submodule-core-req` — a nested `*.info.yml` that does not admit Drupal 11
+  (core refuses to install it), or has no `core_version_requirement` (core throws
+  InfoParserException; `package: Testing` is exempt).
+- `undeclared-deps` — a module the code uses (class, service, route, library,
+  plugin, config dependency) that `dependencies:` does not declare, with the
+  proposed `<project>:<module>` / `drupal:<module>` entry (a guarded, optional use
+  is info).
+
+These findings **do not feed the S/M/L/XL rubric** (§5): it stays unchanged, so
+the verdict reproduces. List them in the report's "Pre-existing hygiene" section
+and the plan: Phase 1 only bumps the submodules' `core_version_requirement`
+(`set-core-requirement.sh`, part of the port); everything else is reported, to be
+fixed in a follow-up or in Phase 2. Record the totals in `assess.json` as
+`hygiene: {error, warn, info}`.
+
 ### Optional context: digests issue summaries
 
 When `DRUPILOT_USE_DIGESTS_RULES` is true and the cache is present, the repo's
@@ -398,7 +443,10 @@ PLAN_TMPL="$ROOT/templates/port-plan.md.tmpl"
   and any PHP-floor warning — from §3.5), verdict (S/M/L/XL) with the
   above-threshold flag, auto-fixable vs manual counts (official vs digests broken
   out), the four hard-break sections with concrete findings, `info.yml` status,
-  contrib-dependency D11 table, the phased plan summary, and a raw-tool-output
+  contrib-dependency D11 table, the pre-existing hygiene table (§3.7:
+  `{{HYGIENE_SUMMARY}}` and one `{{HYGIENE_ROWS}}` row per finding —
+  `| severity | check | file:line | message | suggestion |`; `_not run_` when the
+  lint did not run, never a literal `{{...}}`), the phased plan summary, and a raw-tool-output
   appendix (the captured rector/phpstan/phpcs/upgrade_status output, lightly
   trimmed). Fill `{{CORE_TARGET_STRATEGY}}`, `{{RECOMMENDED_CORE_REQUIREMENT}}`,
   `{{COMPOSER_CORE_CONSTRAINT}}`, `{{REQUIRE_PHP}}`, `{{VERSION_BUMP}}`,
@@ -412,7 +460,8 @@ PLAN_TMPL="$ROOT/templates/port-plan.md.tmpl"
 Suggested phasing to encode in the plan:
 
 1. **Stage 0 — Environment**: `/drupilot-setup` (DDEV + add-ons + toolchain).
-2. **Stage 1 — info.yml + official Rector**: bump `core_version_requirement`,
+2. **Stage 1 — info.yml + official Rector**: bump `core_version_requirement`
+   in the main and every submodule `info.yml` (`set-core-requirement.sh`),
    apply `palantirnet/drupal-rector` (dry-run -> review -> apply -> validate).
 3. **Stage 2 — Manual deprecations + hard breaks**: Twig 3, CKEditor 5, jQuery
    UI, Symfony 7, in risk order; optionally the filtered digests layer.
@@ -422,7 +471,7 @@ Suggested phasing to encode in the plan:
 
 Cache a small JSON summary (`assess.json`: verdict, counts, ready flags, the
 core-target recommendation — strategy, recommended `core_version_requirement`,
-`require.php`, `version_bump` — and a timestamp) in the hidden state dir `$STATE`
+`require.php`, `version_bump` — the `hygiene` totals of §3.7, and a timestamp) in the hidden state dir `$STATE`
 (not the visible `.drupilot/` dir) for `/drupilot-status` and the port stage,
 then record the stage in the per-module registry:
 `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <DIR> --stage assessed --effort <S|M|L|XL>`.

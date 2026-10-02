@@ -375,7 +375,96 @@ tag the commit `vX.Y.Z`.
   - A module with only pre-registry records (`assess.json`, `last-test.json`)
     is still listed by `--root`/`--subject`; an assessment on file backfills
     the `assessed` stage.
+- **`/drupilot-layers` — port a set of modules in dependency order (4.1).**
+  `scripts/analysis/layers.sh --dir DIR [--json] [--edges all|declared]
+  [--dot]` reads every `*.info.yml` `dependencies:` and `composer.json`
+  `drupal/*` requirement of a set (a monorepo's `web/modules/custom`, a folder
+  of modules), adds the dependencies the code really uses, and orders the set
+  topologically. Layer 0 depends on nothing in the set, and a dependency cycle
+  stays together in one layer.
+  - Undeclared dependencies are found by scanning `Drupal\X\` classes, `@id`
+    services, routes, libraries, plugin ids and config dependencies against what
+    the other modules define.
+  - Each undeclared dependency gets a proposed entry, with its `file:line`
+    evidence: `<project>:<module>` for a module of the set, `drupal:<module>`
+    for core, `<module>:<module>` for contrib (flagged "verify the project").
+  - A use guarded by `moduleExists()`, `config/optional` or `@?service` is
+    optional: it is not proposed and does not order the layers.
+  - The `early` list names the modules whose declared dependencies alone would
+    have them ported too early.
+  - It saves `layers.json` (hidden state) and `layers.md` (`.drupilot/`).
+  - The command: `plan` (read-only) presents all of this. `run` ports one
+    layer, one module at a time, through the orchestrator's normal flow, with
+    autonomy respected: no confirmations in autonomous mode, never a push or a
+    contribution, never an `info.yml` edit without confirmation.
+  - `scripts/analysis/layer-report.sh --dir DIR [--layer N]` writes the
+    consolidated `layer-N-report.md`. It has one row per module (stage, effort,
+    preservation, Drupal 10 verdict, hygiene, undeclared dependencies, patch,
+    port report), read from the per-module registry, which still finds a module
+    after a `move` placement.
+  - A loose set chooses one test-bed per module or one shared test-bed
+    (`DRUPILOT_LAYERS_SANDBOX`). A set inside a Drupal root is always ported in
+    place.
+  - `state.sh record|refresh --portfolio DIR --layer N` stores
+    `portfolio: {dir, layer}` in the module's `state.json`.
+- **Pre-existing extension hygiene lint (4.7).**
+  `scripts/analysis/lint-extension-metadata.sh --subject DIR [--json]
+  [--checks ...] [--set-dir DIR]` checks the subject and its submodules. It
+  reports and never fixes, always exits 0, and saves `metadata-lint.json` in
+  the subject's state dir. Checks:
+  - `config-schema`: own config without a `config/schema` key. Exact keys and
+    trailing wildcards are matched the way core's
+    `TypedConfigManager::getFallbackName()` resolves them.
+  - `plugin-schema`: Block/Condition/Filter/FieldFormatter/FieldWidget settings
+    without their `block.settings.<id>` / `condition.plugin.<id>` /
+    `filter_settings.<id>` / `field.*.settings.<id>` schema.
+  - `configure-route`: a `configure:` route no routing file defines (core's
+    modules page drops the link silently). It suggests the closest route.
+  - `services-class`: an orphan or wrong-case service class (error).
+  - `services-arity`: `arguments:` outside the constructor's [required, total].
+    Too few is an error; too many is a warning, since PHP ignores the extras.
+    Constructors are followed up parents inside the subject.
+  - `submodule-core-req`: a nested `info.yml` that does not admit Drupal 11 (it
+    cannot be installed), or that has no key (InfoParserException;
+    `package: Testing` is exempt).
+  - `undeclared-deps`: shares the scanner with `layers.sh`. Uses of the
+    always-enabled core modules (`system`, `user`, `path_alias`: `required:
+    true` in core) are not reported, and neither are plugins of a module's own
+    plugin type (e.g. `src/Plugin/migrate/` → migrate). `plugin-schema` only
+    counts a `defaultConfiguration()`/`defaultSettings()` that returns keyed
+    values.
+  It is wired in as follows:
+  - `/drupilot-assess`, the viability skill (§3.7) and the analyst run it, and
+    the viability report gains a "Pre-existing hygiene (not fixed in Phase 1)"
+    table. `assess.json` gains `hygiene`. The S/M/L/XL rubric is unchanged.
+  - `/drupilot-port` and `minimal-port` run it in the validate loop.
+  - `port-report.sh` renders the same table from the manifest's
+    `metadata_lint`, or else from the state file, marked stale when the sources
+    changed.
+  Verified on the legacy_widgets fixture (H22–H28 all reported) and on a new
+  9-extension monorepo lab fixture. On the real autologout 8.x-1.4 it reports
+  no warning, only two informational migrate-plugin uses.
+- **`scripts/analysis/set-core-requirement.sh --subject DIR --requirement C
+  [--dry-run] [--json] [--no-tests]`.** Writes `core_version_requirement` into
+  the main `info.yml` and every submodule's. It removes `core: 8.x`, adds a
+  missing key, and bumps a test module only when the module does not admit
+  Drupal 11. It is idempotent and refuses a constraint that admits neither
+  Drupal 10 nor 11.
+- **Shared helpers.**
+  - `common.sh`: `info_yml_value`, `info_yml_dependencies` (block and flow
+    lists, constraints stripped), `is_drupal_core_module` and
+    `core_requirement_admits <constraint> <major>`.
+  - `scripts/lib/ext-scan.sh`: the extension-set scanner (bash + POSIX awk +
+    jq, verified with gawk, mawk and busybox awk under bash 3.2).
 ### Changed
+- **The port bumps submodules too.** `/drupilot-port`, `minimal-port` and
+  the orchestrator apply the recommended `core_version_requirement` with
+  `set-core-requirement.sh` to every nested `info.yml`, not only the main one.
+  Before, a submodule stayed on `^8.8 || ^9 || ^10` and Drupal 11 refused to
+  install it. The orchestrator's definition of done now requires every nested
+  `info.yml` to admit Drupal 11, and its batch context for `/drupilot-layers`
+  (portfolio/layer passthrough, per-module `port-report.sh --output`) is
+  documented.
 - **`next-step.sh` reads the per-module record.** Its JSON adds `effort` and
   `state_file`, and a recorded `assessed` stage counts as assessed. It and the
   other state readers no longer create an empty state dir for a directory they

@@ -209,8 +209,18 @@ Keep ad-hoc rules minimal and mechanical; do not slip refactoring in here.
 Apply only the mechanical compatibility edits, preserving behavior:
 
 - **`info.yml` + `composer.json`**: set `core_version_requirement` to the target
-  decided in Step 1 (e.g. `^10 || ^11`). Remove the obsolete `core: 8.x` key if
-  present. A missing `core_version_requirement` is blocking — fix it. When Step 1
+  decided in Step 1 (e.g. `^10 || ^11`) in the main `info.yml` **and every
+  submodule's** with the helper (a submodule left on `^8.8 || ^9 || ^10` cannot be
+  installed on Drupal 11; it also removes an obsolete `core: 8.x` key and bumps a
+  test module only when it does not admit Drupal 11). Dry-run first, show the
+  changes, then apply (substitute the requirement):
+
+  ```bash
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/set-core-requirement.sh" --subject "$1" --requirement '<recommended_core_version_requirement>' --dry-run --json
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/set-core-requirement.sh" --subject "$1" --requirement '<recommended_core_version_requirement>' --json
+  ```
+
+  A missing `core_version_requirement` is blocking — the helper adds it. When Step 1
   reported a `require.php` (i.e. keeping Drupal 10), add
   `"require": { "php": "<require_php>" }` to `composer.json` using the exact value
   the helper returned, so a D10 + low-PHP site is blocked at install, not at
@@ -239,6 +249,9 @@ deprecations.
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/check-port-safety.sh" --subject "$1" --json
 # Core signature changes vs the declared core floor (gate):
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/scan-signature-changes.sh" --subject "$1" --json
+# Pre-existing metadata hygiene (report only; refreshes the port report's table,
+# and submodule-core-req must show no warning after Step 6):
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/lint-extension-metadata.sh" --subject "$1" --json
 # Hard vs soft deprecations under DRUPILOT_SOFT_DEPRECATIONS (gate: blocking == 0):
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "$1" --json | bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/classify-deprecations.sh" --subject "$1" --json
 ```
@@ -403,6 +416,9 @@ render:
 # d10_support (from verify-core-matrix.sh when Step 7b ran, else the Step 1 value),
 # port_safety (the JSON printed by check-port-safety.sh --json),
 # signature_changes (the JSON printed by scan-signature-changes.sh --json),
+# metadata_lint (the JSON printed by lint-extension-metadata.sh --json, Step 7:
+# rendered as "Pre-existing hygiene (not fixed in Phase 1)"; port-report.sh falls
+# back to the metadata-lint.json it saves),
 # soft_deprecations (the JSON printed by classify-deprecations.sh --json; add its
 # soft symbols with action "defer" to deferred_to_phase2, and count only hard +
 # unknown ones in deprecations_remaining),

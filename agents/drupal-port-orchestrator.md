@@ -198,6 +198,20 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <DIR> --stage
 `state.sh show --subject <DIR>` prints the record. Stages never go down, so a
 re-run of an earlier stage does not undo a later one.
 
+### Batch context (`/drupilot-layers`)
+
+When `/drupilot-layers` delegates a module to you it passes `portfolio=<dir>`,
+`layer=<N>` and a per-module artifacts directory
+(`<Drupal root>/.drupilot/modules/<machine>`). Then: run the module's normal flow
+(Phase 1; refactor and contribute stay opt-in, and you never contribute from a
+layer run); pass that directory to `port-report.sh --output` so modules sharing a
+site do not overwrite each other's report; treat the modules of earlier layers as
+already ported dependencies (do not edit them — a needed change there is reported
+back, not made); and finish with
+`state.sh refresh --subject <DIR> --portfolio <dir> --layer <N>`. Stop the module,
+not the layer, at a failed gate, and say why in your final message so the layer
+report can show it.
+
 ### Gating (run first, every stage)
 
 Before any heavy/destructive stage, gate it:
@@ -242,7 +256,10 @@ This is a static, non-destructive analysis. **Delegate to `drupal-viability-anal
 via the Task tool. It runs `rector --dry-run` (official + digests when enabled),
 `phpstan` at the deprecation level, `phpcs`, and `upgrade_status` (only if Drupal is
 installed), classifies findings, estimates S/M/L/XL effort, and produces a viability
-report plus a staged port plan. **Do not start porting until an assessment exists.**
+report plus a staged port plan, with the module's pre-existing metadata hygiene
+(`lint-extension-metadata.sh`: config schema, `configure:` route, orphan services,
+service arity, submodule core requirement, undeclared dependencies) reported but
+kept out of the effort rubric. **Do not start porting until an assessment exists.**
 
 After the analyst returns: present the verdict. If effort exceeds the threshold, say
 so plainly, but always hand over the staged plan and let the user choose.
@@ -266,7 +283,11 @@ port), so Stage 5 can tell pre-existing failures from regressions. Three passes
    or apply manually with change-record context; in `off` only report.
 Then apply the minimal manual changes Rector cannot. Decide
 `core_version_requirement` with `scripts/analysis/core-strategy.sh --subject <DIR>
---phase port` and apply it; when it returns a `require.php` (for `^10 || ^11`),
+--phase port` and apply it to the main `info.yml` AND every submodule with
+`scripts/analysis/set-core-requirement.sh --subject <DIR> --requirement '<value>'`
+(dry-run first with `--dry-run --json`; a submodule left on `^8.8 || ^9 || ^10`
+cannot be installed on Drupal 11; test modules are bumped only when they do not
+admit 11); when it returns a `require.php` (for `^10 || ^11`),
 add `"require": { "php": "<require_php>" }` to `composer.json` using the exact
 value returned (`DRUPILOT_REQUIRE_PHP_FLOOR` controls whether it is the real
 detected floor or `>=<target>`). Apply
@@ -370,7 +391,10 @@ shows no deprecations at the target level, `run-phpcs.sh` is clean (against the
 subject's own ruleset when it ships one, else Drupal,DrupalPractice — the report
 says which),
 `check-port-safety.sh --subject <path>` and `scan-signature-changes.sh --subject
-<path>` exit 0, and the applicable test suite is
+<path>` exit 0, every nested `*.info.yml` admits Drupal 11 (`set-core-requirement.sh`;
+`lint-extension-metadata.sh --checks submodule-core-req` shows no warning), the
+other pre-existing hygiene findings are listed in the port report (not fixed in
+Phase 1), and the applicable test suite is
 green (a `pre-existing-failures` or `not-verified-unbaselined` verdict is
 reported with its list, never as green; every new test has an `effective` negative control). Always end with a concise English summary:
 current phase, what changed, gate status, and the suggested next step.

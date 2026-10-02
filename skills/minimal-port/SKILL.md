@@ -278,8 +278,22 @@ Apply only the mechanical, behavior-preserving fixes:
   ```
 
   Apply its `recommended_core_version_requirement` (`auto` → `^10 || ^11` for a
-  BC-preserving port, or `^11` on a BC break / `d11-only`). The old `core: 8.x`
-  key no longer exists; a missing `core_version_requirement` is a hard blocker.
+  BC-preserving port, or `^11` on a BC break / `d11-only`) to the main `info.yml`
+  **and every submodule's** — a submodule left on `^8.8 || ^9 || ^10` cannot be
+  installed on Drupal 11 (core marks it `core_incompatible`):
+
+  ```bash
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/set-core-requirement.sh" --subject "<path>" --requirement '<value>' --dry-run --json
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/set-core-requirement.sh" --subject "<path>" --requirement '<value>' --json
+  ```
+
+  It removes the obsolete `core: 8.x` key, adds a missing
+  `core_version_requirement` (a hard blocker otherwise), and bumps a test module
+  only when it does not admit Drupal 11 (`package: Testing` without the key is
+  exempt in core). The other pre-existing metadata problems
+  (`lint-extension-metadata.sh`: config schema, `configure:` route, orphan
+  services, service arity, undeclared dependencies) are **reported, not fixed** in
+  Phase 1 — they go into the port report's "Pre-existing hygiene" table.
 
   **Two compatibility floors the helper now reasons about — keep them honest:**
 
@@ -350,6 +364,10 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "<path>" 
   > "<state_dir>/phpstan.json" || true
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/classify-deprecations.sh" \
   --file "<state_dir>/phpstan.json" --subject "<path>" --json
+
+# 6. Pre-existing metadata hygiene (report only, always exit 0; after §5's bump
+#    `submodule-core-req` must have no warning — the rest goes into the report):
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/lint-extension-metadata.sh" --subject "<path>" --json
 ```
 
 `classify-deprecations.sh` (read-only, no toolchain) reads PHPStan's JSON (or
@@ -542,7 +560,9 @@ so it never leaks into a patch). Then write `<state_dir>/port-manifest.json`
 `core_version_requirement`, `rector_official_files`, `digests`, `manual_edits`
 [each a string or `{edit, why, change_record}`], `deprecations_remaining`,
 `deferred_to_phase2`, `patch`, `port_safety` and `signature_changes` — the JSON
-of `check-port-safety.sh --json` / `scan-signature-changes.sh --json` — and
+of `check-port-safety.sh --json` / `scan-signature-changes.sh --json` —,
+`metadata_lint` — the JSON of `lint-extension-metadata.sh --json` run after the
+port (§6), rendered as "Pre-existing hygiene (not fixed in Phase 1)" — and
 `soft_deprecations`, the final `classify-deprecations.sh --json`; add every soft
 symbol whose `action` is `defer` to `deferred_to_phase2`, and count only the hard
 and unknown ones in `deprecations_remaining`; `d10_support` from the core matrix

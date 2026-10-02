@@ -28,6 +28,7 @@
 #     "signature_changes": <the JSON of scan-signature-changes.sh --json>,
 #     "origin_hygiene": <the JSON of origin-hygiene.sh --check --json>,
 #     "soft_deprecations": <the JSON of classify-deprecations.sh --json>,
+#     "metadata_lint": <the JSON of lint-extension-metadata.sh --json>,
 #     "verification": {
 #       "core_matrix": <the JSON of verify-core-matrix.sh --json>,
 #       "phpcs_ruleset": <the .drupilot object of run-phpcs.sh --json>,
@@ -64,6 +65,9 @@
 # floor, e.g. the newest 10.x for ^10) | failed | n/a. A manifest
 # "declared-not-verified" is upgraded to the matrix's verdict when a fresh
 # core-matrix result exists.
+# metadata_lint is optional; it falls back to the state file metadata-lint.json
+# (lint-extension-metadata.sh) and renders a "Pre-existing hygiene (not fixed
+# in Phase 1)" table, marked stale when the subject changed since the lint.
 # origin_hygiene is optional; without it the report runs origin-hygiene.sh
 # --check itself, and renders an "Origin hygiene" section only when a baseline
 # was recorded (place-subject.sh takes it before placing).
@@ -210,6 +214,18 @@ if [[ -z "$HYG" ]]; then
   [[ -r "$HYG_SH" ]] && HYG="$(bash "$HYG_SH" --check --subject "$SUBJECT" --json 2>/dev/null || true)"
 fi
 printf '%s' "$HYG" | jq -e '.baseline != null and .clean != null' >/dev/null 2>&1 || HYG=""
+
+# Pre-existing extension hygiene (lint-extension-metadata.sh): manifest
+# `metadata_lint` first, else the state file. Stale when the subject changed
+# since the lint ran (subject digest).
+META_LINT="$(printf '%s' "$M" | jq -c '.metadata_lint // empty' 2>/dev/null || true)"
+[[ -z "$META_LINT" && -r "$STATE_DIR/metadata-lint.json" ]] && META_LINT="$(jq -c . "$STATE_DIR/metadata-lint.json" 2>/dev/null || true)"
+printf '%s' "$META_LINT" | jq -e '.tool == "lint-extension-metadata"' >/dev/null 2>&1 || META_LINT=""
+META_LINT_STALE="false"
+if [[ -n "$META_LINT" ]]; then
+  _ld="$(printf '%s' "$META_LINT" | jq -r '.subject_digest // empty')"
+  [[ -z "$_ld" || "$_ld" == "$(subject_digest "$SUBJECT")" ]] || META_LINT_STALE="true"
+fi
 
 # Verification: the manifest's `verification` keys win, else the state files.
 V_PHPCS="$(printf '%s' "$M" | jq -c '.verification.phpcs_ruleset // empty' 2>/dev/null || true)"
@@ -392,6 +408,21 @@ D10_VERSIONS=""; D10_FLOOR=""
        then "\nOther new untracked entries (not attributed to drupilot): " + ((.other | map("`" + . + "`")) | join(", "))
        else empty end)
     ' 2>/dev/null || printf '_unreadable_\n'
+    printf '\n'
+  fi
+
+  if [[ -n "$META_LINT" ]]; then
+    printf '## Pre-existing hygiene (not fixed in Phase 1)\n\n'
+    if [[ "$META_LINT_STALE" == "true" ]]; then
+      printf '_Stale: the subject changed after this lint (%s); re-run `lint-extension-metadata.sh`._\n\n' "$(printf '%s' "$META_LINT" | jq -r '.generated_at // "unknown time"')"
+    fi
+    printf '%s' "$META_LINT" | jq -r '
+      if (.findings | length) == 0 then "No metadata hygiene finding (`lint-extension-metadata.sh`)."
+      else
+        "Reported, not changed by the port: fix them in a follow-up (or Phase 2). Errors \(.totals.error), warnings \(.totals.warn), info \(.totals.info).\n",
+        "| Severity | Check | Where | Finding | Suggested fix |", "|---|---|---|---|---|",
+        (.findings[] | "| \(.severity) | \(.check) | `\(.file):\(.line)` | \(.message | gsub("\\|"; "\\|")) | \(.suggestion | gsub("\\|"; "\\|")) |")
+      end' 2>/dev/null || printf '_unreadable_\n'
     printf '\n'
   fi
 
