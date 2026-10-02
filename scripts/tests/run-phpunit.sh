@@ -426,11 +426,18 @@ run_group() {
   local -a cmd=(${RUNNER[@]+"${RUNNER[@]}"} "${PHPUNIT[@]}" --log-junit "$junit" ${COVERAGE_ARGS[@]+"${COVERAGE_ARGS[@]}"} ${FILTER_ARGS[@]+"${FILTER_ARGS[@]}"} "$path")
 
   # Temporarily relax errexit around the test run so a failing group does not
-  # abort the script before we summarise it.
-  set +e
-  "${cmd[@]}"
-  local rc=$?
-  set -e
+  # abort the script before we summarise it. Through DDEV, `ddev exec`'s red
+  # "Failed to execute command ...: exit status N" line is dropped: the group
+  # verdict below always reports PHPUnit's exit code.
+  local rc=0
+  if [[ ${#RUNNER[@]} -gt 0 ]]; then
+    run_dropping_ddev_failure_line "${cmd[@]}" || rc=$?
+  else
+    set +e
+    "${cmd[@]}"
+    rc=$?
+    set -e
+  fi
 
   local executed=0 parsed have_log=0
   [[ -f "$DRUPAL_ROOT/$junit" ]] && have_log=1

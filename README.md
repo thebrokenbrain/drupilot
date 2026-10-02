@@ -289,6 +289,8 @@ Porting the same module twice should yield the same result. drupilot is **determ
 - the installed **DDEV add-on** versions;
 - the exact **reference Drupal core** each core-matrix leg was built with (`.verify_cores`, e.g. Drupal 10.6.18 for the `10` leg), so `verify-core-matrix.sh` keeps judging against the same core.
 
+The lock also names the drupilot that last wrote it: `drupilot_version` (the `plugin.json` version, refreshed on every lock write) and, when drupilot runs from a git checkout such as a development branch that still carries the last released version, `drupilot_revision` (`git describe`, e.g. `v0.8.3-45-gb97266d`).
+
 It works like a `composer.lock`: the version ranges in `config/defaults.json` stay flexible, but the lock pins exactly what was used. `scripts/env/lock-sync.sh` captures/updates it (`ddev-up.sh`, `ddev-add-ons.sh` and `install-toolchain.sh` call it automatically).
 
 **Known-good reference set.** A project that has no lock yet does not resolve the toolchain ranges fresh: `scripts/env/install-toolchain.sh` installs the **known-good matrix** shipped with the plugin, `config/toolchain-reference.json` — exact versions of `drupal-rector`, `rector/rector`, PHPStan + extensions, `coder`, Drush and `upgrade_status` verified together end to end. So a brand-new test-bed created after a broken upstream release (for example `rector/rector` 2.6.2+, which makes `drupal-rector` 0.21 crash) still gets a working set. Every install ends with a **smoke test** (a Rector dry-run with the Drupal 10 set plus `phpstan --version`) and exits 3 with the installed vs known-good versions when the toolchain is broken.

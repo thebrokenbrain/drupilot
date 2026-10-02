@@ -829,6 +829,20 @@ tag the commit `vX.Y.Z`.
   `# shellcheck source=...` directive, section separators and internal
   comments. A shared `print_usage` helper in `common.sh` now prints only the
   header block between the two `# ====` rules, and every script uses it.
+- **The lockfile's `drupilot_version` could not tell which drupilot wrote it.**
+  It was set only by `lock-sync.sh` at setup. Every lock write
+  (`lock_set`/`lock_set_json`) now refreshes it from `plugin.json`, and
+  `lock-sync.sh` adds `drupilot_revision` (new `plugin_revision` helper:
+  `git describe --tags --always --dirty`) when drupilot runs from a git
+  checkout. A development branch still carries the last released version
+  (0.8.4 here) until the release bumps it, so the revision is the field that
+  names the exact build. An installed copy drops a stale revision.
+- **`run-phpcs.sh` and `run-phpunit.sh` printed `ddev exec`'s red "Failed to
+  execute command ...: exit status N"** for every violation or failing test
+  run, next to their own verdict. They now run the tool through the new
+  `run_dropping_ddev_failure_line` helper, which leaves stdout untouched and
+  drops only that wrapper line from stderr. Both scripts still report the exit
+  code themselves.
 - **A Rector dry run that found changes printed a red "Failed to execute
   command ... exit status 2"** from `ddev exec` on stderr, although exit 2 is
   Rector's normal "changes found" result. `run-rector.sh` drops that wrapper

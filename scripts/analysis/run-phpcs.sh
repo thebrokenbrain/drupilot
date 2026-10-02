@@ -314,10 +314,18 @@ run_tool() {
   [[ -n "$RUNNER" ]] && read -r -a cmd <<<"$RUNNER"
   cmd+=("vendor/bin/$bin" "${STD_ARGS[@]}" "$@" "$SUBJECT_REL")
   log_step "$bin: ${cmd[*]}"
-  set +e
-  "${cmd[@]}"
-  local rc=$?
-  set -e
+  local rc=0
+  if [[ -n "$RUNNER" ]]; then
+    # Violations (phpcs exit 1/2) and fixes (phpcbf exit 1) are normal
+    # verdicts reported below: drop `ddev exec`'s red "Failed to execute
+    # command" line, which only repeats the exit status.
+    run_dropping_ddev_failure_line "${cmd[@]}" || rc=$?
+  else
+    set +e
+    "${cmd[@]}"
+    rc=$?
+    set -e
+  fi
   return "$rc"
 }
 

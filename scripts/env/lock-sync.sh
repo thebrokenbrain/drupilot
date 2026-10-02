@@ -13,7 +13,9 @@
 #   - toolchain.<pkg>         exact version of each .packages.* dev tool
 #   - ddev_addons.<addon>     installed DDEV add-on version (best-effort)
 #   - phpstan_level / core_strategy   the effective config knobs
-#   - drupilot_version / created / updated
+#   - drupilot_version / created / updated (drupilot_version is plugin.json's
+#     version, which every lock write refreshes; drupilot_revision is the exact
+#     git build when drupilot runs from a checkout)
 #
 # It does NOT touch digests.{ref,sha} (run-rector.sh owns those), except that
 # --refresh drops digests.sha so the next Rector run re-resolves the live ref.
@@ -108,6 +110,15 @@ composer_pkg_version() {
 [[ -z "$(lock_get .created "")" ]] && lset_str .created "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 lset_str .updated "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 lset_str .drupilot_version "$(plugin_version)"
+# A git checkout of drupilot (a development branch) keeps plugin.json's last
+# released version: record the exact build too, and drop a stale one otherwise.
+_rev="$(plugin_revision)"
+if [[ -n "$_rev" ]]; then
+  lset_str .drupilot_revision "$_rev"
+elif [[ "$DRY_RUN" != "1" && -n "$(lock_get .drupilot_revision "")" ]] && have_cmd jq; then
+  _lf="$(drupilot_lock_file)"; _lt="$(mktemp "${_lf}.XXXXXX")"
+  if jq 'del(.drupilot_revision)' "$_lf" > "$_lt" 2>/dev/null; then mv -f "$_lt" "$_lf"; else rm -f "$_lt"; fi
+fi
 lset_str .php_target "$(resolve_php_target)"
 lset_json .phpstan_level "$(config_get DRUPILOT_PHPSTAN_LEVEL 2)"
 lset_str .core_strategy "$(config_get DRUPILOT_CORE_TARGET_STRATEGY auto)"

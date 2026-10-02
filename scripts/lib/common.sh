@@ -132,6 +132,17 @@ plugin_version() {
   fi
 }
 
+# plugin_revision -> the exact build of a drupilot that runs from a git checkout
+# (`git describe --tags --always --dirty`, e.g. v0.8.3-45-gb97266d), since
+# plugin.json's version only changes on a release and a development branch keeps
+# reporting the last one. Empty for an installed (non-git) copy, or without git.
+plugin_revision() {
+  local r; r="$(plugin_root)"
+  [[ -e "$r/.git" ]] && have_cmd git || return 0
+  git -C "$r" describe --tags --always --dirty 2>/dev/null || true
+  return 0
+}
+
 # data_dir -> plugin persistent data directory (cache, state).
 # Prefers CLAUDE_PLUGIN_DATA (provided by Claude Code) and falls back to XDG.
 data_dir() {
@@ -327,13 +338,16 @@ lock_get() {
 # lock_set <jq-path> <value> -> set a STRING value at <jq-path>, creating the
 # lock (and any intermediate objects) if absent. Atomic (temp file + mv). No-op
 # (return 1) without jq. <jq-path> is plugin-controlled, never user input.
+# Every lock write also stamps `.drupilot_version` (plugin.json's version), so
+# the lock names the drupilot that last wrote it, not only the one that ran
+# lock-sync.sh at setup.
 lock_set() {
   local path="$1" value="$2" f tmp
   have_cmd jq || return 1
   f="$(drupilot_lock_file)"
   [[ -f "$f" ]] || printf '{}\n' > "$f" 2>/dev/null || return 1
   tmp="$(mktemp "${f}.XXXXXX" 2>/dev/null)" || return 1
-  if jq --arg v "$value" "${path} = \$v" "$f" > "$tmp" 2>/dev/null; then
+  if jq --arg v "$value" --arg pv "$(plugin_version)" "${path} = \$v | .drupilot_version = \$pv" "$f" > "$tmp" 2>/dev/null; then
     mv -f "$tmp" "$f"
   else
     rm -f "$tmp" 2>/dev/null || true; return 1
@@ -348,7 +362,7 @@ lock_set_json() {
   f="$(drupilot_lock_file)"
   [[ -f "$f" ]] || printf '{}\n' > "$f" 2>/dev/null || return 1
   tmp="$(mktemp "${f}.XXXXXX" 2>/dev/null)" || return 1
-  if jq --argjson v "$value" "${path} = \$v" "$f" > "$tmp" 2>/dev/null; then
+  if jq --argjson v "$value" --arg pv "$(plugin_version)" "${path} = \$v | .drupilot_version = \$pv" "$f" > "$tmp" 2>/dev/null; then
     mv -f "$tmp" "$f"
   else
     rm -f "$tmp" 2>/dev/null || true; return 1
