@@ -350,6 +350,15 @@ tag the commit `vX.Y.Z`.
   `recorded_at`, `subject_digest` and `git_head`. New `--no-record` and
   `--result-file FILE` options.
 ### Changed
+- **`/drupilot-contribute` and `CLAUDE.md` describe the current hook and Drupal
+  10 contracts.** Step 3 of the command now runs `git-hooks.sh --json` before
+  committing, lets the hooks run, and allows `--no-verify` only after
+  `--run-equivalents` reports `all_green` (recording the substitution), as the
+  skill and agent already required. `CLAUDE.md` documents the guard's
+  `--no-verify` ask (`DRUPILOT_HOOKS_GUARD`), `verify-core-matrix.sh` and the
+  `d10_support` verdicts, the project PHPCS ruleset resolution and
+  `git-hooks.sh`, and the DDEV helpers (`ddev_ensure_running_or_host`,
+  `ddev_stop_composer`, the `run_with_timeout` caveat).
 - **Only hard deprecations count as must-fix work.** The viability assessment
   used to count every PHPStan deprecation message as "must-fix to run on D11",
   which overstated the effort of modules that only use APIs deprecated in 11.4

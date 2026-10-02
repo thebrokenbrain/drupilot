@@ -105,7 +105,24 @@ its `CONTRIBUTING.md` (some contrib still use the legacy
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/issue-fork.sh" --project "<PROJECT>" --issue "<ISSUEID>"
 ```
 
-Apply the ported change-set on the branch, `git add -A`, and commit.
+Apply the ported change-set on the branch and `git add -A`. **Before
+committing, detect the repository's git hooks** (GrumPHP, husky, lefthook,
+pre-commit, CaptainHook, `core.hooksPath`, a `.git/hooks` script):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/git-hooks.sh" --subject <dir> --json
+```
+
+Then commit normally and **let the hooks run** — give a slow hook a longer Bash
+timeout or run the commit in the background; never normalize `--no-verify`.
+Only when a hook cannot complete in this context, run
+`git-hooks.sh --subject <dir> --run-equivalents` (phpcs / phpstan / php -l /
+composer validate, plus PHPUnit with `--with-tests`, through DDEV), fix every
+failure, and commit with `--no-verify` **only when `all_green` is true** (the
+PreToolUse guard asks the developer to confirm such a commit). Record the
+substitution for `port-report.md` (`verification.commit_hooks`: which
+validations replaced the hook, and the `uncovered` tasks) and say so in the
+MR/issue comment — never claim the hook itself passed.
 
 ## Step 4 — Push, open the MR, and attach a patch
 
