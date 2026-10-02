@@ -25,10 +25,12 @@
 #     "patch": "foo-port-to-drupal-11.patch",
 #     "d10_support": "declared-not-verified",
 #     "port_safety": <the JSON of check-port-safety.sh --json>,
+#     "signature_changes": <the JSON of scan-signature-changes.sh --json>,
 #     "origin_hygiene": <the JSON of origin-hygiene.sh --check --json>
 #   }
 # manual_edits items may be a plain string OR an object {edit, why?, change_record?}.
-# port_safety is optional; when present the report lists its findings.
+# port_safety and signature_changes are optional; when present the report lists
+# their findings.
 # origin_hygiene is optional; without it the report runs origin-hygiene.sh
 # --check itself, and renders an "Origin hygiene" section only when a baseline
 # was recorded (place-subject.sh takes it before placing).
@@ -233,6 +235,20 @@ printf '%s' "$HYG" | jq -e '.baseline != null and .clean != null' >/dev/null 2>&
     printf '\n'
   fi
 
+  if [[ "$(printf '%s' "$M" | jq -r 'has("signature_changes")' 2>/dev/null)" == "true" ]]; then
+    printf '### Core signature changes\n\n'
+    printf '%s' "$M" | jq -r '
+      .signature_changes as $s
+      | "\($s.errors // 0) error(s), \($s.warnings // 0) warning(s), \($s.infos // 0) info"
+        + (if ($s.core_floor // "") != "" then " — judged at core floor `\($s.core_floor)`." else "." end) + "\n",
+        ( ($s.findings // [])[]
+          | "- **\(.severity)** `[signature:\(.id)]` `\(.file):\(.line)` — \(.message)"
+            + (if (.fix // "") != "" and .severity != "info" then "\n    - Fix: \(.fix)" else "" end)
+            + (if (.change_record // "") != "" then "\n    - Learn more: \(.change_record)" else "" end) )
+    ' 2>/dev/null || printf '_unreadable_\n'
+    printf '\n'
+  fi
+
   if [[ "$EXPLAINED_N" -gt 0 ]]; then
     printf '## Drupal 9/10 → 11 changes, explained\n\n'
     printf '_A best-effort teaching aid: each recognized change with what moved, the fix, and a drupal.org change record. Not exhaustive — see the patch for the exact diff._\n\n'
@@ -242,7 +258,8 @@ printf '%s' "$HYG" | jq -e '.baseline != null and .clean != null' >/dev/null 2>&
         "dependency-injection":"Dependency injection","forms":"Forms & controllers","twig":"Twig 3",
         "jquery-ui":"jQuery UI","ckeditor":"CKEditor 5","assertion":"Assertions",
         "phpunit":"PHPUnit 10/11","update-hooks":"Update hooks","port-safety":"Port safety",
-        "serialization":"Serialization (DependencySerializationTrait)","other":"Other"}) as $t
+        "serialization":"Serialization (DependencySerializationTrait)",
+        "signature-change":"Core signature changes","other":"Other"}) as $t
       | group_by(.category)[]
       | "### " + ($t[(.[0].category)] // (.[0].category)) + "\n\n"
         + ( map("- **\(.symbol)** (\(.hits) hit(s)) — \(.why)\n    - Fix: \(.fix)\n    - Learn more: \(.change_record)") | join("\n") )

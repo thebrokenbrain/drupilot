@@ -62,7 +62,21 @@ with APIs Drupal 11 now provides natively. Anything bigger is deferred to Phase 
 - **No `#[\Override]` in Phase 1.** While `core_version_requirement` still spans
   Drupal 10 (or an older 11.x minor), the parent method may not exist there
   (e.g. `ContentEntityStorageBase::buildRevisionCacheId()` exists only from 11.3)
-  and PHP 8.3+ fatals at compile time.
+  and PHP 8.3+ fatals at compile time ("has #[\Override] attribute, but no
+  matching parent method exists"). Rector judges it against the ONE sandbox core,
+  so it cannot see this. `#[\Override]` on a method that exists only in some of
+  the declared cores breaks the others — Drupal 10 first.
+- **Core signature changes are fixed in the module, D10-safely.** A
+  `ConfigFormBase` subclass forwards `TypedConfigManagerInterface` (required from
+  11.0: pass `$container->get('config.typed')`; PHP ignores the extra argument on
+  older 10.x), a `ContentTranslationController` subclass forwards `TimeInterface`,
+  a hook gaining a parameter in a later minor (`hook_entity_operation()` /
+  `_alter()` get `CacheableMetadata $cacheability` from 11.3) only ever gets it as
+  an OPTIONAL parameter while the floor is lower, and a module method whose name
+  core later adds (`getOriginal()`/`setOriginal()` from 11.2,
+  `buildRevisionCacheId()` from 11.3) is renamed (callers updated) unless the
+  override is intended. `scan-signature-changes.sh` (§6) lists every collision
+  with the verified catalog.
 - **A sandbox PHPStan finding is never "fixed" by changing semantics** unless the
   original project tolerates the change. Findings caused by the sandbox itself
   (missing contrib/custom dependencies, classes from modules that are not
@@ -268,6 +282,9 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "<path>" 
 
 # 3. Deterministic port-safety checks (gate: must exit 0):
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/check-port-safety.sh" --subject "<path>" --json
+
+# 4. Core signature changes vs the declared core floor (gate: must exit 0):
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/scan-signature-changes.sh" --subject "<path>" --json
 ```
 
 `check-port-safety.sh` (read-only, no toolchain) flags: a `create()` without
@@ -282,7 +299,25 @@ the same pre-port git base as the local patch; `--base REF` to override) and get
 its severity from `config/port-checks.json`. **Exit 3 = error findings: the stage
 is not done** — fix them (restore the interface/`use`/`new static`/array
 callable, make the property `protected`, drop an added `#[\Override]`), never suppress them. Warnings are
-reviewed and listed in the report. Exit 0 with warnings is fine.
+reviewed and listed in the report. Exit 0 with warnings is fine. An `#[\Override]`
+on a method the signature catalog dates (e.g. `buildRevisionCacheId()`, 11.3) is
+an error whenever the declared floor is below that minor, even for `^11`.
+
+`scan-signature-changes.sh` (read-only, no toolchain) checks the subject against
+the verified catalog of Drupal 10 → 11 **signature** changes
+(`.signature_changes` in `config/deprecations.json`), judged against the core
+FLOOR of the declared `core_version_requirement` (`^10 || ^11` → 10.0,
+`^10.3 || ^11` → 10.3; `--core-floor X.Y` overrides): a constructor passing too
+few arguments to `ConfigFormBase`/`ContentTranslationController` (error), a
+method that collides with one core added later (`getOriginal()`/`setOriginal()`
+11.2, `buildRevisionCacheId()` 11.3: error when its signature is incompatible or
+it carries `#[\Override]` below the floor, warn when it silently becomes an
+override), a `hook_entity_operation()`/`_alter()` implementation that REQUIRES
+the 11.3 parameter while the floor is lower (error), and calls of APIs newer than
+the floor (warn). **Exit 3 = error findings: fix them** with each entry's `fix`
+(D10-safe, see §0); `info` findings (e.g. a one-parameter
+`hook_entity_operation()`) need no change. Tee the human output
+(`[signature:<id>] ...` lines) into `change-log.txt` so the report explains it.
 
 `run-phpcs.sh --fix` runs `phpcbf` first then `phpcs` with
 `--standard=Drupal,DrupalPractice` and the extension list from PROMPT §2.3
@@ -306,7 +341,7 @@ installed here, an unknown contrib type) is documented as *sandbox-only*, not
 patched — see §0. Phase 1 is done when the module compiles with **no blocking
 deprecations** at level 2, no *real* PHPStan errors (sandbox-only ones
 documented), PHPCS is clean (or remaining items are explicitly noted as
-out-of-scope) and `check-port-safety.sh` exits 0. If a
+out-of-scope) and `check-port-safety.sh` and `scan-signature-changes.sh` exit 0. If a
 running Drupal site exists, `run-upgrade-status.sh --module NAME` gives a
 complementary view (it soft-skips when Drupal is not installed).
 
@@ -356,7 +391,9 @@ so it never leaks into a patch). Then write `<state_dir>/port-manifest.json`
 (shape per `port-report.sh`: `machine_name`, `type`, `phase: "port"`,
 `core_version_requirement`, `rector_official_files`, `digests`, `manual_edits`
 [each a string or `{edit, why, change_record}`], `deprecations_remaining`,
-`deferred_to_phase2`, `patch`) and render the report:
+`deferred_to_phase2`, `patch`, `port_safety` and `signature_changes` — the JSON
+of `check-port-safety.sh --json` / `scan-signature-changes.sh --json`) and render
+the report:
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" \

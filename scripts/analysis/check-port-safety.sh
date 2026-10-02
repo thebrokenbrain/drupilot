@@ -160,6 +160,7 @@ CORE_REQ="$(printf '%s' "$CORE_REQ" | tr -d "\"'")"
 # The declared range reaches below Drupal 11 when it names an 8/9/10 major.
 SPANS_D10=0
 if printf '%s' "$CORE_REQ" | grep -qE '(^|[^0-9.])(8|9|10)(\.|[^0-9]|$)'; then SPANS_D10=1; fi
+CORE_FLOOR="$(core_floor_from_requirement "$CORE_REQ")"
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-portsafety.XXXXXX")"
 cleanup() { rm -rf "$TMP"; }
@@ -175,6 +176,15 @@ IF_INJECT="$(jq -r '.interfaces.container_injection' "$CFG")"
 IF_DERIVER="$(jq -r '.interfaces.container_deriver' "$CFG")"
 TR_SERIAL="$(jq -r '.interfaces.serialization_trait' "$CFG")"
 FAPI_KEYS="$(jq -r '.fapi_callback_keys | join(" ")' "$CFG")"
+# Methods core added in a known minor (config/deprecations.json
+# .signature_changes, kind method-signature) and their verified ancestry, so an
+# #[\Override] on one of them is judged against the declared core floor.
+SIGCAT="$(plugin_root)/config/deprecations.json"
+: > "$TMP/sigmethods.tsv"
+if [[ -f "$SIGCAT" ]]; then
+  jq -r '(.signature_changes // [])[] | select(.kind == "method-signature") | [.id, .target, .method, .since] | join("\t")' "$SIGCAT" > "$TMP/sigmethods.tsv" 2>/dev/null || true
+  jq -r '(.signature_changes // [])[] | select(.kind == "method-signature") | .target as $t | (.known_descendants // [])[] | [$t, "yes", .] | join("\t")' "$SIGCAT" >> "$TMP/fallback.tsv" 2>/dev/null || true
+fi
 
 # --- Git base (diff-aware attribution) ---------------------------------------
 REPO=""; BASE_REF=""; DIFF_MODE=0
@@ -199,7 +209,7 @@ fi
 
 # --- Helpers ----------------------------------------------------------------
 rel() { local p="$1"; p="${p#"$SUBJECT_ABS"/}"; printf '%s' "$p"; }
-key_of() { printf '%s' "$*" | tr '\\/| ' '____'; }
+key_of() { php_scan_key "$@"; }
 
 # diff_info FILE -> prepares $TMP/diff/<key>.{added,removed}; prints the key.
 # .added holds the added/changed line numbers (or "ALL" for an untracked file).
@@ -249,99 +259,21 @@ add_finding() {
 }
 
 # --- Scan the subject --------------------------------------------------------
+# Scans, the class index, the extension map and the ancestry resolver are the
+# shared helpers in scripts/lib/php-scan.sh (work files under $TMP).
+PHPSCAN_DIR="$TMP"
+PHPSCAN_DOCROOT="$DOCROOT"
 FILES="$TMP/files.txt"
 find "$SUBJECT_ABS" -type f \( -name '*.php' -o -name '*.module' -o -name '*.inc' -o -name '*.install' \
   -o -name '*.theme' -o -name '*.profile' -o -name '*.engine' \) \
   -not -path '*/vendor/*' -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null \
   | LC_ALL=C sort > "$FILES"
-: > "$TMP/index.tsv"   # fqcn \t file \t scanfile
-n=0
-while IFS= read -r f; do
-  n=$((n + 1))
-  php_scan_file "$f" > "$TMP/scan/$n.tsv"
-  AWKV_f="$f" AWKV_s="$TMP/scan/$n.tsv" awk -F'\t' 'BEGIN { f = ENVIRON["AWKV_f"]; s = ENVIRON["AWKV_s"] } $1 == "CLASS" { print $4 "\t" f "\t" s }' "$TMP/scan/$n.tsv" >> "$TMP/index.tsv"
-done < "$FILES"
-SCANNED="$n"
-
-# Extension directories (machine name -> dir) for Drupal\<ext>\ namespaces.
+php_scan_index "$FILES"
+SCANNED="$(wc -l < "$FILES" | tr -d ' ')"
+php_scan_extmap "$SUBJECT_ABS"
 EXTMAP="$TMP/extmap.tsv"
-{
-  find "$SUBJECT_ABS" -name '*.info.yml' -not -path '*/vendor/*' -not -path '*/node_modules/*' 2>/dev/null
-  if [[ -n "$DOCROOT" ]]; then
-    for d in core/modules core/profiles core/themes modules profiles themes; do
-      [[ -d "$DOCROOT/$d" ]] && find "$DOCROOT/$d" -name '*.info.yml' -not -path '*/tests/*' 2>/dev/null
-    done
-  fi
-} | while IFS= read -r i; do printf '%s\t%s\n' "$(basename "$i" .info.yml)" "$(dirname "$i")"; done > "$EXTMAP"
-
-# class_file FQCN -> path of the file declaring it (subject index first).
-class_file() {
-  local fq="$1" f ext rest dir
-  f="$(AWKV_q="$fq" awk -F'\t' 'BEGIN { q = ENVIRON["AWKV_q"] } $1 == q { print $2; exit }' "$TMP/index.tsv")"
-  if [[ -n "$f" ]]; then printf '%s' "$f"; return 0; fi
-  [[ -n "$DOCROOT" ]] || return 0
-  case "$fq" in
-    Drupal\\Core\\*|Drupal\\Component\\*)
-      f="$DOCROOT/core/lib/$(printf '%s' "$fq" | tr '\\' '/').php";;
-    Drupal\\*)
-      rest="${fq#Drupal\\}"; ext="${rest%%\\*}"; rest="${rest#*\\}"
-      dir="$(AWKV_e="$ext" awk -F'\t' 'BEGIN { e = ENVIRON["AWKV_e"] } $1 == e { print $2; exit }' "$EXTMAP")"
-      [[ -n "$dir" ]] && f="$dir/src/$(printf '%s' "$rest" | tr '\\' '/').php";;
-  esac
-  if [[ -n "$f" && -f "$f" ]]; then printf '%s' "$f"; fi
-  return 0
-}
-# class_records FQCN -> its CLASS + TRAIT records ("" when not found).
-class_records() {
-  local fq="$1" f s
-  s="$(AWKV_q="$fq" awk -F'\t' 'BEGIN { q = ENVIRON["AWKV_q"] } $1 == q { print $3; exit }' "$TMP/index.tsv")"
-  if [[ -z "$s" ]]; then
-    f="$(class_file "$fq")"
-    [[ -n "$f" ]] || return 0
-    s="$TMP/ext/$(key_of "$f").tsv"
-    [[ -f "$s" ]] || php_scan_file "$f" > "$s"
-  fi
-  AWKV_q="$fq" awk -F'\t' 'BEGIN { q = ENVIRON["AWKV_q"] } ($1 == "CLASS" && $4 == q) || ($1 == "TRAIT" && $2 == q)' "$s"
-  return 0
-}
-# chain_has FQCN TARGET [DEPTH] -> yes | no | unknown
-# (does FQCN, an ancestor, or an implemented interface — or, for a trait
-# TARGET, a used trait — equal TARGET). Memoized; unresolvable Drupal classes
-# fall back to config/port-checks.json, then "unknown"; non-Drupal classes
-# (PHP, Symfony, ...) never implement a Drupal interface or use a Drupal trait.
-chain_has() {
-  local fq="$1" target="$2" depth="${3:-0}" memo recs parent impls x r="no" sub
-  if [[ "$fq" == "$target" ]]; then echo yes; return 0; fi
-  memo="$TMP/memo/$(key_of "$target|$fq")"
-  if [[ -f "$memo" ]]; then cat "$memo"; return 0; fi
-  if (( depth > 15 )); then echo unknown; return 0; fi
-  recs="$(class_records "$fq")"
-  if [[ -z "$recs" ]]; then
-    r="$(AWKV_t="$target" AWKV_q="$fq" awk -F'\t' 'BEGIN { t = ENVIRON["AWKV_t"]; q = ENVIRON["AWKV_q"] } $1 == t && $3 == q { print $2; exit }' "$TMP/fallback.tsv")"
-    if [[ -z "$r" ]]; then
-      case "$fq" in Drupal\\*) r="unknown";; *) r="no";; esac
-    fi
-  else
-    parent="$(printf '%s\n' "$recs" | awk -F'\t' '$1 == "CLASS" { print $6; exit }')"
-    impls="$(printf '%s\n' "$recs" | awk -F'\t' '$1 == "CLASS" { print $7; exit }' | tr ',' '\n')"
-    if [[ "$target" == *Trait ]]; then
-      impls="$(printf '%s\n' "$recs" | awk -F'\t' '$1 == "TRAIT" { print $3 }')"
-    fi
-    for x in $impls $parent; do
-      [[ -n "$x" ]] || continue
-      sub="$(chain_has "$x" "$target" $((depth + 1)))"
-      if [[ "$sub" == "yes" ]]; then r="yes"; break; fi
-      if [[ "$sub" == "unknown" ]]; then r="unknown"; fi
-    done
-  fi
-  echo "$r" > "$memo"
-  echo "$r"
-  return 0
-}
-# first unresolved Drupal ancestor of FQCN (for "verify manually" messages).
-first_parent() {
-  class_records "$1" | awk -F'\t' '$1 == "CLASS" { print $6; exit }'
-}
+chain_has() { php_chain_has "$@"; }
+first_parent() { php_first_parent "$@"; }
 
 # --- Check: plugin-di / static-factory / serialization / override ------------
 n=0
@@ -419,10 +351,30 @@ while IFS= read -r f; do
     done < <(awk -F'\t' '$1 == "CLASS" && $3 == "class" { print $4 "\t" $2 "\t" $5 }' "$s")
   fi
 
-  if check_on override-attribute && [[ "$SPANS_D10" == "1" ]]; then
+  if check_on override-attribute; then
     while IFS=$'\t' read -r _ line cls; do
-      add_finding override-attribute "$f" "$line" "$(introduced "$f" "$line")" \
-        "#[\\Override] in ${cls##*\\} while core_version_requirement '${CORE_REQ}' still includes Drupal 10: confirm the parent method exists on the LOWEST core you declare (without it PHP 8.3+ fatals at compile time). Phase 1 does not add #[\\Override]."
+      # The method the attribute sits on (declared within the next 3 lines).
+      mname="$(AWKV_q="$cls" AWKV_l="$line" awk -F'\t' 'BEGIN { q = ENVIRON["AWKV_q"]; l = ENVIRON["AWKV_l"] + 0 } $1 == "METHOD" && $3 == q && $2 > l && $2 <= l + 3 { print $4; exit }' "$s")"
+      # A method core added in a known minor (signature catalog): an error
+      # whenever the declared floor is below that minor, Drupal 10 or not.
+      known=""
+      if [[ -n "$mname" && -s "$TMP/sigmethods.tsv" ]]; then
+        while IFS=$'\t' read -r sid starget smethod ssince; do
+          [[ "$(lc "$smethod")" == "$(lc "$mname")" ]] || continue
+          [[ "$(chain_has "$cls" "$starget")" == "yes" ]] || continue
+          if [[ -z "$CORE_FLOOR" ]] || ! version_ge "$CORE_FLOOR" "$ssince"; then
+            known="${starget##*\\}::${smethod}() exists only from Drupal ${ssince} (signature catalog: ${sid})"
+          fi
+          break
+        done < "$TMP/sigmethods.tsv"
+      fi
+      if [[ -n "$known" ]]; then
+        add_finding override-attribute "$f" "$line" "$(introduced "$f" "$line")" \
+          "#[\\Override] on ${cls##*\\}::${mname}() but ${known}, above the declared core floor (${CORE_FLOOR:-unknown}, '${CORE_REQ}'): a compile-time fatal on PHP 8.3+ with the older cores. Remove it while the floor is below that minor." error
+      elif [[ "$SPANS_D10" == "1" ]]; then
+        add_finding override-attribute "$f" "$line" "$(introduced "$f" "$line")" \
+          "#[\\Override] in ${cls##*\\} while core_version_requirement '${CORE_REQ}' still includes Drupal 10: confirm the parent method exists on the LOWEST core you declare (without it PHP 8.3+ fatals at compile time). Phase 1 does not add #[\\Override]."
+      fi
     done < <(awk -F'\t' '$1 == "OVERRIDE"' "$s")
   fi
 done < "$FILES"

@@ -204,6 +204,8 @@ deprecations.
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "$1"
 # Deterministic port-safety checks (gate):
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/check-port-safety.sh" --subject "$1" --json
+# Core signature changes vs the declared core floor (gate):
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/scan-signature-changes.sh" --subject "$1" --json
 ```
 
 If PHPStan still reports blocking deprecations, iterate (back to the relevant
@@ -226,7 +228,25 @@ suppress them. Each finding says whether this port introduced it (diff against
 the same pre-port git base as the local patch; pass `--base REF` if the port
 was already committed). Warnings (e.g. `#[\Override]` while the core range
 spans Drupal 10, pre-existing private/readonly properties) are reviewed and
-listed in the report.
+listed in the report. An `#[\Override]` on a method the signature catalog dates
+(`buildRevisionCacheId()` exists only from 11.3) is an error whenever the declared
+floor is below that minor, `^11` included.
+
+**Signature gate.** `scan-signature-changes.sh` must exit **0** too. It checks the
+module against the verified catalog of Drupal 10 → 11 signature changes
+(`.signature_changes` in `config/deprecations.json`) at the FLOOR of the
+`core_version_requirement` you just set (`--core-floor X.Y` overrides): a
+`ConfigFormBase` / `ContentTranslationController` subclass passing too few
+arguments to `parent::__construct()` (ArgumentCountError on 11.0+), a module
+method colliding with one core added later (`getOriginal()`/`setOriginal()` 11.2,
+`buildRevisionCacheId()` 11.3) with an incompatible signature or an
+`#[\Override]` below the floor, a `hook_entity_operation()`/`_alter()` that
+REQUIRES the 11.3 `$cacheability` parameter while the floor is lower. Apply each
+finding's `fix` the Drupal 10-safe way (forward `config.typed`; rename the
+colliding helper and its callers; make the new hook parameter optional) and
+re-run. Warnings (a method that silently becomes an override of core, a call to
+an API newer than the floor) are decided and listed in the report; `info`
+findings need no change. Tee the human output into `<state_dir>/change-log.txt`.
 
 ## Step 8 — Write the local patch (preview / test locally)
 
@@ -284,7 +304,8 @@ render:
 # core_version_requirement, require_php, php_target, version_bump,
 # rector_official_files, digests {applied, rejected:[{rule,reason}], skipped},
 # manual_edits[], deprecations_remaining, deferred_to_phase2[], patch, d10_support,
-# port_safety (the JSON printed by check-port-safety.sh --json).
+# port_safety (the JSON printed by check-port-safety.sh --json),
+# signature_changes (the JSON printed by scan-signature-changes.sh --json).
 # Each manual_edits item may be a plain string OR an object
 # {edit, why?, change_record?} so the report can explain WHY each manual change
 # was made (and link its change record).

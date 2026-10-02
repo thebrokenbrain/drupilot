@@ -158,7 +158,51 @@ tag the commit `vX.Y.Z`.
 - **`common.sh`: `git_local_exclude DIR PATTERN...`** (idempotent append to the
   repo's local `.git/info/exclude`) and **`symlink_escapes TREE REL`** (portable,
   lexical out-of-tree symlink test).
+- **Catalog of Drupal 10 -> 11 breaking signature changes** (`.signature_changes`
+  in `config/deprecations.json`, next to the explainer map so both share the
+  change-records search and the `[signature:<id>]` explainer entries). Every
+  entry was checked against core source on each branch it names and records the
+  file it was verified in: `ConfigFormBase::__construct()` +
+  `TypedConfigManagerInterface` (optional 10.2, required 11.0),
+  `ContentTranslationController::__construct()` + `TimeInterface` (10.3 / 11.0),
+  `EntityInterface::getOriginal(): ?static` and `setOriginal()` (11.2),
+  `ContentEntityStorageBase::buildRevisionCacheId($id): string` (11.3), and the
+  `$cacheability` parameter of `hook_entity_operation()` and
+  `hook_entity_operation_alter()` (11.3), each with its fix and Drupal 10 note.
+- **`scripts/analysis/scan-signature-changes.sh`** (`--subject DIR [--core-req
+  STR] [--core-floor X.Y] [--drupal-root DIR] [--json]`, read-only, no
+  toolchain). Flags a direct subclass passing too few arguments to the changed
+  constructor, a module method that collides with one core added later (error if
+  incompatible or carrying `#[\Override]` below the floor, warning if it silently
+  becomes an override), a hook implementation (procedural or `#[Hook]`) that
+  requires a parameter older cores never pass, and calls of APIs newer than the
+  floor. Severities follow the floor of the declared `core_version_requirement`,
+  so a change that is fine for `^11.3` is an error for `^10 || ^11`. Ancestry is
+  read from the Drupal root, else from each entry's verified `known_descendants`.
+  Exit 3 on error findings. Wired into `/drupilot-assess` (manual items of the
+  plan and the effort count), `/drupilot-port` and `/drupilot-refactor` (gate,
+  must exit 0), the minimal-port, viability-assessment and full-refactor skills,
+  the orchestrator and analyst agents, and `port-report.sh` (manifest key
+  `signature_changes`, plus a "Core signature changes" explainer group).
+- **`common.sh`: `core_floor_from_requirement`** (`'^10 || ^11'` -> `10.0`,
+  `'^10.3 || ^11'` -> `10.3`, `'^11'` -> `11.0`; empty when unreadable).
+- **`php-scan.sh` records `SIG`, `PCALL`, `FUNC` and `HOOK`** (method
+  visibility/arity/return type, `parent::m()` argument counts, top-level
+  functions, `#[Hook]` methods), and now hosts the class index and ancestry
+  resolver (`php_scan_index`, `php_scan_extmap`, `php_class_file`,
+  `php_class_records`, `php_chain_has`) that `check-port-safety.sh` had inline,
+  so both scanners share one implementation (its output is unchanged).
 ### Changed
+- **`check-port-safety.sh` override-attribute uses the signature catalog.** An
+  `#[\Override]` on a method the catalog dates above the declared core floor
+  (e.g. `buildRevisionCacheId()`, 11.3) is now an error whatever its
+  attribution, also for `^11` (floor 11.0), where it used to be skipped or only a
+  review warning.
+- **Skills document the `#[\Override]` trap and D10-safe signature fixes.** An
+  `#[\Override]` on a method that exists only in some of the declared cores is a
+  PHP 8.3+ compile-time fatal on the others (Drupal 10 first); constructor
+  arguments are forwarded, new hook parameters stay optional, and colliding
+  helpers are renamed while the floor is lower.
 - **`rector/rector` is an explicit toolchain package** (`.packages.rector`,
   `^2.0 <2.6.2`), so it is installed with a range that excludes the releases that
   break drupal-rector 0.21 and `lock-sync.sh` records its exact version.

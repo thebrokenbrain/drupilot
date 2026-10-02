@@ -753,6 +753,30 @@ subject_core_requirement() {
     | sed -E 's/^[[:space:]]*core_version_requirement:[[:space:]]*//; s/[[:space:]]*$//'
 }
 
+# core_floor_from_requirement <constraint> -> the lowest core MAJOR.MINOR the
+# Composer-style constraint admits ('^10 || ^11' -> 10.0, '^10.3 || ^11' ->
+# 10.3, '^9.2 || ^10' -> 9.2, '>=10.2' -> 10.2, '^11' -> 11.0). Upper bounds
+# ('<', '<=', '!=') are ignored. Prints nothing (and returns 0) when no version
+# can be read, so callers treat an unknown floor as "unknown", never guess.
+core_floor_from_requirement() {
+  printf '%s' "${1:-}" | tr -d "\"'" | tr '|' '\n' | awk '
+    {
+      n = split($0, parts, /[[:space:],]+/)
+      for (i = 1; i <= n; i++) {
+        p = parts[i]
+        if (p == "" || p ~ /^(<|!=)/) continue
+        sub(/^(\^|~|>=|>|==|=|v)+/, "", p)
+        if (p !~ /^[0-9]+/) continue
+        split(p, v, ".")
+        maj = v[1] + 0; mn = (v[2] ~ /^[0-9]+$/) ? v[2] + 0 : 0
+        if (!have || maj < bmaj || (maj == bmaj && mn < bmin)) { bmaj = maj; bmin = mn; have = 1 }
+        break
+      }
+    }
+    END { if (have) printf "%d.%d", bmaj, bmin }'
+  return 0
+}
+
 # ddev_project_name <string> -> a DDEV/hostname-safe project name derived from
 # the input (usually a directory basename). DDEV rejects names that are not valid
 # hostname labels, so underscores, dots, spaces and uppercase all break

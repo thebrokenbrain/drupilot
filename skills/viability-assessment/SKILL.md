@@ -268,6 +268,44 @@ Build the classification that drives the verdict:
    document it, never fake green. `upgrade_status` is a complementary signal when
    Drupal is installed.
 
+### 3.6 Core signature changes (report-only, no toolchain)
+
+Rector and PHPStan judge the module against the ONE core in the sandbox; the
+module declares a RANGE. Check it against the verified catalog of Drupal 10 → 11
+signature changes (`.signature_changes` in `config/deprecations.json`, each entry
+checked against core source):
+
+```bash
+bash "$ROOT/scripts/analysis/scan-signature-changes.sh" --subject "$SUBJECT" --json
+# --core-floor 10.3  judge at the floor the recommended target keeps (§3.5),
+#                    instead of the floor of the current core_version_requirement
+```
+
+It reports `{core_floor, errors, warnings, infos, findings:[{id, severity, file,
+line, message, fix, d10_compat, change_record}]}` (exit 3 when there are error
+findings — expected for an unported module, not an assessment failure):
+
+- `config-form-base-ctor` / `content-translation-controller-ctor` — a direct
+  subclass whose `parent::__construct()` passes too few arguments
+  (`TypedConfigManagerInterface` / `TimeInterface` are required from 11.0):
+  ArgumentCountError on Drupal 11.
+- `entity-get-original` / `entity-set-original` (11.2), `revision-cache-id`
+  (11.3) — a module method that core adds later: **error** when its signature is
+  incompatible (fatal "Declaration must be compatible") or it carries
+  `#[\Override]` below the floor; **warn** when it silently becomes an override.
+- `hook-entity-operation` / `hook-entity-operation-alter` (11.3) — an
+  implementation that REQUIRES the new `$cacheability` parameter breaks every
+  core below 11.3; a one-parameter implementation is `info` (keep any new
+  parameter optional).
+- `entity-original-accessors-call` — `->getOriginal()`/`->setOriginal()` while
+  the floor is below 11.2 (warn: fatal on a core entity there).
+
+Every **error** finding counts as one `manual` item in §5 (Rector does not fix
+them) and goes into the plan's Phase 1 with its `fix`; list warnings as review
+items. `#[\Override]` on a method that exists only in some of the declared cores
+breaks the older ones (PHP 8.3+ compile-time fatal): never plan to add it while
+the floor is below the minor that introduced the parent method.
+
 ### Optional context: digests issue summaries
 
 When `DRUPILOT_USE_DIGESTS_RULES` is true and the cache is present, the repo's
@@ -282,8 +320,9 @@ The verdict is computed from three integer counts (no subjective weighting), so
 two assessments of the same module reach the same verdict:
 
 - `manual` — deprecations PHPStan flags that **no** Rector rule (official or
-  digests) covers, plus the mechanical edits Rector cannot make. (`info.yml` is
-  not counted — it is always required.)
+  digests) covers, plus the mechanical edits Rector cannot make, plus the
+  **error** findings of `scan-signature-changes.sh` (§3.6). (`info.yml` is not
+  counted — it is always required.)
 - `hard_breaks` — how many of the four categories are actually present (0–4),
   counted by the fixed greps in §3 step 4.
 - `blocking_deps` — `drupal/*` dependencies with **no** D11 release **and no**

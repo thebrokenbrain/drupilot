@@ -136,6 +136,17 @@ report. Fall back to reading the report only if a tool's JSON is unavailable.
    Carry its `recommended_core_version_requirement`, `composer_core_constraint`,
    `require_php`, `version_bump`, rationale and warnings into the report and
    `assess.json`.
+8. **Core signature changes** (read-only, no toolchain) at the floor the
+   recommended target keeps:
+   ```bash
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/scan-signature-changes.sh" --subject <DIR> --json
+   # --core-floor 10.3 to judge at the floor of the recommended ^10.3 || ^11
+   # exit 3 = error findings (expected before a port): each one is a MANUAL item
+   ```
+   Each error finding (e.g. a `ConfigFormBase` subclass passing one argument to
+   `parent::__construct()`, a local `getOriginal()` incompatible with 11.2's) is a
+   manual Phase 1 item with its catalog `fix`; never plan an `#[\Override]` on a
+   method that exists only in some of the declared cores.
 
 ## Classification
 

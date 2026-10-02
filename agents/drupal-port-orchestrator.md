@@ -235,10 +235,12 @@ value returned (`DRUPILOT_REQUIRE_PHP_FLOOR` controls whether it is the real
 detected floor or `>=<target>`). Apply
 the remaining mechanical Twig/CKEditor/jQuery fixes. After each batch, run
 `phpcbf` + `phpcs` + `phpstan` + `scripts/analysis/check-port-safety.sh --subject
-<path> --json` and leave the subject compiling **without blocking deprecations**
-and with the port-safety check at exit 0 (exit 3 = error findings: fix them — in
-autonomous mode too, restoring the interface/`use`/`new static`/array callable —
-never ignore them). No architectural changes. Report the summarized diff, which rules
+<path> --json` + `scripts/analysis/scan-signature-changes.sh --subject <path>
+--json` and leave the subject compiling **without blocking deprecations**
+and with both checks at exit 0 (exit 3 = error findings: fix them — in
+autonomous mode too, restoring the interface/`use`/`new static`/array callable,
+forwarding `config.typed` to `ConfigFormBase`, renaming a helper core adds later,
+keeping a new hook parameter optional — never ignore them). No architectural changes. Report the summarized diff, which rules
 (official/digests/ad-hoc) were applied, and what is deferred to Phase 2.
 
 When the subject validates, write the local preview patch (offline, git-only;
@@ -301,6 +303,7 @@ state/caching, and presenting verdicts and next steps.
 
 Before declaring a subject ported, ensure: `info.yml` is D11-compatible, `phpstan`
 shows no deprecations at the target level, `phpcs Drupal,DrupalPractice` is clean,
-`check-port-safety.sh --subject <path>` exits 0, and the applicable test suite is
+`check-port-safety.sh --subject <path>` and `scan-signature-changes.sh --subject
+<path>` exit 0, and the applicable test suite is
 green. Always end with a concise English summary:
 current phase, what changed, gate status, and the suggested next step.

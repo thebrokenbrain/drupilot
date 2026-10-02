@@ -77,7 +77,15 @@ no-op — that is the only discretion.
   when `core_version_requirement` is `^11`-only AND the parent method exists in
   the lowest declared 11.x minor (e.g. `ContentEntityStorageBase::buildRevisionCacheId()`
   exists only from 11.3). An `#[\Override]` without a parent method is a
-  compile-time fatal on PHP 8.3+.
+  compile-time fatal on PHP 8.3+. `scan-signature-changes.sh` and the
+  `override-attribute` check of `check-port-safety.sh` flag an `#[\Override]` on
+  a method the signature catalog dates above the declared floor as an error.
+- **Typed signatures must match core on every declared core.** Adding types is
+  where a method collides with one core added later: a `getOriginal()` in an
+  entity must be `: ?static` (11.2+), a storage `buildRevisionCacheId($id)` must be
+  `protected ... : string` (11.3+) — or renamed while the floor is lower. A new
+  hook parameter core passes only from a later minor (`$cacheability` of
+  `hook_entity_operation()`, 11.3) stays optional until the floor reaches it.
 - **`final` by default.** Mark a class `final` UNLESS it is abstract, an
   interface, a `*Base` class, or another class in the module/its tests extends it.
   (Plugins and services are normally `final`.)
@@ -127,6 +135,9 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "<path>" 
 # Deterministic port-safety checks (gate: must exit 0):
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/check-port-safety.sh" --subject "<path>" --json
 
+# Core signature changes vs the declared core floor (gate: must exit 0):
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/scan-signature-changes.sh" --subject "<path>" --json
+
 # Re-run the affected test group(s) (see test-adaptation for the full flow):
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject "<path>" --type all
 ```
@@ -171,6 +182,8 @@ Before declaring the module refactored, all must hold:
   interfaces in place, no closures under Form/Render API keys, no
   private/readonly properties in serialized classes, no `new self` in
   `create()`); its warnings are reviewed and listed in the report.
+- `scan-signature-changes.sh --subject <path>` exits **0** (no collision with a
+  core signature change at the declared floor).
 - The full applicable test suite **green** (anything skipped is documented). Because
   Phase 2 changes more code, this is the **preservation gate**: the same tests that
   passed after Phase 1 must still pass, unchanged in what they verify. If the module

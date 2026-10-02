@@ -124,6 +124,21 @@ from `DRUPILOT_PHP_TARGET` (default `8.3`) and auto-detect whether to run throug
    !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-upgrade-status.sh" --module "$(bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; subject_machine_name "${1:-$PWD}"' -- "$1")"
    ```
 
+6. **Core signature changes** — no toolchain needed, runs even before
+   `/drupilot-setup`. Flags the module's collisions with the verified catalog of
+   Drupal 10 → 11 signature changes (a `ConfigFormBase` subclass passing one
+   argument to `parent::__construct()`, a local `getOriginal()` /
+   `buildRevisionCacheId()` that core adds in 11.2 / 11.3, a hook implementation
+   requiring a parameter only 11.3 passes). Judge it at the floor the port will
+   keep: by default the floor of the current `core_version_requirement`; pass
+   `--core-floor 10.3` (say) when the recommended target keeps `^10.3 || ^11`.
+   Exit 3 here is not a failure of the assessment: every error finding is a
+   **manual** item of the plan (Rector does not fix them) and feeds the effort:
+
+   ```bash
+   !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/scan-signature-changes.sh" --subject "$1" --json
+   ```
+
 Capture each tool's raw output for the report appendix. If a tool's prerequisites
 are missing (e.g. the dev toolchain is not installed because `/drupilot-setup`
 has not run), note it as "not measured" rather than inventing numbers.
