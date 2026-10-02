@@ -146,10 +146,12 @@ plugin_revision() {
 # data_dir -> plugin persistent data directory (cache, state).
 # Prefers CLAUDE_PLUGIN_DATA (provided by Claude Code) and falls back to XDG.
 data_dir() {
-  local d="${CLAUDE_PLUGIN_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}/drupilot}"
+  local d; d="$(data_dir_path)"
   mkdir -p "$d" 2>/dev/null || true
   printf '%s' "$d"
 }
+# data_dir_path -> the same path, without creating it (read-only callers).
+data_dir_path() { printf '%s' "${CLAUDE_PLUGIN_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}/drupilot}"; }
 
 cache_dir() { local d; d="$(data_dir)/cache"; mkdir -p "$d" 2>/dev/null || true; printf '%s' "$d"; }
 
@@ -163,12 +165,20 @@ digests_cache_dir() { printf '%s/drupal-digests' "$(cache_dir)"; }
 # and the lockfile's frozen versions must not be wiped by a tree reset. The
 # developer-facing OUTPUTS go to project_artifacts_dir() instead (see below).
 project_state_dir() {
+  local d; d="$(project_state_path "${1:-$PWD}")"
+  mkdir -p "$d" 2>/dev/null || true
+  printf '%s' "$d"
+}
+
+# project_state_path [base_dir] -> the same path as project_state_dir, WITHOUT
+# creating it (nor the data dir). For read-only callers (next-step.sh,
+# state.sh show/list, /drupilot-status), which must never leave an empty state
+# dir behind for a directory they merely looked at.
+project_state_path() {
   local base="${1:-$PWD}"
   local abs; abs="$(cd "$base" 2>/dev/null && pwd || printf '%s' "$base")"
   local key; key="$(printf '%s' "$abs" | tr -c 'A-Za-z0-9' '_' )"
-  local d; d="$(data_dir)/state/$key"
-  mkdir -p "$d" 2>/dev/null || true
-  printf '%s' "$d"
+  printf '%s/state/%s' "$(data_dir_path)" "$key"
 }
 
 # project_artifacts_dir [base_dir] -> the single VISIBLE directory that holds
@@ -1017,21 +1027,52 @@ negative_controls_summary() {
 }
 
 # --- Per-subject state (state.json) ------------------------------------------
-# One small JSON record per subject in its hidden state dir, next to
-# last-test.json: which porting stages were reached and when. Written by the
-# deterministic scripts (port-report.sh records ported/refactored from the
-# manifest's phase, run-phpunit.sh records tested on a verified run), read by
-# next-step.sh, the post-edit hook and /drupilot-status. Shape:
-#   {subject, updated, stage, stages: {<stage>: <ISO time>, ...}}
-# `stage` is the highest-ranked stage reached and never goes down (re-running
-# /drupilot-port after a refactor does not undo it; DRUPILOT_STATE_FORCE=1
-# lets a record lower it). The legacy plain-text `<state_dir>/phase` marker is
-# kept in sync with `stage` for older readers. Further keys are reserved for
-# the per-module registry (effort, origin, toolchain, ...): writers merge and
-# never drop keys they do not own.
+# One JSON record per subject in its HIDDEN state dir (project_state_dir, next
+# to assess.json / last-test.json / core-matrix.json): which porting stages
+# were reached and when, plus a snapshot of the facts a portfolio view needs
+# (effort, branch/commit, toolchain, preservation, core matrix, patch).
+#
+# Why hidden and not <root>/.drupilot/: it is machine state like the rest of
+# that dir. It must survive `git clean` / a workspace rebuild (the stage
+# ladder would otherwise restart at /drupilot-port), it can never leak into a
+# patch, and /drupilot-status --all can find every subject's record under one
+# data dir without walking project trees. The VISIBLE artifacts dir keeps only
+# human-facing outputs; `state.sh show/list` render the record on demand.
+#
+# Writers (deterministic scripts, so the record never depends on the model
+# remembering a step): port-report.sh records ported/refactored from the
+# manifest's phase, run-phpunit.sh records tested on a verified whole-suite run
+# and refreshes the snapshot after every recorded run, verify-core-matrix.sh and
+# make-patch.sh refresh it, and state.sh record/refresh is the CLI the commands
+# call (assess -> assessed, setup -> setup, contribute -> contributed).
+# Readers: next-step.sh, the post-edit hook, /drupilot-status (and --all).
+#
+# Schema (version 1; every key but subject/stages may be null or absent):
+#   {schema: 1, subject: ABS_PATH, machine_name, type, drupal_root,
+#    ddev_project, origin: ABS_PATH (the developer's checkout a loose subject
+#    was placed from), placement,
+#    created, updated: ISO-8601 UTC,
+#    stage: setup|assessed|ported|refactored|tested|contributed,
+#    stages: {<stage>: ISO time it was last recorded, ...},
+#    effort: S|M|L|XL, assessed_at,
+#    git: {branch, commit, dirty},
+#    toolchain: {drupal_core, php_target, core_strategy, packages: {name: ver},
+#                lock_drupilot_version},
+#    tests: {status, preservation, executed, tests_failed, groups_passed,
+#            groups_failed, groups_skipped, recorded_at, fresh}  (last-test.json),
+#    core_matrix: {verdict, d10_support, generated_at, fresh},
+#    patch: {path, kind: local|issue|contribution, at},
+#    drupilot_version}
+# `fresh` is true when the result was computed on the subject's current
+# sources (subject_digest). `stage` is the highest-ranked stage reached and never
+# goes down (re-running /drupilot-port after a refactor does not undo it;
+# DRUPILOT_STATE_FORCE=1 lets a record lower it). The legacy plain-text
+# `<state_dir>/phase` marker is kept in sync with `stage` for older readers.
+# Writers merge and never drop keys they do not own.
 
-# subject_state_file <subject> -> path of the subject's state.json.
-subject_state_file() { printf '%s/state.json' "$(project_state_dir "${1:-$PWD}")"; }
+# subject_state_file <subject> -> path of the subject's state.json (the
+# directory is not created: readers must not leave state dirs behind).
+subject_state_file() { printf '%s/state.json' "$(project_state_path "${1:-$PWD}")"; }
 
 # stage_normalize <word> -> the canonical stage name (ported, refactored, ...)
 # for the verbs and legacy markers in use (port, refactor, ...); empty when
@@ -1072,19 +1113,28 @@ state_get() {
 
 # state_set <subject> <jq-path> <string> / state_set_json <subject> <jq-path>
 # <json> -> set one key in state.json (created when absent) and stamp
-# `.updated` and `.subject`. Atomic (temp file + mv); returns 1 without jq or on
-# a write error. <jq-path> is plugin-controlled, never user input.
-state_set() { _state_write "${1:-$PWD}" "$2" "--arg" "$3"; }
-state_set_json() { _state_write "${1:-$PWD}" "$2" "--argjson" "$3"; }
+# `.updated`, `.subject`, `.schema` and `.created`. Atomic (temp file + mv);
+# returns 1 without jq or on a write error. <jq-path> is plugin-controlled,
+# never user input.
+state_set() { _state_write "${1:-$PWD}" "${2}" "--arg" "${3}"; }
+state_set_json() { _state_write "${1:-$PWD}" "${2}" "--argjson" "${3}"; }
 _state_write() {
-  local subj="$1" path="$2" kind="$3" val="$4" f tmp abs
+  local subj="$1" path="$2" kind="$3" val="$4"
+  _state_apply "$subj" "$kind" "$val" "${path} = \$v"
+}
+# _state_apply <subject> <--arg|--argjson> <value> <jq-filter using $v> ->
+# the one atomic writer behind state_set/state_refresh.
+_state_apply() {
+  local subj="$1" kind="$2" val="$3" filter="$4" f tmp abs
   have_cmd jq || return 1
   f="$(subject_state_file "$subj")"
+  mkdir -p "$(dirname "$f")" 2>/dev/null || return 1
   abs="$(cd "$subj" 2>/dev/null && pwd || printf '%s' "$subj")"
   [[ -s "$f" ]] || printf '{}\n' > "$f" 2>/dev/null || return 1
   tmp="$(mktemp "${f}.XXXXXX" 2>/dev/null)" || return 1
-  if jq "$kind" v "$val" --arg s "$abs" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-       "${path} = \$v | .subject = \$s | .updated = \$at" "$f" > "$tmp" 2>/dev/null; then
+  if jq "$kind" v "$val" --arg s "$abs" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg pv "$(plugin_version)" \
+       "${filter} | .subject = \$s | .updated = \$at | .created = (.created // \$at) | .schema = 1 | .drupilot_version = \$pv" \
+       "$f" > "$tmp" 2>/dev/null; then
     mv -f "$tmp" "$f"
   else
     rm -f "$tmp" 2>/dev/null || true; return 1
@@ -1092,10 +1142,10 @@ _state_write() {
 }
 
 # phase_record <subject> <stage> -> mark <stage> as reached now
-# (.stages[stage]), raise .stage when it ranks higher (monotonic, see above)
-# and rewrite the legacy phase marker. Returns 1 for an unknown stage or a
-# write error. Callers in a flow wrap it in `|| true`: recording is never a
-# reason to fail a port.
+# (.stages[stage]), raise .stage when it ranks higher (monotonic, see above),
+# rewrite the legacy phase marker and refresh the snapshot (state_refresh).
+# Returns 1 for an unknown stage or a write error. Callers in a flow wrap it in
+# `|| true`: recording is never a reason to fail a port.
 phase_record() {
   local subj="${1:-$PWD}" st cur force
   st="$(stage_normalize "${2:-}")"
@@ -1105,8 +1155,9 @@ phase_record() {
   force="$(config_get DRUPILOT_STATE_FORCE "")"
   if [[ -z "$cur" || "$(stage_rank "$st")" -gt "$(stage_rank "$cur")" || "$force" == "1" || "$(lc "$force")" == "true" ]]; then
     state_set "$subj" .stage "$st" || return 1
-    cur="$st"
   fi
+  state_refresh "$subj" 2>/dev/null || true
+  cur="$(state_get "$subj" .stage "$st")"
   printf '%s\n' "$cur" > "$(project_state_dir "$subj")/phase" 2>/dev/null || true
   return 0
 }
@@ -1117,7 +1168,7 @@ phase_get() {
   local subj="${1:-$PWD}" st
   st="$(state_get "$subj" .stage "")"
   if [[ -z "$st" ]]; then
-    st="$({ tr -d '[:space:]' < "$(project_state_dir "$subj")/phase"; } 2>/dev/null || true)"
+    st="$({ tr -d '[:space:]' < "$(project_state_path "$subj")/phase"; } 2>/dev/null || true)"
   fi
   stage_normalize "$st"
   return 0
@@ -1136,6 +1187,162 @@ phase_reached() {
   fi
   cur="$(phase_get "$subj")"
   [[ -n "$cur" && "$(stage_rank "$cur")" -ge "$(stage_rank "$st")" ]]
+}
+
+# _json_from <file> <jq-filter> -> the filter's compact output on a readable,
+# valid JSON file, else `null`. Never fails.
+_json_from() {
+  local out=""
+  [[ -r "$1" ]] && out="$(jq -c "$2" "$1" 2>/dev/null || true)"
+  [[ -n "$out" ]] || out="null"
+  printf '%s' "$out"
+}
+
+# The jq definitions shared by state_refresh and state_view_json: how a stored
+# record and a fresh snapshot combine. Non-null snapshot keys win (they are
+# read from the source records, which are the truth); a key the snapshot cannot
+# see any more (the subject tree is gone, so no git info) keeps its stored
+# value. An assessment on file that no stage recorded yet backfills the
+# assessed stage (raising a lower `stage` to it), and an empty `stage` takes the
+# highest one recorded; otherwise an existing `stage` is never moved here (only
+# phase_record moves it, so a forced lower stage stays lower). A
+# patch recorded by make-patch.sh is kept over the port manifest's one.
+_STATE_JQ_DEFS='
+def srank: {"setup":1,"assessed":2,"ported":3,"refactored":4,"tested":5,"contributed":6}[. // ""] // 0;
+def state_merge($snap):
+  . + ($snap | del(.patch) | with_entries(select(.value != null)))
+  | .patch = (.patch // $snap.patch // null)
+  | .stages = (.stages // {})
+  | (if (.effort != null and .stages.assessed == null and (.assessed_at // .updated) != null)
+     then .stages.assessed = (.assessed_at // .updated)
+          | (if (.stage | srank) < ("assessed" | srank) then .stage = "assessed" else . end)
+     else . end)
+  | .stages |= with_entries(select(.value != null))
+  | (if ((.stage // "") == "") and ((.stages | length) > 0)
+     then .stage = (.stages | keys | max_by(srank)) else . end);
+'
+
+# state_snapshot_json <subject> -> the facts drupilot can read about the subject
+# right now, as one compact JSON object (see the schema above): from the
+# subject's own state dir (assess.json, last-test.json, core-matrix.json,
+# port-manifest.json), the Drupal root's (drupilot-lock.json,
+# origin-baseline.json), the info.yml, .ddev/config.yaml and git. Read-only: it
+# creates nothing and never starts DDEV. `null` without jq.
+state_snapshot_json() {
+  local subj="${1:-$PWD}" abs sd root="" rsd="" mn="" typ="" ddev="" digest=""
+  local git_json="null" br cm dirty a t m pm l o
+  have_cmd jq || { printf 'null'; return 0; }
+  abs="$(cd "$subj" 2>/dev/null && pwd || printf '%s' "$subj")"
+  sd="$(project_state_path "$abs")"
+  if [[ -d "$abs" ]]; then
+    root="$(find_drupal_root "$abs" 2>/dev/null || true)"
+    mn="$(subject_machine_name "$abs" 2>/dev/null || true)"
+    typ="$(subject_type "$abs" 2>/dev/null || true)"
+    if have_cmd git && git -C "$abs" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      br="$(git -C "$abs" symbolic-ref --short -q HEAD 2>/dev/null || true)"
+      cm="$(git -C "$abs" rev-parse HEAD 2>/dev/null || true)"
+      dirty=false
+      [[ -n "$(git -C "$abs" status --porcelain -- . 2>/dev/null | head -n1)" ]] && dirty=true
+      git_json="$(jq -nc --arg b "$br" --arg c "$cm" --argjson d "$dirty" \
+        '{branch: (if $b == "" then "(detached)" else $b end), commit: (if $c == "" then null else $c end), dirty: $d}')"
+    fi
+    if [[ -r "$sd/last-test.json" || -r "$sd/core-matrix.json" ]]; then
+      digest="$(subject_digest "$abs" 2>/dev/null || true)"
+    fi
+  fi
+  if [[ -n "$root" ]]; then
+    rsd="$(project_state_path "$root")"
+    [[ -f "$root/.ddev/config.yaml" ]] && ddev="$(sed -n 's/^name:[[:space:]]*//p' "$root/.ddev/config.yaml" 2>/dev/null | head -n1 | tr -d "\"' " || true)"
+  fi
+  a="$(_json_from "$sd/assess.json" '{effort: (.verdict // .effort // null), at: (.timestamp // .generated_at // null)}')"
+  t="$(_json_from "$sd/last-test.json" '{status: (.status // null), preservation: (.preservation // null), executed: (.executed // null), tests_failed: ([.tests[]? | select(.status == "fail" or .status == "error")] | length), groups_passed: (.passed // null), groups_failed: (.failed // null), groups_skipped: (.skipped // null), recorded_at: (.recorded_at // .generated_at // null), digest: (.subject_digest // null)}')"
+  m="$(_json_from "$sd/core-matrix.json" '{verdict: (.verdict // null), d10_support: (.d10_support // null), generated_at: (.generated_at // null), digest: (.subject_digest // null)}')"
+  pm="$(_json_from "$sd/port-manifest.json" '{patch: (.patch | if type == "string" then . else null end)}')"
+  # No patch named in the manifest: the newest local preview next to the
+  # subject (make-patch.sh --local writes <machine_name>-<description>.patch).
+  if [[ -n "$mn" && "$(printf '%s' "$pm" | jq -r '.patch // empty' 2>/dev/null)" == "" ]]; then
+    local lp; lp="$(cd "$abs" 2>/dev/null && ls -1t -- "$mn"-*.patch 2>/dev/null | head -n1 || true)"
+    [[ -n "$lp" ]] && pm="$(jq -nc --arg p "$abs/$lp" '{patch: $p}')"
+  fi
+  l="null"; o="null"
+  if [[ -n "$rsd" ]]; then
+    l="$(_json_from "$rsd/drupilot-lock.json" '{drupal_core: (.drupal.core // null), php_target: (.php_target // null), core_strategy: (.core_strategy // null), packages: (.toolchain // null), lock_drupilot_version: (.drupilot_version // null)}')"
+    o="$(_json_from "$rsd/origin-baseline.json" '{source: (.source // null), placement: (.placement // null)}')"
+  fi
+  jq -nc --arg subject "$abs" --arg mn "$mn" --arg typ "$typ" --arg root "$root" --arg ddev "$ddev" \
+    --arg digest "$digest" --argjson git "$git_json" --argjson a "$a" --argjson t "$t" \
+    --argjson m "$m" --argjson pm "$pm" --argjson l "$l" --argjson o "$o" '
+    def nz: if . == "" then null else . end;
+    def fresh($d): if ($d // "") == "" or $digest == "" then null else ($d == $digest) end;
+    {subject: $subject, machine_name: ($mn | nz), type: ($typ | nz),
+     drupal_root: ($root | nz), ddev_project: ($ddev | nz),
+     origin: ($o.source // null), placement: ($o.placement // null),
+     effort: ($a.effort // null), assessed_at: ($a.at // null),
+     git: $git, toolchain: $l,
+     tests: (if $t == null then null else ($t | del(.digest)) + {fresh: fresh($t.digest)} end),
+     core_matrix: (if $m == null then null else ($m | del(.digest)) + {fresh: fresh($m.digest)} end),
+     patch: (if ($pm.patch // "") == "" then null
+             else {path: ($pm.patch | if startswith("/") then . else $subject + "/" + . end),
+                   kind: "local", at: null} end)}'
+  return 0
+}
+
+# state_refresh <subject> -> merge a fresh snapshot into state.json (created
+# when absent). Called by the flow scripts after they write a source record.
+# Returns 1 without jq or on a write error; callers use `|| true`.
+state_refresh() {
+  local subj="${1:-$PWD}" snap
+  have_cmd jq || return 1
+  snap="$(state_snapshot_json "$subj")"
+  [[ -n "$snap" && "$snap" != "null" ]] || return 1
+  _state_apply "$subj" --argjson "$snap" "${_STATE_JQ_DEFS} state_merge(\$v)"
+}
+
+# state_patch_record <subject> <path> <kind> -> remember the last patch made
+# for the subject (kind: local | issue | contribution). Never fails.
+state_patch_record() {
+  local subj="${1:-$PWD}" p="$2" kind="${3:-local}" abs
+  have_cmd jq || return 0
+  abs="$(cd "$(dirname "$p")" 2>/dev/null && pwd || dirname "$p")/$(basename "$p")"
+  state_set_json "$subj" .patch "$(jq -nc --arg p "$abs" --arg k "$kind" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '{path: $p, kind: $k, at: $at}')" 2>/dev/null || true
+  state_refresh "$subj" 2>/dev/null || true
+  return 0
+}
+
+# state_view_json <subject> -> the subject's record as a reader should see it:
+# the stored state.json (if any) merged with a fresh snapshot, plus
+# `recorded` (state.json exists), `exists` (the subject directory exists) and
+# `patch.exists`. A subject recorded only by the legacy phase marker gets that
+# stage. Read-only: writes and creates nothing.
+state_view_json() {
+  local subj="${1:-$PWD}" f stored="{}" snap legacy="" recorded=false exists=false abs v p pe
+  have_cmd jq || { printf 'null'; return 0; }
+  abs="$(cd "$subj" 2>/dev/null && pwd || printf '%s' "$subj")"
+  [[ -d "$abs" ]] && exists=true
+  f="$(subject_state_file "$abs")"
+  if [[ -r "$f" ]]; then
+    stored="$(jq -c 'if type == "object" then . else {} end' "$f" 2>/dev/null || true)"
+    recorded=true
+  fi
+  [[ -n "$stored" ]] || stored="{}"
+  [[ "$recorded" == "true" ]] || legacy="$(phase_get "$abs")"
+  snap="$(state_snapshot_json "$abs")"
+  v="$(jq -nc --argjson st "$stored" --argjson snap "$snap" --arg legacy "$legacy" \
+     --argjson recorded "$recorded" --argjson exists "$exists" --arg subject "$abs" "${_STATE_JQ_DEFS}"'
+    ($st | state_merge($snap))
+    | .subject = (.subject // $subject)
+    | (if (.stage // "") == "" and $legacy != "" then .stage = $legacy else . end)
+    | .stage = (.stage // null)
+    | .recorded = $recorded | .exists = $exists' 2>/dev/null || true)"
+  [[ -n "$v" ]] || { printf 'null'; return 0; }
+  # patch.exists needs the filesystem.
+  p="$(printf '%s' "$v" | jq -r '.patch.path // empty' 2>/dev/null || true)"
+  if [[ -n "$p" ]]; then
+    pe=false; [[ -f "$p" ]] && pe=true
+    v="$(printf '%s' "$v" | jq -c --argjson e "$pe" '.patch.exists = $e' 2>/dev/null || printf '%s' "$v")"
+  fi
+  printf '%s\n' "$v"
+  return 0
 }
 
 # core_matrix_fresh <subject> -> 0 when a core-matrix result exists for the

@@ -117,6 +117,8 @@ flowchart TD
 
 > **preflight** (tool) validates each stage's requirements before acting: if a hard requirement is missing, the stage stops with no side effects.
 >
+> **Stage record.** Each stage leaves its mark in the module's hidden `state.json` (setup, assessed, ported, refactored, tested, contributed, plus effort, test and core-matrix verdicts, toolchain and patch). The deterministic scripts write most of it (`port-report.sh`, `run-phpunit.sh`, `verify-core-matrix.sh`, `make-patch.sh`); the setup, assess and contribute commands call `state.sh record`. The router reads it to propose the next step, and `/drupilot-status --all` turns the records of several modules and workspaces into one table.
+>
 > If Phase 2 is skipped, the final result is the **ported module** (the Phase 1 milestone). Phase 2 and contribution are always optional.
 >
 > **"Orchestrates Rector's 3 passes"** does not mean the AI rewrites the code in every pass: passes 1 (official) and 2 (digests) are run by the deterministic `run-rector` script — the AI reviews the dry-run and decides what to apply. Only pass 3 (ad-hoc rules / manual fixes) is the AI's own work. See diagram 2.

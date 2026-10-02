@@ -1,6 +1,6 @@
 ---
-description: Read-only status summary for a Drupal port - environment readiness, effective PHP target, DDEV state, current phase, last cached assessment, and last test result, plus the suggested next step. No side effects (never mutates anything, never runs the toolchain). Use for "/drupilot-status", "where am I", "what's the state of this port".
-argument-hint: "[subject-path]"
+description: Read-only status summary for a Drupal port - environment readiness, effective PHP target, DDEV state, current phase, last cached assessment, and last test result, plus the suggested next step; with --all, a portfolio table of every module/workspace drupilot has state for. No side effects (never mutates anything, never runs the toolchain). Use for "/drupilot-status", "where am I", "what's the state of this port", "status of all my ports".
+argument-hint: "[subject-path] | --all [dir|registry-file]"
 allowed-tools: Bash, Read
 ---
 
@@ -9,6 +9,39 @@ allowed-tools: Bash, Read
 You produce a concise English status report. **This command has no side effects:** only
 read cached state and run detection in report/JSON mode. Never start DDEV, never run
 Rector/PHPStan/PHPCS/PHPUnit, never write files, never touch a remote.
+
+## Step 0 — Portfolio mode (`--all`)
+
+If `$ARGUMENTS` contains `--all`, report on **every** subject instead of one and
+skip Steps 1-4 (ignore their load-time output, which assumed a single subject).
+The argument after `--all` selects the scope:
+
+- a directory (default: the current directory) — every module/theme under it
+  that drupilot has state for, e.g. a folder holding several test-bed
+  workspaces, plus every recorded subject whose path or origin is under it;
+- a registry file — one path per line (a module/theme directory, or a
+  directory to scan), `#` comments allowed;
+- `--all everything` — every subject with a `state.json` in drupilot's data dir.
+
+Run the read-only registry yourself (substitute the scope; drop `--root` for
+`everything`, use `--registry FILE` for a file):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" list --root <dir> --from-preflight --json
+```
+
+STDOUT is `{count, subjects: [...]}`; each subject carries `machine_name`,
+`drupal_root` / `ddev_project`, `stage` and `stages`, `effort`, `git` (branch,
+commit, dirty), `toolchain` (Drupal core, PHP target, package versions),
+`tests` (status, `preservation`, `fresh`), `core_matrix` (`d10_support`,
+`fresh`), `patch` (path, kind, `exists`), `updated` and `next` (the step
+`next-step.sh` recommends for it). Render one table row per subject — module,
+workspace, stage, effort, preservation, Drupal 10 verdict, branch@commit, core,
+updated, next step — mark a `fresh: false` verdict as stale, a missing
+directory as missing, and say "not run" for an absent verdict. Never invent a
+value. Add a one-line total per stage, and point at
+`state.sh show --subject <DIR>` for one subject's details. `count: 0` means
+drupilot has no state under that scope: say so and suggest a wider `--all`.
 
 ## Step 1 — Environment readiness (report-only)
 
@@ -36,11 +69,17 @@ Read these if they exist (do not recompute anything):
 
 - `@<state_dir>/assess.json` and `@<artifacts_dir>/viability-report.md` — verdict,
   effort (S/M/L/XL), auto-fixable vs manual counts, and the assessment timestamp.
-- `@<state_dir>/state.json` — the stages reached: `stage` (the highest one:
-  setup / assessed / ported / refactored / tested / contributed) and `stages`
-  (each with the time it was recorded). `port-report.sh` records ported /
-  refactored and `run-phpunit.sh` records tested. An older project may only
-  have the plain-text `<state_dir>/phase` marker.
+- `@<state_dir>/state.json` — the per-module record: the stages reached
+  (`stage`, the highest one: setup / assessed / ported / refactored / tested /
+  contributed, and `stages`, each with the time it was recorded) and a snapshot
+  of effort, branch/commit, toolchain, preservation, core matrix and the last
+  patch (schema in README "Per-module state"). `port-report.sh` records ported /
+  refactored, `run-phpunit.sh` records tested, the setup / assess / contribute
+  commands record theirs through `state.sh record`. An older project may have no
+  `state.json` (only the plain-text `<state_dir>/phase` marker, or nothing).
+  The merged, current view of the record, read-only:
+
+  !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" show --subject "$1" --no-next --json 2>/dev/null || true`
 - `@<state_dir>/last-test.json` — the last PHPUnit run: groups run, pass/fail counts,
   the **`preservation`** verdict (`verified` / `verified-partial` / `regression` /
   `pre-existing-failures` / `not-verified-unbaselined` / `not-verified-blocked` /

@@ -36,8 +36,13 @@
 #   then just skips the /drupilot-doctor recommendation).
 #
 # Output:
-#   --json (default) -> {next, command, reason, phase, assessed, ddev_configured,
-#                        ddev_running, tests, preservation, is_extension, type}
+#   --json (default) -> {next, command, reason, phase, assessed, effort,
+#                        ddev_configured, ddev_running, tests, preservation,
+#                        is_extension, type, state_file}
+#                       phase is the stage recorded in the subject's state.json
+#                       (the per-module registry, scripts/env/state.sh); effort
+#                       is the assessment's S/M/L/XL; state_file is null while
+#                       no state.json exists.
 #   --human          -> a one-line "Next: <command> — <reason>" on STDOUT.
 #
 # Exit codes: 0 ok · 1 usage/error. (Read-only: never mutates anything.)
@@ -137,7 +142,9 @@ fi
 
 # --- Gather state (read-only) ----------------------------------------------
 ROOT="$(find_drupal_root "$SUBJECT" 2>/dev/null || true)"
-STATE_DIR="$(project_state_dir "$SUBJECT")"
+# project_state_path, not project_state_dir: a read-only probe must not
+# create a state dir for a directory it merely looked at.
+STATE_DIR="$(project_state_path "$SUBJECT")"
 IS_EXT="$(is_drupal_extension_dir "$SUBJECT" && echo true || echo false)"
 TYPE="$(subject_type "$SUBJECT" 2>/dev/null || echo unknown)"
 
@@ -145,7 +152,12 @@ DDEV_CONFIGURED="false"; DDEV_RUNNING="false"
 [[ -n "$ROOT" && -f "$ROOT/.ddev/config.yaml" ]] && DDEV_CONFIGURED="true"
 ddev_running "$ROOT" 2>/dev/null && DDEV_RUNNING="true"
 
-ASSESSED="false"; [[ -f "$STATE_DIR/assess.json" ]] && ASSESSED="true"
+ASSESSED="false"
+{ [[ -f "$STATE_DIR/assess.json" ]] || phase_reached "$SUBJECT" assessed; } && ASSESSED="true"
+EFFORT=""
+have_cmd jq && EFFORT="$(jq -r '.verdict // .effort // empty' "$STATE_DIR/assess.json" 2>/dev/null || true)"
+[[ -n "$EFFORT" ]] || EFFORT="$(state_get "$SUBJECT" .effort "")"
+STATE_FILE="$(subject_state_file "$SUBJECT")"; [[ -f "$STATE_FILE" ]] || STATE_FILE=""
 
 # Stages from state.json (recorded by port-report.sh / run-phpunit.sh through
 # phase_record), falling back to the legacy <state_dir>/phase marker.
@@ -219,14 +231,16 @@ fi
 if [[ "$AS_JSON" == "1" ]] && have_cmd jq; then
   jq -n \
     --arg next "$NEXT" --arg command "$CMD" --arg reason "$REASON" \
-    --arg phase "$PHASE" --argjson assessed "$ASSESSED" \
+    --arg phase "$PHASE" --argjson assessed "$ASSESSED" --arg effort "$EFFORT" --arg state_file "$STATE_FILE" \
     --argjson ddev_configured "$DDEV_CONFIGURED" --argjson ddev_running "$DDEV_RUNNING" \
     --arg tests "$TESTS" --arg preservation "$PRESERVATION" \
     --argjson is_extension "$IS_EXT" --arg type "$TYPE" \
     '{next:$next, command:$command, reason:$reason,
       phase: ($phase | select(. != "") // null),
-      assessed:$assessed, ddev_configured:$ddev_configured, ddev_running:$ddev_running,
-      tests:$tests, preservation:$preservation, is_extension:$is_extension, type:$type}'
+      assessed:$assessed, effort: ($effort | select(. != "") // null),
+      ddev_configured:$ddev_configured, ddev_running:$ddev_running,
+      tests:$tests, preservation:$preservation, is_extension:$is_extension, type:$type,
+      state_file: ($state_file | select(. != "") // null)}'
 else
   if [[ -n "$CMD" ]]; then printf 'Next: %s — %s\n' "$CMD" "$REASON"
   else printf 'Next: (nothing required) — %s\n' "$REASON"; fi

@@ -127,6 +127,36 @@ How the subject gets there is controlled by `DRUPILOT_PLACEMENT` (`move` / `syml
 
 Developer-facing outputs live in a single **visible, gitignored** `.drupilot/` directory at the Drupal root: the port **report card** (`port-report.md`), the **viability report** (`viability-report.md`), the test-coverage HTML, and the local `.patch`. It is gitignored automatically so it never lands in your patch, and you can point it elsewhere with `DRUPILOT_ARTIFACTS_DIR`. The machine-readable cache and the determinism lockfile deliberately stay **hidden under `$HOME`** so they can't leak into a patch.
 
+### Per-module state
+
+drupilot keeps one record per module/theme, `state.json`, in the same hidden state dir as `assess.json` and `last-test.json`: which stages were reached and when, and a snapshot of what a portfolio view needs. It is machine state, so it is hidden on purpose: it survives `git clean` or a rebuilt test-bed (otherwise the next step would restart at `/drupilot-port`), it can never leak into a patch, and one data dir holds every module's record, so `/drupilot-status --all` finds them all without walking your project trees. The visible `.drupilot/` folder keeps the human-facing reports; the record is rendered on demand.
+
+The record is written by the flow, not by memory: `port-report.sh` records `ported` / `refactored` (from the manifest's phase), `run-phpunit.sh` records `tested` after a verified whole-suite run and carries every recorded run's verdict, `verify-core-matrix.sh` and `make-patch.sh` add their verdict and patch, and `/drupilot-setup`, `/drupilot-assess` and `/drupilot-contribute` record `setup`, `assessed` and `contributed` through `scripts/env/state.sh record`. `next-step.sh` (the router and `/drupilot-status`) and the post-edit hook read it.
+
+| Key | Meaning |
+| --- | --- |
+| `schema` | Record version (`1`). |
+| `subject`, `machine_name`, `type` | The module/theme directory (absolute), its machine name and type. |
+| `drupal_root`, `ddev_project` | The test-bed (workspace) it lives in and its DDEV project name. |
+| `origin`, `placement` | The developer's checkout a loose subject was placed from, and how (`move` / `symlink` / `copy`). |
+| `stage`, `stages` | The highest stage reached (`setup` < `assessed` < `ported` < `refactored` < `tested` < `contributed`; it never goes down without `DRUPILOT_STATE_FORCE`), and the time each stage was last recorded. |
+| `effort`, `assessed_at` | The assessment's S/M/L/XL verdict and when it was made. |
+| `git` | `branch`, `commit` and `dirty` (uncommitted changes) of the subject's checkout. |
+| `toolchain` | From the lock: `drupal_core`, `php_target`, `core_strategy`, `packages` (Rector, drupal-rector, PHPStan, coder, Drush, core-dev versions). |
+| `tests` | The last recorded PHPUnit run: `status`, `preservation`, `executed`, `tests_failed`, group counts, `recorded_at`, and `fresh` (computed on the current sources). |
+| `core_matrix` | The last core matrix: `verdict`, `d10_support`, `generated_at`, `fresh`. |
+| `patch` | The last patch made: `path`, `kind` (`local` / `issue` / `contribution`), `at`. |
+| `created`, `updated`, `drupilot_version` | Record timestamps and the drupilot that last wrote it. |
+
+```bash
+scripts/env/state.sh show --subject web/modules/custom/foo        # one module, merged with the current verdicts
+scripts/env/state.sh list --root ~/drupal-ports --json            # every module under a directory of workspaces
+scripts/env/state.sh list --registry ports.txt                    # one path per line (module dirs or dirs to scan)
+scripts/env/state.sh record --subject web/modules/custom/foo --stage assessed --effort M
+```
+
+`show` and `list` are read-only (they never create a state dir); the table goes to stderr and `--json` puts the payload on stdout. A module ported before this record existed is still listed by `--root` or `--subject`, its stage derived from its older records.
+
 ---
 
 ## Commands
@@ -142,7 +172,7 @@ Developer-facing outputs live in a single **visible, gitignored** `.drupilot/` d
 | `/drupilot-test [subject]` | Discovers, adapts and runs **all** test suites in DDEV (Selenium for JS); iterates to green; reports coverage. |
 | `/drupilot-patch [subject] [issue]` | **Get the `.patch`, decoupled from contributing.** Offline, no push, no gate: a plain local-test patch, or one named for a Drupal.org issue comment. Test now, contribute the MR later. |
 | `/drupilot-contribute [subject] [issue]` | Publishes to **Drupal.org**: issue fork + Merge Request (or legacy patch), in semi or auto mode. User-invocable only; never exposes the PAT. |
-| `/drupilot-status` | Read-only summary of environment, PHP target, current phase, last assessment, test status (with the preservation verdict), the frozen reproducibility lock, and the suggested next step. |
+| `/drupilot-status [subject] \| --all [dir\|file]` | Read-only summary of environment, PHP target, current phase, last assessment, test status (with the preservation verdict), the frozen reproducibility lock, and the suggested next step. `--all` tabulates every module/workspace drupilot has state for (see [Per-module state](#per-module-state)). |
 
 ---
 
@@ -258,7 +288,7 @@ Defaults live in `config/defaults.json`. **Every `DRUPILOT_*` key can be overrid
 | `DRUPILOT_GENERATE_RULES` | `ask` | Generate ad-hoc Rector rules for uncovered deprecations: `ask` / `auto` / `off`. |
 | `DRUPILOT_SOFT_DEPRECATIONS` | `report` | What Phase 1 does with *soft* deprecations — removed only in a later Drupal major, so they still work on every Drupal 11 core (e.g. `user_load_by_name()`, `text_summary()`, `check_markup()`: deprecated in 11.4.0, removed from 13.0.0): `report` (list them in the viability and port reports — symbol, deprecated in, removed in, effort — and leave the code alone), `defer` (list them under *deferred to Phase 2*) or `fix` (fix them when the replacement exists at the declared core floor, through `DeprecationHelper::backwardsCompatibleCall()` when it exists only on newer cores, else defer). *Hard* deprecations (removed in a major ≤ the target, e.g. `user_roles()`) are always fixed and only they count in the effort verdict; Phase 2 removes soft ones too. |
 | `DRUPILOT_VERIFY_CORES` | `auto` | Which cores `verify-core-matrix.sh` checks statically (PHPStan + `php -l`): `auto` (the legs `core_version_requirement` declares — `^10 \|\| ^11` → 10 and 11, `^10.3 \|\| ^11` → 10.3 and 11, `^11` → nothing extra), `off` (skip; the Drupal 10 half stays *declared-not-verified*), or an explicit list such as `10,11` or `10.3,11`. Reference cores are cached in `<drupal_root>/.drupilot/cores/` and their exact version is frozen in the lockfile. |
-| `DRUPILOT_STATE_FORCE` | `false` | The stage a port has reached (`state.json` in drupilot's state dir: setup < assessed < ported < refactored < tested < contributed, recorded by `port-report.sh` and a verified whole-suite `run-phpunit.sh` run) never goes down, so re-running `/drupilot-port` after a refactor does not undo it. `true` lets a new record lower it, e.g. to restart a port from scratch. |
+| `DRUPILOT_STATE_FORCE` | `false` | The stage a port has reached (`state.json` in drupilot's state dir: setup < assessed < ported < refactored < tested < contributed, recorded by `port-report.sh`, a verified whole-suite `run-phpunit.sh` run and `state.sh record`; see [Per-module state](#per-module-state)) never goes down, so re-running `/drupilot-port` after a refactor does not undo it. `true` lets a new record lower it, e.g. to restart a port from scratch. |
 | `DRUPILOT_AUTONOMOUS` | `false` | Hands-off mode (same as the `auto` mode word): unattended setup→assess→port→refactor→test, writes the local patch, **never** contributes. See [Hands-off mode](#hands-off-autonomous-mode). |
 | `DRUPILOT_DETERMINISTIC` | `true` | Reproducibility (default on): freeze the resolved Drupal core, dev toolchain, digests SHA and DDEV add-ons in a per-project `drupilot-lock.json` and reuse them on later runs. Set to `false` to resolve fresh every time and refresh the lock. See [Determinism](#determinism-reproducible-by-default). |
 | `DRUPILOT_TOOLCHAIN_SOURCE` | `auto` | Where `install-toolchain.sh` takes the dev-toolchain versions from: `auto` (the project lock when it pins the whole known-good set, else the shipped known-good reference `config/toolchain-reference.json`; the `.packages` ranges when `DRUPILOT_DETERMINISTIC=false`), `reference` (always the known-good set — the repair path) or `range` (fresh resolve). |
@@ -406,7 +436,7 @@ When the issue still has to be created, it generates the **issue summary** (the 
   - `SessionStart` → a lightweight environment detector that summarizes your PHP target and readiness (silence it with `DRUPILOT_SESSION_CONTEXT=off`).
   - `PostToolUse` (Write|Edit) → incremental `phpcbf` + `phpcs` on edited Drupal files; **phase-aware** (Phase 1 surfaces compatibility errors only) and controllable via `DRUPILOT_POST_EDIT_LINT` (`autofix`/`report`/`off`), and it tells you when it modified a file.
   - `PreToolUse` (Bash) → asks for confirmation before any outward-facing git push / MR action in `semi` mode, and **always** in an autonomous run (which must never push on its own); it also asks before a `git commit` that skips the repository's active git hooks (`DRUPILOT_HOOKS_GUARD`).
-- **Scripts** (`scripts/`) are a robust, idempotent shell library: a shared `lib/common.sh`, the `env/preflight.sh` requirements engine, and the `analysis/`, `tests/` and `contrib/` wrappers the skills and commands invoke.
+- **Scripts** (`scripts/`) are a robust, idempotent shell library: a shared `lib/common.sh`, the `env/preflight.sh` requirements engine, the `env/state.sh` per-module state registry, and the `analysis/`, `tests/` and `contrib/` wrappers the skills and commands invoke.
 - **Templates** (`templates/`) are parameterized configs (`rector.php`, `phpstan.neon`, `phpcs.xml.dist`, DDEV config + test environment, report templates) tuned by the PHP target.
 
 See **[FLOW.md](FLOW.md)** for a visual, end-to-end diagram of the flow — which tool runs at each step, where the AI steps in, and the two porting phases.

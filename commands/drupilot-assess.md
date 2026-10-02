@@ -214,6 +214,17 @@ without re-reading the whole report:
 The visible `.drupilot/viability-report.md` is the developer-facing copy; the
 machine cache in the hidden state dir is what later commands read.
 
+Then record the **assessed** stage and the effort in the subject's `state.json`
+(the per-module registry `/drupilot-status` and the router read). Run it
+yourself, substituting the subject path and the S/M/L/XL verdict you wrote:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <subject_path> --stage assessed --effort <S|M|L|XL>
+```
+
+It only writes drupilot's hidden state (never the subject), so it does not
+break this command's read-only promise for the code.
+
 ## Step 6 — Summarize in chat
 
 End with a concise English summary:

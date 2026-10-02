@@ -158,6 +158,10 @@ Summarize in English:
 - With a baseline: regressions, pre-existing failures (and which now fail
   differently), and the tests the port fixed.
 - Any test that cannot pass for an external reason, with the explicit cause.
+- The stage: `run-phpunit.sh` already carried this run's verdict into the
+  subject's `state.json` and, for a whole-suite run whose preservation is
+  `verified` / `verified-partial`, recorded the **tested** stage — never record
+  it by hand for a red or partial run.
 - Next suggested step: `/drupilot-refactor` (if not yet done and the user wants
   it) or `/drupilot-contribute` (for contrib projects).
 

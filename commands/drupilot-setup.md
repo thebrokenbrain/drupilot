@@ -267,7 +267,16 @@ root, or the test-bed root for a loose subject).
 
 ## Step 5 — Report
 
-Print the final state: DDEV project name and status, PHP target (flag unconfirmed
+Once the environment is up and the subject is placed, record the **setup** stage
+in the subject's `state.json` (the per-module registry; it also snapshots the
+frozen toolchain from the lock). Run it yourself with the subject's final path
+(the placed `web/<modules|themes|profiles>/custom/<name>` for a loose subject):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <placed_subject_path> --stage setup
+```
+
+Then print the final state: DDEV project name and status, PHP target (flag unconfirmed
 targets), which add-ons are installed, the toolchain versions, and which config files
 were written or left untouched. Recommend the next step: `/drupilot-assess`.
 

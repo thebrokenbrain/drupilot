@@ -73,7 +73,8 @@
 #
 # Stage: a recorded whole-suite run (--type all, no --filter) whose
 # preservation is verified or verified-partial also marks the subject's
-# `tested` stage in state.json (phase_record in common.sh).
+# `tested` stage in state.json (phase_record in common.sh); every recorded
+# run refreshes the test verdict state.json carries (state_refresh).
 #
 # Exit codes:
 #   0  -> all selected test groups passed (or there was nothing to run); with
@@ -719,6 +720,9 @@ else
         verified|verified-partial) phase_record "$SUBJECT" tested 2>/dev/null || true;;
       esac
     fi
+    # Every recorded run refreshes the registry's test verdict (state.json),
+    # so a red run after a green one is never shown as green.
+    state_refresh "$SUBJECT" 2>/dev/null || true
   fi
 fi
 

@@ -32,7 +32,9 @@
 #                    to an issue and test locally now" from the full contribution
 #                    flow: get it here, contribute the MR later.
 #
-# This script never pushes and NEVER touches credentials.
+# This script never pushes and NEVER touches credentials. A patch written for a
+# module/theme directory is remembered in its state.json (`patch: {path, kind:
+# local|issue|contribution, at}`, read by state.sh and /drupilot-status --all).
 #
 # Usage:
 #   make-patch.sh --module NAME --issue ID
@@ -276,6 +278,10 @@ if [[ "$LOCAL" == "1" ]]; then
 
   keep_patch_untracked "$PATCH_PATH"
   announce_patch "$PATCH_PATH"
+  # Remember it in the subject's state.json (per-module registry).
+  if is_drupal_extension_dir "$SUBJ_DIR"; then
+    state_patch_record "$SUBJ_DIR" "$PATCH_PATH" "$([[ -n "$ISSUE" ]] && echo issue || echo local)"
+  fi
   if [[ -n "$ISSUE" ]]; then
     log_info "Named for Drupal.org issue #$ISSUE, comment #$COMMENT — attach it there to share/test the fix."
     log_info "This is the OFFLINE patch (no rebase against origin/BASE). When you are ready to open a"
@@ -392,6 +398,10 @@ else
 fi
 
 keep_patch_untracked "$PATCH_PATH"
+_state_subj="${SUBJECT:-$PWD}"
+if is_drupal_extension_dir "$_state_subj"; then
+  state_patch_record "$_state_subj" "$PATCH_PATH" contribution
+fi
 hr
 log_ok "Patch written: $PATCH_PATH"
 log_info "Next steps:"

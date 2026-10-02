@@ -423,7 +423,9 @@ Suggested phasing to encode in the plan:
 Cache a small JSON summary (`assess.json`: verdict, counts, ready flags, the
 core-target recommendation — strategy, recommended `core_version_requirement`,
 `require.php`, `version_bump` — and a timestamp) in the hidden state dir `$STATE`
-(not the visible `.drupilot/` dir) for `/drupilot-status` and the port stage.
+(not the visible `.drupilot/` dir) for `/drupilot-status` and the port stage,
+then record the stage in the per-module registry:
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <DIR> --stage assessed --effort <S|M|L|XL>`.
 
 ## 7. Report in chat (concise English)
 

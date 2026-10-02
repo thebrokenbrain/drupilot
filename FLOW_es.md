@@ -117,6 +117,8 @@ flowchart TD
 
 > **preflight** (herramienta) valida los requisitos de cada etapa antes de actuar: si falta uno imprescindible, la etapa se detiene sin dejar efectos secundarios.
 >
+> **Registro de etapas.** Cada etapa deja su marca en el `state.json` oculto del módulo (setup, assessed, ported, refactored, tested, contributed, más el esfuerzo, los veredictos de tests y de la matriz de cores, el toolchain y el parche). La mayor parte la escriben los scripts deterministas (`port-report.sh`, `run-phpunit.sh`, `verify-core-matrix.sh`, `make-patch.sh`); los comandos de setup, assess y contribute llaman a `state.sh record`. El router lo lee para proponer el siguiente paso, y `/drupilot-status --all` convierte los registros de varios módulos y workspaces en una sola tabla.
+>
 > Si no se hace la Fase 2, el resultado final es el **módulo portado** (hito de la Fase 1). La Fase 2 y la contribución son siempre opcionales.
 >
 > **«La IA conduce las 3 pasadas de Rector»** no significa que la IA reescriba el código en todas las pasadas: las pasadas 1 (oficial) y 2 (digests) las ejecuta el script determinista `run-rector` — la IA revisa el dry-run y decide qué aplicar. Solo la pasada 3 (reglas ad-hoc / arreglos manuales) es trabajo propio de la IA. Ver el diagrama 2.

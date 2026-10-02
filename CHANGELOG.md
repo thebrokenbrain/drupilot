@@ -349,7 +349,37 @@ tag the commit `vX.Y.Z`.
   the first line of its failure), `group_results`, `executed`, `filter`,
   `recorded_at`, `subject_digest` and `git_head`. New `--no-record` and
   `--result-file FILE` options.
+- **Per-module state registry (`scripts/env/state.sh`) and
+  `/drupilot-status --all`.** Each module/theme's `state.json` (hidden state
+  dir, next to `assess.json`) now carries, besides the stages, a snapshot of
+  `effort`, `git` (branch, commit, dirty), `toolchain` (from the lock),
+  `tests` (status, preservation, `fresh`), `core_matrix` (verdict,
+  `d10_support`, `fresh`), the last `patch`, `origin`/`placement`,
+  `ddev_project` and `created`/`updated` (schema version 1, documented in
+  README "Per-module state" and `common.sh`). It stays hidden machine state on
+  purpose: it survives `git clean` and a rebuilt test-bed, never leaks into a
+  patch, and one data dir lets a portfolio view find every record.
+  - `state.sh record --stage S [--effort X] [--force]`, `refresh`, `show` and
+    `list [--root DIR]... [--registry FILE] [--subject DIR]...`; `show`/`list`
+    are read-only, print a table on stderr and JSON on stdout (`--json`), and
+    give each subject the `next` step `next-step.sh` recommends.
+  - Writers: `run-phpunit.sh` refreshes the test verdict after every recorded
+    run (so a red run after a green one is never shown as green),
+    `verify-core-matrix.sh` the matrix verdict, `make-patch.sh` the patch
+    (`local` / `issue` / `contribution`); `/drupilot-setup`,
+    `/drupilot-assess` and `/drupilot-contribute` (and the orchestrator,
+    analyst skill) record `setup`, `assessed` and `contributed`.
+  - `/drupilot-status --all [dir|registry-file|everything]` tabulates module,
+    workspace, stage, effort, preservation, Drupal 10 verdict, branch@commit,
+    core, updated and next step; `/drupilot-status` shows the merged record.
+  - A module with only pre-registry records (`assess.json`, `last-test.json`)
+    is still listed by `--root`/`--subject`; an assessment on file backfills
+    the `assessed` stage.
 ### Changed
+- **`next-step.sh` reads the per-module record.** Its JSON adds `effort` and
+  `state_file`, and a recorded `assessed` stage counts as assessed. It and the
+  other state readers no longer create an empty state dir for a directory they
+  only look at (new `project_state_path` / `data_dir_path` helpers).
 - **`/drupilot-contribute` and `CLAUDE.md` describe the current hook and Drupal
   10 contracts.** Step 3 of the command now runs `git-hooks.sh --json` before
   committing, lets the hooks run, and allows `--no-verify` only after

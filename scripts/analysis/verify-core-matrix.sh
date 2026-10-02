@@ -94,7 +94,8 @@
 #                      DDEV start, no composer, no copy, no lock write.
 #   -h, --help         Show this help.
 #
-# JSON (STDOUT; also persisted to <state_dir>/core-matrix.json unless --dry-run):
+# JSON (STDOUT; also persisted to <state_dir>/core-matrix.json unless --dry-run,
+# and its verdict carried into the subject's state.json):
 #   {tool, subject, machine_name, drupal_root, core_version_requirement, level,
 #    container_php, subject_digest, generated_at, dry_run,
 #    legs:[{core, role: baseline|reference, source: testbed|reference,
@@ -917,6 +918,8 @@ OUT="$(jq -n --arg s "$SUBJECT_ABS" --arg n "$NAME" --arg r "$ROOT" --arg req "$
     d10_floor: ($d10f | select(. != "") // null), d10_checked: $d10c, d10_floor_checked: $d10fc,
     verdict: $v, tests_analysed: $tests, notes: $notes}')"
 printf '%s\n' "$OUT" > "$STATE_FILE" 2>/dev/null || log_warn "Could not persist $STATE_FILE."
+# Carry the new verdict into the subject's state.json (the per-module registry).
+state_refresh "$SUBJECT_ABS" 2>/dev/null || true
 
 # --- Human summary (STDERR) -------------------------------------------------------
 hr

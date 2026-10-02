@@ -129,6 +129,36 @@ Cómo llega el sujeto ahí lo controla `DRUPILOT_PLACEMENT` (`move` / `symlink` 
 
 Las salidas destinadas al desarrollador viven en un único directorio **visible e ignorado en git** `.drupilot/` en la raíz de Drupal: el **boletín** del port (`port-report.md`), el **informe de viabilidad** (`viability-report.md`), el HTML de cobertura de tests y el `.patch` local. Se ignora en git automáticamente para que nunca acabe en tu parche, y puedes apuntarlo a otro sitio con `DRUPILOT_ARTIFACTS_DIR`. La caché legible por máquina y el lockfile de determinismo se quedan deliberadamente **ocultos bajo `$HOME`** para que no puedan filtrarse a un parche.
 
+### Estado por módulo
+
+drupilot guarda un registro por módulo/tema, `state.json`, en el mismo directorio de estado oculto que `assess.json` y `last-test.json`: qué etapas se alcanzaron y cuándo, y una instantánea de lo que necesita una vista de cartera. Es estado de máquina, así que está oculto a propósito: sobrevive a un `git clean` o a un test-bed reconstruido (si no, el siguiente paso volvería a empezar en `/drupilot-port`), nunca puede filtrarse a un parche, y un único directorio de datos contiene el registro de todos los módulos, así que `/drupilot-status --all` los encuentra todos sin recorrer tus árboles de proyecto. La carpeta visible `.drupilot/` guarda los informes para personas; el registro se presenta bajo demanda.
+
+Lo escribe el flujo, no la memoria: `port-report.sh` registra `ported` / `refactored` (según la fase del manifiesto), `run-phpunit.sh` registra `tested` tras una ejecución verificada de toda la suite y lleva el veredicto de cada ejecución registrada, `verify-core-matrix.sh` y `make-patch.sh` añaden su veredicto y su parche, y `/drupilot-setup`, `/drupilot-assess` y `/drupilot-contribute` registran `setup`, `assessed` y `contributed` mediante `scripts/env/state.sh record`. Lo leen `next-step.sh` (el router y `/drupilot-status`) y el hook post-edición.
+
+| Clave | Significado |
+| --- | --- |
+| `schema` | Versión del registro (`1`). |
+| `subject`, `machine_name`, `type` | El directorio del módulo/tema (absoluto), su nombre de máquina y su tipo. |
+| `drupal_root`, `ddev_project` | El test-bed (workspace) en el que vive y el nombre de su proyecto DDEV. |
+| `origin`, `placement` | El checkout del desarrollador desde el que se colocó un sujeto suelto, y cómo (`move` / `symlink` / `copy`). |
+| `stage`, `stages` | La etapa más alta alcanzada (`setup` < `assessed` < `ported` < `refactored` < `tested` < `contributed`; nunca baja sin `DRUPILOT_STATE_FORCE`) y la hora en que se registró por última vez cada etapa. |
+| `effort`, `assessed_at` | El veredicto S/M/L/XL del assess y cuándo se hizo. |
+| `git` | `branch`, `commit` y `dirty` (cambios sin commitear) del checkout del sujeto. |
+| `toolchain` | Del lock: `drupal_core`, `php_target`, `core_strategy`, `packages` (versiones de Rector, drupal-rector, PHPStan, coder, Drush, core-dev). |
+| `tests` | La última ejecución de PHPUnit registrada: `status`, `preservation`, `executed`, `tests_failed`, recuentos por grupo, `recorded_at` y `fresh` (calculado sobre las fuentes actuales). |
+| `core_matrix` | La última matriz de cores: `verdict`, `d10_support`, `generated_at`, `fresh`. |
+| `patch` | El último parche generado: `path`, `kind` (`local` / `issue` / `contribution`), `at`. |
+| `created`, `updated`, `drupilot_version` | Marcas de tiempo del registro y el drupilot que lo escribió por última vez. |
+
+```bash
+scripts/env/state.sh show --subject web/modules/custom/foo        # un módulo, combinado con los veredictos actuales
+scripts/env/state.sh list --root ~/drupal-ports --json            # todos los módulos bajo un directorio de workspaces
+scripts/env/state.sh list --registry ports.txt                    # una ruta por línea (dirs de módulo o dirs a escanear)
+scripts/env/state.sh record --subject web/modules/custom/foo --stage assessed --effort M
+```
+
+`show` y `list` son de solo lectura (nunca crean un directorio de estado); la tabla va a stderr y `--json` pone el payload en stdout. Un módulo portado antes de que existiera este registro sigue apareciendo con `--root` o `--subject`, con su etapa derivada de sus registros anteriores.
+
 ---
 
 ## Comandos
@@ -144,7 +174,7 @@ Las salidas destinadas al desarrollador viven en un único directorio **visible 
 | `/drupilot-test [sujeto]` | Descubre, adapta y ejecuta **toda** la suite de tests en DDEV (Selenium para JS); itera hasta verde; reporta cobertura. |
 | `/drupilot-patch [sujeto] [issue]` | **Obtén el `.patch`, desacoplado de contribuir.** Offline, sin push, sin verja: un patch local de pruebas, o uno con nombre para un comentario de issue de Drupal.org. Pruébalo ya, contribuye el MR después. |
 | `/drupilot-contribute [sujeto] [issue]` | Publica a **Drupal.org**: issue fork + Merge Request (o patch legacy), en modo semi o auto. Solo invocable por el usuario; nunca expone el PAT. |
-| `/drupilot-status` | Resumen de solo lectura: entorno, target de PHP, fase actual, último assess, estado de tests (con el veredicto de preservación), el lock de reproducibilidad congelado y el siguiente paso sugerido. |
+| `/drupilot-status [sujeto] \| --all [dir\|fichero]` | Resumen de solo lectura: entorno, target de PHP, fase actual, último assess, estado de tests (con el veredicto de preservación), el lock de reproducibilidad congelado y el siguiente paso sugerido. `--all` tabula todos los módulos/workspaces de los que drupilot tiene estado (ver [Estado por módulo](#estado-por-módulo)). |
 
 ---
 
@@ -260,7 +290,7 @@ Los valores por defecto están en `config/defaults.json`. **Cada clave `DRUPILOT
 | `DRUPILOT_GENERATE_RULES` | `ask` | Generar reglas Rector ad-hoc para deprecaciones no cubiertas: `ask` / `auto` / `off`. |
 | `DRUPILOT_SOFT_DEPRECATIONS` | `report` | Qué hace la Fase 1 con las deprecaciones *blandas* — eliminadas solo en una major posterior de Drupal, así que siguen funcionando en todos los cores de Drupal 11 (p. ej. `user_load_by_name()`, `text_summary()`, `check_markup()`: deprecadas en 11.4.0, eliminadas en 13.0.0): `report` (las lista en los informes de viabilidad y de port — símbolo, deprecada en, eliminada en, esfuerzo — sin tocar el código), `defer` (las lista en *aplazado a la Fase 2*) o `fix` (las corrige cuando el reemplazo existe en el suelo de core declarado, mediante `DeprecationHelper::backwardsCompatibleCall()` cuando solo existe en cores más nuevos, y si no las aplaza). Las deprecaciones *duras* (eliminadas en una major ≤ la objetivo, p. ej. `user_roles()`) se corrigen siempre y son las únicas que cuentan en el veredicto de esfuerzo; la Fase 2 elimina también las blandas. |
 | `DRUPILOT_VERIFY_CORES` | `auto` | Qué cores comprueba estáticamente `verify-core-matrix.sh` (PHPStan + `php -l`): `auto` (las patas que declara `core_version_requirement` — `^10 \|\| ^11` → 10 y 11, `^10.3 \|\| ^11` → 10.3 y 11, `^11` → nada más), `off` (se omite; la mitad Drupal 10 sigue *declared-not-verified*) o una lista explícita como `10,11` o `10.3,11`. Los cores de referencia se guardan en caché en `<drupal_root>/.drupilot/cores/` y su versión exacta se congela en el lockfile. |
-| `DRUPILOT_STATE_FORCE` | `false` | La etapa que ha alcanzado un port (`state.json` en el directorio de estado de drupilot: setup < assessed < ported < refactored < tested < contributed; la registran `port-report.sh` y una ejecución verificada de toda la suite con `run-phpunit.sh`) nunca baja, así que volver a ejecutar `/drupilot-port` tras un refactor no la deshace. `true` permite que un nuevo registro la baje, p. ej. para reiniciar un port desde cero. |
+| `DRUPILOT_STATE_FORCE` | `false` | La etapa que ha alcanzado un port (`state.json` en el directorio de estado de drupilot: setup < assessed < ported < refactored < tested < contributed; la registran `port-report.sh`, una ejecución verificada de toda la suite con `run-phpunit.sh` y `state.sh record`; ver [Estado por módulo](#estado-por-módulo)) nunca baja, así que volver a ejecutar `/drupilot-port` tras un refactor no la deshace. `true` permite que un nuevo registro la baje, p. ej. para reiniciar un port desde cero. |
 | `DRUPILOT_AUTONOMOUS` | `false` | Modo manos fuera (equivale a la palabra de modo `auto`): setup→assess→port→refactor→test sin intervención, escribe el patch local, **nunca** contribuye. Ver [Modo autónomo](#modo-autónomo-manos-fuera). |
 | `DRUPILOT_DETERMINISTIC` | `true` | Reproducibilidad (activado por defecto): congela el Drupal core, la toolchain de desarrollo, el SHA de digests y los add-ons de DDEV resueltos en un `drupilot-lock.json` por proyecto y los reutiliza en ejecuciones posteriores. Ponlo a `false` para resolver todo de nuevo cada vez y refrescar el lock. Ver [Determinismo](#determinismo-reproducible-por-defecto). |
 | `DRUPILOT_TOOLCHAIN_SOURCE` | `auto` | De dónde toma `install-toolchain.sh` las versiones de la toolchain de desarrollo: `auto` (el lock del proyecto cuando fija el conjunto conocido-bueno completo; si no, la referencia conocida-buena que trae el plugin, `config/toolchain-reference.json`; los rangos de `.packages` cuando `DRUPILOT_DETERMINISTIC=false`), `reference` (siempre el conjunto conocido-bueno — la vía de reparación) o `range` (resolución nueva). |
@@ -408,7 +438,7 @@ Cuando el issue aún no existe, genera el **resumen del issue** (la plantilla es
   - `SessionStart` → un detector de entorno ligero que resume tu target de PHP y la disponibilidad (siléncialo con `DRUPILOT_SESSION_CONTEXT=off`).
   - `PostToolUse` (Write|Edit) → `phpcbf` + `phpcs` incremental sobre los ficheros Drupal editados; **consciente de fase** (la Fase 1 saca solo errores de compatibilidad) y controlable con `DRUPILOT_POST_EDIT_LINT` (`autofix`/`report`/`off`), y te avisa cuando modifica un fichero.
   - `PreToolUse` (Bash) → pide confirmación antes de cualquier `git push` / acción de MR hacia el exterior en modo `semi`, y **siempre** en una ejecución autónoma (que nunca debe empujar por su cuenta); también pregunta antes de un `git commit` que se salta los git hooks activos del repositorio (`DRUPILOT_HOOKS_GUARD`).
-- **Scripts** (`scripts/`) son una librería de shell robusta e idempotente: un `lib/common.sh` compartido, el motor de requisitos `env/preflight.sh`, y los wrappers de `analysis/`, `tests/` y `contrib/` que invocan las skills y los comandos.
+- **Scripts** (`scripts/`) son una librería de shell robusta e idempotente: un `lib/common.sh` compartido, el motor de requisitos `env/preflight.sh`, el registro de estado por módulo `env/state.sh`, y los wrappers de `analysis/`, `tests/` y `contrib/` que invocan las skills y los comandos.
 - **Plantillas** (`templates/`) son configuraciones parametrizadas (`rector.php`, `phpstan.neon`, `phpcs.xml.dist`, config de DDEV + entorno de tests, plantillas de informe) afinadas por el target de PHP.
 
 Consulta **[FLOW_es.md](FLOW_es.md)** para un diagrama visual de todo el flujo — qué herramienta actúa en cada paso, dónde interviene la IA y las dos fases de la portabilidad.

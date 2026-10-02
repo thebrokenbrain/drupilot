@@ -196,6 +196,15 @@ Hard rules, always:
 
 ## Step 6 — Report
 
+When an MR was opened (or its URL handed over after a push) or the legacy patch
+was produced for the issue, record the **contributed** stage in the subject's
+`state.json` — never before the outward-facing action really happened, and not
+when the developer declined it:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <subject_path> --stage contributed
+```
+
 Summarize in English: the issue, the mode used, the fork/branch, the commit
 message format applied, what was pushed and whether the MR was opened via API or
 left as a URL to open manually, the **patch path** (generated alongside the MR,

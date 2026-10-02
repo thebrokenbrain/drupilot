@@ -70,7 +70,9 @@ it. Read `@<state_dir>/assess.json` (machine cache) and the human-readable
 note the verdict, effort (S/M/L/XL), auto-fixable vs manual counts, and the timestamp.
 Also note the last test result (`<state_dir>/last-test.json`) and the current stage
 (`stage` in `<state_dir>/state.json`, or the legacy `<state_dir>/phase` marker) if
-those files exist. If none exist, the project has not
+those files exist — `state.sh show --subject <DIR>` prints that per-module record
+merged with the current verdicts, and `/drupilot-status --all` tabulates every
+module/workspace drupilot has state for. If none exist, the project has not
 been assessed yet. If Step 2 reported a `lockfile` path, read it and note the
 frozen toolchain (Drupal core, key tool versions, the digests SHA) — that is what
 a deterministic re-run reuses.

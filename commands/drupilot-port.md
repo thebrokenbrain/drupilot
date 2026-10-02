@@ -424,7 +424,9 @@ Drupal root (and pulls the `preservation` verdict — with the baseline
 comparison: regressions, pre-existing failures, tests the port fixed — from
 `last-test.json` and the assessment verdict from `assess.json`). `port-report.sh` already defaults
 `--changes-log` to `<state_dir>/change-log.txt`, so teeing the analyzer output
-there is enough. `SendUserFile` it so it surfaces as a deliverable. Every field
+there is enough. Given the manifest, it also records the **ported** stage in the
+subject's `state.json` (the per-module registry), so `/drupilot-status` and the
+router move past `/drupilot-port`. `SendUserFile` it so it surfaces as a deliverable. Every field
 is optional — the report still renders from partial data, and never invents a value.
 
 ## Step 10 — What next? (developer chooses)

@@ -216,7 +216,9 @@ report's "Drupal 9/10 → 11 changes, explained" section is populated:
 ```
 
 `port-report.sh` defaults `--changes-log` to that path, so teeing the file is
-enough; it writes into the visible `.drupilot/` dir at the Drupal root.
+enough; it writes into the visible `.drupilot/` dir at the Drupal root and, given
+the manifest (`phase: "refactor"`), records the **refactored** stage in the
+subject's `state.json`.
 `SendUserFile` the refreshed `port-report.md`.
 
 ## Step 8 — What next? (developer chooses)

@@ -178,6 +178,26 @@ Stages in `[brackets]` are conditional/opt-in. Use the leaf scripts under
 logic. Each script sources `common.sh`, logs to stderr, and prints parseable
 payloads (JSON / file lists) to stdout.
 
+### Stage record (per-module state)
+
+Each subject keeps a `state.json` in its hidden state dir: the stages reached
+and when, plus a snapshot of effort, branch/commit, toolchain, preservation,
+core-matrix verdict and the last patch. `/drupilot-status` (and `--all` for a
+portfolio), the router's `next-step.sh` and the post-edit hook read it. The
+deterministic scripts record most of it themselves: `port-report.sh` (ported /
+refactored, from the manifest's phase), `run-phpunit.sh` (tested, on a verified
+whole-suite run), `verify-core-matrix.sh` and `make-patch.sh` (their verdict /
+patch). You record the three stages no script owns, after each really happened:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <DIR> --stage setup
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <DIR> --stage assessed --effort <S|M|L|XL>
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <DIR> --stage contributed
+```
+
+`state.sh show --subject <DIR>` prints the record. Stages never go down, so a
+re-run of an earlier stage does not undo a later one.
+
 ### Gating (run first, every stage)
 
 Before any heavy/destructive stage, gate it:
