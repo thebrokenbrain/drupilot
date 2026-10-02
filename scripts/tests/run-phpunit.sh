@@ -89,7 +89,7 @@ if ! ddev_running "$DRUPAL_ROOT"; then
   die "The DDEV environment for $DRUPAL_ROOT is not running. Start it with: ddev start" 2
 fi
 
-# shellcheck disable=SC2206  # intentional word-split: runner is a command prefix.
+# shellcheck disable=SC2206,SC2207  # intentional word-split: runner is a command prefix.
 RUNNER=( $(drupal_runner "$DRUPAL_ROOT") )
 
 # PHPUnit lives in core; use the core configuration explicitly.

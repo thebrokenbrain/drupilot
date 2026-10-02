@@ -68,7 +68,6 @@ config_enum DRUPILOT_REQUIRE_PHP_FLOOR    detect detect target          >/dev/nu
 config_enum DRUPILOT_GENERATE_RULES       ask    ask auto off           >/dev/null || true
 
 TARGET="$(resolve_php_target)"
-PHP_MIN="$(req_version php_min "8.3")"
 COMPOSER_MIN="$(req_version composer_min "2.2.0")"
 GIT_MIN="$(req_version git_min "2.20.0")"
 JQ_MIN="$(req_version jq_min "1.6")"
@@ -190,11 +189,15 @@ if [[ -n "$ANALYZE_ROOT" ]] && ddev_running "$ANALYZE_ROOT"; then
   fi
   DDEV_PHP_HINT="Realign DDEV to the target: 'ddev config --php-version=$TARGET && ddev restart' (or re-run /drupilot-setup)"
   CHECKS+=("$(emit_check php "PHP (DDEV)" "runs inside DDEV (php_version, target $TARGET)" analysis "analyze" soft true "$PHP_VER" "$TARGET" "$PHP_OK" "$DDEV_PHP_HINT")")
-  OK_php="$PHP_OK"; HAS_php="true"
+  OK_php="$PHP_OK"
+  # shellcheck disable=SC2034  # HAS_* mirrors check_tool's printf -v family.
+  HAS_php="true"
 
   # Composer is always available in the container as `ddev composer`.
   CHECKS+=("$(emit_check composer "Composer (DDEV)" "available in the container as 'ddev composer'" analysis "analyze" soft true "" "" true "")")
-  OK_composer="true"; HAS_composer="true"
+  OK_composer="true"
+  # shellcheck disable=SC2034  # HAS_* mirrors check_tool's printf -v family.
+  HAS_composer="true"
 else
   # --- Host execution path (no running DDEV) ------------------------------
   check_tool php      "PHP"      "host PHP (static analysis target $TARGET)" analysis "analyze" soft php      "$TARGET"

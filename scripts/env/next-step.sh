@@ -47,8 +47,14 @@ while [[ $# -gt 0 ]]; do
     --subject=*) SUBJECT="${1#*=}"; shift;;
     --ready-analyze) R_ANALYZE="$(norm_bool "${2:-}")"; shift 2;;
     --ready-setup) R_SETUP="$(norm_bool "${2:-}")"; shift 2;;
-    --ready-test) R_TEST="$(norm_bool "${2:-}")"; shift 2;;
-    --ready-contribute) R_CONTRIBUTE="$(norm_bool "${2:-}")"; shift 2;;
+    --ready-test)
+      # shellcheck disable=SC2034  # accepted for CLI compatibility; not used by the ladder.
+      R_TEST="$(norm_bool "${2:-}")"
+      shift 2;;
+    --ready-contribute)
+      # shellcheck disable=SC2034  # accepted for CLI compatibility; not used by the ladder.
+      R_CONTRIBUTE="$(norm_bool "${2:-}")"
+      shift 2;;
     --json) AS_JSON=1; shift;;
     --human) AS_JSON=0; shift;;
     -h|--help) usage; exit 0;;

@@ -59,7 +59,7 @@ if [[ -f "$SUBJECT/composer.json" ]]; then
   while IFS= read -r pkg; do
     [[ -z "$pkg" ]] && continue
     case "$pkg" in
-      drupal/core*|drupal/core-*) continue;;
+      drupal/core*) continue;;   # also covers drupal/core-*
       drupal/*) DEPS["${pkg#drupal/}"]=1;;
     esac
   done < <(jq -r '(.require // {}) | keys[]?' "$SUBJECT/composer.json" 2>/dev/null || true)
