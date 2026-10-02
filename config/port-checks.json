@@ -42,9 +42,9 @@
       }
     },
     "override-attribute": {
-      "description": "#[\\Override] while the declared core range still includes Drupal 10 (or an older 11.x minor): the parent method may only exist in newer cores (e.g. ContentEntityStorageBase::buildRevisionCacheId() since 11.3), and #[\\Override] without a parent method is a compile-time fatal on PHP 8.3+. Review warning; Phase 1 does not add it.",
+      "description": "#[\\Override] while the declared core range still includes Drupal 10 (or an older 11.x minor): the parent method may only exist in newer cores (e.g. ContentEntityStorageBase::buildRevisionCacheId() since 11.3), and #[\\Override] without a parent method is a compile-time fatal on PHP 8.3+. Neither phase may add it while Drupal 10 is declared, so one introduced by the port is an error; a pre-existing one is skipped and an unattributed one is a review warning.",
       "severity": {
-        "introduced": "warn",
+        "introduced": "error",
         "preexisting": "skip",
         "unknown": "warn"
       }

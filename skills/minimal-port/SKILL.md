@@ -281,7 +281,7 @@ from the file. Each finding says whether the port **introduced** it (diff agains
 the same pre-port git base as the local patch; `--base REF` to override) and gets
 its severity from `config/port-checks.json`. **Exit 3 = error findings: the stage
 is not done** — fix them (restore the interface/`use`/`new static`/array
-callable, make the property `protected`), never suppress them. Warnings are
+callable, make the property `protected`, drop an added `#[\Override]`), never suppress them. Warnings are
 reviewed and listed in the report. Exit 0 with warnings is fine.
 
 `run-phpcs.sh --fix` runs `phpcbf` first then `phpcs` with

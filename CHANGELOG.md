@@ -389,6 +389,12 @@ tag the commit `vX.Y.Z`.
   that is not a directory now falls back to the current directory with a
   warning, matching the router's own state detection (also covers
   `/drupilot-status`).
+- **The port-safety gate passed a port that added `#[\Override]` while the core
+  range still includes Drupal 10.** `override-attribute` was a warning even when
+  the port introduced it, although both phases forbid adding it then (the parent
+  method may exist only on newer cores, and PHP 8.3+ fatals at compile time). A
+  port-introduced one is now an error (exit 3); an unattributed one stays a
+  review warning and a pre-existing one is still skipped.
 
 ## [0.8.4] - 2026-06-23
 

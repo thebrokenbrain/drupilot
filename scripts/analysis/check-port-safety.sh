@@ -34,7 +34,8 @@
 #                      plugins): dropped by __sleep() / not re-initializable by
 #                      __wakeup().
 #   override-attribute #[\Override] while the declared core range still
-#                      includes Drupal 10 (review warning).
+#                      includes Drupal 10 (an error when the port added it;
+#                      a review warning when it cannot be attributed).
 #   class-case         services.yml / routing.yml class references and PSR-4
 #                      class names whose case differs from the real file.
 #
