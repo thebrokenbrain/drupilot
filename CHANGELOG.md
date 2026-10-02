@@ -134,6 +134,27 @@ tag the commit `vX.Y.Z`.
 - **Port report: optional `port_safety` manifest section** (the checker's JSON)
   rendered as "Port-safety checks"; `config/deprecations.json` explains the
   checker's tags (new `port-safety` / `serialization` categories).
+- **`scripts/env/origin-hygiene.sh` — prove drupilot left the origin checkout
+  clean.** `--snapshot` records the origin's `git status --porcelain` (or its
+  top-level entries outside git) in the hidden state dir keyed by the Drupal root;
+  `--check` reports each new untracked entry as drupilot-attributable (`.ddev/`,
+  `vendor/`, `node_modules/`, `.phpstan-cache/`, `.drupilot*`, generated config,
+  drupilot patches, symlinks escaping the tree) or other, plus tracked changes
+  (unexpected for `copy`). Report-only: exit 0, never deletes anything.
+  `place-subject.sh` snapshots before placing, `/drupilot-setup` does it for an
+  in-place subject, `/drupilot-status` shows a one-line verdict and the port report
+  gains an "Origin hygiene" section (or reads a manifest `origin_hygiene` key).
+- **`resolve-workspace.sh` JSON gains `residue` and `residual_ddev`** (additive,
+  report-only): untracked `.ddev/`, `vendor/`, `node_modules/`, `.phpstan-cache/`,
+  `.drupilot/` and out-of-tree symlinks in the subject, and whether the "root" is
+  only a leftover module-at-root `.ddev/` sandbox.
+- **`ddev-up.sh --json`** prints `{project_dir, project_name, php_version,
+  primary_url, drupal_target}` on stdout; `project_name` is the configured one
+  when the project already exists.
+- **`place-subject.sh --no-exclude`** restores the old verbatim `copy`.
+- **`common.sh`: `git_local_exclude DIR PATTERN...`** (idempotent append to the
+  repo's local `.git/info/exclude`) and **`symlink_escapes TREE REL`** (portable,
+  lexical out-of-tree symlink test).
 ### Changed
 - **`rector/rector` is an explicit toolchain package** (`.packages.rector`,
   `^2.0 <2.6.2`), so it is installed with a range that excludes the releases that
@@ -144,6 +165,21 @@ tag the commit `vX.Y.Z`.
 - **The `ddev-environment` skill no longer suggests `envsubst`** (not shipped on
   stock macOS) or hand-written `sed` for rendering templates; it runs
   `render-templates.sh`.
+- **`place-subject.sh` copy mode skips local-environment residue** — `.ddev/`,
+  `vendor/`, `.drupilot/`, `.drupilot.json`, `.phpstan-cache/`,
+  `.drupilot-coverage/` at the top level and `node_modules/` at any depth — and
+  drops symlinks whose target escapes the checkout (the origin keeps them). A
+  nested `js/vendor/` is still copied. Untracked residue in the checkout is
+  warned about for every placement mode.
+- **`place-subject.sh` warns when a `symlink` placement points outside the
+  Drupal root**: DDEV mounts only the root, so `ddev exec` tooling cannot see the
+  subject (verified in the lab).
+- **`/drupilot-setup` and the `ddev-environment` skill pass `--name`** to
+  `ddev-up.sh` (otherwise the DDEV project is named after the test-bed folder);
+  `ddev-up.sh` warns when `--name` is ignored because the project already exists.
+- **`make-patch.sh --local` leaves out local-environment residue** (`.ddev/`,
+  top-level `vendor/`, `.phpstan-cache/`, `node_modules/` anywhere) when it
+  captures untracked files.
 
 ### Fixed
 - **Rector broke Form API callbacks and Drupal 10 compatibility.** The template
@@ -275,6 +311,27 @@ tag the commit `vX.Y.Z`.
 - **`post-edit-lint.sh` printed "No such file or directory" on stderr** for every
   edit before a phase was recorded (the redirection error escaped its
   `2>/dev/null`). Harmless, now silent.
+- **`make-patch.sh --local` diffed against an unrelated base.** On a local
+  branch with no upstream (e.g. one cut from a release tag) it used
+  `origin/HEAD`, producing a reverse diff of upstream history (a 43-file,
+  3,760-line patch for a one-line port). `git_port_base_ref` now uses the
+  upstream only when it is an ancestor of HEAD (merge-base otherwise) and,
+  without an upstream, the closest fork point among `origin/HEAD`, the other
+  remote branches and the nearest tag (their merge-base when not an ancestor),
+  warning whenever it does not use `origin/HEAD` as-is; an explicit `--base`
+  that is not an ancestor of HEAD is honored with a warning. A remote-less repo
+  keeps the HEAD default. `check-port-safety.sh` shares the same base.
+- **The local patch showed up as an untracked file in a nested subject repo**
+  (the Drupal root's `.gitignore` does not apply to it). It is now hidden through
+  that repo's local `.git/info/exclude` — the filename and location are
+  unchanged and the tracked `.gitignore` is never edited. The subject-side
+  `.drupilot.json` written by `copy`/`symlink` placement is hidden the same way.
+- **`ddev-up.sh` and `run-phpunit.sh` printed the preflight report (and
+  `ddev-up.sh` the ddev/composer output) on stdout**, breaking the
+  payload-only-stdout rule; it all goes to stderr now.
+- **`place-subject.sh` wording:** a `move` removes the original directory; the
+  message no longer says it "is now empty". A `move` re-run keyed on the old path
+  is also detected when the test-bed comes from `DRUPILOT_WORKSPACE_DIR`.
 - Cleared the 12 `shellcheck -S warning` findings with no behavior change: dropped
   the unused `PHP_MIN` (`preflight.sh`) and `PF_RC` (`check-prereqs.sh`), collapsed
   the redundant `drupal/core*|drupal/core-*` pattern (`deps-status.sh`), and

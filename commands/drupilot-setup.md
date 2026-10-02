@@ -102,16 +102,34 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/place-subject.sh" --subject "<subject_di
 It places the loose subject into `<root>/web/{modules,themes,profiles}/custom/<machine_name>`,
 persists `DRUPILOT_WORKSPACE_DIR` + `DRUPILOT_PLACEMENT` to `.drupilot.json`, and runs
 `ensure-gitignore.sh` on the new root. Exit code 2 means the Drupal root does not exist yet
-(run 3a first); a non-loose subject is a no-op.
+(run 3a first); a non-loose subject is a no-op. Before placing it records the origin's
+`git status` baseline (`origin-hygiene.sh --snapshot`); a `copy` skips local-environment
+residue (`.ddev/`, `vendor/`, `.drupilot*`, `.phpstan-cache/`, `node_modules/`) and drops
+symlinks escaping the checkout. If the resolver JSON lists `residue` or `residual_ddev:true`,
+tell the developer (report-only — never delete anything in their checkout).
+
+For a subject that is **already inside** a Drupal root (`loose:false`), record the origin
+baseline yourself (idempotent — an existing baseline is kept), substituting `<subject_dir>`:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/origin-hygiene.sh" --snapshot --subject "<subject_dir>" --placement in-place
+```
 
 ### 3a — Bring up the DDEV Drupal 11 project
 
 Run this yourself via the Bash tool, substituting `<subject_dir>` with the resolved
-subject directory from Step 2's context (do not run it verbatim):
+subject directory from Step 2's context and `<ddev_name>` with the DDEV project name (do not
+run it verbatim). Pass `--name` explicitly: without it the project is named after the
+test-bed directory (e.g. `my_module-d11` → `my-module-d11`). A good default is the
+`machine_name` from the resolver plus `-d11`; the script sanitizes it to a hostname-safe
+value:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-up.sh" --subject "<subject_dir>" --docroot web
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-up.sh" --subject "<subject_dir>" --name "<ddev_name>" --docroot web
 ```
+
+All logs, the preflight report and the ddev/composer output go to stderr; add `--json` for
+a `{project_dir, project_name, php_version, primary_url, drupal_target}` summary on stdout.
 
 This configures `--project-type=drupal11 --docroot=web --php-version=$(resolve_php_target)`,
 starts DDEV, runs `ddev composer create-project drupal/recommended-project:^11` (`create` on DDEV < 1.24.2) when there is no

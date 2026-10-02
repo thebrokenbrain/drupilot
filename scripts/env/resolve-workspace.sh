@@ -26,7 +26,15 @@
 #
 # Output: a human table on STDERR; the recommendation JSON on STDOUT:
 #   { subject_src, machine_name, type, loose, drupal_root, drupal_root_exists,
-#     subject_dest_rel, subject_dest_abs, placement, already_placed }
+#     subject_dest_rel, subject_dest_abs, placement, already_placed,
+#     residue, residual_ddev }
+# residue lists untracked local-environment leftovers at the top of the subject
+# (.ddev/, vendor/, node_modules/, .phpstan-cache/, .drupilot/) and symlinks
+# whose target escapes it. residual_ddev is true when the Drupal "root" is the
+# module itself only because of an UNTRACKED .ddev/config.yaml with no core
+# (a leftover module-at-root sandbox). Both are report-only: they never change
+# the loose/root decision (ddev-drupal-contrib's module-at-root layout is
+# legitimate).
 # Read-only and ungated. Exit codes: 0 ok · 1 usage/error.
 # =============================================================================
 set -euo pipefail
@@ -136,6 +144,27 @@ if [[ "$LOOSE" == "true" && -d "$DEST_ABS" ]] && is_drupal_extension_dir "$DEST_
   ALREADY="true"
 fi
 
+# --- Residue report (read-only) --------------------------------------------
+RESIDUE=()
+_tracked() { git -C "$SUBJECT_ABS" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+  && [[ -n "$(git -C "$SUBJECT_ABS" ls-files -- "$1" 2>/dev/null | head -n1)" ]]; }
+for _n in .ddev vendor node_modules .phpstan-cache .drupilot; do
+  if [[ -e "$SUBJECT_ABS/$_n" ]] && ! _tracked "$_n"; then RESIDUE+=("$_n/"); fi
+done
+while IFS= read -r _l; do
+  [[ -n "$_l" ]] || continue
+  _rel="${_l#"$SUBJECT_ABS"/}"
+  symlink_escapes "$SUBJECT_ABS" "$_rel" && RESIDUE+=("$_rel")
+done < <(find "$SUBJECT_ABS" \( -name .git -o -name node_modules -o -name vendor -o -name .ddev \) -prune -o -type l -print 2>/dev/null || true)
+RESIDUAL_DDEV="false"
+if [[ "$ROOT" == "$SUBJECT_ABS" && -f "$SUBJECT_ABS/.ddev/config.yaml" ]] \
+   && is_drupal_extension_dir "$SUBJECT_ABS" 2>/dev/null \
+   && [[ ! -f "$SUBJECT_ABS/web/core/lib/Drupal.php" && ! -f "$SUBJECT_ABS/core/lib/Drupal.php" ]] \
+   && ! _tracked ".ddev/config.yaml"; then
+  RESIDUAL_DDEV="true"
+fi
+RESIDUE_JSON="$(arr_to_json ${RESIDUE[@]+"${RESIDUE[@]}"})"
+
 JSON="$(jq -c -n \
   --arg subject_src "$SUBJECT_ABS" \
   --arg machine_name "$MACHINE" \
@@ -147,10 +176,22 @@ JSON="$(jq -c -n \
   --arg subject_dest_abs "$DEST_ABS" \
   --arg placement "$PLACEMENT_OUT" \
   --argjson already_placed "$ALREADY" \
+  --argjson residue "$RESIDUE_JSON" \
+  --argjson residual_ddev "$RESIDUAL_DDEV" \
   '{subject_src:$subject_src, machine_name:$machine_name, type:$type, loose:$loose,
     drupal_root:$drupal_root, drupal_root_exists:$drupal_root_exists,
     subject_dest_rel:$subject_dest_rel, subject_dest_abs:$subject_dest_abs,
-    placement:$placement, already_placed:$already_placed}')"
+    placement:$placement, already_placed:$already_placed,
+    residue:$residue, residual_ddev:$residual_ddev}')"
+
+# Residue warnings are useful even in --json mode (they go to STDERR).
+if [[ "${#RESIDUE[@]}" -gt 0 ]]; then
+  log_warn "Local-environment residue in the subject (untracked, not part of the module): ${RESIDUE[*]}"
+fi
+if [[ "$RESIDUAL_DDEV" == "true" ]]; then
+  log_warn "The subject itself looks like a leftover module-at-root DDEV sandbox (untracked .ddev/config.yaml, no Drupal core)."
+  log_plain "  It is treated as the Drupal root. If that is stale, remove its .ddev/ or set DRUPILOT_WORKSPACE_DIR."
+fi
 
 if [[ "$JSON_ONLY" -eq 0 ]]; then
   log_step "Workspace resolution — $MACHINE ($TYPE)"

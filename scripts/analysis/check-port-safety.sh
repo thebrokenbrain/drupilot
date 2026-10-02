@@ -43,7 +43,8 @@
 # "pre-existing" — and the severity comes from the per-check matrix in
 # config/port-checks.json (e.g. a readonly property the port added is an error,
 # one that was already there a warning). The base is the same one make-patch.sh
-# --local uses (git_port_base_ref: upstream, then origin/HEAD, then HEAD), or
+# --local uses (git_port_base_ref: the fork point — upstream, else the closest
+# merge-base among the remote branches and the nearest tag, else HEAD), or
 # --base REF. Untracked files count as added. Without git (or with --no-diff)
 # "introduced" is null and the "unknown" severity applies.
 #

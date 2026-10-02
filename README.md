@@ -121,6 +121,8 @@ parent/
 
 How the subject gets there is controlled by `DRUPILOT_PLACEMENT` (`move` / `symlink` / `copy`); the test-bed location by `DRUPILOT_WORKSPACE_DIR` (see [Configuration](#configuration)). A module that is **already inside** a Drupal root keeps that layout in place — this only applies to loose checkouts.
 
+**Origin hygiene.** Before placing, drupilot records the origin checkout's `git status` (hidden state, never in the tree); `scripts/env/origin-hygiene.sh --check` later reports any new untracked entry drupilot is responsible for (`.ddev/`, `vendor/`, `node_modules/`, `.phpstan-cache/`, generated config, patches, symlinks escaping the tree) — report-only, it never deletes anything — and the port report shows the result. A `copy` placement leaves local-environment residue behind (`.ddev/`, `vendor/`, `.drupilot*`, `.phpstan-cache/` at the top, `node_modules/` anywhere) and drops symlinks pointing outside the checkout (`--no-exclude` restores the verbatim copy). drupilot's own files inside your repo (the subject-side `.drupilot.json`, the local patch) are hidden through the repo's **local** `.git/info/exclude`, never its tracked `.gitignore`.
+
 ### The `.drupilot/` folder
 
 Developer-facing outputs live in a single **visible, gitignored** `.drupilot/` directory at the Drupal root: the port **report card** (`port-report.md`), the **viability report** (`viability-report.md`), the test-coverage HTML, and the local `.patch`. It is gitignored automatically so it never lands in your patch, and you can point it elsewhere with `DRUPILOT_ARTIFACTS_DIR`. The machine-readable cache and the determinism lockfile deliberately stay **hidden under `$HOME`** so they can't leak into a patch.
@@ -231,7 +233,7 @@ Defaults live in `config/defaults.json`. **Every `DRUPILOT_*` key can be overrid
 | `DRUPILOT_CORE_TARGET_STRATEGY` | `auto` | Core compatibility decision: `auto` (keep `^10 \|\| ^11` while backwards-compatible, switch to `^11` on a BC break / refactor), `d11-only`, or `keep-d10`. Keeping D10 also declares a composer `require.php` floor (see `DRUPILOT_REQUIRE_PHP_FLOOR`), and the choice yields a SemVer version-bump verdict. |
 | `DRUPILOT_KEEP_D10` | _(legacy)_ | Legacy boolean override of the strategy (`true` → keep D10, `false` → D11-only). Honored only when set; prefer `DRUPILOT_CORE_TARGET_STRATEGY`. |
 | `DRUPILOT_REQUIRE_PHP_FLOOR` | `detect` | When keeping `^10 \|\| ^11`, how to set composer `require.php`: `detect` derives the real floor from a heuristic scan of the ported code (e.g. `>=8.1` when it uses no PHP 8.2/8.3 constructs, for genuine Drupal 10 support); `target` keeps the conservative `>=<php target>`. A lowered floor is best-effort — confirm with PHPCompatibility. |
-| `DRUPILOT_PLACEMENT` | `move` | How a loose checkout is placed into the sibling test-bed: `move` relocates it (non-lossy — it stays a git repo at the new path), `symlink` keeps your checkout where it is and links it in, `copy` duplicates it. |
+| `DRUPILOT_PLACEMENT` | `move` | How a loose checkout is placed into the sibling test-bed: `move` relocates it (non-lossy — it stays a git repo at the new path), `symlink` keeps your checkout where it is and links it in (a target outside the test-bed is not visible inside the DDEV container, so `ddev exec` tooling cannot see it — use it for host-side work), `copy` duplicates it without local-environment residue (`.ddev/`, `vendor/`, `node_modules/`, …) or symlinks escaping the checkout. |
 | `DRUPILOT_WORKSPACE_DIR` | _(empty)_ | Explicit path for the Drupal test-bed root. Empty means a sibling `<parent>/<machine_name>-d11`. |
 | `DRUPILOT_ARTIFACTS_DIR` | _(empty)_ | Override for the visible `.drupilot/` outputs directory. Empty means `<root>/.drupilot`. |
 | `DRUPILOT_CODER_CONSTRAINT` | `^8.3` | `drupal/coder` branch (PHPCS 3.x vs 4.x). |
@@ -340,7 +342,7 @@ Runs Unit, Kernel, Functional and FunctionalJavascript (Selenium) inside DDEV an
 /drupilot-patch web/modules/custom/my_module
 ```
 
-Writes `MODULE-port-to-drupal-11.patch` next to the module — offline, no push, no Drupal.org account. Apply it on another checkout with `git apply`. Want to attach it to an issue and validate it there before opening a Merge Request? Pass the issue id for an issue-comment-named patch:
+Writes `MODULE-port-to-drupal-11.patch` next to the module — offline, no push, no Drupal.org account. Apply it on another checkout with `git apply`. The patch is diffed against your branch's **fork point** — its upstream when it has one; otherwise the closest of `origin/HEAD`, the other remote branches and the nearest tag (e.g. a local branch cut from a release tag) — so it holds exactly the port, committed or not; pass `--base` to choose. It is kept out of `git status` through the repo's local `.git/info/exclude`. Want to attach it to an issue and validate it there before opening a Merge Request? Pass the issue id for an issue-comment-named patch:
 
 ```text
 /drupilot-patch web/modules/custom/my_module 3456789

@@ -78,7 +78,9 @@ esac
 # ---------------------------------------------------------------------------
 PREFLIGHT="$(plugin_root)/scripts/env/preflight.sh"
 if [[ -x "$PREFLIGHT" || -f "$PREFLIGHT" ]]; then
-  if ! bash "$PREFLIGHT" --profile test; then
+  # The human preflight report is diagnostics: STDERR, never mixed into the
+  # PHPUnit stream on STDOUT.
+  if ! bash "$PREFLIGHT" --profile test >&2; then
     die "Cannot run tests: the 'test' requirements are not satisfied (see the report above)." 2
   fi
 else

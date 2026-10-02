@@ -19,7 +19,16 @@
 #
 # Usage:
 #   ddev-up.sh [--php X] [--name NAME] [--subject DIR] [--docroot web]
-#              [--dir PROJECT_DIR] [--no-create] [-h|--help]
+#              [--dir PROJECT_DIR] [--no-create] [--json] [-h|--help]
+#
+#   --name     DDEV project name (hostname-safe; sanitized). Default: the
+#              project directory's name (for a loose subject, the sibling
+#              test-bed '<machine_name>-d11').
+#   --json     print a JSON summary on STDOUT when done:
+#              {project_dir, project_name, php_version, primary_url, drupal_target}
+#
+# Output: every log line, the preflight report and the ddev/composer output go
+# to STDERR; STDOUT carries only the --json payload (empty without --json).
 #
 # Exit codes:
 #   0 -> project configured and running.
@@ -37,6 +46,7 @@ SUBJECT=""
 DOCROOT="web"
 PROJECT_DIR=""
 DO_CREATE=1
+JSON_OUT=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -51,6 +61,7 @@ while [[ $# -gt 0 ]]; do
     --dir) PROJECT_DIR="${2:-}"; shift 2;;
     --dir=*) PROJECT_DIR="${1#*=}"; shift;;
     --no-create) DO_CREATE=0; shift;;
+    --json) JSON_OUT=1; shift;;
     -h|--help)
       grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; exit 0;;
     *) log_warn "Unknown argument: $1"; shift;;
@@ -72,7 +83,7 @@ PLUGIN_ROOT_DIR="$(plugin_root)"
 # GATE: setup profile (Docker daemon + DDEV). No side effects before this.
 # ---------------------------------------------------------------------------
 log_step "Checking environment requirements (profile: setup)"
-if ! bash "$PLUGIN_ROOT_DIR/scripts/env/preflight.sh" --profile setup; then
+if ! bash "$PLUGIN_ROOT_DIR/scripts/env/preflight.sh" --profile setup >&2; then
   die "Cannot set up the DDEV environment: a hard requirement is missing (see report above). Run /drupilot-doctor." 2
 fi
 
@@ -136,6 +147,17 @@ PROJECT_NAME="$(ddev_project_name "$PROJECT_NAME")"
   && log_info "Sanitized DDEV project name '$_RAW_PROJECT_NAME' -> '$PROJECT_NAME' (hostname-safe)."
 
 DDEV_CONFIG="$PROJECT_DIR/.ddev/config.yaml"
+# An existing project keeps its configured name ('ddev config' is not re-run), so
+# report THAT name rather than the --name/directory default.
+if [[ -f "$DDEV_CONFIG" ]]; then
+  _cfg_name="$(grep -E '^name:' "$DDEV_CONFIG" 2>/dev/null | head -n1 \
+    | sed -E 's/^name:[[:space:]]*//; s/[[:space:]]*(#.*)?$//' | tr -d '"'"'"'')"
+  if [[ -n "$_cfg_name" && "$_cfg_name" != "$PROJECT_NAME" ]]; then
+    [[ "$_RAW_PROJECT_NAME" != "$(basename "$PROJECT_DIR")" ]] \
+      && log_warn "DDEV is already configured as '$_cfg_name'; --name '$_RAW_PROJECT_NAME' is ignored (not re-running 'ddev config')."
+    PROJECT_NAME="$_cfg_name"
+  fi
+fi
 
 log_info "Project directory : $PROJECT_DIR"
 log_info "Project name      : $PROJECT_NAME"
@@ -153,7 +175,7 @@ if [[ -f "$DDEV_CONFIG" ]]; then
   EXISTING_PHP="$(trim "$EXISTING_PHP")"
   if [[ -n "$EXISTING_PHP" && "$EXISTING_PHP" != "$PHP_TARGET" ]]; then
     log_warn "Existing DDEV php_version ($EXISTING_PHP) differs from the target ($PHP_TARGET). Aligning to $PHP_TARGET."
-    ( cd "$PROJECT_DIR" && ddev config --php-version="$PHP_TARGET" >/dev/null )
+    ( cd "$PROJECT_DIR" && ddev config --php-version="$PHP_TARGET" >&2 )
   fi
 else
   log_step "Configuring DDEV (Drupal 11, PHP $PHP_TARGET)"
@@ -161,7 +183,7 @@ else
       --project-name="$PROJECT_NAME" \
       --project-type=drupal11 \
       --docroot="$DOCROOT" \
-      --php-version="$PHP_TARGET" ) \
+      --php-version="$PHP_TARGET" >&2 ) \
     || die "'ddev config' failed. If PHP $PHP_TARGET is unsupported by this DDEV version, retry with --php 8.3." 1
   log_ok "DDEV configured."
 fi
@@ -173,7 +195,7 @@ if ddev_running "$PROJECT_DIR"; then
   log_ok "DDEV project is already running — skipping 'ddev start'."
 else
   log_step "Starting DDEV (this may pull container images on first run)"
-  ( cd "$PROJECT_DIR" && ddev start ) \
+  ( cd "$PROJECT_DIR" && ddev start >&2 ) \
     || die "'ddev start' failed. Check the Docker daemon and the DDEV logs ('ddev logs')." 1
   log_ok "DDEV started."
 fi
@@ -213,7 +235,7 @@ else
   CREATE_SUBCMD="create"
   DDEV_VER="$(tool_version ddev 2>/dev/null || true)"
   if [[ -n "$DDEV_VER" ]] && version_ge "$DDEV_VER" "1.24.2"; then CREATE_SUBCMD="create-project"; fi
-  ( cd "$PROJECT_DIR" && ddev composer "$CREATE_SUBCMD" --no-interaction "drupal/recommended-project:${DRUPAL_TARGET}" ) \
+  ( cd "$PROJECT_DIR" && ddev composer "$CREATE_SUBCMD" --no-interaction "drupal/recommended-project:${DRUPAL_TARGET}" >&2 ) \
     || die "'ddev composer $CREATE_SUBCMD' failed. Check network access and the DDEV web container ('ddev logs -s web')." 1
   log_ok "Composer project created."
 fi
@@ -232,7 +254,7 @@ if [[ "$HAS_DRUSH" == "1" ]]; then
   log_ok "Drush already required in composer.json — skipping."
 else
   log_step "Requiring Drush ($DRUSH_CONSTRAINT)"
-  ( cd "$PROJECT_DIR" && ddev composer require --no-interaction "$DRUSH_CONSTRAINT" ) \
+  ( cd "$PROJECT_DIR" && ddev composer require --no-interaction "$DRUSH_CONSTRAINT" >&2 ) \
     || log_warn "Could not require Drush automatically. Run 'ddev composer require $DRUSH_CONSTRAINT' inside $PROJECT_DIR."
 fi
 
@@ -250,4 +272,11 @@ hr
 log_ok "DDEV Drupal $DRUPAL_TARGET environment is ready (PHP ${EFFECTIVE_PHP:-$PHP_TARGET})."
 log_plain "Next: 'ddev-add-ons.sh --contrib [--selenium]' to add the contrib + Selenium add-ons,"
 log_plain "      then place your module/theme under $DOCROOT/modules/custom or $DOCROOT/themes/custom."
+if [[ "$JSON_OUT" == "1" ]] && have_cmd jq; then
+  jq -c -n --arg project_dir "$PROJECT_DIR" --arg project_name "$PROJECT_NAME" \
+    --arg php_version "${EFFECTIVE_PHP:-$PHP_TARGET}" --arg primary_url "$PRIMARY_URL" \
+    --arg drupal_target "$DRUPAL_TARGET" \
+    '{project_dir:$project_dir, project_name:$project_name, php_version:$php_version,
+      primary_url:$primary_url, drupal_target:$drupal_target}'
+fi
 exit 0

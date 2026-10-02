@@ -123,6 +123,8 @@ padre/
 
 Cómo llega el sujeto ahí lo controla `DRUPILOT_PLACEMENT` (`move` / `symlink` / `copy`); la ubicación del banco de pruebas, `DRUPILOT_WORKSPACE_DIR` (ver [Configuración](#configuración)). Un módulo que **ya está dentro** de una raíz de Drupal conserva ese layout — esto solo aplica a checkouts sueltos.
 
+**Higiene del origen.** Antes de colocar el sujeto, drupilot registra el `git status` del checkout de origen (estado oculto, nunca dentro del árbol); `scripts/env/origin-hygiene.sh --check` informa después de cualquier entrada nueva sin seguimiento atribuible a drupilot (`.ddev/`, `vendor/`, `node_modules/`, `.phpstan-cache/`, configuración generada, parches, enlaces simbólicos que salen del árbol) — solo informa, nunca borra nada — y el informe del port muestra el resultado. Una colocación `copy` no copia los restos del entorno local (`.ddev/`, `vendor/`, `.drupilot*`, `.phpstan-cache/` en la raíz, `node_modules/` a cualquier profundidad) y descarta los enlaces simbólicos que apuntan fuera del checkout (`--no-exclude` recupera la copia literal). Los ficheros propios de drupilot dentro de tu repo (el `.drupilot.json` del lado del sujeto, el parche local) se ocultan mediante el `.git/info/exclude` **local** del repo, nunca con su `.gitignore` versionado.
+
 ### La carpeta `.drupilot/`
 
 Las salidas destinadas al desarrollador viven en un único directorio **visible e ignorado en git** `.drupilot/` en la raíz de Drupal: el **boletín** del port (`port-report.md`), el **informe de viabilidad** (`viability-report.md`), el HTML de cobertura de tests y el `.patch` local. Se ignora en git automáticamente para que nunca acabe en tu parche, y puedes apuntarlo a otro sitio con `DRUPILOT_ARTIFACTS_DIR`. La caché legible por máquina y el lockfile de determinismo se quedan deliberadamente **ocultos bajo `$HOME`** para que no puedan filtrarse a un parche.
@@ -233,7 +235,7 @@ Los valores por defecto están en `config/defaults.json`. **Cada clave `DRUPILOT
 | `DRUPILOT_CORE_TARGET_STRATEGY` | `auto` | Decisión de compatibilidad de core: `auto` (mantiene `^10 \|\| ^11` mientras sea retrocompatible, pasa a `^11` ante una ruptura BC / refactor), `d11-only` o `keep-d10`. Mantener D10 declara además un suelo composer `require.php` (ver `DRUPILOT_REQUIRE_PHP_FLOOR`), y la elección produce un veredicto SemVer de subida de versión. |
 | `DRUPILOT_KEEP_D10` | _(legacy)_ | Override booleano legacy de la estrategia (`true` → mantener D10, `false` → solo D11). Solo se respeta si se exporta; prefiere `DRUPILOT_CORE_TARGET_STRATEGY`. |
 | `DRUPILOT_REQUIRE_PHP_FLOOR` | `detect` | Al mantener `^10 \|\| ^11`, cómo fijar el `require.php` de composer: `detect` deriva el suelo real de un escaneo heurístico del código portado (p. ej. `>=8.1` si no usa construcciones de PHP 8.2/8.3, para soporte real de Drupal 10); `target` mantiene el conservador `>=<target de php>`. Bajar el suelo es best-effort — confírmalo con PHPCompatibility. |
-| `DRUPILOT_PLACEMENT` | `move` | Cómo se coloca un checkout suelto en el banco de pruebas hermano: `move` lo reubica (sin pérdida — sigue siendo un repo git en la nueva ruta), `symlink` deja tu checkout donde está y lo enlaza, `copy` lo duplica. |
+| `DRUPILOT_PLACEMENT` | `move` | Cómo se coloca un checkout suelto en el banco de pruebas hermano: `move` lo reubica (sin pérdida — sigue siendo un repo git en la nueva ruta), `symlink` deja tu checkout donde está y lo enlaza (un destino fuera del banco de pruebas no es visible dentro del contenedor DDEV, así que las herramientas vía `ddev exec` no lo ven — úsalo para trabajo en el host), `copy` lo duplica sin los restos del entorno local (`.ddev/`, `vendor/`, `node_modules/`, …) ni los enlaces simbólicos que salen del checkout. |
 | `DRUPILOT_WORKSPACE_DIR` | _(vacío)_ | Ruta explícita para la raíz del banco de pruebas de Drupal. Vacío significa un hermano `<padre>/<machine_name>-d11`. |
 | `DRUPILOT_ARTIFACTS_DIR` | _(vacío)_ | Override del directorio de salidas visible `.drupilot/`. Vacío significa `<raíz>/.drupilot`. |
 | `DRUPILOT_CODER_CONSTRAINT` | `^8.3` | Rama de `drupal/coder` (PHPCS 3.x vs 4.x). |
@@ -342,7 +344,7 @@ Ejecuta Unit, Kernel, Functional y FunctionalJavascript (Selenium) dentro de DDE
 /drupilot-patch web/modules/custom/my_module
 ```
 
-Escribe `MODULE-port-to-drupal-11.patch` junto al módulo — offline, sin push, sin cuenta de Drupal.org. Aplícalo en otra copia con `git apply`. ¿Quieres adjuntarlo a un issue y validarlo allí antes de abrir un Merge Request? Pasa el id del issue para un parche con nombre de issue-comment:
+Escribe `MODULE-port-to-drupal-11.patch` junto al módulo — offline, sin push, sin cuenta de Drupal.org. Aplícalo en otra copia con `git apply`. El parche se calcula contra el **punto de bifurcación** de tu rama — su upstream si lo tiene; si no, el más cercano entre `origin/HEAD`, las demás ramas remotas y la etiqueta más próxima (p. ej. una rama local creada desde una etiqueta de release) — así que contiene exactamente el port, esté confirmado o no; pasa `--base` para elegir. Se mantiene fuera de `git status` mediante el `.git/info/exclude` local del repo. ¿Quieres adjuntarlo a un issue y validarlo allí antes de abrir un Merge Request? Pasa el id del issue para un parche con nombre de issue-comment:
 
 ```text
 /drupilot-patch web/modules/custom/my_module 3456789

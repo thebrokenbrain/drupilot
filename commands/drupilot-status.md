@@ -51,6 +51,11 @@ Read these if they exist (do not recompute anything):
   !`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; ROOT="$(find_drupal_root "$SUBJ" 2>/dev/null || echo "$SUBJ")"; DRUPILOT_PROJECT_DIR="$ROOT" lock_show || true' _ "$1"`
 - `@<state_dir>/port-manifest.json` and `@<artifacts_dir>/port-report.md` if present
   — the per-port "what changed and why" record and its human report card.
+- origin hygiene — whether drupilot left anything behind in the developer's origin
+  checkout, compared with the baseline taken before placement (read-only; `clean` is
+  `null` when no baseline was recorded):
+
+  !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/origin-hygiene.sh" --check --subject "$1" --json 2>/dev/null || true`
 
 If a file is absent, report that part as "not done yet" rather than inventing a value.
 
@@ -69,6 +74,9 @@ Render an English summary covering:
 - **Last assessment:** verdict + effort + counts + when, or "none cached".
 - **Last test result:** pass/fail summary, the **preservation** verdict, and when —
   or "tests not run yet".
+- **Origin hygiene:** one line — "clean", the drupilot-attributable residue it lists
+  (`attributable`), or "no baseline" when `clean` is null. Never suggest deleting
+  anything automatically.
 - **Artifacts:** point the developer at the visible `<DRUPAL_ROOT>/.drupilot/` folder
   (`artifacts_dir`) for `viability-report.md`, `port-report.md`, `coverage/` and the
   local `*.patch`; note the machine-readable state (`assess.json`, `last-test.json`,

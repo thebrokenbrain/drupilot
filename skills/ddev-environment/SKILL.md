@@ -75,8 +75,13 @@ insists — do not claim "8.5 is supported".
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-up.sh" \
-  --php "<target>" --subject "<path/to/module-or-theme>" --docroot web
+  --php "<target>" --subject "<path/to/module-or-theme>" --name "<ddev_name>" --docroot web
 ```
+
+Pass `--name` explicitly (e.g. `<machine_name>-d11`); otherwise the DDEV project is
+named after the test-bed directory. stdout carries only the optional `--json` summary
+(`{project_dir, project_name, php_version, primary_url, drupal_target}`); every log,
+the preflight report and the ddev/composer output go to stderr.
 
 What `ddev-up.sh` does (idempotently):
 
@@ -131,6 +136,18 @@ It is idempotent (detect-and-skip when already placed), persists
 `DRUPILOT_WORKSPACE_DIR` + `DRUPILOT_PLACEMENT` to `.drupilot.json`, and runs
 `ensure-gitignore.sh` on the new root. Exit code 2 means the Drupal root does not
 exist yet — run `ddev-up.sh` first.
+
+Origin hygiene: before placing, it records the origin repo's `git status` with
+`scripts/env/origin-hygiene.sh --snapshot` (hidden state keyed by the Drupal root;
+for an in-place subject run `origin-hygiene.sh --snapshot --subject <dir> --placement
+in-place` yourself). `copy` leaves `.ddev/`, `vendor/`, `.drupilot*`, `.phpstan-cache/`
+(top level) and `node_modules/` (anywhere) behind and drops symlinks escaping the
+checkout (`--no-exclude` for a verbatim copy). The subject-side `.drupilot.json` is
+hidden via the subject repo's local `.git/info/exclude`. `origin-hygiene.sh --check
+--json` later reports drupilot-attributable residue (report-only; it never deletes).
+The resolver's `residue` / `residual_ddev` fields flag leftovers in the checkout
+(e.g. an untracked `.ddev/` from an old module-at-root sandbox) — surface them, never
+delete them.
 
 `ddev-drupal-contrib` also supports a "module at the repo root" layout where it
 symlinks the root into `web/modules/custom`. drupilot does NOT use that layout —

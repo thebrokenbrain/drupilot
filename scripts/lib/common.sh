@@ -1263,23 +1263,147 @@ trim() { local s="$*"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]
 # git_port_base_ref <repo> [base] -> print the git ref a port is diffed against,
 # WITHOUT touching the network or the working tree (shared by make-patch.sh
 # --local and check-port-safety.sh so both judge "what the port changed"
-# against the same base). An explicit base resolves to origin/<base>, then
-# <base>; it returns 1 (printing nothing) when neither exists. Without a base:
-# the branch upstream, then origin/HEAD, then HEAD.
+# against the same base). Warnings go to stderr; stdout is only the ref.
+#   * An explicit base resolves to origin/<base>, then <base>; it returns 1
+#     (printing nothing) when neither exists. It is honored as given, but a
+#     base that is not an ancestor of HEAD gets a warning (the diff would also
+#     carry the commits that exist only on the base, reversed).
+#   * Without a base: the branch upstream when it is an ancestor of HEAD (a
+#     diverged upstream falls back to the merge-base, with a warning).
+#   * No upstream (e.g. a local branch cut from a release tag): the fork point.
+#     origin/HEAD, every other remote-tracking branch and (when any remote ref
+#     exists) the nearest tag are candidates; the one whose merge-base with HEAD is CLOSEST to HEAD (fewest
+#     commits in between) wins, and its merge-base is used when the candidate is
+#     not itself an ancestor — never a ref that would produce a reverse diff of
+#     unrelated upstream history. Nothing usable -> HEAD (the working tree).
 git_port_base_ref() {
-  local repo="$1" base="${2:-}" ref=""
+  local repo="$1" base="${2:-}" ref="" mb="" best="" best_mb="" best_n="" best_exact=0 n c head
   if [[ -n "$base" ]]; then
     if git -C "$repo" rev-parse --verify --quiet "origin/$base" >/dev/null 2>&1; then
-      printf 'origin/%s' "$base"; return 0
+      ref="origin/$base"
     elif git -C "$repo" rev-parse --verify --quiet "$base" >/dev/null 2>&1; then
-      printf '%s' "$base"; return 0
+      ref="$base"
+    else
+      return 1
     fi
-    return 1
+    if git -C "$repo" rev-parse --verify --quiet HEAD >/dev/null 2>&1 \
+       && ! git -C "$repo" merge-base --is-ancestor "$ref" HEAD >/dev/null 2>&1; then
+      log_warn "Base '$ref' is not an ancestor of HEAD: the diff also contains (reversed) the commits that exist only on '$ref'."
+    fi
+    printf '%s' "$ref"; return 0
   fi
+  head="$(git -C "$repo" rev-parse --verify --quiet HEAD 2>/dev/null || true)"
+  [[ -n "$head" ]] || { printf 'HEAD'; return 0; }
+
   ref="$(git -C "$repo" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
-  if [[ -z "$ref" ]]; then
-    ref="$(git -C "$repo" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)"
+  if [[ -n "$ref" ]]; then
+    if git -C "$repo" merge-base --is-ancestor "$ref" HEAD >/dev/null 2>&1; then
+      printf '%s' "$ref"; return 0
+    fi
+    mb="$(git -C "$repo" merge-base HEAD "$ref" 2>/dev/null || true)"
+    if [[ -n "$mb" ]]; then
+      log_warn "Upstream '$ref' has diverged from HEAD; diffing against their merge-base ${mb:0:12} instead."
+      printf '%s' "$mb"; return 0
+    fi
+    log_warn "Upstream '$ref' shares no history with HEAD; diffing against HEAD (uncommitted changes only)."
+    printf 'HEAD'; return 0
   fi
-  printf '%s' "${ref:-HEAD}"
+
+  # No upstream: pick the closest fork point among the candidates.
+  local -a cands=()
+  c="$(git -C "$repo" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)"
+  [[ -n "$c" ]] && cands+=("$c")
+  while IFS= read -r c; do
+    [[ -n "$c" && "$c" != */HEAD ]] && cands+=("$c")
+  done < <(git -C "$repo" for-each-ref --format='%(refname:short)' refs/remotes 2>/dev/null || true)
+  # The nearest tag competes only when remotes exist: a remote-less repo keeps
+  # the historical HEAD (working tree) default.
+  if [[ "${#cands[@]}" -gt 0 ]]; then
+    c="$(git -C "$repo" describe --tags --abbrev=0 HEAD 2>/dev/null || true)"
+    [[ -n "$c" ]] && cands+=("$c")
+  fi
+  for c in ${cands[@]+"${cands[@]}"}; do
+    mb="$(git -C "$repo" merge-base HEAD "$c" 2>/dev/null || true)"
+    [[ -n "$mb" ]] || continue
+    n="$(git -C "$repo" rev-list --count "$mb..HEAD" 2>/dev/null || true)"
+    [[ "$n" =~ ^[0-9]+$ ]] || continue
+    # Closest fork point wins; on a tie prefer a candidate that IS the fork
+    # point (a readable ref name instead of a bare merge-base sha).
+    if [[ -z "$best_n" ]] || (( n < best_n )) \
+       || { (( n == best_n )) && [[ "$best_exact" != "1" ]] \
+            && [[ "$(git -C "$repo" rev-parse --verify --quiet "$c^{commit}" 2>/dev/null)" == "$mb" ]]; }; then
+      best="$c"; best_mb="$mb"; best_n="$n"; best_exact=0
+      [[ "$(git -C "$repo" rev-parse --verify --quiet "$c^{commit}" 2>/dev/null)" == "$mb" ]] && best_exact=1
+    fi
+  done
+  if [[ -z "$best" ]]; then
+    printf 'HEAD'; return 0
+  fi
+  if [[ "$best_exact" == "1" ]]; then
+    c="$(git -C "$repo" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)"
+    if [[ -n "$c" && "$best" != "$c" ]] && ! git -C "$repo" merge-base --is-ancestor "$c" HEAD >/dev/null 2>&1; then
+      log_warn "The branch has no upstream and '$c' (origin/HEAD) is not an ancestor of HEAD; diffing against its fork point '$best' (pass --base to override)."
+    fi
+    printf '%s' "$best"; return 0
+  fi
+  log_warn "The branch has no upstream; '$best' is not an ancestor of HEAD, so diffing against their merge-base ${best_mb:0:12} (pass --base to override)."
+  printf '%s' "$best_mb"
   return 0
+}
+
+# git_local_exclude <dir> <pattern...> -> idempotently append each pattern to the
+# LOCAL, untracked ignore file of the git repo containing <dir>
+# ($GIT_DIR/info/exclude, the common dir for a worktree). Used for drupilot's own
+# files written INSIDE a subject repo (the local preview patch, the subject-side
+# .drupilot.json): a parent Drupal root's .gitignore does not apply to a nested
+# repo, and editing the subject's TRACKED .gitignore would itself be a diff.
+# Patterns are gitignore syntax relative to the repo root. Never fails: returns
+# 0 and does nothing when <dir> is not in a git work tree. Prints nothing.
+git_local_exclude() {
+  local dir="$1" ex p; shift || true
+  have_cmd git || return 0
+  git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  ex="$(git -C "$dir" rev-parse --git-path info/exclude 2>/dev/null || true)"
+  [[ -n "$ex" ]] || return 0
+  case "$ex" in /*) : ;; *) ex="$(cd "$dir" && pwd)/$ex";; esac
+  mkdir -p "$(dirname "$ex")" 2>/dev/null || return 0
+  [[ -f "$ex" ]] || : > "$ex" 2>/dev/null || return 0
+  # Never glue a pattern onto a last line that lacks its newline.
+  if [[ -s "$ex" && -n "$(tail -c 1 "$ex" 2>/dev/null)" ]]; then
+    printf '\n' >> "$ex" 2>/dev/null || return 0
+  fi
+  for p in "$@"; do
+    [[ -n "$p" ]] || continue
+    grep -qxF -- "$p" "$ex" 2>/dev/null && continue
+    if ! grep -qxF '# drupilot (local, never committed)' "$ex" 2>/dev/null; then
+      printf '%s\n' '# drupilot (local, never committed)' >> "$ex" 2>/dev/null || return 0
+    fi
+    printf '%s\n' "$p" >> "$ex" 2>/dev/null || return 0
+  done
+  return 0
+}
+
+# symlink_escapes <tree> <relpath> -> 0 when <tree>/<relpath> is a symlink whose
+# target lies outside <tree>: an absolute target not under <tree>, or a relative
+# one whose '..' climbs above it (checked lexically — portable, no readlink -f,
+# and the target need not exist). Returns 1 otherwise (including non-links).
+symlink_escapes() {
+  local tree="$1" rel="${2%/}" tgt base comp depth=0
+  [[ -L "$tree/$rel" ]] || return 1
+  tgt="$(readlink "$tree/$rel" 2>/dev/null || true)"
+  case "$tgt" in
+    /*) [[ "$tgt" == "$tree" || "$tgt" == "$tree"/* ]] && return 1; return 0;;
+  esac
+  base="$(dirname "$rel")"; [[ "$base" == "." ]] && base=""
+  local IFS=/
+  set -f
+  for comp in $base $tgt; do
+    case "$comp" in
+      ''|.) : ;;
+      ..) depth=$((depth-1)); if [[ "$depth" -lt 0 ]]; then set +f; return 0; fi ;;
+      *) depth=$((depth+1)) ;;
+    esac
+  done
+  set +f
+  return 1
 }
