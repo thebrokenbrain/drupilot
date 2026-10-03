@@ -205,20 +205,30 @@ gate_portability() {
     (cd "$REPO" && awk -v F="$f" '
       # grep_files_opt <line> -> 1 when any grep on the line takes --include,
       # --exclude or --exclude-dir before its end of options (" -- ") or the
-      # end of its command (|, ;, &). Quoted text is blanked first (a quoted
-      # "a|b" pattern does not end the command), except a quoted word that
-      # starts with "--" (a quoted option).
+      # end of its command (|, ;, &, but not a 2>&1-style redirection).
+      # Quoted text is blanked first (a quoted "a|b" pattern does not end the
+      # command), except a quoted word starting with "--" (a quoted option);
+      # a "$(...)" command substitution is opened up first so the greps in it
+      # are still seen.
       function grep_files_opt(l,   s, seg, cut) {
         s = l
+        gsub(/"\$\(/, " $(", s); gsub(/\)"/, ") ", s); gsub(/`/, " ", s)
         gsub(/'\''([^'\''-][^'\'']*)?'\''/, "Q", s); gsub(/"([^"-][^"]*)?"/, "Q", s)
+        gsub(/[0-9]*>&[0-9-]*|&>/, " R ", s)
         while (match(s, /(^|[^A-Za-z0-9_.-])grep[[:space:]]/)) {
           s = substr(s, RSTART + RLENGTH)
           seg = s
           cut = index(seg, " -- "); if (cut > 0) seg = substr(seg, 1, cut)
-          if (match(seg, /[|;&]/)) seg = substr(seg, 1, RSTART - 1)
+          if (match(seg, /[|;&)]/)) seg = substr(seg, 1, RSTART - 1)
           if ((" " seg) ~ /[[:space:]"'\'']--(include|exclude|exclude-dir)([=[:space:]"'\'']|$)/) return 1
         }
         return 0
+      }
+      # not_grep_tool <line> -> 1 when tar, rsync, curl, phpcs or phpcbf is a
+      # command word on the line (also through a path: vendor/bin/phpcs): their
+      # own --include/--exclude options are not the grep ones.
+      function not_grep_tool(l) {
+        return (l ~ /(^|[;&|(`[:space:]\/"])(tar|rsync|curl|phpcs|phpcbf)(["[:space:]]|$)/)
       }
       /# portability-ok/ { next }
       {
@@ -230,8 +240,8 @@ gate_portability() {
             line ~ /(^|[^A-Za-z_])(mapfile|readarray|realpath|envsubst)([^A-Za-z_]|$)/ ||
             line ~ /(^|[^A-Za-z_])sed[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-i/ ||
             line ~ /readlink[[:space:]]+-f/ || line ~ /grep[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*P/ ||
-            line ~ /(^|[[:space:](])--(include|exclude-dir)([=[:space:]]|$)/ || grep_files_opt(line) ||
-            (line ~ /(^|[[:space:](])--exclude=/ && line !~ /(^|[;&|(`[:space:]])(tar|rsync|phpcs|phpcbf)[[:space:]]/) ||
+            grep_files_opt(line) ||
+            (line ~ /(^|[[:space:](])(--exclude-dir([=[:space:]]|$)|--include=|--exclude=)/ && !not_grep_tool(line)) ||
             line ~ /date[[:space:]]+-d/ || line ~ /xargs[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-r/ ||
             line ~ /stat[[:space:]]+-c/ || line ~ /find[[:space:]].*-printf/ ||
             line ~ /\$\([[:space:]]*case[[:space:]].*[[:space:]]in[[:space:]]+[^([:space:]]/ ||
