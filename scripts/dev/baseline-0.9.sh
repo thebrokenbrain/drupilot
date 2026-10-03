@@ -69,7 +69,9 @@
 #
 # SHA256SUMS (written by --capture) pins every captured file, so an edit to
 # the committed baseline itself fails --check too, also for a file whose
-# output allowed-diffs.txt lets differ.
+# output allowed-diffs.txt lets differ. hook-latency.json and samples/ in the
+# same directory are recorded by hand (scripts/dev/hook-latency.sh, the lab),
+# not captured: --capture keeps them and --check ignores them.
 #
 # Usage:
 #   scripts/dev/baseline-0.9.sh [--capture | --check] [--json] [--keep]
@@ -402,9 +404,10 @@ if [[ "$MODE" == "capture" ]]; then
   fi
   [[ -n "$HASHER" ]] || die "--capture needs sha256sum or shasum (for SHA256SUMS)" 1
   mkdir -p "$BASE_DIR"
-  find "$BASE_DIR" -mindepth 1 ! -name allowed-diffs.txt -exec rm -rf {} + 2>/dev/null || true
+  find "$BASE_DIR" -mindepth 1 ! -name allowed-diffs.txt ! -name hook-latency.json ! -path "$BASE_DIR/samples" ! -path "$BASE_DIR/samples/*" \
+    -exec rm -rf {} + 2>/dev/null || true
   cp -R "$OUT/." "$BASE_DIR/"
-  ( cd "$BASE_DIR" && find . -type f ! -name allowed-diffs.txt ! -name SHA256SUMS | sed 's#^\./##' | LC_ALL=C sort \
+  ( cd "$BASE_DIR" && find . -type f ! -name allowed-diffs.txt ! -name SHA256SUMS ! -name hook-latency.json ! -path './samples/*' | sed 's#^\./##' | LC_ALL=C sort \
       | while IFS= read -r _f; do printf '%s  %s\n' "$($HASHER < "$_f" | cut -d' ' -f1)" "$_f"; done ) > "$BASE_DIR/SHA256SUMS"
   if [[ ! -f "$ALLOWED" ]]; then
     printf '# Intended differences from the v0.9.0 baseline, one per line:\n' > "$ALLOWED"
@@ -453,7 +456,7 @@ if [[ -z "$HASHER" ]]; then
 elif [[ ! -f "$BASE_DIR/SHA256SUMS" ]]; then
   result SHA256SUMS missing "tests/baseline/v0.9.0/SHA256SUMS is missing (rerun --capture)"
 else
-  ( cd "$BASE_DIR" && find . -type f ! -name allowed-diffs.txt ! -name SHA256SUMS | sed 's#^\./##' | LC_ALL=C sort ) \
+  ( cd "$BASE_DIR" && find . -type f ! -name allowed-diffs.txt ! -name SHA256SUMS ! -name hook-latency.json ! -path './samples/*' | sed 's#^\./##' | LC_ALL=C sort ) \
     > "$TMP/committed.txt"
   awk '{ print $2 }' "$BASE_DIR/SHA256SUMS" | LC_ALL=C sort > "$TMP/pinned.txt"
   while IFS= read -r _f; do
@@ -498,7 +501,7 @@ while IFS= read -r _f; do
   fi
 done < "$_seen"
 
-( cd "$BASE_DIR" && find . -type f ! -name allowed-diffs.txt ! -name SHA256SUMS | sed 's#^\./##' | LC_ALL=C sort ) \
+( cd "$BASE_DIR" && find . -type f ! -name allowed-diffs.txt ! -name SHA256SUMS ! -name hook-latency.json ! -path './samples/*' | sed 's#^\./##' | LC_ALL=C sort ) \
   | while IFS= read -r _f; do
       grep -qxF -- "$_f" "$_seen" || printf '%s\n' "$_f"
     done > "$TMP/missing.txt"
