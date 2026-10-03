@@ -14,6 +14,10 @@ tag the commit `vX.Y.Z`.
 ## [Unreleased]
 
 ### Added
+- **`DRUPILOT_HOME`** — drupilot's hidden data directory (state, lockfiles,
+  caches); empty means `$XDG_DATA_HOME/drupilot` (`~/.local/share/drupilot`).
+  Read from the environment only. It is the only new key of the 0.9.x line: it
+  comes with the data-directory fix below.
 - **The frozen v0.9.0 baseline (`scripts/dev/baseline-0.9.sh`).** `--capture`
   ran the Docker-free scripts of the `v0.9.0` tag (a throwaway `git worktree`)
   on copies of the `legacy_widgets` and `monorepo` fixtures and committed their
@@ -29,6 +33,20 @@ tag the commit `vX.Y.Z`.
   `tests/baseline/v0.9.0/allowed-diffs.txt`.
 
 ### Fixed
+- **Hooks and scripts kept their state in two different places.** The data
+  directory came from `CLAUDE_PLUGIN_DATA` when set and from XDG otherwise, but
+  Claude Code exports that variable to hooks and not to the Bash tool: the
+  post-edit-lint hook never found the PHPCS ruleset `run-phpcs.sh` recorded, and
+  linted with `Drupal,DrupalPractice` instead of the project's ruleset. The
+  data directory is now `DRUPILOT_HOME`, else `$XDG_DATA_HOME/drupilot`, for
+  both (the digests cache moves with it), and `CLAUDE_PLUGIN_DATA` is never
+  read. The commands that write state copy, once, any state 0.9.0 left in
+  Claude Code's per-plugin data directory (`copy_legacy_state_once`, right after
+  their own preflight gate passes: copy-only, never overwriting, logged, with a
+  `legacy-state-copied` marker); `/drupilot-status`, `/drupilot-doctor`,
+  `/drupilot-patch`, the hooks and `preflight.sh` never copy. The state key of a
+  path is unchanged. `smoke.sh` no longer exports `CLAUDE_PLUGIN_DATA` (that is
+  what hid the bug) and gained the `data-dir` and `legacy-state` tests.
 - **`detect-php-floor.sh` failed on BusyBox (Alpine).** It selected the PHP
   files with `grep --include`, which BusyBox grep does not have: the script
   exited 2 with no output, so `core-strategy.sh` lost the detected PHP floor

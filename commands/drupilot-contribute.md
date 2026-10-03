@@ -18,7 +18,7 @@ for if missing).
 ## Step 0 — Gate (profile `contribute`) and prerequisite check
 
 ```bash
-!bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile contribute
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile contribute && bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; copy_legacy_state_once'
 ```
 
 If it exits `2` (no git, or neither an SSH key nor a PAT), show the report, route

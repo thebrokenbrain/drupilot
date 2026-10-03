@@ -39,7 +39,7 @@ second time too, and is never removed at the `workspace` level.
 DDEV removal needs the `setup` profile (Docker daemon + DDEV); a stopped
 workspace can still be removed without it (`--no-ddev` skips `ddev delete`):
 
-!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile setup --json --quiet`
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile setup --json --quiet && bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; copy_legacy_state_once'`
 
 If `ready.setup` is false, say that `ddev delete` cannot run now, and offer only
 `--no-ddev` (the project's containers and volumes then stay until a later

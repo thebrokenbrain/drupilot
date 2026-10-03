@@ -40,6 +40,8 @@
   "DRUPILOT_LAYERS_SANDBOX": "",
   "DRUPILOT_WORKSPACE_DIR": "",
   "DRUPILOT_ARTIFACTS_DIR": "",
+  "_home_comment": "DRUPILOT_HOME: drupilot's hidden data directory: the per-subject machine state (state/<key>/: assess.json, last-test.json, state.json, the determinism lockfile, ...) and the caches (cache/: the drupal-digests checkout, the cached base core). Default '' = $XDG_DATA_HOME/drupilot, i.e. ~/.local/share/drupilot. Read from the environment only (it locates the state before any .drupilot.json can be read); give an absolute path. Hooks and scripts resolve the same directory: Claude Code's per-plugin data dir is no longer used, and the first command after 0.9.1 that passes its gate copies (never moves) any state 0.9.0 left there. The only new key of the 0.9.x line.",
+  "DRUPILOT_HOME": "",
   "_patterns_comment": "Learned-pattern catalog (scripts/analysis/patterns.sh): the pitfalls a port of this project already hit, each with a detector (a POSIX ERE and/or a check-port-safety / scan-signature-changes rule) and the fix. /drupilot-port and /drupilot-refactor scan the subject with it BEFORE changing code and offer to record new patterns at the end; /drupilot-layers shares one catalog across the whole set, so what layer N learned is checked on layer N+1. DRUPILOT_PATTERNS_FILE: the catalog file (default '' = <Drupal root>/.drupilot/patterns.json, the visible self-gitignored artifacts dir; for a module ported by /drupilot-layers, the set's catalog). Point it at a committed file (a relative path is taken from the Drupal root) to share the catalog with a team.",
   "DRUPILOT_PATTERNS_FILE": "",
 

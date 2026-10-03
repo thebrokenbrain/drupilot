@@ -143,15 +143,76 @@ plugin_revision() {
   return 0
 }
 
-# data_dir -> plugin persistent data directory (cache, state).
-# Prefers CLAUDE_PLUGIN_DATA (provided by Claude Code) and falls back to XDG.
+# data_dir -> drupilot's persistent data directory (state, cache), created.
+# DRUPILOT_HOME (an absolute path, read from the environment only: it locates
+# the state before any project preference can be read), else
+# $XDG_DATA_HOME/drupilot (~/.local/share/drupilot). Never Claude Code's
+# per-plugin data dir: Claude Code exports it to hooks but not to the Bash tool,
+# so a root derived from it split the state in two (0.9.0), and it is deleted
+# when the plugin is uninstalled.
 data_dir() {
   local d; d="$(data_dir_path)"
   mkdir -p "$d" 2>/dev/null || true
   printf '%s' "$d"
 }
 # data_dir_path -> the same path, without creating it (read-only callers).
-data_dir_path() { printf '%s' "${CLAUDE_PLUGIN_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}/drupilot}"; }
+data_dir_path() {
+  local h="${DRUPILOT_HOME:-}"
+  h="${h%/}"
+  printf '%s' "${h:-${XDG_DATA_HOME:-$HOME/.local/share}/drupilot}"
+}
+
+# legacy_plugin_data_dir -> the per-plugin data dirs where drupilot 0.9.0 could
+# keep state (Claude Code's ~/.claude/plugins/data/drupilot-<install>/, one per
+# install id; CLAUDE_CONFIG_DIR moves ~/.claude), one per line, sorted, only
+# those with a state/ dir and never the current data root. Read only by
+# copy_legacy_state_once (the 1.0 migration takes it over).
+legacy_plugin_data_dir() {
+  local base="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/data" d root
+  root="$(cd "$(data_dir_path)" 2>/dev/null && pwd -P || printf '%s' "$(data_dir_path)")"
+  for d in "$base"/drupilot-*; do
+    [[ -d "$d/state" ]] || continue
+    [[ "$(cd "$d" && pwd -P)" == "$root" ]] && continue
+    printf '%s\n' "$d"
+  done
+  return 0
+}
+
+# copy_legacy_state_once -> one-time, copy-only import of the state 0.9.0 kept
+# in a per-plugin data dir (legacy_plugin_data_dir) into data_dir_path: every
+# file of <legacy>/state/ missing here is copied (never moved, never
+# overwritten; the first legacy dir wins), the copy is logged on STDERR, and the
+# marker <data root>/legacy-state-copied makes every later call return at once.
+# Call it ONLY from a command preamble, right after that command's own
+# preflight.sh exited 0 (`preflight.sh ... && ... copy_legacy_state_once`):
+# never from a hook, from preflight.sh or from a helper, so a failing gate
+# changes nothing.
+copy_legacy_state_once() {
+  local root marker srcs src rel n=0
+  root="$(data_dir_path)"; marker="$root/legacy-state-copied"
+  [[ -e "$marker" ]] && return 0
+  srcs="$(legacy_plugin_data_dir)"
+  [[ -n "$srcs" ]] || return 0
+  mkdir -p "$root/state" 2>/dev/null || return 0
+  while IFS= read -r src; do
+    [[ -n "$src" ]] || continue
+    while IFS= read -r rel; do
+      [[ -n "$rel" && ! -e "$root/state/$rel" ]] || continue
+      mkdir -p "$(dirname "$root/state/$rel")" 2>/dev/null || continue
+      cp -p "$src/state/$rel" "$root/state/$rel" 2>/dev/null && n=$((n + 1))
+    done < <(cd "$src/state" 2>/dev/null && find . -type f 2>/dev/null | sed 's#^\./##' | LC_ALL=C sort)
+  done <<< "$srcs"
+  { printf 'copied_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf 'files=%s\n' "$n"
+    printf '%s\n' "$srcs" | sed 's#^#from=#; s#$#/state#'
+  } > "$marker" 2>/dev/null || true
+  if [[ "$n" -gt 0 ]]; then
+    log_info "Copied $n state file(s) of drupilot 0.9.0 into $root/state (the originals stay in: $(printf '%s' "$srcs" | tr '\n' ' '))."
+  else
+    log_info "Legacy drupilot state found ($(printf '%s' "$srcs" | tr '\n' ' ')): nothing to copy, $root/state already has every file."
+  fi
+  return 0
+}
 
 cache_dir() { local d; d="$(data_dir)/cache"; mkdir -p "$d" 2>/dev/null || true; printf '%s' "$d"; }
 

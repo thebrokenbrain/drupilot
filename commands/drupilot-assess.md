@@ -20,7 +20,7 @@ Before doing anything, run the requirements gate. If it exits non-zero, show the
 report verbatim and STOP — do not run any analysis and do not write any files.
 
 ```bash
-!bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile analyze
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile analyze && bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; copy_legacy_state_once'
 ```
 
 If the exit code is `2`, a hard requirement (git, jq, and composer-or-php) is

@@ -123,7 +123,17 @@
 #                  the same state dir; the PHPCS ruleset run-phpcs.sh records
 #                  is the one post-edit-lint.sh lints with (the record is
 #                  written through common.sh when the analyze profile is not
-#                  ready)
+#                  ready); CLAUDE_PLUGIN_DATA never moves the data dir,
+#                  DRUPILOT_HOME does
+#   legacy-state   copy_legacy_state_once copies the state 0.9.0 left in a
+#                  per-plugin data dir (copy-only, never overwriting, logged,
+#                  marker), and a second run copies nothing; every command that
+#                  writes state runs it right after its own preflight call (the
+#                  status, doctor and patch commands, the hooks and preflight.sh
+#                  never do); with a failing preflight (no jq on PATH) the
+#                  setup and assess preambles change neither the legacy nor the
+#                  new data dir (INV2), while the same line without the gate
+#                  would copy
 #
 # Isolation: the fixtures are copied to a temp dir (legacy_widgets is committed
 # there as a git repo when git exists), and HOME and the XDG dirs point inside
@@ -159,9 +169,9 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$REPO/tests/fixtures"
 SH="${BASH:-bash}"
 
-ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root monorepo-testbed phpcs-scope choices baseline data-dir"
+ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root monorepo-testbed phpcs-scope choices baseline data-dir legacy-state"
 # Tests committed before their fix: "test:task" words (see the header).
-XFAIL="data-dir:T-M0-02"
+XFAIL=""
 
 AS_JSON=0; ONLY=""; SKIP=""; KEEP=0
 
@@ -1090,6 +1100,10 @@ test_data_dir() {
   s="$("$SH" -c '. "$1"; project_state_path "$2"' _ "$lib" "$LW" < /dev/null)"
   h="$(env CLAUDE_PLUGIN_DATA="$TMP/plugin-data" "$SH" -c '. "$1"; project_state_path "$2"' _ "$lib" "$LW" < /dev/null)"
   expect "script and hook resolve the same state dir" "$h" "$s"
+  expect "CLAUDE_PLUGIN_DATA does not move the data dir" \
+    "$(env CLAUDE_PLUGIN_DATA=/x "$SH" -c '. "$1"; data_dir_path' _ "$lib" < /dev/null)" "$XDG_DATA_HOME/drupilot"
+  expect "DRUPILOT_HOME does" \
+    "$(env CLAUDE_PLUGIN_DATA=/x DRUPILOT_HOME=/y/home/ "$SH" -c '. "$1"; data_dir_path' _ "$lib" < /dev/null)" "/y/home"
   # End to end: the project ruleset recorded in script context is the one the
   # post-edit-lint hook (CLAUDE_PLUGIN_DATA exported) runs phpcbf with.
   mk_stub_root "$r" "11.4.8"
@@ -1124,6 +1138,74 @@ STUB
   expect "post-edit-lint: exit" "$RC" "0"
   expect "post-edit-lint lints with the recorded ruleset" \
     "$(grep '^phpcbf ' "$r/phpcs-args.log" 2>/dev/null | grep -c -F -- "--standard=${std:-<none>} " || true)" "1"
+  finish
+}
+
+# path_without <dir> <command> -> <dir> holds a symlink to every command of
+# $PATH but <command> (the first one of each name wins, as in a PATH lookup).
+path_without() {
+  local dir="$1" p
+  mkdir -p "$dir"
+  local IFS=:
+  for p in $PATH; do
+    [[ -d "$p" ]] || continue
+    ln -s "$p"/* "$dir"/ 2>/dev/null || true
+  done
+  rm -f "$dir/$2"
+  return 0
+}
+
+test_legacy_state() {
+  local lib="$REPO/scripts/lib/common.sh" c key="_srv_www_site" uh dh leg before line farm="$FX/nojq-bin"
+  # Every command that writes state copies right after its own gate; the
+  # read-only ones, the hooks and preflight.sh never copy.
+  for c in drupilot drupilot-setup drupilot-assess drupilot-port drupilot-refactor drupilot-test \
+           drupilot-contribute drupilot-layers drupilot-clean; do
+    expect "$c: the copy follows its preflight" \
+      "$(grep -cE 'preflight\.sh" .* && bash -c .*copy_legacy_state_once' "$REPO/commands/$c.md" || true)" "1"
+  done
+  for c in drupilot-status drupilot-doctor drupilot-patch; do
+    expect "$c: never copies" "$(grep -c copy_legacy_state_once "$REPO/commands/$c.md" || true)" "0"
+  done
+  expect "hooks and preflight.sh never copy" \
+    "$(grep -l copy_legacy_state_once "$REPO"/hooks/scripts/*.sh "$REPO/scripts/env/preflight.sh" 2>/dev/null | wc -l | tr -d ' ')" "0"
+  # Copy-only, never overwriting, logged, once.
+  uh="$FX/legacy1/home"; dh="$FX/legacy1/data"
+  leg="$uh/.claude/plugins/data/drupilot-x/state/$key"
+  mkdir -p "$leg" "$dh/state/$key"
+  printf '{"drupal":{"core":"11.4.8"}}\n' > "$leg/drupilot-lock.json"
+  printf '{"stage":"setup"}\n' > "$leg/state.json"
+  printf '{"stage":"ported"}\n' > "$dh/state/$key/state.json"
+  run lc1 env HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c '. "$1"; copy_legacy_state_once' _ "$lib"
+  expect "copy: exit" "$RC" "0"
+  expect "copy: the missing file is copied" "$(cat "$dh/state/$key/drupilot-lock.json" 2>/dev/null)" '{"drupal":{"core":"11.4.8"}}'
+  expect "copy: an existing file is kept" "$(cat "$dh/state/$key/state.json" 2>/dev/null)" '{"stage":"ported"}'
+  expect "copy: the legacy file stays" "$(cat "$leg/drupilot-lock.json" 2>/dev/null)" '{"drupal":{"core":"11.4.8"}}'
+  expect "copy: marker" "$(grep -c '^files=1$' "$dh/legacy-state-copied" 2>/dev/null || true)" "1"
+  expect_match "copy: logged" "$(cat "$TMP/out/lc1.err")" 'Copied 1 state file'
+  rm -f "$dh/state/$key/drupilot-lock.json"
+  before="$(tree_snapshot "$uh" "$dh")"
+  run lc2 env HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c '. "$1"; copy_legacy_state_once' _ "$lib"
+  expect "second run: exit" "$RC" "0"
+  expect "second run: copies nothing" "$(tree_snapshot "$uh" "$dh")" "$before"
+  # INV2 (0.9.1 form): a failing gate (preflight.sh needs jq) changes nothing.
+  path_without "$farm" jq
+  uh="$FX/legacy2/home"; dh="$FX/legacy2/data"
+  leg="$uh/.claude/plugins/data/drupilot-x/state/$key"
+  mkdir -p "$leg"; printf '{}\n' > "$leg/drupilot-lock.json"
+  for c in setup assess; do
+    line="$(sed -n 's/^!`\{0,1\}\(bash "${CLAUDE_PLUGIN_ROOT}\/scripts\/env\/preflight\.sh".*copy_legacy_state_once'"'"'\)`\{0,1\}$/\1/p' \
+              "$REPO/commands/drupilot-$c.md" | head -n 1)"
+    expect "$c: preamble found" "$([[ -n "$line" ]] && echo yes || echo no)" "yes"
+    before="$(tree_snapshot "$uh" "$dh")"
+    run "lp$c" env PATH="$farm" HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c "$line"
+    expect "$c preamble without jq: the gate fails" "$([[ "$RC" != "0" ]] && echo failed || echo passed)" "failed"
+    expect "$c preamble without jq: nothing changed" "$(tree_snapshot "$uh" "$dh")" "$before"
+  done
+  # Control: without the gate the same line does copy in that PATH, so the
+  # check above can see a copy.
+  run lpctl env PATH="$farm" HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c "$(printf '%s' "$line" | sed 's/ && bash -c / ; bash -c /')"
+  expect "control: ungated, the copy runs" "$([[ -f "$dh/state/$key/drupilot-lock.json" ]] && echo copied || echo none)" "copied"
   finish
 }
 
@@ -1167,6 +1249,7 @@ for t in $ALL_TESTS; do
     choices) test_choices;;
     baseline) test_baseline;;
     data-dir) test_data_dir;;
+    legacy-state) test_legacy_state;;
   esac
 done
 

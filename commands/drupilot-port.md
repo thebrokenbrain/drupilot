@@ -34,7 +34,7 @@ that is not logged is a defect: the report would show the tool's output as kept.
 ## Step 0 — Gate (profile `analyze`)
 
 ```bash
-!bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile analyze
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile analyze && bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; copy_legacy_state_once'
 ```
 
 If it exits `2`, show the report, point to `/drupilot-doctor`, and STOP with no

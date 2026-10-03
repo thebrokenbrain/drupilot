@@ -16,7 +16,7 @@ This step touches Docker, so gate the `setup` profile first. If a hard requireme
 missing, the script prints an actionable report and exits non-zero — in that case
 **stop with no side effects** and tell the user to run `/drupilot-doctor`:
 
-!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile setup`
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile setup && bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; copy_legacy_state_once'`
 
 If that command exited non-zero (missing Docker/daemon/DDEV), do not proceed: show the
 report and recommend `/drupilot-doctor`.

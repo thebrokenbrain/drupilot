@@ -159,6 +159,14 @@ for unattended), an exploratory ask → `next`, a status ask → `status`. So "p
 module to Drupal 11" runs the flow (`full`); it does not stop at recommending the next
 step.
 
+Before delegating a `full` or `auto` flow (never in `status`/`next`, which write
+nothing), rerun the router's gate and, when it passes, the one-time copy of any
+state drupilot 0.9.0 left in Claude Code's per-plugin data dir (copy-only):
+
+```bash
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile all --quiet && bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; copy_legacy_state_once'
+```
+
 ### `full` — guided, with confirmations
 
 If the mode is `full` (or the user explicitly asks to "do the whole thing"):
