@@ -14,8 +14,9 @@
 #   - portability no bash-4-only or GNU-only construct in those scripts (they
 #                 must run on bash 3.2 + BSD tools, i.e. stock macOS): ${x,,},
 #                 ${x^^}, declare/local -A|-n|-g, mapfile/readarray, sed -i,
-#                 readlink -f, realpath, grep -P, grep --include/--exclude
-#                 (BusyBox grep has neither; select files with find), date -d,
+#                 readlink -f, realpath, grep -P, grep --include/--exclude/
+#                 --exclude-dir before its `--` (BusyBox grep has none; select
+#                 the files with find), also in an option array, date -d,
 #                 xargs -r, stat -c, find -printf, envsubst, a regex interval ({n}, {n,m})
 #                 in an awk regex literal (mawk 1.3.4-20200120, the default awk
 #                 on Debian 12 / Ubuntu 22.04, matches it as literal text),
@@ -202,6 +203,16 @@ gate_portability() {
     [[ "$f" == "scripts/dev/check.sh" ]] && continue   # its own patterns would self-match
     # Drop full-line comments and trailing " # ..." comments, keep line numbers.
     (cd "$REPO" && awk -v F="$f" '
+      # grep_files_opt <line> -> 1 when a grep on the line takes --include,
+      # --exclude or --exclude-dir before its end of options (" -- ") or the
+      # end of its command (a pipe, a ";").
+      function grep_files_opt(l,   rest, cut) {
+        if (!match(l, /(^|[^A-Za-z0-9_.-])grep[[:space:]]/)) return 0
+        rest = substr(l, RSTART + RLENGTH - 1)
+        cut = index(rest, " -- "); if (cut > 0) rest = substr(rest, 1, cut)
+        if (match(rest, /[|;]/)) rest = substr(rest, 1, RSTART)
+        return (rest ~ /[[:space:]"'\'']--(include|exclude|exclude-dir)([=[:space:]]|$)/)
+      }
       /# portability-ok/ { next }
       {
         line = $0
@@ -212,9 +223,8 @@ gate_portability() {
             line ~ /(^|[^A-Za-z_])(mapfile|readarray|realpath|envsubst)([^A-Za-z_]|$)/ ||
             line ~ /(^|[^A-Za-z_])sed[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-i/ ||
             line ~ /readlink[[:space:]]+-f/ || line ~ /grep[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*P/ ||
-            line ~ /(^|[[:space:](])--include=/ ||
-            (line ~ /grep[[:space:]].*[[:space:]"'\'']--(include|exclude|exclude-dir)[=[:space:]]/ &&
-             line !~ /grep[[:space:]][^|;]*[[:space:]]--[[:space:]]/) ||
+            line ~ /(^|[[:space:](])--(include|exclude-dir)=/ || grep_files_opt(line) ||
+            (line ~ /(^|[[:space:](])--exclude=/ && line !~ /(^|[^A-Za-z])(tar|phpcs|phpcbf|rsync)/) ||
             line ~ /date[[:space:]]+-d/ || line ~ /xargs[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-r/ ||
             line ~ /stat[[:space:]]+-c/ || line ~ /find[[:space:]].*-printf/ ||
             line ~ /\$\([[:space:]]*case[[:space:]].*[[:space:]]in[[:space:]]+[^([:space:]]/ ||
