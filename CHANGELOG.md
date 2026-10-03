@@ -13,6 +13,8 @@ tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-03
+
 ### Added
 - **`scripts/dev/check.sh` — one local developer gate for the plugin.** Runs
   `claude plugin validate .`, `bash -n` and an executable-bit check on every
@@ -2274,7 +2276,8 @@ verdict, what-changed report card, frozen lock), and new insight tools
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.4...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.4...v0.9.0
 [0.8.4]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.1...v0.8.2
