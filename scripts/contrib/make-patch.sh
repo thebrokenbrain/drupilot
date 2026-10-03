@@ -13,11 +13,22 @@
 #
 #   * --local — a "test it locally / preview the port" patch. NO issue id, NO
 #     network, NO rebase: it diffs the subject subtree against a detected base
-#     ref (committed port changes when an upstream exists, otherwise the working
-#     tree) and writes MODULE-DESCRIPTION.patch next to the module. New
+#     ref (the branch's fork point, so committed AND uncommitted port changes are
+#     included; see --base) and writes MODULE-DESCRIPTION.patch next to the
+#     module, hidden from `git status` via the repo's local .git/info/exclude
+#     (a nested subject repo is not covered by the Drupal root's .gitignore). New
 #     (untracked) files are included via a throwaway index, so the patch is
 #     complete without touching the developer's real git index. This is the
 #     patch the port/refactor flow writes automatically at the end.
+#     A module COPIED into a test-bed from a sub-directory of a larger
+#     repository (a project monorepo) carries a seeded repository whose first
+#     commit is the pristine module (place-subject.sh, git_seed_baseline): the
+#     patch is diffed against that baseline, so it is module-relative like the
+#     single-module case. A second patch, [name]-repo.patch, carries the same
+#     change with paths relative to the origin repository's root (e.g.
+#     web/modules/custom/<name>/...), for `git apply` at the monorepo root;
+#     it is checked (warn-only) against the origin commit the copy was made
+#     from. STDOUT still prints only the main patch path.
 #
 # Naming:
 #   legacy        -> [module]-[short-description]-[issue]-[comment].patch  (PROMPT 3.3)
@@ -30,7 +41,9 @@
 #                    to an issue and test locally now" from the full contribution
 #                    flow: get it here, contribute the MR later.
 #
-# This script never pushes and NEVER touches credentials.
+# This script never pushes and NEVER touches credentials. A patch written for a
+# module/theme directory is remembered in its state.json (`patch: {path, kind:
+# local|issue|contribution, at}`, read by state.sh and /drupilot-status --all).
 #
 # Usage:
 #   make-patch.sh --module NAME --issue ID
@@ -46,8 +59,13 @@
 #                  absent) and, in --local mode, the default --output directory.
 #   --issue        numeric issue id (required unless --local).
 #   --comment      issue comment number the patch will be attached to (default 1).
-#   --base         base version branch to diff against (e.g. 11.x). Defaults to
-#                  the upstream tracking branch, then origin/HEAD.
+#   --base         base version branch to diff against (e.g. 11.x). --local
+#                  default: the upstream tracking branch when it is an ancestor
+#                  of HEAD; without an upstream, the closest fork point among
+#                  origin/HEAD, the other remote branches and the nearest tag
+#                  (their merge-base when not an ancestor — never a reverse diff
+#                  of unrelated upstream history); else HEAD (working tree).
+#                  Legacy default: the upstream tracking branch, then origin/HEAD.
 #   --description  short slug for the filename (default: 'port-to-drupal-11').
 #   --output       directory to write the patch into. Default: the subject dir in
 #                  --local mode, else the current directory.
@@ -69,7 +87,7 @@ DESCRIPTION="port-to-drupal-11"
 OUTPUT=""
 LOCAL=0
 
-usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
+usage() { print_usage "$0"; }
 
 # slugify <string> -> lowercase, hyphen-separated, safe for a filename.
 slugify() {
@@ -94,6 +112,29 @@ patch_applies_clean() {
   rc=$?
   rm -f "$idx"
   return "$rc"
+}
+
+# keep_patch_untracked <patch_path> — the patch is often written INSIDE a git
+# work tree (next to the module, which is usually its own nested repo that the
+# Drupal root's .gitignore does not cover). Hide it from `git status` through the
+# repo's LOCAL info/exclude (never the tracked .gitignore), so it can neither be
+# committed by accident nor show up as an untracked file in the origin repo.
+keep_patch_untracked() {
+  local p="$1" d top rel
+  d="$(dirname "$p")"
+  git -C "$d" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  git -C "$d" check-ignore -q -- "$p" 2>/dev/null && return 0
+  top="$(git -C "$d" rev-parse --show-toplevel 2>/dev/null || true)"
+  [[ -n "$top" ]] || return 0
+  top="$(cd "$top" && pwd -P)"
+  rel="$(cd "$d" && pwd -P)/$(basename "$p")"
+  rel="${rel#"$top"/}"
+  git_local_exclude "$d" '*-port-to-drupal-11.patch' '*-port-to-drupal-11-*.patch'
+  git -C "$d" check-ignore -q -- "$p" 2>/dev/null || git_local_exclude "$d" "/$rel"
+  if git -C "$d" check-ignore -q -- "$p" 2>/dev/null; then
+    log_info "Ignored locally via $(git -C "$d" rev-parse --git-path info/exclude 2>/dev/null) (never committed, not in git status)."
+  fi
+  return 0
 }
 
 while [[ $# -gt 0 ]]; do
@@ -130,7 +171,10 @@ fi
 
 have_cmd git || die "git is not installed." 1
 
-MODULE_SLUG="$(slugify "$MODULE")"
+# The project keeps its machine name (underscores included), per the Drupal.org
+# patch naming convention; before 0.9.0 drupilot hyphenated it.
+MODULE_SLUG="$(patch_project_slug "$MODULE")"
+LEGACY_MODULE_SLUG="$(slugify "$MODULE")"
 DESC_SLUG="$(slugify "$DESCRIPTION")"
 [[ -n "$DESC_SLUG" ]] || DESC_SLUG="patch"
 
@@ -173,6 +217,13 @@ if [[ "$LOCAL" == "1" ]]; then
     PATCH_NAME="$MODULE_SLUG-$DESC_SLUG.patch"
   fi
   PATCH_PATH="$OUTPUT_ABS/$PATCH_NAME"
+  # A preview written by an older drupilot under the hyphenated name is not
+  # replaced by this one; point at it so the stale copy is not mistaken for it.
+  if [[ "$LEGACY_MODULE_SLUG" != "$MODULE_SLUG" ]]; then
+    LEGACY_NAME="$LEGACY_MODULE_SLUG-${PATCH_NAME#"$MODULE_SLUG"-}"
+    [[ -f "$OUTPUT_ABS/$LEGACY_NAME" ]] \
+      && log_warn "An older drupilot patch name is still there: $OUTPUT_ABS/$LEGACY_NAME (the machine name is now kept as-is: $PATCH_NAME). Delete the old file once you no longer need it."
+  fi
 
   if [[ -n "$ISSUE" ]]; then
     log_step "Local patch for issue #$ISSUE (comment #$COMMENT): $MODULE — offline, no push, scoped to $PATHSPEC"
@@ -180,25 +231,10 @@ if [[ "$LOCAL" == "1" ]]; then
     log_step "Local patch: $MODULE (preview of the port, scoped to $PATHSPEC)"
   fi
 
-  # Resolve the base ref WITHOUT touching the network or the working tree.
-  BASE_REF=""
-  if [[ -n "$BASE" ]]; then
-    if git -C "$REPO" rev-parse --verify --quiet "origin/$BASE" >/dev/null 2>&1; then
-      BASE_REF="origin/$BASE"
-    elif git -C "$REPO" rev-parse --verify --quiet "$BASE" >/dev/null 2>&1; then
-      BASE_REF="$BASE"
-    else
-      die "Base '$BASE' not found locally (tried origin/$BASE and $BASE). Pass an existing --base." 1
-    fi
-  else
-    UPSTREAM="$(git -C "$REPO" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
-    if [[ -n "$UPSTREAM" ]]; then
-      BASE_REF="$UPSTREAM"
-    else
-      DEF="$(git -C "$REPO" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)"
-      if [[ -n "$DEF" ]]; then BASE_REF="$DEF"; else BASE_REF="HEAD"; fi
-    fi
-  fi
+  # Resolve the base ref WITHOUT touching the network or the working tree
+  # (git_port_base_ref in common.sh; check-port-safety.sh uses the same base).
+  BASE_REF="$(git_port_base_ref "$REPO" "$BASE")" \
+    || die "Base '$BASE' not found locally (tried origin/$BASE and $BASE). Pass an existing --base." 1
   log_info "Diffing against base '$BASE_REF' (no fetch, no rebase)."
 
   # Build the diff in a throwaway index so untracked (new) files are included
@@ -211,16 +247,25 @@ if [[ "$LOCAL" == "1" ]]; then
     GIT_INDEX_FILE="$TMP_INDEX" git -C "$REPO" read-tree --empty 2>/dev/null || true
   fi
   # Exclude the patch file itself AND drupilot's own artifacts (the .drupilot/
-  # outputs dir, the .drupilot.json prefs, any previously-written drupilot patch)
+  # outputs dir, the .drupilot.json prefs, any previously-written drupilot patch,
+  # and local-environment residue: .ddev/, top-level vendor/, .phpstan-cache/,
+  # node_modules/ at any depth)
   # so a contribution patch never embeds them. The subject is often its OWN git
   # repo (a loose contrib checkout keeps its .git after a move), which the Drupal
   # root's .gitignore does not cover — so we exclude them here regardless.
+  REPO_PATCH_NAME="${PATCH_NAME%.patch}-repo.patch"
   EXCLUDES=(
     ":(exclude)${RELPREFIX}${PATCH_NAME}"
+    ":(exclude)${RELPREFIX}${REPO_PATCH_NAME}"
     ":(exclude)${RELPREFIX}.drupilot"
     ":(exclude)${RELPREFIX}.drupilot.json"
     ":(exclude)${RELPREFIX}*-port-to-drupal-11.patch"
     ":(exclude)${RELPREFIX}*-port-to-drupal-11-*.patch"
+    # Untracked local-environment residue is never part of a port.
+    ":(exclude)${RELPREFIX}.ddev"
+    ":(exclude)${RELPREFIX}vendor"
+    ":(exclude)${RELPREFIX}.phpstan-cache"
+    ":(exclude,glob)${RELPREFIX}**/node_modules/**"
   )
   GIT_INDEX_FILE="$TMP_INDEX" git -C "$REPO" add -A -- "$PATHSPEC" "${EXCLUDES[@]}" 2>/dev/null || true
 
@@ -242,7 +287,41 @@ if [[ "$LOCAL" == "1" ]]; then
     log_warn "It is still written for inspection, but check your base ref before sharing it."
   fi
 
+  keep_patch_untracked "$PATCH_PATH"
   announce_patch "$PATCH_PATH"
+
+  # A copy seeded from a sub-directory of a larger repository: also write the
+  # patch relative to that repository's root (paths web/modules/custom/<name>/...).
+  ORIGIN_PREFIX="$(git -C "$REPO" config drupilot.originPrefix 2>/dev/null || true)"
+  if [[ -n "$ORIGIN_PREFIX" && -z "$RELPREFIX" ]]; then
+    ORIGIN_PREFIX="${ORIGIN_PREFIX%/}/"
+    REPO_PATCH_PATH="$OUTPUT_ABS/$REPO_PATCH_NAME"
+    if GIT_INDEX_FILE="$TMP_INDEX" git -C "$REPO" diff --cached \
+         --src-prefix="a/$ORIGIN_PREFIX" --dst-prefix="b/$ORIGIN_PREFIX" \
+         "$BASE_REF" -- "$PATHSPEC" "${EXCLUDES[@]}" > "$REPO_PATCH_PATH" 2>/dev/null \
+       && [[ -s "$REPO_PATCH_PATH" ]]; then
+      ORIGIN_REPO_DIR="$(git -C "$REPO" config drupilot.originRepo 2>/dev/null || true)"
+      ORIGIN_COMMIT="$(git -C "$REPO" config drupilot.originCommit 2>/dev/null || true)"
+      if [[ -n "$ORIGIN_REPO_DIR" && -n "$ORIGIN_COMMIT" ]] \
+         && git -C "$ORIGIN_REPO_DIR" cat-file -e "$ORIGIN_COMMIT" 2>/dev/null; then
+        if patch_applies_clean "$ORIGIN_REPO_DIR" "$REPO_PATCH_PATH" "$ORIGIN_COMMIT"; then
+          log_ok "Verified: the repository patch applies onto $ORIGIN_REPO_DIR at ${ORIGIN_COMMIT:0:12}."
+        else
+          log_warn "Heads-up: the repository patch does not apply cleanly onto $ORIGIN_REPO_DIR at ${ORIGIN_COMMIT:0:12}."
+        fi
+      fi
+      keep_patch_untracked "$REPO_PATCH_PATH"
+      log_ok "Repository patch ready: $REPO_PATCH_PATH"
+      log_plain "   Apply it at the root of ${ORIGIN_REPO_DIR:-the origin repository} (paths ${ORIGIN_PREFIX}...):  git apply $REPO_PATCH_NAME"
+    else
+      rm -f "$REPO_PATCH_PATH"
+      log_warn "Could not write the patch relative to the origin repository (non-fatal)."
+    fi
+  fi
+  # Remember it in the subject's state.json (per-module registry).
+  if is_drupal_extension_dir "$SUBJ_DIR"; then
+    state_patch_record "$SUBJ_DIR" "$PATCH_PATH" "$([[ -n "$ISSUE" ]] && echo issue || echo local)"
+  fi
   if [[ -n "$ISSUE" ]]; then
     log_info "Named for Drupal.org issue #$ISSUE, comment #$COMMENT — attach it there to share/test the fix."
     log_info "This is the OFFLINE patch (no rebase against origin/BASE). When you are ready to open a"
@@ -358,6 +437,11 @@ else
   exit 1
 fi
 
+keep_patch_untracked "$PATCH_PATH"
+_state_subj="${SUBJECT:-$PWD}"
+if is_drupal_extension_dir "$_state_subj"; then
+  state_patch_record "$_state_subj" "$PATCH_PATH" contribution
+fi
 hr
 log_ok "Patch written: $PATCH_PATH"
 log_info "Next steps:"

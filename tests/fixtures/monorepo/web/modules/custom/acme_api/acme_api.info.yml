@@ -1,0 +1,8 @@
+name: 'Acme API'
+type: module
+description: 'Client for the Acme remote API.'
+package: Acme
+core_version_requirement: ^10.3
+dependencies:
+  - acme_utils:acme_utils
+  - token:token (>=8.x-1.13)

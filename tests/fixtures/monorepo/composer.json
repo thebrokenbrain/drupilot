@@ -1,0 +1,20 @@
+{
+    "name": "acme/site",
+    "description": "Synthetic Drupal 10 monorepo fixture for drupilot layers and metadata lint.",
+    "type": "project",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "composer/installers": "^2.0",
+        "drupal/core-recommended": "^10.3",
+        "drupal/pathauto": "^1.12",
+        "drupal/search_api": "^1.35",
+        "drupal/token": "^1.13"
+    },
+    "extra": {
+        "installer-paths": {
+            "web/core": ["type:drupal-core"],
+            "web/modules/contrib/{$name}": ["type:drupal-module"],
+            "web/modules/custom/{$name}": ["type:drupal-custom-module"]
+        }
+    }
+}

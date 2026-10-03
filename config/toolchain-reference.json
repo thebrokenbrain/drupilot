@@ -1,0 +1,41 @@
+{
+  "_comment": "drupilot KNOWN-GOOD dev-toolchain matrix (the distributed reference lock). Exact versions installed and verified TOGETHER end to end in a fresh DDEV Drupal 11 test-bed: install, the install-toolchain.sh smoke test (Rector dry-run with the Drupal 10 set + phpstan --version), run-rector.sh dry-run on a real contrib module, PHPStan and PHPCS. scripts/env/install-toolchain.sh pins these when a project has no complete lock yet (deterministic mode), so a fresh test-bed created after a broken upstream release still gets a working set. Only add a version here after verifying it the same way; never edit one in by hand. Packages missing from 'toolchain' are resolved from the config/defaults.json .packages ranges (drupal/core-dev is always matched to the installed core instead).",
+  "schema_version": 1,
+  "verified_on": "2026-10-02",
+  "verified_with": {
+    "drupal_core": "11.4.8",
+    "php": "8.3",
+    "ddev": "1.25.4",
+    "subject": "drupal/autologout 8.x-1.4"
+  },
+  "toolchain": {
+    "palantirnet/drupal-rector": "0.21.2",
+    "rector/rector": "2.5.2",
+    "phpstan/phpstan": "2.2.2",
+    "phpstan/extension-installer": "1.4.3",
+    "mglaman/phpstan-drupal": "2.2.2",
+    "phpstan/phpstan-deprecation-rules": "2.0.5",
+    "drupal/coder": "8.3.31",
+    "drush/drush": "13.8.0",
+    "drupal/upgrade_status": "4.3.10"
+  },
+  "_remediation_comment": "The packages printed in the 'by hand' fix command after a failed smoke test or a Rector crash: the ones whose combination breaks Rector.",
+  "remediation_packages": [
+    "palantirnet/drupal-rector",
+    "rector/rector",
+    "phpstan/phpstan",
+    "mglaman/phpstan-drupal"
+  ],
+  "known_broken": [
+    {
+      "packages": { "palantirnet/drupal-rector": "0.21.2", "rector/rector": ">=2.6.2" },
+      "symptom": "[ERROR] Could not detect twig set.",
+      "cause": "drupal-rector's drupal-10.0-deprecations.php needs Rector\\Symfony\\Set\\TwigSetList::TWIG_24, which the rector-symfony bundled in rector/rector 2.6.2 removed. Verified: 2.6.1 works, 2.6.2 and 2.6.7 crash."
+    },
+    {
+      "packages": { "rector/rector": "2.5.2", "phpstan/phpstan": "2.2.16" },
+      "symptom": "MissingPrivatePropertyException: Property \"$container\" was not found in \"PHPStan\\Parser\\RichParser\"",
+      "cause": "rector 2.5.x reads a private PHPStan property that later PHPStan 2.2.x releases removed; rector 2.5.2 needs phpstan 2.2.2."
+    }
+  ]
+}

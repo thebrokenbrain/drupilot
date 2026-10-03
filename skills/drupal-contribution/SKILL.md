@@ -149,7 +149,14 @@ from the assessment if useful, but keep that structure.
 If the port kept **`^10 || ^11`** (Drupal 10 support is `declared-not-verified`,
 per `core-strategy.sh`), pass `--d10-unverified` so "verify Drupal 10
 compatibility" is added to **Remaining tasks** — the dual-support claim must not
-be silently trusted in the issue.
+be silently trusted in the issue. With `--subject`, `make-issue.sh` also reads the
+subject's fresh `verify-core-matrix.sh` result: when Drupal 10 is
+`verified-static` the item narrows to "run the test suite on Drupal 10" (static
+check passed on 10.x.y); when it is `verified-static-above-floor` the item asks
+to verify the declared floor (only a newer 10.x was checked) and run the suite;
+when it `failed`, a "fix the Drupal 10
+incompatibilities, or drop `^10`" item is added even without the flag. A matrix
+computed on older sources is ignored (with a warning).
 
 Relay the recommended fields and the summary to the user to paste into the
 issue, and keep `NAME-issue-comment.md` for the MR/patch step below.
@@ -204,6 +211,25 @@ detected format (§4). Example, modern format:
 git add -A
 git commit -m "fix: #ISSUEID One-line summary"
 ```
+
+**Repository git hooks — never normalize `--no-verify`.** Before committing,
+detect the project's hooks:
+
+```bash
+bash "$ROOT/scripts/contrib/git-hooks.sh" --subject "$SUBJECT" --json
+```
+
+When it reports hooks (GrumPHP, husky, lefthook, pre-commit, CaptainHook,
+`core.hooksPath`, a `.git/hooks` script), commit normally and let them run —
+give a slow hook a longer Bash timeout or a background run. Only if a hook
+cannot complete in this context: run `git-hooks.sh --subject "$SUBJECT"
+--run-equivalents` (phpcs / phpstan / php -l / composer validate, and PHPUnit
+with `--with-tests`, through DDEV), fix every failure, and commit with
+`--no-verify` only when `all_green` is true. The PreToolUse guard asks the
+developer to confirm such a commit (`DRUPILOT_HOOKS_GUARD=ask`, in every mode),
+so autonomous mode never skips a hook. State in the MR/issue comment and in the
+port report (`verification.commit_hooks`) which validations replaced the hook
+and which tasks had no equivalent (`uncovered`); never claim the hook passed.
 
 ### Open the MR
 

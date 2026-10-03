@@ -1,0 +1,15 @@
+services:
+  # Constructor takes 2 arguments; 3 are passed (extra one silently ignored).
+  legacy_widgets.counter:
+    class: Drupal\legacy_widgets\WidgetCounter
+    arguments: ['@database', '@config.factory', '@logger.factory']
+
+  # Class name case differs from the real file src/WidgetLookup.php.
+  legacy_widgets.lookup:
+    class: Drupal\legacy_widgets\WidgetLookUp
+    arguments: ['@entity_type.manager']
+
+  # Orphan: the class does not exist anywhere in the module.
+  legacy_widgets.legacy_exporter:
+    class: Drupal\legacy_widgets\Export\LegacyExporter
+    arguments: ['@file_system']

@@ -1,0 +1,76 @@
+<?php
+
+/**
+ * @file
+ * Hook implementations and helpers for the Legacy widgets module.
+ */
+
+use Drupal\Core\Entity\EntityInterface;
+use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\Core\Url;
+
+/**
+ * Implements hook_help().
+ */
+function legacy_widgets_help($route_name, RouteMatchInterface $route_match) {
+  if ($route_name === 'help.page.legacy_widgets') {
+    return '<p>' . t('Manages legacy widgets.') . '</p>';
+  }
+}
+
+/**
+ * Implements hook_entity_operation().
+ */
+function legacy_widgets_entity_operation(EntityInterface $entity) {
+  $operations = [];
+  if ($entity->getEntityTypeId() === 'legacy_widget' && \Drupal::currentUser()->hasPermission('administer legacy widgets')) {
+    $operations['legacy_widgets_reindex'] = [
+      'title' => t('Reindex'),
+      'url' => Url::fromRoute('legacy_widgets.settings_form'),
+      'weight' => 50,
+    ];
+  }
+  return $operations;
+}
+
+/**
+ * Implements hook_cron().
+ */
+function legacy_widgets_cron() {
+  $queue = \Drupal::queue('legacy_widgets_reindex');
+  $ids = \Drupal::entityQuery('legacy_widget')->accessCheck(FALSE)->execute();
+  foreach ($ids as $id) {
+    $queue->createItem(['id' => $id, 'owner' => '']);
+  }
+}
+
+/**
+ * Finds an account by e-mail address or by user name.
+ *
+ * @param string $identifier
+ *   An e-mail address or a user name.
+ *
+ * @return \Drupal\user\UserInterface|false
+ *   The account, or FALSE when none matches.
+ */
+function legacy_widgets_find_account($identifier) {
+  if (str_contains($identifier, '@')) {
+    return user_load_by_mail($identifier);
+  }
+  return user_load_by_name($identifier);
+}
+
+/**
+ * Builds a plain-text teaser for a widget description.
+ *
+ * @param string $text
+ *   The full text.
+ * @param int $size
+ *   The maximum summary length.
+ *
+ * @return string
+ *   The summary.
+ */
+function legacy_widgets_summarize($text, $size = 120) {
+  return text_summary($text, NULL, $size);
+}

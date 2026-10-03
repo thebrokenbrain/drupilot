@@ -91,6 +91,30 @@ unavailable), in which case **document it explicitly** rather than hiding it.
 If Selenium could not be installed, the JS group is skipped with a clear note —
 that is a documented gap, not a pass.
 
+If `run-phpunit.sh` exits `2` with "PHPUnit is not installed", the Drupal root has
+no `vendor/bin/phpunit` (`drupal/core-dev` is missing — environments set up by
+drupilot 0.8.4 or earlier never installed it). The run is recorded as
+`not-verified-blocked`, not as a regression. Run the install command it prints
+(core-dev matched to the installed core, with `-W`), refresh the lock with
+`lock-sync.sh --dir <drupal_root>`, then re-run the groups.
+
+**Pre-existing failures.** If a pre-port baseline was recorded (`/drupilot-port`
+takes it with `run-phpunit.sh --baseline` before Rector), every run compares each
+failing test with it. `preservation: pre-existing-failures` (still exit `3`)
+means every failure already failed before the port and nothing that passed
+before fails now; `baseline.regressions` lists any test that did pass before (or
+that the baseline never ran) and makes the verdict `regression`.
+`baseline.not_baselined` lists failing tests the baseline never meaningfully
+ran (their group crashed then, or the un-ported module could not even be
+installed: "incompatible with this version of Drupal core"). They are never
+pre-existing: with no regression, they make the verdict
+`not-verified-unbaselined` (exit `3`). Treat each as a possible regression and
+fix it in the code. Pre-existing
+failures are not proof of preservation: fix them in the code or document them,
+and review each one flagged as failing with a different message now. A group
+whose PHPUnit executed no test (e.g. a `--filter` matching nothing) counts as
+`empty`, never as passed.
+
 ## Step 5 — Coverage (especially in Phase 2)
 
 When the suite is green, report coverage. In a Phase 2 context, first add tests
@@ -100,6 +124,28 @@ for any uncovered behavior, then measure:
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject "$1" --type all --coverage
 ```
 
+**Every new test carries a negative control.** Before a test you added counts,
+prove it can fail: `negative-control.sh` undoes the production change the test
+guards, requires the test to go red, restores the code byte for byte (checked
+with `git hash-object`), and requires it to go green again. Use `--revert-to
+<ref-before-the-change> --path <file>` when the test guards a specific change, or
+a minimal mutation of the covered code saved as
+`<drupal_root>/.drupilot/negative-controls/<test>.patch` otherwise:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/negative-control.sh" --subject "$1" \
+  --type kernel --filter testFoo --mutation-patch "<patch>" --label "<what it guards>" --json
+```
+
+Exit `0` effective · `4` ineffective (the test stayed green: strengthen it and
+re-run the control — never accept it) · `1` inconclusive · `2` environment
+blocked. Tests under `tests/` are never mutated, and adapted existing tests are
+exempt (their intent is unchanged). The control never touches `last-test.json`.
+If a control was killed before it could restore the code (SIGKILL, a Bash-tool
+timeout), the next control refuses to start: run `negative-control.sh --subject
+"$1" --recover` first, which restores each file from the backup manifest while
+it still holds the recorded mutation.
+
 ## Step 6 — Report
 
 Summarize in English:
@@ -107,8 +153,15 @@ Summarize in English:
 - Discovered vs. run counts per group (Unit / Kernel / Functional /
   FunctionalJavascript).
 - Pass/fail result per group, and the adaptations made to reach green.
-- Coverage figures (when measured), and any tests added in Phase 2.
+- Coverage figures (when measured), and any tests added in Phase 2 with their
+  negative-control verdicts.
+- With a baseline: regressions, pre-existing failures (and which now fail
+  differently), and the tests the port fixed.
 - Any test that cannot pass for an external reason, with the explicit cause.
+- The stage: `run-phpunit.sh` already carried this run's verdict into the
+  subject's `state.json` and, for a whole-suite run whose preservation is
+  `verified` / `verified-partial`, recorded the **tested** stage — never record
+  it by hand for a red or partial run.
 - Next suggested step: `/drupilot-refactor` (if not yet done and the user wants
   it) or `/drupilot-contribute` (for contrib projects).
 

@@ -1,0 +1,7 @@
+acme_api.status:
+  path: '/admin/reports/acme-api'
+  defaults:
+    _controller: '\Drupal\acme_api\Controller\StatusController::status'
+    _title: 'Acme API status'
+  requirements:
+    _permission: 'access site reports'

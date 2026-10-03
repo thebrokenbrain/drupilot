@@ -1,0 +1,15 @@
+acme_reports.settings:
+  path: '/admin/config/acme/reports'
+  defaults:
+    _form: '\Drupal\acme_reports\Form\SettingsForm'
+    _title: 'Acme reports settings'
+  requirements:
+    _permission: 'administer site configuration'
+
+acme_reports.overview:
+  path: '/admin/reports/acme'
+  defaults:
+    _controller: '\Drupal\acme_reports\Controller\ReportController::overview'
+    _title: 'Acme reports'
+  requirements:
+    _permission: 'access site reports'

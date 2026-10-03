@@ -46,7 +46,8 @@ All output you produce — the report, the chat summary, every label — is in *
 
 - **Drupal core**: 11.3.0 stable. Minimum PHP 8.3, recommended 8.4.
 - **drupal-rector**: `palantirnet/drupal-rector` 0.21.x. Covers D10.0 -> D11.4
-  deprecations. Sets `Drupal10SetList::DRUPAL_10` + `Drupal11SetList::DRUPAL_11`.
+  deprecations. drupilot applies `Drupal10SetList::DRUPAL_10` (not `DRUPAL_11`,
+  which targets a future D12 port) plus the target PHP set minus a few risky rules.
   Needs the Drupal core tree present (no DB). What it flags in dry-run is, broadly,
   the **auto-fixable** surface.
 - **drupal-digests** (`dbuytaert/drupal-digests`): complementary AI-generated Rector
@@ -101,18 +102,36 @@ not reinvent their logic; capture and interpret their output.
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject <DIR>
    # add --digests to include the complementary digests pass (dry-run too)
-   # add --json for {changed_files, files, pass1_files, pass2_files}
+   # add --json for {status, ok, errors, changed_files, files, pass1_files, pass2_files}
+   # exit 3 = Rector crashed (status "error"): no verdict, never "0 files would
+   # change" — report it and repair with install-toolchain.sh --source reference
+   # exit 4 = only the digests pass crashed (status "partial", digests_status
+   # "error"): the official count stands; the toolchain is fine — pin
+   # --digests-ref <sha> or set DRUPILOT_USE_DIGESTS_RULES=false
    ```
 4. **PHPStan at the deprecation level** (`DRUPILOT_PHPSTAN_LEVEL`, default 2):
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject <DIR>
-   # add --json for native {totals:{errors,file_errors}, files:{...}}
+   # add --json for native {totals:{errors,file_errors}, files:{...}} + drupilot.status
+   # (clean|findings|crashed); exit 3 = crashed: no verdict, never "0 errors"
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject <DIR> --json \
+     | bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/classify-deprecations.sh" --subject <DIR> --json
+   # hard (removed in a major <= target: must fix) / soft (removed later: works on
+   # every D11 core, per DRUPILOT_SOFT_DEPRECATIONS) / unknown (counted as hard)
    ```
+   Only **hard + unknown** deprecations count in the verdict. Soft ones (e.g.
+   `user_load_by_name()`, `text_summary()`, `check_markup()`: deprecated in 11.4.0,
+   removed from 13.0.0) are listed in the report's "Soft deprecations" table
+   (symbol, deprecated in, removed in, effort, Phase 1 action) — never as
+   must-fix work.
 5. **PHPCS** (read-only, no `--fix`) for coding-standard distance:
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpcs.sh" --subject <DIR>
    # add --json for native {totals:{errors,warnings,fixable}, files:{...}}
    ```
+   It lints with the subject's own PHPCS ruleset when it ships a loadable one,
+   else Drupal,DrupalPractice; state which one in the report (`.drupilot.source`
+   and `.drupilot.ruleset` in the `--json` output).
 
 Prefer the `--json` counts for the S/M/L/XL verdict so it is **reproducible**
 (the same module yields the same numbers) rather than estimated from the human
@@ -129,6 +148,28 @@ report. Fall back to reading the report only if a tool's JSON is unavailable.
    Carry its `recommended_core_version_requirement`, `composer_core_constraint`,
    `require_php`, `version_bump`, rationale and warnings into the report and
    `assess.json`.
+8. **Core signature changes** (read-only, no toolchain) at the floor the
+   recommended target keeps:
+   ```bash
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/scan-signature-changes.sh" --subject <DIR> --json
+   # --core-floor 10.3 to judge at the floor of the recommended ^10.3 || ^11
+   # exit 3 = error findings (expected before a port): each one is a MANUAL item
+   ```
+   Each error finding (e.g. a `ConfigFormBase` subclass passing one argument to
+   `parent::__construct()`, a local `getOriginal()` incompatible with 11.2's) is a
+   manual Phase 1 item with its catalog `fix`; never plan an `#[\Override]` on a
+   method that exists only in some of the declared cores.
+9. **Pre-existing hygiene** (read-only, no toolchain, always exit 0):
+   ```bash
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/lint-extension-metadata.sh" --subject <DIR> --json
+   ```
+   Config without schema, a `configure:` route that does not exist, orphan
+   services and letter-case mismatches, service arguments vs the constructor,
+   submodules whose `core_version_requirement` does not admit Drupal 11, and
+   undeclared dependencies (with the proposed entry). Report them in the
+   "Pre-existing hygiene (not fixed in Phase 1)" section and as `hygiene` totals in
+   `assess.json`; they do **not** change the S/M/L/XL verdict. Phase 1 bumps the
+   submodules' requirement (`set-core-requirement.sh`); the rest is a follow-up.
 
 ## Classification
 
@@ -160,8 +201,8 @@ Reason holistically; broad guide:
   migration, jQuery UI removal), or a key contrib dependency lagging on D11.
 - **XL** — multiple hard breaks, deep Symfony 7 surface, large untyped codebase, or a
   blocking contrib dependency with no D11 path.
-Compare the estimate to `DRUPILOT_VIABILITY_THRESHOLD` (default medium). If it
-exceeds the threshold, mark it clearly **and still deliver the plan**.
+Compare the estimate to `DRUPILOT_VIABILITY_THRESHOLD` (`small`/`medium`/`large`/`xl`
+≡ S/M/L/XL; default medium). If it strictly exceeds the threshold, mark it clearly **and still deliver the plan**.
 
 ## Deliverables
 

@@ -1,0 +1,6 @@
+name: 'Acme core'
+type: module
+description: 'Shared base services for the Acme site.'
+package: Acme
+core_version_requirement: ^10.3
+configure: acme_core.settings

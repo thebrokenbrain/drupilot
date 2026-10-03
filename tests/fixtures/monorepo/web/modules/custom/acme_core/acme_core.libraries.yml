@@ -1,0 +1,4 @@
+base:
+  css:
+    theme:
+      css/acme-base.css: {}

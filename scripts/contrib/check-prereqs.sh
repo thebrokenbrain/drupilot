@@ -32,7 +32,7 @@ set -euo pipefail
 AS_JSON=0
 PROJECT=""
 
-usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
+usage() { print_usage "$0"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -52,8 +52,7 @@ PREFLIGHT="$(plugin_root)/scripts/env/preflight.sh"
 # Exit status tells us whether hard requirements are satisfied.
 # ---------------------------------------------------------------------------
 PF_JSON=""
-PF_RC=0
-PF_JSON="$(bash "$PREFLIGHT" --profile contribute --json --quiet 2>/dev/null)" || PF_RC=$?
+PF_JSON="$(bash "$PREFLIGHT" --profile contribute --json --quiet 2>/dev/null)" || true
 
 if [[ -z "$PF_JSON" ]]; then
   die "Could not run the contribution preflight. Is jq installed?" 1

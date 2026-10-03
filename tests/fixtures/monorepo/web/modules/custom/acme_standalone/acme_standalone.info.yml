@@ -1,0 +1,5 @@
+name: 'Acme standalone'
+type: module
+description: 'A self-contained helper with no dependencies.'
+package: Acme
+core_version_requirement: ^10.3

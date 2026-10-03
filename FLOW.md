@@ -54,37 +54,39 @@ flowchart TD
     end
 
     subgraph DOCTOR["doctor · optional"]
-      DOC["preflight.sh<br/>checks requirements"]:::script
+      DOC["preflight.sh<br/>checks requirements<br/>+ health checks (--extended):<br/>configs · toolchain vs known-good<br/>disk · origin residue"]:::script
     end
 
     subgraph SETUP["setup · prepare the environment"]
-      SU["ddev-up.sh · ddev-add-ons.sh<br/>Composer toolchain<br/>rector.php · phpstan.neon · phpcs.xml"]:::script
+      SU["ddev-up.sh · place-subject.sh · ddev-add-ons.sh<br/>install-toolchain.sh (known-good, smoke test)<br/>render-templates.sh: rector.php · phpstan.neon · phpcs.xml"]:::script
     end
 
     subgraph ASSESS["assess · evaluation (does not modify code)"]
-      AS1["Static analysis:<br/>run-rector --dry-run · run-phpstan<br/>run-phpcs · deps-status"]:::script
-      AS2(("The AI classifies the work<br/>(automatic vs. manual) and issues<br/>the S/M/L/XL verdict → viability-report.md")):::ai
+      AS1["Static analysis:<br/>run-rector --dry-run · run-phpstan<br/>run-phpcs · deps-status<br/>lint-extension-metadata (pre-existing hygiene)"]:::script
+      AS2(("The AI classifies the work<br/>(automatic vs. manual) and issues<br/>the S/M/L/XL verdict → viability-report.md<br/>(hygiene reported, outside the verdict)")):::ai
       AS1 --> AS2
     end
 
     GATE1{"Continue with<br/>the port?"}:::human
 
     subgraph F1["PHASE 1 · Minimal port — make the module run on Drupal 11 (may keep Drupal 10)"]
+      PAT["patterns.sh scan<br/>the pitfalls earlier ports<br/>of the project hit"]:::script
       PORT(("The AI orchestrates Rector's 3 passes<br/>(official → digests → ad-hoc),<br/>the manual changes and validation<br/>— see diagram 2")):::ai
-      ART1[("Artifacts:<br/>MODULE-port-to-drupal-11.patch<br/>port-report.md")]:::result
+      ART1[("Artifacts:<br/>MODULE-port-to-drupal-11.patch<br/>port-report.md<br/>patterns.json (what it learned)")]:::result
       TST1["Tests in DDEV · run-phpunit<br/>Unit · Kernel · Functional · JS (Selenium)"]:::script
       TST2(("The AI adapts the form of the tests;<br/>on a behavioral failure it<br/>fixes the code, never the test")):::ai
       DONE1(["Module ported to Drupal 11<br/>compatible · behavior preserved · tests green"]):::milestone
-      PORT --> ART1 --> TST1 --> TST2 --> DONE1
+      PAT --> PORT --> ART1 --> TST1 --> TST2 --> DONE1
     end
 
     GATE2{"What next?"}:::human
 
     subgraph F2["PHASE 2 · Modernization — optional · Drupal 11 only"]
+      RFA["convert-attributes.sh<br/>plugin annotations → #[...] attributes<br/>(drupal-rector, strip mode)"]:::script
       RF(("The AI rewrites to the «Drupal 11 way»:<br/>attributes · dependency injection<br/>strict types · no deprecations")):::ai
       RFV["Validation at PHPStan level 5-6<br/>with tests green"]:::script
       DONE2(["Module modernized — Drupal 11 only<br/>core_version_requirement ^11 · new major version"]):::milestone
-      RF --> RFV --> DONE2
+      RFA --> RF --> RFV --> DONE2
     end
 
     subgraph CT["Contribution — optional · never in autonomous mode"]
@@ -101,7 +103,7 @@ flowchart TD
     ASSESS --> GATE1
     GATE1 -->|continue| PORT
     DONE1 --> GATE2
-    GATE2 -->|"modernize (Phase 2)"| RF
+    GATE2 -->|"modernize (Phase 2)"| RFA
     GATE2 -->|contribute| CC
 
     style F1 fill:#f0f9ff,stroke:#38bdf8,stroke-width:1px
@@ -116,6 +118,14 @@ flowchart TD
 ```
 
 > **preflight** (tool) validates each stage's requirements before acting: if a hard requirement is missing, the stage stops with no side effects.
+>
+> **Stage record.** Each stage leaves its mark in the module's hidden `state.json` (setup, assessed, ported, refactored, tested, contributed, plus effort, test and core-matrix verdicts, toolchain and patch). The deterministic scripts write most of it (`port-report.sh`, `run-phpunit.sh`, `verify-core-matrix.sh`, `make-patch.sh`); the setup, assess and contribute commands call `state.sh record`. The router reads it to propose the next step, and `/drupilot-status --all` turns the records of several modules and workspaces into one table.
+>
+> **Cleaning up.** `/drupilot-clean` sits outside the ladder: it removes a test-bed's DDEV project, its Composer trees (`vendor`, the default level) or the whole workspace (moving the module back to where it came from), only on a test-bed drupilot built, and keeps the reports, the hidden state, the patches and the module's git branches. It records `environment: removed` in each module's `state.json`, so the router recommends `/drupilot-setup` next; setup rebuilds the environment (`composer install` for a missing `vendor/`, the lockfile's core version and the cached base core for a removed workspace) and clears the record.
+>
+> **Decision log.** Whenever the AI does not keep a tool's output or does not follow the flow — reverts a Rector change, overrides a script's verdict, skips a step, fixes what validation caught after the port, changes a test's form, leaves a pre-existing bug, introduces a behavior change to review — it records what and why at that moment with `log-decision.sh` (`.drupilot/decisions.jsonl` + `decisions.md`). `port-report.sh` and `layer-report.sh` merge those entries with the port manifest.
+>
+> **Learned patterns.** Before a port or a refactor touches code, `patterns.sh scan` checks the module against the project's catalog (`.drupilot/patterns.json`) of pitfalls earlier ports hit, each with a detector and the fix that worked; every hit is a must-check item. At the end, the AI proposes the new pitfalls (reverted Rector changes, post-port fixes) with a detector, you pick which to keep, and `patterns.sh add` records them for the next module.
 >
 > If Phase 2 is skipped, the final result is the **ported module** (the Phase 1 milestone). Phase 2 and contribution are always optional.
 >
@@ -143,17 +153,20 @@ flowchart TD
     R2T{"Decision:<br/>which rules to apply?"}:::human
     R2A["run-rector --digests --apply<br/>only the accepted subset"]:::script
     R3(("Pass 3 · the AI generates a custom rule<br/>or manually fixes what Rector doesn't cover")):::ai
-    MAN(("The AI applies the manual changes<br/>Rector cannot make:<br/>core_version_requirement · require.php<br/>Twig 3 · CKEditor 5 · jQuery UI")):::ai
+    MAN(("The AI applies the manual changes<br/>Rector cannot make:<br/>require.php · Twig 3 · CKEditor 5 · jQuery UI")):::ai
+    SCR["set-core-requirement.sh<br/>core_version_requirement in the main<br/>and every submodule info.yml"]:::script
+    ATD{"Optional decision: plugin attributes<br/>skip (default) · add them"}:::human
+    ATA["convert-attributes.sh --mode keep<br/>#[...] next to the annotations<br/>raises the floor (e.g. ^10.3 || ^11)"]:::script
 
     subgraph VL["Validation loop · the AI iterates until clean"]
-      VS["run-phpcs --fix (phpcbf fixes · phpcs reports)<br/>run-phpstan (deprecations)"]:::script
+      VS["run-phpcs --fix --fix-scope changed<br/>(phpcbf fixes only the files the port changed · phpcs reports)<br/>run-phpstan (deprecations) · classify-deprecations<br/>check-port-safety · scan-signature-changes<br/>verify-core-matrix (the declared Drupal 10 leg)<br/>lint-extension-metadata (hygiene, report only)"]:::script
       VAI(("The AI reviews what's left<br/>and applies the minimal fix")):::ai
       VS --> VAI
       VAI -->|"issues remain"| VS
     end
 
     MP["make-patch --local<br/>generates the .patch"]:::script
-    PR["port-report.sh<br/>generates the report"]:::script
+    PR["port-report.sh<br/>port-report.md (for you)<br/>+ port-summary.json (for tools)"]:::script
     OUT(["Phase 1 result:<br/>module compatible with Drupal 11<br/>+ .patch + report (validated by the tests)"]):::milestone
 
     %% --- links ---
@@ -168,7 +181,11 @@ flowchart TD
     R2T --> R2A
     R2A --> R3
     R3 --> MAN
-    MAN --> VS
+    MAN --> SCR
+    SCR --> ATD
+    ATD -->|skip| VS
+    ATD -->|add| ATA
+    ATA --> VS
     VAI -->|"clean"| MP
     MP --> PR
     PR --> OUT
@@ -181,6 +198,8 @@ flowchart TD
 ```
 
 > The tools don't call each other: the AI orchestrates them, interprets their output and decides the next step. That's why it steps in between them.
+>
+> **Plugin attributes are optional.** Annotations still work on Drupal 11, so Phase 1 skips the conversion unless you opt in (an autonomous run always skips it). If you do, `convert-attributes.sh` adds the `#[...]` attributes next to the annotations for the plugin types whose attribute class exists on Drupal 10.3, and raises `core_version_requirement` explicitly (e.g. `^10.3 || ^11`), because the attribute classes do not exist on older cores. Phase 2 runs the same script in strip mode, which removes the annotations.
 
 ---
 
@@ -199,7 +218,7 @@ flowchart LR
     end
 
     subgraph S3["Before every Bash command"]
-      H3["PreToolUse (Bash)<br/>guard-contrib.sh<br/>detects push / Merge Request"]:::hook
+      H3["PreToolUse (Bash)<br/>guard-contrib.sh<br/>detects push / Merge Request<br/>and commits that skip git hooks"]:::hook
     end
 
     AI(("AI")):::ai
@@ -213,6 +232,60 @@ flowchart LR
     classDef ai fill:#ede9fe,stroke:#7c3aed,color:#4c1d95;
     classDef human fill:#dcfce7,stroke:#16a34a,color:#14532d;
 ```
+
+---
+
+## 4) Many modules — `/drupilot-layers`
+
+For a set of custom modules (a monorepo's `web/modules/custom`), the order matters: a module ported before the modules it uses cannot be tested. `layers.sh` orders the set and `/drupilot-layers run` sends each module of a layer through the normal flow above, one after another. `/drupilot` (and `next-step.sh`) recognize such a directory — not an extension itself, two or more `*.info.yml` below it — and recommend `/drupilot-layers <dir> plan` instead of porting it as one subject.
+
+```mermaid
+flowchart TD
+    L0(["/drupilot-layers &lt;dir&gt;"]):::result
+    LS["layers.sh<br/>info.yml + composer.json dependencies<br/>+ the ones the code uses (classes, services,<br/>routes, libraries, plugins)<br/>→ layers · cycles · undeclared deps"]:::script
+    LAI(("The AI presents the plan and the<br/>proposed dependencies: entries")):::ai
+    LD{"Decision: port layer N ·<br/>add the proposed dependencies ·<br/>stop"}:::human
+    LP(("For each module of the layer, one at a time:<br/>the orchestrator runs setup → assess<br/>→ port → test (diagram 1)")):::ai
+    LC[("patterns.json · one catalog for the set<br/>scanned before each port,<br/>fed by what each port learned")]:::result
+    LR["layer-report.sh<br/>consolidated layer-N-report.md<br/>(fixed sections: results · Rector hits and reversions<br/>· fixes · pre-existing bugs · behavior changes<br/>· deviations · validation)"]:::script
+    LN{"Next layer?<br/>(not after a regression)"}:::human
+
+    L0 --> LS --> LAI --> LD
+    LD -->|port| LP --> LR --> LN
+    LN -->|yes| LP
+    LC <-.-> LP
+
+    classDef script fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
+    classDef ai fill:#ede9fe,stroke:#7c3aed,color:#4c1d95;
+    classDef human fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    classDef result fill:#e5e7eb,stroke:#6b7280,color:#111827;
+```
+
+> Proposed dependencies are never applied without your confirmation, and a layer run never contributes. In a site already on Drupal 11 every module is ported in place, in that one site, so a layer's dependencies are installed next to it. A monorepo clone without installed core (or a site still on Drupal 10) gets one shared test-bed next to the repository, never inside it: each module is copied there with a git baseline, so its patch is module-relative, with a second one relative to the repository root.
+
+---
+
+## 5) Under another tool — non-interactive
+
+A wrapper (another skill, a CI job, a script driving `claude -p`) runs the same flow without anyone answering tabs, and reads the result as JSON instead of the Markdown reports. See the README section "Running under another tool" for the full contract.
+
+```mermaid
+flowchart LR
+    W(["Wrapper<br/>/drupilot &lt;dir&gt; auto --no-confirm<br/>--workspace DIR --json"]):::human
+    O(("Orchestrator in auto mode:<br/>setup → assess → port → refactor → test<br/>every fork takes its recommended default")):::ai
+    S["Scripts with DRUPILOT_NONINTERACTIVE=1<br/>no prompt · safe default<br/>--workspace DIR → test-bed location"]:::script
+    P["port-summary.sh --json<br/>status · effort · files_changed<br/>rector_rules · reverted_rules · manual_fixes<br/>preservation · matrix · patch"]:::script
+    R[("JSON result<br/>(also .drupilot/port-summary.json)")]:::result
+
+    W --> O --> S --> P --> R
+
+    classDef script fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
+    classDef ai fill:#ede9fe,stroke:#7c3aed,color:#4c1d95;
+    classDef human fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    classDef result fill:#e5e7eb,stroke:#6b7280,color:#111827;
+```
+
+> `--no-confirm` is as safe as `auto`: it never pushes, opens a Merge Request or contributes, and the `guard-contrib` hook asks before any push or Merge Request command whenever `DRUPILOT_NONINTERACTIVE=1` is set, as it does for `DRUPILOT_AUTONOMOUS=true`. `port-summary.sh` only reads what the flow recorded, so a wrapper can also run it directly, without the model.
 
 ---
 

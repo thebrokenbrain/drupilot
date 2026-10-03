@@ -11,7 +11,8 @@
 # After installing add-ons we `ddev restart` so they take effect.
 #
 # Behaviour (PROMPT 5.2 / 7.7 / 7.8):
-#   - Idempotent: detects already-installed add-ons (`ddev add-on list`) and
+#   - Idempotent: detects already-installed add-ons (`ddev add-on list
+#     --installed -j`, falling back to .ddev/addon-metadata) and
 #     skips them; only restarts if something actually changed.
 #   - Selenium failures are SOFT: warn and continue (JS tests will be skipped),
 #     never fail the script.
@@ -19,6 +20,14 @@
 #
 # Usage:
 #   ddev-add-ons.sh [--contrib] [--selenium] [--subject DIR] [--dir DIR] [-h|--help]
+#
+#   --dir DIR      the Drupal root (DDEV project). Preferred: the setup flow
+#                  passes the resolver's drupal_root.
+#   --subject DIR  resolve the project from the module/theme instead, as
+#                  ddev-up.sh does: the Drupal root above it, the test-bed of a
+#                  loose (copy/symlink) checkout, or — for an original path a
+#                  'move' relocated — the test-bed that now holds it.
+#   With neither, the current directory is the subject.
 #
 # Exit codes:
 #   0 -> requested add-ons installed (or already present); Selenium failure is
@@ -45,9 +54,13 @@ while [[ $# -gt 0 ]]; do
     --dir) PROJECT_DIR="${2:-}"; shift 2;;
     --dir=*) PROJECT_DIR="${1#*=}"; shift;;
     -h|--help)
-      grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; exit 0;;
+      print_usage "$0"; exit 0;;
     *) log_warn "Unknown argument: $1"; shift;;
   esac
+done
+
+for _v in "$SUBJECT" "$PROJECT_DIR"; do
+  case "$_v" in \<*\>|*\<*\>*) die "Got the unsubstituted placeholder '$_v' — pass the real path." 1;; esac
 done
 
 # No flags -> install both.
@@ -65,15 +78,18 @@ SELENIUM_ADDON="ddev/ddev-selenium-standalone-chrome"
 # GATE: setup profile (Docker daemon + DDEV). No side effects before this.
 # ---------------------------------------------------------------------------
 log_step "Checking environment requirements (profile: setup)"
-if ! bash "$PLUGIN_ROOT_DIR/scripts/env/preflight.sh" --profile setup; then
+if ! bash "$PLUGIN_ROOT_DIR/scripts/env/preflight.sh" --profile setup >&2; then
   die "Cannot install DDEV add-ons: a hard requirement is missing (see report above). Run /drupilot-doctor." 2
 fi
 
 # ---------------------------------------------------------------------------
 # Resolve the DDEV project directory.
 # ---------------------------------------------------------------------------
+# --dir wins; else the project the subject is ported in, resolved like
+# ddev-up.sh (a loose copy/symlink origin -> its test-bed; a moved-away path ->
+# the test-bed that now holds it).
 if [[ -z "$PROJECT_DIR" ]]; then
-  PROJECT_DIR="$(find_drupal_root "${SUBJECT:-$PWD}" 2>/dev/null || true)"
+  PROJECT_DIR="$(subject_project_root "${SUBJECT:-$PWD}")"
 fi
 [[ -z "$PROJECT_DIR" ]] && PROJECT_DIR="$PWD"
 if [[ ! -f "$PROJECT_DIR/.ddev/config.yaml" ]]; then
@@ -97,18 +113,16 @@ fi
 
 # ---------------------------------------------------------------------------
 # Detect already-installed add-ons (idempotency).
-# `ddev add-on list --installed` lists what is present; we match by name.
+# ddev_addons_installed (common.sh) reads `ddev add-on list --installed -j` —
+# never the human table, which truncates long names to the terminal width
+# ("ddev-selenium-stand…") so Selenium was never detected and got reinstalled
+# (plus a ~47 s restart) on every run — with .ddev/addon-metadata as fallback.
 # ---------------------------------------------------------------------------
-INSTALLED_LIST=""
-INSTALLED_LIST="$( ( cd "$PROJECT_DIR" && ddev add-on list --installed 2>/dev/null ) || true )"
+INSTALLED_LIST="$(ddev_addons_installed "$PROJECT_DIR" | cut -f1)"
 
 addon_installed() {
-  # addon_installed <full-name> -> 0 if the add-on appears installed.
-  local full="$1" short="${1##*/}"
-  # Match the short name (ddev-drupal-contrib) or the org/name form.
-  printf '%s' "$INSTALLED_LIST" | grep -Eq "(^|[[:space:]/])${short}([[:space:]]|$)" && return 0
-  printf '%s' "$INSTALLED_LIST" | grep -Fq "$full" && return 0
-  return 1
+  # addon_installed <org/name|name> -> 0 if the add-on is installed (exact name).
+  printf '%s\n' "$INSTALLED_LIST" | grep -Fxq "${1##*/}"
 }
 
 # neutralize_contrib_symlink — in the recommended-project layout (Drupal at the
@@ -128,9 +142,17 @@ neutralize_contrib_symlink() {
   fi
   if grep -q 'ddev symlink-project' "$cfg" 2>/dev/null; then
     log_step "Disabling ddev-drupal-contrib symlink-project (recommended-project layout)"
-    sed -i 's#ddev symlink-project#: # symlink-project disabled by drupilot (recommended-project layout)#' "$cfg"
-    CHANGED=1
-    log_ok "symlink-project hook neutralized in config.contrib.yaml."
+    # '|' delimiter: the replacement contains '#', which broke the old `sed -i
+    # 's#...#...#'` on every platform. sed_inplace avoids GNU/BSD `sed -i` drift.
+    # Degrade (warn) instead of aborting the setup if the edit fails.
+    if sed_inplace "$cfg" 's|ddev symlink-project|: # symlink-project disabled by drupilot (recommended-project layout)|'; then
+      CHANGED=1
+      log_ok "symlink-project hook neutralized in config.contrib.yaml."
+      log_info "Note: config.contrib.yaml is '#ddev-generated' — re-running 'ddev add-on get' restores the hook; re-run this script afterwards."
+    else
+      log_warn "Could not edit '$cfg'. In the recommended-project layout the add-on may create a spurious"
+      log_warn "$DOCROOT/modules/custom/<project> symlink dir on 'ddev restart'; replace 'ddev symlink-project' with ':' there by hand."
+    fi
   fi
   # Remove a spurious symlink dir from earlier runs: a dir under modules/custom
   # with NO *.info.yml whose composer.json or .ddev entry is a symlink.
@@ -214,8 +236,8 @@ fi
 # Reminder: read the generated config for the real webdriver host (PROMPT 2.5).
 # ---------------------------------------------------------------------------
 if [[ "$WANT_SELENIUM" == "1" && "$SELENIUM_OK" == "1" ]]; then
-  log_info "When configuring MINK_DRIVER_ARGS_WEBDRIVER, read the generated DDEV YAML for the real"
-  log_info "webdriver host instead of assuming 'selenium-chrome' (PROMPT 2.5 / 7.1)."
+  log_info "The Selenium add-on sets MINK_DRIVER_ARGS_WEBDRIVER (with \"w3c\":true); do not override it."
+  log_info "Read the generated DDEV YAML for the real webdriver host instead of assuming 'selenium-chrome' (PROMPT 2.5 / 7.1)."
 fi
 
 # Record the installed add-on versions in the reproducibility lockfile (best-effort).

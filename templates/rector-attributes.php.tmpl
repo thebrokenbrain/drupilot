@@ -1,0 +1,53 @@
+<?php
+
+/**
+ * drupilot — rector-attributes.php
+ * drupilot-template-version: 1
+ *
+ * GENERATED on every run by scripts/analysis/convert-attributes.sh into
+ * <drupal_root>/.drupilot/rector-attributes.php (gitignored). Do not edit: the
+ * next run overwrites it. It is a separate, opt-in pass — the main rector.php
+ * (official drupal-rector sets) and the digests pass never load it.
+ *
+ * What it does: converts plugin doc-block annotations (@Block(...),
+ * @QueueWorker(...), ...) into PHP 8 attributes with the AnnotationToAttributeRector
+ * rule that palantirnet/drupal-rector ships but configures in no set. Each
+ * AnnotationToAttributeConfiguration is
+ *   (introducedVersion, removeVersion, annotation, attributeClass):
+ *   - introducedVersion: the core minor that ships the attribute class
+ *     (config/plugin-attributes.json `since`); the rule skips the type on an
+ *     older test-bed core.
+ *   - removeVersion: the annotation is REMOVED only when the test-bed core is
+ *     >= this version. drupilot writes the type's own `since` to strip it, and
+ *     999.0.0 to keep it next to the attribute (BC: older cores keep reading the
+ *     annotation; newer ones prefer the attribute).
+ *
+ * Names are printed fully qualified (no withImportNames()): the 0.21.x rule
+ * detects an existing attribute by comparing its name with the FQCN, so a
+ * short, imported attribute would be added a second time on a re-run. Files
+ * that already carry such an attribute are listed under withSkip() below.
+ */
+
+declare(strict_types=1);
+
+use DrupalRector\Drupal10\Rector\Deprecation\AnnotationToAttributeRector;
+use DrupalRector\Drupal10\Rector\ValueObject\AnnotationToAttributeConfiguration;
+use Rector\Config\RectorConfig;
+
+$drupilotRoot = dirname(__DIR__);
+
+return RectorConfig::configure()
+  ->withPaths([
+    $drupilotRoot . '/{{SUBJECT_PATH}}',
+  ])
+  ->withSkip([
+    '*/vendor/*',
+    '*/node_modules/*',
+{{SKIP_FILES}}
+  ])
+  ->withConfiguredRule(AnnotationToAttributeRector::class, [
+{{ATTRIBUTE_CONFIGS}}
+  ])
+  ->withFileExtensions([
+    'php',
+  ]);

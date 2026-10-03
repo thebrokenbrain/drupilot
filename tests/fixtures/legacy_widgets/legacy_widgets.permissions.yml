@@ -1,0 +1,3 @@
+administer legacy widgets:
+  title: 'Administer legacy widgets'
+  restrict access: true

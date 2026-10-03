@@ -1,0 +1,6 @@
+search-page:
+  js:
+    js/search-page.js: {}
+  dependencies:
+    - core/drupal
+    - acme_core/base

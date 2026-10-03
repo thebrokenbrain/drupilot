@@ -72,9 +72,19 @@ PHP sets are cumulative; target exactly **one** PHP version per run:
 - `8.5` → **verify `UP_TO_PHP_85` / `php85` exists in the installed Rector
   version before using it.** If absent, fall back to `php84` and note the gap.
 
-The Drupal sets (`Drupal10SetList::DRUPAL_10` + `Drupal11SetList::DRUPAL_11`) are
-independent of the PHP target — always include both. The `rector.php.tmpl`
-template encodes this; substitute `{{PHP_TARGET}}`. (The digests complementary
+The Drupal set (`Drupal10SetList::DRUPAL_10`: APIs removed in D11) is independent
+of the PHP target; `Drupal11SetList::DRUPAL_11` (D11 deprecations, for a future
+D12 port) is deliberately not included. The PHP level set is applied minus the
+rules the template skips (`ArrayToFirstClassCallableRector`,
+`AddOverrideAttributeToOverriddenMethodsRector`, `ReadOnlyPropertyRector`,
+`ReadOnlyClassRector`, `NullToStrictStringFuncCallArgRector`): they are not
+compatibility fixes, they break Form API callbacks / serialization / Drupal 10,
+and the `#[\Override]` and `readonly` they add would also raise the PHP floor
+`detect-php-floor.sh` reports. The `rector.php.tmpl`
+template encodes this; `scripts/env/render-templates.sh` (and `run-rector.sh` when it
+writes a missing `rector.php`) derives the `->withPhpSets()` argument from the
+target via `rector_php_set_arg` (`8.3` → `php83`, `8.4` → `php84`, an unconfirmed
+`8.5` → `php84` with a warning) — never edit it by hand. (The digests complementary
 pass runs separately via `--config`, see the `minimal-port` skill.)
 
 ### PHPStan — level and expectations (`phpstan.neon`)
@@ -83,11 +93,20 @@ pass runs separately via `--config`, see the `minimal-port` skill.)
 detection; Phase 2 raises it to 5–6 via `DRUPILOT_PHPSTAN_LEVEL_REFACTOR`
 (default `6`). The PHP target itself does not change the level number, but it
 changes which language-level findings are valid — analyze against the same PHP
-the code will run on. Substitute `{{PHPSTAN_LEVEL}}` in `phpstan.neon.tmpl`.
+the code will run on. `render-templates.sh` substitutes `{{PHPSTAN_LEVEL}}` in
+`phpstan.neon.tmpl` (or pass `--set PHPSTAN_LEVEL=N`).
 
 ### PHPCS — sniffs (`phpcs.xml.dist`)
 
-The standard is always `Drupal,DrupalPractice`. The coder branch is chosen by
+`run-phpcs.sh` uses the subject's own ruleset when it ships a loadable one
+(`DRUPILOT_PHPCS_RULESET=auto`, the default), else `Drupal,DrupalPractice`
+(`DRUPILOT_PHPCS_RULESET=drupilot` forces the latter). The PHP target reaches
+PHPCompatibility through `--runtime-set testVersion <target>-`, passed on every
+run (override with `DRUPILOT_PHPCS_TEST_VERSION`, e.g. `8.1-` while Drupal 10 is
+kept); a ruleset's own `<config name="testVersion">` is never overridden, and a
+testVersion wrongly declared as a `<property>` inside a `<rule>` is passed
+through, which avoids PHPCompatibility's "trim(): Passing null" failure. The
+coder branch is chosen by
 `DRUPILOT_CODER_CONSTRAINT` (default `^8.3` → PHPCS 3.x; `^9.0` → PHPCS 4.x), not
 by the PHP target — but a higher PHP target can surface additional sniff results
 (e.g. new syntax). Keep coder and the PHP target consistent so sniffs match the
@@ -112,8 +131,9 @@ export DRUPILOT_PHP_TARGET=8.4
 ```
 
 Then re-derive: re-run `detect-php.sh --json`, regenerate `rector.php`,
-`phpstan.neon` and `phpcs.xml.dist` from the templates with the new
-`{{PHP_TARGET}}`, and reconfigure DDEV (`ddev config --php-version=8.4` then
+`phpstan.neon` and `phpcs.xml.dist` from the templates for the new target
+(`export DRUPILOT_PHP_TARGET=8.4`, then `render-templates.sh --root <drupal_root>
+--subject-path <path> --force`; the Rector PHP set follows the target), and reconfigure DDEV (`ddev config --php-version=8.4` then
 `ddev restart`). Keep all four in lockstep — a mismatch between the Rector PHP
 set, PHPStan, PHPCS and the DDEV runtime produces confusing, inconsistent
 findings.

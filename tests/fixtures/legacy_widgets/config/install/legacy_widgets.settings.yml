@@ -1,0 +1,6 @@
+enabled: true
+mode: basic
+threshold: 10
+intro: 'Welcome to legacy widgets.'
+intro_format: plain_text
+contact_mail: ''

@@ -13,7 +13,9 @@
 #   - toolchain.<pkg>         exact version of each .packages.* dev tool
 #   - ddev_addons.<addon>     installed DDEV add-on version (best-effort)
 #   - phpstan_level / core_strategy   the effective config knobs
-#   - drupilot_version / created / updated
+#   - drupilot_version / created / updated (drupilot_version is plugin.json's
+#     version, which every lock write refreshes; drupilot_revision is the exact
+#     git build when drupilot runs from a checkout)
 #
 # It does NOT touch digests.{ref,sha} (run-rector.sh owns those), except that
 # --refresh drops digests.sha so the next Rector run re-resolves the live ref.
@@ -47,7 +49,7 @@ DRY_RUN=0
 SUBJECT=""
 PROJECT_DIR=""
 
-usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
+usage() { print_usage "$0"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -66,8 +68,10 @@ done
 have_cmd jq || { log_warn "jq is required for the lockfile; skipping lock-sync."; exit 0; }
 
 # --- Resolve the project directory ----------------------------------------
-if [[ -z "$PROJECT_DIR" ]]; then
-  PROJECT_DIR="$(find_drupal_root "${SUBJECT:-$PWD}" 2>/dev/null || true)"
+if [[ -z "$PROJECT_DIR" && -n "$SUBJECT" ]]; then
+  PROJECT_DIR="$(subject_project_root "$SUBJECT")"
+elif [[ -z "$PROJECT_DIR" ]]; then
+  PROJECT_DIR="$(drupal_run_root "$PWD" 2>/dev/null || true)"
 fi
 [[ -z "$PROJECT_DIR" ]] && PROJECT_DIR="$PWD"
 PROJECT_DIR="$(cd "$PROJECT_DIR" 2>/dev/null && pwd || printf '%s' "$PROJECT_DIR")"
@@ -108,6 +112,15 @@ composer_pkg_version() {
 [[ -z "$(lock_get .created "")" ]] && lset_str .created "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 lset_str .updated "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 lset_str .drupilot_version "$(plugin_version)"
+# A git checkout of drupilot (a development branch) keeps plugin.json's last
+# released version: record the exact build too, and drop a stale one otherwise.
+_rev="$(plugin_revision)"
+if [[ -n "$_rev" ]]; then
+  lset_str .drupilot_revision "$_rev"
+elif [[ "$DRY_RUN" != "1" && -n "$(lock_get .drupilot_revision "")" ]] && have_cmd jq; then
+  _lf="$(drupilot_lock_file)"; _lt="$(mktemp "${_lf}.XXXXXX")"
+  if jq 'del(.drupilot_revision)' "$_lf" > "$_lt" 2>/dev/null; then mv -f "$_lt" "$_lf"; else rm -f "$_lt"; fi
+fi
 lset_str .php_target "$(resolve_php_target)"
 lset_json .phpstan_level "$(config_get DRUPILOT_PHPSTAN_LEVEL 2)"
 lset_str .core_strategy "$(config_get DRUPILOT_CORE_TARGET_STRATEGY auto)"
@@ -132,16 +145,18 @@ else
 fi
 
 # --- DDEV add-ons (best-effort; secondary, never blocks) ------------------
-if have_cmd ddev && ddev_running "$PROJECT_DIR"; then
-  ADDONS_RAW="$( ( cd "$PROJECT_DIR" && ddev add-on list --installed 2>/dev/null ) || true )"
+# Read via ddev_addons_installed (common.sh): `ddev add-on list --installed -j`
+# or .ddev/addon-metadata — never the width-truncated human table, which hid
+# long names such as ddev-selenium-standalone-chrome. Needs a DDEV project, but
+# not a running one.
+if [[ -f "$PROJECT_DIR/.ddev/config.yaml" ]]; then
   for addon in ddev-drupal-contrib ddev-selenium-standalone-chrome; do
-    if printf '%s' "$ADDONS_RAW" | grep -q "$addon"; then
-      ver="$(printf '%s' "$ADDONS_RAW" | grep "$addon" | grep -oE 'v?[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1)"
+    if ver="$(ddev_addon_version "$addon" "$PROJECT_DIR")"; then
       lset_str ".ddev_addons.\"$addon\"" "${ver:-installed}"
     fi
   done
 else
-  log_info "DDEV not running — skipping add-on version capture (optional)."
+  log_info "No DDEV project at $PROJECT_DIR — skipping add-on version capture (optional)."
 fi
 
 # --- Refresh: drop the frozen digests SHA so the next run re-resolves ------

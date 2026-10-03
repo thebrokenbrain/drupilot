@@ -1,0 +1,150 @@
+{
+  "_comment": "Data for scripts/analysis/check-port-safety.sh (deterministic post-port checks). 'severity' per check: what a finding becomes when the port INTRODUCED it (diff vs the pre-port git base), when it was PRE-EXISTING, and when no git base is available (UNKNOWN). Values: error (blocks the stage, exit 3) | warn | skip. The fallback lists are used ONLY when an ancestor class cannot be parsed from the Drupal root (e.g. no root, or a missing contrib module); every entry was verified against the core tree (git.drupalcode.org 10.3.x and 11.x, and the lab 11.4.8 tree) - never add one from memory. Patterns are POSIX ERE.",
+  "checks": {
+    "plugin-di": {
+      "description": "A class defining static create(ContainerInterface ...) must implement the matching factory interface, itself or through an ancestor/interface: ContainerFactoryPluginInterface for create($container, array $configuration, $plugin_id, $plugin_definition), ContainerDeriverInterface for create($container, $base_plugin_id), ContainerInjectionInterface for create($container) (other parameters optional). Otherwise the factory is never called and the constructor gets the wrong arguments (ArgumentCountError at runtime).",
+      "severity": {
+        "introduced": "error",
+        "preexisting": "error",
+        "unknown": "error"
+      }
+    },
+    "removed-use": {
+      "description": "A `use` import removed by the port while the short name is still referenced in the file (a fatal 'class not found' or a broken PHPDoc type). Diff mode only.",
+      "severity": {
+        "introduced": "error",
+        "preexisting": "skip",
+        "unknown": "skip"
+      }
+    },
+    "static-factory": {
+      "description": "`new self(` inside a create() factory of a non-final class: subclasses get an instance of the parent. Never change `new static` to `new self` to silence the sandbox PHPStan 'Unsafe usage of new static()'.",
+      "severity": {
+        "introduced": "error",
+        "preexisting": "warn",
+        "unknown": "warn"
+      }
+    },
+    "fapi-callable": {
+      "description": "A first-class callable (`$this->m(...)`, `foo(...)`) or a closure under a Form/Render API callback key. Closures cannot be serialized, so a cached form (#ajax, form state cache) fatals. Use [$this, 'm'], [static::class, 'm'], '::m' or a function-name string. Pre-existing or unattributed ones are warnings: core itself uses closures under render-time keys (#pre_render/#post_render) of render arrays that are never serialized.",
+      "severity": {
+        "introduced": "error",
+        "preexisting": "warn",
+        "unknown": "warn"
+      }
+    },
+    "serialization": {
+      "description": "A private or readonly property (declared or constructor-promoted) in a class that uses DependencySerializationTrait (forms, plugins). __sleep() runs from the base-class scope and cannot see private child properties (they are dropped, then 'must not be accessed before initialization'); __wakeup() cannot re-initialize a readonly one ('Cannot initialize readonly property'). Use protected, non-readonly.",
+      "severity": {
+        "introduced": "error",
+        "preexisting": "warn",
+        "unknown": "warn"
+      }
+    },
+    "override-attribute": {
+      "description": "#[\\Override] while the declared core range still includes Drupal 10 (or an older 11.x minor): the parent method may only exist in newer cores (e.g. ContentEntityStorageBase::buildRevisionCacheId() since 11.3), and #[\\Override] without a parent method is a compile-time fatal on PHP 8.3+. Neither phase may add it while Drupal 10 is declared, so one introduced by the port is an error; a pre-existing one is skipped and an unattributed one is a review warning. Whatever its attribution, an #[\\Override] on a method that the signature catalog (config/deprecations.json .signature_changes, kind method-signature) dates above the declared core floor is an error, also for an ^11 range below that minor.",
+      "severity": {
+        "introduced": "error",
+        "preexisting": "skip",
+        "unknown": "warn"
+      }
+    },
+    "class-case": {
+      "description": "A class referenced from *.services.yml / *.routing.yml, or a PSR-4 class declaration, whose case differs from the real file name. Works on case-insensitive filesystems (macOS) and fatals on Linux.",
+      "severity": {
+        "introduced": "error",
+        "preexisting": "error",
+        "unknown": "error"
+      }
+    }
+  },
+  "fapi_callback_keys": [
+    "#ajax",
+    "callback",
+    "#submit",
+    "#validate",
+    "#element_validate",
+    "#process",
+    "#pre_render",
+    "#post_render",
+    "#after_build",
+    "#value_callback",
+    "#lazy_builder",
+    "#access_callback",
+    "#title_callback",
+    "#entity_builders",
+    "#limit_validation_errors_callback",
+    "exists"
+  ],
+  "interfaces": {
+    "plugin_factory": "Drupal\\Core\\Plugin\\ContainerFactoryPluginInterface",
+    "container_injection": "Drupal\\Core\\DependencyInjection\\ContainerInjectionInterface",
+    "container_deriver": "Drupal\\Core\\Plugin\\Discovery\\ContainerDeriverInterface",
+    "serialization_trait": "Drupal\\Core\\DependencyInjection\\DependencySerializationTrait"
+  },
+  "fallback": {
+    "Drupal\\Core\\Plugin\\ContainerFactoryPluginInterface": {
+      "_comment": "Verified: FormatterBase, WidgetBase and views' PluginBase implement it; QueueWorkerBase, core PluginBase, ActionBase, BlockBase, FilterBase, ConditionPluginBase, ExecutablePluginBase and PluginSettingsBase do NOT (a plugin extending them must declare the interface itself).",
+      "yes": [
+        "Drupal\\Core\\Field\\FormatterBase",
+        "Drupal\\Core\\Field\\WidgetBase",
+        "Drupal\\views\\Plugin\\views\\PluginBase"
+      ],
+      "no": [
+        "Drupal\\Core\\Queue\\QueueWorkerBase",
+        "Drupal\\Core\\Plugin\\PluginBase",
+        "Drupal\\Component\\Plugin\\PluginBase",
+        "Drupal\\Core\\Action\\ActionBase",
+        "Drupal\\Core\\Block\\BlockBase",
+        "Drupal\\filter\\Plugin\\FilterBase",
+        "Drupal\\Core\\Condition\\ConditionPluginBase",
+        "Drupal\\Core\\Executable\\ExecutablePluginBase",
+        "Drupal\\Core\\Field\\PluginSettingsBase"
+      ]
+    },
+    "Drupal\\Core\\DependencyInjection\\ContainerInjectionInterface": {
+      "_comment": "Verified: FormBase and ControllerBase implement it (so do their subclasses).",
+      "yes": [
+        "Drupal\\Core\\Form\\FormBase",
+        "Drupal\\Core\\Form\\ConfigFormBase",
+        "Drupal\\Core\\Form\\ConfirmFormBase",
+        "Drupal\\Core\\Entity\\EntityForm",
+        "Drupal\\Core\\Entity\\ContentEntityForm",
+        "Drupal\\Core\\Controller\\ControllerBase"
+      ],
+      "no": []
+    },
+    "Drupal\\Core\\DependencyInjection\\DependencySerializationTrait": {
+      "_comment": "Verified: FormBase and core PluginBase use the trait (so do their subclasses); ControllerBase, Component PluginBase and views' PluginBase do not.",
+      "yes": [
+        "Drupal\\Core\\Form\\FormBase",
+        "Drupal\\Core\\Form\\ConfigFormBase",
+        "Drupal\\Core\\Form\\ConfirmFormBase",
+        "Drupal\\Core\\Entity\\EntityForm",
+        "Drupal\\Core\\Entity\\ContentEntityForm",
+        "Drupal\\Core\\Plugin\\PluginBase",
+        "Drupal\\Core\\Queue\\QueueWorkerBase",
+        "Drupal\\Core\\Action\\ActionBase",
+        "Drupal\\Core\\Block\\BlockBase",
+        "Drupal\\filter\\Plugin\\FilterBase",
+        "Drupal\\Core\\Condition\\ConditionPluginBase",
+        "Drupal\\Core\\Executable\\ExecutablePluginBase",
+        "Drupal\\Core\\Field\\PluginSettingsBase",
+        "Drupal\\Core\\Field\\FormatterBase",
+        "Drupal\\Core\\Field\\WidgetBase"
+      ],
+      "no": [
+        "Drupal\\Core\\Controller\\ControllerBase",
+        "Drupal\\Component\\Plugin\\PluginBase",
+        "Drupal\\views\\Plugin\\views\\PluginBase"
+      ]
+    },
+    "Drupal\\Core\\Plugin\\Discovery\\ContainerDeriverInterface": {
+      "_comment": "Verified: DeriverBase does NOT implement it (a deriver with create() must declare it).",
+      "yes": [],
+      "no": [
+        "Drupal\\Component\\Plugin\\Derivative\\DeriverBase"
+      ]
+    }
+  }
+}

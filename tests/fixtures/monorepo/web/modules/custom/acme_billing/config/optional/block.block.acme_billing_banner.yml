@@ -1,0 +1,16 @@
+langcode: en
+status: true
+dependencies:
+  module:
+    - acme_core
+id: acme_billing_banner
+theme: olivero
+region: content
+weight: 0
+plugin: acme_core_banner
+settings:
+  id: acme_core_banner
+  label: 'Billing banner'
+  label_display: '0'
+  provider: acme_core
+visibility: {}

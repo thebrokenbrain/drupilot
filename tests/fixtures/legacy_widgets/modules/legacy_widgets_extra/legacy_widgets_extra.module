@@ -1,0 +1,31 @@
+<?php
+
+/**
+ * @file
+ * Hook implementations for the Legacy widgets extra module.
+ */
+
+use Drupal\legacy_widgets\Entity\LegacyWidget;
+use Drupal\node\NodeInterface;
+
+/**
+ * Implements hook_ENTITY_TYPE_presave() for legacy_widget.
+ */
+function legacy_widgets_extra_legacy_widget_presave(LegacyWidget $widget) {
+  $original = $widget->getOriginal();
+  if ($original && $original->label() !== $widget->label()) {
+    \Drupal::logger('legacy_widgets_extra')->info('Widget @id renamed.', ['@id' => $widget->id()]);
+  }
+}
+
+/**
+ * Implements hook_node_view().
+ */
+function legacy_widgets_extra_node_view(array &$build, NodeInterface $node, $display, $view_mode) {
+  if ($view_mode === 'full') {
+    $build['legacy_widgets_extra'] = [
+      '#markup' => t('Total widgets: @count', ['@count' => \Drupal::service('legacy_widgets.counter')->total()]),
+      '#weight' => 100,
+    ];
+  }
+}

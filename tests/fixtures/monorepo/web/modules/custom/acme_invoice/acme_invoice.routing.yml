@@ -1,0 +1,7 @@
+acme_invoice.settings_form:
+  path: '/admin/config/acme/invoice'
+  defaults:
+    _form: '\Drupal\acme_invoice\Form\SettingsForm'
+    _title: 'Invoice settings'
+  requirements:
+    _permission: 'administer site configuration'

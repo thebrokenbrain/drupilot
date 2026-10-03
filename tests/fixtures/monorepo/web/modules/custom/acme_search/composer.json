@@ -1,0 +1,7 @@
+{
+    "name": "acme/acme_search",
+    "type": "drupal-custom-module",
+    "require": {
+        "drupal/search_api": "^1.35"
+    }
+}

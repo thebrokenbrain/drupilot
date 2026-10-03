@@ -5,26 +5,50 @@
 # (/drupilot) and /drupilot-status recommend the SAME step instead of each
 # restating the rules in prose (which drift apart).
 #
-# It reads the per-project state (assess.json, the phase marker, last-test.json,
+# It reads the per-project state (assess.json, the stages in state.json — or the
+# legacy phase marker — last-test.json,
 # the lockfile) and the subject facts (extension? type? DDEV configured?), and
-# the four readiness booleans the caller already computed from `preflight --json`
-# (passed in to avoid a second, slow preflight run). It emits the single
-# recommended next step + a human reason.
+# the four readiness booleans — either passed in by a caller that already ran
+# `preflight --json`, or read by this script itself with --from-preflight. It
+# emits the single recommended next step + a human reason.
 #
 # Ladder (PROMPT 4.4): doctor -> setup -> assess -> port -> [refactor] -> test
 #                      -> [contribute]. refactor and contribute are opt-in.
+# A directory that is not an extension but holds two or more (a folder of
+# modules) gets `layers` (/drupilot-layers <dir> plan) instead: it is a set.
 #
 # Usage:
 #   next-step.sh --subject DIR
 #                [--ready-analyze BOOL] [--ready-setup BOOL]
 #                [--ready-test BOOL] [--ready-contribute BOOL]
-#                [--json]
-#   BOOL is true|false; unknown readiness defaults to true (the ladder then just
-#   skips the /drupilot-doctor recommendation).
+#                [--from-preflight] [--json|--human]
+#   BOOL is true|false (also 1/0, yes/no, on/off).
+#   --subject DIR     defaults to the current directory; a value that is not a
+#                     directory (e.g. a router mode word such as "auto" passed
+#                     as $1) falls back to it with a warning on STDERR.
+#   --from-preflight  run `preflight.sh --profile all --json` once (~0.5 s) and
+#                     take every readiness value NOT given explicitly from its
+#                     `.ready` object. Use it from a load-time !`...` line, where
+#                     the caller cannot substitute values it parsed earlier.
+#                     (`--ready-from-preflight` is an accepted alias.)
+#   An unparseable BOOL (e.g. an unsubstituted "<ready.analyze>" placeholder) is
+#   treated as unknown: a warning goes to STDERR and the value is filled from
+#   preflight as if --from-preflight had been given. Readiness that stays
+#   unknown (no flag, or preflight/jq unavailable) defaults to true (the ladder
+#   then just skips the /drupilot-doctor recommendation).
 #
 # Output:
-#   --json (default) -> {next, command, reason, phase, assessed, ddev_configured,
-#                        ddev_running, tests, preservation, is_extension, type}
+#   --json (default) -> {next, command, reason, phase, assessed, effort,
+#                        ddev_configured, ddev_running, tests, preservation,
+#                        is_extension, type, state_file,
+#                        environment_removed}
+#                       phase is the stage recorded in the subject's state.json
+#                       (the per-module registry, scripts/env/state.sh); effort
+#                       is the assessment's S/M/L/XL; state_file is null while
+#                       no state.json exists. environment_removed is true
+#                       after /drupilot-clean (until the next setup) or when
+#                       a drupilot test-bed lost its vendor/; next is then
+#                       setup.
 #   --human          -> a one-line "Next: <command> — <reason>" on STDOUT.
 #
 # Exit codes: 0 ok · 1 usage/error. (Read-only: never mutates anything.)
@@ -35,20 +59,38 @@ set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
 SUBJECT=""
-R_ANALYZE="true"; R_SETUP="true"; R_TEST="true"; R_CONTRIBUTE="true"
+# Readiness starts empty (= not given); see the defaulting below.
+R_ANALYZE=""; R_SETUP=""; R_TEST=""; R_CONTRIBUTE=""
+FROM_PREFLIGHT=0
 AS_JSON=1
 
-usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
-norm_bool() { case "${1,,}" in 1|true|yes|on) printf 'true';; *) printf 'false';; esac; }
+usage() { print_usage "$0"; }
+# norm_bool VALUE -> true | false | unknown (anything not boolean-like).
+norm_bool() {
+  case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on) printf 'true';;
+    0|false|no|off) printf 'false';;
+    *) printf 'unknown';;
+  esac
+}
+# ready_arg FLAG VALUE -> the normalized value, warning when it is unparseable.
+ready_arg() {
+  local v; v="$(norm_bool "$2")"
+  if [[ "$v" == "unknown" ]]; then
+    log_warn "$1: unparseable readiness value '$2' (an unsubstituted placeholder?) — reading it from preflight instead."
+  fi
+  printf '%s' "$v"
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --subject) SUBJECT="${2:-}"; shift 2;;
     --subject=*) SUBJECT="${1#*=}"; shift;;
-    --ready-analyze) R_ANALYZE="$(norm_bool "${2:-}")"; shift 2;;
-    --ready-setup) R_SETUP="$(norm_bool "${2:-}")"; shift 2;;
-    --ready-test) R_TEST="$(norm_bool "${2:-}")"; shift 2;;
-    --ready-contribute) R_CONTRIBUTE="$(norm_bool "${2:-}")"; shift 2;;
+    --ready-analyze) R_ANALYZE="$(ready_arg "$1" "${2:-}")"; shift 2;;
+    --ready-setup) R_SETUP="$(ready_arg "$1" "${2:-}")"; shift 2;;
+    --ready-test) R_TEST="$(ready_arg "$1" "${2:-}")"; shift 2;;
+    --ready-contribute) R_CONTRIBUTE="$(ready_arg "$1" "${2:-}")"; shift 2;;
+    --from-preflight|--ready-from-preflight) FROM_PREFLIGHT=1; shift;;
     --json) AS_JSON=1; shift;;
     --human) AS_JSON=0; shift;;
     -h|--help) usage; exit 0;;
@@ -57,12 +99,58 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "$SUBJECT" ]] || SUBJECT="$PWD"
-[[ -d "$SUBJECT" ]] || die "Subject directory not found: $SUBJECT" 1
+# The router passes its first argument here, which is often a mode word
+# (`/drupilot auto`) or the first word of a request (`/drupilot port this ...`)
+# rather than a path. Fall back to the current directory, as the router's own
+# state detection does, instead of failing the command load.
+if [[ ! -d "$SUBJECT" ]]; then
+  log_warn "'$SUBJECT' is not a directory; using the current directory as the subject."
+  SUBJECT="$PWD"
+fi
 SUBJECT="$(cd "$SUBJECT" && pwd)"
+
+# --- Readiness ---------------------------------------------------------------
+# Fill the values not given (or unparseable) from one preflight run when asked
+# to, or when a caller passed garbage; whatever stays unknown defaults to true.
+NEED_PF=0
+for _r in "$R_ANALYZE" "$R_SETUP" "$R_TEST" "$R_CONTRIBUTE"; do
+  [[ "$_r" == "unknown" ]] && NEED_PF=1
+  [[ "$FROM_PREFLIGHT" == "1" && -z "$_r" ]] && NEED_PF=1
+done
+if [[ "$NEED_PF" == "1" ]]; then
+  PF_READY=""
+  if have_cmd jq; then
+    PF_READY="$(bash "$(plugin_root)/scripts/env/preflight.sh" --profile all --json --quiet 2>/dev/null \
+      | jq -r '.ready | [.analyze, .setup, .test, .contribute] | map(if . == null then "-" else tostring end) | join(" ")' 2>/dev/null || true)"
+  else
+    # No jq: preflight itself would report analyze as not ready (jq is a hard
+    # analyze requirement), so say so rather than silently assuming readiness.
+    PF_READY="false"
+  fi
+  if [[ -n "$PF_READY" ]]; then
+    # Four space-separated tokens (true/false, or "-" when preflight omitted one).
+    # shellcheck disable=SC2086  # intentional word split.
+    set -- $PF_READY
+    [[ -z "$R_ANALYZE"    || "$R_ANALYZE"    == "unknown" ]] && R_ANALYZE="$(norm_bool "${1:-}")"
+    [[ -z "$R_SETUP"      || "$R_SETUP"      == "unknown" ]] && R_SETUP="$(norm_bool "${2:-}")"
+    [[ -z "$R_TEST"       || "$R_TEST"       == "unknown" ]] && R_TEST="$(norm_bool "${3:-}")"
+    [[ -z "$R_CONTRIBUTE" || "$R_CONTRIBUTE" == "unknown" ]] && R_CONTRIBUTE="$(norm_bool "${4:-}")"
+  else
+    log_warn "Could not read readiness from preflight; assuming the environment is ready."
+  fi
+fi
+[[ -z "$R_ANALYZE"    || "$R_ANALYZE"    == "unknown" ]] && R_ANALYZE="true"
+[[ -z "$R_SETUP"      || "$R_SETUP"      == "unknown" ]] && R_SETUP="true"
+# test/contribute readiness is accepted (and filled) for CLI symmetry, but the
+# ladder does not branch on it today.
+[[ -z "$R_TEST"       || "$R_TEST"       == "unknown" ]] && R_TEST="true"
+[[ -z "$R_CONTRIBUTE" || "$R_CONTRIBUTE" == "unknown" ]] && R_CONTRIBUTE="true"
 
 # --- Gather state (read-only) ----------------------------------------------
 ROOT="$(find_drupal_root "$SUBJECT" 2>/dev/null || true)"
-STATE_DIR="$(project_state_dir "$SUBJECT")"
+# project_state_path, not project_state_dir: a read-only probe must not
+# create a state dir for a directory it merely looked at.
+STATE_DIR="$(project_state_path "$SUBJECT")"
 IS_EXT="$(is_drupal_extension_dir "$SUBJECT" && echo true || echo false)"
 TYPE="$(subject_type "$SUBJECT" 2>/dev/null || echo unknown)"
 
@@ -70,13 +158,45 @@ DDEV_CONFIGURED="false"; DDEV_RUNNING="false"
 [[ -n "$ROOT" && -f "$ROOT/.ddev/config.yaml" ]] && DDEV_CONFIGURED="true"
 ddev_running "$ROOT" 2>/dev/null && DDEV_RUNNING="true"
 
-ASSESSED="false"; [[ -f "$STATE_DIR/assess.json" ]] && ASSESSED="true"
+# Environment removed by /drupilot-clean (state.json .environment, cleared by
+# the next ddev-up.sh / place-subject.sh), or a drupilot test-bed whose vendor/
+# is gone: either way /drupilot-setup is what brings it back.
+ENV_REMOVED="false"; ENV_LEVEL=""
+if [[ "$(state_get "$SUBJECT" .environment.status "")" == "removed" ]]; then
+  ENV_REMOVED="true"; ENV_LEVEL="$(state_get "$SUBJECT" .environment.level "")"
+elif [[ -n "$ROOT" && -f "$ROOT/composer.json" && "$(testbed_kind "$ROOT")" != "none" ]]; then
+  _vd="vendor"
+  have_cmd jq && _vd="$(jq -r '.config["vendor-dir"] // "vendor"' "$ROOT/composer.json" 2>/dev/null || echo vendor)"
+  [[ -f "$ROOT/${_vd:-vendor}/autoload.php" ]] || { ENV_REMOVED="true"; ENV_LEVEL="vendor"; }
+fi
 
-PHASE=""; [[ -f "$STATE_DIR/phase" ]] && PHASE="$(tr -d '[:space:]' < "$STATE_DIR/phase" 2>/dev/null || true)"
-PORTED="false"
-case "$PHASE" in ported|refactored|tested|contributed) PORTED="true";; esac
-REFACTORED="false"
-case "$PHASE" in refactored|tested|contributed) REFACTORED="true";; esac
+# A directory holding SEVERAL extensions (a monorepo's web/modules/custom, a
+# folder of modules) is a set, not one subject: it is ported layer by layer
+# with /drupilot-layers. Not an extension itself, not a Drupal root, and at
+# least two *.info.yml at most four levels down (tests/, vendor/, contrib/,
+# core/ and node_modules/ skipped, as layers.sh does). Cheap: names only.
+EXT_COUNT=0
+if [[ "$IS_EXT" == "false" && "$SUBJECT" != "$ROOT" && ! -f "$SUBJECT/composer.json" ]]; then
+  EXT_COUNT="$(find "$SUBJECT" -maxdepth 4 \( -name tests -o -name vendor -o -name contrib \
+      -o -name core -o -name node_modules -o -name '.*' ! -name . \) -prune -o \
+      -type f -name '*.info.yml' -print 2>/dev/null | wc -l | tr -d ' ')"
+  [[ "$EXT_COUNT" =~ ^[0-9]+$ ]] || EXT_COUNT=0
+fi
+
+ASSESSED="false"
+{ [[ -f "$STATE_DIR/assess.json" ]] || phase_reached "$SUBJECT" assessed; } && ASSESSED="true"
+EFFORT=""
+have_cmd jq && EFFORT="$(jq -r '.verdict // .effort // empty' "$STATE_DIR/assess.json" 2>/dev/null || true)"
+[[ -n "$EFFORT" ]] || EFFORT="$(state_get "$SUBJECT" .effort "")"
+STATE_FILE="$(subject_state_file "$SUBJECT")"; [[ -f "$STATE_FILE" ]] || STATE_FILE=""
+
+# Stages from state.json (recorded by port-report.sh / run-phpunit.sh through
+# phase_record), falling back to the legacy <state_dir>/phase marker.
+PHASE="$(phase_get "$SUBJECT")"
+# A port finished before the stage was recorded still shows from its manifest.
+[[ -n "$PHASE" ]] || PHASE="$(port_manifest_stage "$SUBJECT")"
+PORTED="false"; phase_reached "$SUBJECT" ported && PORTED="true"
+REFACTORED="false"; phase_reached "$SUBJECT" refactored && REFACTORED="true"
 
 # Test outcome / preservation verdict from the persisted record.
 TESTS="unknown"; PRESERVATION="unknown"
@@ -87,12 +207,19 @@ fi
 
 # Did the developer opt into the Phase 2 refactor? (pref / env, default false.)
 WANT_REFACTOR="$(config_get DRUPILOT_WANT_REFACTOR false)"; WANT_REFACTOR="$(norm_bool "$WANT_REFACTOR")"
+[[ "$WANT_REFACTOR" == "true" ]] || WANT_REFACTOR="false"
 
 # --- The ladder ------------------------------------------------------------
 NEXT=""; CMD=""; REASON=""
 if [[ "$R_ANALYZE" == "false" ]]; then
   NEXT="doctor"; CMD="/drupilot-doctor"
   REASON="The analysis requirements are not met yet — fix them first."
+elif [[ "$EXT_COUNT" -ge 2 ]]; then
+  NEXT="layers"; CMD="/drupilot-layers $SUBJECT plan"
+  REASON="This directory holds $EXT_COUNT extensions, not one: plan the porting order layer by layer (dependencies first), then port each layer."
+elif [[ "$R_SETUP" == "true" && "$ENV_REMOVED" == "true" ]]; then
+  NEXT="setup"; CMD="/drupilot-setup"
+  REASON="The environment was removed (${ENV_LEVEL:-clean}) — re-run setup to rebuild it: vendor/ comes back from composer.lock, the core version from the lockfile."
 elif [[ "$R_SETUP" == "true" && "$DDEV_CONFIGURED" == "false" ]]; then
   NEXT="setup"; CMD="/drupilot-setup"
   REASON="No DDEV environment yet — provision Drupal 11 + the toolchain so the port and tests can run."
@@ -105,6 +232,12 @@ elif [[ "$PORTED" == "false" ]]; then
 elif [[ "$WANT_REFACTOR" == "true" && "$REFACTORED" == "false" ]]; then
   NEXT="refactor"; CMD="/drupilot-refactor"
   REASON="Ported, and you opted into the full Drupal 11 way — run the refactor (opt-in)."
+elif [[ "$TESTS" == "failed" && "$PRESERVATION" == "not-verified-unbaselined" ]]; then
+  NEXT="test"; CMD="/drupilot-test"
+  REASON="The last run is red on tests the pre-port baseline never meaningfully ran (their group crashed, or the un-ported module could not be installed) — they may be regressions: fix them in the code (never the test)."
+elif [[ "$TESTS" == "failed" && "$PRESERVATION" == "pre-existing-failures" ]]; then
+  NEXT="test"; CMD="/drupilot-test"
+  REASON="The last run is red only on failures that already failed before the port (no regression against the baseline) — they prove nothing either way: fix them in the code or document them, and review any that now fail differently."
 elif [[ "$TESTS" == "failed" ]]; then
   NEXT="test"; CMD="/drupilot-test"
   REASON="The last test run was red — fix the code (never the test) until the suite is green."
@@ -137,14 +270,16 @@ fi
 if [[ "$AS_JSON" == "1" ]] && have_cmd jq; then
   jq -n \
     --arg next "$NEXT" --arg command "$CMD" --arg reason "$REASON" \
-    --arg phase "$PHASE" --argjson assessed "$ASSESSED" \
+    --arg phase "$PHASE" --argjson assessed "$ASSESSED" --arg effort "$EFFORT" --arg state_file "$STATE_FILE" \
     --argjson ddev_configured "$DDEV_CONFIGURED" --argjson ddev_running "$DDEV_RUNNING" \
     --arg tests "$TESTS" --arg preservation "$PRESERVATION" \
-    --argjson is_extension "$IS_EXT" --arg type "$TYPE" \
+    --argjson is_extension "$IS_EXT" --arg type "$TYPE" --argjson env_removed "$ENV_REMOVED" \
     '{next:$next, command:$command, reason:$reason,
       phase: ($phase | select(. != "") // null),
-      assessed:$assessed, ddev_configured:$ddev_configured, ddev_running:$ddev_running,
-      tests:$tests, preservation:$preservation, is_extension:$is_extension, type:$type}'
+      assessed:$assessed, effort: ($effort | select(. != "") // null),
+      ddev_configured:$ddev_configured, ddev_running:$ddev_running,
+      tests:$tests, preservation:$preservation, is_extension:$is_extension, type:$type,
+      state_file: ($state_file | select(. != "") // null), environment_removed: $env_removed}'
 else
   if [[ -n "$CMD" ]]; then printf 'Next: %s — %s\n' "$CMD" "$REASON"
   else printf 'Next: (nothing required) — %s\n' "$REASON"; fi

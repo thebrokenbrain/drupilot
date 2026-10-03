@@ -61,7 +61,23 @@ D10 + PHP&lt;target site is blocked at install instead of fataling at runtime.
 | Auto-fixable by digests (complementary, AI-generated) | {{DIGESTS_AUTOFIX_COUNT}} |
 | Manual changes required | {{MANUAL_COUNT}} |
 | PHPStan deprecation findings (level {{PHPSTAN_LEVEL}}) | {{PHPSTAN_COUNT}} |
+| — hard (removed on Drupal 11: must fix, counted in the verdict) | {{DEPRECATIONS_HARD_COUNT}} |
+| — soft (still work on every Drupal 11 core: per policy, not in the verdict) | {{DEPRECATIONS_SOFT_COUNT}} |
+| — unknown removal version (treated as hard until reviewed) | {{DEPRECATIONS_UNKNOWN_COUNT}} |
 | PHPCS violations (Drupal, DrupalPractice) | {{PHPCS_COUNT}} |
+
+## Soft deprecations (policy: `{{SOFT_DEPRECATIONS_POLICY}}`)
+
+Classified by `scripts/analysis/classify-deprecations.sh`. A soft deprecation is
+removed only in a later major, so it keeps working on every Drupal 11 core;
+`DRUPILOT_SOFT_DEPRECATIONS` decides what Phase 1 does with it (`report` = list
+only, `defer` = Phase 2, `fix` = fix in Phase 1 when the replacement exists at the
+declared core floor, guarded with `DeprecationHelper::backwardsCompatibleCall()`
+when it exists only on newer cores).
+
+| Symbol | Deprecated in | Removed in | Effort | Replacement at core floor | Phase 1 action |
+|---|---|---|---|---|---|
+{{SOFT_DEPRECATION_ROWS}}
 
 ## Hard breaks detected
 
@@ -81,6 +97,18 @@ human review:
 
 - Required minimal change: `core_version_requirement: {{TARGET_CORE_REQUIREMENT}}`.
 - A missing `core_version_requirement` (or the legacy `core: 8.x` key) is blocking.
+
+## Pre-existing hygiene (not fixed in Phase 1)
+
+{{HYGIENE_SUMMARY}}
+
+These findings come from `lint-extension-metadata.sh` and do **not** change the
+effort verdict. Phase 1 only bumps submodule `core_version_requirement` values;
+the rest is reported for a follow-up (or Phase 2).
+
+| Severity | Check | Where | Finding | Suggested fix |
+|---|---|---|---|---|
+{{HYGIENE_ROWS}}
 
 ## Contrib dependencies — Drupal 11 status
 

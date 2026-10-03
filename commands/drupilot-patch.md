@@ -40,6 +40,11 @@ first option). Header "Patch for":
   `MODULE-port-to-drupal-11-ISSUE-COMMENT.patch`, ready to attach to an issue.
   Also generates the paste-ready comment. Still offline; **no push, no MR**.
 
+A pre-answer skips the tab: when
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key PATCH_KIND --subject "<SUBJECT>" --json`
+returns a `value` (`local` → Test locally, `issue` → Drupal.org issue comment),
+use it and say so in one line.
+
 If the developer picks the issue-comment option, ask for the **issue id** (`$2`
 if provided) and, optionally, the **comment number** (default `1`) — these only
 affect the filename and the generated comment, nothing is sent anywhere.

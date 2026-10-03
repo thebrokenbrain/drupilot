@@ -29,7 +29,7 @@ set -euo pipefail
 
 MODULE=""
 
-usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
+usage() { print_usage "$0"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -46,7 +46,7 @@ done
 PREFLIGHT="$(plugin_root)/scripts/env/preflight.sh"
 if ! bash "$PREFLIGHT" --profile setup --quiet >/dev/null 2>&1; then
   log_err "The 'setup' requirements (Docker daemon + DDEV) are not satisfied; Upgrade Status needs a DDEV site."
-  bash "$PREFLIGHT" --profile setup || true
+  bash "$PREFLIGHT" --profile setup >&2 || true
   exit 2
 fi
 
@@ -56,7 +56,8 @@ DRUPAL_ROOT="$(find_drupal_root "$PWD" 2>/dev/null || true)"
 
 cd "$DRUPAL_ROOT"
 
-# --- DDEV must be running -------------------------------------------------
+# --- DDEV must be running (a stopped project is started explicitly) --------
+ddev_ensure_running "$DRUPAL_ROOT" || true
 if ! ddev_running "$DRUPAL_ROOT"; then
   log_warn "DDEV is not running for this project. Start it with 'ddev start' (or /drupilot-setup)."
   log_warn "Soft-skipping Upgrade Status (it needs a running, installed Drupal site)."

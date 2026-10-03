@@ -1,0 +1,4 @@
+acme_reports.overview:
+  title: 'Acme reports'
+  route_name: acme_reports.overview
+  parent: system.admin_reports

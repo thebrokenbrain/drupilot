@@ -86,6 +86,12 @@ both modes.
     the GitLab API **only if it responds**; if the API is blocked, **degrade
     gracefully** to printing the MR URL for a one-click manual open.
 
+  A pre-answer skips this tab: when
+  `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key CONTRIB_MODE --subject "<SUBJECT>" --persist --json`
+  returns a `value` (`semi` / `auto`), use it and say so in one line. Persist a
+  tab answer the same way, with `prefs_set DRUPILOT_CONTRIB_MODE <mode>`, so the
+  next run pre-selects it.
+
   (An autonomous run never reaches this command — it is `disable-model-invocation`
   and outward-facing.)
 
@@ -105,7 +111,24 @@ its `CONTRIBUTING.md` (some contrib still use the legacy
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/issue-fork.sh" --project "<PROJECT>" --issue "<ISSUEID>"
 ```
 
-Apply the ported change-set on the branch, `git add -A`, and commit.
+Apply the ported change-set on the branch and `git add -A`. **Before
+committing, detect the repository's git hooks** (GrumPHP, husky, lefthook,
+pre-commit, CaptainHook, `core.hooksPath`, a `.git/hooks` script):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/contrib/git-hooks.sh" --subject <dir> --json
+```
+
+Then commit normally and **let the hooks run** — give a slow hook a longer Bash
+timeout or run the commit in the background; never normalize `--no-verify`.
+Only when a hook cannot complete in this context, run
+`git-hooks.sh --subject <dir> --run-equivalents` (phpcs / phpstan / php -l /
+composer validate, plus PHPUnit with `--with-tests`, through DDEV), fix every
+failure, and commit with `--no-verify` **only when `all_green` is true** (the
+PreToolUse guard asks the developer to confirm such a commit). Record the
+substitution for `port-report.md` (`verification.commit_hooks`: which
+validations replaced the hook, and the `uncovered` tasks) and say so in the
+MR/issue comment — never claim the hook itself passed.
 
 ## Step 4 — Push, open the MR, and attach a patch
 
@@ -122,6 +145,10 @@ developer actually consents:
   instead (route to `/drupilot-patch` → issue-comment option). Lets them validate
   on the issue before committing to an MR.
 - **Cancel** — stop with nothing sent.
+
+This tab is never pre-answered: `DRUPILOT_CHOICE_PUSH` has no effect
+(`config/choices.json` marks it `preanswer: false`). `DRUPILOT_CONTRIB_MODE=auto`
+is the explicit setting that skips it.
 
 In **auto** mode, skip the tab and proceed (the mode's whole point), but the
 `guard-contrib.sh` PreToolUse backstop still applies, and an autonomous run is
@@ -178,6 +205,15 @@ Hard rules, always:
   MR URL — never fail the whole flow over the API.
 
 ## Step 6 — Report
+
+When an MR was opened (or its URL handed over after a push) or the legacy patch
+was produced for the issue, record the **contributed** stage in the subject's
+`state.json` — never before the outward-facing action really happened, and not
+when the developer declined it:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <subject_path> --stage contributed
+```
 
 Summarize in English: the issue, the mode used, the fork/branch, the commit
 message format applied, what was pushed and whether the MR was opened via API or

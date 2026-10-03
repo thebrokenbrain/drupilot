@@ -1,5 +1,5 @@
 ---
-description: Verify all drupilot software requirements (git, jq, php/composer, Docker + daemon, DDEV, SSH/PAT for contribution) grouped by what each is for, with per-platform install instructions, then OPTIONALLY run assisted installation after explicit confirmation. Use for "/drupilot-doctor", "check my setup", "what do I need to install", or when a command reports a missing hard requirement.
+description: Verify all drupilot software requirements (git, jq, php/composer, Docker + daemon, DDEV, SSH/PAT for contribution) grouped by what each is for, plus report-only health checks for known pitfalls (generated configs, toolchain vs known-good, disk space, origin residue), with per-platform install instructions, then OPTIONALLY run assisted installation after explicit confirmation. Use for "/drupilot-doctor", "check my setup", "what do I need to install", or when a command reports a missing hard requirement.
 argument-hint: "[install]"
 allowed-tools: Bash, Read, Skill, AskUserQuestion
 ---
@@ -14,13 +14,19 @@ install what is missing. **English only** in all output.
 Run preflight with the `all` profile so it reports every requirement without gating any
 single operation (profile `all` always exits 0; it is report-only). `--deep` probes the
 real PHP inside DDEV (one `ddev exec` call) when the container is up — the full report can
-afford it; the per-command gate and the SessionStart hook deliberately do not pass it:
+afford it; the per-command gate and the SessionStart hook deliberately do not pass it.
+`--extended` adds the **health** checks for known pitfalls (report-only, never part of
+`ready`): xmllint, the sed flavour, a well-formed `phpcs.xml.dist` and a `phpstan.neon`
+without the deprecated `drupal_root` at the Drupal root, the installed dev toolchain vs
+the known-good reference (from `composer.lock`, no PHP run), free disk space, and
+drupilot/DDEV residue in the subject's origin checkout. The subject is the current
+directory (`$1` here is `install`, never a path):
 
-!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile all --deep`
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile all --deep --extended`
 
 Also capture the structured form to reason about precisely:
 
-!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile all --deep --json`
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile all --deep --extended --json`
 
 ## Step 2 — Render readiness
 
@@ -30,6 +36,10 @@ Present the result grouped by purpose, in English:
 - **Environment & tests (DDEV):** Docker, Docker daemon running, DDEV, Selenium add-on.
 - **Contribution (Drupal.org):** git identity, SSH key or GitLab PAT, drupal.org
   account + GitLab ToS, optional glab/curl.
+- **Health (known pitfalls)** — the rows with `category: "health"`: xmllint, sed
+  flavour (info), generated configs, one row per toolchain package plus
+  `toolchain_combo`, disk space, origin residue. They are warnings, never blockers:
+  say so, and never fold them into the readiness summary.
 
 For each check use the JSON `ok`/`present`/`kind` to mark it: satisfied (with the
 detected version), optional-and-missing, or missing/insufficient (show required vs
@@ -51,6 +61,19 @@ the `docker` group and re-login) and that the daemon must be **started/running**
 just installed. For SSH/PAT, point at the drupal.org URLs from the hints and never ask
 for or print a token value.
 
+**Toolchain vs known-good.** When the JSON's `toolchain.match` is false, show a small
+table of `toolchain.installed` vs `toolchain.known_good` for the packages in
+`toolchain.differs`. If `toolchain.known_broken` is non-empty, say plainly that the
+installed combination is known to break (quote each `symptom`, e.g. "[ERROR] Could
+not detect twig set.") and give the repair, which runs inside DDEV and never on the
+host: `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-toolchain.sh" --dir <toolchain.root>
+--source reference` (it also refreshes the lock). A version that only differs, with
+no known-broken match, may well work: report it as information. For an invalid
+`phpcs.xml.dist` or a `phpstan.neon` with `drupal_root`, relay the row's hint
+(`render-templates.sh ... --force`, which backs the old file up first). For origin
+residue, relay the paths and the hint; never delete anything in the origin yourself.
+For low disk space, point at `/drupilot-clean`.
+
 ## Step 4 — Offer assisted installation (opt-in only)
 
 Assisted install only runs when the user clearly asks for it — either the argument
@@ -68,6 +91,9 @@ docker, ddev — not the manual items like the drupal.org account or SSH key), u
 - Plus a single follow-up (header "How"): **Install selected** /
   **Show the commands first** (print the per-OS commands, install nothing) /
   **Skip** (leave it to the developer).
+
+These tabs are never pre-answered (`DRUPILOT_CHOICE_DOCTOR_INSTALL` has no
+effect): installing software always needs an explicit answer.
 
 Then:
 

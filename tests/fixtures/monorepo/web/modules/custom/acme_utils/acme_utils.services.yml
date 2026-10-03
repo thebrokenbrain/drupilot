@@ -1,0 +1,9 @@
+services:
+  acme_utils.helper:
+    class: Drupal\acme_utils\Helper
+    arguments: ['@acme_core.formatter']
+
+  # Orphan: the class was removed in a refactor and never cleaned up.
+  acme_utils.old_helper:
+    class: Drupal\acme_utils\Legacy\OldHelper
+    arguments: ['@acme_utils.helper']

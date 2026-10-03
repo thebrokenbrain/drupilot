@@ -29,7 +29,7 @@ set -euo pipefail
 PROJECT=""
 AS_JSON=0
 PAGES=3
-usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
+usage() { print_usage "$0"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

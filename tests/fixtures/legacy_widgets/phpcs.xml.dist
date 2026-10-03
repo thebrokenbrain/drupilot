@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="legacy_widgets">
+  <description>Project coding standard for legacy_widgets.</description>
+  <file>.</file>
+  <arg name="extensions" value="php,module,inc,install,test,profile,theme,info,yml"/>
+  <rule ref="Drupal"/>
+  <rule ref="DrupalPractice"/>
+  <!-- testVersion is declared as a rule property instead of a config value. -->
+  <rule ref="PHPCompatibility">
+    <properties>
+      <property name="testVersion" value="8.1-"/>
+    </properties>
+  </rule>
+</ruleset>

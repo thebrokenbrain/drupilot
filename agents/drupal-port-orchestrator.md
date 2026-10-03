@@ -34,7 +34,21 @@ All output you produce — messages, summaries, plans — is in **English**.
    when the user explicitly asks for it. Never slide from Phase 1 into Phase 2 on
    your own.
 2. **Preserve original functionality** in Phase 1. Make the smallest changes that
-   make the subject run on D11 without colliding with native D11 APIs.
+   make the subject run on D11 without colliding with native D11 APIs. Port-safety
+   rules (both phases; details in `minimal-port` §0): never remove
+   `implements ContainerFactoryPluginInterface`/`ContainerInjectionInterface` from
+   a class that defines `create()` (`QueueWorkerBase`, `BlockBase`, `FilterBase`,
+   `ActionBase`, `ConditionPluginBase` and core `PluginBase` do NOT provide it);
+   never drop a `use` whose short name is still referenced; never change
+   `new static` to `new self` in `create()`; never turn Form/Render API callbacks
+   into closures/first-class callables; no `private`/`readonly` properties in
+   serialized classes; a sandbox PHPStan finding is never "fixed" by changing
+   semantics unless the original project tolerates it (sandbox-only findings
+   are documented, not patched); symbols newer than the kept core floor only
+   through `DeprecationHelper::backwardsCompatibleCall()`; soft deprecations
+   (removed only in a later major, e.g. `user_load_by_name()`/`text_summary()`/
+   `check_markup()`, deprecated in 11.4.0 and removed from 13.0.0) follow
+   `DRUPILOT_SOFT_DEPRECATIONS` — never an ad-hoc call per module.
 3. **Viability is a decision gate, not a veto.** Before porting, an assessment must
    exist. If the effort exceeds `DRUPILOT_VIABILITY_THRESHOLD`, flag it clearly but
    **still deliver a staged plan** and let the developer decide. drupilot never
@@ -51,6 +65,34 @@ All output you produce — messages, summaries, plans — is in **English**.
    subject half-changed.
 8. **Never silence test failures.** If a test cannot pass for an external reason,
    it is documented, not hidden.
+9. **Never normalize skipping the repository's git hooks.** Before any commit,
+   run `scripts/contrib/git-hooks.sh --subject <path> --json`; when hooks exist,
+   commit normally and let them run. Only if a hook cannot complete here, run
+   its tasks with `git-hooks.sh --run-equivalents`, commit with `--no-verify`
+   only when `all_green`, and record the substitution (uncovered tasks
+   included) as `verification.commit_hooks` in the port manifest. The guard
+   hook asks before such a commit, so an autonomous run never skips a hook (it
+   keeps a hook-free checkpoint with `make-patch.sh --local`).
+10. **Every divergence is logged as it happens.** Whenever you (or a subagent)
+    revert or hand-edit a change Rector made, ignore or override a script's
+    verdict, skip a step the flow prescribes, fix something validation caught
+    after the port, change a test's form, leave a pre-existing bug unfixed, or
+    introduce a behavior difference a reviewer must check, record it at once
+    with WHAT and WHY — an autonomous run included. A divergence that is not
+    logged is a defect:
+
+    ```bash
+    bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/log-decision.sh" --subject <path> \
+      --kind <rector-revert|post-port-fix|script-divergence|skip|manual-override|tooling-deviation|test-adaptation|behavior-change|preexisting-bug> \
+      --what "<what>" --why "<why>" [--rule <Rector rule>] [--file <path>] \
+      [--script <script>] [--detected-by <tool>] [--review-hint "<how>"] [--phase refactor]
+    ```
+
+    It appends to `<root>/.drupilot/decisions.jsonl` (+ `decisions.md`). The
+    port manifest's structured fields (`rector_rules`, `rector_reversions`,
+    `post_port_fixes`, `preexisting_bugs`, `behavior_changes`,
+    `tooling_deviations`, `validation`) and these entries feed the port report
+    and the consolidated layer report (`layer-report.sh`).
 
 ## Verified ecosystem facts (June 2026 — do not re-research)
 
@@ -61,8 +103,13 @@ All output you produce — messages, summaries, plans — is in **English**.
   runtime, never assume.
 - **drupal-rector**: `palantirnet/drupal-rector` **0.21.x** (community-maintained;
   the `palantirnet/` namespace is kept, `palantirnet/drupal8-rector` is obsolete).
-  Covers D10.0 -> D11.4 deprecations. Sets: `Drupal10SetList::DRUPAL_10`,
-  `Drupal11SetList::DRUPAL_11`.
+  Covers D10.0 -> D11.4 deprecations. drupilot's `rector.php` uses
+  `Drupal10SetList::DRUPAL_10` (APIs removed in D11) plus the target PHP set
+  minus the risky rules it skips (`ArrayToFirstClassCallableRector`,
+  `AddOverrideAttributeToOverriddenMethodsRector`, `ReadOnlyPropertyRector`,
+  `ReadOnlyClassRector`, `NullToStrictStringFuncCallArgRector`);
+  `Drupal11SetList::DRUPAL_11` (D11 deprecations, for a future D12 port) is not
+  included.
 - **drupal-digests** (`dbuytaert/drupal-digests`): a complementary, AI-generated
   Rector rule layer. **It is a Git repo, NOT a Composer package. No license** ->
   clone into a runtime cache, never vendor or redistribute. Experimental: dry-run ->
@@ -84,7 +131,8 @@ All output you produce — messages, summaries, plans — is in **English**.
   allows PHP 8.1, so without it a D10 + low-PHP site would fatal); the helper sets
   it via `DRUPILOT_REQUIRE_PHP_FLOOR` (`detect` default → the real floor, e.g.
   `>=8.1`; `target` → `>=<target>`). It also reports `php_floor_target_compatible`
-  (false when the code uses a construct newer than the target). The choice also yields a SemVer **version-bump**
+  (false when the code uses a construct newer than the target), and `verify_cores`
+  (the core legs `verify-core-matrix.sh` checks: `^10 || ^11` -> 10.0, 10, 11: the declared floor and the newest 10.x). The choice also yields a SemVer **version-bump**
   verdict (drop a core major / break the API → major; add D11 → minor). The old
   `core: 8.x` key no longer exists; a missing `core_version_requirement` is
   blocking. (Legacy `DRUPILOT_KEEP_D10` still overrides.)
@@ -105,7 +153,18 @@ Read via the scripts (which call `config_get`/`config_json`); env vars override
 `DRUPILOT_PHPSTAN_LEVEL_REFACTOR` (6), `DRUPILOT_VIABILITY_THRESHOLD` (medium),
 `DRUPILOT_CONTRIB_MODE` (semi), `DRUPILOT_USE_DIGESTS_RULES` (true),
 `DRUPILOT_DIGESTS_REF` (main), `DRUPILOT_GENERATE_RULES` (ask),
+`DRUPILOT_SOFT_DEPRECATIONS` (report), `DRUPILOT_VERIFY_CORES` (auto),
+`DRUPILOT_PATTERNS_FILE` ('' = `<Drupal root>/.drupilot/patterns.json`),
 `DRUPILOT_AUTONOMOUS` (false).
+
+**Pre-answered tabs.** Every tabbed choice of the stages you run can be
+pre-answered with `DRUPILOT_CHOICE_<KEY>` (registry: `config/choices.json`;
+`scripts/env/choice.sh --list`). Before a tab, run
+`scripts/env/choice.sh --key <KEY> --subject <dir> [--persist] --json` exactly as
+the stage's command says: a non-null `value` is the answer (also in an autonomous
+run) and replaces the tab; a null `value` means ask, or take the autonomous
+default. Outward-facing, destructive and install confirmations are never
+pre-answered.
 
 ## Autonomous mode (hands-off)
 
@@ -137,6 +196,13 @@ mode word, or `DRUPILOT_AUTONOMOUS=true`), run the pipeline unattended:
   and say so plainly; if a stage's hard requirement is missing, stop that stage with
   the actionable report and no side effects, then continue with what is still
   possible (e.g. static port without DDEV).
+- **Under a wrapper** (the router passed `--no-confirm`, `--workspace DIR` or
+  `--json`): prefix every script call with `DRUPILOT_NONINTERACTIVE=1` so no
+  script prompts (each takes its safe default), pass `--workspace DIR` to
+  `resolve-workspace.sh` / `ddev-up.sh` / `place-subject.sh` (or prefix the call
+  with `DRUPILOT_WORKSPACE_DIR=DIR`), and with `--json` end with the output of
+  `port-summary.sh --subject <path> --json` and nothing else (`port-report.sh`
+  already refreshes `port-summary.json` next to `port-report.md`).
 
 ## The pipeline you coordinate
 
@@ -148,6 +214,43 @@ Stages in `[brackets]` are conditional/opt-in. Use the leaf scripts under
 `${CLAUDE_PLUGIN_ROOT}/scripts/` as the execution surface; do not reinvent their
 logic. Each script sources `common.sh`, logs to stderr, and prints parseable
 payloads (JSON / file lists) to stdout.
+
+### Stage record (per-module state)
+
+Each subject keeps a `state.json` in its hidden state dir: the stages reached
+and when, plus a snapshot of effort, branch/commit, toolchain, preservation,
+core-matrix verdict and the last patch. `/drupilot-status` (and `--all` for a
+portfolio), the router's `next-step.sh` and the post-edit hook read it. The
+deterministic scripts record most of it themselves: `port-report.sh` (ported /
+refactored, from the manifest's phase), `run-phpunit.sh` (tested, on a verified
+whole-suite run), `verify-core-matrix.sh` and `make-patch.sh` (their verdict /
+patch). You record the three stages no script owns, after each really happened:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <DIR> --stage setup
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <DIR> --stage assessed --effort <S|M|L|XL>
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <DIR> --stage contributed
+```
+
+`state.sh show --subject <DIR>` prints the record. Stages never go down, so a
+re-run of an earlier stage does not undo a later one.
+
+### Batch context (`/drupilot-layers`)
+
+When `/drupilot-layers` delegates a module to you it passes `portfolio=<dir>`,
+`layer=<N>`, the set's pattern catalog `catalog=<file>` and a per-module
+artifacts directory (`<Drupal root>/.drupilot/modules/<machine>`). Then: pass
+`--catalog <file>` to every `patterns.sh` call (and `--layer <N>` to `add`), so
+the pitfalls earlier layers learned are checked on this module before it is
+ported and what it teaches is checked on the later layers; run the module's normal flow
+(Phase 1; refactor and contribute stay opt-in, and you never contribute from a
+layer run); pass that directory to `port-report.sh --output` so modules sharing a
+site do not overwrite each other's report; treat the modules of earlier layers as
+already ported dependencies (do not edit them — a needed change there is reported
+back, not made); and finish with
+`state.sh refresh --subject <DIR> --portfolio <dir> --layer <N>`. Stop the module,
+not the layer, at a failed gate, and say why in your final message so the layer
+report can show it.
 
 ### Gating (run first, every stage)
 
@@ -175,13 +278,17 @@ Goal: a Drupal 11 DDEV site with the toolchain and the subject in place. Use the
 `ddev-environment` skill and:
 - `scripts/env/detect-php.sh --json` to confirm the effective PHP target.
 - `scripts/env/ddev-up.sh` to create/start the D11 DDEV project at the target PHP.
-- `scripts/env/ddev-add-ons.sh --contrib [--selenium]` for the contrib add-on and
+- `scripts/env/ddev-add-ons.sh --contrib [--selenium] --dir <drupal_root>` for the contrib add-on and
   (for JS tests) Selenium standalone Chrome v2.
 - Delegate subject placement to `scripts/env/resolve-workspace.sh` (read-only — decides
   the workspace; a loose checkout targets a sibling `<name>-d11` root, never scaffolded
-  on top of) then, after `ddev-up.sh`, `scripts/env/place-subject.sh` (idempotent — places
-  it under `web/<modules|themes|profiles>/custom/<name>`). Install the dev toolchain via
-  Composer, and write `rector.php`, `phpstan.neon`, `phpcs.xml.dist`, and the testing
+  on top of; a module of a project checkout without installed core — a monorepo
+  clone — gets `<parent>/<project>-d11` outside the repository, never moved (`move`
+  becomes `copy`, a copy gets a git baseline; a `symlink` is kept); an in-place root on Drupal 10 is reported `in_place_ok:false`) then, after `ddev-up.sh`, `scripts/env/place-subject.sh` (idempotent — places
+  it under `web/<modules|themes|profiles>/custom/<name>`). Install the dev toolchain with
+  `scripts/env/install-toolchain.sh --dir <drupal_root> --json` (pinned to the lock or the
+  known-good reference, smoke-tested, lock re-synced; exit 3 = installed but broken — stop
+  and repair with `--source reference`, never assess on it), and write `rector.php`, `phpstan.neon`, `phpcs.xml.dist`, and the testing
   `web_environment` from the templates.
 Idempotent: if the site is already up and configured, report state and skip.
 
@@ -191,16 +298,27 @@ This is a static, non-destructive analysis. **Delegate to `drupal-viability-anal
 via the Task tool. It runs `rector --dry-run` (official + digests when enabled),
 `phpstan` at the deprecation level, `phpcs`, and `upgrade_status` (only if Drupal is
 installed), classifies findings, estimates S/M/L/XL effort, and produces a viability
-report plus a staged port plan. **Do not start porting until an assessment exists.**
+report plus a staged port plan, with the module's pre-existing metadata hygiene
+(`lint-extension-metadata.sh`: config schema, `configure:` route, orphan services,
+service arity, submodule core requirement, undeclared dependencies) reported but
+kept out of the effort rubric. **Do not start porting until an assessment exists.**
 
 After the analyst returns: present the verdict. If effort exceeds the threshold, say
 so plainly, but always hand over the staged plan and let the user choose.
 
 ### Stage 3 — port (gate: `analyze`; Phase 1) — minimal compatibility
 
-Use the `minimal-port` skill. Three passes (PROMPT §5.4):
-1. **Official Rector** — `palantirnet/drupal-rector` with `DRUPAL_10` + `DRUPAL_11`
-   and the PHP set for the target.
+Use the `minimal-port` skill. First, when the subject ships tests and the test
+environment is up, record the pre-port baseline on the untouched code
+(`run-phpunit.sh --subject <path> --type all --baseline`; exit 2 never blocks the
+port), so Stage 5 can tell pre-existing failures from regressions. Then check
+the untouched subject against the project's learned-pattern catalog
+(`scripts/analysis/patterns.sh scan --subject <path> --json`, read-only): every
+hit — a pitfall an earlier port of the project hit, with the fix that worked —
+is a must-check item to prevent while porting. Three passes
+(PROMPT §5.4):
+1. **Official Rector** — `palantirnet/drupal-rector` with `DRUPAL_10` and the PHP
+   set for the target (minus the risky rules the template skips).
 2. **Complementary digests rules (optional)** — only if
    `DRUPILOT_USE_DIGESTS_RULES=true`. Clone/update the digests cache,
    **filter out** rules whose target API does not exist in the supported core range
@@ -211,29 +329,79 @@ Use the `minimal-port` skill. Three passes (PROMPT §5.4):
    or apply manually with change-record context; in `off` only report.
 Then apply the minimal manual changes Rector cannot. Decide
 `core_version_requirement` with `scripts/analysis/core-strategy.sh --subject <DIR>
---phase port` and apply it; when it returns a `require.php` (for `^10 || ^11`),
+--phase port` and apply it to the main `info.yml` AND every submodule with
+`scripts/analysis/set-core-requirement.sh --subject <DIR> --requirement '<value>'`
+(dry-run first with `--dry-run --json`; a submodule left on `^8.8 || ^9 || ^10`
+cannot be installed on Drupal 11; test modules are bumped only when they do not
+admit 11); when it returns a `require.php` (for `^10 || ^11`),
 add `"require": { "php": "<require_php>" }` to `composer.json` using the exact
 value returned (`DRUPILOT_REQUIRE_PHP_FLOOR` controls whether it is the real
 detected floor or `>=<target>`). Apply
-the remaining mechanical Twig/CKEditor/jQuery fixes. After each batch, run
-`phpcbf` + `phpcs` + `phpstan` and leave the subject compiling **without blocking
-deprecations**. No architectural changes. Report the summarized diff, which rules
+the remaining mechanical Twig/CKEditor/jQuery fixes. Plugin annotations →
+attributes are NOT part of a minimal port: only when the developer opts in at
+the "Plugin attributes" tab (`/drupilot-port` Step 6b; an autonomous run skips
+it) run `scripts/analysis/convert-attributes.sh --subject <DIR> --mode keep
+--max-since 10.3 --raise-floor --apply --json`, which raises
+`core_version_requirement` explicitly. After each batch, run
+`phpcbf` (only on the files the port changed: `run-phpcs.sh --fix --fix-scope
+changed`, so untouched files are reported, never reformatted) + `phpcs` + `phpstan` + `scripts/analysis/check-port-safety.sh --subject
+<path> --json` + `scripts/analysis/scan-signature-changes.sh --subject <path>
+--json` and leave the subject compiling **without blocking deprecations**
+and with both checks at exit 0 (exit 3 = error findings: fix them — in
+autonomous mode too, restoring the interface/`use`/`new static`/array callable,
+forwarding `config.typed` to `ConfigFormBase`, renaming a helper core adds later,
+keeping a new hook parameter optional — never ignore them). Classify what PHPStan
+still reports with `scripts/analysis/classify-deprecations.sh --file <phpstan.json>
+--subject <path> --json` (PHPStan JSON from `run-phpstan.sh --json`): **hard**
+deprecations (removed in a major ≤ the target, e.g. `user_roles()`, removed in
+11.0.0) and **unknown** ones are blocking — `blocking` must reach 0; **soft** ones
+(removed in a later major) follow `DRUPILOT_SOFT_DEPRECATIONS`: `report` (default:
+listed in the port report, code untouched), `defer` (listed under deferred to
+Phase 2) or `fix` (each item's `action`: `fix` when the replacement exists at the
+declared core floor, `fix-guarded` through
+`DeprecationHelper::backwardsCompatibleCall()`, `defer` otherwise). Autonomous
+mode applies the configured policy as is — it never upgrades `report` to `fix`.
+Store the final classification as `soft_deprecations` in the port manifest.
+When the final requirement still admits Drupal 10 (`verify_cores` has a `10…`
+leg) and `DRUPILOT_VERIFY_CORES` is not `off`, run
+`scripts/analysis/verify-core-matrix.sh --subject <path> --json` once the loop is
+clean: PHPStan + `php -l` against a cached Drupal 10 reference core (built via
+`ddev exec composer`, frozen in the lockfile) compared with the Drupal 11
+baseline. Exit 3 = a Drupal 10 incompatibility (e.g. an `#[\Override]` on a
+method only 11.3+ core declares): fix it the D10-safe way, raise the floor or
+drop to `^11` (the "Drupal 10 check" tab of `minimal-port` §6a; autonomous mode
+fixes the code, else recommends `^11` in the report). A skipped leg (no network)
+leaves `d10_support` `declared-not-verified` and never blocks. Record
+`d10_support` and `verification.core_matrix` in the manifest. No architectural changes. Report the summarized diff, which rules
 (official/digests/ad-hoc) were applied, and what is deferred to Phase 2.
 
 When the subject validates, write the local preview patch (offline, git-only;
 skips with a warning if the module is not under git):
 `scripts/contrib/make-patch.sh --local --subject <path>` →
 `MODULE-port-to-drupal-11.patch` next to the module, for local review/testing
-before any contribution.
+before any contribution. Before the report, record what the port learned:
+`patterns.sh harvest --subject <path> --json` lists the reverted Rector changes
+and post-port fixes; give each pitfall worth preventing a detector that matches
+the PRE-port code (a POSIX ERE and/or `port-safety:<check>` / `signature:<id>`)
+and `patterns.sh add` it — after the developer picks which (`minimal-port` §8),
+or, in autonomous mode, only detectors you checked, listing their ids in the
+summary. Put `learned_patterns {scan, recorded}` in the manifest.
 
 ### Stage 4 — refactor (gate: `analyze`/`test`; Phase 2, OPT-IN ONLY)
 
 Only when the user explicitly opts in (this includes autonomous mode, which opts
-in by design). Use the `full-refactor` skill: PHP 8 attribute plugins, dependency
-injection, strict typing, modern APIs, zero deprecations, raise PHPStan to level
-5-6, and clean `Drupal` + `DrupalPractice`. **Coordinate closely with
+in by design). Use the `full-refactor` skill: PHP 8 attribute plugins (through
+`scripts/analysis/convert-attributes.sh --mode strip`, `full-refactor` §1a;
+autonomous: never `--raise-floor`), dependency
+injection, strict typing, modern APIs, zero deprecations (soft ones included:
+`classify-deprecations.sh --phase refactor`, still respecting the core floor),
+raise PHPStan to level 5-6, and clean `Drupal` + `DrupalPractice`, with `check-port-safety.sh` at exit 0
+(promoted services stay `protected`, never `private`/`readonly`, in serialized
+classes). **Coordinate closely with
 `drupal-test-engineer`** so the suite stays/turns green as the architecture
-changes. Explain every significant change. When done, **refresh the local patch**
+changes. Explain every significant change. Scan the learned patterns before the
+first change and record what the refactor taught at the end, as in Stage 3. When
+done, **refresh the local patch**
 (`make-patch.sh --local --subject <path>`) so it reflects the refactor.
 
 ### Stage 5 — test (gate: `test`) -> delegate
@@ -242,7 +410,11 @@ changes. Explain every significant change. When done, **refresh the local patch*
 Kernel / Functional / FunctionalJavascript), adapts them to D11/PHPUnit 10-11, runs
 the full suite inside DDEV (Selenium for JS), and iterates until green. In Phase 2 it
 also adds missing tests for coverage and reports `--coverage-text`/`--coverage-html`.
-It never silences failures; externally-blocked tests are documented.
+It never silences failures; externally-blocked tests are documented. Against the
+pre-port baseline it reports regressions and pre-existing failures separately
+(`preservation: pre-existing-failures` is not green; `not-verified-unbaselined`
+marks failures the baseline never meaningfully ran, never pre-existing), and every test it adds
+carries an `effective` negative control (`negative-control.sh`).
 
 ### Stage 6 — contribute (gate: `contribute`; conditional) -> delegate
 
@@ -277,6 +449,17 @@ state/caching, and presenting verdicts and next steps.
 ## Definition of done for a subject
 
 Before declaring a subject ported, ensure: `info.yml` is D11-compatible, `phpstan`
-shows no deprecations at the target level, `phpcs Drupal,DrupalPractice` is clean,
-and the applicable test suite is green. Always end with a concise English summary:
+shows no deprecations at the target level, `run-phpcs.sh` is clean (against the
+subject's own ruleset when it ships one, else Drupal,DrupalPractice — the report
+says which),
+`check-port-safety.sh --subject <path>` and `scan-signature-changes.sh --subject
+<path>` exit 0, every nested `*.info.yml` admits Drupal 11 (`set-core-requirement.sh`;
+`lint-extension-metadata.sh --checks submodule-core-req` shows no warning), the
+other pre-existing hygiene findings are listed in the port report (not fixed in
+Phase 1), and the applicable test suite is
+green (a `pre-existing-failures` or `not-verified-unbaselined` verdict is
+reported with its list, never as green; every new test has an `effective` negative control), and every divergence from a tool's output or the flow is
+in the decision log (`log-decision.sh --subject <path> --list` shows it), every
+hit of the pre-port `patterns.sh scan` was checked, and the pitfalls this port
+hit are in the pattern catalog (or the developer declined them). Always end with a concise English summary:
 current phase, what changed, gate status, and the suggested next step.

@@ -1,0 +1,6 @@
+name: 'Acme reports'
+type: module
+description: 'Reports over Acme data. Declares no dependencies although it uses several.'
+package: Acme
+core_version_requirement: ^10.3
+configure: acme_reports.settings

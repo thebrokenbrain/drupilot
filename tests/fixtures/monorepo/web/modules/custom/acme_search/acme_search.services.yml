@@ -1,0 +1,4 @@
+services:
+  acme_search.indexer:
+    class: Drupal\acme_search\Indexer
+    arguments: ['@acme_api.client', '@entity_type.manager']

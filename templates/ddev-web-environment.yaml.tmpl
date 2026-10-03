@@ -1,28 +1,26 @@
 # drupilot — .ddev/config.testing.yaml (web_environment fragment for testing)
+# drupilot-template-version: 2
 #
 # Extra testing environment variables for the Drupal 11 PHPUnit suite, written as
 # a SEPARATE .ddev/config.testing.yaml so it MERGES with — and does not fight —
-# what ddev-drupal-contrib already provides. That add-on's config.contrib.yaml
-# already sets SIMPLETEST_DB, SIMPLETEST_BASE_URL=http://web, BROWSERTEST_*,
-# DTT_* and DRUPAL_TEST_WEBDRIVER_*. So here we add ONLY what is missing:
-#   - MINK_DRIVER_ARGS_WEBDRIVER  (used by Drupal core's WebDriverTestBase)
-#   - SYMFONY_DEPRECATIONS_HELPER
-# Generated from a template; {{WEBDRIVER_HOST}} is the Selenium webdriver
-# endpoint host:port, e.g. selenium-chrome:4444. After the add-on is installed,
-# READ the generated .ddev/docker-compose.selenium-chrome.yaml for the real
-# service host rather than assuming it (PROMPT 2.5 / 7.1).
+# what the add-ons already provide:
+#   - ddev-drupal-contrib (config.contrib.yaml): SIMPLETEST_DB,
+#     SIMPLETEST_BASE_URL=http://web, BROWSERTEST_*, DTT_*.
+#   - ddev-selenium-standalone-chrome (config.selenium-standalone-chrome.yaml):
+#     MINK_DRIVER_ARGS_WEBDRIVER (with "w3c":true) and DRUPAL_TEST_WEBDRIVER_*.
+# So here we add ONLY what is missing: SYMFONY_DEPRECATIONS_HELPER.
 #
-# Do NOT re-declare SIMPLETEST_BASE_URL here: the add-on already sets it to
+# Do NOT re-declare MINK_DRIVER_ARGS_WEBDRIVER here. DDEV merges config.*.yaml
+# files in name order, so this file would REPLACE the Selenium add-on's value.
+# Drupal 11.4's WebDriverTestBase::getMinkDriverArgs() forces "w3c" to FALSE
+# whenever goog:chromeOptions does not set it (deprecated in drupal:11.4.0, see
+# https://www.drupal.org/node/3460567), and the add-on's current Chromium image
+# then refuses the session ("No nodes support the capabilities in the
+# request"), failing every FunctionalJavascript test. The add-on owns the value
+# and keeps it in step with its Selenium image.
+#
+# Do NOT re-declare SIMPLETEST_BASE_URL either: the add-ons set it to
 # http://web, which is what Selenium (on the same DDEV network) must reach; a
 # ddev.site URL would override that with a worse value.
-#
-# CRITICAL QUOTING: DDEV re-serializes each web_environment value into the
-# generated docker-compose by wrapping it in DOUBLE quotes WITHOUT escaping the
-# double quotes the value already contains. A raw JSON value therefore yields
-# invalid compose YAML ("did not find expected key") and `ddev start` fails. So
-# MINK_DRIVER_ARGS_WEBDRIVER must have its inner double quotes pre-escaped as \"
-# and the whole item wrapped in YAML SINGLE quotes (which keep backslashes
-# literal). This mirrors how ddev-drupal-contrib emits DTT_MINK_DRIVER_ARGS.
 web_environment:
-  - 'MINK_DRIVER_ARGS_WEBDRIVER=[\"chrome\",{\"browserName\":\"chrome\",\"goog:chromeOptions\":{\"args\":[\"--disable-gpu\",\"--headless\",\"--no-sandbox\"]}},\"http://{{WEBDRIVER_HOST}}/wd/hub\"]'
   - SYMFONY_DEPRECATIONS_HELPER=disabled

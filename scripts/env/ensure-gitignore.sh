@@ -14,9 +14,15 @@
 # one, leaving every other line untouched. Re-running is a no-op once present.
 #
 # Usage:
-#   ensure-gitignore.sh [--root DIR] [--dry-run]
-#     --root     Drupal project root (default: detected from $PWD).
+#   ensure-gitignore.sh [--root DIR | --subject DIR] [--dry-run]
+#     --root     Drupal project root (wins over --subject).
+#     --subject  module/theme directory: the root is the Drupal root found by
+#                walking up from it, or — for a loose subject not yet placed —
+#                the test-bed root resolve-workspace.sh targets.
 #     --dry-run  print what would change; write nothing.
+#   With neither flag, the root is detected from $PWD.
+#   A value that is still an unsubstituted <placeholder> (e.g. "<drupal_root>")
+#   is rejected with a clear error instead of being treated as a path.
 #
 # Exit codes: 0 ok (changed or already current) · 1 usage/error.
 # =============================================================================
@@ -26,21 +32,41 @@ set -euo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
 ROOT=""
+SUBJECT=""
 DRY=0
-usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
+usage() { print_usage "$0"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --root) ROOT="${2:-}"; shift 2;;
     --root=*) ROOT="${1#*=}"; shift;;
+    --subject) SUBJECT="${2:-}"; shift 2;;
+    --subject=*) SUBJECT="${1#*=}"; shift;;
     --dry-run) DRY=1; shift;;
     -h|--help) usage; exit 0;;
     *) log_warn "Unknown argument: $1"; shift;;
   esac
 done
 
+# Reject a value that still looks like an unsubstituted prompt placeholder.
+reject_placeholder() {
+  case "$2" in
+    \<*\>) die "$1 got the unsubstituted placeholder '$2' — pass the real directory." 1;;
+  esac
+  return 0
+}
+reject_placeholder --root "$ROOT"
+reject_placeholder --subject "$SUBJECT"
+
+if [[ -z "$ROOT" && -n "$SUBJECT" ]]; then
+  [[ -d "$SUBJECT" ]] || die "Subject directory not found: $SUBJECT" 1
+  # The Drupal root the subject is ported in: for a loose subject, or a module
+  # of a project checkout without installed core (a monorepo clone, even with a
+  # committed .ddev/), the test-bed the workspace resolver targets.
+  ROOT="$(subject_project_root "$SUBJECT")"
+fi
 [[ -n "$ROOT" ]] || ROOT="$(find_drupal_root 2>/dev/null || true)"
-[[ -n "$ROOT" ]] || die "No Drupal root given or detected. Pass --root DIR." 1
+[[ -n "$ROOT" ]] || die "No Drupal root given or detected. Pass --root DIR or --subject DIR." 1
 [[ -d "$ROOT" ]] || die "Root directory not found: $ROOT" 1
 
 TPL="$(plugin_root)/templates/gitignore.tmpl"

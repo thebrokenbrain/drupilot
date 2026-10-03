@@ -8,7 +8,8 @@ description: >-
   toolchain", "add Selenium", or "configure rector/phpstan/phpcs". It creates
   and starts a Drupal 11 DDEV project, installs the ddev-drupal-contrib and
   Selenium add-ons, installs the Composer dev toolchain (Rector, PHPStan + Drupal
-  extensions, coder, drush 13, optional upgrade_status), and writes
+  extensions, coder, drush 13, drupal/core-dev matching core for PHPUnit,
+  optional upgrade_status), and writes
   rector.php / phpstan.neon / phpcs.xml.dist plus the testing web_environment from
   templates parameterized by DRUPILOT_PHP_TARGET. Idempotent: it detects what is
   already in place and only does the missing work.
@@ -74,16 +75,29 @@ insists — do not claim "8.5 is supported".
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-up.sh" \
-  --php "<target>" --subject "<path/to/module-or-theme>" --docroot web
+  --php "<target>" --subject "<path/to/module-or-theme>" --name "<ddev_name>" --docroot web
 ```
+
+Pass `--name` explicitly (e.g. `<machine_name>-d11`); otherwise the DDEV project is
+named after the test-bed directory. stdout carries only the optional `--json` summary
+(`{project_dir, project_name, php_version, primary_url, drupal_target}`); every log,
+the preflight report and the ddev/composer output go to stderr.
 
 What `ddev-up.sh` does (idempotently):
 
 - `ddev config --project-type=drupal11 --docroot=web --php-version=$(resolve_php_target)`
   only if the project is not already configured.
 - `ddev start`.
-- `ddev composer create drupal/recommended-project:^11` only when there is no
+- `ddev composer create-project drupal/recommended-project:^11` (`ddev composer create` on DDEV < 1.24.2) only when there is no
   `composer.json` yet (creating a project would overwrite an existing one).
+  In deterministic mode a core release already frozen in the root's lockfile is
+  created exactly (`drupal/recommended-project:<version>`), and a cached base core
+  (`DRUPILOT_CORE_CACHE`, default `auto`) is copied into the empty root instead
+  when one matches, then verified with `ddev composer install`.
+- `ddev composer install` when `composer.json` exists but `vendor/` does not
+  (e.g. after `/drupilot-clean --level vendor`).
+- Marks a root it built as a drupilot test-bed (`drupilot_testbed` in its
+  `.drupilot.json`), which is what lets `/drupilot-clean` remove it later.
 - Ensures `drush/drush:^13` is present (D11 requires Drush 13).
 - **Reads the generated `.ddev/config.yaml`** for the real project name and
   hostnames instead of guessing `*.ddev.site`.
@@ -93,9 +107,16 @@ project is already up, do not restart it.
 
 After it runs, confirm the environment with the shared helpers (these come from
 `common.sh`): `find_drupal_root` to locate the Drupal root, `ddev_running` to
-confirm the container is up, and `drupal_runner` which echoes `ddev exec` when
-the environment is up (empty otherwise) — that prefix is what every toolchain
-command should use.
+confirm the container is up (read-only: it reads `ddev describe`, so it never
+starts a stopped project — never probe with `ddev exec`, which does), and
+`drupal_runner` which echoes `ddev exec` when the environment is up (empty
+otherwise) — that prefix is what every toolchain command should use. Scripts
+that run the toolchain call `ddev_ensure_running` first, which starts a stopped
+project explicitly and logs it. The analysis scripts (Rector, PHPStan, PHPCS —
+the `analyze` profile does not require Docker) use `ddev_ensure_running_or_host`
+instead: when DDEV cannot start (e.g. the Docker daemon is down) they warn and
+run the host `vendor/bin` tool rather than failing. PHPUnit, the toolchain
+install and the core matrix still require DDEV.
 
 ## 4. Place the subject module/theme
 
@@ -117,8 +138,18 @@ subject it targets a sibling Drupal root `<parent>/<name>-d11` (or
 `DRUPILOT_WORKSPACE_DIR`); for a module already inside a Drupal root it reports
 `loose:false` and the existing layout is kept (full back-compat). `ddev-up.sh`
 consults this resolver internally, so the subject is never scaffolded on top of.
+Its `layout` field: `in-place` (core installed; `in_place_ok:false` = the site
+is on Drupal 10, an in-place port needs Drupal 11 — set `DRUPILOT_WORKSPACE_DIR`
+outside the site for a test-bed), `project-no-core` (a module of a Composer
+project checkout without installed core, e.g. a monorepo clone: test-bed
+`<parent>/<project>-d11`, outside the repository), `repo-subdir` (a module in a
+git repository that is not a Drupal project: `<parent of the repo>/<name>-d11`)
+or `standalone`. A sub-directory of a repository is never moved (`move`
+becomes `copy`; a `symlink` is kept and edits the repository directly), and a copy gets a git baseline (`git_seed_baseline`): its
+local patch is module-relative, plus a `-repo.patch` relative to the repository
+root.
 
-Then, AFTER Drupal is created (`ddev composer create` needs an almost-empty root),
+Then, AFTER Drupal is created (`ddev composer create-project` needs an almost-empty root),
 place the subject into `web/<modules|themes|profiles>/custom/<name>`:
 
 ```bash
@@ -131,6 +162,18 @@ It is idempotent (detect-and-skip when already placed), persists
 `ensure-gitignore.sh` on the new root. Exit code 2 means the Drupal root does not
 exist yet — run `ddev-up.sh` first.
 
+Origin hygiene: before placing, it records the origin repo's `git status` with
+`scripts/env/origin-hygiene.sh --snapshot` (hidden state keyed by the Drupal root;
+for an in-place subject run `origin-hygiene.sh --snapshot --subject <dir> --placement
+in-place` yourself). `copy` leaves `.ddev/`, `vendor/`, `.drupilot*`, `.phpstan-cache/`
+(top level) and `node_modules/` (anywhere) behind and drops symlinks escaping the
+checkout (`--no-exclude` for a verbatim copy). The subject-side `.drupilot.json` is
+hidden via the subject repo's local `.git/info/exclude`. `origin-hygiene.sh --check
+--json` later reports drupilot-attributable residue (report-only; it never deletes).
+The resolver's `residue` / `residual_ddev` fields flag leftovers in the checkout
+(e.g. an untracked `.ddev/` from an old module-at-root sandbox) — surface them, never
+delete them.
+
 `ddev-drupal-contrib` also supports a "module at the repo root" layout where it
 symlinks the root into `web/modules/custom`. drupilot does NOT use that layout —
 with no `*.info.yml` at the repo root, `symlink-project` would derive the name
@@ -142,8 +185,10 @@ add-on's wrapper commands and testing `web_environment`.
 ## 5. Install add-ons
 
 ```bash
-# contrib add-on always; Selenium only when FunctionalJavascript tests exist
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-add-ons.sh" --contrib --selenium
+# contrib add-on always; Selenium only when FunctionalJavascript tests exist.
+# <drupal_root>: the resolve-workspace.sh drupal_root (the test-bed), not the
+# original checkout.
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-add-ons.sh" --contrib --selenium --dir "<drupal_root>"
 ```
 
 `ddev-add-ons.sh`:
@@ -165,18 +210,55 @@ ddev restart
 
 ## 6. Install the Composer dev toolchain
 
-Install **inside DDEV** (`ddev composer require --dev ...`). Constraints come from
-`config/defaults.json` `.packages.*` — read them with `config_json` rather than
-hardcoding versions:
+Install it with the deterministic installer — never with a hand-written
+`ddev composer require --dev ...` (a fresh resolve after a broken upstream release
+silently installs a toolchain that crashes):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-toolchain.sh" --dir "<drupal_root>" --json
+#   --with-upgrade-status   also drupal/upgrade_status
+#   --dry-run               print the resolved specs, run nothing
+#   --smoke-only            only re-check an installed toolchain
+#   --source reference      force the known-good set (repair path)
+```
+
+What it installs (`config/defaults.json` `.packages.*`):
 
 - `palantirnet/drupal-rector` (the `palantirnet/` namespace is current;
-  `palantirnet/drupal8-rector` is obsolete)
-- `phpstan/phpstan:^2.1`, `phpstan/extension-installer`,
-  `mglaman/phpstan-drupal:^2.0`, `phpstan/phpstan-deprecation-rules:^2.0`
-- `drupal/coder` pinned by `DRUPILOT_CODER_CONSTRAINT` (default `^8.3` → PHPCS
-  3.x, the safe default; `^9.0` → PHPCS 4.x)
-- `drush/drush:^13`
+  `palantirnet/drupal8-rector` is obsolete) and its engine `rector/rector`
+  (range `^2.0 <2.6.2`: drupal-rector 0.21.x throws `Could not detect twig set.`
+  with rector/rector >= 2.6.2)
+- `phpstan/phpstan`, `phpstan/extension-installer`, `mglaman/phpstan-drupal`,
+  `phpstan/phpstan-deprecation-rules`
+- `drupal/coder` at `DRUPILOT_CODER_CONSTRAINT` (default `^8.3` → PHPCS 3.x, the
+  safe default; `^9.0` → PHPCS 4.x)
+- `drupal/core-dev` (PHPUnit + the Drupal test dependencies) — **required for any
+  test run**: `drupal/recommended-project` ships no `vendor/bin/phpunit`, and
+  without it `run-phpunit.sh` records `not-verified-blocked` and exits 2. It must
+  MATCH the installed core, so it is derived with `core_dev_requirement`
+  (`common.sh`; e.g. `drupal/core-dev:~11.4.8`), never a fixed range
 - optional `drupal/upgrade_status`
+- `drush/drush:^13` is NOT installed here — `ddev-up.sh` requires it (as a regular
+  dependency).
+
+Version source (`--source`, default `DRUPILOT_TOOLCHAIN_SOURCE=auto`): in
+deterministic mode the project lock when it pins the whole known-good set,
+otherwise the shipped **known-good reference** `config/toolchain-reference.json`
+as a whole (a partial lock is never mixed with it); with
+`DRUPILOT_DETERMINISTIC=false`, the `.packages` ranges. If the pinned set does not
+resolve against the project, it retries once with the ranges. It allows the
+`phpstan/extension-installer` and `dealerdirect/phpcodesniffer-composer-installer`
+Composer plugins, runs one `ddev composer require --dev -W`, then:
+
+- a **smoke test** (`rector_smoke` in `common.sh`): a Rector dry-run of a trivial
+  file with `Drupal10SetList::DRUPAL_10` plus `phpstan --version`, through DDEV;
+- `lock-sync.sh --dir <root>`, so the exact toolchain (including `rector/rector`
+  and `drupal/core-dev`) is frozen in the lock.
+
+Exit codes: `0` ok · `1` Composer failure · `2` gate (DDEV not running) · **`3` the
+toolchain is installed but broken** — the diagnostic prints installed vs known-good
+versions and the fix (`--source reference`). Do not assess or port on a toolchain
+that failed the smoke test.
 
 coder ships a Composer plugin (`*/phpcodesniffer-composer-installer`) that
 auto-registers PHPCS `installed_paths`. Allow it and just verify with `phpcs -i`.
@@ -192,51 +274,75 @@ ddev exec vendor/bin/phpcs -i   # must list Drupal and DrupalPractice
 With `phpstan/extension-installer` present, the phpstan-drupal and deprecation
 rules autoload — no manual `includes:` needed.
 
-**Freeze the toolchain for reproducibility.** drupilot is deterministic by default
-(`DRUPILOT_DETERMINISTIC`): after installing the toolchain, capture the exact
-resolved versions so later runs converge on the same toolchain:
-
-```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/lock-sync.sh" --dir "<project-root>"
-```
-
-In deterministic mode, if `drupilot-lock.json` already pins exact versions
-(`.toolchain.*`), require **those exact versions** rather than the ranges (e.g.
-`ddev composer require --dev "phpstan/phpstan:=2.1.17"`) so the port matches a
-previous one; `DRUPILOT_DETERMINISTIC=false` requires the ranges fresh and
-refreshes the lock. `ddev-up.sh` and `ddev-add-ons.sh` already call `lock-sync.sh`
-for core and add-ons.
+**Reproducibility.** `install-toolchain.sh` already re-syncs the lock
+(`lock-sync.sh`) after installing, and reuses the lock on later runs, so the same
+project converges on the same toolchain; `ddev-up.sh` and `ddev-add-ons.sh` call
+`lock-sync.sh` for core and add-ons. `DRUPILOT_DETERMINISTIC=false` resolves the
+ranges fresh and refreshes the lock.
 
 ## 7. Write the toolchain config from templates
 
 Templates live in `${CLAUDE_PLUGIN_ROOT}/templates/` and use `{{PLACEHOLDER}}`
-tokens; substitute with `sed`/`envsubst`. Write only if missing or out of date
-(idempotent — do not clobber a file the user already tuned without saying so).
+tokens. Render them with the deterministic renderer — never by hand-substituting
+(no `sed` one-liners, no `envsubst`):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/render-templates.sh" --root "<drupal_root>" \
+  --subject-path "web/modules/custom/<machine_name>" --json   # add --dry-run to preview
+```
+
+It substitutes the tokens literally (`render_template` in `common.sh`, shared with
+`run-rector.sh`), validates every output before writing it (no token left;
+`xmllint --noout` — or `phpcs --standard=<file> -e` — for `phpcs.xml.dist`; `php -l`
+for `rector.php`), and is idempotent: missing -> `written`, identical ->
+`unchanged`, different -> `differs` (diff on stderr, file untouched, exit 3) unless
+`--force`, which backs the old copy up to `<drupal_root>/.drupilot/backups/` first.
+A copy drupilot generated from an OLDER template generation (its `drupilot — <file>`
+header without the current `drupilot-template-version: N` marker) is backed up and
+regenerated automatically (`upgraded`), so the broken pre-0.9.0 `phpcs.xml.dist` /
+`phpstan.neon` heal even in an autonomous run. Bump a template's marker when existing
+projects must receive a change.
+A file that fails validation is reported `invalid` and never written. Do not
+clobber a file the user already tuned without saying so: on `differs`, show the
+diff and ask before re-running with `--only <name> --force`. `--only
+rector,phpstan,phpcs,testing` limits the set; `--set KEY=VALUE` overrides a token.
 
 | Template | Destination (Drupal root) | Key placeholders |
 |---|---|---|
-| `rector.php.tmpl` | `rector.php` | `{{PHP_TARGET}}`, `{{SUBJECT_PATH}}` |
+| `rector.php.tmpl` | `rector.php` | `{{PHP_TARGET}}`, `{{PHP_SET}}`, `{{SUBJECT_PATH}}` |
 | `phpstan.neon.tmpl` | `phpstan.neon` | `{{PHPSTAN_LEVEL}}`, `{{SUBJECT_PATH}}` |
 | `phpcs.xml.dist.tmpl` | `phpcs.xml.dist` | `{{SUBJECT_PATH}}` |
 | `ddev-config.yaml.tmpl` | (reference for `.ddev/config.yaml`) | `{{PROJECT_NAME}}`, `{{PHP_TARGET}}` |
-| `ddev-web-environment.yaml.tmpl` | `.ddev/config.testing.yaml` (separate file) | `{{WEBDRIVER_HOST}}` |
+| `ddev-web-environment.yaml.tmpl` | `.ddev/config.testing.yaml` (separate file) | — |
+
+`ddev-config.yaml.tmpl` is reference only (`ddev-up.sh` configures the project);
+`render-templates.sh` renders the other four.
 
 `{{SUBJECT_PATH}}` is the in-docroot path, e.g. `web/modules/custom/foo`.
 `{{PHP_TARGET}}` = `resolve_php_target`; `{{PHPSTAN_LEVEL}}` =
-`DRUPILOT_PHPSTAN_LEVEL` (default 2 for Phase 1). `{{CODER_CONSTRAINT}}` =
-`DRUPILOT_CODER_CONSTRAINT`.
+`DRUPILOT_PHPSTAN_LEVEL` (default 2 for Phase 1). `{{WEBDRIVER_HOST}}` (read
+from `.ddev/docker-compose.selenium-chrome.yaml`, default `selenium-chrome:4444`)
+is still accepted by `--set` but no current template uses it.
+The generated `phpstan.neon` intentionally has no `drupal: drupal_root:` block:
+phpstan-drupal >= 1.3 discovers the root itself and deprecates that parameter.
 
 Write the testing `web_environment:` to a SEPARATE `.ddev/config.testing.yaml` so
-it merges with what ddev-drupal-contrib already provides (`SIMPLETEST_DB`,
-`SIMPLETEST_BASE_URL=http://web`, `BROWSERTEST_*`, `DTT_*`,
-`DRUPAL_TEST_WEBDRIVER_*`). The template adds only `MINK_DRIVER_ARGS_WEBDRIVER`
-(Drupal core's WebDriverTestBase) and `SYMFONY_DEPRECATIONS_HELPER=disabled`.
-**Read `.ddev/docker-compose.selenium-chrome.yaml`** for the real webdriver host
-(typically `selenium-chrome:4444`) instead of assuming it. Keep the template's
-escaped-quote / YAML single-quote form for the MINK value verbatim: DDEV wraps
-each web_environment value in double quotes WITHOUT escaping the inner quotes, so
-a raw JSON value produces invalid compose YAML ("did not find expected key") and
-`ddev start` fails. After writing the file, run `ddev restart`.
+it merges with what the add-ons already provide: ddev-drupal-contrib
+(`SIMPLETEST_DB`, `SIMPLETEST_BASE_URL=http://web`, `BROWSERTEST_*`, `DTT_*`)
+and the Selenium add-on (`MINK_DRIVER_ARGS_WEBDRIVER` with `"w3c":true`,
+`DRUPAL_TEST_WEBDRIVER_*`). The template adds only
+`SYMFONY_DEPRECATIONS_HELPER=disabled`. It deliberately does NOT set
+`MINK_DRIVER_ARGS_WEBDRIVER`: DDEV loads `config.testing.yaml` after the add-on's
+`config.selenium-standalone-chrome.yaml`, so an override replaces the add-on's
+working value, and Drupal 11.4's `WebDriverTestBase::getMinkDriverArgs()` forces
+`w3c` to false when the value omits it (deprecated in drupal:11.4.0,
+https://www.drupal.org/node/3460567) — the Selenium image then refuses every
+FunctionalJavascript session. A copy rendered by an older template is upgraded
+automatically (template marker). If you ever hand-write a MINK value, include
+`"w3c":true` and keep the escaped-quote / YAML single-quote form: DDEV wraps each
+web_environment value in double quotes WITHOUT escaping the inner quotes, so a
+raw JSON value produces invalid compose YAML ("did not find expected key") and
+`ddev start` fails. When the JSON says `restart_needed: true`, run `ddev restart`.
 
 ## 8. Verify and report
 
@@ -248,7 +354,7 @@ already in place, say "already configured — skipped". Hand off to the
 
 ## Gotchas
 
-- `ddev composer create` overwrites — only run it when there is no
+- `ddev composer create-project` overwrites — only run it when there is no
   `composer.json`. `ddev-up.sh` already guards this; do not call it manually
   inside a populated project.
 - The PHP 8.5 DDEV image may not exist yet; `detect-php.sh` flags this. Fall back
@@ -256,7 +362,7 @@ already in place, say "already configured — skipped". Hand off to the
 - The webdriver hostname differs by add-on version — never hardcode
   `selenium-chrome:4444`; read the generated YAML / add-on output.
 - Rector and PHPStan need the Drupal **core tree present** (no database), so they
-  work right after `ddev composer create`. `upgrade_status` additionally needs an
+  work right after `ddev composer create-project`. `upgrade_status` additionally needs an
   **installed** site (DB) — defer it until `ddev drush site:install` has run.
 - All status messages go to stderr via the `log_*` helpers; stdout stays clean
   for parseable payloads (e.g. `detect-php.sh --json`).

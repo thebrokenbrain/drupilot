@@ -1,0 +1,5 @@
+services:
+  # The constructor takes 2 arguments; 3 are passed (the third is ignored).
+  acme_api.client:
+    class: Drupal\acme_api\Client\ApiClient
+    arguments: ['@http_client', '@acme_utils.helper', '@logger.factory']

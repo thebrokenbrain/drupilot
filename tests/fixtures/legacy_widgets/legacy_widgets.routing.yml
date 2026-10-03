@@ -1,0 +1,22 @@
+legacy_widgets.settings_form:
+  path: '/admin/config/content/legacy-widgets'
+  defaults:
+    _form: '\Drupal\legacy_widgets\Form\SettingsForm'
+    _title: 'Legacy widgets settings'
+  requirements:
+    _permission: 'administer legacy widgets'
+
+legacy_widgets.import:
+  path: '/admin/config/content/legacy-widgets/import'
+  defaults:
+    _form: '\Drupal\legacy_widgets\Form\WidgetImportForm'
+    _title: 'Import legacy widgets'
+  requirements:
+    _permission: 'administer legacy widgets'
+
+legacy_widgets.status:
+  path: '/legacy-widgets/status.json'
+  defaults:
+    _controller: '\Drupal\legacy_widgets\Controller\WidgetStatusController::status'
+  requirements:
+    _permission: 'administer legacy widgets'

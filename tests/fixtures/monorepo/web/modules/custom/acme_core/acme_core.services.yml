@@ -1,0 +1,4 @@
+services:
+  acme_core.formatter:
+    class: Drupal\acme_core\AcmeFormatter
+    arguments: ['@config.factory']

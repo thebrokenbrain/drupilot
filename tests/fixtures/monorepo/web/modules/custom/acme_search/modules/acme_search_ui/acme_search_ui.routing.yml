@@ -1,0 +1,7 @@
+acme_search_ui.page:
+  path: '/acme/search'
+  defaults:
+    _controller: '\Drupal\acme_search_ui\Controller\SearchPage::page'
+    _title: 'Search'
+  requirements:
+    _permission: 'access content'

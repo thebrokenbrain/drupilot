@@ -1,0 +1,7 @@
+name: 'Acme search UI'
+type: module
+description: 'Search page for Acme search.'
+package: Acme
+core_version_requirement: ^8.8 || ^9 || ^10
+dependencies:
+  - acme_search:acme_search

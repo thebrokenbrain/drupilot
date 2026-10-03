@@ -32,7 +32,7 @@ set -euo pipefail
 SUBJECT=""
 AS_JSON=0
 OFFLINE=0
-usage() { grep -E '^#( |$)' "$0" | sed -E 's/^# ?//'; }
+usage() { print_usage "$0"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -52,15 +52,18 @@ SUBJECT="$(cd "$SUBJECT" && pwd)"
 NAME="$(subject_machine_name "$SUBJECT" 2>/dev/null || basename "$SUBJECT")"
 
 # --- Collect contrib dependencies (project short names) ----------------------
-declare -A DEPS=()
+# A newline-separated list, de-duplicated with `sort -u` below (no `declare -A`:
+# associative arrays need bash 4, and the scripts target bash >= 3.2).
+DEPS_LIST=""
+add_dep() { DEPS_LIST="${DEPS_LIST}${1}"$'\n'; }
 
 # composer.json: drupal/* require keys (skip core and the subproject itself).
 if [[ -f "$SUBJECT/composer.json" ]]; then
   while IFS= read -r pkg; do
     [[ -z "$pkg" ]] && continue
     case "$pkg" in
-      drupal/core*|drupal/core-*) continue;;
-      drupal/*) DEPS["${pkg#drupal/}"]=1;;
+      drupal/core*) continue;;   # also covers drupal/core-*
+      drupal/*) add_dep "${pkg#drupal/}";;
     esac
   done < <(jq -r '(.require // {}) | keys[]?' "$SUBJECT/composer.json" 2>/dev/null || true)
 fi
@@ -78,7 +81,7 @@ if [[ -n "$INFO" && -f "$INFO" ]]; then
       dep="$(printf '%s' "$line" | sed -E 's/^[[:space:]]*-[[:space:]]*//; s/["'\'']//g; s/\(.*$//; s/[[:space:]]*$//')"
       dep="${dep##*:}"                       # drupal:token -> token
       [[ -z "$dep" || "$dep" == "core" ]] && continue
-      DEPS["$dep"]=1
+      add_dep "$dep"
     fi
   done < "$INFO"
 fi
@@ -114,7 +117,7 @@ d11_status() {
 
 declare -a ROWS=()
 BLOCKERS=0; READY=0; UNKNOWN=0
-for proj in $(printf '%s\n' "${!DEPS[@]}" | LC_ALL=C sort); do
+for proj in $(printf '%s' "$DEPS_LIST" | LC_ALL=C sort -u); do
   if is_core_module "$proj"; then st="core"; else st="$(d11_status "$proj")"; fi
   case "$st" in
     ready|core) READY=$((READY+1));;

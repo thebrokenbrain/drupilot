@@ -1,0 +1,9 @@
+name: 'Acme invoice'
+type: module
+description: 'Invoices for Acme billing accounts.'
+package: Acme
+core_version_requirement: ^10.3
+configure: acme_invoice.settings
+dependencies:
+  - acme_core:acme_core
+  - acme_billing:acme_billing
