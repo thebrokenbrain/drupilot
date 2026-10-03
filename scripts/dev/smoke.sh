@@ -74,6 +74,10 @@
 #                  own origin baseline (origin-hygiene.sh --check clean for
 #                  both), state.sh shows each module's own origin, and
 #                  layer-report.sh maps each row to that module's record
+#   matrix-classify verify-core-matrix.sh's finding classifier (its jq program,
+#                  read from the script): a type from a sibling module missing
+#                  on a reference core is a sandbox_missing_dependency in every
+#                  message shape, never the subject's own class
 #
 # Isolation: the fixtures are copied to a temp dir (legacy_widgets is committed
 # there as a git repo when git exists), and HOME, CLAUDE_PLUGIN_DATA and the
@@ -104,7 +108,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$REPO/tests/fixtures"
 SH="${BASH:-bash}"
 
-ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed"
+ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify"
 
 AS_JSON=0; ONLY=""; SKIP=""; KEEP=0
 
@@ -708,6 +712,26 @@ test_shared_testbed() {
   finish
 }
 
+test_matrix_classify() {
+  local prog
+  prog="$(sed -n "/^CLASSIFY='\$/,/^'\$/p" "$REPO/scripts/analysis/verify-core-matrix.sh" | sed '1d;$d')"
+  expect "classifier found" "$([[ -n "$prog" ]] && echo yes || echo no)" "yes"
+  cat > "$TMP/matrix-leg.json" <<'JSON'
+{"status":"ran","findings":[
+ {"file":"src/BillingManager.php","line":12,"identifier":"class.notFound","message":"Parameter $generator of method Drupal\\acme_billing\\BillingManager::__construct() has invalid type Drupal\\acme_invoice\\InvoiceGenerator."},
+ {"file":"src/BillingManager.php","line":9,"identifier":"class.notFound","message":"Property Drupal\\acme_billing\\BillingManager::$generator has unknown class Drupal\\acme_invoice\\InvoiceGenerator as its type."},
+ {"file":"src/BillingManager.php","line":20,"identifier":"class.notFound","message":"Call to method generate() on an unknown class Drupal\\acme_invoice\\InvoiceGenerator."},
+ {"file":"src/Foo.php","line":3,"identifier":"class.notFound","message":"Class Drupal\\acme_billing\\Foo extends unknown class Drupal\\acme_invoice\\Base."},
+ {"file":"src/Bar.php","line":5,"identifier":"method.notFound","message":"Call to an undefined method Drupal\\acme_billing\\Bar::baz()."}]}
+JSON
+  run mc jq -c --argjson other '[]' --argjson own '["acme_billing"]' --argjson mods '[]' --argjson adv '[]' \
+    --argjson ref true "$prog" "$TMP/matrix-leg.json"
+  expect "classifier: exit" "$RC" "0"
+  expect "classifier: kinds" "$(jqo mc '[.[] | .kind]')" \
+    '["sandbox_missing_dependency","sandbox_missing_dependency","sandbox_missing_dependency","sandbox_missing_dependency","incompatible"]'
+  finish
+}
+
 # --- Main -----------------------------------------------------------------------
 log_step "drupilot smoke tests (bash ${BASH_VERSION:-?}, $(uname -s 2>/dev/null || echo ?))"
 for t in $ALL_TESTS; do
@@ -732,6 +756,7 @@ for t in $ALL_TESTS; do
     rector-cache) test_rector_cache;;
     state-stdin) test_state_stdin;;
     shared-testbed) test_shared_testbed;;
+    matrix-classify) test_matrix_classify;;
   esac
 done
 

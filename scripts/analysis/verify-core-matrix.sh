@@ -15,7 +15,8 @@
 #     leg (it fails);
 #   * deprecation notices never fail a leg (the code still runs there);
 #   * a class from a module that is not installed in the reference core
-#     (a contrib dependency) is reported as `sandbox_missing_dependency`,
+#     (a contrib or sibling-module dependency; the MISSING type in the message,
+#     not the first class it names) is reported as `sandbox_missing_dependency`,
 #     documented, never "fixed";
 #   * on a reference leg, a finding in tests/ is reported as `test_only`: core's
 #     test API typing differs between majors (Drupal 10.6's
@@ -727,9 +728,19 @@ CLASSIFY='
           | (.n | tonumber) > (.m | tonumber)) // false);
   def void_used: (.identifier | test("^(method|staticMethod|function)\\.void$"));
   def tolerated: too_many_args or void_used;
+  # The type that is MISSING, not the first class named in the message: in
+  # "Parameter $x of method Drupal\a\B::f() has invalid type Drupal\c\D" it is
+  # the second one. The patterns are tried in order, the most specific first
+  # ("Class A extends unknown class B" names its own class first).
+  def missing_type:
+    [ "(?:unknown (?:class|interface|trait)|invalid (?:return |parameter |property )?type) \\\\?(?<c>Drupal\\\\[A-Za-z0-9_]+\\\\[A-Za-z0-9_\\\\]+)",
+      "(?:^|[^A-Za-z])[Cc]lass \\\\?(?<c>Drupal\\\\[A-Za-z0-9_]+\\\\[A-Za-z0-9_\\\\]+) (?:not found|does not exist)",
+      "Reflection error:? \\\\?(?<c>Drupal\\\\[A-Za-z0-9_]+\\\\[A-Za-z0-9_\\\\]+)" ] as $res
+    | .message as $msg
+    | [ $res[] as $re | $msg | capture($re)? | .c ] | .[0];
   def missing_class:
-    ([.message | capture("(?<c>Drupal\\\\[A-Za-z0-9_]+\\\\[A-Za-z0-9_\\\\]+)") | .c] | .[0]) as $c
-    | if ($c != null) and (.message | test("Class [^ ]+ not found|unknown class|unknown interface|unknown trait|class [^ ]+ does not exist|invalid (return |parameter |property )?type|Reflection error"; "i"))
+    missing_type as $c
+    | if $c != null
       then ($c | split("\\")) as $s
         | (if $s[1] == "Tests" and ($s | length) >= 4 then $s[2] else $s[1] end) as $m
         | if ($m == "" or ($m | test("^(Core|Component|Tests|KernelTests|FunctionalTests|FunctionalJavascriptTests|BuildTests|TestTools|TestSite)$"))

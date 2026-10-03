@@ -811,6 +811,15 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **The core matrix could call a dependency on a sibling module an
+  incompatibility.** On a reference core without the sibling module, PHPStan
+  reports messages such as `Parameter $x of method Drupal\a\B::f() has
+  invalid type Drupal\c\D`; the classifier took the first class in the
+  message (the module's own) instead of the missing one, so the finding was
+  `incompatible` and the module got `d10_support: failed`. It now reads the
+  type the message says is missing (unknown class/interface/trait, invalid
+  type, class not found or does not exist, reflection error) and classifies it
+  as a missing sandbox dependency.
 - **In a shared test-bed every module reported the origin of the last one
   placed.** The origin checkout's baseline was one file per test-bed, so each
   placement overwrote it: `/drupilot-status` showed the wrong origin, the
