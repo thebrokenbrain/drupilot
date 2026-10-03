@@ -2,16 +2,17 @@
 # =============================================================================
 # drupilot — scripts/env/detect-php.sh
 # Detect the host PHP version and (if a DDEV project exists) the configured
-# DDEV php_version, then print the EFFECTIVE PHP target and whether it is
-# officially supported or unconfirmed for Drupal 11.
+# DDEV php_version, then print the EFFECTIVE PHP target and whether it is one
+# drupilot fully supports on Drupal 11 (8.3, 8.4) or "unconfirmed" (8.5: it
+# needs Drupal 11.3 or later, and no Rector php85 set is assumed).
 #
 # The effective target comes from resolve_php_target (DRUPILOT_PHP_TARGET >
 # defaults.json, default 8.3). The host PHP and the DDEV php_version are
 # reported as context (e.g. so the caller can warn about a mismatch); they do
 # NOT override the configured target — that decision belongs to the user.
 #
-# Per PROMPT 1.2 / 7.1: never hardcode "8.5 supported". Support is derived from
-# php_support.* in defaults.json (php_target_supported / php_target_unconfirmed).
+# Support is derived from php_support.* in defaults.json (php_target_supported /
+# php_target_unconfirmed); which core minor runs which PHP is php_supported_for.
 #
 # Usage:
 #   detect-php.sh [--subject DIR] [--json] [--quiet] [-h|--help]
@@ -110,8 +111,8 @@ if [[ "$QUIET" != "1" ]]; then
   if [[ "$SUPPORTED" == "true" ]]; then
     printf '  Status          : %s✅ supported%s for Drupal 11\n' "$_C_GREEN" "$_C_RESET"
   elif [[ "$UNCONFIRMED" == "true" ]]; then
-    printf '  Status          : %s⚠️  unconfirmed%s — the exact Drupal 11 minor that supports PHP %s\n' "$_C_YELLOW" "$_C_RESET" "$TARGET"
-    printf '                    is not officially confirmed. Detect at runtime; consider 8.3 (default) or 8.4.\n'
+    printf '  Status          : %s⚠️  needs Drupal 11.3 or later%s — PHP %s does not run on Drupal 11.2 or\n' "$_C_YELLOW" "$_C_RESET" "$TARGET"
+    printf '                    earlier, and no Rector php85 set is assumed. Consider 8.3 (default) or 8.4.\n'
   else
     printf '  Status          : %s⚠️  not in the known-supported list%s — verify before relying on it.\n' "$_C_YELLOW" "$_C_RESET"
   fi

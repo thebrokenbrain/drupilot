@@ -6,8 +6,8 @@ description: >-
   PHP sets, the PHPStan level/expectations, the PHPCS sniffs and the DDEV
   php_version. It is the single source of truth for how one variable
   (DRUPILOT_PHP_TARGET, default 8.3) flows through the whole toolchain, and for
-  the PHP 8.5 runtime-detection caveat (8.5 is NOT confirmed on any Drupal 11
-  branch — detect at runtime, never hardcode). Invoke it from /drupilot-setup,
+  the PHP 8.5 caveat (8.5 needs Drupal 11.3 or later, and no Rector php85 set is
+  assumed — check the core minor, never hardcode). Invoke it from /drupilot-setup,
   /drupilot-assess, /drupilot-port and /drupilot-refactor before configuring any
   tool, and whenever the user asks to target a specific PHP version.
 allowed-tools: Bash, Read, Edit
@@ -36,28 +36,33 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/detect-php.sh" --json
 
 `supported` and `unconfirmed` come from `php_support` in `defaults.json`
 (`supported: ["8.3","8.4"]`, `unconfirmed: ["8.5"]`). The matching helpers are
-`php_target_supported VER` and `php_target_unconfirmed VER`.
+`php_target_supported VER` and `php_target_unconfirmed VER`; which core minor
+runs which PHP is `php_supported_for MINOR VER` (`yes`, `no` or `unknown`).
 
-## 2. The PHP 8.5 runtime-detection caveat (critical)
+## 2. The PHP 8.5 caveat (critical)
 
-PHP support per Drupal 11 branch (verified, PROMPT §1.2):
+PHP support per Drupal 11 branch (drupal.org PHP requirements, read through
+`https://www.drupal.org/api-d7/node.json?nid=2891690` on 2026-10-03):
 
-| D11 branch | PHP min | PHP recommended | PHP 8.5 |
-|---|---|---|---|
-| 11.0 | 8.3 | 8.3 | No |
-| 11.1 | 8.3 | 8.4 | No |
-| 11.2 | 8.3 | 8.4 | No |
-| 11.3 | 8.3 | 8.4 | not confirmed |
+| D11 branch | PHP min | PHP 8.5 |
+|---|---|---|
+| 11.0 | 8.3 | No |
+| 11.1 | 8.3 | No |
+| 11.2 | 8.3 | No |
+| 11.3 | 8.3 | Yes |
+| 11.4 | 8.3 | Yes |
 
-- **Minimum across the whole 11.x series: PHP 8.3.** Recommended: 8.4.
-- **PHP 8.5 is NOT confirmed on any branch.** The exact Drupal 11 minor that
-  officially supports it is unknown. **Never** emit "8.5 is supported" or assume
-  a `php85`/`UP_TO_PHP_85` Rector set / a DDEV 8.5 image exists.
-- When `php_target_unconfirmed "$TARGET"` returns true (i.e. 8.5): branch on it.
-  Warn the user, prefer falling back to `8.3` for the actual run, and if they
-  insist on 8.5, **detect at runtime** whether the relevant pieces exist (Rector
-  `UP_TO_PHP_85` constant, the DDEV PHP image) and degrade gracefully if not —
-  do not let an unconfirmed target break the flow.
+- **Minimum across the whole 11.x series: PHP 8.3.** drupilot recommends 8.4
+  (`php_support.recommended`).
+- **PHP 8.5 needs Drupal 11.3 or later.** `php_supported_for "$MINOR" 8.5` says
+  `no` for 11.2 and earlier; an unlisted minor is `unknown` — never assume it.
+- **No Rector `php85` set is assumed.** `php_target_unconfirmed "$TARGET"` is true
+  for 8.5: `rector_php_set_arg` then uses `php84` with a warning. Never emit a
+  `php85`/`UP_TO_PHP_85` set or assume a DDEV 8.5 image exists — detect them at
+  runtime and degrade gracefully, so an 8.5 target never breaks the flow.
+- When the target is 8.5, say so and check the core: `ddev-up.sh` warns when the
+  Drupal target admits a minor older than 11.3, and again when the installed core
+  is older.
 
 ## 3. How the target flows into each tool
 
@@ -69,8 +74,8 @@ PHP sets are cumulative; target exactly **one** PHP version per run:
 
 - `8.3` → `LevelSetList::UP_TO_PHP_83`, or the modern API `->withPhpSets(php83: true)`
 - `8.4` → `UP_TO_PHP_84` / `->withPhpSets(php84: true)`
-- `8.5` → **verify `UP_TO_PHP_85` / `php85` exists in the installed Rector
-  version before using it.** If absent, fall back to `php84` and note the gap.
+- `8.5` → `php84` (no `php85` set is assumed; `rector_php_set_arg` warns). Use a
+  `php85` set only after verifying it exists in the installed Rector.
 
 The Drupal set (`Drupal10SetList::DRUPAL_10`: APIs removed in D11) is independent
 of the PHP target; `Drupal11SetList::DRUPAL_11` (D11 deprecations, for a future
@@ -83,8 +88,8 @@ and the `#[\Override]` and `readonly` they add would also raise the PHP floor
 `detect-php-floor.sh` reports. The `rector.php.tmpl`
 template encodes this; `scripts/env/render-templates.sh` (and `run-rector.sh` when it
 writes a missing `rector.php`) derives the `->withPhpSets()` argument from the
-target via `rector_php_set_arg` (`8.3` → `php83`, `8.4` → `php84`, an unconfirmed
-`8.5` → `php84` with a warning) — never edit it by hand. (The digests complementary
+target via `rector_php_set_arg` (`8.3` → `php83`, `8.4` → `php84`, `8.5` →
+`php84` with a warning) — never edit it by hand. (The digests complementary
 pass runs separately via `--config`, see the `minimal-port` skill.)
 
 ### PHPStan — level and expectations (`phpstan.neon`)
@@ -118,8 +123,8 @@ runtime.
 ddev config --project-type=drupal11 --docroot=web --php-version="$(resolve_php_target)"
 ```
 
-`ddev-up.sh` already passes `--php-version=$(resolve_php_target)`. If the target
-is unconfirmed (8.5) and the DDEV image is unavailable, `detect-php.sh` flags it;
+`ddev-up.sh` already passes `--php-version=$(resolve_php_target)`. With 8.5 it
+warns that the DDEV image may be missing (and when the core is older than 11.3);
 fall back to `8.3` rather than failing `ddev start`.
 
 ## 4. Changing the target
@@ -178,8 +183,9 @@ verified by tests, or "not verified" when there are no tests.
 ## Gotchas
 
 - **One PHP version per run.** Do not stack `php83` + `php84` Rector sets.
-- **Never hardcode 8.5 anywhere.** Always go through `php_target_unconfirmed` and
-  detect the concrete capability (Rector constant, DDEV image) at runtime.
+- **Never hardcode 8.5 anywhere.** Go through `php_target_unconfirmed` and
+  `php_supported_for`, and detect the concrete capability (Rector constant, DDEV
+  image) at runtime.
 - A reconfigure (`ddev config --php-version=...`) needs `ddev restart` to take
   effect.
 - `defaults.json` is the fallback; an exported `DRUPILOT_PHP_TARGET` always wins —

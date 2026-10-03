@@ -47,6 +47,18 @@ tag the commit `vX.Y.Z`.
   `/drupilot-patch`, the hooks and `preflight.sh` never copy. The state key of a
   path is unchanged. `smoke.sh` no longer exports `CLAUDE_PLUGIN_DATA` (that is
   what hid the bug) and gained the `data-dir` and `legacy-state` tests.
+- **PHP 8.5 was described as "not confirmed on any Drupal 11 branch".** Drupal
+  supports PHP 8.5 from 11.3 on, not on 11.2 or earlier (drupal.org PHP
+  requirements, read through its api-d7 JSON). The new helper
+  `php_supported_for <core-minor> <php>` answers `yes`, `no` or `unknown` per
+  minor; `/drupilot-setup` (`ddev-up.sh`) now warns when the target is 8.5 and the
+  Drupal target admits, or the test-bed has, an older core. The caveat text of
+  the setup tab, the session hook, `detect-php`, `run-rector`, the skills, the
+  agents and the READMEs now says "PHP 8.5 needs Drupal 11.3 or later".
+  Unchanged: `php_target_unconfirmed` stays true for 8.5 (it now means no Rector
+  `php85` set is assumed, so Rector still applies `php84`), `detect-php --json`
+  keeps its `unconfirmed` key and values, and the PHP_TARGET tab keeps its
+  header, options and default; the rendered `rector.php` is byte-identical.
 - **The Twig `spaceless` advice pointed at a deprecated filter.** The
   explainer (`config/deprecations.json`), the `minimal-port` skill and
   `/drupilot-port` suggested `{% apply spaceless %}` / the `spaceless` filter,

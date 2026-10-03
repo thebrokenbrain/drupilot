@@ -35,8 +35,9 @@ Drupal 11.
   ground truth (June 2026). Do not re-research them.
 - PHP/Drupal targeting derives from a single variable: `DRUPILOT_PHP_TARGET`
   (default `8.3`), resolved with `resolve_php_target`. Drupal target via
-  `resolve_drupal_target` (default `^11`). **Never hardcode "8.5 supported"** —
-  branch on `php_target_unconfirmed`.
+  `resolve_drupal_target` (default `^11`). PHP 8.5 needs Drupal 11.3 or later
+  (`php_supported_for <minor> 8.5`) and has no assumed Rector `php85` set — branch
+  on `php_target_unconfirmed`, never hardcode it.
 - Resolve the plugin root with `${CLAUDE_PLUGIN_ROOT}` (or `plugin_root` from
   common.sh). All leaf scripts live under `${CLAUDE_PLUGIN_ROOT}/scripts/...`.
 - drupilot splits where it writes. The **human-readable** `viability-report.md`

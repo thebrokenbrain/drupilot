@@ -82,7 +82,7 @@
     "disk_free_min_mb": 5120
   },
 
-  "_php_support_comment": "PHP support per Drupal 11 branch (PROMPT 1.2). 'unconfirmed' = versions not officially confirmed yet; 8.5 is NOT confirmed on any branch -> detect at runtime, never hardcode.",
+  "_php_support_comment": "PHP versions drupilot tunes the Drupal 11 toolchain for. 'supported' = the targets with a Rector PHP set drupilot uses; 'unconfirmed' = a target accepted with a warning, for which no Rector set is assumed (rector_php_set_arg falls back to the highest 'supported' set): 8.5, which Drupal supports from 11.3 on, not on 11.2 or earlier (drupal.org PHP requirements, re-read 2026-10-03). Which core minor runs which PHP is php_supported_for <minor> <php> (yes/no/unknown; unknown is detected at runtime, never assumed).",
   "php_support": {
     "supported": ["8.3", "8.4"],
     "unconfirmed": ["8.5"],

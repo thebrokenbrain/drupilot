@@ -509,13 +509,37 @@ php_target_supported() {
   [[ "$v" == "8.3" || "$v" == "8.4" ]]
 }
 
-# php_target_unconfirmed <ver> -> 0 if flagged as not officially confirmed
+# php_target_unconfirmed <ver> -> 0 if the version is in php_support.unconfirmed
+# (8.5): no Rector set is assumed for it, so rector_php_set_arg falls back to the
+# highest supported set. Which core minors run it is php_supported_for's answer
+# (PHP 8.5 needs Drupal 11.3 or later).
 php_target_unconfirmed() {
   local v="$1" file; file="$(drupilot_config_file)"
   if [[ -r "$file" ]] && have_cmd jq; then
     jq -e --arg v "$v" '.php_support.unconfirmed | index($v)' "$file" >/dev/null 2>&1 && return 0
   fi
   [[ "$v" == "8.5" ]]
+}
+
+# php_supported_for <core-minor> <php> -> "yes", "no" or "unknown": whether
+# Drupal core <core-minor> (X.Y) supports PHP <php> (X.Y), per drupal.org's PHP
+# requirements page (api-d7 node 2891690, page of 2026-08-04, re-read
+# 2026-10-03): 10.4-10.6 run 8.1-8.4; 11.1-11.4 run 8.3 and 8.4, not 8.1/8.2;
+# 8.5 runs on 11.3, 11.4 and 12.0 only (never on 11.2 or earlier); 12.0 runs
+# nothing older than 8.5. Any other pair (an unlisted or future minor, PHP
+# 8.6) is "unknown": detect it at runtime, never assume it.
+php_supported_for() {
+  local minor php
+  minor="$(printf '%s' "${1:-}" | sed -n 's/^v\{0,1\}\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
+  php="$(printf '%s' "${2:-}" | sed -n 's/^\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
+  if [[ -z "$minor" || -z "$php" ]]; then printf 'unknown'; return 0; fi
+  case "$minor:$php" in
+    10.[456]:8.[1234]|11.[1234]:8.[34]|11.[34]:8.5|12.0:8.5) printf 'yes';;
+    10.[456]:8.[56]|11.[12]:8.[1256]|11.3:8.[126]|11.4:8.[12]|12.0:8.[1234]) printf 'no';;
+    *:8.5) if version_ge "$minor" "11.3"; then printf 'unknown'; else printf 'no'; fi;;
+    *) printf 'unknown';;
+  esac
+  return 0
 }
 
 # rector_php_set_arg [ver] -> the named argument of Rector's ->withPhpSets()

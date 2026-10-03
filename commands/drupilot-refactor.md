@@ -44,8 +44,8 @@ stays reviewable.
 
 The refactor PHPStan target is `DRUPILOT_PHPSTAN_LEVEL_REFACTOR` (default `6`),
 higher than the Phase 1 deprecation level. The PHP target still derives from
-`DRUPILOT_PHP_TARGET` (default `8.3`); never assume PHP 8.5 is supported — branch
-on the runtime check.
+`DRUPILOT_PHP_TARGET` (default `8.3`); PHP 8.5 needs Drupal 11.3 or later and
+has no assumed Rector `php85` set — branch on the runtime check.
 
 Because a refactor introduces typed / `final` public APIs (a BC break),
 re-evaluate the core target in refactor mode:

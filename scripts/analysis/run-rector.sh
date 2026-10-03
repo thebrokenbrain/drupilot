@@ -191,7 +191,7 @@ else
   log_info "Runner      : host (vendor/bin)"
 fi
 if php_target_unconfirmed "$PHP_TARGET"; then
-  log_warn "PHP target $PHP_TARGET is not officially confirmed for Drupal 11; Rector will use the highest confirmed PHP set."
+  log_warn "PHP target $PHP_TARGET (PHP 8.5 needs Drupal 11.3 or later): no Rector php85 set is assumed, Rector uses the highest set drupilot supports."
 fi
 
 # --- Verify the Rector binary is present ----------------------------------

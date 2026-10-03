@@ -37,8 +37,8 @@ All output you produce — the report, the chat summary, every label — is in *
    `preflight.sh --profile analyze` first; if it exits 2, surface the report and stop
    with no side effects.
 4. **PHP 8.3 by default.** Interpret findings against `DRUPILOT_PHP_TARGET`. PHP 8.5
-   is unconfirmed on every D11 branch — never assume it; the scripts detect at
-   runtime.
+   needs Drupal 11.3 or later and has no assumed Rector `php85` set; the scripts
+   detect at runtime.
 5. **Honest classification.** Distinguish what Rector auto-fixes from what needs a
    human, and flag hard breaks explicitly. Do not overstate auto-fixability.
 

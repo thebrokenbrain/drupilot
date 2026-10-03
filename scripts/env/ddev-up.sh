@@ -113,9 +113,14 @@ done
 # Effective PHP target (flag overrides config; config defaults to 8.3).
 [[ -z "$PHP_TARGET" ]] && PHP_TARGET="$(resolve_php_target)"
 
-# Warn (don't block) on an unconfirmed PHP target — DDEV may lack that image.
+# Warn (don't block) on PHP 8.5: it needs Drupal 11.3 or later
+# (php_supported_for), so say so when the Drupal target admits an older minor
+# (the installed core is checked again at the end); DDEV may lack that image.
 if php_target_unconfirmed "$PHP_TARGET"; then
-  log_warn "PHP target $PHP_TARGET is not officially confirmed for Drupal 11 (PROMPT 1.2)."
+  _dt="$(resolve_drupal_target)"; _dt_floor="$(core_floor_from_requirement "$_dt")"
+  if [[ -n "$_dt_floor" && "$(php_supported_for "$_dt_floor" "$PHP_TARGET")" == "no" ]]; then
+    log_warn "PHP $PHP_TARGET needs Drupal 11.3 or later; the Drupal target $_dt also admits $_dt_floor."
+  fi
   log_warn "DDEV may not provide a PHP $PHP_TARGET image. Consider 8.3 (default) or 8.4 if 'ddev start' fails."
 fi
 
@@ -605,6 +610,14 @@ bash "$PLUGIN_ROOT_DIR/scripts/env/lock-sync.sh" --dir "$PROJECT_DIR" >/dev/null
 # The environment exists again: clear a /drupilot-clean 'removed' record on
 # the modules of this root (next-step.sh stops recommending /drupilot-setup).
 env_status_record "$PROJECT_DIR" ready
+
+# PHP 8.5 on the core this test-bed actually has (warn, never block).
+if php_target_unconfirmed "$PHP_TARGET"; then
+  _core="$(drupal_core_version "$PROJECT_DIR")"
+  if [[ -n "$_core" && "$(php_supported_for "$_core" "$PHP_TARGET")" == "no" ]]; then
+    log_warn "PHP $PHP_TARGET needs Drupal 11.3 or later; this test-bed has Drupal $_core."
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 # Done

@@ -496,7 +496,7 @@ Cada bifurcación de peso es una pestaña con la recomendación preseleccionada.
 | Clave (`DRUPILOT_CHOICE_…`) | Comando — pestaña | Valores permitidos | Se recuerda como |
 | --- | --- | --- | --- |
 | `INTENT` | `/drupilot` — Cómo continuar (solo cuando la petición es ambigua) | `full`, `next`, `auto` | — |
-| `PHP_TARGET` | `/drupilot-setup` — Target de PHP | `8.3`, `8.4`, `8.5` (sin confirmar: se acepta con un aviso) | `DRUPILOT_PHP_TARGET` |
+| `PHP_TARGET` | `/drupilot-setup` — Target de PHP | `8.3`, `8.4`, `8.5` (requiere Drupal 11.3 o posterior: se acepta, con un aviso si el core es más antiguo) | `DRUPILOT_PHP_TARGET` |
 | `PLACEMENT` | `/drupilot-setup` — Disposición del workspace | `move`, `symlink`, `copy` | `DRUPILOT_PLACEMENT` |
 | `CONFIG_CONFLICT` | `/drupilot-setup` — un `rector.php` / `phpstan.neon` / `phpcs.xml.dist` editado a mano | `keep`, `replace` (se guarda una copia de la versión anterior) | — |
 | `EXISTING_WORK` | `/drupilot-assess` — Trabajo existente | `independent`, `existing` | — |
@@ -801,7 +801,7 @@ Actívalo/desactívalo con `DRUPILOT_USE_DIGESTS_RULES` (por defecto `true`).
 - **Las acciones hacia el exterior siempre se confirman** en modo `semi`; el PAT nunca se persiste en texto plano ni se imprime.
 - **Scripts y hooks idempotentes y con fallo seguro**: reejecutar un paso detecta el trabajo existente y lo salta; una herramienta opcional ausente nunca rompe un hook.
 - **Los fallos de tests nunca se silencian** — si algo no puede pasar, se documenta el motivo.
-- **Nada marcado como incierto se asume** (soporte de PHP 8.5, el hostname del webdriver, la disponibilidad de imagen DDEV): se detecta en runtime y se degrada con gracia.
+- **Nada marcado como incierto se asume** (un set de Rector para PHP 8.5, que requiere Drupal 11.3 o posterior; el hostname del webdriver; la disponibilidad de imagen DDEV): se detecta en runtime y se degrada con gracia.
 - **Verificación final** antes de dar un módulo por terminado: un `info.yml` compatible, `phpstan` sin deprecaciones al nivel objetivo, un `run-phpcs.sh` limpio (con el ruleset de PHPCS propio del sujeto si lo trae, y si no `Drupal,DrupalPractice`), `check-port-safety.sh` y `scan-signature-changes.sh` sin hallazgos de error, `verify-core-matrix.sh` sin ninguna pata fallida mientras se declare Drupal 10 y la suite de tests aplicable en verde.
 - **Los git hooks del repositorio se respetan; saltárselos nunca es la norma.** Antes de un commit, `scripts/contrib/git-hooks.sh` detecta GrumPHP, husky, lefthook, pre-commit, CaptainHook, `core.hooksPath` y scripts de `.git/hooks`, y el flujo deja que se ejecuten. Solo cuando un hook no puede terminar en la sesión ejecuta sus tareas por separado (`git-hooks.sh --run-equivalents`: phpcs, PHPStan, `php -l`, `composer validate`, y PHPUnit con `--with-tests`, a través de DDEV) y registra en `port-report.md` qué validaciones sustituyeron al hook y qué tareas no tenían equivalente.
 - **No se confía ciegamente en Rector.** El `rector.php` generado omite las reglas de modernización de PHP que rompieron ports reales (callbacks de la Form API convertidos en closures, `#[\Override]` decidido solo contra el core del sandbox, propiedades `readonly`, casts `(string)`); ninguna es necesaria para la compatibilidad con Drupal 11.

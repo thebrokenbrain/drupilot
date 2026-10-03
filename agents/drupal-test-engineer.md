@@ -38,9 +38,9 @@ All output you produce — messages, summaries, coverage reports — is in **Eng
    `preflight.sh --profile test` first; on exit 2, show the report and stop with no
    side effects. The Selenium add-on is a **soft** requirement: if it is missing,
    warn that FunctionalJavascript tests will be skipped and continue with the rest.
-4. **PHP 8.3 by default.** Everything derives from `DRUPILOT_PHP_TARGET`. PHP 8.5 is
-   unconfirmed on every D11 branch — never assume it; read the generated DDEV config
-   for the real PHP version and webdriver host.
+4. **PHP 8.3 by default.** Everything derives from `DRUPILOT_PHP_TARGET`. PHP 8.5
+   needs Drupal 11.3 or later; read the generated DDEV config for the real PHP
+   version and webdriver host.
 5. **Two phases.** In Phase 1, get the **existing** tests green with minimal change.
    In Phase 2 (opt-in refactor), additionally **add** missing tests to maximize
    coverage and report it. Do not invent Phase 2 work unasked.

@@ -19,7 +19,8 @@
 #                  0 or 2 consistent with .ready.analyze, a passing bash row;
 #                  --profile all always exits 0
 #   detect-php     detect-php.sh --json: target 8.3 by default, the
-#                  DRUPILOT_PHP_TARGET override wins
+#                  DRUPILOT_PHP_TARGET override wins, 8.5 stays "unconfirmed";
+#                  php_supported_for answers per core minor (8.5 from 11.3 on)
 #   next-step      next-step.sh on a fresh module: setup when ready, doctor when
 #                  analysis is not ready, the --human one-liner; a subject
 #                  recorded only as tested, or with only a port manifest, is
@@ -352,6 +353,13 @@ test_detect_php() {
   expect "default: supported" "$(jqo dp '.supported')" 'true'
   run dp84 env DRUPILOT_PHP_TARGET=8.4 "$SH" "$REPO/scripts/env/detect-php.sh" --json --subject "$LW"
   expect "override: target" "$(jqo dp84 '.target')" '"8.4"'
+  run dp85 env DRUPILOT_PHP_TARGET=8.5 "$SH" "$REPO/scripts/env/detect-php.sh" --json --subject "$LW"
+  expect "8.5: still flagged unconfirmed (no Rector php85 set)" "$(jqo dp85 '[.supported, .unconfirmed]')" '[false,true]'
+  # Which core minor runs which PHP (drupal.org PHP requirements).
+  expect "php_supported_for" "$("$SH" -c '. "$1"
+    for p in 11.2:8.5 11.3:8.5 11.4.8:8.5 10.3:8.5 11.5:8.5 12.0:8.4 11.1:8.3 10.6:8.1 11.4:8.6; do
+      printf "%s=%s " "$p" "$(php_supported_for "${p%%:*}" "${p#*:}")"; done' _ "$REPO/scripts/lib/common.sh" < /dev/null)" \
+    "11.2:8.5=no 11.3:8.5=yes 11.4.8:8.5=yes 10.3:8.5=no 11.5:8.5=unknown 12.0:8.4=no 11.1:8.3=yes 10.6:8.1=yes 11.4:8.6=unknown "
   finish
 }
 

@@ -494,7 +494,7 @@ Every consequential fork is a tab with the recommendation pre-selected. Set `DRU
 | Key (`DRUPILOT_CHOICE_…`) | Command — tab | Allowed values | Remembered as |
 | --- | --- | --- | --- |
 | `INTENT` | `/drupilot` — How to proceed (only when the request is ambiguous) | `full`, `next`, `auto` | — |
-| `PHP_TARGET` | `/drupilot-setup` — PHP target | `8.3`, `8.4`, `8.5` (unconfirmed: accepted with a warning) | `DRUPILOT_PHP_TARGET` |
+| `PHP_TARGET` | `/drupilot-setup` — PHP target | `8.3`, `8.4`, `8.5` (needs Drupal 11.3 or later: accepted, with a warning on an older core) | `DRUPILOT_PHP_TARGET` |
 | `PLACEMENT` | `/drupilot-setup` — Workspace layout | `move`, `symlink`, `copy` | `DRUPILOT_PLACEMENT` |
 | `CONFIG_CONFLICT` | `/drupilot-setup` — a hand-edited `rector.php` / `phpstan.neon` / `phpcs.xml.dist` | `keep`, `replace` (the old copy is backed up) | — |
 | `EXISTING_WORK` | `/drupilot-assess` — Existing work | `independent`, `existing` | — |
@@ -799,7 +799,7 @@ Enable/disable it with `DRUPILOT_USE_DIGESTS_RULES` (default `true`).
 - **Outward-facing actions are always confirmed** in `semi` mode; the PAT is never persisted in plaintext or printed.
 - **Idempotent and fail-safe** scripts and hooks: re-running a step detects existing work and skips it; a missing optional tool never breaks a hook.
 - **Test failures are never silenced** — if something can't pass, the reason is documented.
-- **Nothing marked uncertain is assumed** (PHP 8.5 support, the webdriver hostname, DDEV image availability): these are detected at runtime and degrade gracefully.
+- **Nothing marked uncertain is assumed** (a Rector set for PHP 8.5, which needs Drupal 11.3 or later; the webdriver hostname; DDEV image availability): these are detected at runtime and degrade gracefully.
 - **Final verification** before a module is considered done: a compatible `info.yml`, `phpstan` with no deprecations at the target level, a clean `run-phpcs.sh` (against the subject's own PHPCS ruleset when it ships one, else `Drupal,DrupalPractice`), `check-port-safety.sh` and `scan-signature-changes.sh` with no error findings, `verify-core-matrix.sh` with no failed leg while Drupal 10 is declared, and the applicable test suite green.
 - **The repository's git hooks are honored, never skipped as a habit.** Before a commit, `scripts/contrib/git-hooks.sh` detects GrumPHP, husky, lefthook, pre-commit, CaptainHook, `core.hooksPath` and `.git/hooks` scripts, and the flow lets them run. Only when a hook cannot complete in the session does it run the hook's tasks separately (`git-hooks.sh --run-equivalents`: phpcs, PHPStan, `php -l`, `composer validate`, and PHPUnit with `--with-tests`, through DDEV) and record in `port-report.md` which validations replaced the hook and which tasks had no equivalent.
 - **Rector is not trusted blindly.** The generated `rector.php` skips the PHP-modernization rules that broke real ports (Form API callbacks turned into closures, `#[\Override]` judged against the sandbox core only, `readonly` properties, `(string)` casts); none of them is needed for Drupal 11 compatibility.

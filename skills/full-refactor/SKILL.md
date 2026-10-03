@@ -48,7 +48,8 @@ quality: modern Drupal 11 idioms, zero deprecations, PHPStan level 5–6, clean
   (default `6`) for this phase, not the Phase 1 default of 2.
 - **Respect the PHP target.** Modern syntax (attributes, typed properties,
   constructor property promotion) is gated by `DRUPILOT_PHP_TARGET`; see the
-  `php-target-tuning` skill (and the 8.5 caveat — never assume it).
+  `php-target-tuning` skill (and the PHP 8.5 caveat: it needs Drupal 11.3 or
+  later, and no Rector `php85` set is assumed).
 - **The Phase 1 port-safety rules still apply** (`minimal-port` §0): never
   remove `ContainerFactoryPluginInterface`/`ContainerInjectionInterface` from a
   class with `create()` (and do not assume a `*Base` class provides it), never
