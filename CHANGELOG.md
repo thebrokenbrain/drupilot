@@ -811,6 +811,21 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **`/drupilot-clean` could lose work it promises to keep.** At the
+  `workspace` level: a `copy` placement was discarded when its HEAD matched the
+  origin and its tree was clean, although a copy has its own `.git` — an
+  issue-fork branch, an unpushed commit or a stash made in the test-bed was
+  deleted with it; it now also requires every local branch, tag and stash of
+  the copy to point at a commit the origin has. A root with `.drupilot/`
+  reports but no module origin to copy them to lost them while the plan said
+  "Always kept"; they now go to the root's hidden state dir
+  (`reports-<time>`), shown as a planned action. A `legacy` root (recognized
+  only by its `<name>-d11` name and workspace pin, which an existing site
+  chosen with `--workspace` also gets) could have its database, Composer
+  trees or the whole directory removed; it now needs `--foreign-ok` for
+  `ddev`/`vendor`, asks a second time like a foreign root, and is never
+  removed at the `workspace` level. A refused or skipped root no longer lists
+  actions (the plan showed "delete the DDEV project" under a refused root).
 - **The cached base core could overwrite and then delete an existing
   docroot.** `ddev-up.sh` restored the cache whenever the root had no
   `composer.json`, and the clean-root guard lets the docroot through with any

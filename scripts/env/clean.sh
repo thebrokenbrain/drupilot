@@ -25,16 +25,23 @@
 #              followed), and a 'copy' is discarded only when it holds nothing
 #              the origin lacks (same git HEAD, clean tree) or with
 #              --discard-copies. The test-bed's .drupilot/ reports are copied to
-#              each origin's .drupilot/ (self-gitignored) first, and a
-#              discarded copy's *.patch files go to .drupilot/patches/.
+#              each origin's .drupilot/ (self-gitignored) first — or, with no
+#              origin to copy them to, to the root's hidden state dir
+#              (<state>/reports-<UTC time>) — and a discarded copy's *.patch
+#              files go to .drupilot/patches/. "Holds nothing the origin
+#              lacks" means: the same HEAD, a clean tree, and every local
+#              branch, tag and stash on a commit the origin has.
 #
 # Ownership: vendor and workspace act ONLY on a drupilot test-bed, i.e. a root
 # whose .drupilot.json carries the drupilot_testbed marker (ddev-up.sh writes it
 # when it builds the root) or, for a test-bed built before the marker existed,
 # pins DRUPILOT_WORKSPACE_DIR to itself under the default '<name>-d11[-N]' name
-# (common.sh testbed_kind). Any other root (the developer's own site) is refused,
-# except `--level ddev --foreign-ok`, which still asks a second time because it
-# destroys that site's database. A workspace with its own .git, or with a
+# (common.sh testbed_kind: 'legacy'). Any other root (the developer's own site)
+# is refused, except `--level ddev --foreign-ok`, which still asks a second time
+# because it destroys that site's database. A 'legacy' root is only recognized
+# by its name, which an existing site chosen with --workspace can share: it
+# needs --foreign-ok for ddev/vendor (asked a second time too) and is never
+# removed at the workspace level. A workspace with its own .git, or with a
 # module/theme under */custom that has no recorded origin, is refused.
 #
 # Afterwards every module of the root gets `.environment = {status: "removed",
@@ -62,7 +69,8 @@
 #   --dry-run         print the plan, change nothing.
 #   --yes             act without asking (still refuses what is not allowed).
 #   --foreign-ok      allow --level ddev on a root that is not a drupilot
-#                     test-bed.
+#                     test-bed, and --level ddev|vendor on a 'legacy' one
+#                     (recognized only by its name).
 #   --discard-copies  workspace: remove a 'copy' placement even when it holds
 #                     changes the origin does not have (its patches are kept).
 #   --no-ddev         do not run `ddev delete` (e.g. Docker is down): the
@@ -232,15 +240,23 @@ origin_record() {
 }
 
 # copy_is_redundant <copy> <origin> -> 0 when discarding the copy loses
-# nothing: both are git checkouts on the same commit and the copy is clean.
+# nothing: both are git checkouts on the same commit, the copy is clean, and
+# every local branch, tag and stash of the copy points at a commit the origin
+# already has (a copy has its own .git: an issue branch, a commit not pushed
+# yet or a stash made in the test-bed lives only there).
 copy_is_redundant() {
-  local c="$1" o="$2" hc ho
+  local c="$1" o="$2" hc ho sha
   git -C "$c" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
   git -C "$o" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
   hc="$(git -C "$c" rev-parse HEAD 2>/dev/null || true)"
   ho="$(git -C "$o" rev-parse HEAD 2>/dev/null || true)"
   [[ -n "$hc" && "$hc" == "$ho" ]] || return 1
-  [[ -z "$(git -C "$c" status --porcelain --untracked-files=normal -- . 2>/dev/null | grep -v -E '(^|/| )\.drupilot(/|\.json|$)' | head -n1)" ]]
+  [[ -z "$(git -C "$c" status --porcelain --untracked-files=normal -- . 2>/dev/null | grep -v -E '(^|/| )\.drupilot(/|\.json|$)' | head -n1)" ]] || return 1
+  while IFS= read -r sha; do
+    [[ -n "$sha" ]] || continue
+    git -C "$o" cat-file -e "${sha}^{commit}" 2>/dev/null || return 1
+  done < <(git -C "$c" for-each-ref --format='%(objectname)' refs/heads refs/tags refs/stash 2>/dev/null)
+  return 0
 }
 
 # --- Resolve the roots --------------------------------------------------------
@@ -312,6 +328,21 @@ plan_root() {
     fi
   fi
 
+  # A 'legacy' test-bed is recognized by its name and workspace pin only, which
+  # an existing site chosen with --workspace can also have: its database and
+  # Composer trees go only with --foreign-ok, and never the whole workspace.
+  if [[ "$kind" == "legacy" ]]; then
+    if [[ "$LEVEL" == "workspace" ]]; then
+      status="refused"; reason="recognized as a test-bed only by its '<name>-d11' name and workspace pin (built before the drupilot_testbed marker, or an existing site chosen with --workspace): never removed as a whole; use --level vendor --foreign-ok, or remove it by hand"
+    elif [[ "$FOREIGN_OK" != "1" ]]; then
+      if [[ "$ALL" == "1" ]]; then
+        status="skipped"; reason="recognized as a test-bed only by its name (no drupilot_testbed marker): pass --foreign-ok to include it"
+      else
+        status="refused"; reason="recognized as a test-bed only by its '<name>-d11' name and workspace pin (no drupilot_testbed marker), which an existing site chosen with --workspace also has: pass --foreign-ok to delete its DDEV project (database) and Composer trees"
+      fi
+    fi
+  fi
+
   if [[ "$status" == "planned" ]]; then
     # 1. DDEV project (every level).
     if [[ "$ddev" == "true" ]]; then
@@ -360,7 +391,7 @@ plan_root() {
             rescue_to="${rescue_to}${origin}"$'\n'
           else
             act="refuse"; status="refused"
-            reason="$s is a copy with changes its origin $origin does not have (another commit, or uncommitted work): bring them over, or pass --discard-copies (its *.patch files are still kept)"
+            reason="$s is a copy with changes its origin $origin does not have (another commit, uncommitted work, or a branch, tag or stash only the copy holds): bring them over, or pass --discard-copies (its *.patch files are still kept)"
           fi
         else
           # move (or an unrecorded placement with a known origin): move it back.
@@ -384,7 +415,11 @@ plan_root() {
             actions="${actions}rescue-reports${TAB}${root}/.drupilot${TAB}${p}/.drupilot"$'\n'
           done < <(printf '%s' "$rescue_to" | awk 'NF && !seen[$0]++')
           if [[ -z "$rescue_to" ]]; then
-            log_warn "$root: no subject origin to copy its .drupilot/ reports to — they go with the workspace (use --level vendor to keep them)."
+            # No origin to copy them to: keep them in the root's hidden state
+            # dir, which a clean never removes.
+            p="$(project_state_path "$root")/reports-$(date -u +%Y%m%dT%H%M%SZ)"
+            log_info "$root: no subject origin to copy its .drupilot/ reports to — they are kept in $p."
+            actions="${actions}rescue-reports${TAB}${root}/.drupilot${TAB}${p}"$'\n'
           fi
         fi
         actions="${actions}rm-root${TAB}${root}${TAB}"$'\n'
@@ -392,6 +427,8 @@ plan_root() {
     fi
   fi
 
+  # A refused or skipped root runs nothing: show no action for it.
+  [[ "$status" == "planned" ]] || actions=""
   R_KIND+=("$kind"); R_STATUS+=("$status"); R_REASON+=("$reason")
   R_ACTIONS+=("$actions"); R_SUBJECTS+=("$subjects"); R_DDEV+=("$name")
   R_SIZE+=("$( [[ "$status" == "planned" ]] && size_kb "$root" || printf 0 )")
@@ -461,9 +498,9 @@ fi
 # A foreign root (only reachable with --level ddev --foreign-ok) asks once more.
 if [[ "$EXECUTE" == "1" ]]; then
   for i in $IDX; do
-    [[ "${R_KIND[i]}" == "none" && "${R_STATUS[i]}" == "planned" ]] || continue
+    [[ "${R_KIND[i]}" != "marker" && "${R_STATUS[i]}" == "planned" ]] || continue
     if [[ "$YES" == "1" ]]; then continue; fi
-    if ! DRUPILOT_ASSUME_YES="" confirm "${ROOTS[i]} is NOT a drupilot test-bed: delete its DDEV project and its database anyway?" 0; then
+    if ! DRUPILOT_ASSUME_YES="" confirm "${ROOTS[i]} is NOT a marked drupilot test-bed: delete its DDEV project and its database anyway?" 0; then
       R_STATUS[i]="skipped"; R_REASON[i]="not confirmed (not a drupilot test-bed)"
     fi
   done
@@ -518,7 +555,7 @@ exec_op() {
       # delete of a whole tree.
       [[ -n "$a" && "$a" == /* && "$a" != "/" && "$a" != "${HOME%/}" && -f "$a/.drupilot.json" ]] \
         || { log_err "Refusing to remove '$a' (failed the safety checks)."; return 1; }
-      [[ "$(testbed_kind "$a")" != "none" ]] || { log_err "Refusing to remove '$a': not a drupilot test-bed."; return 1; }
+      [[ "$(testbed_kind "$a")" == "marker" ]] || { log_err "Refusing to remove '$a': not a marked drupilot test-bed."; return 1; }
       [[ ! -e "$a/.git" ]] || { log_err "Refusing to remove '$a': it has a .git."; return 1; }
       while IFS= read -r f; do
         [[ -n "$f" ]] || continue

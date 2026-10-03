@@ -12,7 +12,8 @@ user-invocable only and always shows the plan before anything is removed. It
 never contributes, never pushes, and never touches the subject's git history.
 
 What is **always kept**: the `.drupilot/` reports (copied to the module's own
-checkout before a workspace is removed), the hidden state (`state.json`,
+checkout before a workspace is removed, or to the root's hidden state dir when
+no module has an origin to copy them to), the hidden state (`state.json`,
 `assess.json`, `last-test.json`, the `drupilot-lock.json` lockfile, so a later
 `/drupilot-setup` rebuilds the same core), the local `*.patch` files, and the
 module's git checkout with all its branches.
@@ -23,12 +24,15 @@ What **may** be removed is decided by `scripts/env/clean.sh` (see its header):
 | --- | --- | --- |
 | `ddev` | the DDEV project: containers, volumes, database (`ddev delete -Oy`, no snapshot) | `/drupilot-setup` (or `ddev start`) |
 | `vendor` (default) | + `vendor/` and every Composer installer path (core, contrib, libraries, recipes) — never `*/custom` | `/drupilot-setup` (`ddev composer install` from `composer.lock`) |
-| `workspace` | + the whole test-bed directory, after moving a `move`d module back to where it came from, unlinking a `symlink`, and discarding a `copy` only when it holds nothing its origin lacks | `/drupilot-setup` on the module (the cached base core makes it fast) |
+| `workspace` | + the whole test-bed directory, after moving a `move`d module back to where it came from, unlinking a `symlink`, and discarding a `copy` only when it holds nothing its origin lacks (same commit, clean tree, no branch, tag or stash only the copy has) | `/drupilot-setup` on the module (the cached base core makes it fast) |
 
 `vendor` and `workspace` only act on a **drupilot test-bed** (a root
 `ddev-up.sh` built, marked in its `.drupilot.json`). On any other Drupal root
 only `--level ddev --foreign-ok` is possible, and it asks a second time because
-it destroys that site's database.
+it destroys that site's database. A `legacy` root (recognized only by its
+`<name>-d11` name and workspace pin, which an existing site chosen with
+`--workspace` can share) needs `--foreign-ok` for `ddev` and `vendor`, asks a
+second time too, and is never removed at the `workspace` level.
 
 ## Step 1 — Gate
 
@@ -93,7 +97,8 @@ If nothing is `planned`, stop here. Otherwise use **AskUserQuestion**, header
 Add `--discard-copies` only if the developer explicitly chose to drop a copy
 placement's unmerged changes after seeing the refusal (its `*.patch` files are
 still kept), `--foreign-ok` only for an explicit `--level ddev` on a root that
-is not a drupilot test-bed, and `--no-ddev` when Step 1 found DDEV unavailable.
+is not a drupilot test-bed (or `--level ddev|vendor` on a `legacy` one) after
+the developer confirmed that root is a disposable test-bed, and `--no-ddev` when Step 1 found DDEV unavailable.
 
 ## Step 6 — Summarize
 
