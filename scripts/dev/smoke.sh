@@ -549,6 +549,8 @@ root="$(cd "$(dirname "$0")/../.." && pwd)"
 printf '%s\n' "$*" >> "$root/rector-args.log"
 mode="$(cat "$root/rector-mode" 2>/dev/null || true)"
 case "$mode" in
+  dup\ *) case " $* " in *" --dry-run "*) ;; *) printf '#[\\Drupal\\migrate\\Attribute\\MigrateSource(id: "a")]\n#[\\Drupal\\migrate\\Attribute\\MigrateSource(id: "b")]\nclass X {}\n' >> "$root/${mode#dup }";; esac
+    printf '1 file with changes\n===================\n\n1) %s\n\n [OK] 1 file has been changed by Rector\n' "${mode#dup }";;
   change\ *) printf '1 file with changes\n===================\n\n1) %s\n\n [OK] 1 file would have been changed by Rector\n' "${mode#change }";;
   *) printf ' [OK] Rector is done!\n';;
 esac
@@ -680,6 +682,25 @@ PHP
   expect "convert-attributes: plain file converted" "$(jqo at '[.types[] | .annotation + ":" + .action + ":" + (.converted_files | tostring)]')" '["MigrateSource:keep:1"]'
   expect "convert-attributes: skipped file in the Rector skip list" \
     "$(grep -c "acme_mig/src/Plugin/migrate/source/AcmeRoles.php" "$r/.drupilot/rector-attributes.php" 2>/dev/null || true)" "1"
+  # --apply --raise-floor: a file restored after the pass (here a duplicate
+  # attribute) no longer counts toward the core floor, so nothing is raised.
+  local r2="$FX/attr-root2" mod2
+  mk_stub_root "$r2" "11.4.8"
+  cp -R "$r/web/core" "$r2/web/"
+  cp -R "$r/vendor/palantirnet" "$r2/vendor/"
+  mod2="$r2/web/modules/custom/acme_mig"
+  mkdir -p "$mod2/src/Plugin/migrate/source"
+  cp "$mod/acme_mig.info.yml" "$mod2/"
+  cp "$mod/src/Plugin/migrate/source/AcmePlain.php" "$mod2/src/Plugin/migrate/source/"
+  printf 'dup web/modules/custom/acme_mig/src/Plugin/migrate/source/AcmePlain.php' > "$r2/rector-mode"
+  run at3 "$SH" "$REPO/scripts/analysis/convert-attributes.sh" --subject "$mod2" --apply --raise-floor --json
+  expect "convert-attributes restore: exit" "$RC" "0"
+  expect "convert-attributes restore: file restored, floor dropped, not raised" \
+    "$(jqo at3 '[(.restored_files | length), .attribute_floor, .floor_raised, ([.types[] | .converted_files] | add)]')" '[1,null,false,0]'
+  expect "convert-attributes restore: requirement untouched" \
+    "$(sed -n 's/^core_version_requirement: //p' "$mod2/acme_mig.info.yml")" '^11'
+  expect "convert-attributes restore: file content restored" \
+    "$(grep -c 'MigrateSource(id' "$mod2/src/Plugin/migrate/source/AcmePlain.php" || true)" '0'
   # A contrib attribute type (no @since) still converts once a reference core
   # (core only, no contrib) is cached under .drupilot/cores.
   mkdir -p "$r/web/modules/contrib/foo/src/Attribute" "$r/.drupilot/cores/drupal-10/web/core/lib/Drupal" "$mod/src/Plugin/Foo"

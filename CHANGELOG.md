@@ -819,6 +819,13 @@ tag the commit `vX.Y.Z`.
   there and every file of that type kept its annotation with "the constructor
   could not be read". A reference core now only counts for attribute classes
   that ship with core; the test-bed still reads every class.
+- **`convert-attributes.sh --raise-floor` could raise the core requirement for
+  an attribute it had just undone.** The core floor was computed before the
+  checks that restore a file (a duplicate attribute, a `php -l` failure, a
+  PHPStan constructor mismatch), so when every file of a type was restored the
+  requirement was still raised (for example to `^11.2` for a `MigrateSource`,
+  dropping Drupal 10). The floor, the recommended requirement and each type's
+  `converted_files` are now recomputed from the files still converted.
 - **The Phase 1 autofix reformatted files the port never touched.**
   `run-phpcs.sh --fix` ran `phpcbf` over the whole module, so a minimal port's
   patch also carried trailing commas, removed `use` lines and a missing EOF

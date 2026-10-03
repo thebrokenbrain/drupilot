@@ -435,28 +435,36 @@ while IFS= read -r f; do
   fi
 done < <(awk -F '\t' 'NR == FNR { act[$1] = 1; next } $1 == "TAG" && ($3 in act) { print $2 }' "$ACTIVE" "$SCAN" | sort -u)
 
-# The floor counts only the types that still have a file to convert.
-while IFS=$'\t' read -r ann attr since action; do
-  [[ "$since" == "-" ]] && continue
-  if awk -F '\t' -v a="$ann" 'NR == FNR { c[$0] = 1; next } $1 == "TAG" && $3 == a && ($2 in c) { found = 1 } END { exit !found }' "$CAND" "$SCAN"; then
-    if [[ -z "$ATTR_FLOOR" ]] || ! mm_le "$since" "$ATTR_FLOOR"; then ATTR_FLOOR="$since"; fi
+# floor_from <file-list> <reason> -> sets ATTR_FLOOR, FLOOR_OK, REC_REQ and the
+# per-type converted_files of TYPES_JSON from the files still converted (one
+# per line). The floor counts only the types that still have a file there; a
+# type left with none becomes "skipped" with <reason>.
+floor_from() {
+  local list="$1" why="$2" ann attr since action
+  ATTR_FLOOR=""
+  while IFS=$'\t' read -r ann attr since action; do
+    [[ "$since" == "-" ]] && continue
+    if awk -F '\t' -v a="$ann" 'NR == FNR { c[$0] = 1; next } $1 == "TAG" && $3 == a && ($2 in c) { found = 1 } END { exit !found }' "$list" "$SCAN"; then
+      if [[ -z "$ATTR_FLOOR" ]] || ! mm_le "$since" "$ATTR_FLOOR"; then ATTR_FLOOR="$since"; fi
+    fi
+  done < "$ACTIVE"
+  # Per type: how many files are still converted (0 = every file was skipped).
+  TYPES_JSON="$(printf '%s' "$TYPES_JSON" | jq -c --rawfile cand "$list" --rawfile scan "$SCAN" --arg why "$why" '
+    ($cand | split("\n") | map(select(length > 0))) as $c
+    | ($scan | split("\n") | map(split("\t")) | map(select(.[0] == "TAG" and (.[1] as $f | any($c[]; . == $f))))) as $t
+    | map(. as $ty | ($t | map(select(.[2] == $ty.annotation) | .[1]) | unique | length) as $n
+          | if .action == "skipped" then . + {converted_files: 0}
+            elif $n == 0 then . + {converted_files: 0, action: "skipped", reason: (.reason // $why)}
+            else . + {converted_files: $n} end)')"
+  FLOOR_OK="true"
+  if [[ -n "$ATTR_FLOOR" ]]; then
+    if [[ -z "$DECLARED_FLOOR" ]] || ! mm_le "$ATTR_FLOOR" "$DECLARED_FLOOR"; then FLOOR_OK="false"; fi
   fi
-done < "$ACTIVE"
-# Per type: how many files are still converted (0 = every file was skipped).
-TYPES_JSON="$(printf '%s' "$TYPES_JSON" | jq -c --rawfile cand "$CAND" --rawfile scan "$SCAN" '
-  ($cand | split("\n") | map(select(length > 0))) as $c
-  | ($scan | split("\n") | map(split("\t")) | map(select(.[0] == "TAG" and (.[1] as $f | any($c[]; . == $f))))) as $t
-  | map(. as $ty | ($t | map(select(.[2] == $ty.annotation) | .[1]) | unique | length) as $n
-        | if .action == "skipped" then . + {converted_files: 0}
-          elif $n == 0 then . + {converted_files: 0, action: "skipped",
-                                reason: (.reason // "every file of this type was skipped (see skipped_files)")}
-          else . + {converted_files: $n} end)')"
-FLOOR_OK="true"
-if [[ -n "$ATTR_FLOOR" ]]; then
-  if [[ -z "$DECLARED_FLOOR" ]] || ! mm_le "$ATTR_FLOOR" "$DECLARED_FLOOR"; then FLOOR_OK="false"; fi
-fi
-REC_REQ="$DECLARED_REQ"
-[[ "$FLOOR_OK" == "false" ]] && REC_REQ="$(core_requirement_raise_floor "$DECLARED_REQ" "$ATTR_FLOOR")"
+  REC_REQ="$DECLARED_REQ"
+  if [[ "$FLOOR_OK" == "false" ]]; then REC_REQ="$(core_requirement_raise_floor "$DECLARED_REQ" "$ATTR_FLOOR")"; fi
+  return 0
+}
+floor_from "$CAND" "every file of this type was skipped (see skipped_files)"
 
 # emit_json <status> <files-text> <count> <restored-json> <qualified> <raised> <errors-json>
 emit_json() {
@@ -634,6 +642,13 @@ if [[ "$APPLY" == "1" && -n "$CHANGED" ]]; then
       PS_STATUS="unavailable"
       log_warn "vendor/bin/phpstan is missing: the attribute arguments of the converted files are NOT verified (php -l does not check them)."
     fi
+  fi
+  # A restored file no longer carries an attribute: recompute the floor (and
+  # converted_files) from the files still converted, so --raise-floor never
+  # declares a core floor for a type the code no longer uses.
+  if [[ "$RESTORED_JSON" != "[]" ]]; then
+    grep -vxF -f <(printf '%s' "$RESTORED_JSON" | jq -r '.[].file') "$CAND" > "$TMPD/kept.txt" || true
+    floor_from "$TMPD/kept.txt" "every file of this type was skipped or restored (see skipped_files, restored_files)"
   fi
   # 5) Raise the declared floor when asked and needed.
   if [[ "$RAISE" == "1" && "$FLOOR_OK" == "false" && -n "$REC_REQ" ]]; then
