@@ -181,10 +181,13 @@ SIG="$FXROOT/php_floor_signals"
 # sanitized <path> -> the state-key form of a path (project_state_path's tr).
 sanitized() { printf '%s' "$1" | tr -c 'A-Za-z0-9' '_'; }
 
-# The literal replacements, longest first, handed to awk through ENVIRON (an
+# The literal replacements, applied longest first (so a path that is a prefix
+# of another, e.g. a checkout at /tmp/drupilot next to the temp dir
+# /tmp/drupilot-baseline.X, never eats it), handed to awk through ENVIRON (an
 # `awk -v` value would have its backslashes interpreted).
-_np=0
-add_pair() { _np=$((_np + 1)); export "BL_F$_np=$1" "BL_T$_np=$2"; return 0; }
+_PAIRS="$TMP/pairs.tsv"
+: > "$_PAIRS"
+add_pair() { printf '%s\t%s\t%s\n' "${#1}" "$1" "$2" >> "$_PAIRS"; return 0; }
 add_pair "$LW" "<SUBJECT>"
 add_pair "$MONO" "<SUBJECT>"
 add_pair "$SIG" "<SUBJECT>"
@@ -194,6 +197,10 @@ add_pair "$(sanitized "$SIG")" "<SUBJECTKEY>"
 add_pair "$PR" "<PLUGIN_ROOT>"
 add_pair "$TMP" "<TMP>"
 add_pair "$(sanitized "$TMP")" "<TMPKEY>"
+_np=0
+while IFS="$(printf '\t')" read -r _len _from _to; do
+  _np=$((_np + 1)); export "BL_F$_np=$_from" "BL_T$_np=$_to"
+done < <(LC_ALL=C sort -t "$(printf '\t')" -k1,1nr -k2,2 "$_PAIRS")
 export BL_N="$_np"
 
 # lit_replace: STDIN -> STDOUT with every literal occurrence of each pair
