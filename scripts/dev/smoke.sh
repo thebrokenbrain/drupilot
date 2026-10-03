@@ -125,7 +125,8 @@
 #                  is the one post-edit-lint.sh lints with (the record is
 #                  written through common.sh when the analyze profile is not
 #                  ready); CLAUDE_PLUGIN_DATA never moves the data dir,
-#                  DRUPILOT_HOME does
+#                  DRUPILOT_HOME does (a leading ~ expanded; a relative value,
+#                  or a relative XDG_DATA_HOME, ignored from any cwd)
 #   open-mr        open-mr.sh never puts the GitLab PAT on a command line: a
 #                  stub curl records its argv and its config; the PAT reaches it
 #                  through `-K -` (STDIN), and through a mode-0600 temp file
@@ -1117,6 +1118,15 @@ test_data_dir() {
     "$(env CLAUDE_PLUGIN_DATA=/x "$SH" -c '. "$1"; data_dir_path' _ "$lib" < /dev/null)" "$XDG_DATA_HOME/drupilot"
   expect "DRUPILOT_HOME does" \
     "$(env CLAUDE_PLUGIN_DATA=/x DRUPILOT_HOME=/y/home/ "$SH" -c '. "$1"; data_dir_path' _ "$lib" < /dev/null)" "/y/home"
+  expect "a leading ~ of DRUPILOT_HOME is expanded" \
+    "$(env DRUPILOT_HOME='~/dh' "$SH" -c '. "$1"; data_dir_path' _ "$lib" < /dev/null)" "$HOME/dh"
+  # A relative root would depend on the cwd (hooks and scripts run from
+  # different directories): it is ignored, the same from anywhere.
+  expect "a relative DRUPILOT_HOME is ignored, from any cwd" \
+    "$(cd "$LW" && env DRUPILOT_HOME=rel/dh "$SH" -c '. "$1"; data_dir_path' _ "$lib" < /dev/null)|$(cd "$TMP" && env DRUPILOT_HOME=rel/dh "$SH" -c '. "$1"; data_dir_path' _ "$lib" < /dev/null)" \
+    "$XDG_DATA_HOME/drupilot|$XDG_DATA_HOME/drupilot"
+  expect "a relative XDG_DATA_HOME is ignored" \
+    "$(env XDG_DATA_HOME=rel/xdg "$SH" -c '. "$1"; data_dir_path' _ "$lib" < /dev/null)" "$HOME/.local/share/drupilot"
   # End to end: the project ruleset recorded in script context is the one the
   # post-edit-lint hook (CLAUDE_PLUGIN_DATA exported) runs phpcbf with.
   mk_stub_root "$r" "11.4.8"

@@ -156,10 +156,19 @@ data_dir() {
   printf '%s' "$d"
 }
 # data_dir_path -> the same path, without creating it (read-only callers).
+# A leading '~' of DRUPILOT_HOME is expanded (a quoted export or a settings.json
+# env value does not expand it); any other relative DRUPILOT_HOME, and a
+# relative XDG_DATA_HOME (invalid per the XDG spec), are ignored: a hook and a
+# script run from different directories, so a relative root would split the
+# state again and write it into the project tree.
 data_dir_path() {
-  local h="${DRUPILOT_HOME:-}"
+  local h="${DRUPILOT_HOME:-}" x="${XDG_DATA_HOME:-}"
+  # shellcheck disable=SC2088  # the literal '~' a quoted value carries is the point
+  case "$h" in "~") h="$HOME";; "~/"*) h="$HOME/${h#"~/"}";; esac
   h="${h%/}"
-  printf '%s' "${h:-${XDG_DATA_HOME:-$HOME/.local/share}/drupilot}"
+  case "$h" in /*) printf '%s' "$h"; return 0;; esac
+  case "$x" in /*) : ;; *) x="$HOME/.local/share";; esac
+  printf '%s/drupilot' "${x%/}"
 }
 
 # legacy_plugin_data_dir -> the per-plugin data dirs where drupilot 0.9.0 could

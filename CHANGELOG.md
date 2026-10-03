@@ -23,7 +23,9 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 - **`DRUPILOT_HOME`** — drupilot's hidden data directory (state, lockfiles,
   caches); empty means `$XDG_DATA_HOME/drupilot` (`~/.local/share/drupilot`).
   Read from the environment only. It is the only new key of the 0.9.x line: it
-  comes with the data-directory fix below.
+  comes with the data-directory fix below. A leading `~` is expanded; any other
+  relative value, like a relative `XDG_DATA_HOME`, is ignored, so hooks and
+  scripts never resolve it against different working directories.
 - **The frozen v0.9.0 baseline (`scripts/dev/baseline-0.9.sh`).** `--capture`
   ran the Docker-free scripts of the `v0.9.0` tag (a throwaway `git worktree`)
   on copies of the `legacy_widgets` and `monorepo` fixtures and committed their
