@@ -819,6 +819,11 @@ tag the commit `vX.Y.Z`.
   there and every file of that type kept its annotation with "the constructor
   could not be read". A reference core now only counts for attribute classes
   that ship with core; the test-bed still reads every class.
+- **Placing a monorepo module ran the repository's own git hooks.** Reading
+  the module out of the origin's last commit for the copy's baseline is a git
+  path checkout, which runs the origin's `post-checkout` hook (husky, custom
+  scripts), so user code could run and write into the repository during
+  placement. That checkout now runs with hooks disabled.
 - **Setup steps given a monorepo module could still write into the
   repository.** In a Composer project checkout without installed core that
   carries a committed `.ddev/config.yaml`, `ensure-gitignore.sh`,

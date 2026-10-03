@@ -3113,9 +3113,11 @@ git_seed_baseline() {
   if [[ -n "$commit" ]] && git -C "$repo" cat-file -e "$commit:${prefix%/}" 2>/dev/null; then
     # Check the module out of the origin's HEAD into a throwaway work tree
     # through a throwaway index: the origin's index and files stay untouched.
+    # A path checkout runs the origin's post-checkout hook (husky, custom
+    # scripts...), which could write into the user's repository: no hooks.
     tmp="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-baseline.XXXXXX")"
     idx="$tmp.idx"
-    if GIT_INDEX_FILE="$idx" git -C "$repo" --work-tree="$tmp" checkout "$commit" -- "${prefix:-.}" >/dev/null 2>&1; then
+    if GIT_INDEX_FILE="$idx" git -c core.hooksPath=/dev/null -C "$repo" --work-tree="$tmp" checkout "$commit" -- "${prefix:-.}" >/dev/null 2>&1; then
       base="$tmp/${prefix%/}"
     else
       log_warn "Could not read the module from $repo at ${commit:0:12}; the baseline is the copied files."

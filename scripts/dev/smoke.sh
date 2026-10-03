@@ -899,7 +899,11 @@ test_monorepo_testbed() {
   expect "Drupal 10 site + workspace: a test-bed port" "$(jqo mw5 '[.loose, .drupal_root, .placement]')" "[true,\"$FX/d10-ws\",\"copy\"]"
   # Place into a stub test-bed, port, and patch.
   mk_stub_root "$m-d11" "11.4.8"
+  # The origin's own hooks never run while its module is read for the baseline.
+  printf '#!/bin/sh\necho fired >> "%s"\n' "$FX/origin-hook-fired" > "$m/.git/hooks/post-checkout"
+  chmod +x "$m/.git/hooks/post-checkout"
   run mp1 "$SH" "$REPO/scripts/env/place-subject.sh" --subject "$m/web/modules/custom/acme_core" --yes
+  expect "place: the origin's post-checkout hook does not fire" "$([[ -e "$FX/origin-hook-fired" ]] && echo fired)" ""
   dest="$m-d11/web/modules/custom/acme_core"
   expect "place: exit and destination" "$RC|$(out mp1)" "0|$dest"
   expect "place: the copy has a baseline" \
