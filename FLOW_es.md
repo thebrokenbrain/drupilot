@@ -159,7 +159,7 @@ flowchart TD
     ATA["convert-attributes.sh --mode keep<br/>#[...] junto a las anotaciones<br/>sube el suelo (p. ej. ^10.3 || ^11)"]:::script
 
     subgraph VL["Bucle de validación · la IA itera hasta dejarlo limpio"]
-      VS["run-phpcs --fix (phpcbf corrige · phpcs informa)<br/>run-phpstan (deprecaciones) · classify-deprecations<br/>check-port-safety · scan-signature-changes<br/>verify-core-matrix (la pata Drupal 10 declarada)<br/>lint-extension-metadata (higiene, solo informa)"]:::script
+      VS["run-phpcs --fix --fix-scope changed<br/>(phpcbf corrige solo los ficheros que cambió el port · phpcs informa)<br/>run-phpstan (deprecaciones) · classify-deprecations<br/>check-port-safety · scan-signature-changes<br/>verify-core-matrix (la pata Drupal 10 declarada)<br/>lint-extension-metadata (higiene, solo informa)"]:::script
       VAI(("La IA revisa lo que queda<br/>y aplica la corrección mínima")):::ai
       VS --> VAI
       VAI -->|"quedan avisos"| VS

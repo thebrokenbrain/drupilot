@@ -101,6 +101,11 @@
 #                  --check (pristine module / monorepo root), and the
 #                  monorepo's git status stays empty; clean.sh may discard
 #                  the pristine seeded copy but not the ported one (needs git)
+#   phpcs-scope    run-phpcs.sh --fix --fix-scope changed (stub phpcs/phpcbf
+#                  on a stub Drupal root) hands phpcbf only the files that
+#                  differ from the pre-port git base plus new ones, --fix
+#                  alone still fixes the whole subject, and a subject outside
+#                  git is report-only (needs the analyze profile and git)
 #
 # Isolation: the fixtures are copied to a temp dir (legacy_widgets is committed
 # there as a git repo when git exists), and HOME, CLAUDE_PLUGIN_DATA and the
@@ -131,7 +136,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$REPO/tests/fixtures"
 SH="${BASH:-bash}"
 
-ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root monorepo-testbed"
+ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root monorepo-testbed phpcs-scope"
 
 AS_JSON=0; ONLY=""; SKIP=""; KEEP=0
 
@@ -875,6 +880,48 @@ test_monorepo_testbed() {
   finish
 }
 
+test_phpcs_scope() {
+  local r="$FX/pc-root" rp="$REPO/scripts/analysis/run-phpcs.sh" sub b l
+  if ! analyze_ready || [[ "$HAVE_GIT" != "1" ]]; then
+    log_warn "phpcs-scope: the analyze profile or git is not ready, the test is skipped."
+    finish; return 0
+  fi
+  mk_stub_root "$r" "11.4.8"
+  for b in phpcs phpcbf; do
+    cat > "$r/vendor/bin/$b" <<'STUB'
+#!/usr/bin/env bash
+root="$(cd "$(dirname "$0")/../.." && pwd)"
+case " $* " in *" -i "*) printf 'The installed coding standards are Drupal and DrupalPractice\n'; exit 0;; esac
+printf '%s %s\n' "$(basename "$0")" "$*" >> "$root/phpcs-args.log"
+exit 0
+STUB
+    chmod +x "$r/vendor/bin/$b"
+  done
+  cp -R "$LW" "$r/web/modules/custom/"
+  sub="$r/web/modules/custom/legacy_widgets"
+  printf '\n// Changed by the port.\n' >> "$sub/src/WidgetCounter.php"
+  printf '<?php\n\nnamespace Drupal\\legacy_widgets;\n\nclass Added {}\n' > "$sub/src/Added.php"
+  run pc1 "$SH" "$rp" --subject "$sub" --fix --fix-scope changed
+  l="$(grep '^phpcbf ' "$r/phpcs-args.log" 2>/dev/null | tail -n1)"
+  expect "changed: phpcbf gets only the changed files" \
+    "$(printf '%s' "$l" | tr ' ' '\n' | grep -E '^web/' | tr '\n' ';')" \
+    "web/modules/custom/legacy_widgets/src/Added.php;web/modules/custom/legacy_widgets/src/WidgetCounter.php;"
+  expect "changed: phpcs still reports on the subject" \
+    "$(grep '^phpcs ' "$r/phpcs-args.log" 2>/dev/null | grep -v -- ' -e' | tail -n1 | tr ' ' '\n' | grep -E '^web/' | tr '\n' ';')" \
+    "web/modules/custom/legacy_widgets;"
+  : > "$r/phpcs-args.log"
+  run pc2 "$SH" "$rp" --subject "$sub" --fix
+  expect "all: phpcbf gets the subject" \
+    "$(grep '^phpcbf ' "$r/phpcs-args.log" 2>/dev/null | tail -n1 | tr ' ' '\n' | grep -E '^web/' | tr '\n' ';')" \
+    "web/modules/custom/legacy_widgets;"
+  rm -rf "${sub:?}/.git"; : > "$r/phpcs-args.log"
+  run pc3 "$SH" "$rp" --subject "$sub" --fix --fix-scope changed
+  expect "no git: report only" "$RC|$(grep -c '^phpcbf ' "$r/phpcs-args.log" 2>/dev/null || true)" "0|0"
+  run pc4 "$SH" "$rp" --subject "$sub" --fix --fix-scope bogus
+  expect "bad scope: usage error" "$RC" "1"
+  finish
+}
+
 # --- Main -----------------------------------------------------------------------
 log_step "drupilot smoke tests (bash ${BASH_VERSION:-?}, $(uname -s 2>/dev/null || echo ?))"
 for t in $ALL_TESTS; do
@@ -903,6 +950,7 @@ for t in $ALL_TESTS; do
     port-summary) test_port_summary;;
     project-root) test_project_root;;
     monorepo-testbed) test_monorepo_testbed;;
+    phpcs-scope) test_phpcs_scope;;
   esac
 done
 

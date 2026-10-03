@@ -334,7 +334,8 @@ the "Plugin attributes" tab (`/drupilot-port` Step 6b; an autonomous run skips
 it) run `scripts/analysis/convert-attributes.sh --subject <DIR> --mode keep
 --max-since 10.3 --raise-floor --apply --json`, which raises
 `core_version_requirement` explicitly. After each batch, run
-`phpcbf` + `phpcs` + `phpstan` + `scripts/analysis/check-port-safety.sh --subject
+`phpcbf` (only on the files the port changed: `run-phpcs.sh --fix --fix-scope
+changed`, so untouched files are reported, never reformatted) + `phpcs` + `phpstan` + `scripts/analysis/check-port-safety.sh --subject
 <path> --json` + `scripts/analysis/scan-signature-changes.sh --subject <path>
 --json` and leave the subject compiling **without blocking deprecations**
 and with both checks at exit 0 (exit 3 = error findings: fix them — in

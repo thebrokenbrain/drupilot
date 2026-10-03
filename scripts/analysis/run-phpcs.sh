@@ -29,13 +29,21 @@
 # this script does not install anything, it only runs the binaries.
 #
 # Usage:
-#   run-phpcs.sh --subject DIR [--fix] [--json] [--ruleset auto|drupilot|PATH]
-#                [--test-version VER]
+#   run-phpcs.sh --subject DIR [--fix [--fix-scope changed|all]] [--json]
+#                [--ruleset auto|drupilot|PATH] [--test-version VER]
 #
 # Options:
 #   --subject DIR   Path to the module/theme to check (relative to the Drupal
 #                   root or absolute). Required.
 #   --fix           Run phpcbf first (autofix), then re-check with phpcs.
+#   --fix-scope S   What phpcbf may touch: all (default) = the whole subject;
+#                   changed = only the files the port changed, i.e. those that
+#                   differ from the same pre-port git base as the local patch
+#                   (git_port_base_ref) plus new untracked files. Phase 1 uses
+#                   `changed` so autofixing never widens the minimal diff into
+#                   files the port did not touch; the report pass still covers
+#                   the whole subject. Without git (no base to compare with)
+#                   phpcbf is skipped and the run is report-only.
 #   --json          Emit PHPCS's native JSON (`--report=json`) on STDOUT —
 #                   `{totals:{errors,warnings,fixable}, files:{...}}` — for a
 #                   reproducible count. With --fix, phpcbf output is kept off
@@ -75,6 +83,7 @@ PHPCS_STANDARD="Drupal,DrupalPractice"
 
 SUBJECT=""
 FIX=0
+FIX_SCOPE="all"
 AS_JSON=0
 RULESET_OPT=""
 TV_OPT=""
@@ -86,6 +95,8 @@ while [[ $# -gt 0 ]]; do
     --subject) SUBJECT="${2:-}"; shift 2;;
     --subject=*) SUBJECT="${1#*=}"; shift;;
     --fix) FIX=1; shift;;
+    --fix-scope) FIX_SCOPE="${2:-}"; shift 2 || die "--fix-scope needs a value (changed|all)." 1;;
+    --fix-scope=*) FIX_SCOPE="${1#*=}"; shift;;
     --json) AS_JSON=1; shift;;
     --ruleset) RULESET_OPT="${2:-}"; shift 2 || die "--ruleset needs a value (auto|drupilot|PATH)." 1;;
     --ruleset=*) RULESET_OPT="${1#*=}"; shift;;
@@ -97,6 +108,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "$SUBJECT" ]] || die "Missing --subject DIR (the module/theme to check)." 1
+case "$FIX_SCOPE" in changed|all) : ;; *) die "--fix-scope must be 'changed' or 'all' (got '$FIX_SCOPE')." 1;; esac
 CALLER_PWD="$PWD"
 
 # --- Gate: analyze --------------------------------------------------------
@@ -307,12 +319,14 @@ if [[ -n "$RS_INFO" ]]; then
   printf '%s\n' "$RS_INFO" > "$(project_state_dir "$SUBJECT_ABS")/phpcs-ruleset.json" 2>/dev/null || true
 fi
 
-# run_tool <bin> [extra args...] -> run phpcs/phpcbf with the resolved ruleset.
+# run_tool <bin> [extra args...] -> run phpcs/phpcbf with the resolved ruleset,
+# on TARGETS (the subject by default; the changed files for --fix-scope changed).
+declare -a TARGETS=("$SUBJECT_REL")
 run_tool() {
   local bin="$1"; shift
   declare -a cmd=()
   [[ -n "$RUNNER" ]] && read -r -a cmd <<<"$RUNNER"
-  cmd+=("vendor/bin/$bin" "${STD_ARGS[@]}" "$@" "$SUBJECT_REL")
+  cmd+=("vendor/bin/$bin" "${STD_ARGS[@]}" "$@" "${TARGETS[@]}")
   log_step "$bin: ${cmd[*]}"
   local rc=0
   if [[ -n "$RUNNER" ]]; then
@@ -330,12 +344,51 @@ run_tool() {
 }
 
 # --- Optional autofix pass (phpcbf) ---------------------------------------
+# changed_files -> the subject's files (relative to the Drupal root) that differ
+# from the pre-port git base, plus new untracked ones, limited to the extensions
+# PHPCS checks. Returns 1 when the subject is not in git (no base to compare).
+changed_files() {
+  local repo base f ext ok e
+  git -C "$SUBJECT_ABS" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
+  repo="$(git -C "$SUBJECT_ABS" rev-parse --show-toplevel 2>/dev/null)" || return 1
+  base="$(git_port_base_ref "$repo" "" 2>/dev/null)" || return 1
+  { git -C "$SUBJECT_ABS" diff --name-only --relative "$base" -- . 2>/dev/null || true
+    git -C "$SUBJECT_ABS" ls-files --others --exclude-standard -- . 2>/dev/null || true
+  } | LC_ALL=C sort -u | while IFS= read -r f; do
+    [[ -n "$f" && -f "$SUBJECT_ABS/$f" ]] || continue
+    ext="${f##*.}"; ok=0
+    for e in ${PHPCS_EXTENSIONS//,/ }; do [[ "$ext" == "$e" ]] && ok=1; done
+    [[ "$ok" == "1" ]] || continue
+    if [[ "$SUBJECT_REL" == "." ]]; then printf '%s\n' "$f"; else printf '%s/%s\n' "$SUBJECT_REL" "$f"; fi
+  done
+  return 0
+}
+
 if [[ "$FIX" == "1" ]]; then
-  log_info "Autofixing with phpcbf (this modifies files in place)."
-  # phpcbf returns 1 when it fixed something and 2 on real errors; neither is fatal here.
-  # In --json mode keep phpcbf's report off stdout so the only thing there is JSON.
-  if [[ "$AS_JSON" == "1" ]]; then run_tool phpcbf >&2 || true; else run_tool phpcbf || true; fi
-  hr
+  _do_fix=1
+  if [[ "$FIX_SCOPE" == "changed" ]]; then
+    TARGETS=()
+    if _changed="$(changed_files)"; then
+      while IFS= read -r _f; do [[ -n "$_f" ]] && TARGETS+=("$_f"); done <<<"$_changed"
+      if [[ "${#TARGETS[@]}" -eq 0 ]]; then
+        log_info "phpcbf skipped: the port changed no file PHPCS checks (--fix-scope changed)."
+        _do_fix=0
+      else
+        log_info "Autofix limited to the ${#TARGETS[@]} file(s) the port changed (--fix-scope changed); other files are only reported."
+      fi
+    else
+      log_warn "phpcbf skipped: the subject is not in git, so the files the port changed are unknown (--fix-scope changed). Report only."
+      _do_fix=0
+    fi
+  fi
+  if [[ "$_do_fix" == "1" ]]; then
+    log_info "Autofixing with phpcbf (this modifies files in place)."
+    # phpcbf returns 1 when it fixed something and 2 on real errors; neither is fatal here.
+    # In --json mode keep phpcbf's report off stdout so the only thing there is JSON.
+    if [[ "$AS_JSON" == "1" ]]; then run_tool phpcbf >&2 || true; else run_tool phpcbf || true; fi
+    hr
+  fi
+  TARGETS=("$SUBJECT_REL")
 fi
 
 # --- Report pass (phpcs) --------------------------------------------------

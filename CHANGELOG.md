@@ -811,6 +811,16 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **The Phase 1 autofix reformatted files the port never touched.**
+  `run-phpcs.sh --fix` ran `phpcbf` over the whole module, so a minimal port's
+  patch also carried trailing commas, removed `use` lines and a missing EOF
+  newline in a config YAML from files the port did not change. The new
+  `--fix-scope changed` hands `phpcbf` only the files that differ from the
+  pre-port git base (the same base as the local patch) plus new files; the
+  report pass still covers the whole module, so the untouched files' violations
+  stay visible as pre-existing. Without git the autofix is skipped (report
+  only). `/drupilot-port` and the minimal-port skill use it; `--fix` alone (the
+  refactor phase) still fixes everything.
 - **Porting the modules of a monorepo clone left a test-bed inside the
   repository and produced an unusable patch.** A clone of a Composer-based
   Drupal project has no `web/core` (it is gitignored), so it was not

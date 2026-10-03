@@ -395,8 +395,9 @@ version bump from `core-strategy.sh` and let §6a verify the new floor.
 Run until clean — never silence findings:
 
 ```bash
-# 1. Auto-fix coding standards, then re-check:
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpcs.sh" --subject "<path>" --fix
+# 1. Auto-fix coding standards in the files the port changed, then re-check
+#    the whole subject (report only for the untouched files):
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpcs.sh" --subject "<path>" --fix --fix-scope changed
 
 # 2. Static analysis at the deprecation level (default 2):
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "<path>" \
@@ -459,6 +460,15 @@ the floor (warn). **Exit 3 = error findings: fix them** with each entry's `fix`
 (D10-safe, see §0); `info` findings (e.g. a one-parameter
 `hook_entity_operation()`) need no change. Tee the human output
 (`[signature:<id>] ...` lines) into `change-log.txt` so the report explains it.
+
+`--fix-scope changed` limits `phpcbf` to the files that differ from the
+pre-port git base (the same base as the local patch) plus new files, so Phase 1
+never reformats a file the port did not touch (trailing commas, an EOF newline in
+a config YAML): those violations are pre-existing and stay in the report. Run the
+validate loop after a batch of edits is complete, not between an added `use` and
+the code that needs it — `phpcbf` removes a `use` it sees as unused. Without git
+the autofix is skipped (report only). Phase 2 (`full-refactor`) keeps the
+default `--fix-scope all`.
 
 `run-phpcs.sh --fix` runs `phpcbf` first then `phpcs` with
 the subject's **own** PHPCS ruleset when it ships one (`.phpcs.xml`,

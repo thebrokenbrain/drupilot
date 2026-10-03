@@ -323,9 +323,11 @@ analyzer, then the port-safety gate. Leave the subject compiling with no blockin
 deprecations.
 
 ```bash
-# Autofix coding standards, then check what remains (uses the subject's own
-# PHPCS ruleset when it ships one; the log says which ruleset was used):
-!bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpcs.sh" --subject "$1" --fix
+# Autofix coding standards in the files the port changed only (Phase 1 keeps
+# the diff minimal: untouched files are reported, never reformatted), then check
+# what remains (uses the subject's own PHPCS ruleset when it ships one; the log
+# says which ruleset was used):
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpcs.sh" --subject "$1" --fix --fix-scope changed
 # Deprecation-level static analysis (DRUPILOT_PHPSTAN_LEVEL, default 2):
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "$1"
 # Deterministic port-safety checks (gate):
