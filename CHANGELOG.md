@@ -8,10 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Add every notable change under **[Unreleased]** as you make it (grouped under
 `Added` / `Changed` / `Deprecated` / `Removed` / `Fixed` / `Security`). On
 release, rename `[Unreleased]` to the new version with a date, bump `version`
-in `.claude-plugin/plugin.json` (and the `marketplace.json` entry) to match, and
-tag the commit `vX.Y.Z`.
+in `.claude-plugin/plugin.json` (the single version source; `marketplace.json`
+carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
+
+### Changed
+- **`.claude-plugin/plugin.json` is the single version source.** The marketplace
+  entry and `metadata` no longer repeat the version (Claude Code takes the
+  manifest's, which wins anyway, and its docs advise against setting both); a
+  release bumps `plugin.json` only.
 
 ### Added
 - **`DRUPILOT_HOME`** — drupilot's hidden data directory (state, lockfiles,
