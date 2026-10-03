@@ -1,0 +1,10 @@
+name: 'Legacy widgets'
+type: module
+description: 'Synthetic Drupal 10 fixture that plants recurring port-quality hazards.'
+package: 'drupilot fixtures'
+core_version_requirement: ^10
+configure: legacy_widgets.settings
+dependencies:
+  - drupal:filter
+  - drupal:text
+  - drupal:user

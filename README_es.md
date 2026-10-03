@@ -640,6 +640,7 @@ Todos los scripts viven en `scripts/` (o en `hooks/scripts/` los hooks), cargan 
 | `git-hooks.sh` | Detecta los git hooks del repositorio y ejecuta sus equivalentes cuando un hook no puede ejecutarse. |
 | **`dev/`** | |
 | `check.sh` | El gate de desarrollo del propio drupilot (ver [Desarrollo de drupilot](#desarrollo-de-drupilot)). |
+| `smoke.sh` | Pruebas de humo sin Docker con resultados esperados sobre `tests/fixtures/` (el paso opcional `smoke` del gate). |
 | **`hooks/scripts/`** | |
 | `session-detect-env.sh` / `post-edit-lint.sh` / `guard-contrib.sh` | Los hooks SessionStart, PostToolUse y PreToolUse (ver [Qué es automático](#qué-es-automático-vs-dónde-decide-la-ia)). |
 
@@ -711,9 +712,14 @@ Ejecuta la puerta de desarrollo antes de cada commit sobre el propio plugin:
 ```bash
 bash scripts/dev/check.sh          # informe legible; exit 0 ok / 1 alguna puerta falló
 bash scripts/dev/check.sh --json   # resumen por puerta legible por máquina
+bash scripts/dev/check.sh --smoke  # ejecuta también las pruebas de humo (~15 s)
 ```
 
 Valida el manifiesto del plugin, comprueba la sintaxis y pasa `shellcheck` por todos los scripts, verifica los bits de ejecución, rechaza construcciones exclusivas de bash 4 / GNU (`${x,,}`, `declare -A`, `sed -i`, `readlink -f`, ... — los scripts deben funcionar con el bash 3.2 de serie de macOS), rechaza variables especiales de bash usadas como variables normales (`GROUPS`, `RANDOM`, `SECONDS`, `UID`, ... — bash ignora en silencio esas asignaciones), rechaza palabras clave de jq usadas como variables de jq o claves abreviadas (`--arg label`, `{module, scope}` — un error de sintaxis en jq 1.6), rechaza literales `<placeholder>` dentro de las líneas `` !`...` `` que se ejecutan al cargar commands/skills/agents, comprueba que las plantillas XML renderizadas estén bien formadas y valida todos los ficheros JSON. Las herramientas opcionales (`claude`, `shellcheck`, `xmllint`) se omiten si no están (`--ci` las hace obligatorias). Consulta `--help` para `--only`/`--skip`/`--allow-known`.
+
+La puerta opcional `smoke` (`--smoke`, implícita con `--ci`) ejecuta `scripts/dev/smoke.sh`: pruebas de humo que no necesitan Docker, DDEV ni PHP y comprueban los resultados esperados de `preflight`, `detect-php`, `next-step`, los hooks, `check-port-safety`, `scan-signature-changes`, `lint-extension-metadata`, `layers` y dos `--dry-run` sobre los fixtures de `tests/fixtures/` (`legacy_widgets` y un `monorepo` pequeño; `tests/fixtures/*.EXPECTED.md` documenta los problemas que llevan plantados). Trabaja sobre copias en un directorio temporal con su propio `HOME`, así que nunca toca el árbol ni tu estado de drupilot. Ejecuta `bash scripts/dev/smoke.sh --list` para ver los nombres de las pruebas y `--only` para elegir algunas.
+
+GitHub Actions (`.github/workflows/ci.yml`) ejecuta la misma puerta en Ubuntu y macOS, una segunda vez en macOS con el `/bin/bash` 3.2 de serie, dentro del contenedor `bash:3.2` (herramientas de BusyBox) y del contenedor `debian:12-slim` (mawk, jq 1.6), y ejecuta `claude plugin validate .` en un job propio tras instalar la CLI de Claude Code desde npm.
 
 ---
 

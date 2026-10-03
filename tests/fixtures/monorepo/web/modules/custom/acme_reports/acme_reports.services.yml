@@ -1,0 +1,9 @@
+services:
+  acme_reports.builder:
+    class: Drupal\acme_reports\ReportBuilder
+    arguments: ['@acme_utils.helper', '@entity_type.manager']
+
+  # No own constructor: inherited from the parent class, not checked.
+  acme_reports.cleaner:
+    class: Drupal\acme_reports\SlugCleaner
+    arguments: ['@pathauto.alias_cleaner']

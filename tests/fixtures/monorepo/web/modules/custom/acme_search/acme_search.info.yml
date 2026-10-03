@@ -1,0 +1,8 @@
+name: 'Acme search'
+type: module
+description: 'Indexes Acme API items with Search API.'
+package: Acme
+core_version_requirement: ^10.3
+configure: acme_search.admin
+dependencies:
+  - acme_api

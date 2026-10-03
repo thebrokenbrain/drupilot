@@ -1,0 +1,9 @@
+{
+    "name": "drupal/legacy_widgets",
+    "type": "drupal-module",
+    "description": "Synthetic Drupal 10 fixture that plants recurring port-quality hazards.",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php": ">=8.1"
+    }
+}

@@ -23,6 +23,29 @@ tag the commit `vX.Y.Z`.
   JSON manifest/config. `--json` summary, `--only`/`--skip`, `--allow-fail` /
   `--allow-known` for failures already tracked, `--ci` to make missing optional
   tools fatal. Read-only and bash 3.2-compatible.
+- **Docker-free smoke tests and CI.** `scripts/dev/smoke.sh` runs the scripts
+  that need no Docker, DDEV or PHP against fixtures now shipped in
+  `tests/fixtures/` (`legacy_widgets` and a small `monorepo` module set, no
+  vendor, with their `*.EXPECTED.md`) and asserts the recorded results: every
+  script's `--help`, `preflight --profile analyze --json` (exit consistent with
+  `ready.analyze`), `detect-php` (default and overridden target), `next-step`
+  (setup/doctor), the hooks' fail-safe contract, `check-port-safety` (the
+  pre-existing findings, then a removed `implements
+  ContainerFactoryPluginInterface` turns `plugin-di` red and, in diff mode,
+  "introduced"), `scan-signature-changes` for two floors,
+  `lint-extension-metadata` per module, `layers`, and two `--dry-run`s that
+  must write nothing. It works on temp copies with its own `HOME`/plugin data
+  and every `DRUPILOT_*` unset, runs each script with the same `$BASH` (so it
+  proves stock bash 3.2), and has `--only`/`--skip`/`--list`/`--json`/`--keep`.
+  `check.sh` runs it as the optional `smoke` gate (`--smoke`, implied by
+  `--ci`). The new `.github/workflows/ci.yml` runs `check.sh --ci` on Ubuntu
+  and macOS (again under macOS's stock `/bin/bash` 3.2), `check.sh --smoke` in
+  the Alpine `bash:3.2` image (BusyBox tools) and in `debian:12-slim` (mawk,
+  jq 1.6 — this leg found the jq 1.6 breakage fixed below), and `claude plugin validate .`
+  in its own job after `npm install -g @anthropic-ai/claude-code` (no login
+  needed). Why: the portability and analyzer guarantees were only checked by
+  hand on one Linux box; a regression on macOS/BSD tools or in a scanner's
+  verdict now fails a build instead of a user's port.
 - **`.shellcheckrc`** so `shellcheck` resolves `common.sh` from both group
   scripts and hook scripts; no check is disabled globally.
 - **Portability helpers in `common.sh`:** `lc` (lowercase, replaces bash 4's

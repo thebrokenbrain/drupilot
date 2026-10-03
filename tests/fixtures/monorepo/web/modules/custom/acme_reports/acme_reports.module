@@ -1,0 +1,13 @@
+<?php
+
+/**
+ * @file
+ * Hook implementations for Acme reports.
+ */
+
+/**
+ * Implements hook_page_attachments().
+ */
+function acme_reports_page_attachments(array &$attachments) {
+  $attachments['#attached']['library'][] = 'acme_core/base';
+}

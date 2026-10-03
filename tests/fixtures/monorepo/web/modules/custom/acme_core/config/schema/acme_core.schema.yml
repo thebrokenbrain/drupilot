@@ -1,0 +1,18 @@
+acme_core.settings:
+  type: config_object
+  label: 'Acme core settings'
+  mapping:
+    banner_text:
+      type: label
+      label: 'Banner text'
+
+acme_core.profile.*:
+  type: config_object
+  label: 'Acme profile'
+  mapping:
+    id:
+      type: string
+      label: 'ID'
+    label:
+      type: label
+      label: 'Label'

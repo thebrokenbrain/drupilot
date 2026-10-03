@@ -1,0 +1,4 @@
+services:
+  acme_billing.manager:
+    class: Drupal\acme_billing\BillingManager
+    arguments: ['@acme_invoice.generator']

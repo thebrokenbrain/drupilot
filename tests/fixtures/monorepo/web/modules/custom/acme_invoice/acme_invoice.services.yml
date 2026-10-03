@@ -1,0 +1,4 @@
+services:
+  acme_invoice.generator:
+    class: Drupal\acme_invoice\InvoiceGenerator
+    arguments: ['@acme_core.formatter']

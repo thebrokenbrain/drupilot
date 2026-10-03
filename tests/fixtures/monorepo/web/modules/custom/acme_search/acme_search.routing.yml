@@ -1,0 +1,7 @@
+acme_search.admin:
+  path: '/admin/config/search/acme'
+  defaults:
+    _form: '\Drupal\acme_search\Form\AdminForm'
+    _title: 'Acme search'
+  requirements:
+    _permission: 'administer search_api'

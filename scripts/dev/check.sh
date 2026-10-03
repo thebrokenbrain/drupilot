@@ -40,17 +40,21 @@
 #   - templates   render every templates/*.tmpl with dummy values; each XML output
 #                 must pass `xmllint --noout` (skipped when xmllint is absent)
 #   - json        `jq empty` on config/*.json, hooks/*.json, .claude-plugin/*.json
+#   - smoke       OPTIONAL (only with --smoke, --ci or --only smoke): the
+#                 Docker-free smoke tests of scripts/dev/smoke.sh (expected
+#                 results on tests/fixtures/), run with this same bash
 #
 # Usage:
 #   scripts/dev/check.sh [--json] [--only G1,G2] [--skip G1,G2]
-#                        [--allow-fail G1,G2] [--allow-known] [--ci]
+#                        [--allow-fail G1,G2] [--allow-known] [--smoke] [--ci]
 #     --json         machine summary on STDOUT (logs stay on STDERR)
 #     --only/--skip  run a subset of the gates
 #     --allow-fail   report these gates' failures as "allowed-fail" (exit 0)
 #     --allow-known  shorthand for --allow-fail with the gates listed in
 #                    KNOWN_FAILING below (failures already tracked for a fix)
+#     --smoke        also run the optional smoke gate (~15 s)
 #     --ci           a missing optional tool (claude/shellcheck/xmllint) is a
-#                    failure instead of a skip
+#                    failure instead of a skip; implies --smoke
 #
 # Output (--json):
 #   {ok, gates:[{name, status: pass|fail|skip|allowed-fail, detail, findings:[..]}]}
@@ -66,12 +70,14 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export CLAUDE_PLUGIN_ROOT="$REPO"
 
-ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json"
+ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json smoke"
+# Gates that run only when asked for (--smoke, --ci, or named in --only).
+OPTIONAL_GATES="smoke"
 # Gates known to fail on the current tree, with a fix tracked for 0.9.0. Empty
 # this list as the fixes land so --allow-known stops hiding them.
 KNOWN_FAILING=""
 
-AS_JSON=0; ONLY=""; SKIP=""; ALLOW=""; CI=0
+AS_JSON=0; ONLY=""; SKIP=""; ALLOW=""; CI=0; SMOKE=0
 
 usage() { awk 'NR>2 && /^# =+$/ {exit} NR>2 {sub(/^# ?/, ""); print}' "${BASH_SOURCE[0]}"; }
 
@@ -85,7 +91,8 @@ while [[ $# -gt 0 ]]; do
     --allow-fail) ALLOW="$ALLOW,${2:-}"; shift 2 || die "--allow-fail needs a value" 1;;
     --allow-fail=*) ALLOW="$ALLOW,${1#*=}"; shift;;
     --allow-known) ALLOW="$ALLOW,${KNOWN_FAILING// /,}"; shift;;
-    --ci) CI=1; shift;;
+    --smoke) SMOKE=1; shift;;
+    --ci) CI=1; SMOKE=1; shift;;
     -h|--help) usage; exit 0;;
     *) die "Unknown argument: $1 (see --help)" 1;;
   esac
@@ -355,10 +362,25 @@ gate_json() {
   else record json pass "$n JSON files valid"; fi
 }
 
+gate_smoke() {
+  local js="$TMP/smoke.json" err="$TMP/smoke.err" out="$TMP/smoke.out" n
+  # Same interpreter as this gate, so `/bin/bash scripts/dev/check.sh` on macOS
+  # smoke-tests stock bash 3.2 end to end.
+  if "$BASH" "$REPO/scripts/dev/smoke.sh" --json > "$js" 2> "$err"; then
+    n="$(jq -r '[.tests[] | select(.status == "pass")] | length' "$js" 2>/dev/null || echo '?')"
+    record smoke pass "$n smoke tests passed (bash ${BASH_VERSION:-?})"
+  else
+    jq -r '.tests[] | select(.status == "fail") | .name as $n | .failures[] | "\($n): \(.)"' "$js" > "$out" 2>/dev/null || true
+    [[ -s "$out" ]] || tail -n 20 "$err" > "$out"
+    record smoke fail "scripts/dev/smoke.sh reported failures (re-run it for the full log)" "$out"
+  fi
+}
+
 # ---------------------------------------------------------------------------
 log_step "drupilot developer gate ($REPO)"
 for gate in $ALL_GATES; do
   if [[ -n "$ONLY" ]] && ! in_list "$gate" "$ONLY"; then continue; fi
+  if [[ -z "$ONLY" && "$SMOKE" != "1" ]] && in_list "$gate" "$OPTIONAL_GATES"; then continue; fi
   if [[ -n "$SKIP" ]] && in_list "$gate" "$SKIP"; then continue; fi
   "gate_${gate//-/_}"
 done

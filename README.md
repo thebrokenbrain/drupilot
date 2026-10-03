@@ -638,6 +638,7 @@ Every script lives under `scripts/` (or `hooks/scripts/` for the hooks), sources
 | `git-hooks.sh` | Detects the repository's git hooks and runs their equivalents when a hook cannot run. |
 | **`dev/`** | |
 | `check.sh` | The developer gate for drupilot itself (see [Developing drupilot](#developing-drupilot)). |
+| `smoke.sh` | Docker-free smoke tests with expected results on `tests/fixtures/` (the gate's optional `smoke` step). |
 | **`hooks/scripts/`** | |
 | `session-detect-env.sh` / `post-edit-lint.sh` / `guard-contrib.sh` | The SessionStart, PostToolUse and PreToolUse hooks (see [What's automatic](#whats-automatic-vs-where-the-ai-decides)). |
 
@@ -709,9 +710,14 @@ Run the developer gate before every commit to the plugin itself:
 ```bash
 bash scripts/dev/check.sh          # human report; exit 0 ok / 1 a gate failed
 bash scripts/dev/check.sh --json   # machine-readable per-gate summary
+bash scripts/dev/check.sh --smoke  # also run the smoke tests (~15 s)
 ```
 
 It validates the plugin manifest, syntax-checks and `shellcheck`s every script, checks the executable bits, rejects bash 4-only / GNU-only constructs (`${x,,}`, `declare -A`, `sed -i`, `readlink -f`, ... — the scripts must run on stock macOS bash 3.2), rejects bash special variables used as plain variables (`GROUPS`, `RANDOM`, `SECONDS`, `UID`, ... — bash silently ignores such assignments), rejects jq keywords used as jq variables or shorthand keys (`--arg label`, `{module, scope}` — a syntax error on jq 1.6), rejects `<placeholder>` literals inside load-time `` !`...` `` lines of commands/skills/agents, checks that the rendered XML templates are well-formed, and validates every JSON file. Optional tools (`claude`, `shellcheck`, `xmllint`) are skipped when absent (`--ci` makes them mandatory). See `--help` for `--only`/`--skip`/`--allow-known`.
+
+The optional `smoke` gate (`--smoke`, implied by `--ci`) runs `scripts/dev/smoke.sh`: smoke tests that need no Docker, DDEV or PHP and assert the expected results of `preflight`, `detect-php`, `next-step`, the hooks, `check-port-safety`, `scan-signature-changes`, `lint-extension-metadata`, `layers` and two `--dry-run`s on the fixtures in `tests/fixtures/` (`legacy_widgets` and a small `monorepo`; `tests/fixtures/*.EXPECTED.md` documents their planted hazards). It works on copies in a temp dir with its own `HOME`, so it never touches the tree or your drupilot state. Run `bash scripts/dev/smoke.sh --list` for the test names and `--only` to pick some.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs the same gate on Ubuntu and macOS, a second time on macOS under the stock `/bin/bash` 3.2, inside the `bash:3.2` container (BusyBox tools) and the `debian:12-slim` container (mawk, jq 1.6), and runs `claude plugin validate .` in its own job after installing the Claude Code CLI from npm.
 
 ---
 

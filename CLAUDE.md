@@ -12,16 +12,22 @@ All **functional content** of the plugin is **English only**: comments, log line
 
 ## Developing / validating the plugin
 
-There is no test runner for the plugin's behavior, but there is **one local developer gate** — run it before every commit:
+There is no full test runner for the plugin's behavior (only the Docker-free smoke tests below), but there is **one local developer gate** — run it before every commit:
 
 ```bash
 bash scripts/dev/check.sh            # all gates; exit 0 ok / 1 a gate failed
 bash scripts/dev/check.sh --json     # per-gate {name,status,detail,findings} on stdout
 bash scripts/dev/check.sh --only shellcheck,bang-lint   # or --skip ...
 bash scripts/dev/check.sh --allow-known   # report the failures already tracked in its KNOWN_FAILING list without failing
+bash scripts/dev/check.sh --smoke    # also the optional `smoke` gate (scripts/dev/smoke.sh, ~15 s); --ci implies it
+bash scripts/dev/smoke.sh --only port-safety,layers   # the smoke tests alone (--list, --json, --keep)
 ```
 
 Gates: `validate` (`claude plugin validate .`), `syntax` (`bash -n` on `scripts/*/*.sh` + `hooks/scripts/*.sh`), `exec-bit` (those scripts must be executable — git mode `100755`), `shellcheck` (`-S warning`, configured by `.shellcheckrc`; no check is disabled globally — intentional exceptions are inline `# shellcheck disable=SCxxxx  # reason`), `portability` (no bash 4-only or GNU-only construct in those scripts — see the bash 3.2 convention below; a line can opt out with a trailing `# portability-ok` and a reason), `special-vars` (no script assigns/declares/reads into/loops over a bash special variable such as `GROUPS`, `RANDOM`, `SECONDS`, `UID`, `PWD`, `BASH_SOURCE` — bash silently ignores or overrides it; opt out with `# special-var-ok` and a reason), `jq-compat` (no jq keyword such as `label`, `module`, `if`, `end` used as a `--arg` name, an `as $x` binding or a shorthand object key like `{module, scope}` — jq 1.6, drupilot's `jq_min`, rejects them; write `--arg lbl` / `{module: .module}`; opt out with `# jq-compat-ok`), `bang-lint` (no `<placeholder>` inside a ``!`...` `` exec span in `commands/*.md`, `skills/*/SKILL.md`, `agents/*.md`), `templates` (every `templates/*.tmpl` rendered with dummy values; XML outputs must pass `xmllint --noout`) and `json` (`jq empty` on `config/`, `hooks/`, `.claude-plugin/` JSON). A missing optional tool (`claude`, `shellcheck`, `xmllint`) is a skip, or a failure with `--ci`. It is bash 3.2-compatible, read-only, and never writes to the tree. Add a gate there rather than a parallel script.
+
+The optional `smoke` gate runs `scripts/dev/smoke.sh`: Docker-free, PHP-free smoke tests **with expected-result assertions** (every script's `--help`, `preflight --profile analyze --json`, `detect-php`, `next-step`, the hooks' fail-safe contract, `check-port-safety` incl. a red->green mutation, `scan-signature-changes`, `lint-extension-metadata`, `layers`, and two `--dry-run`s) on the fixtures in **`tests/fixtures/`** (`legacy_widgets` and the `monorepo` set, no vendor; their hazards and expected results are in `tests/fixtures/*.EXPECTED.md`). It copies them to a temp dir, points `HOME`/`CLAUDE_PLUGIN_DATA`/XDG there, unsets every `DRUPILOT_*` variable, and runs each script with the same `$BASH`, so `/bin/bash scripts/dev/check.sh --smoke` proves stock bash 3.2 end to end. When a script's verified output changes on purpose, update the assertion and the fixture's EXPECTED.md together. `tests/` is inert for the plugin (Claude Code only loads `commands/`, `agents/`, `skills/`, `hooks/`) and outside every gate's script glob — never put a `.sh` there expecting it to be checked.
+
+**CI** (`.github/workflows/ci.yml`) only installs tools and calls the same gate: `check.sh --ci --skip validate` on `ubuntu-latest` and `macos-latest` (plus a second macOS run under the stock `/bin/bash` 3.2 with `/bin` first on `PATH`), `check.sh --smoke` inside the Alpine `bash:3.2` image (BusyBox awk/sed/grep) and `debian:12-slim` (mawk 1.3.4, jq 1.6 — the declared floors), and `check.sh --ci --only validate` after `npm install -g @anthropic-ai/claude-code` (validate needs no login; non-strict because `--strict` fails on the CLAUDE.md-at-root warning). Lint the workflow with `docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:latest`.
 
 A ``!`...` `` line in a command/skill/agent runs at command load, **before** the model sees it: it must be fully resolvable from `$1`/`$ARGUMENTS`/env. Anything that needs a `<placeholder>` must be written as an instruction for the model to run (a fenced block or a `!bash ...` line without backticks). `bang-lint` enforces this.
 

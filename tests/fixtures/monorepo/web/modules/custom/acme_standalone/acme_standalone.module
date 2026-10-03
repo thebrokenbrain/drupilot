@@ -1,0 +1,18 @@
+<?php
+
+/**
+ * @file
+ * Hook implementations for Acme standalone.
+ *
+ * Unrelated to billing: see \Drupal\acme_billing\BillingManager for that.
+ */
+
+/**
+ * Implements hook_help().
+ */
+function acme_standalone_help($route_name) {
+  // Mentions \Drupal\acme_invoice\InvoiceGenerator only in a comment.
+  if ($route_name === 'help.page.acme_standalone') {
+    return t('Acme standalone needs nothing else.');
+  }
+}

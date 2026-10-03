@@ -1,0 +1,7 @@
+{
+    "name": "acme/acme_api",
+    "type": "drupal-custom-module",
+    "require": {
+        "drupal/token": "^1.13"
+    }
+}
