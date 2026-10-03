@@ -1,0 +1,40 @@
+{
+  "exit": 0,
+  "stdout": {
+    "bc_break": false,
+    "composer_core_constraint": "^10.3 || ^11",
+    "current_core_version_requirement": "^10.3",
+    "d10_support": "declared-not-verified",
+    "has_composer_json": false,
+    "phase": "port",
+    "php_floor_detected": "8.1",
+    "php_floor_effective": "8.1",
+    "php_floor_strategy": "detect",
+    "php_floor_target_compatible": true,
+    "php_target": "8.3",
+    "rationale": [
+      "Strategy: keep-d10 ('^10.3 || ^11').",
+      "Drupal 10 floor 10.3: the declared minor floor ('^10.3') is kept, never lowered.",
+      "Detected PHP floor is 8.1 (heuristic scan), below the target 8.3 — require.php is widened to \">=8.1\" for genuine Drupal 10 (PHP 8.1) support.",
+      "Adding Drupal 11 support without dropping a supported core major -> MINOR."
+    ],
+    "recommended_core_version_requirement": "^10.3 || ^11",
+    "require_php": ">=8.1",
+    "strategy": "keep-d10",
+    "suggested_remaining_tasks": [
+      "Add a composer.json declaring \"require\": { \"php\": \">=8.1\" } (or drop to '^11'), so the PHP floor of the '^10 || ^11' declaration is actually enforced.",
+      "Verify Drupal 10 compatibility before relying on the '^10 || ^11' declaration: verify-core-matrix.sh runs PHPStan + php -l against a Drupal 10 core (static); install on a Drupal 10 site or run the test suite against Drupal 10 for runtime proof."
+    ],
+    "verify_cores": [
+      "10.3",
+      "11"
+    ],
+    "version_bump": "minor",
+    "warnings": [
+      "require.php was lowered to \">=8.1\" from a best-effort syntactic scan. CONFIRM with PHPCompatibility (testVersion 8.1-) before release: a missed newer construct would let a Drupal 10 + PHP<8.3 site install and then fatal at runtime. Set DRUPILOT_REQUIRE_PHP_FLOOR=target to keep the conservative \">=8.3\".",
+      "Drupal 10's own minimum is PHP 8.1, but this port's floor is 8.1. require.php \">=8.1\" blocks D10 sites below that floor at install time (composer) rather than fataling at runtime. If you do not need the D10 transition window, drop to '^11'.",
+      "This module has no composer.json, so require.php cannot be declared anywhere — an info.yml-only '^10 || ^11' module has NO way to enforce the PHP floor, and a D10 + low-PHP site would install and fatal. Either add a composer.json with \"require\": { \"php\": \">=8.1\" }, or declare '^11' only.",
+      "Drupal 10 compatibility is DECLARED, not verified. drupal-rector's standard replacements are usually available across all of Drupal 10 (deprecation contract), but this was not checked here. If the port uses an API added in a later 10.x minor, set core_version_requirement to e.g. '^10.3 || ^11'; if it uses an API absent from Drupal 10, drop to '^11'. The AI digests / ad-hoc Rector layer may introduce replacements newer than Drupal 10.0, so a raised minor (e.g. '^10.3 || ^11') is more likely — check it."
+    ]
+  }
+}

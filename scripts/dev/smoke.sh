@@ -113,6 +113,9 @@
 #                  --persist writes the mapped setting to .drupilot.json, an
 #                  unknown key is a usage error, and choose_one honors the
 #                  same variables
+#   baseline       scripts/dev/baseline-0.9.sh --check: the frozen v0.9.0
+#                  outputs (tests/baseline/v0.9.0/) still match, or the
+#                  difference is listed in its allowed-diffs.txt
 #
 # Isolation: the fixtures are copied to a temp dir (legacy_widgets is committed
 # there as a git repo when git exists), and HOME, CLAUDE_PLUGIN_DATA and the
@@ -143,7 +146,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$REPO/tests/fixtures"
 SH="${BASH:-bash}"
 
-ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root monorepo-testbed phpcs-scope choices"
+ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root monorepo-testbed phpcs-scope choices baseline"
 
 AS_JSON=0; ONLY=""; SKIP=""; KEEP=0
 
@@ -1039,6 +1042,14 @@ test_choices() {
   finish
 }
 
+test_baseline() {
+  run bl "$SH" "$REPO/scripts/dev/baseline-0.9.sh" --check --json
+  expect "baseline --check: exit" "$RC" "0"
+  expect "baseline --check: captures that differ" \
+    "$(jqo bl '[.files[] | select(.status != "same" and .status != "allowed") | .name + ":" + .status]')" '[]'
+  finish
+}
+
 # --- Main -----------------------------------------------------------------------
 log_step "drupilot smoke tests (bash ${BASH_VERSION:-?}, $(uname -s 2>/dev/null || echo ?))"
 for t in $ALL_TESTS; do
@@ -1069,6 +1080,7 @@ for t in $ALL_TESTS; do
     monorepo-testbed) test_monorepo_testbed;;
     phpcs-scope) test_phpcs_scope;;
     choices) test_choices;;
+    baseline) test_baseline;;
   esac
 done
 

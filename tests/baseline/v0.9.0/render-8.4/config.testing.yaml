@@ -1,0 +1,26 @@
+# drupilot — .ddev/config.testing.yaml (web_environment fragment for testing)
+# drupilot-template-version: 2
+#
+# Extra testing environment variables for the Drupal 11 PHPUnit suite, written as
+# a SEPARATE .ddev/config.testing.yaml so it MERGES with — and does not fight —
+# what the add-ons already provide:
+#   - ddev-drupal-contrib (config.contrib.yaml): SIMPLETEST_DB,
+#     SIMPLETEST_BASE_URL=http://web, BROWSERTEST_*, DTT_*.
+#   - ddev-selenium-standalone-chrome (config.selenium-standalone-chrome.yaml):
+#     MINK_DRIVER_ARGS_WEBDRIVER (with "w3c":true) and DRUPAL_TEST_WEBDRIVER_*.
+# So here we add ONLY what is missing: SYMFONY_DEPRECATIONS_HELPER.
+#
+# Do NOT re-declare MINK_DRIVER_ARGS_WEBDRIVER here. DDEV merges config.*.yaml
+# files in name order, so this file would REPLACE the Selenium add-on's value.
+# Drupal 11.4's WebDriverTestBase::getMinkDriverArgs() forces "w3c" to FALSE
+# whenever goog:chromeOptions does not set it (deprecated in drupal:11.4.0, see
+# https://www.drupal.org/node/3460567), and the add-on's current Chromium image
+# then refuses the session ("No nodes support the capabilities in the
+# request"), failing every FunctionalJavascript test. The add-on owns the value
+# and keeps it in step with its Selenium image.
+#
+# Do NOT re-declare SIMPLETEST_BASE_URL either: the add-ons set it to
+# http://web, which is what Selenium (on the same DDEV network) must reach; a
+# ddev.site URL would override that with a worse value.
+web_environment:
+  - SYMFONY_DEPRECATIONS_HELPER=disabled

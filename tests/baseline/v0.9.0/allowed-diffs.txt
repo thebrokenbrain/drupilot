@@ -1,0 +1,3 @@
+# Intended differences from the v0.9.0 baseline, one per line:
+#   <file> sha256:<hex of the normalized output> <reason; CHANGELOG entry>
+# scripts/dev/baseline-0.9.sh --check prints the line for each differing file.

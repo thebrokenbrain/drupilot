@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "drupilot_version": "0.9.0",
+  "subject": "<SUBJECT>",
+  "machine_name": "legacy_widgets",
+  "type": "module",
+  "created": "2026-10-03T08:00:00Z",
+  "updated": "2026-10-03T09:30:00Z",
+  "stage": "ported",
+  "stages": {
+    "setup": "2026-10-03T08:00:00Z",
+    "assessed": "2026-10-03T08:30:00Z",
+    "ported": "2026-10-03T09:30:00Z"
+  },
+  "patch": null
+}

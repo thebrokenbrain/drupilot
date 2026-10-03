@@ -1,0 +1,34 @@
+{
+  "exit": 0,
+  "stdout": {
+    "checks_run": [
+      "config-schema",
+      "plugin-schema",
+      "configure-route",
+      "services-class",
+      "services-arity",
+      "submodule-core-req",
+      "undeclared-deps"
+    ],
+    "findings": [
+      {
+        "check": "undeclared-deps",
+        "extension": "acme_search_ui",
+        "file": "acme_search_ui.libraries.yml",
+        "line": 6,
+        "message": "'acme_search_ui' uses contrib module 'acme_core' (library) without declaring it in acme_search_ui.info.yml dependencies: installing 'acme_search_ui' alone fails or breaks at runtime.",
+        "severity": "warn",
+        "suggestion": "Add '- acme_core:acme_core' to dependencies: (verify the drupal.org project name)."
+      }
+    ],
+    "generated_at": "<TS>",
+    "subject": "<SUBJECT>/web/modules/custom/acme_search/modules/acme_search_ui",
+    "subject_digest": "6882ec8e8843302f70e1d2145df04293af6e9d01842bedb869ec88cd3f44f3dc",
+    "tool": "lint-extension-metadata",
+    "totals": {
+      "error": 0,
+      "info": 0,
+      "warn": 1
+    }
+  }
+}

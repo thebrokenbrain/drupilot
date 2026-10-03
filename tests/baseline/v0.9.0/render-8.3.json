@@ -1,0 +1,25 @@
+{
+  "exit": 0,
+  "stdout": {
+    "files": [
+      {
+        "name": "rector",
+        "status": "written"
+      },
+      {
+        "name": "phpstan",
+        "status": "written"
+      },
+      {
+        "name": "phpcs",
+        "status": "written"
+      },
+      {
+        "name": "testing",
+        "status": "written"
+      }
+    ],
+    "ok": true,
+    "subject_path": "web/modules/custom/legacy_widgets"
+  }
+}

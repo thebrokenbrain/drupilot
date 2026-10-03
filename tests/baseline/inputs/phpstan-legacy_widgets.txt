@@ -1,0 +1,52 @@
+ ------ -------------------------------------------------------------------------------
+  Line   web/modules/custom/legacy_widgets/legacy_widgets.module
+ ------ -------------------------------------------------------------------------------
+  58     Call to deprecated function user_load_by_mail():
+         in drupal:11.4.0 and is removed from drupal:13.0.0.
+         🪪  function.deprecated
+  60     Call to deprecated function user_load_by_name():
+         in drupal:11.4.0 and is removed from drupal:13.0.0.
+         🪪  function.deprecated
+  70     Function user_roles not found.
+         🪪  function.notFound
+  75     Call to deprecated function text_summary():
+         in drupal:11.4.0 and is removed from drupal:13.0.0.
+         🪪  function.deprecated
+ ------ -------------------------------------------------------------------------------
+
+ ------ -------------------------------------------------------------------------------
+  Line   web/modules/custom/legacy_widgets/src/Plugin/Block/WidgetSummaryBlock.php
+ ------ -------------------------------------------------------------------------------
+  63     Call to deprecated function check_markup():
+         in drupal:11.4.0 and is removed from drupal:13.0.0.
+         🪪  function.deprecated
+  64     Call to deprecated function user_load_by_mail():
+         in drupal:11.4.0 and is removed from drupal:13.0.0.
+         🪪  function.deprecated
+ ------ -------------------------------------------------------------------------------
+
+ ------ -------------------------------------------------------------------------------
+  Line   web/modules/custom/legacy_widgets/src/Plugin/Filter/WidgetSummaryFilter.php
+ ------ -------------------------------------------------------------------------------
+  59     Call to deprecated function text_summary():
+         in drupal:11.4.0 and is removed from drupal:13.0.0.
+         🪪  function.deprecated
+ ------ -------------------------------------------------------------------------------
+
+ ------ -------------------------------------------------------------------------------
+  Line   web/modules/custom/legacy_widgets/src/Plugin/QueueWorker/WidgetReindexWorker.php
+ ------ -------------------------------------------------------------------------------
+  62     \Drupal::entityTypeManager() is called inside a class that has the service injected.
+  67     Call to deprecated function user_load_by_name():
+         in drupal:11.4.0 and is removed from drupal:13.0.0.
+         🪪  function.deprecated
+  70     Call to deprecated function drupal_set_message():
+         in drupal:8.5.0 and is removed from drupal:9.0.0.
+         🪪  function.deprecated
+ ------ -------------------------------------------------------------------------------
+
+ [ERROR] Found 9 errors
+
+[plugin-di] error src/Plugin/QueueWorker/WidgetReindexWorker.php:20 create() without ContainerFactoryPluginInterface
+[signature:entity-get-original] error src/Entity/LegacyWidget.php:57 getOriginal() is not compatible with EntityInterface::getOriginal(): ?static
+templates/legacy-widgets-summary.html.twig:3 {% spaceless %} tag

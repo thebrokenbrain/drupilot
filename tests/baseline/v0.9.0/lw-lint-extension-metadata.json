@@ -1,0 +1,115 @@
+{
+  "exit": 0,
+  "stdout": {
+    "checks_run": [
+      "config-schema",
+      "plugin-schema",
+      "configure-route",
+      "services-class",
+      "services-arity",
+      "submodule-core-req",
+      "undeclared-deps"
+    ],
+    "findings": [
+      {
+        "check": "services-class",
+        "extension": "legacy_widgets",
+        "file": "legacy_widgets.services.yml",
+        "line": 8,
+        "message": "Service 'legacy_widgets.lookup' class Drupal\\legacy_widgets\\WidgetLookUp differs in letter case from the real file src/WidgetLookup.php: the autoloader fails on case-sensitive filesystems (Linux servers, DDEV).",
+        "severity": "error",
+        "suggestion": "Use the exact class name: Drupal\\legacy_widgets\\WidgetLookup."
+      },
+      {
+        "check": "services-class",
+        "extension": "legacy_widgets",
+        "file": "legacy_widgets.services.yml",
+        "line": 13,
+        "message": "Service 'legacy_widgets.legacy_exporter' points at class Drupal\\legacy_widgets\\Export\\LegacyExporter, but src/Export/LegacyExporter.php does not exist (orphan service): fetching it is a fatal error.",
+        "severity": "error",
+        "suggestion": "Remove the service definition, or restore/rename the class."
+      },
+      {
+        "check": "config-schema",
+        "extension": "legacy_widgets",
+        "file": "config/install/legacy_widgets.settings.yml",
+        "line": 1,
+        "message": "Config 'legacy_widgets.settings' has no schema in config/schema/*.schema.yml: strict config schema checks (Kernel/Functional tests, config inspector) fail on it and its values are not typed or translatable.",
+        "severity": "warn",
+        "suggestion": "Add a 'legacy_widgets.settings:' entry (type: config_object for simple config) to config/schema/legacy_widgets.schema.yml."
+      },
+      {
+        "check": "configure-route",
+        "extension": "legacy_widgets",
+        "file": "legacy_widgets.info.yml",
+        "line": 6,
+        "message": "configure: 'legacy_widgets.settings' names a route that no *.routing.yml of the extension defines: core drops the Configure link from /admin/modules silently (unless a route subscriber or another module provides it).",
+        "severity": "warn",
+        "suggestion": "Point it at the real route ('legacy_widgets.settings_form'?)."
+      },
+      {
+        "check": "services-arity",
+        "extension": "legacy_widgets",
+        "file": "legacy_widgets.services.yml",
+        "line": 3,
+        "message": "Service 'legacy_widgets.counter' passes 3 argument(s) but Drupal\\legacy_widgets\\WidgetCounter::__construct() takes 2: PHP silently ignores the extra one(s) (a stale argument, or a constructor that lost a parameter).",
+        "severity": "warn",
+        "suggestion": "Drop the extra argument(s), or restore the constructor parameter they were meant for."
+      },
+      {
+        "check": "plugin-schema",
+        "extension": "legacy_widgets",
+        "file": "src/Plugin/Condition/WidgetsEnabledCondition.php",
+        "line": 1,
+        "message": "Condition plugin 'legacy_widgets_enabled' has its own settings but no 'condition.plugin.legacy_widgets_enabled' schema: only core's generic 'condition.plugin.*' covers it, so its extra settings fail strict config schema checks.",
+        "severity": "warn",
+        "suggestion": "Add 'condition.plugin.legacy_widgets_enabled:' to config/schema/legacy_widgets.schema.yml describing the plugin's settings."
+      },
+      {
+        "check": "plugin-schema",
+        "extension": "legacy_widgets",
+        "file": "src/Plugin/Filter/WidgetSummaryFilter.php",
+        "line": 1,
+        "message": "Filter plugin 'legacy_widgets_summary' has its own settings but no 'filter_settings.legacy_widgets_summary' schema: only core's generic 'filter_settings.*' covers it, so its extra settings fail strict config schema checks.",
+        "severity": "warn",
+        "suggestion": "Add 'filter_settings.legacy_widgets_summary:' to config/schema/legacy_widgets.schema.yml describing the plugin's settings."
+      },
+      {
+        "check": "submodule-core-req",
+        "extension": "legacy_widgets_extra",
+        "file": "modules/legacy_widgets_extra/legacy_widgets_extra.info.yml",
+        "line": 5,
+        "message": "Submodule 'legacy_widgets_extra' declares core_version_requirement: ^8.8 || ^9 || ^10, which does not admit Drupal 11: core marks it incompatible and it cannot be installed.",
+        "severity": "warn",
+        "suggestion": "Set it to the parent's constraint ('^10'): /drupilot-port does this with set-core-requirement.sh."
+      },
+      {
+        "check": "undeclared-deps",
+        "extension": "legacy_widgets_extra",
+        "file": "modules/legacy_widgets_extra/legacy_widgets_extra.module",
+        "line": 8,
+        "message": "'legacy_widgets_extra' uses project module 'legacy_widgets' (class,service) without declaring it in legacy_widgets_extra.info.yml dependencies: installing 'legacy_widgets_extra' alone fails or breaks at runtime.",
+        "severity": "warn",
+        "suggestion": "Add '- legacy_widgets:legacy_widgets' to dependencies:."
+      },
+      {
+        "check": "undeclared-deps",
+        "extension": "legacy_widgets_extra",
+        "file": "modules/legacy_widgets_extra/legacy_widgets_extra.module",
+        "line": 9,
+        "message": "'legacy_widgets_extra' uses core module 'node' (class) without declaring it in legacy_widgets_extra.info.yml dependencies: installing 'legacy_widgets_extra' alone fails or breaks at runtime.",
+        "severity": "warn",
+        "suggestion": "Add '- drupal:node' to dependencies:."
+      }
+    ],
+    "generated_at": "<TS>",
+    "subject": "<SUBJECT>",
+    "subject_digest": "37b4bdf786402fd69318d8a207328d8ddfe94f157f3825e279910f3f561955f3",
+    "tool": "lint-extension-metadata",
+    "totals": {
+      "error": 2,
+      "info": 0,
+      "warn": 8
+    }
+  }
+}

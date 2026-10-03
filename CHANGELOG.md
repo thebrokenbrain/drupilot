@@ -13,6 +13,21 @@ tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+### Added
+- **The frozen v0.9.0 baseline (`scripts/dev/baseline-0.9.sh`).** `--capture`
+  ran the Docker-free scripts of the `v0.9.0` tag (a throwaway `git worktree`)
+  on copies of the `legacy_widgets` and `monorepo` fixtures and committed their
+  normalized output to `tests/baseline/v0.9.0/`: `lint-extension-metadata`,
+  `check-port-safety`, `scan-signature-changes`, `detect-php-floor` and
+  `core-strategy` per module, `layers`, `port-summary` on a canned state,
+  `classify-`/`explain-deprecations` on a committed PHPStan sample (text and
+  JSON), the files `render-templates` writes for PHP 8.3/8.4/8.5, the key sets
+  of `preflight --json` and `detect-php --json`, the command frontmatter, the
+  choices registry and the public `DRUPILOT_*` names. `--check` (the new smoke
+  test `baseline`, so every CI leg) compares the checkout byte for byte; an
+  intended difference is listed, pinned by its sha256, in
+  `tests/baseline/v0.9.0/allowed-diffs.txt`.
+
 ## [0.9.0] - 2026-10-03
 
 ### Added

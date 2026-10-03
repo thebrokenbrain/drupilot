@@ -1,0 +1,24 @@
+{
+  "exit": 0,
+  "stdout": {
+    "base": null,
+    "checks": [
+      "plugin-di",
+      "removed-use",
+      "static-factory",
+      "fapi-callable",
+      "serialization",
+      "override-attribute",
+      "class-case"
+    ],
+    "core_requirement": "^10.3",
+    "diff_mode": false,
+    "drupal_root": null,
+    "errors": 0,
+    "findings": [],
+    "ok": true,
+    "subject": "<SUBJECT>/web/modules/custom/acme_api",
+    "tool": "check-port-safety",
+    "warnings": 0
+  }
+}
