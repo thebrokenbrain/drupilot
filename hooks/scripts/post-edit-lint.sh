@@ -137,7 +137,7 @@ esac
 # once a batch of edits is complete. (PHPCS ignores an excluded sniff the
 # standard does not register.)
 declare -a CBF_ARGS=()
-[[ "$PHASE" != "refactor" ]] && CBF_ARGS=("--exclude=Drupal.Classes.UnusedUseStatement,SlevomatCodingStandard.Namespaces.UnusedUses")
+[[ "$PHASE" != "refactor" ]] && CBF_ARGS=("--exclude=Drupal.Classes.UnusedUseStatement,SlevomatCodingStandard.Namespaces.UnusedUses")  # portability-ok: phpcbf options, not grep
 CHANGED_NOTE=""
 if [[ "$MODE" == "autofix" ]]; then
   BEFORE="$(cksum "$FILE" 2>/dev/null || true)"

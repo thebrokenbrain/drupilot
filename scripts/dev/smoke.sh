@@ -445,7 +445,7 @@ test_hooks() {
   if "$SH" "$h/post-edit-lint.sh" < "$TMP/edit.json" > "$TMP/out/pe1.out" 2>/dev/null; then RC=0; else RC=$?; fi
   expect "post-edit-lint: exit" "$RC" "0"
   expect "post-edit-lint Phase 1: phpcbf skips the unused-use sniff" \
-    "$(grep -c -- '--exclude=Drupal.Classes.UnusedUseStatement' "$hr/phpcbf-args.log" 2>/dev/null || true)" "1"
+    "$(grep -c -- '--exclude=Drupal.Classes.UnusedUseStatement' "$hr/phpcbf-args.log" 2>/dev/null || true)" "1"  # portability-ok: a grep pattern after --
   printf '{"cwd":"%s"}' "$LW" > "$TMP/session.json"
   if (cd "$LW" && env DRUPILOT_SESSION_CONTEXT=off "$SH" "$h/session-detect-env.sh" < "$TMP/session.json" > "$TMP/out/s1.out" 2>/dev/null); then RC=0; else RC=$?; fi
   expect "session off: exit" "$RC" "0"

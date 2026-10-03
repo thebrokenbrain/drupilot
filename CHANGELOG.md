@@ -94,8 +94,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `find ... -exec grep ... {} +`, and the first signal is the first hit in path
   and line order instead of the directory walk order. `convert-attributes.sh`
   found no custom plugin manager there for the same reason. The `portability`
-  gate of `scripts/dev/check.sh` now rejects `grep --include`/`--exclude`/
-  `--exclude-dir` before the end of options, also in an option array.
+  gate of `scripts/dev/check.sh` now rejects any `--include`, `--exclude` or
+  `--exclude-dir` option on a line where tar, rsync, curl, phpcs or phpcbf is
+  not the command (another tool's option, or a grep pattern after `--`, carries
+  `# portability-ok`).
 
 ## [0.9.0] - 2026-10-03
 

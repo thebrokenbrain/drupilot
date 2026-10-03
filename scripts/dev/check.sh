@@ -14,9 +14,11 @@
 #   - portability no bash-4-only or GNU-only construct in those scripts (they
 #                 must run on bash 3.2 + BSD tools, i.e. stock macOS): ${x,,},
 #                 ${x^^}, declare/local -A|-n|-g, mapfile/readarray, sed -i,
-#                 readlink -f, realpath, grep -P, grep --include/--exclude/
-#                 --exclude-dir before its `--` (BusyBox grep has none; select
-#                 the files with find), also in an option array, date -d,
+#                 readlink -f, realpath, grep -P, an --include, --exclude or
+#                 --exclude-dir option anywhere on a line without tar, rsync,
+#                 curl, phpcs or phpcbf (BusyBox grep has none of them; select
+#                 the files with find; a grep pattern after `--` or another
+#                 tool's option needs `# portability-ok`), date -d,
 #                 xargs -r, stat -c, find -printf, envsubst, a regex interval ({n}, {n,m})
 #                 in an awk regex literal (mawk 1.3.4-20200120, the default awk
 #                 on Debian 12 / Ubuntu 22.04, matches it as literal text),
@@ -203,27 +205,6 @@ gate_portability() {
     [[ "$f" == "scripts/dev/check.sh" ]] && continue   # its own patterns would self-match
     # Drop full-line comments and trailing " # ..." comments, keep line numbers.
     (cd "$REPO" && awk -v F="$f" '
-      # grep_files_opt <line> -> 1 when any grep on the line takes --include,
-      # --exclude or --exclude-dir before its end of options (" -- ") or the
-      # end of its command (|, ;, &, but not a 2>&1-style redirection).
-      # Quoted text is blanked first (a quoted "a|b" pattern does not end the
-      # command), except a quoted word starting with "--" (a quoted option);
-      # a "$(...)" command substitution is opened up first so the greps in it
-      # are still seen.
-      function grep_files_opt(l,   s, seg, cut) {
-        s = l
-        gsub(/"\$\(/, " $(", s); gsub(/\)"/, ") ", s); gsub(/`/, " ", s)
-        gsub(/'\''([^'\''-][^'\'']*)?'\''/, "Q", s); gsub(/"([^"-][^"]*)?"/, "Q", s)
-        gsub(/[0-9]*>&[0-9-]*|&>/, " R ", s)
-        while (match(s, /(^|[^A-Za-z0-9_.-])grep[[:space:]]/)) {
-          s = substr(s, RSTART + RLENGTH)
-          seg = s
-          cut = index(seg, " -- "); if (cut > 0) seg = substr(seg, 1, cut)
-          if (match(seg, /[|;&)]/)) seg = substr(seg, 1, RSTART - 1)
-          if ((" " seg) ~ /[[:space:]"'\'']--(include|exclude|exclude-dir)([=[:space:]"'\'']|$)/) return 1
-        }
-        return 0
-      }
       # not_grep_tool <line> -> 1 when tar, rsync, curl, phpcs or phpcbf is a
       # command word on the line (also through a path: vendor/bin/phpcs): their
       # own --include/--exclude options are not the grep ones.
@@ -240,8 +221,7 @@ gate_portability() {
             line ~ /(^|[^A-Za-z_])(mapfile|readarray|realpath|envsubst)([^A-Za-z_]|$)/ ||
             line ~ /(^|[^A-Za-z_])sed[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-i/ ||
             line ~ /readlink[[:space:]]+-f/ || line ~ /grep[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*P/ ||
-            grep_files_opt(line) ||
-            (line ~ /(^|[[:space:](])(--exclude-dir([=[:space:]]|$)|--include=|--exclude=)/ && !not_grep_tool(line)) ||
+            (line ~ /(^|[[:space:](="'\''])--(include|exclude|exclude-dir)([=[:space:]"'\'']|$)/ && !not_grep_tool(line)) ||
             line ~ /date[[:space:]]+-d/ || line ~ /xargs[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-r/ ||
             line ~ /stat[[:space:]]+-c/ || line ~ /find[[:space:]].*-printf/ ||
             line ~ /\$\([[:space:]]*case[[:space:]].*[[:space:]]in[[:space:]]+[^([:space:]]/ ||
