@@ -68,7 +68,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$REPO/tests/fixtures"
 SH="${BASH:-bash}"
 
-ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run"
+ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns"
 
 AS_JSON=0; ONLY=""; SKIP=""; KEEP=0
 
@@ -357,6 +357,26 @@ test_layers() {
   finish
 }
 
+test_patterns() {
+  local p="$REPO/scripts/analysis/patterns.sh" pat n=0 bad="" c="$FX/patterns/legacy_widgets"
+  # Every curated ERE in config/deprecations.json is learnable as-is (an
+  # escaped backslash before "D", as in \\Drupal::, is not the PCRE \D).
+  while IFS= read -r pat; do
+    n=$((n + 1))
+    "$SH" "$p" add --subject "$LW" --id "smoke-$n" --pattern "$pat" --fix f --why w --dry-run \
+      >/dev/null 2>&1 < /dev/null || bad="$bad [$pat]"
+  done < <(jq -r '.. | objects | .pattern? // empty | strings' "$REPO/config/deprecations.json")
+  expect "deprecations.json patterns accepted" "${bad:-none}" "none"
+  run pd "$SH" "$p" add --subject "$LW" --id smoke-d --pattern 'foo\d+' --fix f --why w --dry-run
+  expect "PCRE \\d refused: exit" "$RC" "1"
+  # list shows the stored ERE verbatim (no @tsv backslash doubling).
+  mkdir -p "$FX/patterns"; cp -R "$LW" "$c"
+  run pa "$SH" "$p" add --subject "$c" --id smoke.fromroute --pattern 'Url::fromRoute\(' --fix f --why w
+  run pl "$SH" "$p" list --subject "$c"
+  expect "list detector" "$(out pl | cut -f4)" 'ere:Url::fromRoute\('
+  finish
+}
+
 test_dry_run() {
   local before after
   before="$(cat "$CUSTOM/acme_search/acme_search.info.yml" "$CUSTOM/acme_search/modules/acme_search_ui/acme_search_ui.info.yml")"
@@ -393,6 +413,7 @@ for t in $ALL_TESTS; do
     lint-metadata) test_lint_metadata;;
     layers) test_layers;;
     dry-run) test_dry_run;;
+    patterns) test_patterns;;
   esac
 done
 

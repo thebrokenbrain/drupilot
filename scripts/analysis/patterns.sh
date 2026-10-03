@@ -208,21 +208,32 @@ load_catalog() {
 # otherwise); warns on non-portable escapes.
 ere_problem() {
   local p="$1" rc=0
-  case "$p" in
-    *'(?'*) printf 'uses a PCRE group "(?" (lookaround / non-capturing): not POSIX ERE'; return 0;;
-    *'\d'*|*'\D'*) printf 'uses \\d / \\D (PCRE): write [0-9] or [[:digit:]]'; return 0;;
-  esac
+  # An escape counts only when its backslash is not itself escaped: an odd run
+  # of backslashes before the letter (`\\Drupal::` is an escaped backslash
+  # then "Drupal", a valid ERE; `\d` is the PCRE digit class).
+  if _ere_has "$p" '\(\?'; then
+    printf 'uses a PCRE group "(?" (lookaround / non-capturing): not POSIX ERE'; return 0
+  fi
+  if _ere_has "$p" '\\[dD]'; then
+    printf 'uses \\d / \\D (PCRE): write [0-9] or [[:digit:]]'; return 0
+  fi
   grep -E -e "$p" </dev/null >/dev/null 2>&1 || rc=$?
   if [[ "$rc" -eq 2 ]]; then printf 'is not a valid POSIX ERE for grep -E'; return 0; fi
   if printf '\n' | grep -qE -e "$p" 2>/dev/null; then
     printf 'matches an empty line, so it would match every line'
     return 0
   fi
-  case "$p" in
-    *'\s'*|*'\S'*|*'\w'*|*'\W'*|*'\b'*|*'\B'*|*'\<'*|*'\>'*)
-      log_warn "The ERE uses a GNU escape (\\s, \\w, \\b, \\<...): prefer [[:space:]] / [[:alnum:]_] so it works with every grep." ;;
-  esac
+  if _ere_has "$p" '\\[sSwWbB<>]'; then
+    log_warn "The ERE uses a GNU escape (\\s, \\w, \\b, \\<...): prefer [[:space:]] / [[:alnum:]_] so it works with every grep."
+  fi
   return 0
+}
+
+# _ere_has <ere> <tail-ere> -> 0 when <ere>'s text contains <tail-ere> (which
+# starts with the escaping backslash or an unescaped "(") preceded by an EVEN
+# run of backslashes, i.e. the tail's first character is not itself escaped.
+_ere_has() {
+  grep -qE -e '(^|[^\\])(\\\\)*'"$2" <<<"$1"
 }
 
 # rule_problem <ref> -> a reason on STDOUT when the rule reference is unknown.
@@ -278,9 +289,12 @@ cmd_list() {
   if [[ "$AS_JSON" == "1" ]]; then
     printf '%s\n' "$cat" | jq -c '.patterns'
   else
+    # join, not @tsv: @tsv doubles backslashes, and the detector shown must be
+    # the exact ERE (copyable back into `add --pattern`).
     printf '%s\n' "$cat" | jq -r '.patterns[] |
       [.id, (.kind // "other"), ((.hits // 0) | tostring),
-       ([(.detector.pattern // empty | "ere:" + .), (.detector.rule // empty)] | join(" + "))] | @tsv'
+       ([(.detector.pattern // empty | "ere:" + .), (.detector.rule // empty)] | join(" + "))]
+      | map(tostring | gsub("[\t\n]"; " ")) | join("\t")'
     log_info "Catalog: $CATALOG ($(printf '%s' "$cat" | jq '.patterns | length') pattern(s))"
   fi
   return 0

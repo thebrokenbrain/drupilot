@@ -811,6 +811,14 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **`patterns.sh add` refused valid EREs with an escaped backslash, such as
+  `\\Drupal::`.** The PCRE guard rejected any `\d` / `\D` / `(?` substring, so
+  the usual way to match a static `\Drupal::` call (an escaped backslash, then
+  `Drupal`) was refused, including three patterns of drupilot's own
+  `config/deprecations.json`. An escape now counts only when its backslash is
+  not itself escaped (the same for the GNU-escape warning). `patterns.sh list`
+  also printed detectors through `@tsv`, which doubles backslashes; it now
+  shows the stored ERE verbatim, so it can be copied back into `add`.
 - **A tested, contributed or pre-0.9.0 port was sent back to `/drupilot-port`.**
   Once a subject had `state.json`, `phase_reached` accepted a stage only when
   that exact key was in `.stages`, so a subject recorded as `tested` (a
