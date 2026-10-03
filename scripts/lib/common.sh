@@ -1422,6 +1422,46 @@ def state_merge($snap):
      then .stage = (.stages | keys | max_by(srank)) else . end);
 '
 
+# origin_baseline_path <root> [machine] -> the file origin-hygiene.sh records
+# <machine>'s origin baseline in: the Drupal ROOT's hidden state dir (a moved
+# origin is found again through the root), ONE FILE PER SUBJECT
+# (origin-baseline-<machine>.json) so the modules placed into a shared test-bed
+# do not overwrite each other's. Without a machine name: the single-file name
+# older versions used (origin-baseline.json). Pure: creates nothing.
+origin_baseline_path() {
+  local d; d="$(project_state_path "$1")"
+  if [[ -n "${2:-}" ]]; then printf '%s/origin-baseline-%s.json' "$d" "$2"
+  else printf '%s/origin-baseline.json' "$d"; fi
+}
+
+# origin_baseline_find <root> <machine> -> the path of <machine>'s existing
+# baseline under <root>: its own file, else the older single file when that one
+# records the same machine name (or none). Prints nothing (still 0) when there
+# is none. Read-only.
+origin_baseline_find() {
+  local f mn
+  f="$(origin_baseline_path "$1" "${2:-}")"
+  if [[ -n "${2:-}" && -f "$f" ]]; then printf '%s' "$f"; return 0; fi
+  f="$(origin_baseline_path "$1")"
+  [[ -f "$f" ]] || return 0
+  if [[ -n "${2:-}" ]] && have_cmd jq; then
+    mn="$(jq -r '.machine_name // empty' "$f" 2>/dev/null || true)"
+    [[ -z "$mn" || "$mn" == "$2" ]] || return 0
+  fi
+  printf '%s' "$f"
+  return 0
+}
+
+# origin_baseline_files <root> -> every origin baseline under <root>, one path
+# per line (the per-subject files and the older single file). Read-only.
+origin_baseline_files() {
+  local d f; d="$(project_state_path "$1")"
+  for f in "$d"/origin-baseline-*.json "$d"/origin-baseline.json; do
+    [[ -f "$f" ]] && printf '%s\n' "$f"
+  done
+  return 0
+}
+
 # state_snapshot_json <subject> -> the facts drupilot can read about the subject
 # right now, as one compact JSON object (see the schema above): from the
 # subject's own state dir (assess.json, last-test.json, core-matrix.json,
@@ -1467,7 +1507,16 @@ state_snapshot_json() {
   l="null"; o="null"
   if [[ -n "$rsd" ]]; then
     l="$(_json_from "$rsd/drupilot-lock.json" '{drupal_core: (.drupal.core // null), php_target: (.php_target // null), core_strategy: (.core_strategy // null), packages: (.toolchain // null), lock_drupilot_version: (.drupilot_version // null)}')"
-    o="$(_json_from "$rsd/origin-baseline.json" '{source: (.source // null), placement: (.placement // null)}')"
+    local ob; ob="$(origin_baseline_find "$root" "$mn")"
+    [[ -n "$ob" ]] && o="$(_json_from "$ob" '{source: (.source // null), placement: (.placement // null)}')"
+    # No baseline (an in-place subject, or one placed before baselines were
+    # per subject): the test-bed marker records each placed subject's origin.
+    if [[ "$o" == "null" && -n "$mn" && -r "$root/.drupilot.json" ]]; then
+      o="$(jq -c --arg m "$mn" '.drupilot_testbed.subjects[$m] // null
+        | if type == "object" and (.origin // "") != "" then {source: .origin, placement: (.placement // null)} else null end' \
+        "$root/.drupilot.json" 2>/dev/null || printf 'null')"
+      [[ -n "$o" ]] || o="null"
+    fi
   fi
   jq -nc --arg subject "$abs" --arg mn "$mn" --arg typ "$typ" --arg root "$root" --arg ddev "$ddev" \
     --arg digest "$digest" --argjson git "$git_json" --argjson a "$a" --argjson t "$t" \
@@ -2970,8 +3019,8 @@ _phpcs_ruleset_walk() {
 #   1. the subject dir up to the Drupal root (what PHPCS would auto-discover);
 #   2. the subject's physical path (a symlink placement) up to its git top level
 #      (a module that is a repo of its own, or a monorepo root);
-#   3. the ORIGIN checkout a copy placement left behind (origin-baseline.json
-#      .source, keyed by the Drupal root) up to its git top level.
+#   3. the ORIGIN checkout a copy placement left behind (the subject's origin
+#      baseline .source, under the Drupal root) up to its git top level.
 # drupilot's own generated ruleset (<ruleset name="drupilot">) is never returned.
 # A pure file check: it runs no PHPCS and never writes anything.
 find_phpcs_ruleset() {
@@ -2985,8 +3034,9 @@ find_phpcs_ruleset() {
     _phpcs_ruleset_walk "$phys" "${top:-$phys}" && return 0
   fi
   if [[ -n "$root" ]] && have_cmd jq; then
-    b="$(project_state_dir "$root")/origin-baseline.json"
-    src="$(jq -r '.source // empty' "$b" 2>/dev/null || true)"
+    b="$(origin_baseline_find "$root" "$(subject_machine_name "$subj" 2>/dev/null || true)")"
+    src=""
+    [[ -n "$b" ]] && src="$(jq -r '.source // empty' "$b" 2>/dev/null || true)"
     if [[ -n "$src" && -d "$src" ]]; then
       top=""
       have_cmd git && top="$(git -C "$src" rev-parse --show-toplevel 2>/dev/null || true)"

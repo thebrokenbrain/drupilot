@@ -70,6 +70,10 @@
 #                  test-bed whose DDEV project is up, with a fake `ddev` on PATH
 #                  that drains its stdin: both subjects are listed (a ddev call
 #                  inside the read loop must not swallow the rest of the list)
+#   shared-testbed two modules copied into ONE stub test-bed: each keeps its
+#                  own origin baseline (origin-hygiene.sh --check clean for
+#                  both), state.sh shows each module's own origin, and
+#                  layer-report.sh maps each row to that module's record
 #
 # Isolation: the fixtures are copied to a temp dir (legacy_widgets is committed
 # there as a git repo when git exists), and HOME, CLAUDE_PLUGIN_DATA and the
@@ -100,7 +104,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$REPO/tests/fixtures"
 SH="${BASH:-bash}"
 
-ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin"
+ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed"
 
 AS_JSON=0; ONLY=""; SKIP=""; KEEP=0
 
@@ -680,6 +684,30 @@ STUB
   finish
 }
 
+test_shared_testbed() {
+  local r="$FX/shared-root" o="$FX/shared-origin" m oh="$REPO/scripts/env/origin-hygiene.sh"
+  mk_stub_root "$r" "11.4.8"
+  mkdir -p "$o"
+  for m in acme_core acme_utils; do
+    cp -R "$CUSTOM/$m" "$o/"
+    run shs "$SH" "$oh" --snapshot --subject "$o/$m" --root "$r" --placement copy
+    cp -R "$o/$m" "$r/web/modules/custom/"
+    run shr "$SH" "$REPO/scripts/env/state.sh" record --subject "$r/web/modules/custom/$m" --stage setup --json
+  done
+  for m in acme_core acme_utils; do
+    run shc "$SH" "$oh" --check --subject "$o/$m" --root "$r"
+    expect "$m: hygiene baseline of its own" "$(jqo shc '[.clean, .origin, (.baseline | test("origin-baseline-'"$m"'[.]json$"))]')" "[true,\"$o/$m\",true]"
+    run shv "$SH" "$REPO/scripts/env/state.sh" show --subject "$r/web/modules/custom/$m" --no-next --json
+    expect "$m: recorded origin" "$(jqo shv '.origin')" "\"$o/$m\""
+  done
+  run shl "$SH" "$REPO/scripts/analysis/layer-report.sh" --dir "$o" --no-write --json
+  expect "layer-report: each row is its own module's record" \
+    "$(jqo shl '[.modules[] | .machine + "=" + (.subject | sub(".*/"; ""))] | sort')" '["acme_core=acme_core","acme_utils=acme_utils"]'
+  expect "layer-report: rows found in the test-bed" \
+    "$(jqo shl '[.modules[] | .found and (.subject | startswith("'"$r"'/"))] | unique')" '[true]'
+  finish
+}
+
 # --- Main -----------------------------------------------------------------------
 log_step "drupilot smoke tests (bash ${BASH_VERSION:-?}, $(uname -s 2>/dev/null || echo ?))"
 for t in $ALL_TESTS; do
@@ -703,6 +731,7 @@ for t in $ALL_TESTS; do
     attributes) test_attributes;;
     rector-cache) test_rector_cache;;
     state-stdin) test_state_stdin;;
+    shared-testbed) test_shared_testbed;;
   esac
 done
 

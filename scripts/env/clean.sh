@@ -228,9 +228,8 @@ origin_record() {
     pl="$(jq -r --arg m "$mn" '.drupilot_testbed.subjects[$m].placement // empty' "$root/.drupilot.json" 2>/dev/null || true)"
   fi
   if [[ -z "$o" ]]; then
-    b="$(project_state_path "$root")/origin-baseline.json"
-    if [[ -r "$b" ]] && [[ "$(jq -r '.machine_name // empty' "$b" 2>/dev/null)" == "$mn" \
-                           || -z "$(jq -r '.machine_name // empty' "$b" 2>/dev/null)" ]]; then
+    b="$(origin_baseline_find "$root" "$mn")"
+    if [[ -n "$b" && -r "$b" ]]; then
       o="$(jq -r '.source // empty' "$b" 2>/dev/null || true)"
       pl="$(jq -r '.placement // empty' "$b" 2>/dev/null || true)"
     fi

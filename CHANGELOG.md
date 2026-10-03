@@ -811,6 +811,15 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **In a shared test-bed every module reported the origin of the last one
+  placed.** The origin checkout's baseline was one file per test-bed, so each
+  placement overwrote it: `/drupilot-status` showed the wrong origin, the
+  hygiene check of the earlier modules had no baseline (`clean: null`), and
+  `layer-report.sh` could show another module's Drupal 10 verdict and patch on
+  a row. The baseline is now kept per module (an older single baseline is still
+  read when it names the same module), `state.sh` falls back to the test-bed's
+  own record of each placed module, and `layer-report.sh` matches a row to a
+  record by path first and accepts an origin match only for the same module.
 - **`/drupilot-status --all` listed only the first module when a test-bed's
   DDEV project was running.** The DDEV status check (`ddev describe`) read
   from its standard input; inside the portfolio loop of `state.sh list` that

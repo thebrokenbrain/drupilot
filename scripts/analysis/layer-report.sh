@@ -165,7 +165,12 @@ REPORT="$(jq -n --argjson L "$LAYERS" --argjson R "$REG" --argjson H "$HYG" --ar
   | [ $L.modules[] | select($L.root == "" or $layer == "all" or (.layer | tostring) == $layer)
       | . as $m
       | (if $L.root == "" then $m.dir else $L.root + "/" + $m.dir end) as $orig
-      | ([$subs[] | select(.subject == $orig or .origin == $orig)] + [$subs[] | select(.machine_name == $m.machine)] | first) as $r
+      # The record OF this module: by its path, then by its origin (a placed
+      # copy/move) when the record is the same machine, then by machine name.
+      # Never by origin alone: a shared test-bed holds several modules.
+      | ([$subs[] | select(.subject == $orig)]
+         + [$subs[] | select(.origin == $orig and ((.machine_name // $m.machine) == $m.machine))]
+         + [$subs[] | select(.machine_name == $m.machine)] | first) as $r
       | {machine, layer, in_cycle, subject: ($r.subject // $orig), found: ($r != null),
          stage: ($r.stage // null), effort: ($r.effort // null),
          preservation: ($r.tests.preservation // null),

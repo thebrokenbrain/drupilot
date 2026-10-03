@@ -22,9 +22,11 @@
 #               symlink / in-place; unexpected for copy).
 #
 # The baseline is machine state: it lives in the HIDDEN per-project state dir
-# keyed by the Drupal ROOT (origin-baseline.json), never in the tree, so it is
-# found again after a 'move' relocates the origin (the moved path is recorded
-# with --record-origin).
+# keyed by the Drupal ROOT, one file per subject (origin-baseline-<machine>.json,
+# so the modules of a shared test-bed keep their own), never in the tree, so it
+# is found again after a 'move' relocates the origin (the moved path is
+# recorded with --record-origin). A baseline written by an older version
+# (origin-baseline.json) is still read when it records the same machine name.
 #
 # Usage:
 #   origin-hygiene.sh --snapshot [--subject DIR] [--root DIR]
@@ -32,7 +34,7 @@
 #   origin-hygiene.sh --check [--subject DIR] [--root DIR] [--json]
 #
 #   --subject        the origin module/theme checkout (default: current dir).
-#   --root           the Drupal root that keys the baseline (default: the root
+#   --root           the Drupal root that holds the baseline (default: the root
 #                    found above --subject, else the test-bed root
 #                    resolve-workspace.sh targets, else --subject itself).
 #   --record-origin  where the origin will live once placed (move mode).
@@ -142,13 +144,14 @@ if [[ "$MODE" == "check" && -z "$ROOT" && -z "$SUBJECT_ABS" ]]; then
     for _c in "$(config_get DRUPILOT_WORKSPACE_DIR "")" "$_parent/${_base}-d11"; do
       [[ -n "$_c" && -d "$_c" ]] || continue
       _c="$(cd "$_c" && pwd)"
-      _b="$(project_state_dir "$_c")/origin-baseline.json"
-      [[ -f "$_b" ]] || continue
-      if [[ "$(jq -r '.source // empty' "$_b" 2>/dev/null || true)" == "$_gone" ]]; then
-        ROOT="$_c"
-        log_info "'$SUBJECT' no longer exists; using the baseline recorded for it under $ROOT."
-        break
-      fi
+      while IFS= read -r _b; do
+        if [[ "$(jq -r '.source // empty' "$_b" 2>/dev/null || true)" == "$_gone" ]]; then
+          ROOT="$_c"; GONE_BASELINE="$_b"
+          log_info "'$SUBJECT' no longer exists; using the baseline recorded for it under $ROOT."
+          break
+        fi
+      done < <(origin_baseline_files "$_c")
+      [[ -n "$ROOT" ]] && break
     done
   fi
 fi
@@ -158,8 +161,8 @@ if [[ -z "$ROOT" && -n "$SUBJECT_ABS" ]]; then
     [[ -n "$_c" && -d "$_c" ]] || continue
     _c="$(cd "$_c" && pwd)"
     [[ -n "$_first" ]] || _first="$_c"
-    _b="$(project_state_dir "$_c")/origin-baseline.json"
-    if [[ "$MODE" == "check" && -f "$_b" ]]; then
+    _b="$(origin_baseline_find "$_c" "$MACHINE")"
+    if [[ "$MODE" == "check" && -n "$_b" ]]; then
       if baseline_matches "$_b" "$_s"; then ROOT="$_c"; break; fi
       NO_MATCH=1
     fi
@@ -168,7 +171,14 @@ if [[ -z "$ROOT" && -n "$SUBJECT_ABS" ]]; then
 fi
 [[ -n "$ROOT" ]] || ROOT="${SUBJECT_ABS:-$SUBJECT}"
 [[ -d "$ROOT" ]] && ROOT="$(cd "$ROOT" && pwd)"
-BASELINE="$(project_state_dir "$ROOT")/origin-baseline.json"
+# The baseline file: the one found for a moved-away subject, else this
+# subject's existing one (an older single file included), else where --snapshot
+# writes it.
+BASELINE="${GONE_BASELINE:-}"
+[[ -n "$BASELINE" ]] || BASELINE="$(origin_baseline_find "$ROOT" "$MACHINE")"
+if [[ "$MODE" == "snapshot" || -z "$BASELINE" ]]; then
+  BASELINE="$(origin_baseline_path "$ROOT" "$MACHINE")"
+fi
 
 # --- Helpers ----------------------------------------------------------------
 # origin_state <dir> -> one entry per line: porcelain lines for a git checkout
@@ -223,6 +233,7 @@ if [[ "$MODE" == "snapshot" ]]; then
     HEADSHA="$(git -C "$SUBJECT_ABS" rev-parse --verify --quiet HEAD 2>/dev/null || true)"
   fi
   STATE_JSON="$(origin_state "$SUBJECT_ABS" | jq -R . | jq -s -c .)"
+  mkdir -p "$(dirname "$BASELINE")" 2>/dev/null || true
   TMP="$(mktemp "${TMPDIR:-/tmp}/drupilot-origin.XXXXXX")"
   jq -n --arg origin "$ORIGIN" --arg source "$SUBJECT_ABS" --arg root "$ROOT" \
     --arg placement "$PLACEMENT" --argjson git "$GIT" --arg head "$HEADSHA" \
