@@ -80,8 +80,9 @@
 #   0  -> all selected test groups passed (or there was nothing to run); with
 #         --baseline / --baseline-from-last: the baseline was recorded, even red.
 #   1  -> usage/internal error.
-#   2  -> a hard 'test' requirement is missing: the preflight gate failed, DDEV
-#         is down, or PHPUnit (drupal/core-dev) is not installed.
+#   2  -> a hard 'test' requirement is missing: the preflight gate failed, no
+#         Drupal root was found, DDEV is down, or PHPUnit (drupal/core-dev) is
+#         not installed.
 #   3  -> at least one test group failed (also when every failure is
 #         pre-existing: the suite is not green; read `preservation`).
 # =============================================================================
@@ -174,7 +175,7 @@ fi
 # and the environment to be up.
 # ---------------------------------------------------------------------------
 DRUPAL_ROOT="$(find_drupal_root "$SUBJECT" 2>/dev/null || true)"
-[[ -n "$DRUPAL_ROOT" ]] || die "No Drupal root found above $SUBJECT (run /drupilot-setup first)." 1
+[[ -n "$DRUPAL_ROOT" ]] || die "No Drupal root found above $SUBJECT (run /drupilot-setup first)." 2
 
 cd "$DRUPAL_ROOT" || die "Cannot enter Drupal root: $DRUPAL_ROOT" 1
 

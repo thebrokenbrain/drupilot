@@ -844,6 +844,34 @@ tag the commit `vX.Y.Z`.
 
 ### Fixed
 
+- **`run-phpunit.sh` exited 1 when no Drupal root was found.** The documented
+  exit-code convention (and every other test-bed script) treats a missing Drupal
+  root as a failed requirement gate, exit 2; `run-phpunit.sh` returned 1, so
+  wrappers read it as a usage error and `negative-control.sh` reported an
+  inconclusive `error` instead of `blocked`. It now exits 2.
+- **README wording.** Both READMEs name `config/port-checks.json` (the
+  port-safety checks and their severities) and `config/deprecations.json` in the
+  scripts reference, drop the stale "once published" note on the GitHub install,
+  and clarify that a stale test result never blocks a port summary;
+  `README_es.md` fixes several Spanish spelling and terminology slips.
+- **README accuracy (scripts contract and reports).** Both READMEs now say the
+  Drupal.org scripts (`find-upstream-issue.sh` / `issue-fork.sh` / `open-mr.sh` /
+  `check-prereqs.sh`) take `--project NAME` rather than `--subject DIR`; limit the
+  `-h` help claim to `scripts/` (the hooks read JSON on stdin and always exit 0);
+  document that a `/drupilot-layers` run writes each module's `port-report.md` /
+  `port-summary.json` under `.drupilot/modules/<machine>/`; and narrow the
+  "stale result never blocks" note to test and core-matrix results (port-safety /
+  signature errors come from the port manifest and still block).
+  `README_es.md` uses "capas de portabilidad", "confirmado" and "sobrescribir"
+  consistently.
+- **README accuracy (flow and verdicts).** Both READMEs now list
+  `/drupilot-refactor` before `/drupilot-test` in the Quick start (matching the
+  `next-step.sh` ladder); say Phase 2 converts attributes in `strip` mode for a
+  `^11` target but `keep` while `^10 || ^11` is deliberately kept; limit the
+  `verified-partial` "exit 0" claim to the FunctionalJavascript-without-Selenium
+  skip (a group PHPUnit could not execute exits 2); and scope "a viability
+  assessment always runs first" to the guided/hands-off flows, adding
+  `/drupilot-assess` to the minimal-port use case.
 - **A re-run of `/drupilot-refactor` asked the Modernize tab again.** The
   modernization scope you picked is saved in `.drupilot.json`, but the command
   never read it back. A re-run now reuses the remembered scope (or the one set
