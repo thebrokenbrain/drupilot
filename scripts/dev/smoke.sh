@@ -135,7 +135,9 @@
 #   legacy-state   copy_legacy_state_once copies the state 0.9.0 left in a
 #                  per-plugin data dir (copy-only, never overwriting, logged,
 #                  marker), and a second run copies nothing; a file that could
-#                  not be copied leaves no marker and is retried; every command that
+#                  not be copied (a blocked dir, a copy dying half way) or a
+#                  dir that could not be listed leaves no marker and nothing
+#                  half-written, and the retry imports only what is pending; every command that
 #                  writes state runs it right after its own preflight call (the
 #                  status, doctor and patch commands, the hooks and preflight.sh
 #                  never do, and running the hooks, preflight, the status probe
@@ -1233,18 +1235,50 @@ test_legacy_state() {
   expect "second run: exit" "$RC" "0"
   expect "second run: copies nothing" "$(tree_snapshot "$uh" "$dh")" "$before"
   # A file that cannot be copied (here a regular file sits where its state dir
-  # goes, which defeats root too) leaves no marker: the next run retries it.
+  # goes, which defeats root too) leaves no marker: the next run retries only
+  # what is pending, so an imported file removed in between stays removed.
+  local k2="_srv_www_other" sb="$FX/legacy-bin"
   uh="$FX/legacy3/home"; dh="$FX/legacy3/data"
-  mkdir -p "$uh/.claude/plugins/data/drupilot-x/state/$key" "$dh/state"
+  mkdir -p "$uh/.claude/plugins/data/drupilot-x/state/$key" "$uh/.claude/plugins/data/drupilot-x/state/$k2" "$dh/state"
   printf '{}\n' > "$uh/.claude/plugins/data/drupilot-x/state/$key/drupilot-lock.json"
-  : > "$dh/state/$key"
+  printf '{}\n' > "$uh/.claude/plugins/data/drupilot-x/state/$k2/state.json"
+  : > "$dh/state/$k2"
   run lc3 env HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c '. "$1"; copy_legacy_state_once' _ "$lib"
-  expect "failed copy: warned, no marker" \
-    "$(grep -c 'could not be copied' "$TMP/out/lc3.err" || true)|$([[ -e "$dh/legacy-state-copied" ]] && echo marker || echo none)" "1|none"
-  rm -f "$dh/state/$key"
+  expect "failed copy: warned, no marker, the rest copied" \
+    "$(grep -c 'could not be copied' "$TMP/out/lc3.err" || true)|$([[ -e "$dh/legacy-state-copied" ]] && echo marker || echo none)|$([[ -f "$dh/state/$key/drupilot-lock.json" ]] && echo copied || echo none)" "1|none|copied"
+  rm -f "$dh/state/$k2" "$dh/state/$key/drupilot-lock.json"
   run lc4 env HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c '. "$1"; copy_legacy_state_once' _ "$lib"
-  expect "failed copy: retried" \
-    "$([[ -f "$dh/state/$key/drupilot-lock.json" ]] && echo copied || echo none)|$([[ -e "$dh/legacy-state-copied" ]] && echo marker || echo none)" "copied|marker"
+  expect "failed copy: retried, marker" \
+    "$([[ -f "$dh/state/$k2/state.json" ]] && echo copied || echo none)|$([[ -e "$dh/legacy-state-copied" ]] && echo marker || echo none)" "copied|marker"
+  expect "failed copy: a file removed after its import is not imported again" \
+    "$([[ -e "$dh/state/$key/drupilot-lock.json" ]] && echo reimported || echo kept-removed)" "kept-removed"
+  # A copy that dies half way (a full disk: here a cp that writes a few bytes
+  # and fails) leaves no partial file to be taken for a finished one.
+  mkdir -p "$sb"
+  printf '#!/bin/sh\nfor a in "$@"; do last="$a"; src="$prev"; prev="$a"; done\nhead -c 3 "$src" > "$last"\nexit 1\n' > "$sb/cp"
+  cat > "$sb/find" <<'STUB'
+#!/bin/sh
+echo ./_srv_www_other/state.json
+exit 1
+STUB
+  chmod +x "$sb/cp" "$sb/find"
+  uh="$FX/legacy4/home"; dh="$FX/legacy4/data"
+  mkdir -p "$uh/.claude/plugins/data/drupilot-x/state/$key"
+  printf '{"drupal":{"core":"11.4.8"}}\n' > "$uh/.claude/plugins/data/drupilot-x/state/$key/drupilot-lock.json"
+  mkdir -p "$sb/cp-only"; ln -s "$sb/cp" "$sb/cp-only/cp"
+  run lc5 env PATH="$sb/cp-only:$PATH" HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c '. "$1"; copy_legacy_state_once' _ "$lib"
+  expect "partial copy: nothing left behind, no marker" \
+    "$(find "$dh" -type f 2>/dev/null | grep -c . || true)|$([[ -e "$dh/legacy-state-copied" ]] && echo marker || echo none)" "0|none"
+  run lc6 env HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c '. "$1"; copy_legacy_state_once' _ "$lib"
+  expect "partial copy: the retry copies the whole file" "$(cat "$dh/state/$key/drupilot-lock.json" 2>/dev/null)" '{"drupal":{"core":"11.4.8"}}'
+  # A legacy dir that cannot be fully listed (find fails) leaves no marker.
+  uh="$FX/legacy5/home"; dh="$FX/legacy5/data"
+  mkdir -p "$uh/.claude/plugins/data/drupilot-x/state/$k2" "$sb/find-only"
+  printf '{}\n' > "$uh/.claude/plugins/data/drupilot-x/state/$k2/state.json"
+  ln -s "$sb/find" "$sb/find-only/find"
+  run lc7 env PATH="$sb/find-only:$PATH" HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c '. "$1"; copy_legacy_state_once' _ "$lib"
+  expect "listing error: warned, no marker" \
+    "$(grep -c 'not fully readable' "$TMP/out/lc7.err" || true)|$([[ -e "$dh/legacy-state-copied" ]] && echo marker || echo none)" "1|none"
   # INV2 (0.9.1 form): a failing gate (preflight.sh needs jq) changes nothing.
   path_without "$farm" jq
   uh="$FX/legacy2/home"; dh="$FX/legacy2/data"

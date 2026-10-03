@@ -52,8 +52,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   both (the digests cache moves with it), and `CLAUDE_PLUGIN_DATA` is never
   read. The commands that write state copy, once, any state 0.9.0 left in
   Claude Code's per-plugin data directory (`copy_legacy_state_once`, right after
-  their own preflight gate passes: copy-only, never overwriting, logged, with a
-  `legacy-state-copied` marker written only once every file is copied); `/drupilot-status`, `/drupilot-doctor`,
+  their own preflight gate passes: copy-only, never overwriting, each file
+  renamed into place only once fully copied, logged, with a
+  `legacy-state-copied` marker written only once every file is copied; a retry
+  imports only what is still pending); `/drupilot-status`, `/drupilot-doctor`,
   `/drupilot-patch`, the hooks and `preflight.sh` never copy. The state key of a
   path is unchanged, and the cached base core moves with the data dir too.
   `smoke.sh` no longer exports `CLAUDE_PLUGIN_DATA` (that is what hid the bug)

@@ -192,15 +192,19 @@ legacy_plugin_data_dir() {
 # file of <legacy>/state/ missing here is copied (never moved, never
 # overwritten; the first legacy dir wins), the copy is logged on STDERR, and the
 # marker <data root>/legacy-state-copied makes every later call return at once.
-# A file that could not be copied is named in a warning and leaves no marker,
-# so the next gated command tries it again.
+# Each file is copied under a temp name and renamed into place, so a failed
+# copy (a full disk) leaves nothing behind. A file that could not be copied, or
+# a legacy dir that could not be fully listed, is named in a warning and leaves
+# no marker: the next gated command retries only what is still pending (the
+# files already imported or kept are listed in legacy-state-copied.partial, so
+# one the user removed in between is not imported again).
 # Call it ONLY from a command preamble, right after that command's own
 # preflight.sh exited 0 (`preflight.sh ... && ... copy_legacy_state_once`):
 # never from a hook, from preflight.sh or from a helper, so a failing gate
 # changes nothing.
 copy_legacy_state_once() {
-  local root marker srcs src rel n=0 failed="" nf=0
-  root="$(data_dir_path)"; marker="$root/legacy-state-copied"
+  local root marker partial srcs src rel list dst tmp n=0 nf=0 failed=""
+  root="$(data_dir_path)"; marker="$root/legacy-state-copied"; partial="$marker.partial"
   [[ -e "$marker" ]] && return 0
   srcs="$(legacy_plugin_data_dir)"
   [[ -n "$srcs" ]] || return 0
@@ -210,15 +214,27 @@ copy_legacy_state_once() {
   fi
   while IFS= read -r src; do
     [[ -n "$src" ]] || continue
+    if ! list="$(cd "$src/state" 2>/dev/null && find . -type f 2>/dev/null)"; then
+      nf=$((nf + 1)); failed="$failed $src/state (not fully readable)"
+    fi
     while IFS= read -r rel; do
-      [[ -n "$rel" && ! -e "$root/state/$rel" ]] || continue
-      if mkdir -p "$(dirname "$root/state/$rel")" 2>/dev/null \
-         && cp -p "$src/state/$rel" "$root/state/$rel" 2>/dev/null; then
-        n=$((n + 1))
+      rel="${rel#./}"
+      [[ -n "$rel" ]] || continue
+      [[ -f "$partial" ]] && grep -qxF -- "$rel" "$partial" 2>/dev/null && continue
+      dst="$root/state/$rel"
+      if [[ -e "$dst" ]]; then
+        printf '%s\n' "$rel" >> "$partial" 2>/dev/null || true
+        continue
+      fi
+      tmp="$dst.drupilot-copy.$$"
+      if mkdir -p "$(dirname "$dst")" 2>/dev/null && cp -p "$src/state/$rel" "$tmp" 2>/dev/null \
+         && mv -f "$tmp" "$dst" 2>/dev/null; then
+        n=$((n + 1)); printf '%s\n' "$rel" >> "$partial" 2>/dev/null || true
       else
+        rm -f "$tmp" 2>/dev/null
         nf=$((nf + 1)); failed="$failed $src/state/$rel"
       fi
-    done < <(cd "$src/state" 2>/dev/null && find . -type f 2>/dev/null | sed 's#^\./##' | LC_ALL=C sort)
+    done <<< "$(printf '%s\n' "$list" | LC_ALL=C sort)"
   done <<< "$srcs"
   if [[ "$nf" -gt 0 ]]; then
     log_warn "Copied $n state file(s) of drupilot 0.9.0 into $root/state; $nf could not be copied and will be retried by the next command:$failed"
@@ -228,6 +244,7 @@ copy_legacy_state_once() {
     printf 'files=%s\n' "$n"
     printf '%s\n' "$srcs" | sed 's#^#from=#; s#$#/state#'
   } > "$marker" 2>/dev/null || true
+  rm -f "$partial" 2>/dev/null
   if [[ "$n" -gt 0 ]]; then
     log_info "Copied $n state file(s) of drupilot 0.9.0 into $root/state (the originals stay in: $(printf '%s' "$srcs" | tr '\n' ' '))."
   else
