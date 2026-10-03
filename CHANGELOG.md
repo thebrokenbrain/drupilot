@@ -13,6 +13,22 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+### Added
+- **Unit tests and the `unit` gate.** `tests/lib/assert.sh` is a portable
+  assertion library (bash 3.2, BSD/BusyBox, jq 1.6; no bats) with its own
+  self-test; `scripts/dev/unit.sh` runs it and every `tests/unit/*.sh` with the
+  same bash, and `scripts/dev/check.sh` runs that as its new `unit` gate
+  (`--gate` is now an alias of `--only`). The first tests freeze 0.9 behaviour:
+  `config_get` precedence, `version_ge`, the `project_state_path` key,
+  `lock_resolve`, `choose_one` pre-answers, the `keep-current` core strategy,
+  the hooks' fail-safe contract (malformed stdin, no jq, a read-only HOME) and
+  the invariant tests INV1, INV2, INV4, INV5, INV7, INV8, INV9, INV10 and INV11
+  (INV3 and INV6 are stubs owned by later milestones; `tests/INVARIANTS.md` maps
+  all twelve), plus `sessionstart_writes_nothing`.
+- **Hook latency baseline.** `scripts/dev/hook-latency.sh` measures each hook's
+  p50/p95 on a fixed payload; the 0.9 numbers are recorded in
+  `tests/baseline/v0.9.0/hook-latency.json`.
+
 ## [0.9.1] - 2026-10-03
 
 ### Added
