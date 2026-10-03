@@ -224,6 +224,7 @@ if [[ "$WRITE" == "1" ]]; then
     SUMMARY_DIR="$(project_artifacts_dir "$SUBJECT")"
   fi
   _tmp="$(mktemp "$SUMMARY_DIR/.port-summary.XXXXXX")" || die "Cannot write into $SUMMARY_DIR" 1
+  chmod 0644 "$_tmp" 2>/dev/null || true   # mktemp creates 0600; the file is a shared report
   printf '%s\n' "$SUMMARY" | jq . > "$_tmp" && mv -f "$_tmp" "$SUMMARY_DIR/port-summary.json" \
     || { rm -f "$_tmp"; die "Cannot write $SUMMARY_DIR/port-summary.json" 1; }
   log_ok "Port summary written: $SUMMARY_DIR/port-summary.json"

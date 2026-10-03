@@ -118,6 +118,8 @@ render_md() {
   local tmp
   mkdir -p "$(dirname "$MD")" || return 1
   tmp="$(mktemp "$MD.XXXXXX")" || return 1
+  # mktemp creates 0600; a report is for the team and CI artifacts too.
+  chmod 0644 "$tmp" 2>/dev/null || true
   if jq -R -s -r '
       def cell: if . == null or . == "" then "—" else tostring | gsub("\\|"; "\\|") | gsub("\r?\n"; "<br>") end;
       [ split("\n")[] | select(length > 0) | (fromjson? // empty) | select(type == "object") ] as $all

@@ -811,6 +811,11 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **`decisions.md` and `port-summary.json` were written mode 0600.** Both
+  went through `mktemp` + `mv`, so unlike the other reports in `.drupilot/`
+  (0644) a teammate, a CI artifact upload or a wrapper running as another user
+  could not read them. They are now made 0644 before the move, as
+  `patterns.json` already was.
 - **The layer report dropped the metadata lint of modules not registered
   yet.** `layer-report.sh` read `metadata-lint.json` only for subjects in the
   state registry, so a module linted by a `/drupilot-layers` plan but not
