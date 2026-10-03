@@ -13,11 +13,7 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
-### Changed
-- **`.claude-plugin/plugin.json` is the single version source.** The marketplace
-  entry and `metadata` no longer repeat the version (Claude Code takes the
-  manifest's, which wins anyway, and its docs advise against setting both); a
-  release bumps `plugin.json` only.
+## [0.9.1] - 2026-10-03
 
 ### Added
 - **`DRUPILOT_HOME`** — drupilot's hidden data directory (state, lockfiles,
@@ -41,6 +37,12 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `tests/baseline/v0.9.0/allowed-diffs.txt`, and `SHA256SUMS` pins the committed
   baseline files. A small input module with PHP 8.2/8.3/8.4 constructs covers
   the PHP floor scan, which no fixture exercised.
+
+### Changed
+- **`.claude-plugin/plugin.json` is the single version source.** The marketplace
+  entry and `metadata` no longer repeat the version (Claude Code takes the
+  manifest's, which wins anyway, and its docs advise against setting both); a
+  release bumps `plugin.json` only.
 
 ### Fixed
 - **Hooks and scripts kept their state in two different places.** The data
@@ -2362,7 +2364,8 @@ verdict, what-changed report card, frozen lock), and new insight tools
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.4...v0.9.0
 [0.8.4]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.2...v0.8.3
