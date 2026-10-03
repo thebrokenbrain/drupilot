@@ -56,6 +56,12 @@
 #                  ContentEntityType -> ^11.1); the default matrix legs include
 #                  the declared floor (^10 || ^11 -> 10.0, 10, 11), also in
 #                  verify-core-matrix.sh --dry-run on a stub Drupal root
+#   attributes     php-scan.sh reads attribute constructor parameters (own,
+#                  inherited, variadic) and annotation top-level keys; on a
+#                  stub Drupal root with a stub Rector, convert-attributes.sh
+#                  skips a @MigrateSource whose source_module key the
+#                  MigrateSource attribute constructor does not take (needs the
+#                  analyze profile, else skipped with a warning)
 #
 # Isolation: the fixtures are copied to a temp dir (legacy_widgets is committed
 # there as a git repo when git exists), and HOME, CLAUDE_PLUGIN_DATA and the
@@ -86,7 +92,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$REPO/tests/fixtures"
 SH="${BASH:-bash}"
 
-ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target"
+ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes"
 
 AS_JSON=0; ONLY=""; SKIP=""; KEEP=0
 
@@ -485,6 +491,9 @@ STUB
   chmod +x "$r/vendor/bin/rector"
 }
 
+# analyze_ready -> 0 when the analyze profile (git + jq + composer/php) is met.
+analyze_ready() { "$SH" "$REPO/scripts/env/preflight.sh" --profile analyze --quiet >/dev/null 2>&1 < /dev/null; }
+
 test_core_target() {
   local cs="$REPO/scripts/analysis/core-strategy.sh" m="$FX/ct" r="$FX/ct-root"
   local q='[.strategy, .recommended_core_version_requirement, (.verify_cores | join(","))] | join(" ")'
@@ -509,6 +518,105 @@ test_core_target() {
   finish
 }
 
+test_attributes() {
+  local r="$FX/attr-root" mod pk
+  # php-scan.sh: constructor parameters (own, inherited, variadic) and the
+  # top-level keys of an annotation (nested objects and @Translation skipped).
+  mkdir -p "$FX/attr-docroot/core/lib/Drupal/Component/Plugin/Attribute" "$FX/attr-docroot/core/modules/migrate/src/Attribute"
+  printf 'name: Migrate\ntype: module\n' > "$FX/attr-docroot/core/modules/migrate/migrate.info.yml"
+  cat > "$FX/attr-docroot/core/lib/Drupal/Component/Plugin/Attribute/Plugin.php" <<'PHP'
+<?php
+
+namespace Drupal\Component\Plugin\Attribute;
+
+#[\Attribute(\Attribute::TARGET_CLASS)]
+class Plugin {
+
+  public function __construct(
+    public readonly string $id,
+    public readonly ?string $deriver = NULL,
+  ) {}
+
+}
+PHP
+  cat > "$FX/attr-docroot/core/modules/migrate/src/Attribute/MigrateSource.php" <<'PHP'
+<?php
+
+namespace Drupal\migrate\Attribute;
+
+use Drupal\Component\Plugin\Attribute\Plugin;
+
+class MigrateSource extends Plugin {
+
+  /**
+   * Not a parameter: $source_module.
+   */
+  public function __construct(
+    public readonly string $id,
+    public bool $requirements_met = TRUE,
+    public readonly mixed $minimum_version = NULL, // '$x'
+    public readonly ?string $deriver = NULL,
+  ) {}
+
+}
+PHP
+  printf '<?php\n\nnamespace Drupal\\migrate\\Attribute;\n\nclass MigrateInherited extends MigrateSource {}\n' > "$FX/attr-docroot/core/modules/migrate/src/Attribute/MigrateInherited.php"
+  printf '<?php\n\nnamespace Drupal\\migrate\\Attribute;\n\nclass MigrateAny {\n\n  public function __construct(string $id, ...$additional) {}\n\n}\n' > "$FX/attr-docroot/core/modules/migrate/src/Attribute/MigrateAny.php"
+  cat > "$FX/attr-ann.php" <<'PHP'
+<?php
+
+/**
+ * A source.
+ *
+ * @MigrateSource(
+ *   id = "acme_roles",
+ *   source_module = "acme",
+ *   label = @Translation("A, b = c", context = "x"),
+ *   context_definitions = {
+ *     "node" = @ContextDefinition("entity:node", label = @Translation("Node"))
+ *   }
+ * )
+ */
+class AcmeRoles {}
+PHP
+  pk="$(env PHPSCAN_DOCROOT="$FX/attr-docroot" "$SH" -c '
+    . "$1/scripts/lib/common.sh"; . "$1/scripts/lib/php-scan.sh"
+    PHPSCAN_DIR="$(mktemp -d)"; : > "$PHPSCAN_DIR/index.tsv"; mkdir -p "$PHPSCAN_DIR/ext" "$PHPSCAN_DIR/memo"
+    php_scan_extmap "$2"
+    for c in MigrateSource MigrateInherited MigrateAny MigrateMissing; do
+      printf "%s=%s;" "$c" "$(php_ctor_params "Drupal\\migrate\\Attribute\\$c" | paste -sd, -)"
+    done
+    printf "keys=%s" "$(php_annotation_keys "$3" MigrateSource | paste -sd, -)"
+    rm -rf "$PHPSCAN_DIR"' _ "$REPO" "$FX/attr-docroot" "$FX/attr-ann.php" 2>&1 < /dev/null || true)"
+  expect "php-scan: constructor parameters and annotation keys" "$pk" \
+    'MigrateSource=id,requirements_met,minimum_version,deriver;MigrateInherited=id,requirements_met,minimum_version,deriver;MigrateAny=id,...additional;MigrateMissing=?;keys=id,source_module,label,context_definitions'
+  if ! analyze_ready; then
+    log_warn "attributes: the analyze profile is not ready, the convert-attributes.sh assertion is skipped."
+    finish; return 0
+  fi
+  # convert-attributes.sh on a stub Drupal 11.4 root: the file whose
+  # annotation has source_module is skipped, the plain one is converted.
+  mk_stub_root "$r" "11.4.8"
+  cp -R "$FX/attr-docroot/core" "$r/web/"
+  printf "<?php\nclass Drupal {\n  const VERSION = '11.4.8';\n}\n" > "$r/web/core/lib/Drupal.php"
+  mkdir -p "$r/vendor/palantirnet/drupal-rector/src/Drupal10/Rector/Deprecation"
+  printf '<?php\n' > "$r/vendor/palantirnet/drupal-rector/src/Drupal10/Rector/Deprecation/AnnotationToAttributeRector.php"
+  mod="$r/web/modules/custom/acme_mig"
+  mkdir -p "$mod/src/Plugin/migrate/source"
+  printf "name: Acme mig\ntype: module\ncore_version_requirement: ^11\n" > "$mod/acme_mig.info.yml"
+  cp "$FX/attr-ann.php" "$mod/src/Plugin/migrate/source/AcmeRoles.php"
+  printf '<?php\n\n/**\n * Plain.\n *\n * @MigrateSource(\n *   id = "acme_plain"\n * )\n */\nclass AcmePlain {}\n' > "$mod/src/Plugin/migrate/source/AcmePlain.php"
+  printf 'change web/modules/custom/acme_mig/src/Plugin/migrate/source/AcmePlain.php' > "$r/rector-mode"
+  run at "$SH" "$REPO/scripts/analysis/convert-attributes.sh" --subject "$mod" --json
+  expect "convert-attributes: exit" "$RC" "0"
+  expect "convert-attributes: source_module file skipped" \
+    "$(jqo at '[.skipped_files[] | (.file | sub(".*/"; "")) + ":" + (.reason | test("source_module") | tostring)]')" '["AcmeRoles.php:true"]'
+  expect "convert-attributes: plain file converted" "$(jqo at '[.types[] | .annotation + ":" + .action + ":" + (.converted_files | tostring)]')" '["MigrateSource:keep:1"]'
+  expect "convert-attributes: skipped file in the Rector skip list" \
+    "$(grep -c "acme_mig/src/Plugin/migrate/source/AcmeRoles.php" "$r/.drupilot/rector-attributes.php" 2>/dev/null || true)" "1"
+  finish
+}
+
 # --- Main -----------------------------------------------------------------------
 log_step "drupilot smoke tests (bash ${BASH_VERSION:-?}, $(uname -s 2>/dev/null || echo ?))"
 for t in $ALL_TESTS; do
@@ -529,6 +637,7 @@ for t in $ALL_TESTS; do
     patterns) test_patterns;;
     status-probe) test_status_probe;;
     core-target) test_core_target;;
+    attributes) test_attributes;;
   esac
 done
 

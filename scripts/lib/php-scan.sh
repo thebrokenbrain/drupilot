@@ -3,10 +3,13 @@
 # drupilot — scripts/lib/php-scan.sh
 # Shared, dependency-free PHP class heuristics (bash + POSIX awk; no PHP needed,
 # so it runs on the host without the toolchain). Sourced by
-# scripts/analysis/check-port-safety.sh and scan-signature-changes.sh; meant to
-# be reused by any later analysis script that needs class headers, imports,
-# methods or ancestry, instead of re-parsing PHP on its own (the class index and
-# php_chain_has ancestry resolver are at the end of this file).
+# scripts/analysis/check-port-safety.sh, scan-signature-changes.sh,
+# lint-extension-metadata.sh and convert-attributes.sh; meant to be reused by
+# any later analysis script that needs class headers, imports, methods or
+# ancestry, instead of re-parsing PHP on its own (the class index and
+# php_chain_has ancestry resolver follow php_scan_file; php_method_params,
+# php_ctor_params and php_annotation_keys, which read constructor parameters
+# and doc-block annotation keys, are at the end of this file).
 #
 #   php_scan_file FILE  -> TSV records on stdout, one per line:
 #     NS        <namespace>
@@ -414,5 +417,123 @@ php_chain_has() {
 # php_first_parent FQCN -> the declared parent class (for "verify manually").
 php_first_parent() {
   php_class_records "$1" | awk -F'\t' '$1 == "CLASS" { print $6; exit }'
+  return 0
+}
+
+# php_method_params FILE METHOD -> the parameter names of METHOD's FIRST
+# declaration in FILE, one per line without `$`, in order; a variadic
+# parameter is printed with a leading `...`. Prints nothing when FILE has no
+# such method. Comments, string contents and `#[...]` parameter attributes are
+# ignored, so a default value like '$x' is never taken for a parameter.
+php_method_params() {
+  local f="$1" m="$2"
+  [[ -f "$f" ]] || return 0
+  AWKV_m="$m" awk '
+    BEGIN { m = tolower(ENVIRON["AWKV_m"]); state = 0; buf = "" }
+    {
+      line = $0
+      if (state == 0) {
+        l = tolower(line)
+        if (match(l, "function[ \t]+&?[ \t]*" m "[ \t]*\\(")) {
+          state = 1; buf = substr(line, RSTART + RLENGTH - 1)
+        } else next
+      } else buf = buf "\n" line
+      # Strip comments and strings, then find the closing paren of the list.
+      n = length(buf); out = ""; d = 0; instr = ""; inblk = 0; inl = 0; done = 0
+      for (i = 1; i <= n; i++) {
+        c = substr(buf, i, 1); nx = substr(buf, i + 1, 1)
+        if (inl) { if (c == "\n") inl = 0; continue }
+        if (inblk) { if (c == "*" && nx == "/") { inblk = 0; i++ }; continue }
+        if (instr != "") { if (c == "\\") { i++; continue }; if (c == instr) instr = ""; continue }
+        if (c == "\"" || c == "\047") { instr = c; continue }
+        if (c == "/" && nx == "*") { inblk = 1; i++; continue }
+        if (c == "/" && nx == "/") { inl = 1; continue }
+        if (c == "#" && nx != "[") { inl = 1; continue }
+        if (c == "(" || c == "[") d++
+        else if (c == ")" || c == "]") { d--; if (d == 0) { done = 1; break } }
+        # Parameter attributes #[...] sit at depth 1 followed by `[`: their
+        # content is at depth >= 2 and dropped below.
+        if (d == 1) out = out c
+        else out = out " "
+      }
+      if (!done) next
+      gsub(/#/, " ", out)
+      while (match(out, /(\.\.\.[ \t\n]*)?&?[ \t\n]*\$[A-Za-z_][A-Za-z0-9_]*/)) {
+        t = substr(out, RSTART, RLENGTH); out = substr(out, RSTART + RLENGTH)
+        v = (t ~ /^\.\.\./) ? "..." : ""
+        sub(/^.*\$/, "", t)
+        print v t
+      }
+      exit
+    }' "$f"
+  return 0
+}
+
+# php_ctor_params FQCN [DEPTH] -> the constructor parameter names of FQCN (as
+# php_method_params), taken from the nearest class of its ancestry that
+# declares __construct (php_class_records resolves the parents; set
+# PHPSCAN_DIR/PHPSCAN_DOCROOT as for php_chain_has). Prints `?` when the class
+# or an ancestor cannot be read, and nothing when no class of the chain declares
+# a constructor (it takes no arguments).
+php_ctor_params() {
+  local fq="$1" depth="${2:-0}" f parent
+  if (( depth > 10 )); then echo "?"; return 0; fi
+  f="$(php_class_file "$fq")"
+  if [[ -z "$f" ]]; then echo "?"; return 0; fi
+  if grep -qiE 'function[[:space:]]+__construct[[:space:]]*\(' "$f" 2>/dev/null; then
+    php_method_params "$f" __construct
+    return 0
+  fi
+  parent="$(php_first_parent "$fq")"
+  [[ -n "$parent" ]] || return 0
+  php_ctor_params "$parent" $((depth + 1))
+  return 0
+}
+
+# php_annotation_keys FILE ANNOTATION -> the top-level keys of the first
+# `@ANNOTATION(...)` doc-block tag in FILE, one per line: the `key = value`
+# (or `"key" = value`) assignments at nesting depth 1. Keys of nested objects,
+# arrays and @Translation(...) arguments are not keys of the plugin annotation.
+# Prints nothing for a positional-only tag (`@ViewsField("standard")`).
+php_annotation_keys() {
+  AWKV_a="$2" awk '
+    BEGIN { a = ENVIRON["AWKV_a"]; on = 0; buf = "" }
+    {
+      line = $0
+      if (!on) {
+        if (line !~ "^[ \t]*\\*[ \t]*@" a "[ \t]*\\(") next
+        sub("^[ \t]*\\*[ \t]*@" a "[ \t]*", "", line); on = 1
+      } else {
+        if (line ~ /^[ \t]*\*\//) exit
+        sub(/^[ \t]*\*[ \t]?/, "", line)
+      }
+      buf = buf " " line
+      n = length(buf); d = 0; instr = 0; qs = 0; prev = ""; done = 0; keys = ""
+      for (i = 1; i <= n; i++) {
+        c = substr(buf, i, 1)
+        if (instr) {
+          if (c != "\"") continue
+          if (substr(buf, i + 1, 1) == "\"") { i++; continue }
+          instr = 0
+          if (qs) {
+            k = i + 1; while (k <= n && substr(buf, k, 1) ~ /[ \t]/) k++
+            if (substr(buf, k, 1) == "=") keys = keys substr(buf, qs + 1, i - qs - 1) "\n"
+          }
+          qs = 0; prev = "str"; continue
+        }
+        if (c == "\"") { instr = 1; qs = (d == 1 && (prev == "(" || prev == ",")) ? i : 0; continue }
+        if (c == "(" || c == "{" || c == "[") { d++; prev = c; continue }
+        if (c == ")" || c == "}" || c == "]") { d--; prev = c; if (d == 0) { done = 1; break }; continue }
+        if (c ~ /[ \t]/) continue
+        if (d == 1 && (prev == "(" || prev == ",") && c ~ /[A-Za-z_]/) {
+          j = i; while (j <= n && substr(buf, j, 1) ~ /[A-Za-z0-9_]/) j++
+          k = j; while (k <= n && substr(buf, k, 1) ~ /[ \t]/) k++
+          if (substr(buf, k, 1) == "=") keys = keys substr(buf, i, j - i) "\n"
+          i = j - 1; prev = "id"; continue
+        }
+        prev = c
+      }
+      if (done) { printf "%s", keys; exit }
+    }' "$1"
   return 0
 }

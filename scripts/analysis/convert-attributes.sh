@@ -36,9 +36,17 @@
 # 999.0.0 to keep. Names are printed fully qualified (no import), because the
 # 0.21.x rule detects an existing attribute by its FQCN: a file that already
 # carries a short-named (imported) attribute of a converted type is skipped (it
-# would get a duplicate). After --apply, every changed file is checked: a
-# duplicate attribute or a `php -l` failure restores the file from the backup
-# taken just before the run. A class constant the annotation names by a
+# would get a duplicate). The rule copies every annotation key into a named
+# argument as is, so before the run each annotation's top-level keys are
+# checked against the attribute constructor's parameters, read from the
+# attribute class in the test-bed core and in every cached reference core at or
+# above the type's `since` (.drupilot/cores): a file with a key the constructor
+# does not accept (e.g. `source_module` on @MigrateSource) is skipped and keeps
+# its annotation, as Drupal core does for such plugins, because the attribute
+# would fatal with "Unknown named parameter" when the plugin is discovered.
+# After --apply, every changed file is checked: a duplicate attribute, a
+# `php -l` failure or a PHPStan (level 0) finding that names a converted
+# attribute class restores the file from the backup taken just before the run. A class constant the annotation names by a
 # qualified but not fully qualified name (`Drupal\filter\Plugin\FilterInterface::
 # TYPE_X`, valid in an annotation, namespace-relative in PHP code) is rewritten
 # fully qualified (`\Drupal\...`) in the generated attribute.
@@ -73,9 +81,10 @@
 #    declared_requirement, declared_floor, attribute_floor, floor_ok,
 #    recommended_requirement, floor_raised,
 #    types:[{annotation, attribute, since, origin: core|custom, files,
-#            action: strip|keep|skipped, reason}],
+#            converted_files, action: strip|keep|skipped, reason}],
 #    files:[...], changed_files, skipped_files:[{file, reason}],
 #    restored_files:[{file, reason}], qualified_constants,
+#    phpstan_check: ok|crashed|unavailable|null (--apply only),
 #    rule_hits:{attributes:{AnnotationToAttributeRector:n}}, errors:[...]}
 #   attribute_floor: the highest `since` among the converted types (the core
 #   floor the result needs for static analysis; also the runtime floor for the
@@ -90,6 +99,8 @@ set -euo pipefail
 
 # shellcheck source=../lib/common.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+# shellcheck source=../lib/php-scan.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/php-scan.sh"
 
 SUBJECT=""
 APPLY=0
@@ -295,15 +306,88 @@ while IFS=$'\t' read -r ann attr since origin; do
   [[ "$action" == "skipped" ]] && { log_warn "@$ann: skipped — $reason."; continue; }
   [[ -n "$reason" ]] && log_warn "@$ann: $reason."
   printf '%s\t%s\t%s\t%s\n' "$ann" "$attr" "${since:--}" "$action" >> "$ACTIVE"
-  if [[ -n "$since" ]] && { [[ -z "$ATTR_FLOOR" ]] || ! mm_le "$since" "$ATTR_FLOOR"; }; then ATTR_FLOOR="$since"; fi
   intro="${since:-8.0}.0"
   if [[ "$action" == "strip" ]]; then remove="$intro"; else remove="999.0.0"; fi
   CONFIG_LINES="${CONFIG_LINES}    new AnnotationToAttributeConfiguration('$intro', '$remove', '$ann', '$(printf '%s' "$attr" | sed 's/\\/\\\\/g')'),
 "
 done < "$TYPES_TSV"
 
-# Files carrying a converted annotation, and those to skip (a short-named
-# attribute of the same type already present: the 0.21.x rule would duplicate).
+# --- Accepted attribute parameters ---------------------------------------------
+# The rule copies every annotation key into a named argument of the attribute
+# as is. A key the attribute constructor does not declare (e.g. `source_module`
+# of a @MigrateSource: core's MigrateSource attribute takes only id,
+# requirements_met, minimum_version and deriver) makes the attribute fatal when
+# the plugin manager instantiates it ("Unknown named parameter"), and `php -l`
+# cannot see it. So the constructor parameters are read from the attribute
+# class itself (php-scan.sh, following the parent classes) in the test-bed core
+# and in every cached reference core (.drupilot/cores, verify-core-matrix.sh)
+# that is at or above the type's `since`, and a file whose annotation has a
+# key one of them does not accept keeps its annotation untouched — what core
+# itself does for such plugins (e.g. ban's d7 BlockedIps migrate source). A
+# variadic constructor accepts any key.
+# docroot_of <root> -> the dir holding core/lib (web/, docroot/ or the root).
+docroot_of() {
+  local d
+  for d in "$1/web" "$1/docroot" "$1"; do
+    [[ -d "$d/core/lib/Drupal" ]] && { printf '%s' "$d"; return 0; }
+  done
+  return 0
+}
+PARAMS_DIR="$TMPD/params"; mkdir -p "$PARAMS_DIR"
+DOCROOTS="$TMPD/docroots.tsv"   # docroot<TAB>core MAJOR.MINOR<TAB>label
+: > "$DOCROOTS"
+_dr="$(docroot_of "$DRUPAL_ROOT")"
+[[ -n "$_dr" ]] && printf '%s\t%s\t%s\n' "$_dr" "$CORE_MM" "test-bed core $CORE_VER" >> "$DOCROOTS"
+for _rc in "$DRUPAL_ROOT"/.drupilot/cores/drupal-*; do
+  [[ -d "$_rc" ]] || continue
+  _dr="$(docroot_of "$_rc")"; [[ -n "$_dr" ]] || continue
+  _v="$(drupal_core_version "$_rc")"; _mm="$(printf '%s' "$_v" | grep -oE '^[0-9]+\.[0-9]+' || true)"
+  [[ -n "$_mm" ]] && printf '%s\t%s\t%s\n' "$_dr" "$_mm" "reference core $_v" >> "$DOCROOTS"
+done
+# attr_params <attribute FQCN> <since|-> -> writes $PARAMS_DIR/<key>.<n> (one
+# per applicable docroot: the parameter list, `?` when unreadable) and prints
+# nothing. Docroots below `since` never read the attribute and are left out.
+attr_params() {
+  local fq="$1" since="$2" key n=0 dr mm label
+  key="$(php_scan_key "$fq")"
+  [[ -e "$PARAMS_DIR/$key.done" ]] && return 0
+  while IFS=$'\t' read -r dr mm label; do
+    [[ -n "$dr" ]] || continue
+    n=$((n + 1))
+    if [[ "$since" != "-" && -n "$since" ]] && ! mm_le "$since" "$mm"; then continue; fi
+    (
+      PHPSCAN_DIR="$TMPD/scan-$n"; PHPSCAN_DOCROOT="$dr"
+      mkdir -p "$PHPSCAN_DIR/ext" "$PHPSCAN_DIR/memo"; : > "$PHPSCAN_DIR/index.tsv"
+      [[ -s "$PHPSCAN_DIR/extmap.tsv" ]] || php_scan_extmap "$SUBJECT_ABS"
+      { printf '#%s\n' "$label"; php_ctor_params "$fq"; } > "$PARAMS_DIR/$key.$n"
+    )
+  done < "$DOCROOTS"
+  : > "$PARAMS_DIR/$key.done"
+  return 0
+}
+# rejected_keys <file> <annotation> <attribute FQCN> <since|-> -> one line per
+# annotation key an applicable core's constructor rejects ("key<TAB>core"), or
+# "?<TAB>core" when that core's attribute class cannot be read.
+rejected_keys() {
+  local f="$1" ann="$2" fq="$3" since="$4" keys pf label
+  attr_params "$fq" "$since"
+  keys="$(php_annotation_keys "$f" "$ann")"
+  for pf in "$PARAMS_DIR/$(php_scan_key "$fq")".[0-9]*; do
+    [[ -f "$pf" ]] || continue
+    label="$(head -n 1 "$pf")"; label="${label#\#}"
+    if grep -qx '?' "$pf"; then printf '?\t%s\n' "$label"; continue; fi
+    grep -q '^\.\.\.' "$pf" && continue
+    [[ -n "$keys" ]] || continue
+    printf '%s\n' "$keys" | while IFS= read -r k; do
+      [[ -n "$k" ]] || continue
+      grep -qxF "$k" "$pf" || printf '%s\t%s\n' "$k" "$label"
+    done
+  done
+  return 0
+}
+# Files carrying a converted annotation, and those to skip: a short-named
+# attribute of the same type already present (the 0.21.x rule would
+# duplicate), or an annotation key the attribute constructor rejects.
 CAND="$TMPD/cand.txt"; : > "$CAND"
 SKIPPED_JSON="[]"; SKIP_LINES=""
 while IFS= read -r f; do
@@ -311,6 +395,15 @@ while IFS= read -r f; do
   skip_reason=""
   while IFS=$'\t' read -r ann attr since action; do
     awk -F '\t' -v f="$f" -v a="$ann" '$1 == "TAG" && $2 == f && $3 == a { found = 1 } END { exit !found }' "$SCAN" || continue
+    rej="$(rejected_keys "$f" "$ann" "$attr" "$since")"
+    if [[ -n "$rej" ]]; then
+      if printf '%s\n' "$rej" | grep -q '^?'; then
+        skip_reason="the constructor of $attr could not be read ($(printf '%s\n' "$rej" | awk -F '\t' '$1 == "?" { print $2; exit }')), so its accepted arguments are unknown: annotation kept"
+      else
+        skip_reason="@$ann key(s) $(printf '%s\n' "$rej" | cut -f1 | sort -u | paste -sd, - | sed 's/,/, /g') have no parameter in $attr::__construct() ($(printf '%s\n' "$rej" | cut -f2 | sort -u | paste -sd, - | sed 's/,/, /g')): the attribute would fatal with 'Unknown named parameter' when the plugin is discovered. The annotation is kept, as Drupal core does for such plugins"
+      fi
+      break
+    fi
     short="${attr##*\\}"
     # The FQCN goes through ENVIRON: awk -v would interpret its backslashes.
     if AWKV_fq="\\$attr" awk -F '\t' -v f="$f" -v s="$short" '
@@ -329,6 +422,22 @@ while IFS= read -r f; do
   fi
 done < <(awk -F '\t' 'NR == FNR { act[$1] = 1; next } $1 == "TAG" && ($3 in act) { print $2 }' "$ACTIVE" "$SCAN" | sort -u)
 
+# The floor counts only the types that still have a file to convert.
+while IFS=$'\t' read -r ann attr since action; do
+  [[ "$since" == "-" ]] && continue
+  if awk -F '\t' -v a="$ann" 'NR == FNR { c[$0] = 1; next } $1 == "TAG" && $3 == a && ($2 in c) { found = 1 } END { exit !found }' "$CAND" "$SCAN"; then
+    if [[ -z "$ATTR_FLOOR" ]] || ! mm_le "$since" "$ATTR_FLOOR"; then ATTR_FLOOR="$since"; fi
+  fi
+done < "$ACTIVE"
+# Per type: how many files are still converted (0 = every file was skipped).
+TYPES_JSON="$(printf '%s' "$TYPES_JSON" | jq -c --rawfile cand "$CAND" --rawfile scan "$SCAN" '
+  ($cand | split("\n") | map(select(length > 0))) as $c
+  | ($scan | split("\n") | map(split("\t")) | map(select(.[0] == "TAG" and (.[1] as $f | any($c[]; . == $f))))) as $t
+  | map(. as $ty | ($t | map(select(.[2] == $ty.annotation) | .[1]) | unique | length) as $n
+        | if .action == "skipped" then . + {converted_files: 0}
+          elif $n == 0 then . + {converted_files: 0, action: "skipped",
+                                reason: (.reason // "every file of this type was skipped (see skipped_files)")}
+          else . + {converted_files: $n} end)')"
 FLOOR_OK="true"
 if [[ -n "$ATTR_FLOOR" ]]; then
   if [[ -z "$DECLARED_FLOOR" ]] || ! mm_le "$ATTR_FLOOR" "$DECLARED_FLOOR"; then FLOOR_OK="false"; fi
@@ -344,7 +453,7 @@ emit_json() {
     --argjson q "$5" --argjson raised "$6" --argjson errs "$7" \
     --argjson applied "$([[ "$APPLY" == "1" ]] && echo true || echo false)" \
     --arg mode "$MODE" --arg cv "$CORE_VER" --arg dr "$DECLARED_REQ" --arg df "$DECLARED_FLOOR" \
-    --arg af "$ATTR_FLOOR" --argjson fok "$FLOOR_OK" --arg rr "$REC_REQ" \
+    --arg af "$ATTR_FLOOR" --argjson fok "$FLOOR_OK" --arg rr "$REC_REQ" --arg ps "${PS_STATUS:-}" \
     --argjson types "$TYPES_JSON" --argjson skipped "$SKIPPED_JSON" \
     '{tool:"attributes", status:$st, ok:($st != "error"), applied:$applied, mode:$mode,
       core_version:$cv,
@@ -354,6 +463,7 @@ emit_json() {
       floor_ok:$fok, recommended_requirement:(if $rr == "" then null else $rr end),
       floor_raised:$raised, types:$types, files:$files, changed_files:$n,
       skipped_files:$skipped, restored_files:$rest, qualified_constants:$q,
+      phpstan_check:(if $ps == "" then null else $ps end),
       rule_hits:(if $n > 0 then {attributes:{AnnotationToAttributeRector:$n}} else {} end),
       errors:$errs}'
 }
@@ -417,7 +527,7 @@ if ! rector_output_ok "$RC" "$RAW"; then
   exit 3
 fi
 
-RESTORED_JSON="[]"; QUALIFIED=0; RAISED=false
+RESTORED_JSON="[]"; QUALIFIED=0; RAISED=false; PS_STATUS=""
 if [[ "$APPLY" == "1" && -n "$CHANGED" ]]; then
   ATTR_LIST="$(cut -f2 "$ACTIVE" | tr '\n' ' ')"
   restore() {
@@ -468,7 +578,51 @@ if [[ "$APPLY" == "1" && -n "$CHANGED" ]]; then
   if [[ "$RESTORED_JSON" != "[]" ]]; then
     CHANGED="$(printf '%s\n' "$CHANGED" | grep -vxF -f <(printf '%s' "$RESTORED_JSON" | jq -r '.[].file') || true)"
   fi
-  # 4) Raise the declared floor when asked and needed.
+  # 4) The attributes must be instantiable: `php -l` does not check an
+  # attribute's arguments against its constructor, PHPStan does (level 0 already
+  # reports "Unknown parameter $x in call to <Attribute> constructor" and an
+  # unknown attribute class). Only findings that name a converted attribute
+  # class restore a file; any other finding is pre-existing and left to the
+  # validate loop.
+  if [[ -n "$CHANGED" ]]; then
+    if [[ -f "$DRUPAL_ROOT/vendor/bin/phpstan" ]]; then
+      declare -a PS=()
+      [[ ${#RUN[@]} -gt 0 ]] && PS=("${RUN[@]}")
+      PS+=(vendor/bin/phpstan analyse --no-progress --level 0 --error-format=json)
+      if [[ -f phpstan.neon ]]; then PS+=(--configuration phpstan.neon)
+      elif [[ -f phpstan.neon.dist ]]; then PS+=(--configuration phpstan.neon.dist); fi
+      while IFS= read -r f; do [[ -n "$f" ]] && PS+=("$f"); done <<<"$CHANGED"
+      log_step "PHPStan (level 0) on the converted files: the attribute arguments must match the constructors."
+      PS_OUT="$("${PS[@]}" </dev/null 2>/dev/null || true)"
+      PS_JSON="$(printf '%s\n' "$PS_OUT" | sed -n '/^{/,$p' | jq -c . 2>/dev/null || true)"
+      if [[ -z "$PS_JSON" ]] || ! printf '%s' "$PS_JSON" | jq -e '.files' >/dev/null 2>&1; then
+        PS_STATUS="crashed"
+        log_warn "PHPStan produced no report on the converted files: the attribute arguments are NOT verified. Run run-phpstan.sh (or the validate loop) before relying on them."
+      else
+        PS_STATUS="ok"
+        BAD="$(printf '%s' "$PS_JSON" | AWKV_attrs="$ATTR_LIST" jq -r --arg root "$DRUPAL_ROOT/" '
+          (env.AWKV_attrs | split(" ") | map(select(length > 0))) as $a
+          | .files | to_entries[] | .key as $k | .value.messages[]
+          | select(.message as $m | any($a[]; . as $x | $m | contains($x)))
+          | [($k | ltrimstr("/var/www/html/") | ltrimstr($root)),
+             "line \(.line): \(.message)"] | join("\t")' 2>/dev/null || true)"
+        if [[ -n "$BAD" ]]; then
+          while IFS=$'\t' read -r bf bm; do
+            [[ -n "$bf" ]] || continue
+            printf '%s' "$RESTORED_JSON" | jq -e --arg f "$bf" 'any(.[]; .file == $f)' >/dev/null 2>&1 && continue
+            restore "$bf" "PHPStan: $bm"
+          done <<<"$BAD"
+          CHANGED="$(printf '%s\n' "$CHANGED" | grep -vxF -f <(printf '%s' "$RESTORED_JSON" | jq -r '.[].file') || true)"
+        else
+          log_ok "PHPStan: every converted attribute matches its constructor."
+        fi
+      fi
+    else
+      PS_STATUS="unavailable"
+      log_warn "vendor/bin/phpstan is missing: the attribute arguments of the converted files are NOT verified (php -l does not check them)."
+    fi
+  fi
+  # 5) Raise the declared floor when asked and needed.
   if [[ "$RAISE" == "1" && "$FLOOR_OK" == "false" && -n "$REC_REQ" ]]; then
     log_step "Raising core_version_requirement to '$REC_REQ' (attributes need core >= $ATTR_FLOOR)."
     if bash "$(plugin_root)/scripts/analysis/set-core-requirement.sh" --subject "$SUBJECT_ABS" --requirement "$REC_REQ" >/dev/null; then

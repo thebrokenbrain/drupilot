@@ -823,6 +823,19 @@ tag the commit `vX.Y.Z`.
   leg instead of passing on the newest 10.x; a run that still skipped the floor
   (an explicit `--cores 10,11`) prints `verified-static-above-floor` as a
   warning.
+- **The annotation-to-attribute pass could produce attributes that fatal at
+  runtime.** The rule copies every annotation key into a named argument, so
+  `@MigrateSource(id = "...", source_module = "...")` became a `MigrateSource`
+  attribute with a `source_module` argument its constructor does not take, and
+  discovery failed with "Unknown named parameter" (`php -l` does not see it).
+  `convert-attributes.sh` now reads each attribute class's constructor
+  parameters from the test-bed core and from every cached reference core, and
+  leaves the annotation alone on a plugin with a key the constructor does not
+  take, as Drupal core does for such plugins (`skipped_files`). After
+  `--apply`, PHPStan (level 0) also checks the converted files, and a file with
+  an error about a converted attribute is restored (`phpstan_check`,
+  `restored_files`). A type whose files were all skipped no longer raises the
+  recommended core floor.
 - **The router treated a folder of modules as one subject.** `/drupilot
   web/modules/custom` or "port all these modules" ran (or recommended) the
   single-subject flow; `/drupilot-layers` was reachable only by name.

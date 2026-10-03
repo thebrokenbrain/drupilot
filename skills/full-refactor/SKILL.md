@@ -170,8 +170,14 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/convert-attributes.sh" --subject "<
   rule only recognises an existing attribute by its FQCN, so a short imported
   one would be duplicated on a re-run); a file already carrying a short-named
   attribute of a converted type is skipped (`skipped_files`: finish it by hand);
-  after `--apply` a duplicate attribute or a `php -l` failure restores the file
-  from a pre-run backup (`restored_files`); a class constant the annotation named
+  so is a file whose annotation has a key the attribute constructor does not
+  declare (e.g. `source_module` on `@MigrateSource`: core's MigrateSource
+  attribute takes only id, requirements_met, minimum_version and deriver, so
+  the attribute would fatal at discovery — the annotation is kept, as core does;
+  the parameters are read from the attribute class in the test-bed core and in
+  the cached reference cores); after `--apply` a duplicate attribute, a `php -l`
+  failure or a PHPStan level-0 error naming a converted attribute class restores
+  the file from a pre-run backup (`restored_files`, `phpstan_check`); a class constant the annotation named
   by a namespace-relative qualified name (`type = Drupal\filter\Plugin\FilterInterface::TYPE_…`)
   is fully qualified (`\Drupal\…`), otherwise PHP resolves it inside the
   plugin's namespace and plugin discovery fatals. A re-run is a no-op.
