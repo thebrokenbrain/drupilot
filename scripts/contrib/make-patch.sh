@@ -20,6 +20,15 @@
 #     (untracked) files are included via a throwaway index, so the patch is
 #     complete without touching the developer's real git index. This is the
 #     patch the port/refactor flow writes automatically at the end.
+#     A module COPIED into a test-bed from a sub-directory of a larger
+#     repository (a project monorepo) carries a seeded repository whose first
+#     commit is the pristine module (place-subject.sh, git_seed_baseline): the
+#     patch is diffed against that baseline, so it is module-relative like the
+#     single-module case. A second patch, [name]-repo.patch, carries the same
+#     change with paths relative to the origin repository's root (e.g.
+#     web/modules/custom/<name>/...), for `git apply` at the monorepo root;
+#     it is checked (warn-only) against the origin commit the copy was made
+#     from. STDOUT still prints only the main patch path.
 #
 # Naming:
 #   legacy        -> [module]-[short-description]-[issue]-[comment].patch  (PROMPT 3.3)
@@ -244,8 +253,10 @@ if [[ "$LOCAL" == "1" ]]; then
   # so a contribution patch never embeds them. The subject is often its OWN git
   # repo (a loose contrib checkout keeps its .git after a move), which the Drupal
   # root's .gitignore does not cover — so we exclude them here regardless.
+  REPO_PATCH_NAME="${PATCH_NAME%.patch}-repo.patch"
   EXCLUDES=(
     ":(exclude)${RELPREFIX}${PATCH_NAME}"
+    ":(exclude)${RELPREFIX}${REPO_PATCH_NAME}"
     ":(exclude)${RELPREFIX}.drupilot"
     ":(exclude)${RELPREFIX}.drupilot.json"
     ":(exclude)${RELPREFIX}*-port-to-drupal-11.patch"
@@ -278,6 +289,35 @@ if [[ "$LOCAL" == "1" ]]; then
 
   keep_patch_untracked "$PATCH_PATH"
   announce_patch "$PATCH_PATH"
+
+  # A copy seeded from a sub-directory of a larger repository: also write the
+  # patch relative to that repository's root (paths web/modules/custom/<name>/...).
+  ORIGIN_PREFIX="$(git -C "$REPO" config drupilot.originPrefix 2>/dev/null || true)"
+  if [[ -n "$ORIGIN_PREFIX" && -z "$RELPREFIX" ]]; then
+    ORIGIN_PREFIX="${ORIGIN_PREFIX%/}/"
+    REPO_PATCH_PATH="$OUTPUT_ABS/$REPO_PATCH_NAME"
+    if GIT_INDEX_FILE="$TMP_INDEX" git -C "$REPO" diff --cached \
+         --src-prefix="a/$ORIGIN_PREFIX" --dst-prefix="b/$ORIGIN_PREFIX" \
+         "$BASE_REF" -- "$PATHSPEC" "${EXCLUDES[@]}" > "$REPO_PATCH_PATH" 2>/dev/null \
+       && [[ -s "$REPO_PATCH_PATH" ]]; then
+      ORIGIN_REPO_DIR="$(git -C "$REPO" config drupilot.originRepo 2>/dev/null || true)"
+      ORIGIN_COMMIT="$(git -C "$REPO" config drupilot.originCommit 2>/dev/null || true)"
+      if [[ -n "$ORIGIN_REPO_DIR" && -n "$ORIGIN_COMMIT" ]] \
+         && git -C "$ORIGIN_REPO_DIR" cat-file -e "$ORIGIN_COMMIT" 2>/dev/null; then
+        if patch_applies_clean "$ORIGIN_REPO_DIR" "$REPO_PATCH_PATH" "$ORIGIN_COMMIT"; then
+          log_ok "Verified: the repository patch applies onto $ORIGIN_REPO_DIR at ${ORIGIN_COMMIT:0:12}."
+        else
+          log_warn "Heads-up: the repository patch does not apply cleanly onto $ORIGIN_REPO_DIR at ${ORIGIN_COMMIT:0:12}."
+        fi
+      fi
+      keep_patch_untracked "$REPO_PATCH_PATH"
+      log_ok "Repository patch ready: $REPO_PATCH_PATH"
+      log_plain "   Apply it at the root of ${ORIGIN_REPO_DIR:-the origin repository} (paths ${ORIGIN_PREFIX}...):  git apply $REPO_PATCH_NAME"
+    else
+      rm -f "$REPO_PATCH_PATH"
+      log_warn "Could not write the patch relative to the origin repository (non-fatal)."
+    fi
+  fi
   # Remember it in the subject's state.json (per-module registry).
   if is_drupal_extension_dir "$SUBJ_DIR"; then
     state_patch_record "$SUBJ_DIR" "$PATCH_PATH" "$([[ -n "$ISSUE" ]] && echo issue || echo local)"

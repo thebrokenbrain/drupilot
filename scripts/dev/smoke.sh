@@ -88,6 +88,19 @@
 #                  resolves the Drupal root above a placed subject, the sibling
 #                  test-bed of a loose checkout, and the test-bed holding a
 #                  moved-away original path
+#   monorepo-testbed  the monorepo fixture as a git checkout without core
+#                  (also with a committed .ddev/): resolve-workspace.sh sees a
+#                  project root without installed core and picks the sibling
+#                  '<repo>-d11' test-bed (copy, never inside the repo); a
+#                  folder of modules in a non-project repo gets
+#                  '<parent of repo>/<name>-d11'; a Drupal 10 site is not
+#                  in_place_ok and an explicit workspace moves the port out of
+#                  it. On a stub test-bed, place-subject.sh gives the copy a git
+#                  baseline, make-patch.sh --local writes a module-relative
+#                  patch and a repo-relative one, both apply with git apply
+#                  --check (pristine module / monorepo root), and the
+#                  monorepo's git status stays empty; clean.sh may discard
+#                  the pristine seeded copy but not the ported one (needs git)
 #
 # Isolation: the fixtures are copied to a temp dir (legacy_widgets is committed
 # there as a git repo when git exists), and HOME, CLAUDE_PLUGIN_DATA and the
@@ -118,7 +131,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$REPO/tests/fixtures"
 SH="${BASH:-bash}"
 
-ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root"
+ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root monorepo-testbed"
 
 AS_JSON=0; ONLY=""; SKIP=""; KEEP=0
 
@@ -795,6 +808,73 @@ test_project_root() {
   finish
 }
 
+test_monorepo_testbed() {
+  local m="$FX/mrepo" f="$FX/mfolder" d10="$FX/d10site" rw="$REPO/scripts/env/resolve-workspace.sh" dest mp rp
+  if [[ "$HAVE_GIT" != "1" ]]; then
+    log_warn "monorepo-testbed: git is not available, the test is skipped."
+    finish; return 0
+  fi
+  local -a G=(git -c user.name=drupilot-smoke -c user.email=smoke@example.invalid -c commit.gpgsign=false)
+  cp -R "$FIX/monorepo" "$m"
+  printf '/vendor/\n/web/core/\n' > "$m/.gitignore"
+  git -C "$m" init -q && git -C "$m" add -A && "${G[@]}" -C "$m" commit -q -m "monorepo fixture"
+  run mw1 "$SH" "$rw" --subject "$m/web/modules/custom/acme_core" --json
+  expect "monorepo: layout, root, placement" \
+    "$(jqo mw1 '[.layout, .loose, .drupal_root, .placement, .testbed_inside_origin, .origin_rel, .shared_root == .drupal_root]')" \
+    "[\"project-no-core\",true,\"$m-d11\",\"copy\",false,\"web/modules/custom/acme_core\",true]"
+  # A committed .ddev/config.yaml does not make the core-less checkout a root.
+  mkdir -p "$m/.ddev"; printf 'name: acme\ntype: drupal10\n' > "$m/.ddev/config.yaml"
+  run mw2 "$SH" "$rw" --subject "$m/web/modules/custom/acme_core" --json
+  expect "monorepo with .ddev: still a sibling test-bed" "$(jqo mw2 '[.layout, .drupal_root]')" "[\"project-no-core\",\"$m-d11\"]"
+  rm -rf "$m/.ddev"
+  # A folder of modules in a repository that is not a Drupal project.
+  mkdir -p "$f/mods"; cp -R "$CUSTOM/acme_utils" "$f/mods/"
+  git -C "$f/mods" init -q && git -C "$f/mods" add -A && "${G[@]}" -C "$f/mods" commit -q -m "modules"
+  run mw3 "$SH" "$rw" --subject "$f/mods/acme_utils" --json
+  expect "repo sub-directory: next to the repository" "$(jqo mw3 '[.layout, .drupal_root, .placement, .shared_root]')" \
+    "[\"repo-subdir\",\"$f/acme_utils-d11\",\"copy\",\"$f/mods-d11\"]"
+  # A Drupal 10 site: in place is not possible; an explicit workspace moves out.
+  mk_stub_root "$d10" "10.3.6"
+  cp -R "$CUSTOM/acme_core" "$d10/web/modules/custom/"
+  run mw4 "$SH" "$rw" --subject "$d10/web/modules/custom/acme_core" --json
+  expect "Drupal 10 site: in place, not ok" "$(jqo mw4 '[.layout, .core_version, .in_place_ok]')" '["in-place","10.3.6",false]'
+  run mw5 env DRUPILOT_WORKSPACE_DIR="$FX/d10-ws" "$SH" "$rw" --subject "$d10/web/modules/custom/acme_core" --json
+  expect "Drupal 10 site + workspace: a test-bed port" "$(jqo mw5 '[.loose, .drupal_root, .placement]')" "[true,\"$FX/d10-ws\",\"copy\"]"
+  # Place into a stub test-bed, port, and patch.
+  mk_stub_root "$m-d11" "11.4.8"
+  run mp1 "$SH" "$REPO/scripts/env/place-subject.sh" --subject "$m/web/modules/custom/acme_core" --yes
+  dest="$m-d11/web/modules/custom/acme_core"
+  expect "place: exit and destination" "$RC|$(out mp1)" "0|$dest"
+  expect "place: the copy has a baseline" \
+    "$(git -C "$dest" rev-parse --verify -q refs/drupilot/baseline >/dev/null 2>&1 && echo yes)|$(git -C "$dest" config drupilot.originPrefix 2>/dev/null)" \
+    "yes|web/modules/custom/acme_core/"
+  # /drupilot-clean may discard the pristine seeded copy, not a ported one.
+  if [[ -f "$m-d11/.drupilot.json" ]]; then
+    jq '.drupilot_testbed.created_by = "smoke"' "$m-d11/.drupilot.json" > "$m-d11/.drupilot.json.new" \
+      && mv "$m-d11/.drupilot.json.new" "$m-d11/.drupilot.json"
+  fi
+  run mc1 "$SH" "$REPO/scripts/env/clean.sh" --subject "$dest" --level workspace --dry-run --json
+  expect "clean: a pristine seeded copy is redundant" "$(jqo mc1 '[.roots[0].subjects[]?.action]')" '["discard-copy"]'
+  if [[ -f "$dest/acme_core.info.yml" && -d "$dest/src" ]]; then
+    ( sed_inplace "$dest/acme_core.info.yml" -e 's/^core_version_requirement:.*/core_version_requirement: ^10.3 || ^11/' ) 2>/dev/null || true
+    printf '<?php\n\nnamespace Drupal\\acme_core;\n\nfinal class Added {}\n' > "$dest/src/Added.php"
+  fi
+  run mp2 "$SH" "$REPO/scripts/contrib/make-patch.sh" --local --subject "$dest"
+  mp="$(out mp2)"; rp="${mp%.patch}-repo.patch"
+  expect "patch: exit and name" "$RC|$(basename "$mp")" "0|acme_core-port-to-drupal-11.patch"
+  expect "patch: module-relative, only the port" "$(grep -E '^diff --git' "$mp" 2>/dev/null | tr '\n' ';')" \
+    "diff --git a/acme_core.info.yml b/acme_core.info.yml;diff --git a/src/Added.php b/src/Added.php;"
+  expect "repo patch: relative to the repository root" "$(grep -E '^diff --git' "$rp" 2>/dev/null | head -n1)" \
+    "diff --git a/web/modules/custom/acme_core/acme_core.info.yml b/web/modules/custom/acme_core/acme_core.info.yml"
+  expect "repo patch applies at the monorepo root" "$(git -C "$m" apply --check "$rp" >/dev/null 2>&1 && echo ok)" "ok"
+  mkdir -p "$FX/pristine"; cp -R "$m/web/modules/custom/acme_core" "$FX/pristine/"
+  expect "module patch applies on the pristine module" "$(cd "$FX/pristine/acme_core" && git apply --check "$mp" >/dev/null 2>&1 && echo ok)" "ok"
+  run mc2 "$SH" "$REPO/scripts/env/clean.sh" --subject "$dest" --level workspace --dry-run --json
+  expect "clean: a ported copy is kept" "$(jqo mc2 '[.roots[0].subjects[]?.action]')" '["refuse"]'
+  expect "monorepo stays clean" "$(git -C "$m" status --porcelain --ignored 2>/dev/null | tr '\n' ';')" ""
+  finish
+}
+
 # --- Main -----------------------------------------------------------------------
 log_step "drupilot smoke tests (bash ${BASH_VERSION:-?}, $(uname -s 2>/dev/null || echo ?))"
 for t in $ALL_TESTS; do
@@ -822,6 +902,7 @@ for t in $ALL_TESTS; do
     matrix-classify) test_matrix_classify;;
     port-summary) test_port_summary;;
     project-root) test_project_root;;
+    monorepo-testbed) test_monorepo_testbed;;
   esac
 done
 

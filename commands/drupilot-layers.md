@@ -113,21 +113,41 @@ Ask with **AskUserQuestion** (skip when `autonomous=true`: print the plan and st
    module of the earlier layers it depends on is at least `ported` — if not, say
    which ones are missing and recommend porting that layer first.
 
-2. **Sandbox.** If `<dir>` is inside a Drupal root (the monorepo case: the
-   modules sit under `web/modules/custom` of a Composer project), every module is
-   ported **in place, in that one site** — the modules a layer depends on are
-   installed alongside it, which is what lets its tests run. Nothing to choose.
-   If `<dir>` is a loose folder of modules, ask with **AskUserQuestion**
-   (autonomous: use the first option, it changes nothing):
-   - **One test-bed per module** (today's behavior, recommended when the layer's
-     modules do not depend on each other or on earlier layers) — each module gets
-     its sibling `<name>-d11` workspace.
-   - **One shared test-bed for the whole set** — set
-     `DRUPILOT_WORKSPACE_DIR=<parent of dir>/<basename of dir>-d11` for every
-     module, so a module and the modules it depends on are placed in the same
-     Drupal site. Placement follows `DRUPILOT_PLACEMENT` (`placement` above;
-     `move` relocates each checkout — say so before choosing; `copy` leaves the
-     originals untouched).
+2. **Sandbox.** Resolve where the set is ported from its first module (read-only):
+
+   ```bash
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/resolve-workspace.sh" --subject <first module dir> --json
+   ```
+
+   `.layout` decides; a test-bed **never** lives inside the user's repository
+   (never under `web/modules`), and a module that is a sub-directory of a
+   repository is **copied**, never moved out of it:
+   - `in-place` — `<dir>` is inside a Drupal root whose core is installed. If
+     `.in_place_ok` is true (the site already runs Drupal 11, `.core_version`),
+     every module is ported **in place, in that one site**: the modules a layer
+     depends on are installed alongside it, which is what lets its tests run.
+     If it is false the site is still on Drupal 10, where a Drupal 11 port
+     cannot run: say so and port in a test-bed instead — set
+     `DRUPILOT_WORKSPACE_DIR=<parent of the project>/<project dir>-d11` (outside
+     the repository) for every module and continue as `project-no-core`.
+   - `project-no-core` — a Composer project checkout without installed core (a
+     monorepo clone: `web/core` and `vendor/` are gitignored). Every module goes
+     into ONE shared test-bed outside the repository, `.shared_root`
+     (`<parent>/<project dir>-d11`, the resolver's default `drupal_root` for each
+     module, so nothing needs to be set), with `copy` placement. Nothing to choose.
+   - `repo-subdir` / `standalone` — a loose folder of modules (in a git
+     repository that is not a Drupal project, or not in git). Ask with
+     **AskUserQuestion** (autonomous: use the first option, it changes nothing):
+     - **One test-bed per module** (today's behavior, recommended when the
+       layer's modules do not depend on each other or on earlier layers) — each
+       module gets its own `<name>-d11` test-bed, next to the repository
+       (`repo-subdir`) or next to the module (`standalone`).
+     - **One shared test-bed for the whole set** — set
+       `DRUPILOT_WORKSPACE_DIR=<.shared_root>` for every module, so a module and
+       the modules it depends on are placed in the same Drupal site. Placement
+       follows `DRUPILOT_PLACEMENT` (`placement` above) for `standalone` modules
+       (`move` relocates each checkout — say so before choosing; `copy` leaves the
+       originals untouched); a `repo-subdir` module is always copied.
    A `DRUPILOT_LAYERS_SANDBOX` already set (`per-module` / `shared`, env or
    `.drupilot.json`) answers this without asking. Persist a new answer once a
    Drupal root exists (the shared test-bed, after its setup):
@@ -135,6 +155,15 @@ Ask with **AskUserQuestion** (skip when `autonomous=true`: print the plan and st
    ```bash
    bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; DRUPILOT_PROJECT_DIR="$1" prefs_set DRUPILOT_LAYERS_SANDBOX "$2"' _ <drupal root> <per-module|shared>
    ```
+
+   **Patches of a copied module.** The copy gets a git baseline (its own
+   repository whose first commit is the module as committed in the origin), so
+   `make-patch.sh --local` on the copy writes `<name>-port-to-drupal-11.patch`
+   relative to the module, as for a single module, plus
+   `<name>-port-to-drupal-11-repo.patch` with paths relative to the origin
+   repository's root (`web/modules/custom/<name>/...`), to `git apply` at the
+   monorepo root. Relay both paths. The origin repository is never written to:
+   `origin-hygiene.sh --check --subject <origin module dir>` proves it.
 
 3. **Confirm** the layer and the module order with **AskUserQuestion** (skip when
    `autonomous=true`): the modules in the layer, those skipped as already ported,

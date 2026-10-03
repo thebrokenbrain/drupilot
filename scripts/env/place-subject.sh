@@ -24,6 +24,12 @@
 #           them). Anything git tracks is part of the module and is always
 #           copied (e.g. a bundled vendor/ library, a committed symlink).
 #           --no-exclude restores the old verbatim copy.
+#           A copy with no repository of its own (the module is a
+#           sub-directory of a larger repository, or not in git) gets one whose
+#           first commit is the pristine module (git_seed_baseline): the local
+#           patch is then module-relative and holds only the port.
+#   A module that is a sub-directory of a repository (resolve-workspace.sh
+#   layout project-no-core / repo-subdir) is copied, never moved.
 #
 # Origin hygiene: before placing, the origin's git status is recorded with
 # origin-hygiene.sh --snapshot (hidden state, keyed by the Drupal root) so a
@@ -127,6 +133,8 @@ DEST_ABS="$(pget '.subject_dest_abs')"
 PLACEMENT="$(pget '.placement')"
 ALREADY="$(pget '.already_placed')"
 MACHINE="$(pget '.machine_name')"
+LAYOUT="$(pget '.layout')"
+WS_EXPLICIT="$(config_get DRUPILOT_WORKSPACE_DIR "")"
 
 # --- Idempotent / no-op cases ----------------------------------------------
 if [[ "$LOOSE" == "false" ]]; then
@@ -208,6 +216,9 @@ if [[ "$DRY" == "1" ]]; then
     log_plain "  excluded from the copy (untracked only) : ${COPY_EXCLUDE_TOP[*]} (top level), node_modules/ (anywhere)"
     _esc="$(escaping_links "$SUBJECT_ABS")"
     [[ -n "$_esc" ]] && log_plain "  symlinks escaping the tree, dropped from the copy: $(printf '%s' "$_esc" | tr '\n' ' ')"
+  fi
+  if [[ "$PLACEMENT" == "copy" && ! -e "$SUBJECT_ABS/.git" ]]; then
+    log_plain "  the copy gets a git baseline (the pristine module) for its local patch"
   fi
   exit 0
 fi
@@ -309,6 +320,21 @@ case "$PLACEMENT" in
       copy_filtered "$SUBJECT_ABS" "$DEST_ABS" || { rm -rf "${DEST_ABS:?}"; die "Copy failed: $SUBJECT_ABS -> $DEST_ABS" 1; }
     fi
     log_ok "Copied the checkout to $DEST_ABS (the original is untouched)."
+    # A copy without a repository of its own (the module is a sub-directory of
+    # a monorepo, or not in git) gets a git baseline: its local patch then holds
+    # only the port, relative to the module (git_seed_baseline in common.sh).
+    if [[ ! -e "$DEST_ABS/.git" ]]; then
+      if git_seed_baseline "$DEST_ABS" "$SUBJECT_ABS"; then
+        _oprefix="$(git -C "$DEST_ABS" config drupilot.originPrefix 2>/dev/null || true)"
+        if [[ -n "$_oprefix" ]]; then
+          log_ok "Gave the copy a git baseline: the module as committed at $(git -C "$DEST_ABS" config drupilot.originRepo 2>/dev/null) ($_oprefix)."
+        else
+          log_ok "Gave the copy a git baseline: the module as copied."
+        fi
+      else
+        log_warn "Could not give the copy a git baseline (git missing or failed): its local patch cannot be produced."
+      fi
+    fi
     ;;
   symlink)
     ln -s "$SUBJECT_ABS" "$DEST_ABS" || die "Symlink failed: $DEST_ABS -> $SUBJECT_ABS" 1
@@ -332,7 +358,14 @@ esac
 # resolve-workspace.sh reads this back so the re-run reuses the same root instead
 # of deriving a fresh sibling. (make-patch.sh excludes .drupilot.json from any
 # generated patch, so this marker never leaks into a contribution.)
-if [[ "$PLACEMENT" == "copy" || "$PLACEMENT" == "symlink" ]]; then
+# A sub-directory of a repository (layout project-no-core / repo-subdir) on its
+# default test-bed needs no marker: the resolver derives that root from the
+# repository itself, so nothing is written into the user's repository.
+_pin=1
+if [[ "$LAYOUT" == "project-no-core" || "$LAYOUT" == "repo-subdir" ]] && [[ -z "$WS_EXPLICIT" ]]; then
+  _pin=0
+fi
+if [[ "$_pin" == "1" ]] && [[ "$PLACEMENT" == "copy" || "$PLACEMENT" == "symlink" ]]; then
   ( export DRUPILOT_PROJECT_DIR="$SUBJECT_ABS"; prefs_set DRUPILOT_WORKSPACE_DIR "$ROOT" ) 2>/dev/null || true
   # The marker must not show up as an untracked file in the origin repo: hide it
   # through the repo's LOCAL exclude file (the tracked .gitignore stays as is).

@@ -811,6 +811,33 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **Porting the modules of a monorepo clone left a test-bed inside the
+  repository and produced an unusable patch.** A clone of a Composer-based
+  Drupal project has no `web/core` (it is gitignored), so it was not
+  recognized as a Drupal root and `/drupilot-layers` built the test-bed inside
+  the repository (`web/modules/custom-d11`, or `custom/<name>-d11` per module).
+  The copied module had no repository of its own, so the local patch was diffed
+  against the monorepo and listed the whole module as new files under the
+  test-bed path. Now `resolve-workspace.sh` recognizes a **project root without
+  installed core** (a `composer.json` requiring `drupal/core-recommended` or
+  `drupal/core` with a `web/` docroot; a committed `.ddev/` does not change
+  that) and puts one shared test-bed next to the repository,
+  `<parent>/<project>-d11`. A module inside any other git repository gets
+  `<parent of the repository>/<name>-d11`. A module that is a sub-directory of
+  a repository is always copied, never moved out of it, and the copy gets a git
+  baseline: its own repository whose first commit is the module as committed in
+  the origin. `make-patch.sh --local` then writes the same module-relative
+  patch as for a single module, plus `<name>-port-to-drupal-11-repo.patch`
+  with paths relative to the repository root (`web/modules/custom/<name>/...`),
+  which it checks against the origin commit and which applies at the monorepo
+  root with `git apply`. Nothing is written into the origin repository. The
+  resolver also reports `layout`, `origin_repo`/`origin_rel`, `shared_root`
+  (the test-bed `/drupilot-layers` shares) and warns when an explicit workspace
+  lies inside the repository. An in-place port runs on the site's own core:
+  the resolver now reports `core_version` and `in_place_ok`, warns when that
+  site is still on Drupal 10, and an explicit `DRUPILOT_WORKSPACE_DIR` then
+  ports in a Drupal 11 test-bed instead. `ddev-up.sh` follows the resolver for
+  every module/theme subject.
 - **The setup step that installs the DDEV add-ons could not find the
   project.** `/drupilot-setup` ran `ddev-add-ons.sh` without `--dir`, so run from
   the original checkout of a `copy` placement it stopped with "No DDEV project

@@ -138,6 +138,16 @@ subject it targets a sibling Drupal root `<parent>/<name>-d11` (or
 `DRUPILOT_WORKSPACE_DIR`); for a module already inside a Drupal root it reports
 `loose:false` and the existing layout is kept (full back-compat). `ddev-up.sh`
 consults this resolver internally, so the subject is never scaffolded on top of.
+Its `layout` field: `in-place` (core installed; `in_place_ok:false` = the site
+is on Drupal 10, an in-place port needs Drupal 11 — set `DRUPILOT_WORKSPACE_DIR`
+outside the site for a test-bed), `project-no-core` (a module of a Composer
+project checkout without installed core, e.g. a monorepo clone: test-bed
+`<parent>/<project>-d11`, outside the repository), `repo-subdir` (a module in a
+git repository that is not a Drupal project: `<parent of the repo>/<name>-d11`)
+or `standalone`. A sub-directory of a repository is always copied (`move`
+becomes `copy`), and the copy gets a git baseline (`git_seed_baseline`): its
+local patch is module-relative, plus a `-repo.patch` relative to the repository
+root.
 
 Then, AFTER Drupal is created (`ddev composer create-project` needs an almost-empty root),
 place the subject into `web/<modules|themes|profiles>/custom/<name>`:

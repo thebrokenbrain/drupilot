@@ -138,16 +138,24 @@ if [[ -z "$PROJECT_DIR" ]]; then
   # A LOOSE extension checkout (has *.info.yml) with no Drupal above it must NOT
   # be scaffolded on top of — that intermixes the module with the Drupal site and
   # pollutes its composer.json. resolve-workspace.sh targets a sibling test-bed
-  # root instead; the module is placed into it later by place-subject.sh.
-  if [[ -z "$PROJECT_DIR" ]] && is_drupal_extension_dir "${SUBJECT:-$PWD}"; then
+  # root instead; the module is placed into it later by place-subject.sh. The
+  # same goes for a module of a Composer project whose core is not installed (a
+  # monorepo clone, possibly with a committed .ddev/): its test-bed lives
+  # outside the user's repository, never in it.
+  # (An explicit workspace for a site still on Drupal 10 does the same.) The
+  # resolver decides for every extension subject; it returns the existing root
+  # unchanged for a module already inside a usable site.
+  if is_drupal_extension_dir "${SUBJECT:-$PWD}"; then
     RESOLVER="$PLUGIN_ROOT_DIR/scripts/env/resolve-workspace.sh"
     if [[ -r "$RESOLVER" ]] && have_cmd jq; then
-      PROJECT_DIR="$(bash "$RESOLVER" --subject "${SUBJECT:-$PWD}" --json 2>/dev/null \
-        | jq -r '.drupal_root // empty' 2>/dev/null || true)"
-      if [[ -n "$PROJECT_DIR" ]]; then
-        log_info "Loose subject detected — building the Drupal 11 test-bed in a sibling directory:"
-        log_info "  $PROJECT_DIR"
-        log_info "  (your checkout stays intact; place-subject.sh moves it in once Drupal exists)."
+      _plan="$(bash "$RESOLVER" --subject "${SUBJECT:-$PWD}" --json 2>/dev/null || true)"
+      if [[ "$(printf '%s' "$_plan" | jq -r '.loose // empty' 2>/dev/null || true)" == "true" ]]; then
+        PROJECT_DIR="$(printf '%s' "$_plan" | jq -r '.drupal_root // empty' 2>/dev/null || true)"
+        if [[ -n "$PROJECT_DIR" ]]; then
+          log_info "Loose subject detected — building the Drupal 11 test-bed outside your checkout:"
+          log_info "  $PROJECT_DIR"
+          log_info "  (your checkout stays intact; place-subject.sh places the module in once Drupal exists)."
+        fi
       fi
     fi
   fi

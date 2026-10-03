@@ -503,6 +503,90 @@ find_drupal_root() {
   return 1
 }
 
+# drupal_core_installed <root> -> 0 when Drupal core's code is on disk at <root>
+# (web/core or a docroot-'.' core), 1 otherwise. A project checkout whose core
+# is gitignored and not yet `composer install`ed has none.
+drupal_core_installed() {
+  [[ -n "${1:-}" ]] || return 1
+  [[ -f "$1/web/core/lib/Drupal.php" || -f "$1/core/lib/Drupal.php" ]]
+}
+
+# composer_project_docroot <dir> -> the docroot of a Composer-based Drupal
+# PROJECT at <dir> (relative, e.g. "web"), or nothing (exit 1) when <dir> is not
+# one. A project here is a composer.json whose type is not a Drupal extension
+# (drupal-module/theme/profile/library...) that requires drupal/core-recommended,
+# drupal/core or drupal/core-composer-scaffold, with an existing docroot
+# directory: extra.drupal-scaffold.locations.web-root, else the directory the
+# installer-paths send drupal-core to (minus /core), else web/, docroot/ or
+# html/. A module's own composer.json (it may require drupal/core too) has no
+# docroot directory and a drupal-* type, so it never matches.
+composer_project_docroot() {
+  local d="${1:-}" f t req=0 c
+  f="$d/composer.json"
+  [[ -n "$d" && -f "$f" ]] || return 1
+  local -a cands=()
+  if have_cmd jq; then
+    t="$(jq -r '.type // ""' "$f" 2>/dev/null || true)"
+    case "$t" in drupal-*) return 1;; esac
+    jq -e '((.require // {}) + (."require-dev" // {})) | keys
+           | any(. == "drupal/core-recommended" or . == "drupal/core"
+                 or . == "drupal/core-composer-scaffold")' "$f" >/dev/null 2>&1 && req=1
+    c="$(jq -r '.extra["drupal-scaffold"].locations["web-root"] // empty' "$f" 2>/dev/null || true)"
+    [[ -n "$c" ]] && cands+=("$c")
+    c="$(jq -r '(.extra["installer-paths"] // {}) | to_entries[]
+                | select((.value // []) | index("type:drupal-core")) | .key' "$f" 2>/dev/null | head -n1 || true)"
+    [[ -n "$c" ]] && cands+=("${c%/core}")
+  else
+    grep -qE '"type"[[:space:]]*:[[:space:]]*"drupal-' "$f" 2>/dev/null && return 1
+    grep -qE '"drupal/(core-recommended|core|core-composer-scaffold)"[[:space:]]*:' "$f" 2>/dev/null && req=1
+  fi
+  [[ "$req" == "1" ]] || return 1
+  cands+=(web docroot html)
+  for c in "${cands[@]}"; do
+    c="${c#./}"; c="${c%/}"
+    [[ -n "$c" && "$c" != "." && "$c" != /* ]] || continue
+    if [[ -d "$d/$c" ]]; then printf '%s' "$c"; return 0; fi
+  done
+  return 1
+}
+
+# find_project_root_nocore [start] -> the nearest Composer-based Drupal project
+# root at or above <start> whose core is NOT installed (a monorepo clone: web/core
+# and vendor/ are gitignored), or nothing (exit 1). Such a directory is not a
+# Drupal root drupilot can run anything in — find_drupal_root only returns it
+# when it carries a .ddev/config.yaml — so a module inside it is ported in a
+# sibling test-bed (resolve-workspace.sh), never inside the user's repository.
+find_project_root_nocore() {
+  local dir; dir="$(cd "${1:-$PWD}" 2>/dev/null && pwd || printf '')"
+  [[ -n "$dir" ]] || return 1
+  while [[ "$dir" != "/" && -n "$dir" ]]; do
+    if composer_project_docroot "$dir" >/dev/null 2>&1; then
+      drupal_core_installed "$dir" && return 1
+      printf '%s' "$dir"; return 0
+    fi
+    # A Drupal root with core installed above us: not a "no core" project.
+    drupal_core_installed "$dir" && return 1
+    dir="$(dirname "$dir")"
+  done
+  return 1
+}
+
+# git_enclosing_repo <dir> -> the top level of the git work tree <dir> belongs to
+# when that top level is NOT <dir> itself (the module is a sub-directory of a
+# larger repository: a project monorepo, a folder of modules), else nothing
+# (exit 1). Physical paths are compared, so a symlinked path still matches.
+git_enclosing_repo() {
+  local d="${1:-}" top phys
+  [[ -n "$d" && -d "$d" ]] && have_cmd git || return 1
+  top="$(git -C "$d" rev-parse --show-toplevel 2>/dev/null || true)"
+  [[ -n "$top" ]] || return 1
+  top="$(cd "$top" 2>/dev/null && pwd -P || true)"
+  phys="$(cd "$d" 2>/dev/null && pwd -P || true)"
+  [[ -n "$top" && -n "$phys" && "$top" != "$phys" ]] || return 1
+  printf '%s' "$top"
+  return 0
+}
+
 # patch_project_slug <name> -> the project part of a patch file name. Drupal.org's
 # convention is [project]-[short-description]-[issue]-[comment].patch with the
 # project machine name kept AS IS, underscores included (the documented example
@@ -2264,6 +2348,11 @@ subject_project_root() {
   local s="${1:-$PWD}" r="" base parent c
   if [[ -d "$s" ]]; then
     r="$(find_drupal_root "$s" 2>/dev/null || true)"
+    # A project checkout without installed core is not where the module runs.
+    if [[ -n "$r" ]] && ! drupal_core_installed "$r" \
+       && find_project_root_nocore "$s" >/dev/null 2>&1 && [[ "$(testbed_kind "$r")" == "none" ]]; then
+      r=""
+    fi
     if [[ -z "$r" ]] && is_drupal_extension_dir "$s" && have_cmd jq; then
       r="$(bash "$(plugin_root)/scripts/env/resolve-workspace.sh" --subject "$s" --json </dev/null 2>/dev/null \
         | jq -r '.drupal_root // empty' 2>/dev/null || true)"
@@ -2896,6 +2985,14 @@ git_port_base_ref() {
   head="$(git -C "$repo" rev-parse --verify --quiet HEAD 2>/dev/null || true)"
   [[ -n "$head" ]] || { printf 'HEAD'; return 0; }
 
+  # A copy placed in a test-bed from a larger repository carries its own
+  # repository whose first commit is the pristine module (git_seed_baseline):
+  # that commit is the base, even after commits made on top of it.
+  if git -C "$repo" rev-parse --verify --quiet "$DRUPILOT_BASELINE_REF" >/dev/null 2>&1 \
+     && git -C "$repo" merge-base --is-ancestor "$DRUPILOT_BASELINE_REF" HEAD >/dev/null 2>&1; then
+    printf '%s' "$DRUPILOT_BASELINE_REF"; return 0
+  fi
+
   ref="$(git -C "$repo" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
   if [[ -n "$ref" ]]; then
     if git -C "$repo" merge-base --is-ancestor "$ref" HEAD >/dev/null 2>&1; then
@@ -2949,6 +3046,86 @@ git_port_base_ref() {
   fi
   log_warn "The branch has no upstream; '$best' is not an ancestor of HEAD, so diffing against their merge-base ${best_mb:0:12} (pass --base to override)."
   printf '%s' "$best_mb"
+  return 0
+}
+
+# The ref git_seed_baseline points at the pristine commit of a seeded copy.
+DRUPILOT_BASELINE_REF="refs/drupilot/baseline"
+
+# git_seed_baseline <copy> <origin> -> give a module COPY that has no repository
+# of its own a git baseline, so the local patch of a module ported in a test-bed
+# is module-relative and holds only the port. The copy gets its own repository
+# whose single commit is the pristine module: the origin's HEAD version of the
+# module when the origin is a sub-directory of a git repository (a project
+# monorepo, a folder of modules), else the copied files as they are. The copy's
+# working tree is left as copied, so uncommitted changes the origin had show up
+# in the patch, as they would in the origin. Files the origin's repository
+# ignores are ignored in the copy too (its .git/info/exclude). The baseline
+# commit is pointed at by DRUPILOT_BASELINE_REF (git_port_base_ref prefers it),
+# and the copy's local git config records drupilot.origin, drupilot.originRepo,
+# drupilot.originPrefix (the module's path in that repository, with a trailing
+# slash) and drupilot.originCommit, from which make-patch.sh --local also writes
+# a patch relative to the origin repository's root. Never touches the origin
+# (a throwaway index and work tree are used). A copy that already has a .git
+# (the origin was its own repository) is left alone. Returns 0 when the copy
+# has a baseline (or its own repository), 1 otherwise.
+git_seed_baseline() {
+  local dest="${1:-}" src="${2:-}" repo="" prefix="" commit="" tmp="" idx="" base l
+  [[ -n "$dest" && -d "$dest" ]] && have_cmd git || return 1
+  [[ -e "$dest/.git" ]] && return 0
+  local -a G=(git -c user.name=drupilot -c user.email=drupilot@localhost.invalid
+              -c commit.gpgsign=false -c core.hooksPath=/dev/null)
+  if [[ -n "$src" && -d "$src" ]]; then
+    repo="$(git_enclosing_repo "$src" 2>/dev/null || true)"
+    if [[ -z "$repo" ]] && git -C "$src" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      repo="$(cd "$(git -C "$src" rev-parse --show-toplevel)" 2>/dev/null && pwd -P || true)"
+    fi
+  fi
+  if [[ -n "$repo" ]]; then
+    prefix="$(git -C "$src" rev-parse --show-prefix 2>/dev/null || true)"
+    commit="$(git -C "$repo" rev-parse --verify --quiet 'HEAD^{commit}' 2>/dev/null || true)"
+  fi
+  git -C "$dest" init -q >/dev/null 2>&1 || return 1
+  base="$dest"
+  if [[ -n "$commit" ]] && git -C "$repo" cat-file -e "$commit:${prefix%/}" 2>/dev/null; then
+    # Check the module out of the origin's HEAD into a throwaway work tree
+    # through a throwaway index: the origin's index and files stay untouched.
+    tmp="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-baseline.XXXXXX")"
+    idx="$tmp.idx"
+    if GIT_INDEX_FILE="$idx" git -C "$repo" --work-tree="$tmp" checkout "$commit" -- "${prefix:-.}" >/dev/null 2>&1; then
+      base="$tmp/${prefix%/}"
+    else
+      log_warn "Could not read the module from $repo at ${commit:0:12}; the baseline is the copied files."
+      commit=""
+    fi
+  else
+    commit=""
+  fi
+  if [[ -n "$repo" ]]; then
+    # What the origin's repository ignores inside the module is not part of it.
+    git -C "$repo" ls-files --others --ignored --exclude-standard --directory -- "${prefix:-.}" 2>/dev/null \
+      | while IFS= read -r l; do
+          [[ -n "$l" ]] && printf '/%s\n' "${l#"$prefix"}"
+        done >> "$dest/.git/info/exclude" 2>/dev/null || true
+  fi
+  git_local_exclude "$dest" '.drupilot/' '.drupilot.json' '*-port-to-drupal-11.patch' '*-port-to-drupal-11-*.patch'
+  if ! { git -C "$base" --git-dir="$dest/.git" --work-tree="$base" add -A . >/dev/null 2>&1 \
+         && "${G[@]}" -C "$base" --git-dir="$dest/.git" --work-tree="$base" commit -q --allow-empty --no-verify \
+              -m "drupilot baseline: the module before the port${commit:+ ($repo at ${commit:0:12})}" >/dev/null 2>&1; }; then
+    [[ -n "$tmp" ]] && rm -rf "${tmp:?}" "$idx"
+    rm -rf "${dest:?}/.git"
+    return 1
+  fi
+  [[ -n "$tmp" ]] && rm -rf "${tmp:?}" "$idx"
+  git -C "$dest" update-ref "$DRUPILOT_BASELINE_REF" HEAD >/dev/null 2>&1 || true
+  # The index was built from another work tree: refresh its stat data.
+  git -C "$dest" update-index -q --refresh >/dev/null 2>&1 || true
+  [[ -n "$src" ]] && git -C "$dest" config drupilot.origin "$src"
+  if [[ -n "$commit" ]]; then
+    git -C "$dest" config drupilot.originRepo "$repo"
+    git -C "$dest" config drupilot.originPrefix "$prefix"
+    git -C "$dest" config drupilot.originCommit "$commit"
+  fi
   return 0
 }
 

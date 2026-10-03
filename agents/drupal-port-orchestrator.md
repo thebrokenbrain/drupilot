@@ -273,7 +273,9 @@ Goal: a Drupal 11 DDEV site with the toolchain and the subject in place. Use the
   (for JS tests) Selenium standalone Chrome v2.
 - Delegate subject placement to `scripts/env/resolve-workspace.sh` (read-only — decides
   the workspace; a loose checkout targets a sibling `<name>-d11` root, never scaffolded
-  on top of) then, after `ddev-up.sh`, `scripts/env/place-subject.sh` (idempotent — places
+  on top of; a module of a project checkout without installed core — a monorepo
+  clone — gets `<parent>/<project>-d11` outside the repository, always copied with a
+  git baseline; an in-place root on Drupal 10 is reported `in_place_ok:false`) then, after `ddev-up.sh`, `scripts/env/place-subject.sh` (idempotent — places
   it under `web/<modules|themes|profiles>/custom/<name>`). Install the dev toolchain with
   `scripts/env/install-toolchain.sh --dir <drupal_root> --json` (pinned to the lock or the
   known-good reference, smoke-tested, lock re-synced; exit 3 = installed but broken — stop

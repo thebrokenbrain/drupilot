@@ -76,7 +76,22 @@ keeping the original checkout pristine; for a module already inside a Drupal roo
 `loose:false` and the existing layout is kept (full back-compat). `ddev-up.sh` consults this
 resolver internally, so the loose subject is never scaffolded on top of.
 
-**Decision point — workspace layout for a loose checkout.** When `loose:true`, make the
+`.layout` says why: `in-place` (inside a Drupal root with core installed — when
+`.in_place_ok` is false the site runs Drupal 10 (`.core_version`): tell the developer an
+in-place port needs the site on Drupal 11 first, and offer a test-bed by setting
+`DRUPILOT_WORKSPACE_DIR` outside the site), `project-no-core` (a module of a Composer project
+checkout whose core is not installed, e.g. a monorepo clone: the test-bed is
+`<parent>/<project>-d11`, next to the repository), `repo-subdir` (a sub-directory of a git
+repository that is not a Drupal project: `<parent of the repository>/<machine_name>-d11`) or
+`standalone`. A test-bed is never created inside the developer's repository
+(`testbed_inside_origin:true` only with an explicit workspace there — warn). For
+`project-no-core` and `repo-subdir` the resolver's `placement` is always `copy` (a move would
+delete the module from its repository): skip the layout tab below and say so; the copy gets
+a git baseline so its local patch holds only the port (plus a patch relative to the
+repository root).
+
+**Decision point — workspace layout for a loose checkout.** When `loose:true` and
+`.layout` is `standalone`, make the
 placement an explicit choice with **AskUserQuestion** (header "Workspace layout", default =
 the recommended option) *unless* the run is autonomous (an autonomous run shows no tab and
 resolves with the `move` default). Offer:

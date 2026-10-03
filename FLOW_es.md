@@ -261,7 +261,7 @@ flowchart TD
     classDef result fill:#e5e7eb,stroke:#6b7280,color:#111827;
 ```
 
-> Las dependencias propuestas nunca se aplican sin tu confirmación, y una ejecución por capas nunca contribuye. En un monorepo cada módulo se porta en su sitio, en el único sitio Drupal, así que las dependencias de una capa están instaladas a su lado.
+> Las dependencias propuestas nunca se aplican sin tu confirmación, y una ejecución por capas nunca contribuye. En un sitio que ya está en Drupal 11 cada módulo se porta en su sitio, en ese único sitio Drupal, así que las dependencias de una capa están instaladas a su lado. Un clon de monorepo sin core instalado (o un sitio todavía en Drupal 10) recibe un único banco de pruebas compartido junto al repositorio, nunca dentro: cada módulo se copia allí con una línea base de git, así que su parche es relativo al módulo, con un segundo parche relativo a la raíz del repositorio.
 
 ---
 

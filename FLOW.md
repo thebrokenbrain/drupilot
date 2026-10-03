@@ -261,7 +261,7 @@ flowchart TD
     classDef result fill:#e5e7eb,stroke:#6b7280,color:#111827;
 ```
 
-> Proposed dependencies are never applied without your confirmation, and a layer run never contributes. In a monorepo every module is ported in place in the one site, so a layer's dependencies are installed next to it.
+> Proposed dependencies are never applied without your confirmation, and a layer run never contributes. In a site already on Drupal 11 every module is ported in place, in that one site, so a layer's dependencies are installed next to it. A monorepo clone without installed core (or a site still on Drupal 10) gets one shared test-bed next to the repository, never inside it: each module is copied there with a git baseline, so its patch is module-relative, with a second one relative to the repository root.
 
 ---
 

@@ -243,17 +243,30 @@ origin_record() {
 # every local branch, tag and stash of the copy points at a commit the origin
 # already has (a copy has its own .git: an issue branch, a commit not pushed
 # yet or a stash made in the test-bed lives only there).
+# A copy seeded with a git baseline (git_seed_baseline: the origin is a
+# sub-directory of a larger repository) is redundant when it is still exactly
+# that baseline: HEAD, every branch and tag on the baseline commit, no stash,
+# and a clean tree.
 copy_is_redundant() {
-  local c="$1" o="$2" hc ho sha
+  local c="$1" o="$2" hc ho sha bl
   git -C "$c" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
   git -C "$o" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
   hc="$(git -C "$c" rev-parse HEAD 2>/dev/null || true)"
-  ho="$(git -C "$o" rev-parse HEAD 2>/dev/null || true)"
-  [[ -n "$hc" && "$hc" == "$ho" ]] || return 1
+  bl="$(git -C "$c" rev-parse --verify -q "$DRUPILOT_BASELINE_REF" 2>/dev/null || true)"
+  if [[ -n "$bl" ]]; then
+    [[ -n "$hc" && "$hc" == "$bl" ]] || return 1
+  else
+    ho="$(git -C "$o" rev-parse HEAD 2>/dev/null || true)"
+    [[ -n "$hc" && "$hc" == "$ho" ]] || return 1
+  fi
   [[ -z "$(git -C "$c" status --porcelain --untracked-files=normal -- . 2>/dev/null | grep -v -E '(^|/| )\.drupilot(/|\.json|$)' | head -n1)" ]] || return 1
   while IFS= read -r sha; do
     [[ -n "$sha" ]] || continue
-    git -C "$o" cat-file -e "${sha}^{commit}" 2>/dev/null || return 1
+    if [[ -n "$bl" ]]; then
+      [[ "$sha" == "$bl" ]] || return 1
+    else
+      git -C "$o" cat-file -e "${sha}^{commit}" 2>/dev/null || return 1
+    fi
   done < <(git -C "$c" for-each-ref --format='%(objectname)' refs/heads refs/tags refs/stash 2>/dev/null)
   return 0
 }
