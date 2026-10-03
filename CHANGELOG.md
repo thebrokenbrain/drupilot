@@ -811,6 +811,14 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **The router treated a folder of modules as one subject.** `/drupilot
+  web/modules/custom` or "port all these modules" ran (or recommended) the
+  single-subject flow; `/drupilot-layers` was reachable only by name.
+  `next-step.sh` now returns `next: "layers"` with
+  `/drupilot-layers <dir> plan` for a directory that is not an extension, not
+  a Drupal root, and holds two or more `*.info.yml`, and the router says so
+  for a multi-module request; it also mentions `/drupilot-clean` as the
+  off-ladder cleanup.
 - **`/drupilot --subject DIR` probed the wrong directory, and a bare
   `/drupilot` left residue.** The router took the subject only as the first
   positional word, so a wrapper's `--subject DIR` reached the load-time

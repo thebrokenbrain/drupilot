@@ -14,6 +14,8 @@
 #
 # Ladder (PROMPT 4.4): doctor -> setup -> assess -> port -> [refactor] -> test
 #                      -> [contribute]. refactor and contribute are opt-in.
+# A directory that is not an extension but holds two or more (a folder of
+# modules) gets `layers` (/drupilot-layers <dir> plan) instead: it is a set.
 #
 # Usage:
 #   next-step.sh --subject DIR
@@ -168,6 +170,19 @@ elif [[ -n "$ROOT" && -f "$ROOT/composer.json" && "$(testbed_kind "$ROOT")" != "
   [[ -f "$ROOT/${_vd:-vendor}/autoload.php" ]] || { ENV_REMOVED="true"; ENV_LEVEL="vendor"; }
 fi
 
+# A directory holding SEVERAL extensions (a monorepo's web/modules/custom, a
+# folder of modules) is a set, not one subject: it is ported layer by layer
+# with /drupilot-layers. Not an extension itself, not a Drupal root, and at
+# least two *.info.yml at most four levels down (tests/, vendor/, contrib/,
+# core/ and node_modules/ skipped, as layers.sh does). Cheap: names only.
+EXT_COUNT=0
+if [[ "$IS_EXT" == "false" && "$SUBJECT" != "$ROOT" && ! -f "$SUBJECT/composer.json" ]]; then
+  EXT_COUNT="$(find "$SUBJECT" -maxdepth 4 \( -name tests -o -name vendor -o -name contrib \
+      -o -name core -o -name node_modules -o -name '.*' ! -name . \) -prune -o \
+      -type f -name '*.info.yml' -print 2>/dev/null | wc -l | tr -d ' ')"
+  [[ "$EXT_COUNT" =~ ^[0-9]+$ ]] || EXT_COUNT=0
+fi
+
 ASSESSED="false"
 { [[ -f "$STATE_DIR/assess.json" ]] || phase_reached "$SUBJECT" assessed; } && ASSESSED="true"
 EFFORT=""
@@ -199,6 +214,9 @@ NEXT=""; CMD=""; REASON=""
 if [[ "$R_ANALYZE" == "false" ]]; then
   NEXT="doctor"; CMD="/drupilot-doctor"
   REASON="The analysis requirements are not met yet — fix them first."
+elif [[ "$EXT_COUNT" -ge 2 ]]; then
+  NEXT="layers"; CMD="/drupilot-layers $SUBJECT plan"
+  REASON="This directory holds $EXT_COUNT extensions, not one: plan the porting order layer by layer (dependencies first), then port each layer."
 elif [[ "$R_SETUP" == "true" && "$ENV_REMOVED" == "true" ]]; then
   NEXT="setup"; CMD="/drupilot-setup"
   REASON="The environment was removed (${ENV_LEVEL:-clean}) — re-run setup to rebuild it: vendor/ comes back from composer.lock, the core version from the lockfile."

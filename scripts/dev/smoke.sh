@@ -23,7 +23,7 @@
 #   next-step      next-step.sh on a fresh module: setup when ready, doctor when
 #                  analysis is not ready, the --human one-liner; a subject
 #                  recorded only as tested, or with only a port manifest, is
-#                  not sent back to port
+#                  not sent back to port; a folder of modules gets layers
 #   hooks          guard-contrib.sh asks before `git push` in autonomous and
 #                  non-interactive mode (even with DRUPILOT_CONTRIB_MODE=auto),
 #                  no-ops on other commands and on garbage stdin (exit 0);
@@ -273,6 +273,10 @@ test_next_step() {
   run nst "$SH" "$REPO/scripts/env/state.sh" record --subject "$t" --stage tested
   run nst "$SH" "$REPO/scripts/env/next-step.sh" --subject "$t" --ready-analyze true --ready-setup false
   expect "tested only: next/phase" "$(jqo nst '[.next, .phase]')" '["contribute","tested"]'
+  # A folder of modules is a set: /drupilot-layers, not the single-subject flow.
+  run nsl "$SH" "$REPO/scripts/env/next-step.sh" --subject "$CUSTOM" --ready-analyze true --ready-setup true
+  expect "module set: next" "$(jqo nsl '.next')" '"layers"'
+  expect_match "module set: command" "$(jqo nsl '.command')" '^"/drupilot-layers .*/web/modules/custom plan"$'
   printf '{"machine_name":"legacy_widgets","phase":"port"}\n' > "$(project_state_dir "$mf")/port-manifest.json"
   run nsm "$SH" "$REPO/scripts/env/next-step.sh" --subject "$mf" --ready-analyze true --ready-setup false
   expect "manifest only: next/phase" "$(jqo nsm '[.next, .phase]')" '["contribute","ported"]'

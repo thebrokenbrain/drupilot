@@ -237,7 +237,7 @@ flowchart LR
 
 ## 4) Muchos módulos — `/drupilot-layers`
 
-En un conjunto de módulos custom (el `web/modules/custom` de un monorepo) el orden importa: un módulo portado antes que los módulos que usa no se puede probar. `layers.sh` ordena el conjunto y `/drupilot-layers run` pasa cada módulo de una capa por el flujo normal de arriba, uno detrás de otro.
+En un conjunto de módulos custom (el `web/modules/custom` de un monorepo) el orden importa: un módulo portado antes que los módulos que usa no se puede probar. `layers.sh` ordena el conjunto y `/drupilot-layers run` pasa cada módulo de una capa por el flujo normal de arriba, uno detrás de otro. `/drupilot` (y `next-step.sh`) reconocen un directorio así —que no es una extensión y tiene dos o más `*.info.yml` debajo— y recomiendan `/drupilot-layers <dir> plan` en vez de portarlo como un único sujeto.
 
 ```mermaid
 flowchart TD

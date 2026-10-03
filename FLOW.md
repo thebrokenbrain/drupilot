@@ -237,7 +237,7 @@ flowchart LR
 
 ## 4) Many modules — `/drupilot-layers`
 
-For a set of custom modules (a monorepo's `web/modules/custom`), the order matters: a module ported before the modules it uses cannot be tested. `layers.sh` orders the set and `/drupilot-layers run` sends each module of a layer through the normal flow above, one after another.
+For a set of custom modules (a monorepo's `web/modules/custom`), the order matters: a module ported before the modules it uses cannot be tested. `layers.sh` orders the set and `/drupilot-layers run` sends each module of a layer through the normal flow above, one after another. `/drupilot` (and `next-step.sh`) recognize such a directory — not an extension itself, two or more `*.info.yml` below it — and recommend `/drupilot-layers <dir> plan` instead of porting it as one subject.
 
 ```mermaid
 flowchart TD

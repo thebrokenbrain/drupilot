@@ -57,6 +57,15 @@ the user asked you to port/upgrade the module) or **recommend the next logical s
   - An **exploratory** request or a bare `/drupilot` ("what's next", "where am I") →
     **`next`** (summarize + recommend one step; do not act).
   - A **status** request ("status", "how's it going") → **`status`** (read-only).
+  - A **set of modules** — the subject is a directory holding several extensions
+    (`web/modules/custom`, a folder of modules; `next-step.sh` then returns
+    `next: "layers"`), or the request is "port all these modules" → do **not**
+    run the single-subject flow on it: recommend
+    **`/drupilot-layers <dir> plan`** (the porting order, cycles and undeclared
+    dependencies), whose `run` then ports each layer through the normal flow.
+  - **Cleanup** is off the ladder: when the subject is ported and tested (or the
+    developer asks about disk space or old test-beds), mention
+    **`/drupilot-clean`** in one line (it is user-invoked only, never run it).
   An explicit mode word always overrides inference. If intent is genuinely ambiguous,
   present a tab with **AskUserQuestion** (header "How to proceed", default "Just the
   next step"): **Run the full port** (guided, with confirmations) · **Just recommend
