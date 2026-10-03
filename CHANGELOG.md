@@ -811,6 +811,15 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **Undeclared-dependency messages were garbled on bash 3.2 (stock macOS).**
+  `lint-extension-metadata.sh` built the message with a `case` inside `$(...)`;
+  bash 3.2 ends the substitution at the first pattern's `)`, printed a syntax
+  error and put the raw `case` text into the viability and port reports. The
+  label is now computed by a plain `case`. The smoke tests now fail a test
+  whose script printed a shell-level error (syntax error, unbound variable,
+  command not found, ...) on stderr, even when its payload looked right, and
+  assert the message text; the `portability` gate rejects a `case` inside
+  `$(...)` without leading `(` on its patterns, which `bash -n` cannot see.
 - **`patterns.sh add` refused valid EREs with an escaped backslash, such as
   `\\Drupal::`.** The PCRE guard rejected any `\d` / `\D` / `(?` substring, so
   the usual way to match a static `\Drupal::` call (an escaped backslash, then

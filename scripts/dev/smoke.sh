@@ -144,9 +144,17 @@ T_NAME=""
 RC=0
 
 # run <tag> <cmd...> -> stdout in $TMP/out/<tag>.out, stderr in .err, exit in $RC.
+# A shell-level failure on stderr (a parse error a bash version hits only at
+# runtime, an unbound variable, a missing command) fails the current test even
+# when the script still exits 0 and its payload looks right.
 run() {
-  local tag="$1"; shift
+  local tag="$1" hit; shift
   if "$@" > "$TMP/out/$tag.out" 2> "$TMP/out/$tag.err" < /dev/null; then RC=0; else RC=$?; fi
+  hit="$(grep -E 'syntax error|unbound variable|command not found|bad substitution|: invalid option|integer expression expected' \
+           "$TMP/out/$tag.err" 2>/dev/null | head -n 3 || true)"
+  if [[ -n "$hit" ]]; then
+    printf '%s: shell error on stderr: %s\n' "$tag" "$(printf '%s' "$hit" | tr '\n' ' ' | head -c 300)" >> "$T_FAILS"
+  fi
   return 0
 }
 # out <tag> -> the captured stdout
@@ -329,6 +337,9 @@ test_lint_metadata() {
   expect "legacy_widgets: totals" "$(jqo lm '.totals | "\(.error)/\(.warn)/\(.info)"')" '"2/8/0"'
   expect "legacy_widgets: findings" "$(jqo lm '[.findings[] | .check + "@" + .file + ":" + (.line|tostring)] | sort')" \
     '["config-schema@config/install/legacy_widgets.settings.yml:1","configure-route@legacy_widgets.info.yml:6","plugin-schema@src/Plugin/Condition/WidgetsEnabledCondition.php:1","plugin-schema@src/Plugin/Filter/WidgetSummaryFilter.php:1","services-arity@legacy_widgets.services.yml:3","services-class@legacy_widgets.services.yml:13","services-class@legacy_widgets.services.yml:8","submodule-core-req@modules/legacy_widgets_extra/legacy_widgets_extra.info.yml:5","undeclared-deps@modules/legacy_widgets_extra/legacy_widgets_extra.module:8","undeclared-deps@modules/legacy_widgets_extra/legacy_widgets_extra.module:9"]'
+  expect_match "legacy_widgets: undeclared-deps message" \
+    "$(jqo lm '[.findings[] | select(.check == "undeclared-deps") | .message][0]')" \
+    "uses project module 'legacy_widgets' "
   for m in acme_api:0/2/0 acme_billing:0/0/0 acme_core:0/0/0 acme_invoice:0/1/0 \
            acme_reports:0/6/2 acme_search:0/3/0 acme_standalone:0/0/0 acme_utils:1/0/0; do
     n="${m%%:*}"; want="${m#*:}"

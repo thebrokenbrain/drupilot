@@ -482,7 +482,14 @@ if check_on undeclared-deps; then
           "'$m' uses '$target' ($kinds) only optionally (a moduleExists() guard, config/optional, an @?service, or a plugin of $target's own plugin type): fine without a dependency." ""
         continue
       fi
-      msg="'$m' uses $(case "$scope" in internal) printf 'project';; external) printf 'contrib';; *) printf '%s' "$scope";; esac) module '$target' ($kinds) without declaring it in $(basename "$info") dependencies:"
+      # A plain case, not one inside $(...): bash 3.2 ends the substitution at
+      # the first pattern's ")".
+      case "$scope" in
+        internal) scope_label="project";;
+        external) scope_label="contrib";;
+        *) scope_label="$scope";;
+      esac
+      msg="'$m' uses $scope_label module '$target' ($kinds) without declaring it in $(basename "$info") dependencies:"
       [[ "$via" == "composer" ]] && msg="$msg it is only required in composer.json, so Drupal does not enable it when '$m' is installed."
       [[ "$via" == "composer" ]] || msg="$msg installing '$m' alone fails or breaks at runtime."
       sugg="Add '- $proposed' to dependencies:"

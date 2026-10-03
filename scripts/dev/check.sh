@@ -17,7 +17,10 @@
 #                 readlink -f, realpath, grep -P, date -d, xargs -r, stat -c,
 #                 find -printf, envsubst, and a regex interval ({n}, {n,m})
 #                 in an awk regex literal (mawk 1.3.4-20200120, the default awk
-#                 on Debian 12 / Ubuntu 22.04, matches it as literal text).
+#                 on Debian 12 / Ubuntu 22.04, matches it as literal text),
+#                 and a `case` inside `$(...)` whose patterns lack the leading
+#                 `(` (bash 3.2 ends the substitution at the first pattern's
+#                 `)`; `bash -n` does not see it).
 #                 Comment text is ignored; a line can
 #                 opt out with a trailing `# portability-ok` and a reason
 #   - special-vars no script assigns, declares, reads into or loops over a bash
@@ -210,6 +213,7 @@ gate_portability() {
             line ~ /readlink[[:space:]]+-f/ || line ~ /grep[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*P/ ||
             line ~ /date[[:space:]]+-d/ || line ~ /xargs[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-r/ ||
             line ~ /stat[[:space:]]+-c/ || line ~ /find[[:space:]].*-printf/ ||
+            line ~ /\$\([[:space:]]*case[[:space:]].*[[:space:]]in[[:space:]]+[^([:space:]]/ ||
             (line !~ /=~/ && (line ~ /(~|match\(|sub\(|split\()[[:space:]]*[^\/]*\// || line ~ /^[[:space:]]*!?\//) &&
              line ~ /[^\\]\{[0-9]+(,[0-9]*)?\}/))
           printf "%s:%d: %s\n", F, NR, substr($0, 1, 140)
