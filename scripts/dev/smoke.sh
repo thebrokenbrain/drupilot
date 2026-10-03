@@ -78,6 +78,9 @@
 #                  read from the script): a type from a sibling module missing
 #                  on a reference core is a sandbox_missing_dependency in every
 #                  message shape, never the subject's own class
+#   port-summary   port-summary.sh keeps a recorded `false` (digests, fresh)
+#                  and takes d10_support and the core-matrix blocker from the
+#                  same source (a fresh core matrix over the manifest)
 #
 # Isolation: the fixtures are copied to a temp dir (legacy_widgets is committed
 # there as a git repo when git exists), and HOME, CLAUDE_PLUGIN_DATA and the
@@ -108,7 +111,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$REPO/tests/fixtures"
 SH="${BASH:-bash}"
 
-ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify"
+ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary"
 
 AS_JSON=0; ONLY=""; SKIP=""; KEEP=0
 
@@ -732,6 +735,23 @@ JSON
   finish
 }
 
+test_port_summary() {
+  local c="$FX/summary/acme_core" sd dg
+  mkdir -p "$FX/summary"; cp -R "$CUSTOM/acme_core" "$c"
+  sd="$(project_state_dir "$c")"
+  dg="$(subject_digest "$c")"
+  printf '{"machine_name":"acme_core","phase":"port","d10_support":"verified-static-above-floor","digests":{"applied":false,"rejected":[],"skipped":false}}\n' > "$sd/port-manifest.json"
+  printf '{"verdict":"fail","d10_support":"failed","subject_digest":"%s"}\n' "$dg" > "$sd/core-matrix.json"
+  printf '{"status":"passed","preservation":"verified","subject_digest":"stale"}\n' > "$sd/last-test.json"
+  run psr "$SH" "$REPO/scripts/env/state.sh" record --subject "$c" --stage ported --json
+  run ps "$SH" "$REPO/scripts/analysis/port-summary.sh" --subject "$c" --json
+  expect "port-summary: exit" "$RC" "0"
+  expect "port-summary: recorded false kept" "$(jqo ps '[.digests.applied, .digests.skipped, .preservation.fresh, .matrix.fresh]')" '[false,false,false,true]'
+  expect "port-summary: one d10 source" "$(jqo ps '[.d10_support, .d10_support_source, .status, ([.blockers[].source] | join(","))]')" \
+    '["failed","core-matrix","blocked","core-matrix"]'
+  finish
+}
+
 # --- Main -----------------------------------------------------------------------
 log_step "drupilot smoke tests (bash ${BASH_VERSION:-?}, $(uname -s 2>/dev/null || echo ?))"
 for t in $ALL_TESTS; do
@@ -757,6 +777,7 @@ for t in $ALL_TESTS; do
     state-stdin) test_state_stdin;;
     shared-testbed) test_shared_testbed;;
     matrix-classify) test_matrix_classify;;
+    port-summary) test_port_summary;;
   esac
 done
 

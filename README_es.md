@@ -344,6 +344,7 @@ bash "$CLAUDE_PLUGIN_ROOT/scripts/analysis/port-summary.sh" --subject ~/src/my_m
 | `blockers` | `[{source, reason}]`: por qué un módulo portado está `blocked` — una regresión de tests, tests que no pudieron ejecutarse o que nunca tuvieron baseline, una pata de la matriz de cores fallida, o errores de port-safety/firmas. Un resultado calculado sobre fuentes anteriores se muestra pero nunca bloquea. |
 | `effort` | El veredicto del assess: `S`, `M`, `L` o `XL`. |
 | `core_version_requirement`, `require_php`, `d10_support` | Lo que declara ahora el módulo, y cómo se verificó su mitad Drupal 10. |
+| `d10_support_source` | De dónde sale `d10_support`: `core-matrix` (una matriz ejecutada sobre el código actual, que también decide el bloqueo por matriz de cores) o `manifest`. |
 | `files_changed` | Ficheros que cambió el port (el recuento del manifiesto, si no, los ficheros del parche). |
 | `rector_rules` | `[{rule, hits, passes}]`: reglas de Rector que cambiaron ficheros. |
 | `reverted_rules` | Cambios de Rector deshechos a mano, con el porqué. |

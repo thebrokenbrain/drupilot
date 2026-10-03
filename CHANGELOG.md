@@ -811,6 +811,13 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **`port-summary.sh` could contradict itself.** A recorded `false` (digests
+  `applied`/`skipped`, the `fresh` flag of the test run and of the core matrix)
+  came out as `null`, and `d10_support` came from the port manifest while the
+  blocker came from a newer core matrix, so a summary could say
+  `verified-static-above-floor` and be blocked by `d10_support: failed`. A core
+  matrix run on the current sources now decides both, and the new
+  `d10_support_source` field says which record was used.
 - **The core matrix could call a dependency on a sibling module an
   incompatibility.** On a reference core without the sibling module, PHPStan
   reports messages such as `Parameter $x of method Drupal\a\B::f() has

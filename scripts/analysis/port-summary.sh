@@ -40,6 +40,9 @@
 #    core_version_requirement, require_php,   as declared NOW
 #    d10_support,     declared-not-verified | verified-static |
 #                     verified-static-above-floor | failed | null
+#    d10_support_source,  core-matrix (a core matrix run on the current
+#                     sources: it then also decides the core-matrix blocker) |
+#                     manifest | null
 #    files_changed,   manifest.files_changed, else the files in the patch
 #    rector_rules: [{rule, hits, passes}], rector_rules_source,
 #    digests: {applied, rejected, skipped} | null,
@@ -149,22 +152,25 @@ SUMMARY="$(jq -n \
   --arg core "$CORE_REQ" --arg php "$REQ_PHP" --arg pfiles "$PATCH_FILES" \
   --arg r_port "$R_PORT" --arg r_viab "$R_VIAB" --arg r_dec "$R_DEC" --arg r_sum "$R_SUM" '
   def nz: if . == "" then null else . end;
+  # keep(k): .[k] as recorded — `false` stays false (`// null` would drop it).
+  def keep(k): if type == "object" and has(k) then .[k] else null end;
   def srank: {"setup":1,"assessed":2,"ported":3,"refactored":4,"tested":5,"contributed":6}[. // ""] // 0;
   def num: if type == "number" then . elif type == "array" then length
            elif type == "string" then (tonumber? // null) else null end;
   ($v.stage // null) as $stage
   | ($v.tests // null) as $t
   | ($v.core_matrix // null) as $cm
-  | (($m.d10_support // null) as $md
-     | if ($md == null or $md == "declared-not-verified" or $md == "n/a")
-          and ($cm != null) and ($cm.fresh == true) and (($cm.d10_support // null) != null)
-       then $cm.d10_support else $md end) as $d10
+  # One source for d10_support AND its blocker: a core matrix computed on the
+  # current sources is authoritative; else the manifest (as recorded).
+  | (($cm != null) and ($cm.fresh == true) and (($cm.d10_support // null) != null)) as $cm_rules
+  | (if $cm_rules then $cm.d10_support else ($m.d10_support // null) end) as $d10
+  | (if $cm_rules then "core-matrix" elif ($m.d10_support // null) != null then "manifest" else null end) as $d10_src
   | ([ (if $t != null and ($t.fresh != false)
           and (($t.preservation // "") | IN("regression", "not-verified-blocked", "not-verified-unbaselined"))
         then {source: "tests", reason: ("preservation: " + $t.preservation)} else empty end),
        (if $cm != null and $cm.fresh == true
           and (($cm.verdict // "") == "fail" or ($cm.d10_support // "") == "failed")
-        then {source: "core-matrix", reason: "a declared core leg failed (d10_support: \($cm.d10_support // "n/a"))"} else empty end),
+        then {source: "core-matrix", reason: "a declared core leg failed (verdict: \($cm.verdict // "n/a"), d10_support: \($cm.d10_support // "n/a"))"} else empty end),
        (if (($m.port_safety.errors // 0) | num // 0) > 0
         then {source: "port-safety", reason: "\($m.port_safety.errors) error finding(s) recorded by check-port-safety.sh"} else empty end),
        (if (($m.signature_changes.errors // 0) | num // 0) > 0
@@ -186,12 +192,13 @@ SUMMARY="$(jq -n \
      core_version_requirement: ($core | nz),
      require_php: ($php | nz),
      d10_support: $d10,
+     d10_support_source: $d10_src,
      files_changed: (($m.files_changed // null | num) // ($pfiles | nz | if . == null then null else tonumber end)),
      rector_rules: ($r.rector_rules // []),
      rector_rules_source: ($r.rector_rules_source // null),
      digests: (if ($m.digests | type) == "object"
-               then {applied: ($m.digests.applied // null), rejected: ($m.digests.rejected // null),
-                     skipped: ($m.digests.skipped // null)}
+               then {applied: ($m.digests | keep("applied")), rejected: ($m.digests | keep("rejected")),
+                     skipped: ($m.digests | keep("skipped"))}
                else null end),
      reverted_rules: ($r.rector_reversions // []),
      manual_fixes: ($r.manual_edits // []),
@@ -205,10 +212,10 @@ SUMMARY="$(jq -n \
      preservation: (if $t == null then null
                     else {verdict: ($t.preservation // null), status: ($t.status // null),
                           executed: ($t.executed // null), tests_failed: ($t.tests_failed // null),
-                          fresh: ($t.fresh // null), recorded_at: ($t.recorded_at // null)} end),
+                          fresh: ($t | keep("fresh")), recorded_at: ($t.recorded_at // null)} end),
      matrix: (if $cm == null then null
               else {verdict: ($cm.verdict // null), d10_support: ($cm.d10_support // null),
-                    fresh: ($cm.fresh // null), generated_at: ($cm.generated_at // null)} end),
+                    fresh: ($cm | keep("fresh")), generated_at: ($cm.generated_at // null)} end),
      safety: (if ($m.port_safety // null) == null and ($m.signature_changes // null) == null then null
               else {port_safety_errors: ($m.port_safety.errors // null | num),
                     signature_errors: ($m.signature_changes.errors // null | num)} end),
