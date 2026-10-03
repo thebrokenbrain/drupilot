@@ -38,7 +38,9 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   choices registry and the public `DRUPILOT_*` names. `--check` (the new smoke
   test `baseline`, so every CI leg) compares the checkout byte for byte; an
   intended difference is listed, pinned by its sha256, in
-  `tests/baseline/v0.9.0/allowed-diffs.txt`.
+  `tests/baseline/v0.9.0/allowed-diffs.txt`, and `SHA256SUMS` pins the committed
+  baseline files. A small input module with PHP 8.2/8.3/8.4 constructs covers
+  the PHP floor scan, which no fixture exercised.
 
 ### Fixed
 - **Hooks and scripts kept their state in two different places.** The data

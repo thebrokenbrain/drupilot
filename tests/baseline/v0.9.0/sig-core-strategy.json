@@ -1,0 +1,33 @@
+{
+  "exit": 0,
+  "stdout": {
+    "bc_break": false,
+    "composer_core_constraint": "^10.3 || ^11",
+    "current_core_version_requirement": "^10.3 || ^11",
+    "d10_support": "declared-not-verified",
+    "has_composer_json": true,
+    "phase": "port",
+    "php_floor_detected": "8.4",
+    "php_floor_effective": "8.3",
+    "php_floor_strategy": "detect",
+    "php_floor_target_compatible": false,
+    "php_target": "8.3",
+    "rationale": [
+      "The module already declares a Drupal 11-compatible requirement ('^10.3 || ^11'); keeping it unchanged (minimal change). Use the core-target choice to narrow it if you want.",
+      "No core-major change and no API break -> PATCH."
+    ],
+    "recommended_core_version_requirement": "^10.3 || ^11",
+    "require_php": ">=8.3",
+    "strategy": "keep-current",
+    "suggested_remaining_tasks": [],
+    "verify_cores": [
+      "10.3",
+      "11"
+    ],
+    "version_bump": "patch",
+    "warnings": [
+      "The code uses PHP 8.4-only constructs but DRUPILOT_PHP_TARGET is 8.3 — it will fatal on a Drupal 11 site running PHP 8.3. Raise DRUPILOT_PHP_TARGET to 8.4 (confirm it is supported on the target Drupal 11 branch) or remove the construct.",
+      "The kept requirement still allows Drupal 10 ('^10.3 || ^11'); its Drupal 10 compatibility is DECLARED, not verified — run verify-core-matrix.sh (static check on a Drupal 10 core) and install/test on Drupal 10 before relying on it."
+    ]
+  }
+}

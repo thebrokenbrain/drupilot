@@ -1,0 +1,5 @@
+name: 'PHP floor signals'
+type: module
+description: 'Baseline input: one PHP 8.2, 8.3 and 8.4 construct per detect-php-floor.sh signal, each on its own line.'
+package: 'drupilot baseline'
+core_version_requirement: ^10.3 || ^11

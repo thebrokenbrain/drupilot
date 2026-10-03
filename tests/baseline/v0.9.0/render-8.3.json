@@ -1,25 +1,59 @@
 {
   "exit": 0,
   "stdout": {
+    "dry_run": false,
+    "file_keys": [
+      "backup",
+      "name",
+      "path",
+      "status",
+      "template",
+      "valid",
+      "validator"
+    ],
     "files": [
       {
+        "backup": "",
         "name": "rector",
-        "status": "written"
+        "path": "<TMP>/bl/root-8.3/rector.php",
+        "status": "written",
+        "template": "templates/rector.php.tmpl"
       },
       {
+        "backup": "",
         "name": "phpstan",
-        "status": "written"
+        "path": "<TMP>/bl/root-8.3/phpstan.neon",
+        "status": "written",
+        "template": "templates/phpstan.neon.tmpl"
       },
       {
+        "backup": "",
         "name": "phpcs",
-        "status": "written"
+        "path": "<TMP>/bl/root-8.3/phpcs.xml.dist",
+        "status": "written",
+        "template": "templates/phpcs.xml.dist.tmpl"
       },
       {
+        "backup": "",
         "name": "testing",
-        "status": "written"
+        "path": "<TMP>/bl/root-8.3/.ddev/config.testing.yaml",
+        "status": "written",
+        "template": "templates/ddev-web-environment.yaml.tmpl"
       }
     ],
+    "force": false,
+    "keys": [
+      "dry_run",
+      "files",
+      "force",
+      "ok",
+      "restart_needed",
+      "root",
+      "subject_path"
+    ],
     "ok": true,
+    "restart_needed": true,
+    "root": "<TMP>/bl/root-8.3",
     "subject_path": "web/modules/custom/legacy_widgets"
   }
 }

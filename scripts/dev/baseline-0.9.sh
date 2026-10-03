@@ -20,11 +20,17 @@
 #   mono-<module>-* the same per-module scripts (but port-summary) for every
 #                   monorepo module, and mono-layers (all and declared edges,
 #                   --no-write) for the monorepo
+#   sig-*           the same per-module scripts for the committed input module
+#                   tests/baseline/inputs/php_floor_signals (one PHP 8.2, 8.3
+#                   and 8.4 construct per detect-php-floor.sh signal, each hit
+#                   unique, so the first-hit order is the same on every walk)
 #   classify-deprecations-{txt,json}, explain-deprecations-{txt,json}
 #                   on the committed PHPStan sample, in both formats
-#   render-<P>/     the files render-templates.sh writes (rector.php,
-#                   phpstan.neon, phpcs.xml.dist, .ddev/config.testing.yaml)
-#                   into a stub Drupal root, for DRUPILOT_PHP_TARGET 8.3/8.4/8.5
+#   render-<P>      render-templates.sh --json (every key but the host-dependent
+#                   files[].valid/validator) and, under render-<P>/, the files it
+#                   writes (rector.php, phpstan.neon, phpcs.xml.dist,
+#                   .ddev/config.testing.yaml) into a stub Drupal root, for
+#                   DRUPILOT_PHP_TARGET 8.3/8.4/8.5
 #   preflight-keys, preflight-extended-keys   the key sets only of
 #                   `preflight --json` and `--profile all --extended --json`
 #                   (toolchain is null on a loose subject)
@@ -38,8 +44,8 @@
 #
 # Inputs are committed, never ad hoc: tests/baseline/inputs/ holds the
 # hand-made PHPStan sample (0.9 text table and native JSON formats) that
-# classify-/explain-deprecations.sh read, and the canned state.json that
-# port-summary.sh reads.
+# classify-/explain-deprecations.sh read, the canned state.json that
+# port-summary.sh reads, and the php_floor_signals module.
 #
 # Isolation (as smoke.sh): the fixtures are copied to one fixed path,
 # $TMP/bl/fx/<fixture>; HOME, CLAUDE_PLUGIN_DATA and the XDG dirs point inside
@@ -61,6 +67,10 @@
 # '#' starts a comment. --check prints the line to add for each differing
 # file (and a diff on STDERR).
 #
+# SHA256SUMS (written by --capture) pins every captured file, so an edit to
+# the committed baseline itself fails --check too, also for a file whose
+# output allowed-diffs.txt lets differ.
+#
 # Usage:
 #   scripts/dev/baseline-0.9.sh [--capture | --check] [--json] [--keep]
 #                               [-h|--help]
@@ -69,7 +79,8 @@
 #     --check    capture from this checkout and compare (the default)
 #     --json     machine summary on STDOUT (logs stay on STDERR):
 #                {ok, mode, files:[{name, status, detail}]}, status:
-#                same | allowed | differs | missing | unexpected | error
+#                same | allowed | differs | missing | unexpected | error |
+#                tampered (the committed file does not match SHA256SUMS)
 #     --keep     keep the temp dir and print its path on STDERR
 #
 # Requires bash >= 3.2 and jq; --capture also git and the v0.9.0 tag; a
@@ -159,10 +170,11 @@ IN="$TMP/bl/in"
 RAW="$TMP/raw"
 OUT="$TMP/out"
 mkdir -p "$FXROOT" "$IN" "$RAW" "$OUT"
-cp -R "$REPO/tests/fixtures/legacy_widgets" "$REPO/tests/fixtures/monorepo" "$FXROOT/"
+cp -R "$REPO/tests/fixtures/legacy_widgets" "$REPO/tests/fixtures/monorepo" "$INPUTS/php_floor_signals" "$FXROOT/"
 cp -R "$INPUTS/." "$IN/"
 LW="$FXROOT/legacy_widgets"
 MONO="$FXROOT/monorepo"
+SIG="$FXROOT/php_floor_signals"
 
 # --- Normalization ------------------------------------------------------------
 # sanitized <path> -> the state-key form of a path (project_state_path's tr).
@@ -174,8 +186,10 @@ _np=0
 add_pair() { _np=$((_np + 1)); export "BL_F$_np=$1" "BL_T$_np=$2"; return 0; }
 add_pair "$LW" "<SUBJECT>"
 add_pair "$MONO" "<SUBJECT>"
+add_pair "$SIG" "<SUBJECT>"
 add_pair "$(sanitized "$LW")" "<SUBJECTKEY>"
 add_pair "$(sanitized "$MONO")" "<SUBJECTKEY>"
+add_pair "$(sanitized "$SIG")" "<SUBJECTKEY>"
 add_pair "$PR" "<PLUGIN_ROOT>"
 add_pair "$TMP" "<TMP>"
 add_pair "$(sanitized "$TMP")" "<TMPKEY>"
@@ -280,6 +294,7 @@ log_step "drupilot v0.9.0 baseline: $MODE ($(basename "$PR"))"
 # The per-subject captures are independent (each subject has its own state
 # key): run them as parallel jobs.
 subject_caps lw "$LW" &
+subject_caps sig "$SIG" &
 for _m in $(find "$MONO/web/modules/custom" -name '*.info.yml' | LC_ALL=C sort); do
   _d="$(dirname "$_m")"
   subject_caps "mono-$(basename "$_d")" "$_d" &
@@ -325,7 +340,8 @@ for _p in $PHP_TARGETS; do
   printf "<?php\nclass Drupal {\n  const VERSION = '11.4.8';\n}\n" > "$_r/web/core/lib/Drupal.php"
   printf 'name: dpl-baseline\ntype: drupal11\ndocroot: web\n' > "$_r/.ddev/config.yaml"
   cp -R "$LW" "$_r/web/modules/custom/"
-  cap "render-$_p" '{ok, subject_path, files: [.files[] | {name, status}]}' \
+  cap "render-$_p" '{keys: keys, root, subject_path, dry_run, force, ok, restart_needed,
+    files: [.files[] | del(.valid, .validator)], file_keys: ([.files[] | keys] | add | unique)}' \
     env DRUPILOT_PHP_TARGET="$_p" "$SH" "$S/env/render-templates.sh" \
       --root "$_r" --subject web/modules/custom/legacy_widgets --json
   for _f in rector.php phpstan.neon phpcs.xml.dist .ddev/config.testing.yaml; do
@@ -376,9 +392,12 @@ if [[ "$MODE" == "capture" ]]; then
     sed 's/^/    /' "$ERRORS" >&2
     die "A captured script failed with a shell error; nothing written." 1
   fi
+  [[ -n "$HASHER" ]] || die "--capture needs sha256sum or shasum (for SHA256SUMS)" 1
   mkdir -p "$BASE_DIR"
   find "$BASE_DIR" -mindepth 1 ! -name allowed-diffs.txt -exec rm -rf {} + 2>/dev/null || true
   cp -R "$OUT/." "$BASE_DIR/"
+  ( cd "$BASE_DIR" && find . -type f ! -name allowed-diffs.txt ! -name SHA256SUMS | sed 's#^\./##' | LC_ALL=C sort \
+      | while IFS= read -r _f; do printf '%s  %s\n' "$($HASHER < "$_f" | cut -d' ' -f1)" "$_f"; done ) > "$BASE_DIR/SHA256SUMS"
   if [[ ! -f "$ALLOWED" ]]; then
     printf '# Intended differences from the v0.9.0 baseline, one per line:\n' > "$ALLOWED"
     printf '#   <file> sha256:<hex of the normalized output> <reason; CHANGELOG entry>\n' >> "$ALLOWED"
@@ -420,6 +439,28 @@ while IFS= read -r _e; do
   result "${_e%%:*}" error "${_e#*: }"
 done < "$ERRORS"
 
+# The committed baseline itself: every file must match its SHA256SUMS line.
+if [[ -z "$HASHER" ]]; then
+  result SHA256SUMS error "no sha256 tool (sha256sum or shasum) to verify the committed baseline"
+elif [[ ! -f "$BASE_DIR/SHA256SUMS" ]]; then
+  result SHA256SUMS missing "tests/baseline/v0.9.0/SHA256SUMS is missing (rerun --capture)"
+else
+  ( cd "$BASE_DIR" && find . -type f ! -name allowed-diffs.txt ! -name SHA256SUMS | sed 's#^\./##' | LC_ALL=C sort ) \
+    > "$TMP/committed.txt"
+  awk '{ print $2 }' "$BASE_DIR/SHA256SUMS" | LC_ALL=C sort > "$TMP/pinned.txt"
+  while IFS= read -r _f; do
+    grep -qxF -- "$_f" "$TMP/pinned.txt" || result "$_f" tampered "committed but not pinned in SHA256SUMS"
+  done < "$TMP/committed.txt"
+  while read -r _h _f; do
+    [[ -n "$_f" ]] || continue
+    if [[ ! -f "$BASE_DIR/$_f" ]]; then
+      result "$_f" tampered "pinned in SHA256SUMS but not committed"
+    elif [[ "$(file_hash "$BASE_DIR/$_f")" != "$_h" ]]; then
+      result "$_f" tampered "the committed baseline file no longer matches SHA256SUMS"
+    fi
+  done < "$BASE_DIR/SHA256SUMS"
+fi
+
 _seen="$TMP/seen.txt"
 ( cd "$OUT" && find . -type f | sed 's#^\./##' | LC_ALL=C sort ) > "$_seen"
 while IFS= read -r _f; do
@@ -449,7 +490,7 @@ while IFS= read -r _f; do
   fi
 done < "$_seen"
 
-( cd "$BASE_DIR" && find . -type f ! -name allowed-diffs.txt | sed 's#^\./##' | LC_ALL=C sort ) \
+( cd "$BASE_DIR" && find . -type f ! -name allowed-diffs.txt ! -name SHA256SUMS | sed 's#^\./##' | LC_ALL=C sort ) \
   | while IFS= read -r _f; do
       grep -qxF -- "$_f" "$_seen" || printf '%s\n' "$_f"
     done > "$TMP/missing.txt"
