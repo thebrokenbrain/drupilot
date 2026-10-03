@@ -583,6 +583,64 @@ When the issue still has to be created, it generates the **issue summary** (the 
 
 See **[FLOW.md](FLOW.md)** for a visual, end-to-end diagram of the flow — which tool runs at each step, where the AI steps in, and the two porting phases.
 
+### Scripts reference
+
+Every script lives under `scripts/` (or `hooks/scripts/` for the hooks), sources `scripts/lib/common.sh`, prints `-h` help from its header, keeps its parseable payload on STDOUT (`--json` where a command reads it) and logs on STDERR. The commands and skills call them for you; you can also run them yourself with `CLAUDE_PLUGIN_ROOT` set. Exit codes: `0` ok, `1` usage error, `2` a requirement gate failed, `3` findings or a broken toolchain (see each header).
+
+| Script | What it does |
+| --- | --- |
+| **`env/`** | |
+| `preflight.sh` | The requirements gate (profiles `analyze`/`setup`/`test`/`contribute`/`all`); `--extended` adds the doctor's health checks. |
+| `install-deps.sh` | OS-aware assisted installation of git, jq, PHP, Composer, Docker, DDEV (only after confirmation). |
+| `detect-php.sh` | The effective PHP target, and whether Drupal 11 officially supports it. |
+| `resolve-workspace.sh` | Where a loose module's test-bed goes (read-only; `--workspace DIR`). |
+| `ddev-up.sh` | Creates and starts the Drupal 11 DDEV project (cached base core, frozen core version). |
+| `place-subject.sh` | Moves, symlinks or copies a loose module into the test-bed. |
+| `ddev-add-ons.sh` | Installs the `ddev-drupal-contrib` and Selenium add-ons. |
+| `install-toolchain.sh` | Installs the known-good dev toolchain, smoke-tests it and freezes it in the lock. |
+| `render-templates.sh` | Renders `rector.php`, `phpstan.neon`, `phpcs.xml.dist` and the DDEV testing config, validated, never clobbering a hand edit. |
+| `lock-sync.sh` | Captures the reproducibility lockfile (`drupilot-lock.json`). |
+| `ensure-gitignore.sh` | Keeps drupilot's artifacts out of git at the Drupal root. |
+| `origin-hygiene.sh` | Proves the port left your original checkout clean (snapshot before, check after). |
+| `state.sh` | The per-module state registry (`record`, `refresh`, `show`, `list` for `/drupilot-status --all`). |
+| `next-step.sh` | The single source of the "what next?" ladder. |
+| `clean.sh` | Frees a test-bed's DDEV project, Composer trees or whole workspace (`/drupilot-clean`). |
+| **`analysis/`** | |
+| `core-strategy.sh` | Recommends `^11` or `^10 \|\| ^11`, the `require.php` and the version bump. |
+| `deps-status.sh` | Drupal 11 readiness of each contrib dependency (drupal.org release history). |
+| `detect-php-floor.sh` | The lowest PHP the code needs (heuristic). |
+| `run-rector.sh` | Official drupal-rector, the digests layer (`--digests`) and the attributes pass (`--attributes`), dry-run or apply. |
+| `run-phpstan.sh` / `run-phpcs.sh` | PHPStan with phpstan-drupal + deprecation rules; PHPCS/phpcbf with the project's ruleset or Drupal + DrupalPractice. |
+| `run-upgrade-status.sh` | Upgrade Status on an installed site. |
+| `classify-deprecations.sh` | Splits deprecations into hard and soft (`DRUPILOT_SOFT_DEPRECATIONS`). |
+| `explain-deprecations.sh` | Explains each deprecation: what changed, the fix, a change-records link. |
+| `check-port-safety.sh` | Deterministic checks for breakages ports introduce (lost DI interfaces, closures in Form API callbacks, ...). |
+| `scan-signature-changes.sh` | Collisions with Drupal 10 → 11 core signature changes at the declared floor. |
+| `verify-core-matrix.sh` | PHPStan + `php -l` on every core the module declares (the Drupal 10 half of `^10 \|\| ^11`). |
+| `set-core-requirement.sh` | Writes `core_version_requirement` into the main and every submodule `info.yml`. |
+| `convert-attributes.sh` | Optional plugin annotation → PHP 8 attribute pass. |
+| `lint-extension-metadata.sh` | Pre-existing hygiene: config without schema, missing routes, orphan services, undeclared dependencies. |
+| `layers.sh` / `layer-report.sh` | Porting layers of a set of modules; the consolidated per-layer report (`/drupilot-layers`). |
+| `patterns.sh` | The project's catalog of learned port pitfalls (`scan`, `add`, `harvest`, ...). |
+| `log-decision.sh` | The decision log: every divergence from a tool's output, with what and why. |
+| `port-report.sh` | The human report card `port-report.md` (also refreshes `port-summary.json`). |
+| `port-summary.sh` | The versioned machine summary of a port, for wrappers (`--json`, `--strict`). |
+| **`tests/`** | |
+| `discover-tests.sh` | Finds and classifies the PHPUnit test classes. |
+| `run-phpunit.sh` | Runs the suite in DDEV and records the preservation verdict (with a pre-port baseline). |
+| `negative-control.sh` | Proves a new test fails without the change it guards. |
+| **`contrib/`** | |
+| `make-patch.sh` | The local preview patch (`--local`) or the verified contribution patch. |
+| `make-issue.sh` | The Drupal.org issue summary, field values and MR comment. |
+| `find-upstream-issue.sh` | Looks for an existing Drupal 11 issue for the project. |
+| `check-prereqs.sh` / `setup-git.sh` | Contribution prerequisites; the git identity. |
+| `issue-fork.sh` / `open-mr.sh` | The issue-fork remote and branch; push and Merge Request (confirmed first). |
+| `git-hooks.sh` | Detects the repository's git hooks and runs their equivalents when a hook cannot run. |
+| **`dev/`** | |
+| `check.sh` | The developer gate for drupilot itself (see [Developing drupilot](#developing-drupilot)). |
+| **`hooks/scripts/`** | |
+| `session-detect-env.sh` / `post-edit-lint.sh` / `guard-contrib.sh` | The SessionStart, PostToolUse and PreToolUse hooks (see [What's automatic](#whats-automatic-vs-where-the-ai-decides)). |
+
 ---
 
 ## The drupal-digests complementary layer
@@ -612,6 +670,8 @@ Enable/disable it with `DRUPILOT_USE_DIGESTS_RULES` (default `true`).
 
 ## Troubleshooting
 
+Run `/drupilot-doctor` first: besides the requirements, its [health checks](#requirements) detect several of the entries below (an invalid `phpcs.xml.dist`, the deprecated `drupal_root`, a known-broken toolchain, low disk space, residue in your checkout).
+
 - **A command says a hard requirement is missing.** Run `/drupilot-doctor` — it shows exactly what is missing, the detected vs. required version, and the install command for your platform.
 - **Docker is installed but commands still fail.** The daemon must be running (`sudo systemctl start docker` on Linux, or launch Docker Desktop). `drupilot` checks the daemon, not just the binary.
 - **`run-phpunit.sh` exits 2 with "PHPUnit is not installed" (preservation `not-verified-blocked`).** The Drupal root has no `vendor/bin/phpunit`: `drupal/recommended-project` does not ship it. Install `drupal/core-dev` matching your core — the script prints the exact command, e.g. `ddev composer require --dev "drupal/core-dev:~11.4.8" -W` — and re-run. Environments set up by drupilot 0.8.4 or earlier never installed it.
@@ -633,6 +693,11 @@ Enable/disable it with `DRUPILOT_USE_DIGESTS_RULES` (default `true`).
 - **`verify-core-matrix.sh` warns "The PHPStan extension config of … is broken".** An older drupilot ran the test-bed's own `vendor/bin/composer` while building a reference core, which rewrote the test-bed's `vendor/phpstan/extension-installer/src/GeneratedConfig.php` (`run-phpstan.sh` then crashes with `Config file …/.drupilot/cores/.build-…/rules.neon does not exist`). The matrix now always runs the container's own Composer, checks that file in the test-bed and in every cached reference core, and regenerates it with `composer install` (or rebuilds the reference core). If it still reports it broken, run `ddev composer install` in the Drupal root.
 - **The Drupal 10 leg is `skipped` and `d10_support` stays `declared-not-verified`.** The reference core could not be built: no network (`composer` could not reach Packagist), or that Drupal minor cannot be installed on the container PHP. It is also `skipped` when the Drupal 11 baseline leg could not be analysed (its status is `error`, e.g. PHPStan crashed on the test-bed): without a baseline, the Drupal 10 findings cannot be told apart from pre-existing ones. Fix `run-phpstan.sh` on the test-bed first. The reason is in the JSON and the summary. Re-run when online (`--dry-run` shows what would be built); `--refresh` rebuilds a cached core. To skip the check on purpose set `DRUPILOT_VERIFY_CORES=off`.
 - **`run-phpstan.sh` exits 3.** PHPStan crashed or could not analyse (invalid configuration, missing path, fatal error), so there is no verdict; the cause is printed on stderr (and in `drupilot.crash` with `--json`). Fix it and re-run — it is not a count of findings.
+- **On macOS: `bad substitution`, `declare: -A: invalid option`, or `sed: 1: "…": invalid command code`.** drupilot 0.8.4 and earlier used bash 4 syntax and GNU `sed -i`, which stock macOS (`/bin/bash` 3.2, BSD `sed`) rejects. Update the plugin: the scripts and hooks now run on bash 3.2 with BSD tools, and `scripts/dev/check.sh` rejects those constructs. You do not need Homebrew bash; if you installed it, it is used just as well.
+- **Every FunctionalJavascript test fails when the WebDriver session starts, while Unit/Kernel/Functional pass.** Drupal 11.4's `WebDriverTestBase` forces `w3c` to `false` when `MINK_DRIVER_ARGS_WEBDRIVER` asks for Chrome without `"w3c":true` (deprecated in 11.4.0, see https://www.drupal.org/node/3460567), and the current Selenium image refuses such a session. The Selenium add-on sets a working value; it is lost when something overrides it — an older drupilot's `.ddev/config.testing.yaml`, or a value you set by hand. Check it with `ddev exec printenv MINK_DRIVER_ARGS_WEBDRIVER` (it must contain `"w3c":true`), re-render the testing config with `render-templates.sh --root <drupal_root> --only testing --force`, then `ddev restart`.
+- **A Composer command run through `ddev exec` breaks the test-bed (e.g. PHPStan then fails with `Config file …/rules.neon does not exist`).** A test-bed with `drupal/core-dev` ships its own `vendor/bin/composer`, which comes first on the container's `PATH`. The web container hides it from the top-level shell only (through `EXECIGNORE`), so `ddev exec "timeout 600 composer …"`, `sh -c 'composer …'` or a nested `bash -c` run the test-bed's copy, on the test-bed's autoloader: its plugins then write into the test-bed's `vendor/` even when you work on another project. Use `ddev composer …`, or call the container's own Composer by its absolute path (`/usr/local/bin/composer`), as drupilot does. If the test-bed was already damaged, `ddev composer install` repairs it.
+- **Setup or the core matrix fails with "No space left on device", or Docker gets slow.** Each test-bed holds a DDEV project and a few hundred MB of Composer trees, and the core matrix keeps a reference core per Drupal minor. `/drupilot-clean` frees them without losing the work (reports, state, patches and the module's git branches are kept); `ddev delete -Oy <project>` and `docker system prune` free more. `/drupilot-doctor` reports the free space against `requirements.disk_free_min_mb`.
+- **Untracked `.ddev/`, `vendor/`, `.drupilot*` or stray symlinks appear in your module's original checkout.** Something left local-environment residue there (an older drupilot, or a module-at-root DDEV sandbox). `/drupilot-doctor` lists it, and `scripts/env/origin-hygiene.sh --check --subject <dir>` compares the checkout with the state recorded before the port. Look before deleting: `git -C <dir> status --porcelain`, then `git -C <dir> clean -n -- .ddev` (dry run) before `-f`. drupilot never deletes anything in your checkout itself.
 
 ---
 

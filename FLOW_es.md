@@ -54,11 +54,11 @@ flowchart TD
     end
 
     subgraph DOCTOR["doctor · opcional"]
-      DOC["preflight.sh<br/>verifica los requisitos"]:::script
+      DOC["preflight.sh<br/>verifica los requisitos<br/>+ comprobaciones de salud (--extended):<br/>configs · toolchain frente a known-good<br/>disco · restos en el origen"]:::script
     end
 
     subgraph SETUP["setup · preparar el entorno"]
-      SU["ddev-up.sh · ddev-add-ons.sh<br/>toolchain de Composer<br/>rector.php · phpstan.neon · phpcs.xml"]:::script
+      SU["ddev-up.sh · place-subject.sh · ddev-add-ons.sh<br/>install-toolchain.sh (known-good, prueba de humo)<br/>render-templates.sh: rector.php · phpstan.neon · phpcs.xml"]:::script
     end
 
     subgraph ASSESS["assess · evaluación (no modifica el código)"]
@@ -159,14 +159,14 @@ flowchart TD
     ATA["convert-attributes.sh --mode keep<br/>#[...] junto a las anotaciones<br/>sube el suelo (p. ej. ^10.3 || ^11)"]:::script
 
     subgraph VL["Bucle de validación · la IA itera hasta dejarlo limpio"]
-      VS["run-phpcs --fix (phpcbf corrige · phpcs informa)<br/>run-phpstan (deprecaciones)<br/>lint-extension-metadata (higiene, solo informa)"]:::script
+      VS["run-phpcs --fix (phpcbf corrige · phpcs informa)<br/>run-phpstan (deprecaciones) · classify-deprecations<br/>check-port-safety · scan-signature-changes<br/>verify-core-matrix (la pata Drupal 10 declarada)<br/>lint-extension-metadata (higiene, solo informa)"]:::script
       VAI(("La IA revisa lo que queda<br/>y aplica la corrección mínima")):::ai
       VS --> VAI
       VAI -->|"quedan avisos"| VS
     end
 
     MP["make-patch --local<br/>genera el .patch"]:::script
-    PR["port-report.sh<br/>genera el informe"]:::script
+    PR["port-report.sh<br/>port-report.md (para ti)<br/>+ port-summary.json (para herramientas)"]:::script
     OUT(["Resultado de la Fase 1:<br/>módulo compatible con Drupal 11<br/>+ .patch + informe (lo validan los tests)"]):::milestone
 
     %% --- enlaces ---
@@ -262,6 +262,30 @@ flowchart TD
 ```
 
 > Las dependencias propuestas nunca se aplican sin tu confirmación, y una ejecución por capas nunca contribuye. En un monorepo cada módulo se porta en su sitio, en el único sitio Drupal, así que las dependencias de una capa están instaladas a su lado.
+
+---
+
+## 5) Bajo otra herramienta — sin interacción
+
+Un wrapper (otra skill, un job de CI, un script que conduce `claude -p`) ejecuta el mismo flujo sin que nadie responda pestañas, y lee el resultado como JSON en lugar de los informes Markdown. El contrato completo está en la sección "Ejecutar bajo otra herramienta" del README.
+
+```mermaid
+flowchart LR
+    W(["Wrapper<br/>/drupilot &lt;dir&gt; auto --no-confirm<br/>--workspace DIR --json"]):::human
+    O(("Orquestador en modo auto:<br/>setup → assess → port → refactor → test<br/>cada bifurcación toma su valor recomendado")):::ai
+    S["Scripts con DRUPILOT_NONINTERACTIVE=1<br/>sin preguntas · valor por defecto seguro<br/>--workspace DIR → ubicación del test-bed"]:::script
+    P["port-summary.sh --json<br/>status · effort · files_changed<br/>rector_rules · reverted_rules · manual_fixes<br/>preservation · matrix · patch"]:::script
+    R[("Resultado JSON<br/>(también .drupilot/port-summary.json)")]:::result
+
+    W --> O --> S --> P --> R
+
+    classDef script fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
+    classDef ai fill:#ede9fe,stroke:#7c3aed,color:#4c1d95;
+    classDef human fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    classDef result fill:#e5e7eb,stroke:#6b7280,color:#111827;
+```
+
+> `--no-confirm` es tan seguro como `auto`: nunca hace push, abre un Merge Request ni contribuye, y el hook `guard-contrib` sigue preguntando. `port-summary.sh` solo lee lo que registró el flujo, así que un wrapper también puede ejecutarlo directamente, sin el modelo.
 
 ---
 

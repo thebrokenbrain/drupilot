@@ -54,11 +54,11 @@ flowchart TD
     end
 
     subgraph DOCTOR["doctor · optional"]
-      DOC["preflight.sh<br/>checks requirements"]:::script
+      DOC["preflight.sh<br/>checks requirements<br/>+ health checks (--extended):<br/>configs · toolchain vs known-good<br/>disk · origin residue"]:::script
     end
 
     subgraph SETUP["setup · prepare the environment"]
-      SU["ddev-up.sh · ddev-add-ons.sh<br/>Composer toolchain<br/>rector.php · phpstan.neon · phpcs.xml"]:::script
+      SU["ddev-up.sh · place-subject.sh · ddev-add-ons.sh<br/>install-toolchain.sh (known-good, smoke test)<br/>render-templates.sh: rector.php · phpstan.neon · phpcs.xml"]:::script
     end
 
     subgraph ASSESS["assess · evaluation (does not modify code)"]
@@ -159,14 +159,14 @@ flowchart TD
     ATA["convert-attributes.sh --mode keep<br/>#[...] next to the annotations<br/>raises the floor (e.g. ^10.3 || ^11)"]:::script
 
     subgraph VL["Validation loop · the AI iterates until clean"]
-      VS["run-phpcs --fix (phpcbf fixes · phpcs reports)<br/>run-phpstan (deprecations)<br/>lint-extension-metadata (hygiene, report only)"]:::script
+      VS["run-phpcs --fix (phpcbf fixes · phpcs reports)<br/>run-phpstan (deprecations) · classify-deprecations<br/>check-port-safety · scan-signature-changes<br/>verify-core-matrix (the declared Drupal 10 leg)<br/>lint-extension-metadata (hygiene, report only)"]:::script
       VAI(("The AI reviews what's left<br/>and applies the minimal fix")):::ai
       VS --> VAI
       VAI -->|"issues remain"| VS
     end
 
     MP["make-patch --local<br/>generates the .patch"]:::script
-    PR["port-report.sh<br/>generates the report"]:::script
+    PR["port-report.sh<br/>port-report.md (for you)<br/>+ port-summary.json (for tools)"]:::script
     OUT(["Phase 1 result:<br/>module compatible with Drupal 11<br/>+ .patch + report (validated by the tests)"]):::milestone
 
     %% --- links ---
@@ -262,6 +262,30 @@ flowchart TD
 ```
 
 > Proposed dependencies are never applied without your confirmation, and a layer run never contributes. In a monorepo every module is ported in place in the one site, so a layer's dependencies are installed next to it.
+
+---
+
+## 5) Under another tool — non-interactive
+
+A wrapper (another skill, a CI job, a script driving `claude -p`) runs the same flow without anyone answering tabs, and reads the result as JSON instead of the Markdown reports. See the README section "Running under another tool" for the full contract.
+
+```mermaid
+flowchart LR
+    W(["Wrapper<br/>/drupilot &lt;dir&gt; auto --no-confirm<br/>--workspace DIR --json"]):::human
+    O(("Orchestrator in auto mode:<br/>setup → assess → port → refactor → test<br/>every fork takes its recommended default")):::ai
+    S["Scripts with DRUPILOT_NONINTERACTIVE=1<br/>no prompt · safe default<br/>--workspace DIR → test-bed location"]:::script
+    P["port-summary.sh --json<br/>status · effort · files_changed<br/>rector_rules · reverted_rules · manual_fixes<br/>preservation · matrix · patch"]:::script
+    R[("JSON result<br/>(also .drupilot/port-summary.json)")]:::result
+
+    W --> O --> S --> P --> R
+
+    classDef script fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
+    classDef ai fill:#ede9fe,stroke:#7c3aed,color:#4c1d95;
+    classDef human fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    classDef result fill:#e5e7eb,stroke:#6b7280,color:#111827;
+```
+
+> `--no-confirm` is as safe as `auto`: it never pushes, opens a Merge Request or contributes, and the `guard-contrib` hook still asks. `port-summary.sh` only reads what the flow recorded, so a wrapper can also run it directly, without the model.
 
 ---
 

@@ -682,6 +682,19 @@ tag the commit `vX.Y.Z`.
   gates do not pass it. The doctor shows the installed vs known-good table and
   the `install-toolchain.sh --source reference` repair.
 ### Changed
+- **Docs: troubleshooting, a scripts reference and the flow (section 5).**
+  README / README_es "Troubleshooting" now opens with a pointer to
+  `/drupilot-doctor`'s health checks and adds the macOS bash 3.2 / BSD `sed`
+  errors of drupilot <= 0.8.4 (`bad substitution`, `declare: -A`, `invalid
+  command code`), FunctionalJavascript sessions refused because Drupal 11.4
+  forces `w3c` off without `"w3c":true` (checked in core 11.4.8's
+  `WebDriverTestBase::getMinkDriverArgs()`), the `EXECIGNORE` trap of running
+  the test-bed's `vendor/bin/composer` through `ddev exec timeout|sh -c`, a
+  full disk, and residue in the origin checkout. A new "Scripts reference"
+  table lists every script with its purpose. FLOW / FLOW_es show the doctor's
+  health checks, the setup scripts, the deterministic gates of the validate
+  loop, `port-summary.json`, and a new "Under another tool" diagram (all
+  diagrams render with mermaid-cli).
 - **The port bumps submodules too.** `/drupilot-port`, `minimal-port` and
   the orchestrator apply the recommended `core_version_requirement` with
   `set-core-requirement.sh` to every nested `info.yml`, not only the main one.

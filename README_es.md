@@ -585,6 +585,64 @@ Cuando el issue aún no existe, genera el **resumen del issue** (la plantilla es
 
 Consulta **[FLOW_es.md](FLOW_es.md)** para un diagrama visual de todo el flujo — qué herramienta actúa en cada paso, dónde interviene la IA y las dos fases de la portabilidad.
 
+### Referencia de scripts
+
+Todos los scripts viven en `scripts/` (o en `hooks/scripts/` los hooks), cargan `scripts/lib/common.sh`, muestran la ayuda `-h` desde su cabecera, dejan su salida parseable en STDOUT (`--json` cuando un comando la lee) y registran en STDERR. Los comandos y las skills los llaman por ti; también puedes ejecutarlos tú con `CLAUDE_PLUGIN_ROOT` definido. Códigos de salida: `0` bien, `1` error de uso, `2` falló un gate de requisitos, `3` hallazgos o un toolchain roto (ver cada cabecera).
+
+| Script | Qué hace |
+| --- | --- |
+| **`env/`** | |
+| `preflight.sh` | El gate de requisitos (perfiles `analyze`/`setup`/`test`/`contribute`/`all`); `--extended` añade las comprobaciones de salud del doctor. |
+| `install-deps.sh` | Instalación asistida según el SO de git, jq, PHP, Composer, Docker y DDEV (solo tras confirmar). |
+| `detect-php.sh` | El objetivo PHP efectivo, y si Drupal 11 lo soporta oficialmente. |
+| `resolve-workspace.sh` | Dónde va el test-bed de un módulo suelto (solo lectura; `--workspace DIR`). |
+| `ddev-up.sh` | Crea y arranca el proyecto DDEV de Drupal 11 (core base en caché, versión de core congelada). |
+| `place-subject.sh` | Mueve, enlaza o copia un módulo suelto dentro del test-bed. |
+| `ddev-add-ons.sh` | Instala los add-ons `ddev-drupal-contrib` y Selenium. |
+| `install-toolchain.sh` | Instala el toolchain de desarrollo known-good, lo prueba y lo congela en el lock. |
+| `render-templates.sh` | Genera `rector.php`, `phpstan.neon`, `phpcs.xml.dist` y la config de testing de DDEV, validados, sin pisar una edición a mano. |
+| `lock-sync.sh` | Captura el lockfile de reproducibilidad (`drupilot-lock.json`). |
+| `ensure-gitignore.sh` | Mantiene los artefactos de drupilot fuera de git en la raíz de Drupal. |
+| `origin-hygiene.sh` | Demuestra que el port dejó limpio tu checkout original (instantánea antes, comprobación después). |
+| `state.sh` | El registro de estado por módulo (`record`, `refresh`, `show`, `list` para `/drupilot-status --all`). |
+| `next-step.sh` | La fuente única de la escalera de "¿qué sigue?". |
+| `clean.sh` | Libera el proyecto DDEV, los árboles de Composer o el workspace entero de un test-bed (`/drupilot-clean`). |
+| **`analysis/`** | |
+| `core-strategy.sh` | Recomienda `^11` o `^10 \|\| ^11`, el `require.php` y el salto de versión. |
+| `deps-status.sh` | Preparación para Drupal 11 de cada dependencia contrib (historial de releases de drupal.org). |
+| `detect-php-floor.sh` | El PHP mínimo que necesita el código (heurístico). |
+| `run-rector.sh` | drupal-rector oficial, la capa digests (`--digests`) y la pasada de atributos (`--attributes`), en simulación o aplicando. |
+| `run-phpstan.sh` / `run-phpcs.sh` | PHPStan con phpstan-drupal + reglas de deprecación; PHPCS/phpcbf con el ruleset del proyecto o Drupal + DrupalPractice. |
+| `run-upgrade-status.sh` | Upgrade Status sobre un sitio instalado. |
+| `classify-deprecations.sh` | Separa las deprecaciones en duras y blandas (`DRUPILOT_SOFT_DEPRECATIONS`). |
+| `explain-deprecations.sh` | Explica cada deprecación: qué cambió, el arreglo, un enlace a los change records. |
+| `check-port-safety.sh` | Comprobaciones deterministas de roturas que introducen los ports (interfaces de DI perdidas, closures en callbacks de Form API, ...). |
+| `scan-signature-changes.sh` | Colisiones con cambios de firma del core de Drupal 10 → 11 en el suelo declarado. |
+| `verify-core-matrix.sh` | PHPStan + `php -l` en cada core que declara el módulo (la mitad Drupal 10 de `^10 \|\| ^11`). |
+| `set-core-requirement.sh` | Escribe `core_version_requirement` en el `info.yml` principal y en el de cada submódulo. |
+| `convert-attributes.sh` | Pasada opcional de anotaciones de plugin → atributos PHP 8. |
+| `lint-extension-metadata.sh` | Higiene preexistente: config sin schema, rutas inexistentes, servicios huérfanos, dependencias no declaradas. |
+| `layers.sh` / `layer-report.sh` | Capas de portabilidad de un conjunto de módulos; el informe consolidado por capa (`/drupilot-layers`). |
+| `patterns.sh` | El catálogo del proyecto de trampas de port aprendidas (`scan`, `add`, `harvest`, ...). |
+| `log-decision.sh` | El registro de decisiones: cada divergencia de la salida de una herramienta, con qué y por qué. |
+| `port-report.sh` | El informe humano `port-report.md` (también refresca `port-summary.json`). |
+| `port-summary.sh` | El resumen versionado para máquinas de un port, para wrappers (`--json`, `--strict`). |
+| **`tests/`** | |
+| `discover-tests.sh` | Encuentra y clasifica las clases de test PHPUnit. |
+| `run-phpunit.sh` | Ejecuta la suite en DDEV y registra el veredicto de preservación (con una baseline previa al port). |
+| `negative-control.sh` | Demuestra que un test nuevo falla sin el cambio que protege. |
+| **`contrib/`** | |
+| `make-patch.sh` | El parche local de vista previa (`--local`) o el parche de contribución verificado. |
+| `make-issue.sh` | El resumen del issue de Drupal.org, los valores de los campos y el comentario del MR. |
+| `find-upstream-issue.sh` | Busca un issue de Drupal 11 ya existente para el proyecto. |
+| `check-prereqs.sh` / `setup-git.sh` | Requisitos de contribución; la identidad de git. |
+| `issue-fork.sh` / `open-mr.sh` | El remoto y la rama del issue fork; push y Merge Request (confirmados antes). |
+| `git-hooks.sh` | Detecta los git hooks del repositorio y ejecuta sus equivalentes cuando un hook no puede ejecutarse. |
+| **`dev/`** | |
+| `check.sh` | El gate de desarrollo del propio drupilot (ver [Desarrollo de drupilot](#desarrollo-de-drupilot)). |
+| **`hooks/scripts/`** | |
+| `session-detect-env.sh` / `post-edit-lint.sh` / `guard-contrib.sh` | Los hooks SessionStart, PostToolUse y PreToolUse (ver [Qué es automático](#qué-es-automático-vs-dónde-decide-la-ia)). |
+
 ---
 
 ## La capa complementaria drupal-digests
@@ -614,6 +672,8 @@ Actívalo/desactívalo con `DRUPILOT_USE_DIGESTS_RULES` (por defecto `true`).
 
 ## Resolución de problemas
 
+Ejecuta primero `/drupilot-doctor`: además de los requisitos, sus [comprobaciones de salud](#requisitos) detectan varias de las entradas de abajo (un `phpcs.xml.dist` inválido, el `drupal_root` obsoleto, un toolchain que se sabe roto, poco espacio en disco, restos en tu checkout).
+
 - **Un comando dice que falta un requisito duro.** Ejecuta `/drupilot-doctor` — muestra exactamente qué falta, la versión detectada vs. la requerida, y el comando de instalación para tu plataforma.
 - **Docker está instalado pero los comandos siguen fallando.** El daemon debe estar corriendo (`sudo systemctl start docker` en Linux, o lanzar Docker Desktop). `drupilot` comprueba el daemon, no solo el binario.
 - **`run-phpunit.sh` termina con código 2 y "PHPUnit is not installed" (preservación `not-verified-blocked`).** La raíz de Drupal no tiene `vendor/bin/phpunit`: `drupal/recommended-project` no lo incluye. Instala `drupal/core-dev` ajustado a tu core — el script muestra el comando exacto, p. ej. `ddev composer require --dev "drupal/core-dev:~11.4.8" -W` — y vuelve a ejecutarlo. Los entornos preparados con drupilot 0.8.4 o anterior nunca lo instalaron.
@@ -635,6 +695,11 @@ Actívalo/desactívalo con `DRUPILOT_USE_DIGESTS_RULES` (por defecto `true`).
 - **`verify-core-matrix.sh` avisa «The PHPStan extension config of … is broken».** Una versión anterior de drupilot ejecutaba el `vendor/bin/composer` del propio banco de pruebas al construir un core de referencia, lo que reescribía el `vendor/phpstan/extension-installer/src/GeneratedConfig.php` del banco de pruebas (y `run-phpstan.sh` fallaba entonces con `Config file …/.drupilot/cores/.build-…/rules.neon does not exist`). Ahora la matriz usa siempre el Composer propio del contenedor, comprueba ese fichero en el banco de pruebas y en cada core de referencia en caché, y lo regenera con `composer install` (o reconstruye el core de referencia). Si sigue diciendo que está roto, ejecuta `ddev composer install` en la raíz de Drupal.
 - **La pata de Drupal 10 queda `skipped` y `d10_support` sigue en `declared-not-verified`.** No se pudo construir el core de referencia: sin red (`composer` no llegó a Packagist) o esa versión menor de Drupal no se puede instalar con el PHP del contenedor. También queda `skipped` cuando no se pudo analizar la pata de referencia de Drupal 11 (su estado es `error`, p. ej. PHPStan falló en el banco de pruebas): sin esa referencia, los hallazgos de Drupal 10 no se pueden distinguir de los preexistentes. Arregla primero `run-phpstan.sh` en el banco de pruebas. El motivo aparece en el JSON y en el resumen. Vuelve a ejecutarlo con conexión (`--dry-run` muestra qué se construiría); `--refresh` reconstruye un core en caché. Para omitir la comprobación a propósito, usa `DRUPILOT_VERIFY_CORES=off`.
 - **`run-phpstan.sh` termina con código 3.** PHPStan falló o no pudo analizar (configuración inválida, ruta inexistente, error fatal), así que no hay veredicto; la causa se muestra en stderr (y en `drupilot.crash` con `--json`). Corrígela y vuelve a ejecutarlo: no es un recuento de hallazgos.
+- **En macOS: `bad substitution`, `declare: -A: invalid option` o `sed: 1: "…": invalid command code`.** drupilot 0.8.4 y anteriores usaban sintaxis de bash 4 y `sed -i` de GNU, que un macOS de serie (`/bin/bash` 3.2, `sed` BSD) rechaza. Actualiza el plugin: los scripts y hooks funcionan ahora con bash 3.2 y herramientas BSD, y `scripts/dev/check.sh` rechaza esas construcciones. No necesitas el bash de Homebrew; si lo instalaste, se usa igual de bien.
+- **Todos los tests FunctionalJavascript fallan al iniciar la sesión WebDriver, mientras Unit/Kernel/Functional pasan.** El `WebDriverTestBase` de Drupal 11.4 fuerza `w3c` a `false` cuando `MINK_DRIVER_ARGS_WEBDRIVER` pide Chrome sin `"w3c":true` (obsoleto en 11.4.0, ver https://www.drupal.org/node/3460567), y la imagen actual de Selenium rechaza esa sesión. El add-on de Selenium fija un valor que funciona; se pierde cuando algo lo sobrescribe — un `.ddev/config.testing.yaml` de un drupilot antiguo, o un valor puesto a mano. Compruébalo con `ddev exec printenv MINK_DRIVER_ARGS_WEBDRIVER` (debe contener `"w3c":true`), regenera la configuración de testing con `render-templates.sh --root <drupal_root> --only testing --force` y luego `ddev restart`.
+- **Un comando de Composer lanzado con `ddev exec` estropea el test-bed (p. ej. PHPStan falla después con `Config file …/rules.neon does not exist`).** Un test-bed con `drupal/core-dev` trae su propio `vendor/bin/composer`, que va primero en el `PATH` del contenedor. El contenedor web solo lo oculta al shell de primer nivel (mediante `EXECIGNORE`), así que `ddev exec "timeout 600 composer …"`, `sh -c 'composer …'` o un `bash -c` anidado ejecutan la copia del test-bed, con el autoloader del test-bed: sus plugins escriben entonces en el `vendor/` del test-bed aunque trabajes sobre otro proyecto. Usa `ddev composer …`, o llama al Composer propio del contenedor por su ruta absoluta (`/usr/local/bin/composer`), como hace drupilot. Si el test-bed ya quedó dañado, `ddev composer install` lo repara.
+- **El setup o la matriz de cores fallan con "No space left on device", o Docker va lento.** Cada test-bed guarda un proyecto DDEV y unos cientos de MB de árboles de Composer, y la matriz de cores conserva un core de referencia por versión menor de Drupal. `/drupilot-clean` los libera sin perder el trabajo (se conservan informes, estado, parches y las ramas git del módulo); `ddev delete -Oy <proyecto>` y `docker system prune` liberan más. `/drupilot-doctor` informa del espacio libre frente a `requirements.disk_free_min_mb`.
+- **Aparecen `.ddev/`, `vendor/`, `.drupilot*` sin seguimiento o symlinks sueltos en el checkout original de tu módulo.** Algo dejó restos del entorno local ahí (un drupilot antiguo, o un sandbox DDEV con el módulo en la raíz). `/drupilot-doctor` los lista, y `scripts/env/origin-hygiene.sh --check --subject <dir>` compara el checkout con el estado registrado antes del port. Mira antes de borrar: `git -C <dir> status --porcelain`, y luego `git -C <dir> clean -n -- .ddev` (simulación) antes de `-f`. drupilot nunca borra nada de tu checkout por su cuenta.
 
 ---
 
