@@ -126,6 +126,11 @@
 #                  written through common.sh when the analyze profile is not
 #                  ready); CLAUDE_PLUGIN_DATA never moves the data dir,
 #                  DRUPILOT_HOME does
+#   open-mr        open-mr.sh never puts the GitLab PAT on a command line: a
+#                  stub curl records its argv and its config; the PAT reaches it
+#                  through `-K -` (STDIN), and through a mode-0600 temp file
+#                  that is removed afterwards when curl cannot read STDIN
+#                  (needs git)
 #   legacy-state   copy_legacy_state_once copies the state 0.9.0 left in a
 #                  per-plugin data dir (copy-only, never overwriting, logged,
 #                  marker), and a second run copies nothing; every command that
@@ -170,7 +175,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$REPO/tests/fixtures"
 SH="${BASH:-bash}"
 
-ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root monorepo-testbed phpcs-scope choices baseline data-dir legacy-state"
+ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root monorepo-testbed phpcs-scope choices baseline data-dir legacy-state open-mr"
 # Tests committed before their fix: "test:task" words (see the header).
 XFAIL=""
 
@@ -1217,6 +1222,63 @@ test_legacy_state() {
   finish
 }
 
+test_open_mr() {
+  local d="$FX/mr" bin="$FX/mr/bin" c mode pat="glpat-smoke-SECRET-0123456789"
+  if [[ "$HAVE_GIT" != "1" ]]; then
+    log_warn "open-mr: git is not available, the test is skipped."
+    finish; return 0
+  fi
+  local -a G=(git -c user.name=drupilot-smoke -c user.email=smoke@example.invalid -c commit.gpgsign=false)
+  mkdir -p "$bin" "$d/clone"
+  git init -q --bare "$d/fork.git"
+  git -C "$d/clone" init -q
+  printf 'name: Acme\ntype: module\n' > "$d/clone/acme.info.yml"
+  git -C "$d/clone" add -A && "${G[@]}" -C "$d/clone" commit -q -m "Initial"
+  git -C "$d/clone" checkout -q -b 123-port-to-drupal-11
+  git -C "$d/clone" remote add acme-123 "$d/fork.git"
+  # glab fails (so curl is used); curl records its argv and the config it got
+  # on STDIN or from a -K file, and plays a GitLab 201. In mode "noread" it
+  # cannot read STDIN (curl's exit 26), as an old curl would.
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$bin/glab"
+  cat > "$bin/curl" <<STUB
+#!/usr/bin/env bash
+d="$d"
+printf '%s\n' "\$@" >> "\$d/curl-argv.log"
+prev=""
+for a in "\$@"; do
+  if [[ "\$prev" == "-K" ]]; then
+    if [[ "\$a" == "-" ]]; then
+      [[ "\$(cat "\$d/curl-mode" 2>/dev/null)" == "noread" ]] && exit 26
+      cat >> "\$d/curl-config.log"
+    else
+      cat "\$a" >> "\$d/curl-config.log"; printf '%s\n' "\$a" > "\$d/curl-cfgfile"
+      ls -l "\$a" | cut -c1-10 > "\$d/curl-cfgmode"
+    fi
+  fi
+  prev="\$a"
+done
+printf '{"web_url":"https://git.example.invalid/issue/acme-123/-/merge_requests/1"}\n201'
+STUB
+  chmod +x "$bin/glab" "$bin/curl"
+  for mode in stdin noread; do
+    printf '%s' "$mode" > "$d/curl-mode"
+    : > "$d/curl-argv.log"; : > "$d/curl-config.log"; rm -f "$d/curl-cfgfile" "$d/curl-cfgmode"
+    if (cd "$d/clone" && env PATH="$bin:$PATH" DRUPILOT_GITLAB_PAT="$pat" "$SH" "$REPO/scripts/contrib/open-mr.sh" \
+          --project acme --issue 123 --branch 123-port-to-drupal-11 --mode auto) \
+        > "$TMP/out/mr-$mode.out" 2> "$TMP/out/mr-$mode.err" < /dev/null; then RC=0; else RC=$?; fi
+    expect "$mode: exit" "$RC" "0"
+    expect_match "$mode: MR opened through the API" "$(cat "$TMP/out/mr-$mode.err")" 'Merge request created via the GitLab API'
+    expect "$mode: the PAT is on no argv" "$(grep -c -F -- "$pat" "$d/curl-argv.log" || true)" "0"
+    expect "$mode: the PAT reached curl's config" "$(grep -c -F -- "header = \"PRIVATE-TOKEN: $pat\"" "$d/curl-config.log" || true)" "1"
+    expect "$mode: the PAT is in no output" "$(cat "$TMP/out/mr-$mode.out" "$TMP/out/mr-$mode.err" | grep -c -F -- "$pat" || true)" "0"
+  done
+  c="$(cat "$d/curl-cfgfile" 2>/dev/null || true)"
+  expect "noread: a temp config file was used" "$([[ -n "$c" ]] && echo yes || echo no)" "yes"
+  expect "noread: it was mode 0600" "$(cat "$d/curl-cfgmode" 2>/dev/null)" "-rw-------"
+  expect "noread: and is gone" "$([[ -n "$c" && -e "$c" ]] && echo left || echo gone)" "gone"
+  finish
+}
+
 test_baseline() {
   run bl "$SH" "$REPO/scripts/dev/baseline-0.9.sh" --check --json
   expect "baseline --check: exit" "$RC" "0"
@@ -1258,6 +1320,7 @@ for t in $ALL_TESTS; do
     baseline) test_baseline;;
     data-dir) test_data_dir;;
     legacy-state) test_legacy_state;;
+    open-mr) test_open_mr;;
   esac
 done
 

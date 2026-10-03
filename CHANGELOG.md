@@ -47,6 +47,12 @@ tag the commit `vX.Y.Z`.
   `/drupilot-patch`, the hooks and `preflight.sh` never copy. The state key of a
   path is unchanged. `smoke.sh` no longer exports `CLAUDE_PLUGIN_DATA` (that is
   what hid the bug) and gained the `data-dir` and `legacy-state` tests.
+- **The GitLab PAT was on curl's command line.** `open-mr.sh` passed it as
+  `-H "PRIVATE-TOKEN: ..."`, visible to any local user through `ps` or `/proc`
+  while the request ran. curl now reads that header as a config on STDIN
+  (`-K -`, written by the shell's builtin `printf`), or from a mode-0600 temp
+  file removed right after when curl cannot read STDIN. A smoke test with a stub
+  curl checks that the PAT is on no argv and in no output.
 - **PHP 8.5 was described as "not confirmed on any Drupal 11 branch".** Drupal
   supports PHP 8.5 from 11.3 on, not on 11.2 or earlier (drupal.org PHP
   requirements, read through its api-d7 JSON). The new helper

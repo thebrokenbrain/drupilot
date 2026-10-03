@@ -14,7 +14,8 @@
 #   4. Remind the user about the Contribution Record (maintainers assign credit).
 #
 # The PAT is read from the env var named by .contrib.pat_env_var and is NEVER
-# printed, echoed, or persisted.
+# printed, echoed, persisted, or passed on a command line (curl gets it as a
+# config on STDIN).
 #
 # Usage:
 #   open-mr.sh --project NAME --issue ID --branch BRANCH
@@ -192,6 +193,27 @@ MR_TARGET="${BASE:-}"
 # Prefer glab if present and authenticated; otherwise curl with the PAT.
 PAT="${!PAT_ENV_VAR:-}"   # read once; never echoed.
 
+# curl_with_header <header> <curl args...> -> curl with one more request header
+# that never reaches curl's argv (where `ps` or /proc would show the PAT): the
+# builtin printf hands it over as a curl config on STDIN (-K -). If curl cannot
+# read that config (exit 26), a mode-0600 temp file, removed on return and by
+# a trap, carries it instead.
+curl_with_header() {
+  local hdr="$1" rc cfg; shift
+  hdr="${hdr//\\/\\\\}"; hdr="${hdr//\"/\\\"}"
+  printf 'header = "%s"\n' "$hdr" | curl -K - "$@"
+  rc="${PIPESTATUS[1]}"
+  [[ "$rc" == "26" ]] || return "$rc"
+  cfg="$(umask 077 && mktemp "${TMPDIR:-/tmp}/drupilot-curl.XXXXXX")" || return "$rc"
+  # shellcheck disable=SC2064  # expand now: $cfg is local, the trap outlives it
+  trap "rm -f '$cfg'" EXIT
+  printf 'header = "%s"\n' "$hdr" > "$cfg"
+  curl -K "$cfg" "$@"
+  rc=$?
+  rm -f "$cfg"
+  return "$rc"
+}
+
 if have_cmd glab; then
   log_info "Attempting to open the MR via glab ..."
   # glab works against the fork path on the drupalcode host.
@@ -224,9 +246,9 @@ if [[ "$API_DONE" -eq 0 && -n "$PAT" ]] && have_cmd curl; then
        + (if $tb == "" then {} else {target_branch:$tb} end)')"
   API_ENDPOINT="https://$HTTPS_HOST/api/v4/projects/$FORK_PATH_ENC/merge_requests"
   set +e
-  # PRIVATE-TOKEN header carries the PAT; -s keeps it out of any progress output.
-  HTTP_BODY="$(curl -sS -X POST \
-      -H "PRIVATE-TOKEN: $PAT" \
+  # The PRIVATE-TOKEN header carries the PAT, off curl's argv; -s keeps it out
+  # of any progress output.
+  HTTP_BODY="$(curl_with_header "PRIVATE-TOKEN: $PAT" -sS -X POST \
       -H "Content-Type: application/json" \
       -w '\n%{http_code}' \
       -d "$BODY" \
