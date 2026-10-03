@@ -398,7 +398,7 @@ tag the commit `vX.Y.Z`.
   - A module with only pre-registry records (`assess.json`, `last-test.json`)
     is still listed by `--root`/`--subject`; an assessment on file backfills
     the `assessed` stage.
-- **`/drupilot-layers` — port a set of modules in dependency order (4.1).**
+- **`/drupilot-layers` — port a set of modules in dependency order.**
   `scripts/analysis/layers.sh --dir DIR [--json] [--edges all|declared]
   [--dot]` reads every `*.info.yml` `dependencies:` and `composer.json`
   `drupal/*` requirement of a set (a monorepo's `web/modules/custom`, a folder
@@ -430,7 +430,7 @@ tag the commit `vX.Y.Z`.
     place.
   - `state.sh record|refresh --portfolio DIR --layer N` stores
     `portfolio: {dir, layer}` in the module's `state.json`.
-- **Pre-existing extension hygiene lint (4.7).**
+- **Pre-existing extension hygiene lint.**
   `scripts/analysis/lint-extension-metadata.sh --subject DIR [--json]
   [--checks ...] [--set-dir DIR]` checks the subject and its submodules. It
   reports and never fixes, always exits 0, and saves `metadata-lint.json` in
@@ -507,7 +507,7 @@ tag the commit `vX.Y.Z`.
   lines; `{}` when the format is not recognized). An `--apply` that changes
   files keeps it as `rector-rules.json` in the subject's state dir, the
   report's fallback when the manifest has no `rector_rules`.
-- **One template for the consolidated layer report (4.2).**
+- **One template for the consolidated layer report.**
   `layer-report.sh` now renders `templates/layer-report.md.tmpl` with fixed
   sections: per-module result, frequent Rector rules with hits and reversions,
   manual changes, post-port fixes, pre-existing bugs, behavior changes to
@@ -520,7 +520,7 @@ tag the commit `vX.Y.Z`.
   - `render_template_files` (common.sh) substitutes `{{KEY}}` tokens with file
     contents in one left-to-right pass: values may be multi-line, hold `|`,
     `&` or `\`, exceed the environment's size limit, and are never re-scanned.
-- **Learned-pattern catalog (`scripts/analysis/patterns.sh`, 4.3).** The same
+- **Learned-pattern catalog (`scripts/analysis/patterns.sh`).** The same
   port failures kept coming back module after module and layer after layer,
   and the lessons lived only in hand-kept FAQs outside drupilot. Each project
   now has one catalog, `<root>/.drupilot/patterns.json` (visible,
@@ -555,7 +555,7 @@ tag the commit `vX.Y.Z`.
   - `port-report.sh` renders a "Learned patterns" section from an optional
     manifest key `learned_patterns {scan, recorded}`. Without it, the report
     is unchanged.
-- **`/drupilot-clean` and `scripts/env/clean.sh` (4.5).** Test-beds piled up
+- **`/drupilot-clean` and `scripts/env/clean.sh`.** Test-beds piled up
   DDEV projects and a few hundred MB of Composer trees each, and the only way
   to remove one was a manual `ddev delete` plus `rm -rf`, which with the
   default `move` placement would also have deleted the developer's only
@@ -605,7 +605,7 @@ tag the commit `vX.Y.Z`.
   `testbed_kind`, `subjects_with_state_under`, `env_status_record`,
   `fast_copy_tree`, `core_cache_dir`, `core_cache_lookup`,
   `core_cache_entries`, `core_cache_prune`.
-- **Optional annotation → PHP 8 attribute pass (4.6):
+- **Optional annotation → PHP 8 attribute pass:
   `scripts/analysis/convert-attributes.sh`, also `run-rector.sh --attributes`.**
   Ports needed hand-written Rector configs to convert plugin annotations, because
   `palantirnet/drupal-rector` 0.21.x ships `AnnotationToAttributeRector` but
