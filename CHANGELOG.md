@@ -28,6 +28,16 @@ tag the commit `vX.Y.Z`.
   intended difference is listed, pinned by its sha256, in
   `tests/baseline/v0.9.0/allowed-diffs.txt`.
 
+### Fixed
+- **`detect-php-floor.sh` failed on BusyBox (Alpine).** It selected the PHP
+  files with `grep --include`, which BusyBox grep does not have: the script
+  exited 2 with no output, so `core-strategy.sh` lost the detected PHP floor
+  (`require_php` fell back to the target). The files are now selected with
+  `find ... -exec grep ... {} +`, and the first signal is the first hit in path
+  and line order instead of the directory walk order. `convert-attributes.sh`
+  found no custom plugin manager there for the same reason. The `portability`
+  gate of `scripts/dev/check.sh` now rejects `grep --include`/`--exclude`.
+
 ## [0.9.0] - 2026-10-03
 
 ### Added

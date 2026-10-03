@@ -14,8 +14,9 @@
 #   - portability no bash-4-only or GNU-only construct in those scripts (they
 #                 must run on bash 3.2 + BSD tools, i.e. stock macOS): ${x,,},
 #                 ${x^^}, declare/local -A|-n|-g, mapfile/readarray, sed -i,
-#                 readlink -f, realpath, grep -P, date -d, xargs -r, stat -c,
-#                 find -printf, envsubst, and a regex interval ({n}, {n,m})
+#                 readlink -f, realpath, grep -P, grep --include/--exclude
+#                 (BusyBox grep has neither; select files with find), date -d,
+#                 xargs -r, stat -c, find -printf, envsubst, a regex interval ({n}, {n,m})
 #                 in an awk regex literal (mawk 1.3.4-20200120, the default awk
 #                 on Debian 12 / Ubuntu 22.04, matches it as literal text),
 #                 and a `case` inside `$(...)` whose patterns lack the leading
@@ -211,6 +212,9 @@ gate_portability() {
             line ~ /(^|[^A-Za-z_])(mapfile|readarray|realpath|envsubst)([^A-Za-z_]|$)/ ||
             line ~ /(^|[^A-Za-z_])sed[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-i/ ||
             line ~ /readlink[[:space:]]+-f/ || line ~ /grep[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*P/ ||
+            line ~ /(^|[[:space:](])--include=/ ||
+            (line ~ /grep[[:space:]].*[[:space:]"'\'']--(include|exclude|exclude-dir)[=[:space:]]/ &&
+             line !~ /grep[[:space:]][^|;]*[[:space:]]--[[:space:]]/) ||
             line ~ /date[[:space:]]+-d/ || line ~ /xargs[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-r/ ||
             line ~ /stat[[:space:]]+-c/ || line ~ /find[[:space:]].*-printf/ ||
             line ~ /\$\([[:space:]]*case[[:space:]].*[[:space:]]in[[:space:]]+[^([:space:]]/ ||
