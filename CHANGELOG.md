@@ -836,6 +836,14 @@ tag the commit `vX.Y.Z`.
   an error about a converted attribute is restored (`phpstan_check`,
   `restored_files`). A type whose files were all skipped no longer raises the
   recommended core floor.
+- **A Rector `--apply` could silently change nothing after another config's
+  run.** Rector's file cache is shared by the main `rector.php`, the digests
+  ruleset and the attributes pass, and it is not keyed on the rules, so a file
+  cached as unchanged by one config was skipped by the next: the apply
+  reported "0 file(s) changed" with status ok. `run-rector.sh` now clears the
+  cache on every pass, and an `--apply` that changes nothing after a dry-run of
+  the same code and `rector.php` announced changes fails (status `error`,
+  exit 3; `partial` for the digests pass).
 - **The router treated a folder of modules as one subject.** `/drupilot
   web/modules/custom` or "port all these modules" ran (or recommended) the
   single-subject flow; `/drupilot-layers` was reachable only by name.

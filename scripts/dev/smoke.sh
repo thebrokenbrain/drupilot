@@ -62,6 +62,10 @@
 #                  skips a @MigrateSource whose source_module key the
 #                  MigrateSource attribute constructor does not take (needs the
 #                  analyze profile, else skipped with a warning)
+#   rector-cache   run-rector.sh (stub Rector) passes --clear-cache to every
+#                  pass, and an --apply that changes nothing after a dry-run of
+#                  the same code announced changes is an error (exit 3)
+#                  (needs the analyze profile, else skipped with a warning)
 #
 # Isolation: the fixtures are copied to a temp dir (legacy_widgets is committed
 # there as a git repo when git exists), and HOME, CLAUDE_PLUGIN_DATA and the
@@ -92,7 +96,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$REPO/tests/fixtures"
 SH="${BASH:-bash}"
 
-ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes"
+ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache"
 
 AS_JSON=0; ONLY=""; SKIP=""; KEEP=0
 
@@ -617,6 +621,33 @@ PHP
   finish
 }
 
+test_rector_cache() {
+  local r="$FX/rc-root" rr="$REPO/scripts/analysis/run-rector.sh" sub
+  if ! analyze_ready; then
+    log_warn "rector-cache: the analyze profile is not ready, the test is skipped."
+    finish; return 0
+  fi
+  mk_stub_root "$r" "11.4.8"
+  cp -R "$LW" "$r/web/modules/custom/"
+  sub="$r/web/modules/custom/legacy_widgets"
+  printf 'change web/modules/custom/legacy_widgets/legacy_widgets.module' > "$r/rector-mode"
+  run rc1 "$SH" "$rr" --subject "$sub" --json
+  expect "dry-run: changed files" "$(jqo rc1 '.changed_files')" "1"
+  expect "every pass clears the Rector cache" "$(grep -vc -- '--clear-cache' "$r/rector-args.log" || true)" "0"
+  # A stale cache: the apply changes nothing although the dry-run of the same
+  # code announced a change.
+  printf 'none' > "$r/rector-mode"
+  run rc2 "$SH" "$rr" --subject "$sub" --apply --json
+  expect "stale apply: exit" "$RC" "3"
+  expect "stale apply: status" "$(jqo rc2 '.status')" '"error"'
+  expect_match "stale apply: message" "$(jqo rc2 '.errors[0].message')" 'reported 1 file\(s\) to change, but the apply changed none'
+  printf 'change web/modules/custom/legacy_widgets/legacy_widgets.module' > "$r/rector-mode"
+  run rc3 "$SH" "$rr" --subject "$sub" --apply --json
+  expect "consistent apply: exit" "$RC" "0"
+  expect "consistent apply: status" "$(jqo rc3 '.status')" '"ok"'
+  finish
+}
+
 # --- Main -----------------------------------------------------------------------
 log_step "drupilot smoke tests (bash ${BASH_VERSION:-?}, $(uname -s 2>/dev/null || echo ?))"
 for t in $ALL_TESTS; do
@@ -638,6 +669,7 @@ for t in $ALL_TESTS; do
     status-probe) test_status_probe;;
     core-target) test_core_target;;
     attributes) test_attributes;;
+    rector-cache) test_rector_cache;;
   esac
 done
 

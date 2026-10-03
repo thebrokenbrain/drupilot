@@ -86,6 +86,13 @@
 # replaced; a warning is printed when it does not skip
 # ArrayToFirstClassCallableRector.
 #
+# Every pass runs with --clear-cache (Rector's cache is shared across configs,
+# so a file another config cached as unchanged would otherwise be skipped). A
+# dry-run records its per-pass counts (<state_dir>/rector-dryrun.json, with the
+# subject digest and the rector.php checksum); an --apply on the same code and
+# config that changes 0 files in a pass whose dry-run announced changes is an
+# error (status "error" for the official pass, exit 3; "partial" for digests).
+#
 # Exit codes: 0 ok · 1 usage error · 2 gate (requirements, Drupal root,
 # vendor/bin/rector or a source for rector.php missing) · 3 the official pass
 # crashed or reported errors (toolchain/config broken; the diagnostic lists the
@@ -275,7 +282,13 @@ run_rector_pass() {
   local pass="$1" dry="$2"; shift 2
   local -a cmd=()
   [[ -n "$RUNNER" ]] && read -r -a cmd <<<"$RUNNER"
-  cmd+=(vendor/bin/rector process "$SUBJECT_REL")
+  # --clear-cache: Rector's file cache is shared by every config that runs in
+  # the same PHP (this rector.php, the digests all.php, the attributes pass of
+  # convert-attributes.sh) and is not keyed on the config's rules, so a file
+  # another config cached as "unchanged" would be skipped here: an --apply
+  # after another config's run silently changed nothing. A module is small, so
+  # every pass starts from an empty cache.
+  cmd+=(vendor/bin/rector process "$SUBJECT_REL" --clear-cache)
   if [[ "$dry" == "1" ]]; then cmd+=(--dry-run); fi
   cmd+=("$@")
   log_step "Rector: ${cmd[*]}"
@@ -318,6 +331,15 @@ emit_changed_files() {
     | sed -E 's/^[0-9]+\) //' \
     | sort -u
 }
+
+# --- Dry-run record (an --apply must change what its dry-run announced) -----
+# A dry-run records how many files each pass would change, with the subject's
+# digest and the rector.php checksum. An --apply on the SAME code and config
+# that then changes nothing in a pass whose dry-run announced changes is an
+# error (a stale cache or a broken run), never "0 files changed, ok".
+DRYRUN_REC="$(project_state_dir "$SUBJECT_ABS")/rector-dryrun.json"
+PRE_DIGEST="$(subject_digest "$SUBJECT_ABS")"
+RECTOR_SUM="$(cksum < "$RECTOR_PHP" 2>/dev/null | awk '{ print $1 "-" $2 }' || true)"
 
 # --- Pass 1: official palantirnet/drupal-rector ---------------------------
 hr
@@ -463,6 +485,43 @@ PASS1_FILES="$(emit_changed_files "$PASS1_RAW" 2>/dev/null || true)"
 PASS2_FILES=""
 [[ -n "$PASS2_RAW" ]] && PASS2_FILES="$(emit_changed_files "$PASS2_RAW" 2>/dev/null || true)"
 CHANGED="$( { printf '%s\n' "$PASS1_FILES"; printf '%s\n' "$PASS2_FILES"; } | grep -v '^$' | sort -u || true)"
+
+# Dry-run vs apply consistency (see DRYRUN_REC above).
+P1N="$(printf '%s\n' "$PASS1_FILES" | grep -c . || true)"
+P2N="$(printf '%s\n' "$PASS2_FILES" | grep -c . || true)"
+if [[ "$APPLY" != "1" && "$PASS1_OK" == "1" && -n "$PRE_DIGEST" ]] && have_cmd jq; then
+  jq -n --arg d "$PRE_DIGEST" --arg r "$RECTOR_SUM" --argjson dg "$([[ "$USE_DIGESTS" == "1" ]] && echo true || echo false)" \
+    --arg dc "${DIGESTS_SHA:-$DIGESTS_CONFIG}" --argjson p1 "$P1N" --argjson p2 "$P2N" --arg ds "$DIGESTS_STATUS" \
+    --arg f2 "$PASS2_FILES" \
+    --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{tool: "run-rector", generated_at: $at, subject_digest: $d, rector_php: $r, digests: $dg,
+      digests_config: $dc, digests_status: $ds, pass1_files: $p1, pass2_files: $p2,
+      pass2_list: ($f2 | split("\n") | map(select(length > 0)))}' \
+    > "$DRYRUN_REC" 2>/dev/null || true
+elif [[ "$APPLY" == "1" && -n "$PRE_DIGEST" && -r "$DRYRUN_REC" ]] && have_cmd jq; then
+  _rec="$(jq -c --arg d "$PRE_DIGEST" --arg r "$RECTOR_SUM" 'select(.subject_digest == $d and .rector_php == $r)' "$DRYRUN_REC" 2>/dev/null || true)"
+  if [[ -n "$_rec" ]]; then
+    _dp1="$(printf '%s' "$_rec" | jq -r '.pass1_files // 0')"
+    if [[ "$PASS1_OK" == "1" && "$_dp1" -gt 0 && "$P1N" == "0" ]]; then
+      PASS1_OK=0; FAILED_PASSES="$FAILED_PASSES 1"
+      _m="The dry-run on this same code and rector.php reported $_dp1 file(s) to change, but the apply changed none (a stale Rector cache or a run that skipped the files). Nothing was ported: re-run the dry-run, then --apply."
+      ERRORS_JSON="$(printf '%s' "$ERRORS_JSON" | jq -c --arg m "$_m" '. + [{pass: 1, exit_code: 0, message: $m}]')"
+      log_err "Pass 1: $_m"
+    fi
+    # Pass 2 runs on pass 1's output, so only the files pass 1 left alone must
+    # still change (a digests rule may duplicate an official one).
+    _dp2="$(printf '%s' "$_rec" | jq -r --arg dc "${DIGESTS_SHA:-$DIGESTS_CONFIG}" --arg f1 "$PASS1_FILES" '
+      ($f1 | split("\n") | map(select(length > 0))) as $p1
+      | if .digests and .digests_status == "ok" and .digests_config == $dc
+        then [(.pass2_list // [])[] | select(. as $f | any($p1[]; . == $f) | not)] | length else 0 end')"
+    if [[ "$DIGESTS_STATUS" == "ok" && "$_dp2" -gt 0 && "$P2N" == "0" ]]; then
+      DIGESTS_STATUS="error"; FAILED_PASSES="$FAILED_PASSES 2"
+      _m="The digests dry-run on this same code and ruleset reported $_dp2 file(s) to change, but the apply changed none."
+      ERRORS_JSON="$(printf '%s' "$ERRORS_JSON" | jq -c --arg m "$_m" '. + [{pass: 2, exit_code: 0, message: $m}]')"
+      log_err "Pass 2: $_m"
+    fi
+  fi
+fi
 
 # Rule names from Rector's "Applied rules:" sections (" * SomeRector" lines).
 APPLIED_RULES="$(printf '%s\n%s\n' "$PASS1_RAW" "$PASS2_RAW" \
