@@ -811,6 +811,13 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **The metadata lint counted plugins from other copies of the module.**
+  The `plugin-schema` check took every plugin with the subject's machine name
+  found anywhere in the `--set-dir` (in a shared test-bed: the subject seen a
+  second time; with a broad directory: every unrelated copy), so warnings and
+  totals were inflated. It now checks only the subject's own plugins; the rest
+  of the set still resolves references. The extension scan marks each plugin
+  with `own`.
 - **`port-summary.sh` could contradict itself.** A recorded `false` (digests
   `applied`/`skipped`, the `fresh` flag of the test run and of the core matrix)
   came out as `null`, and `d10_support` came from the port manifest while the

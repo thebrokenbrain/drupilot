@@ -221,7 +221,7 @@ fi
 if check_on plugin-schema; then
   jq -r --slurpfile s "$WORK/scan.json" '
     ($s[0].extensions | map(.machine)) as $mine
-    | .plugins[] | select(.has_settings) | select(.machine as $x | $mine | index($x))
+    | .plugins[] | select(.own and .has_settings) | select(.machine as $x | $mine | index($x))
     | [.machine, .type, .id, .file] | join("\u001f")' "$WORK/scan.json" 2>/dev/null \
   | while IFS=$'\x1f' read -r m ptype pid pfile; do
       case "$ptype" in

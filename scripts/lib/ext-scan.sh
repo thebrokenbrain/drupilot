@@ -21,8 +21,9 @@
 #       proposed:["<project>:<module>", ...]}],
 #      known:[<machine names of KNOWN_DIR extensions>],
 #      services:{id: machine}, routes:{name: machine},
-#      plugins:[{machine, type, id, file, has_settings}]}
-#     Paths are relative to DIR. Extensions under KNOWN_DIR (e.g. the rest of
+#      plugins:[{machine, type, id, file, has_settings, own}]}
+#     Paths are relative to DIR (own: true), or to the KNOWN_DIR that holds the
+#     plugin (own: false). Extensions under KNOWN_DIR (e.g. the rest of
 #     a monorepo when DIR is one module) only resolve references; they are not
 #     reported themselves.
 #
@@ -335,7 +336,8 @@ ext_scan_json() {
         | sort_by(.dir | length))}) | from_entries) as $anc
     | ($allrec | map(select(.[0] == "D" and .[2] == "service")) | map({key: .[3], value: .[1]}) | from_entries) as $svc
     | ($allrec | map(select(.[0] == "D" and .[2] == "route")) | map({key: .[3], value: .[1]}) | from_entries) as $rte
-    | ($allrec | map(select(.[0] == "P")) | map({machine: .[1], type: .[2], id: .[3], file: .[4], has_settings: (.[5] == "1")})) as $plg
+    | (def plugin($own): {machine: .[1], type: .[2], id: .[3], file: .[4], has_settings: (.[5] == "1"), own: $own};
+       ($recs | map(select(.[0] == "P") | plugin(true))) + (rows($krec) | map(select(.[0] == "P") | plugin(false)))) as $plg
     | ($plg | map({key: .id, value: .machine}) | from_entries) as $pmap
     | ($recs | map(select(.[0] == "G")) | map({key: (.[1] + "|" + .[2] + "|" + .[3]), value: true}) | from_entries) as $guards
     | (rows($decl) | map({m: .[0], entry: .[1], module: .[2], source: "info"})) as $dinfo

@@ -37,7 +37,8 @@
 #                  for the declared ^10 floor and for a ^11.3 floor
 #   lint-metadata  lint-extension-metadata.sh on legacy_widgets and on each
 #                  monorepo module (per-module error/warn/info totals, an
-#                  undeclared-deps message text)
+#                  undeclared-deps message text); a same-named copy in the
+#                  --set-dir does not duplicate plugin-schema findings
 #   (every test)   a shell-level error on a script's stderr (syntax error,
 #                  unbound variable, command not found, ...) fails the test
 #   layers         layers.sh on the monorepo: layers, cycle, early module,
@@ -396,6 +397,15 @@ test_lint_metadata() {
   expect_match "legacy_widgets: undeclared-deps message" \
     "$(jqo lm '[.findings[] | select(.check == "undeclared-deps") | .message][0]')" \
     "uses project module 'legacy_widgets' "
+  # Same-named copies elsewhere in the --set-dir only resolve references: the
+  # plugin-schema check reports the subject's own plugins once.
+  mkdir -p "$FX/lintset/a" "$FX/lintset/b"
+  cp -R "$LW" "$FX/lintset/a/"; cp -R "$LW" "$FX/lintset/b/"
+  run lms "$SH" "$l" --subject "$FX/lintset/a/legacy_widgets" --set-dir "$FX/lintset" --no-write --json
+  expect "legacy_widgets in a set with a copy: totals" "$(jqo lms '.totals | "\(.error)/\(.warn)/\(.info)"')" '"2/8/0"'
+  expect "legacy_widgets in a set with a copy: plugin-schema files" \
+    "$(jqo lms '[.findings[] | select(.check == "plugin-schema") | .file] | sort')" \
+    '["src/Plugin/Condition/WidgetsEnabledCondition.php","src/Plugin/Filter/WidgetSummaryFilter.php"]'
   for m in acme_api:0/2/0 acme_billing:0/0/0 acme_core:0/0/0 acme_invoice:0/1/0 \
            acme_reports:0/6/2 acme_search:0/3/0 acme_standalone:0/0/0 acme_utils:1/0/0; do
     n="${m%%:*}"; want="${m#*:}"
