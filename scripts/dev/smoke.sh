@@ -84,6 +84,10 @@
 #   port-summary   port-summary.sh keeps a recorded `false` (digests, fresh)
 #                  and takes d10_support and the core-matrix blocker from the
 #                  same source (a fresh core matrix over the manifest)
+#   project-root   subject_project_root (what ddev-add-ons.sh --subject uses)
+#                  resolves the Drupal root above a placed subject, the sibling
+#                  test-bed of a loose checkout, and the test-bed holding a
+#                  moved-away original path
 #
 # Isolation: the fixtures are copied to a temp dir (legacy_widgets is committed
 # there as a git repo when git exists), and HOME, CLAUDE_PLUGIN_DATA and the
@@ -114,7 +118,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$REPO/tests/fixtures"
 SH="${BASH:-bash}"
 
-ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary"
+ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root"
 
 AS_JSON=0; ONLY=""; SKIP=""; KEEP=0
 
@@ -777,6 +781,20 @@ test_port_summary() {
   finish
 }
 
+test_project_root() {
+  local r="$FX/pr-root" p="$FX/pr-loose" got
+  mk_stub_root "$r" "11.4.8"
+  cp -R "$CUSTOM/acme_core" "$r/web/modules/custom/"
+  mkdir -p "$p" "$p/acme_utils-d11/web/modules/custom"
+  cp -R "$CUSTOM/acme_core" "$p/"
+  cp -R "$CUSTOM/acme_utils" "$p/acme_utils-d11/web/modules/custom/"
+  got="$("$SH" -c '. "$1/scripts/lib/common.sh"
+    printf "%s|%s|%s" "$(subject_project_root "$2")" "$(subject_project_root "$3")" "$(subject_project_root "$4")"' \
+    _ "$REPO" "$r/web/modules/custom/acme_core" "$p/acme_core" "$p/acme_utils" 2>/dev/null < /dev/null || true)"
+  expect "placed | loose | moved away" "$got" "$r|$p/acme_core-d11|$p/acme_utils-d11"
+  finish
+}
+
 # --- Main -----------------------------------------------------------------------
 log_step "drupilot smoke tests (bash ${BASH_VERSION:-?}, $(uname -s 2>/dev/null || echo ?))"
 for t in $ALL_TESTS; do
@@ -803,6 +821,7 @@ for t in $ALL_TESTS; do
     shared-testbed) test_shared_testbed;;
     matrix-classify) test_matrix_classify;;
     port-summary) test_port_summary;;
+    project-root) test_project_root;;
   esac
 done
 

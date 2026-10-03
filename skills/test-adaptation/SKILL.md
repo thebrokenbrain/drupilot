@@ -128,7 +128,7 @@ drupilot's separate `.ddev/config.testing.yaml` adds only
 with "No nodes support the capabilities in the request". If JS tests exist:
 
 ```bash
-bash "$ROOT/scripts/env/ddev-add-ons.sh" --selenium
+bash "$ROOT/scripts/env/ddev-add-ons.sh" --selenium --subject "$SUBJECT"
 ```
 
 - The add-on install is idempotent and soft (it warns, does not fail, if Selenium

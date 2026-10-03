@@ -21,6 +21,14 @@
 # Usage:
 #   ddev-add-ons.sh [--contrib] [--selenium] [--subject DIR] [--dir DIR] [-h|--help]
 #
+#   --dir DIR      the Drupal root (DDEV project). Preferred: the setup flow
+#                  passes the resolver's drupal_root.
+#   --subject DIR  resolve the project from the module/theme instead, as
+#                  ddev-up.sh does: the Drupal root above it, the test-bed of a
+#                  loose (copy/symlink) checkout, or — for an original path a
+#                  'move' relocated — the test-bed that now holds it.
+#   With neither, the current directory is the subject.
+#
 # Exit codes:
 #   0 -> requested add-ons installed (or already present); Selenium failure is
 #        non-fatal.
@@ -51,6 +59,10 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+for _v in "$SUBJECT" "$PROJECT_DIR"; do
+  case "$_v" in \<*\>|*\<*\>*) die "Got the unsubstituted placeholder '$_v' — pass the real path." 1;; esac
+done
+
 # No flags -> install both.
 if [[ "$WANT_CONTRIB" == "0" && "$WANT_SELENIUM" == "0" ]]; then
   WANT_CONTRIB=1
@@ -73,8 +85,11 @@ fi
 # ---------------------------------------------------------------------------
 # Resolve the DDEV project directory.
 # ---------------------------------------------------------------------------
+# --dir wins; else the project the subject is ported in, resolved like
+# ddev-up.sh (a loose copy/symlink origin -> its test-bed; a moved-away path ->
+# the test-bed that now holds it).
 if [[ -z "$PROJECT_DIR" ]]; then
-  PROJECT_DIR="$(find_drupal_root "${SUBJECT:-$PWD}" 2>/dev/null || true)"
+  PROJECT_DIR="$(subject_project_root "${SUBJECT:-$PWD}")"
 fi
 [[ -z "$PROJECT_DIR" ]] && PROJECT_DIR="$PWD"
 if [[ ! -f "$PROJECT_DIR/.ddev/config.yaml" ]]; then

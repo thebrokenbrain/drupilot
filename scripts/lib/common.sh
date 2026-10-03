@@ -2253,6 +2253,38 @@ testbed_record_subject() {
     --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 }
 
+# subject_project_root <subject> -> the Drupal root (DDEV project) the
+# subject is ported in, as ddev-up.sh resolves it: the Drupal root above the
+# subject; for a LOOSE checkout (copy/symlink origin, or not placed yet) the
+# test-bed resolve-workspace.sh targets; for a path that no longer exists (a
+# 'move' placement relocated it) the pinned DRUPILOT_WORKSPACE_DIR or the
+# '<name>-d11' sibling that now holds it. Prints nothing (still 0) when none is
+# found. Read-only: it never creates the test-bed.
+subject_project_root() {
+  local s="${1:-$PWD}" r="" base parent c
+  if [[ -d "$s" ]]; then
+    r="$(find_drupal_root "$s" 2>/dev/null || true)"
+    if [[ -z "$r" ]] && is_drupal_extension_dir "$s" && have_cmd jq; then
+      r="$(bash "$(plugin_root)/scripts/env/resolve-workspace.sh" --subject "$s" --json </dev/null 2>/dev/null \
+        | jq -r '.drupal_root // empty' 2>/dev/null || true)"
+    fi
+  else
+    base="$(basename "$s")"
+    parent="$(cd "$(dirname "$s")" 2>/dev/null && pwd || true)"
+    if [[ -n "$parent" && -n "$base" ]]; then
+      for c in "$(config_get DRUPILOT_WORKSPACE_DIR "")" "$parent/${base}-d11"; do
+        [[ -n "$c" ]] || continue
+        if [[ -d "$c/web/modules/custom/$base" || -d "$c/web/themes/custom/$base" \
+              || -d "$c/web/profiles/custom/$base" ]]; then
+          r="$(cd "$c" && pwd)"; break
+        fi
+      done
+    fi
+  fi
+  [[ -n "$r" ]] && printf '%s' "$r"
+  return 0
+}
+
 # testbed_kind <root> -> "marker" (drupilot built it: .drupilot_testbed.created_by
 # is set), "legacy" (built before the marker existed: its .drupilot.json pins
 # DRUPILOT_WORKSPACE_DIR to the root itself, which only place-subject.sh does

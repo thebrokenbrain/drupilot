@@ -142,10 +142,13 @@ and, in deterministic mode, is created with the core version the lockfile froze.
 
 ### 3b — Install the add-ons
 
-Run this yourself via the Bash tool once 3a has the project up:
+Run this yourself via the Bash tool once 3a has the project up, substituting
+`<drupal_root>` with the `drupal_root` from the resolve-workspace.sh JSON (the
+working directory may be the original checkout, which is not the DDEV project,
+or may no longer exist after a `move`):
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-add-ons.sh" --contrib --selenium
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-add-ons.sh" --contrib --selenium --dir "<drupal_root>"
 ```
 
 Installs `ddev/ddev-drupal-contrib` and (for JS tests) `ddev/ddev-selenium-standalone-chrome`

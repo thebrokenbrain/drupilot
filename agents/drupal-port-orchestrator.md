@@ -269,7 +269,7 @@ Goal: a Drupal 11 DDEV site with the toolchain and the subject in place. Use the
 `ddev-environment` skill and:
 - `scripts/env/detect-php.sh --json` to confirm the effective PHP target.
 - `scripts/env/ddev-up.sh` to create/start the D11 DDEV project at the target PHP.
-- `scripts/env/ddev-add-ons.sh --contrib [--selenium]` for the contrib add-on and
+- `scripts/env/ddev-add-ons.sh --contrib [--selenium] --dir <drupal_root>` for the contrib add-on and
   (for JS tests) Selenium standalone Chrome v2.
 - Delegate subject placement to `scripts/env/resolve-workspace.sh` (read-only — decides
   the workspace; a loose checkout targets a sibling `<name>-d11` root, never scaffolded

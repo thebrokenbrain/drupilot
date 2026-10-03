@@ -811,6 +811,17 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **The setup step that installs the DDEV add-ons could not find the
+  project.** `/drupilot-setup` ran `ddev-add-ons.sh` without `--dir`, so run from
+  the original checkout of a `copy` placement it stopped with "No DDEV project
+  found" (and after a `move` the working directory no longer existed), and
+  `--subject <original checkout>` did not find the test-bed either. The setup
+  command (and the skill and agent that document the call) now passes
+  `--dir <drupal_root>`, and `ddev-add-ons.sh --subject` resolves the project as
+  `ddev-up.sh` does: the Drupal root above the subject, the test-bed of a loose
+  checkout, or the test-bed that holds a moved-away original path (new
+  `subject_project_root` helper). An unsubstituted `<placeholder>` argument is
+  refused.
 - **`layers.sh --edges declared` replaced the saved porting plan.** It wrote
   over `layers.json`/`layers.md`, and `layer-report.sh` then reported the
   declared-only layering without saying so. A declared-edges run is now saved

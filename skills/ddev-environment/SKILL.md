@@ -175,8 +175,10 @@ add-on's wrapper commands and testing `web_environment`.
 ## 5. Install add-ons
 
 ```bash
-# contrib add-on always; Selenium only when FunctionalJavascript tests exist
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-add-ons.sh" --contrib --selenium
+# contrib add-on always; Selenium only when FunctionalJavascript tests exist.
+# <drupal_root>: the resolve-workspace.sh drupal_root (the test-bed), not the
+# original checkout.
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-add-ons.sh" --contrib --selenium --dir "<drupal_root>"
 ```
 
 `ddev-add-ons.sh`:
