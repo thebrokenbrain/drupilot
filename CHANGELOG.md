@@ -819,6 +819,17 @@ tag the commit `vX.Y.Z`.
   there and every file of that type kept its annotation with "the constructor
   could not be read". A reference core now only counts for attribute classes
   that ship with core; the test-bed still reads every class.
+- **Setup steps given a monorepo module could still write into the
+  repository.** In a Composer project checkout without installed core that
+  carries a committed `.ddev/config.yaml`, `ensure-gitignore.sh`,
+  `install-toolchain.sh`, `render-templates.sh` and `lock-sync.sh` resolved
+  `--subject` to the repository root, so they edited its tracked `.gitignore`,
+  planned `rector.php`/`phpstan.neon`/`phpcs.xml.dist` there and would have run
+  `composer require --dev` on the user's `composer.json`. They now resolve the
+  subject to the test-bed it is ported in, like the workspace resolver and
+  `ddev-up.sh` (and fail cleanly before that test-bed exists);
+  `render-templates.sh --subject <origin>` maps a copied module to its copy in
+  the test-bed.
 - **The core target still claimed Drupal 10 support after raising the floor
   past it.** A module already declaring `^10 || ^11` whose code uses an
   attribute that exists only from Drupal 11 (for example `ContentEntityType`,

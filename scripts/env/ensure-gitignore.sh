@@ -60,12 +60,10 @@ reject_placeholder --subject "$SUBJECT"
 
 if [[ -z "$ROOT" && -n "$SUBJECT" ]]; then
   [[ -d "$SUBJECT" ]] || die "Subject directory not found: $SUBJECT" 1
-  ROOT="$(find_drupal_root "$SUBJECT" 2>/dev/null || true)"
-  if [[ -z "$ROOT" ]] && have_cmd jq; then
-    # A loose subject: use the test-bed root the workspace resolver targets.
-    ROOT="$(bash "$(plugin_root)/scripts/env/resolve-workspace.sh" --subject "$SUBJECT" --json 2>/dev/null \
-      | jq -r '.drupal_root // empty' 2>/dev/null || true)"
-  fi
+  # The Drupal root the subject is ported in: for a loose subject, or a module
+  # of a project checkout without installed core (a monorepo clone, even with a
+  # committed .ddev/), the test-bed the workspace resolver targets.
+  ROOT="$(subject_project_root "$SUBJECT")"
 fi
 [[ -n "$ROOT" ]] || ROOT="$(find_drupal_root 2>/dev/null || true)"
 [[ -n "$ROOT" ]] || die "No Drupal root given or detected. Pass --root DIR or --subject DIR." 1

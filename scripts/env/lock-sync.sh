@@ -68,8 +68,10 @@ done
 have_cmd jq || { log_warn "jq is required for the lockfile; skipping lock-sync."; exit 0; }
 
 # --- Resolve the project directory ----------------------------------------
-if [[ -z "$PROJECT_DIR" ]]; then
-  PROJECT_DIR="$(find_drupal_root "${SUBJECT:-$PWD}" 2>/dev/null || true)"
+if [[ -z "$PROJECT_DIR" && -n "$SUBJECT" ]]; then
+  PROJECT_DIR="$(subject_project_root "$SUBJECT")"
+elif [[ -z "$PROJECT_DIR" ]]; then
+  PROJECT_DIR="$(drupal_run_root "$PWD" 2>/dev/null || true)"
 fi
 [[ -z "$PROJECT_DIR" ]] && PROJECT_DIR="$PWD"
 PROJECT_DIR="$(cd "$PROJECT_DIR" 2>/dev/null && pwd || printf '%s' "$PROJECT_DIR")"

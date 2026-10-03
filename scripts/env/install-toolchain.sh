@@ -103,8 +103,13 @@ case "$SOURCE" in auto|reference|range) ;; *) die "Invalid --source '$SOURCE' (e
 have_cmd jq || die "jq is required (run /drupilot-doctor)." 2
 
 # --- Resolve the Drupal root ------------------------------------------------
-if [[ -z "$ROOT" ]]; then
-  ROOT="$(find_drupal_root "${SUBJECT:-$PWD}" 2>/dev/null || true)"
+# A --subject resolves to the root it is ported in (subject_project_root): never
+# a project checkout without installed core, e.g. a monorepo with a committed
+# .ddev/, whose composer.json belongs to the user.
+if [[ -z "$ROOT" && -n "$SUBJECT" ]]; then
+  ROOT="$(subject_project_root "$SUBJECT")"
+elif [[ -z "$ROOT" ]]; then
+  ROOT="$(drupal_run_root "$PWD" 2>/dev/null || true)"
 fi
 [[ -n "$ROOT" && -d "$ROOT" ]] || die "Could not locate the Drupal root (pass --dir ROOT, or run ddev-up.sh first)." 2
 ROOT="$(cd "$ROOT" && pwd)"

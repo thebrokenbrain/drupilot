@@ -873,6 +873,16 @@ test_monorepo_testbed() {
   mkdir -p "$m/.ddev"; printf 'name: acme\ntype: drupal10\n' > "$m/.ddev/config.yaml"
   run mw2 "$SH" "$rw" --subject "$m/web/modules/custom/acme_core" --json
   expect "monorepo with .ddev: still a sibling test-bed" "$(jqo mw2 '[.layout, .drupal_root]')" "[\"project-no-core\",\"$m-d11\"]"
+  # ... and the --subject consumers that write never target the repository.
+  run mg1 "$SH" "$REPO/scripts/env/ensure-gitignore.sh" --subject "$m/web/modules/custom/acme_core"
+  expect "monorepo with .ddev: ensure-gitignore leaves the origin .gitignore alone" \
+    "$(git -C "$m" status --porcelain -- .gitignore 2>/dev/null)" ""
+  run mg2 "$SH" "$REPO/scripts/env/install-toolchain.sh" --subject "$m/web/modules/custom/acme_core" --dry-run
+  expect "monorepo with .ddev: install-toolchain does not pick the repository" \
+    "$(grep -c "Drupal root *: $m\$" "$TMP/out/mg2.err" || true)" "0"
+  run mg3 "$SH" "$REPO/scripts/env/render-templates.sh" --subject "$m/web/modules/custom/acme_core" --dry-run --json
+  expect "monorepo with .ddev: render-templates plans nothing in the repository" \
+    "$(jq -r '.root // empty' "$TMP/out/mg3.out" 2>/dev/null || true)" ""
   rm -rf "$m/.ddev"
   # A folder of modules in a repository that is not a Drupal project.
   mkdir -p "$f/mods"; cp -R "$CUSTOM/acme_utils" "$f/mods/"
@@ -895,6 +905,9 @@ test_monorepo_testbed() {
   expect "place: the copy has a baseline" \
     "$(git -C "$dest" rev-parse --verify -q refs/drupilot/baseline >/dev/null 2>&1 && echo yes)|$(git -C "$dest" config drupilot.originPrefix 2>/dev/null)" \
     "yes|web/modules/custom/acme_core/"
+  run mg4 "$SH" "$REPO/scripts/env/render-templates.sh" --subject "$m/web/modules/custom/acme_core" --dry-run --json
+  expect "render-templates --subject <origin>: the placed copy in the test-bed" \
+    "$(jqo mg4 '[.root, .subject_path]')" "[\"$m-d11\",\"web/modules/custom/acme_core\"]"
   # /drupilot-clean may discard the pristine seeded copy, not a ported one.
   if [[ -f "$m-d11/.drupilot.json" ]]; then
     jq '.drupilot_testbed.created_by = "smoke"' "$m-d11/.drupilot.json" > "$m-d11/.drupilot.json.new" \

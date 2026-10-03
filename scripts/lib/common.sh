@@ -571,6 +571,24 @@ find_project_root_nocore() {
   return 1
 }
 
+# drupal_run_root [start] -> find_drupal_root, except that a Composer project
+# checkout WITHOUT installed core (a monorepo clone) is never returned, even
+# when it carries a committed .ddev/config.yaml: nothing runs there, and its
+# modules are ported in a test-bed outside the repository (resolve-workspace.sh).
+# A drupilot test-bed is never discarded (its core may be missing mid-setup).
+# Prints nothing (exit 1) when there is no usable root.
+drupal_run_root() {
+  local start="${1:-$PWD}" r
+  r="$(find_drupal_root "$start" 2>/dev/null || true)"
+  [[ -n "$r" ]] || return 1
+  if ! drupal_core_installed "$r" && find_project_root_nocore "$start" >/dev/null 2>&1 \
+     && [[ "$(testbed_kind "$r")" == "none" ]]; then
+    return 1
+  fi
+  printf '%s' "$r"
+  return 0
+}
+
 # git_enclosing_repo <dir> -> the top level of the git work tree <dir> belongs to
 # when that top level is NOT <dir> itself (the module is a sub-directory of a
 # larger repository: a project monorepo, a folder of modules), else nothing
@@ -2356,12 +2374,8 @@ testbed_record_subject() {
 subject_project_root() {
   local s="${1:-$PWD}" r="" base parent c
   if [[ -d "$s" ]]; then
-    r="$(find_drupal_root "$s" 2>/dev/null || true)"
     # A project checkout without installed core is not where the module runs.
-    if [[ -n "$r" ]] && ! drupal_core_installed "$r" \
-       && find_project_root_nocore "$s" >/dev/null 2>&1 && [[ "$(testbed_kind "$r")" == "none" ]]; then
-      r=""
-    fi
+    r="$(drupal_run_root "$s" 2>/dev/null || true)"
     if [[ -z "$r" ]] && is_drupal_extension_dir "$s" && have_cmd jq; then
       r="$(bash "$(plugin_root)/scripts/env/resolve-workspace.sh" --subject "$s" --json </dev/null 2>/dev/null \
         | jq -r '.drupal_root // empty' 2>/dev/null || true)"

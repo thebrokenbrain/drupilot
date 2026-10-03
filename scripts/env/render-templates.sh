@@ -124,7 +124,9 @@ reject_placeholder --subject-path "$SUBJECT_PATH"
 # --- Resolve the Drupal root ------------------------------------------------
 if [[ -z "$ROOT" && -n "$SUBJECT" ]]; then
   [[ -d "$SUBJECT" ]] || die "Subject directory not found: $SUBJECT (pass --root too, or --subject-path)." 1
-  ROOT="$(find_drupal_root "$SUBJECT" 2>/dev/null || true)"
+  # The root the subject is ported in: the test-bed for a loose subject or a
+  # module of a project checkout without installed core (never the user's repo).
+  ROOT="$(subject_project_root "$SUBJECT")"
 fi
 [[ -n "$ROOT" ]] || die "No Drupal root given or detected. Pass --root DIR (or a --subject inside a Drupal root)." 1
 [[ -d "$ROOT" ]] || die "Root directory not found: $ROOT" 1
@@ -136,6 +138,15 @@ if [[ -z "$SUBJECT_PATH" && -n "$SUBJECT" ]]; then
   SUBJ_ABS="$(cd "$SUBJECT" 2>/dev/null && pwd || true)"
   [[ -n "$SUBJ_ABS" ]] || SUBJ_ABS="$(cd "$ROOT/$SUBJECT" 2>/dev/null && pwd || true)"
   [[ -n "$SUBJ_ABS" ]] || die "Subject directory not found: '$SUBJECT'." 1
+  case "$SUBJ_ABS" in
+    "$ROOT"/*) ;;
+    *) # A copy/symlink origin: the placed copy in the test-bed, when present.
+       for _d in modules themes profiles; do
+         if [[ -d "$ROOT/web/$_d/custom/$(basename "$SUBJ_ABS")" ]]; then
+           SUBJ_ABS="$ROOT/web/$_d/custom/$(basename "$SUBJ_ABS")"; break
+         fi
+       done;;
+  esac
   case "$SUBJ_ABS" in
     "$ROOT"/*) SUBJECT_PATH="${SUBJ_ABS#"$ROOT"/}";;
     *) die "Subject '$SUBJ_ABS' is outside the Drupal root '$ROOT' (place it first, or pass --subject-path)." 1;;
