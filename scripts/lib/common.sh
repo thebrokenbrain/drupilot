@@ -212,14 +212,22 @@ copy_legacy_state_once() {
     log_warn "Could not create $root/state: the state drupilot 0.9.0 left in $(printf '%s' "$srcs" | tr '\n' ' ')was not copied (retried by the next command)."
     return 0
   fi
+  # Process substitution, not here-strings: bash < 5.1 backs a here-string
+  # with a temp file, and a full /tmp would skip the loop silently. Every
+  # listed line must also be seen, or the import does not count as complete.
+  local want got want_src got_src=0
+  want_src="$(printf '%s\n' "$srcs" | grep -c . || true)"
   while IFS= read -r src; do
     [[ -n "$src" ]] || continue
+    got_src=$((got_src + 1))
     if ! list="$(cd "$src/state" 2>/dev/null && find . -type f 2>/dev/null)"; then
       nf=$((nf + 1)); failed="$failed $src/state (not fully readable)"
     fi
+    want="$(printf '%s\n' "$list" | grep -c . || true)"; got=0
     while IFS= read -r rel; do
       rel="${rel#./}"
       [[ -n "$rel" ]] || continue
+      got=$((got + 1))
       [[ -f "$partial" ]] && grep -qxF -- "$rel" "$partial" 2>/dev/null && continue
       dst="$root/state/$rel"
       if [[ -e "$dst" ]]; then
@@ -234,8 +242,10 @@ copy_legacy_state_once() {
         rm -f "$tmp" 2>/dev/null
         nf=$((nf + 1)); failed="$failed $src/state/$rel"
       fi
-    done <<< "$(printf '%s\n' "$list" | LC_ALL=C sort)"
-  done <<< "$srcs"
+    done < <(printf '%s\n' "$list" | LC_ALL=C sort)
+    if [[ "$got" -ne "$want" ]]; then nf=$((nf + 1)); failed="$failed $src/state (listing not read)"; fi
+  done < <(printf '%s\n' "$srcs")
+  if [[ "$got_src" -ne "$want_src" ]]; then nf=$((nf + 1)); failed="$failed (the legacy dir list was not read)"; fi
   if [[ "$nf" -gt 0 ]]; then
     log_warn "Copied $n state file(s) of drupilot 0.9.0 into $root/state; $nf could not be copied and will be retried by the next command:$failed"
     return 0
