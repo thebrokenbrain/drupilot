@@ -811,6 +811,13 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **`/drupilot-status --all` listed only the first module when a test-bed's
+  DDEV project was running.** The DDEV status check (`ddev describe`) read
+  from its standard input; inside the portfolio loop of `state.sh list` that
+  input was the rest of the module list, so the loop ended after the first
+  module. Every `ddev`, `docker`, `composer` and version probe in the shared
+  helpers now runs with its standard input closed, and so do the `ddev
+  describe` in `ddev-up.sh` and the image checks of the core matrix.
 - **The recommended core requirement lowered a declared minor floor.** A
   module declaring `^10.3` was recommended `^10 || ^11`, and a module whose
   code uses the Block plugin attribute (core 10.2+) was recommended a floor of

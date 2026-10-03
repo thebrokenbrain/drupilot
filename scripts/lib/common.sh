@@ -70,14 +70,14 @@ tool_version() {
   local cmd="$1" out=""
   have_cmd "$cmd" || { printf ''; return 1; }
   case "$cmd" in
-    php)      out="$(php -r 'echo PHP_VERSION;' 2>/dev/null || php -v 2>&1 | head -n1)";;
-    composer) out="$(composer --version 2>/dev/null | head -n1)";;
-    docker)   out="$(docker --version 2>&1 | head -n1)";;
-    ddev)     out="$(ddev --version 2>&1 | head -n1)";;
-    git)      out="$(git --version 2>&1 | head -n1)";;
-    jq)       out="$(jq --version 2>&1 | head -n1)";;
-    drush)    out="$(drush --version 2>&1 | head -n1)";;
-    *)        out="$("$cmd" --version 2>&1 | head -n1)";;
+    php)      out="$(php -r 'echo PHP_VERSION;' </dev/null 2>/dev/null || php -v </dev/null 2>&1 | head -n1)";;
+    composer) out="$(composer --version </dev/null 2>/dev/null | head -n1)";;
+    docker)   out="$(docker --version </dev/null 2>&1 | head -n1)";;
+    ddev)     out="$(ddev --version </dev/null 2>&1 | head -n1)";;
+    git)      out="$(git --version </dev/null 2>&1 | head -n1)";;
+    jq)       out="$(jq --version </dev/null 2>&1 | head -n1)";;
+    drush)    out="$(drush --version </dev/null 2>&1 | head -n1)";;
+    *)        out="$("$cmd" --version </dev/null 2>&1 | head -n1)";;
   esac
   extract_semver "$out"
 }
@@ -106,7 +106,7 @@ version_ge() {
 # docker_daemon_up -> 0 if the Docker daemon responds (not just the binary)
 docker_daemon_up() {
   have_cmd docker || return 1
-  docker info >/dev/null 2>&1
+  docker info </dev/null >/dev/null 2>&1
 }
 
 # ---------------------------------------------------------------------------
@@ -672,7 +672,7 @@ ddev_project_status() {
   [[ -n "$r" && -f "$r/.ddev/config.yaml" ]] || return 0
   local st=""
   if have_cmd jq; then
-    st="$( (cd "$r" 2>/dev/null && ddev describe -j 2>/dev/null) \
+    st="$( (cd "$r" 2>/dev/null && ddev describe -j </dev/null 2>/dev/null) \
       | jq -r 'select(.raw != null) | .raw.status // empty' 2>/dev/null | head -n1 || true)"
   elif have_cmd docker; then
     local name
@@ -680,7 +680,7 @@ ddev_project_status() {
       | sed -E 's/^name:[[:space:]]*//; s/[[:space:]]*(#.*)?$//' | tr -d '"'"'"'')"
     [[ -n "$name" ]] || name="$(basename "$r")"
     if docker ps --filter "label=com.ddev.site-name=$name" \
-         --filter "label=com.docker.compose.service=web" --format '{{.ID}}' 2>/dev/null \
+         --filter "label=com.docker.compose.service=web" --format '{{.ID}}' </dev/null 2>/dev/null \
          | grep -q .; then
       st="running"
     else
@@ -843,7 +843,7 @@ ddev_addons_installed() {
   [[ -n "$r" && -f "$r/.ddev/config.yaml" ]] || return 0
   local out=""
   if have_cmd ddev && have_cmd jq; then
-    out="$( ( cd "$r" 2>/dev/null && ddev add-on list --installed -j 2>/dev/null ) \
+    out="$( ( cd "$r" 2>/dev/null && ddev add-on list --installed -j </dev/null 2>/dev/null ) \
       | jq -r 'select(type=="object") | (.raw // [])[]? | select(.Name != null) | "\(.Name)\t\(.Version // "")"' 2>/dev/null || true)"
   fi
   if [[ -n "$out" ]]; then

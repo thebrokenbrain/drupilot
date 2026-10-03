@@ -66,6 +66,10 @@
 #                  pass, and an --apply that changes nothing after a dry-run of
 #                  the same code announced changes is an error (exit 3)
 #                  (needs the analyze profile, else skipped with a warning)
+#   state-stdin    state.sh list (with the next step) over two subjects of a
+#                  test-bed whose DDEV project is up, with a fake `ddev` on PATH
+#                  that drains its stdin: both subjects are listed (a ddev call
+#                  inside the read loop must not swallow the rest of the list)
 #
 # Isolation: the fixtures are copied to a temp dir (legacy_widgets is committed
 # there as a git repo when git exists), and HOME, CLAUDE_PLUGIN_DATA and the
@@ -96,7 +100,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$REPO/tests/fixtures"
 SH="${BASH:-bash}"
 
-ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache"
+ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin"
 
 AS_JSON=0; ONLY=""; SKIP=""; KEEP=0
 
@@ -648,6 +652,34 @@ test_rector_cache() {
   finish
 }
 
+test_state_stdin() {
+  local r="$FX/stdin-root" bin="$FX/stdin-bin" m
+  mk_stub_root "$r" "11.4.8"
+  mkdir -p "$r/.ddev" "$bin"
+  printf 'name: dlab-smoke-stdin\ntype: drupal11\n' > "$r/.ddev/config.yaml"
+  # A fake ddev that reads all of its stdin, as a real `ddev describe` may.
+  cat > "$bin/ddev" <<'STUB'
+#!/usr/bin/env bash
+cat > /dev/null
+case "$1" in
+  describe) printf '{"raw":{"status":"running","name":"dlab-smoke-stdin"}}\n';;
+  --version) printf 'ddev version v1.24.10\n';;
+esac
+exit 0
+STUB
+  chmod +x "$bin/ddev"
+  for m in acme_core acme_utils; do
+    cp -R "$CUSTOM/$m" "$r/web/modules/custom/"
+    run ssr env PATH="$bin:$PATH" "$SH" "$REPO/scripts/env/state.sh" record --subject "$r/web/modules/custom/$m" --stage setup --json
+  done
+  run ssl env PATH="$bin:$PATH" "$SH" "$REPO/scripts/env/state.sh" list \
+    --subject "$r/web/modules/custom/acme_core" --subject "$r/web/modules/custom/acme_utils" --json
+  expect "list: exit" "$RC" "0"
+  expect "list: every subject, each with a next step" \
+    "$(jqo ssl '[.count, ([.subjects[] | select(.next != null) | .machine_name] | sort)]')" '[2,["acme_core","acme_utils"]]'
+  finish
+}
+
 # --- Main -----------------------------------------------------------------------
 log_step "drupilot smoke tests (bash ${BASH_VERSION:-?}, $(uname -s 2>/dev/null || echo ?))"
 for t in $ALL_TESTS; do
@@ -670,6 +702,7 @@ for t in $ALL_TESTS; do
     core-target) test_core_target;;
     attributes) test_attributes;;
     rector-cache) test_rector_cache;;
+    state-stdin) test_state_stdin;;
   esac
 done
 

@@ -409,7 +409,7 @@ if [[ -f "$DDEV_CONFIG" ]]; then
 fi
 # The authoritative primary URL comes from `ddev describe` (don't guess the host).
 if have_cmd jq; then
-  PRIMARY_URL="$( ( cd "$PROJECT_DIR" && ddev describe -j 2>/dev/null ) \
+  PRIMARY_URL="$( ( cd "$PROJECT_DIR" && ddev describe -j </dev/null 2>/dev/null ) \
     | jq -r '.raw.primary_url // .raw.httpsurl // empty' 2>/dev/null || true)"
 fi
 log_info "Generated config  : $DDEV_CONFIG"

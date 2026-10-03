@@ -629,9 +629,9 @@ lint_floor() {
   [[ -s "$cache" ]] && { cat "$cache"; return 0; }
   local res st="ran"
   : > "$TMP/lint-$php.tsv"
-  if ! docker image inspect "$image" >/dev/null 2>&1; then
+  if ! docker image inspect "$image" </dev/null >/dev/null 2>&1; then
     log_info "Pulling $image for the PHP $php lint (once)."
-    run_with_timeout 300 docker pull -q "$image" >/dev/null 2>&1 || st="skipped"
+    run_with_timeout 300 docker pull -q "$image" </dev/null >/dev/null 2>&1 || st="skipped"
   fi
   if [[ "$st" == "ran" ]]; then
     cp "$MATRIX_DIR/lint.sh" "$TMP/.drupilot-lint.sh"
