@@ -2120,7 +2120,16 @@ recommend_core_target() {
       req="$(core_requirement_raise_floor "$current_req" "$api_floor")"; composer="$req"
       rationale+=("The code uses $api_attr, which exists only from core $api_floor: the declared floor $_decl_floor is raised ('$current_req' -> '$req').")
     fi
-    if [[ "$had_pre11" == "1" ]]; then
+    # The raised floor may leave Drupal 10 behind ('^10 || ^11' + an 11.1
+    # attribute -> '^11.1'): the Drupal 10 logic follows the requirement now
+    # declared, not the one read from the module.
+    local req_pre11=0
+    if printf '%s' "$req" | grep -qE '(^|[^0-9])(8|9|10)([^0-9]|$)'; then req_pre11=1; fi
+    if [[ "$had_pre11" == "1" && "$req_pre11" == "0" ]]; then
+      resolved="d11-only"
+      warnings+=("Drupal 10 cannot be kept: the code uses $api_attr, which exists only from core $api_floor (PHPStan reports the unknown class on Drupal 10). Keep the annotation instead of the attribute to stay on '$current_req'.")
+    fi
+    if [[ "$req_pre11" == "1" ]]; then
       # The kept requirement still allows Drupal 10, so declare the PHP floor.
       require_php=">=$php_target"
       if [[ "$floor_strategy" == "detect" && -n "$detected_floor" ]]; then
@@ -2130,7 +2139,7 @@ recommend_core_target() {
         effective_floor="$f"; require_php=">=$f"
       fi
       d10_support="declared-not-verified"
-      warnings+=("The kept requirement still allows Drupal 10 ('$current_req'); its Drupal 10 compatibility is DECLARED, not verified — run verify-core-matrix.sh (static check on a Drupal 10 core) and install/test on Drupal 10 before relying on it.")
+      warnings+=("The kept requirement still allows Drupal 10 ('$req'); its Drupal 10 compatibility is DECLARED, not verified — run verify-core-matrix.sh (static check on a Drupal 10 core) and install/test on Drupal 10 before relying on it.")
     fi
     if printf '%s' "$current_req" | grep -qE '(^|[^0-9])(8|9)([^0-9]|$)'; then
       suggested+=("The requirement still lists EOL Drupal 8/9 ('$current_req'); narrow it (e.g. to '^10 || ^11' or '^11') via the core-target choice if you no longer support them.")

@@ -577,6 +577,14 @@ test_core_target() {
   run ct4 "$SH" "$cs" --subject "$m/acme_core" --json
   expect "^10 + ContentEntityType attribute: Drupal 11 only" "$(jqo ct4 "$q")" '"d11-only ^11.1 11.1"'
   expect "^10 + ContentEntityType attribute: major bump" "$(jqo ct4 '.version_bump')" '"major"'
+  # Already Drupal 11-compatible ('^10 || ^11'): the raised floor drops Drupal
+  # 10, so no Drupal 10 support or require.php is claimed any more.
+  sed_inplace "$m/acme_core/acme_core.info.yml" 's/^core_version_requirement: .*/core_version_requirement: ^10 || ^11/'
+  run ct5 "$SH" "$cs" --subject "$m/acme_core" --json
+  expect "^10 || ^11 + ContentEntityType attribute: Drupal 10 dropped" \
+    "$(jqo ct5 '[.strategy, .recommended_core_version_requirement, .d10_support, .require_php, .version_bump]')" '["d11-only","^11.1","n/a",null,"major"]'
+  expect "^10 || ^11 + ContentEntityType attribute: no 'still allows Drupal 10' warning" \
+    "$(jqo ct5 '[.warnings[] | select(test("still allows Drupal 10"))] | length')" '0'
   # The default matrix legs, on a stub Drupal 11 root.
   mk_stub_root "$r" "11.4.8"
   cp -R "$LW" "$r/web/modules/custom/"

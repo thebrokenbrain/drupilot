@@ -819,6 +819,15 @@ tag the commit `vX.Y.Z`.
   there and every file of that type kept its annotation with "the constructor
   could not be read". A reference core now only counts for attribute classes
   that ship with core; the test-bed still reads every class.
+- **The core target still claimed Drupal 10 support after raising the floor
+  past it.** A module already declaring `^10 || ^11` whose code uses an
+  attribute that exists only from Drupal 11 (for example `ContentEntityType`,
+  from 11.1) had its requirement raised to `^11.1`, but the recommendation kept
+  reporting Drupal 10 as "declared, not verified", a `require.php` floor and a
+  "still allows Drupal 10" warning, so the port manifest, the issue text and
+  the summary promised Drupal 10 support. The Drupal 10 logic now follows the
+  requirement actually recommended: the strategy is `d11-only`, Drupal 10
+  support is `n/a`, and the warning says why Drupal 10 cannot be kept.
 - **`convert-attributes.sh --raise-floor` could raise the core requirement for
   an attribute it had just undone.** The core floor was computed before the
   checks that restore a file (a duplicate attribute, a `php -l` failure, a
