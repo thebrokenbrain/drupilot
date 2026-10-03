@@ -178,6 +178,8 @@ STATE_FILE="$(subject_state_file "$SUBJECT")"; [[ -f "$STATE_FILE" ]] || STATE_F
 # Stages from state.json (recorded by port-report.sh / run-phpunit.sh through
 # phase_record), falling back to the legacy <state_dir>/phase marker.
 PHASE="$(phase_get "$SUBJECT")"
+# A port finished before the stage was recorded still shows from its manifest.
+[[ -n "$PHASE" ]] || PHASE="$(port_manifest_stage "$SUBJECT")"
 PORTED="false"; phase_reached "$SUBJECT" ported && PORTED="true"
 REFACTORED="false"; phase_reached "$SUBJECT" refactored && REFACTORED="true"
 

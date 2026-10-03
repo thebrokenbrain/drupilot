@@ -240,6 +240,22 @@ test_next_step() {
   # shellcheck disable=SC2086
   run nsh "$SH" "$REPO/scripts/env/next-step.sh" --subject "$LW" $R --human
   expect_match "human one-liner" "$(out nsh)" '^Next: /drupilot-setup'
+  # A later stage implies the earlier ones: a subject recorded only as tested
+  # (no 'ported' writer ran) is not sent back to /drupilot-port, and a port
+  # finished before stages were recorded counts from its port manifest.
+  local t="$FX/stage_tested/legacy_widgets" mf="$FX/stage_manifest/legacy_widgets" sd
+  mkdir -p "$FX/stage_tested" "$FX/stage_manifest"
+  cp -R "$LW" "$t"; cp -R "$LW" "$mf"
+  for sd in "$t" "$mf"; do
+    printf '{"verdict":"S"}\n' > "$(project_state_dir "$sd")/assess.json"
+    printf '{"status":"passed","preservation":"verified"}\n' > "$(project_state_dir "$sd")/last-test.json"
+  done
+  run nst "$SH" "$REPO/scripts/env/state.sh" record --subject "$t" --stage tested
+  run nst "$SH" "$REPO/scripts/env/next-step.sh" --subject "$t" --ready-analyze true --ready-setup false
+  expect "tested only: next/phase" "$(jqo nst '[.next, .phase]')" '["contribute","tested"]'
+  printf '{"machine_name":"legacy_widgets","phase":"port"}\n' > "$(project_state_dir "$mf")/port-manifest.json"
+  run nsm "$SH" "$REPO/scripts/env/next-step.sh" --subject "$mf" --ready-analyze true --ready-setup false
+  expect "manifest only: next/phase" "$(jqo nsm '[.next, .phase]')" '["contribute","ported"]'
   finish
 }
 

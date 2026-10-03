@@ -811,6 +811,20 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **A tested, contributed or pre-0.9.0 port was sent back to `/drupilot-port`.**
+  Once a subject had `state.json`, `phase_reached` accepted a stage only when
+  that exact key was in `.stages`, so a subject recorded as `tested` (a
+  verified suite run, `state.sh record --stage tested`) or `contributed`
+  without a `ported` entry still read as unported, and `next-step.sh` returned
+  `port` next to `phase: "tested"`. A port finished by an earlier drupilot,
+  whose stage was never recorded, also showed as `assessed` everywhere
+  (`next-step.sh`, `state.sh list`, `port-summary.sh`, `layer-report.sh`)
+  despite its port manifest and patch. A later stage now implies the earlier
+  ones (except the opt-in `refactored`), and the port manifest's `phase`
+  (`<state_dir>/port-manifest.json`, written when a port or refactor ends)
+  counts as evidence of `ported` / `refactored` in `phase_reached` and in the
+  state views, which backfill the stage the same way an assessment backfills
+  `assessed`.
 - **jq 1.6 (Debian 12, Ubuntu 22.04) no longer breaks preflight, layers and
   the negative-control records.** drupilot declares `jq >= 1.6`, but five jq
   programs used a jq keyword as a variable or a shorthand object key

@@ -1288,19 +1288,51 @@ phase_get() {
   return 0
 }
 
-# phase_reached <subject> <stage> -> 0 when <stage> was reached: recorded in
-# state.json's .stages, or (a subject without state.json) implied by the legacy
-# marker's rank, as before.
+# phase_reached <subject> <stage> -> 0 when <stage> was reached:
+#   * recorded in state.json's .stages, or implied by the rank of its current
+#     .stage (a subject recorded as tested/contributed was ported, even when no
+#     writer recorded 'ported' itself) — except 'refactored', which is opt-in
+#     and therefore never implied by a later stage when state.json exists;
+#   * (a subject without state.json) implied by the legacy marker's rank;
+#   * for ported/refactored, the port manifest the flow wrote at the end of a
+#     port/refactor (<state_dir>/port-manifest.json .phase), so a port finished
+#     before the stage was recorded is not sent back to /drupilot-port.
+# Read-only.
 phase_reached() {
-  local subj="${1:-$PWD}" st cur
+  local subj="${1:-$PWD}" st cur mp
   st="$(stage_normalize "${2:-}")"
   [[ -n "$st" ]] || return 1
   if [[ -r "$(subject_state_file "$subj")" ]] && have_cmd jq; then
-    [[ -n "$(state_get "$subj" ".stages[\"$st\"]" "")" ]]
-    return
+    [[ -n "$(state_get "$subj" ".stages[\"$st\"]" "")" ]] && return 0
+    if [[ "$st" != "refactored" ]]; then
+      cur="$(state_get "$subj" .stage "")"
+      [[ -n "$cur" && "$(stage_rank "$cur")" -ge "$(stage_rank "$st")" ]] && return 0
+    fi
+  else
+    cur="$(phase_get "$subj")"
+    [[ -n "$cur" && "$(stage_rank "$cur")" -ge "$(stage_rank "$st")" ]] && return 0
   fi
-  cur="$(phase_get "$subj")"
-  [[ -n "$cur" && "$(stage_rank "$cur")" -ge "$(stage_rank "$st")" ]]
+  case "$st" in
+    ported|refactored)
+      mp="$(port_manifest_stage "$subj")"
+      [[ -n "$mp" && "$(stage_rank "$mp")" -ge "$(stage_rank "$st")" ]] && return 0
+      ;;
+  esac
+  return 1
+}
+
+# port_manifest_stage <subject> -> the stage the subject's port manifest
+# (<state_dir>/port-manifest.json, written by the flow when a port/refactor
+# completes) shows as done: ported | refactored, or empty. Read-only.
+port_manifest_stage() {
+  local f ph=""
+  f="$(project_state_path "${1:-$PWD}")/port-manifest.json"
+  [[ -r "$f" ]] && have_cmd jq || return 0
+  ph="$(jq -r 'if type == "object" then (.phase // "port") else empty end' "$f" 2>/dev/null || true)"
+  case "$(stage_normalize "$ph")" in
+    ported|refactored) stage_normalize "$ph";;
+  esac
+  return 0
 }
 
 # _json_from <file> <jq-filter> -> the filter's compact output on a readable,
@@ -1324,12 +1356,20 @@ _json_from() {
 _STATE_JQ_DEFS='
 def srank: {"setup":1,"assessed":2,"ported":3,"refactored":4,"tested":5,"contributed":6}[. // ""] // 0;
 def state_merge($snap):
-  . + ($snap | del(.patch) | with_entries(select(.value != null)))
+  . + ($snap | del(.patch, .port_stage, .port_at) | with_entries(select(.value != null)))
   | .patch = (.patch // $snap.patch // null)
   | .stages = (.stages // {})
   | (if (.effort != null and .stages.assessed == null and (.assessed_at // .updated) != null)
      then .stages.assessed = (.assessed_at // .updated)
           | (if (.stage | srank) < ("assessed" | srank) then .stage = "assessed" else . end)
+     else . end)
+  | (if (($snap.port_stage // "") != "") and .stages.ported == null
+     then .stages.ported = ($snap.port_at // .updated // "recorded-by-manifest")
+          | (if (.stage | srank) < ("ported" | srank) then .stage = "ported" else . end)
+     else . end)
+  | (if ($snap.port_stage // "") == "refactored" and .stages.refactored == null
+     then .stages.refactored = ($snap.port_at // .updated // "recorded-by-manifest")
+          | (if (.stage | srank) < ("refactored" | srank) then .stage = "refactored" else . end)
      else . end)
   | .stages |= with_entries(select(.value != null))
   | (if ((.stage // "") == "") and ((.stages | length) > 0)
@@ -1371,12 +1411,12 @@ state_snapshot_json() {
   a="$(_json_from "$sd/assess.json" '{effort: (.verdict // .effort // null), at: (.timestamp // .generated_at // null)}')"
   t="$(_json_from "$sd/last-test.json" '{status: (.status // null), preservation: (.preservation // null), executed: (.executed // null), tests_failed: ([.tests[]? | select(.status == "fail" or .status == "error")] | length), groups_passed: (.passed // null), groups_failed: (.failed // null), groups_skipped: (.skipped // null), recorded_at: (.recorded_at // .generated_at // null), digest: (.subject_digest // null)}')"
   m="$(_json_from "$sd/core-matrix.json" '{verdict: (.verdict // null), d10_support: (.d10_support // null), generated_at: (.generated_at // null), digest: (.subject_digest // null)}')"
-  pm="$(_json_from "$sd/port-manifest.json" '{patch: (.patch | if type == "string" then . else null end)}')"
+  pm="$(_json_from "$sd/port-manifest.json" '{patch: (.patch | if type == "string" then . else null end), phase: ((.phase // "port") | if type == "string" then . else null end), at: (.generated_at // .recorded_at // null)}')"
   # No patch named in the manifest: the newest local preview next to the
   # subject (make-patch.sh --local writes <machine_name>-<description>.patch).
   if [[ -n "$mn" && "$(printf '%s' "$pm" | jq -r '.patch // empty' 2>/dev/null)" == "" ]]; then
     local lp; lp="$(cd "$abs" 2>/dev/null && ls -1t -- "$mn"-*.patch 2>/dev/null | head -n1 || true)"
-    [[ -n "$lp" ]] && pm="$(jq -nc --arg p "$abs/$lp" '{patch: $p}')"
+    [[ -n "$lp" ]] && pm="$(printf '%s' "$pm" | jq -c --arg p "$abs/$lp" '(if type == "object" then . else {} end) + {patch: $p}' 2>/dev/null || jq -nc --arg p "$abs/$lp" '{patch: $p}')"
   fi
   l="null"; o="null"
   if [[ -n "$rsd" ]]; then
@@ -1395,6 +1435,8 @@ state_snapshot_json() {
      git: $git, toolchain: $l,
      tests: (if $t == null then null else ($t | del(.digest)) + {fresh: fresh($t.digest)} end),
      core_matrix: (if $m == null then null else ($m | del(.digest)) + {fresh: fresh($m.digest)} end),
+     port_stage: (($pm.phase // "") | ascii_downcase | if . == "port" or . == "ported" then "ported" elif . == "refactor" or . == "refactored" then "refactored" else null end),
+     port_at: ($pm.at // null),
      patch: (if ($pm.patch // "") == "" then null
              else {path: ($pm.patch | if startswith("/") then . else $subject + "/" + . end),
                    kind: "local", at: null} end)}'
