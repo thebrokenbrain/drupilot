@@ -76,7 +76,9 @@ of the most consequential choices in the port, so surface it as a tab with
 recommendation the first/default option**, and show the consequence of each from
 the JSON (`recommended_core_version_requirement`, `require_php`, `version_bump`):
 
-- **Keep Drupal 10 + 11** (`^10 || ^11`) — widest support; declares a
+- **Keep Drupal 10 + 11** (`^10 || ^11`, or `^10.N || ^11` when the module
+  already declares a minor floor or its code uses a plugin attribute class that
+  only exists from 10.N: the helper never lowers that floor) — widest support; declares a
   `require.php` floor (`<require_php>`); Drupal 10 compatibility is
   *declared* until Step 7b checks it statically on a Drupal 10 core (first run
   builds a cached reference core: ~200 MB, needs network).

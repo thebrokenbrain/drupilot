@@ -50,6 +50,12 @@
 #                  prints the stored ERE verbatim
 #   status-probe   the /drupilot-status load-time probe and next-step.sh leave
 #                  the subject tree and the data dir unchanged
+#   core-target    core-strategy.sh keeps a declared minor floor (^10.3 ->
+#                  ^10.3 || ^11) and raises it to the minor of a plugin
+#                  attribute class the code uses (Block -> ^10.2 || ^11;
+#                  ContentEntityType -> ^11.1); the default matrix legs include
+#                  the declared floor (^10 || ^11 -> 10.0, 10, 11), also in
+#                  verify-core-matrix.sh --dry-run on a stub Drupal root
 #
 # Isolation: the fixtures are copied to a temp dir (legacy_widgets is committed
 # there as a git repo when git exists), and HOME, CLAUDE_PLUGIN_DATA and the
@@ -80,7 +86,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$REPO/tests/fixtures"
 SH="${BASH:-bash}"
 
-ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe"
+ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target"
 
 AS_JSON=0; ONLY=""; SKIP=""; KEEP=0
 
@@ -456,6 +462,53 @@ test_dry_run() {
   finish
 }
 
+# mk_stub_root DIR VERSION -> a minimal Drupal root (web/core/lib/Drupal.php
+# with VERSION) and a stub vendor/bin/rector: it logs its arguments to
+# DIR/rector-args.log and prints what DIR/rector-mode asks for (`change FILE`:
+# one changed file; anything else: nothing changed), with Rector's [OK] line.
+mk_stub_root() {
+  local r="$1" v="$2"
+  mkdir -p "$r/web/core/lib" "$r/web/modules/custom" "$r/vendor/bin"
+  printf '{"name": "drupilot-smoke/stub-root"}\n' > "$r/composer.json"
+  printf "<?php\nclass Drupal {\n  const VERSION = '%s';\n}\n" "$v" > "$r/web/core/lib/Drupal.php"
+  cat > "$r/vendor/bin/rector" <<'STUB'
+#!/usr/bin/env bash
+root="$(cd "$(dirname "$0")/../.." && pwd)"
+printf '%s\n' "$*" >> "$root/rector-args.log"
+mode="$(cat "$root/rector-mode" 2>/dev/null || true)"
+case "$mode" in
+  change\ *) printf '1 file with changes\n===================\n\n1) %s\n\n [OK] 1 file would have been changed by Rector\n' "${mode#change }";;
+  *) printf ' [OK] Rector is done!\n';;
+esac
+exit 0
+STUB
+  chmod +x "$r/vendor/bin/rector"
+}
+
+test_core_target() {
+  local cs="$REPO/scripts/analysis/core-strategy.sh" m="$FX/ct" r="$FX/ct-root"
+  local q='[.strategy, .recommended_core_version_requirement, (.verify_cores | join(","))] | join(" ")'
+  run ct1 "$SH" "$cs" --subject "$CUSTOM/acme_core" --json
+  expect "^10.3 + Block attribute: floor kept" "$(jqo ct1 "$q")" '"keep-d10 ^10.3 || ^11 10.3,11"'
+  run ct2 "$SH" "$cs" --subject "$LW" --json
+  expect "^10, no attribute: floor and newest 10.x legs" "$(jqo ct2 "$q")" '"keep-d10 ^10 || ^11 10.0,10,11"'
+  mkdir -p "$m"; cp -R "$CUSTOM/acme_core" "$m/"
+  sed_inplace "$m/acme_core/acme_core.info.yml" 's/^core_version_requirement: .*/core_version_requirement: ^10/'
+  run ct3 "$SH" "$cs" --subject "$m/acme_core" --json
+  expect "^10 + Block attribute: raised to its minor" "$(jqo ct3 "$q")" '"keep-d10 ^10.2 || ^11 10.2,11"'
+  printf '<?php\n\nnamespace Drupal\\acme_core\\Entity;\n\nuse Drupal\\Core\\Entity\\Attribute\\ContentEntityType;\n\n#[ContentEntityType(id: "acme_thing")]\nclass Thing {}\n' > "$m/acme_core/src/Thing.php"
+  run ct4 "$SH" "$cs" --subject "$m/acme_core" --json
+  expect "^10 + ContentEntityType attribute: Drupal 11 only" "$(jqo ct4 "$q")" '"d11-only ^11.1 11.1"'
+  expect "^10 + ContentEntityType attribute: major bump" "$(jqo ct4 '.version_bump')" '"major"'
+  # The default matrix legs, on a stub Drupal 11 root.
+  mk_stub_root "$r" "11.4.8"
+  cp -R "$LW" "$r/web/modules/custom/"
+  run vm "$SH" "$REPO/scripts/analysis/verify-core-matrix.sh" --subject "$r/web/modules/custom/legacy_widgets" --dry-run --json
+  expect "matrix dry-run: exit" "$RC" "0"
+  expect "matrix dry-run: legs" "$(jqo vm '[.legs[] | .core + ":" + .role] | join(",")')" '"10.0:reference,10:reference,11:baseline"'
+  finish
+}
+
 # --- Main -----------------------------------------------------------------------
 log_step "drupilot smoke tests (bash ${BASH_VERSION:-?}, $(uname -s 2>/dev/null || echo ?))"
 for t in $ALL_TESTS; do
@@ -475,6 +528,7 @@ for t in $ALL_TESTS; do
     dry-run) test_dry_run;;
     patterns) test_patterns;;
     status-probe) test_status_probe;;
+    core-target) test_core_target;;
   esac
 done
 

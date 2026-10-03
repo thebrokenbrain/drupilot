@@ -313,7 +313,9 @@ Apply only the mechanical, behavior-preserving fixes:
   ```
 
   Apply its `recommended_core_version_requirement` (`auto` → `^10 || ^11` for a
-  BC-preserving port, or `^11` on a BC break / `d11-only`) to the main `info.yml`
+  BC-preserving port — `^10.N || ^11` when a minor floor was declared (`^10.3`
+  stays `^10.3 || ^11`) or the code uses a plugin attribute class that exists only
+  from 10.N; `^11.N` when such a class exists only in Drupal 11 — or `^11` on a BC break / `d11-only`) to the main `info.yml`
   **and every submodule's** — a submodule left on `^8.8 || ^9 || ^10` cannot be
   installed on Drupal 11 (core marks it `core_incompatible`):
 
@@ -512,8 +514,8 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/verify-core-matrix.sh" --subject "<
 
 It runs the same PHPStan analysis (phpstan-drupal + deprecation rules, the
 test-bed's exact versions, level `DRUPILOT_PHPSTAN_LEVEL`) and `php -l` against a
-cached reference core per extra leg (latest Drupal 10 for `^10 || ^11`, 10.3.x for
-`^10.3 || ^11`), built once through `ddev exec composer` in
+cached reference core per extra leg (10.0.x — the declared floor — and the latest
+Drupal 10 for `^10 || ^11`, 10.3.x for `^10.3 || ^11`), built once through `ddev exec composer` in
 `<drupal_root>/.drupilot/cores/` (≈200 MB, ~1 min the first time, needs network;
 its version is frozen in the lockfile under `.verify_cores`), and compares each leg
 with the Drupal 11 baseline. `php -l` also runs on the leg's lowest PHP (Drupal

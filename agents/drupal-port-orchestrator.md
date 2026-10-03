@@ -132,7 +132,7 @@ All output you produce — messages, summaries, plans — is in **English**.
   it via `DRUPILOT_REQUIRE_PHP_FLOOR` (`detect` default → the real floor, e.g.
   `>=8.1`; `target` → `>=<target>`). It also reports `php_floor_target_compatible`
   (false when the code uses a construct newer than the target), and `verify_cores`
-  (the core legs `verify-core-matrix.sh` checks: `^10 || ^11` -> 10, 11). The choice also yields a SemVer **version-bump**
+  (the core legs `verify-core-matrix.sh` checks: `^10 || ^11` -> 10.0, 10, 11: the declared floor and the newest 10.x). The choice also yields a SemVer **version-bump**
   verdict (drop a core major / break the API → major; add D11 → minor). The old
   `core: 8.x` key no longer exists; a missing `core_version_requirement` is
   blocking. (Legacy `DRUPILOT_KEEP_D10` still overrides.)

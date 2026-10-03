@@ -811,6 +811,18 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **The recommended core requirement lowered a declared minor floor.** A
+  module declaring `^10.3` was recommended `^10 || ^11`, and a module whose
+  code uses the Block plugin attribute (core 10.2+) was recommended a floor of
+  10.0. `core-strategy.sh` now keeps a declared Drupal 10 minor floor
+  (`^10.3` -> `^10.3 || ^11`) and raises the floor to the core minor that ships
+  any plugin attribute class the code uses (`^10.2 || ^11` for Block; `^11.1`,
+  Drupal 11 only, for an entity type attribute, with a warning). The core
+  matrix's default legs now include the declared floor next to the newest 10.x
+  (`^10 || ^11` -> 10.0, 10, 11), so an API added after 10.0 fails the 10.0
+  leg instead of passing on the newest 10.x; a run that still skipped the floor
+  (an explicit `--cores 10,11`) prints `verified-static-above-floor` as a
+  warning.
 - **The router treated a folder of modules as one subject.** `/drupilot
   web/modules/custom` or "port all these modules" ran (or recommended) the
   single-subject flow; `/drupilot-layers` was reachable only by name.

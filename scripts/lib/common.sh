@@ -1089,6 +1089,52 @@ core_verify_legs() {
   return 0
 }
 
+# core_matrix_legs <constraint> -> the legs verify-core-matrix.sh checks by
+# default (--cores auto): core_verify_legs, plus the FLOOR minor of every
+# major declared without a minor that is below the newest declared major or
+# below Drupal 11, the test-bed's major ('^10 || ^11' -> 10.0, 10, 11; '^10' ->
+# 10.0, 10; '^11' -> 11). A bare '^10' leg resolves to the newest
+# 10.x, which cannot see an API added after 10.0 (e.g. the Block attribute,
+# 10.2), so the floor is checked too; an explicit minor floor ('^10.3 || ^11'
+# -> 10.3, 11) is already its own leg. Pure: STDOUT only.
+core_matrix_legs() {
+  local legs top
+  legs="$(core_verify_legs "${1:-}")"
+  [[ -n "$legs" ]] || return 0
+  top="$(printf '%s\n' "$legs" | tail -n 1 | cut -d. -f1)"
+  printf '%s\n' "$legs" | awk -v top="$top" '
+    { split($0, v, "."); if ($0 !~ /\./ && (v[1] + 0 < top + 0 || v[1] + 0 < 11)) print v[1] ".0"; print }'
+  return 0
+}
+
+# subject_attribute_floor <subject> -> "MAJOR.MINOR<TAB>attribute FQCN": the
+# highest core minor that ships a plugin attribute class the subject's code
+# uses (an import or a `#[\...]` of a class listed in
+# config/plugin-attributes.json, `types` and `unsupported`). The class does not
+# exist on an older core, so it is a floor of the code itself (PHPStan reports
+# the unknown class there). Prints nothing when none is used or jq is missing.
+subject_attribute_floor() {
+  local subj="${1:-}" tf used
+  tf="$(plugin_root)/config/plugin-attributes.json"
+  have_cmd jq || return 0
+  [[ -r "$tf" && -d "$subj" ]] || return 0
+  used="$(find "$subj" \( -name vendor -o -name node_modules -o -name .git \) -prune -o -type f \
+      \( -name '*.php' -o -name '*.module' -o -name '*.inc' -o -name '*.install' -o -name '*.theme' \
+         -o -name '*.profile' \) -print 2>/dev/null \
+    | while IFS= read -r f; do
+        grep -hoE '(^[[:space:]]*use[[:space:]]+|#\[[[:space:]]*)\\?Drupal\\[A-Za-z0-9_\\]+' "$f" 2>/dev/null || true
+      done \
+    | sed -E 's/^[[:space:]]*use[[:space:]]+//; s/^#\[[[:space:]]*//; s/^\\//' | LC_ALL=C sort -u)"
+  [[ -n "$used" ]] || return 0
+  jq -r --arg u "$used" '
+    ($u | split("\n")) as $used
+    | [(.types // [])[], (.unsupported // [])[]]
+    | map(select(.attribute as $a | any($used[]; . == $a)))
+    | if length == 0 then empty
+      else max_by(.since | split(".") | map(tonumber)) | "\(.since)\t\(.attribute)" end' "$tf" 2>/dev/null || true
+  return 0
+}
+
 # subject_digest <dir> -> SHA-256 over the subject's analysable sources (PHP
 # family files, *.yml, composer.json; .git/vendor/node_modules skipped), in a
 # stable order. Generated artifacts next to the module (a local .patch, the
@@ -1820,7 +1866,11 @@ ddev_project_name() {
 #     bc_break (bool), php_target, d10_support, verify_cores:[...],
 #     rationale:[...], warnings:[...] }
 #   verify_cores: the core legs scripts/analysis/verify-core-matrix.sh checks for
-#   the recommended requirement (core_verify_legs), e.g. ["10","11"].
+#   the recommended requirement (core_matrix_legs), e.g. ["10.0","10","11"].
+#   The recommended requirement never lowers a declared Drupal 10 minor floor
+#   ('^10.3' -> '^10.3 || ^11') and never goes below the floor of a plugin
+#   attribute class the code uses (subject_attribute_floor; one that exists only
+#   in Drupal 11 turns keep-d10 into d11-only, e.g. '^11.1').
 #   phase: port | refactor (default port). bc_override: auto | yes | no.
 recommend_core_target() {
   local subject="${1:-$PWD}" phase="${2:-port}" bc_override="${3:-auto}"
@@ -1891,6 +1941,25 @@ recommend_core_target() {
     keep_current=1; resolved="keep-current"
   fi
 
+  # --- core minor floor ----------------------------------------------------
+  # Never lower a declared Drupal 10 minor floor ('^10.3' stays '^10.3 || ^11',
+  # not '^10 || ^11'), and never declare a floor below what the code needs: a
+  # plugin attribute class the code uses exists only from its core minor on
+  # (config/plugin-attributes.json), e.g. the Block attribute from 10.2.
+  local d10_decl_floor="" api_floor="" api_attr="" core_floor="10.0" _af d10_dropped_note=""
+  d10_decl_floor="$(core_verify_legs "$current_req" | awk -F. '$1 == "10" { print ($2 == "" ? "10.0" : $0); exit }')"
+  [[ -n "$d10_decl_floor" ]] && core_floor="$d10_decl_floor"
+  _af="$(subject_attribute_floor "$subject")"
+  if [[ -n "$_af" ]]; then
+    api_floor="${_af%%$'\t'*}"; api_attr="${_af#*$'\t'}"
+    version_ge "$core_floor" "$api_floor" || core_floor="$api_floor"
+  fi
+  if [[ "$keep_current" == "0" && "$resolved" == "keep-d10" && "${core_floor%%.*}" -ge 11 ]]; then
+    resolved="d11-only"
+    legacy_note="the code uses $api_attr, which exists only from core $api_floor"
+    d10_dropped_note="Drupal 10 cannot be kept: the code uses $api_attr, which exists only from core $api_floor (PHPStan reports the unknown class on Drupal 10). Keep the annotation instead of the attribute to stay on '^10 || ^11'."
+  fi
+
   # --- requirement + composer constraint + require.php + D10 honesty ---------
   local req composer require_php="" effective_floor="" d10_support="n/a"
   local -a rationale=() warnings=() suggested=()
@@ -1912,6 +1981,12 @@ recommend_core_target() {
     # Keep the module's existing, already-D11-compatible requirement unchanged.
     req="$current_req"; composer="$current_req"
     rationale+=("The module already declares a Drupal 11-compatible requirement ('$current_req'); keeping it unchanged (minimal change). Use the core-target choice to narrow it if you want.")
+    local _decl_floor
+    _decl_floor="$(core_floor_from_requirement "$current_req")"
+    if [[ -n "$api_floor" && -n "$_decl_floor" ]] && ! version_ge "$_decl_floor" "$api_floor"; then
+      req="$(core_requirement_raise_floor "$current_req" "$api_floor")"; composer="$req"
+      rationale+=("The code uses $api_attr, which exists only from core $api_floor: the declared floor $_decl_floor is raised ('$current_req' -> '$req').")
+    fi
     if [[ "$had_pre11" == "1" ]]; then
       # The kept requirement still allows Drupal 10, so declare the PHP floor.
       require_php=">=$php_target"
@@ -1928,9 +2003,18 @@ recommend_core_target() {
       suggested+=("The requirement still lists EOL Drupal 8/9 ('$current_req'); narrow it (e.g. to '^10 || ^11' or '^11') via the core-target choice if you no longer support them.")
     fi
   elif [[ "$resolved" == "keep-d10" ]]; then
-    req="^10 || ^11"; composer="^10 || ^11"
+    req="^10 || ^11"
+    [[ "$core_floor" != "10.0" ]] && req="^$core_floor || ^11"
+    composer="$req"
     require_php=">=$php_target"      # safe default (policy floor = target)
-    rationale+=("Strategy: keep-d10 ('^10 || ^11')${legacy_note:+ ($legacy_note)}.")
+    rationale+=("Strategy: keep-d10 ('$req')${legacy_note:+ ($legacy_note)}.")
+    if [[ "$core_floor" != "10.0" ]]; then
+      if [[ -n "$api_floor" && "$core_floor" == "$api_floor" && "$api_floor" != "$d10_decl_floor" ]]; then
+        rationale+=("Drupal 10 floor $core_floor: the code uses $api_attr, which exists only from core $api_floor.")
+      else
+        rationale+=("Drupal 10 floor $core_floor: the declared minor floor ('$current_req') is kept, never lowered.")
+      fi
+    fi
 
     # Optionally widen the floor to the detected one (bounded to [8.1, target]).
     if [[ "$floor_strategy" == "detect" && -n "$detected_floor" ]]; then
@@ -1966,8 +2050,11 @@ recommend_core_target() {
     warnings+=("Drupal 10 compatibility is DECLARED, not verified. drupal-rector's standard replacements are usually available across all of Drupal 10 (deprecation contract), but this was not checked here. If the port uses an API added in a later 10.x minor, set core_version_requirement to e.g. '^10.3 || ^11'; if it uses an API absent from Drupal 10, drop to '^11'.$digests_note")
     suggested+=("Verify Drupal 10 compatibility before relying on the '^10 || ^11' declaration: verify-core-matrix.sh runs PHPStan + php -l against a Drupal 10 core (static); install on a Drupal 10 site or run the test suite against Drupal 10 for runtime proof.")
   else
-    req="^11"; composer="^11"
-    rationale+=("Strategy: d11-only ('^11')${legacy_note:+ ($legacy_note)}.")
+    req="^11"
+    if [[ "${core_floor%%.*}" == "11" && "$core_floor" != "11.0" ]]; then req="^$core_floor"; fi
+    composer="$req"
+    rationale+=("Strategy: d11-only ('$req')${legacy_note:+ ($legacy_note)}.")
+    [[ -n "$d10_dropped_note" ]] && warnings+=("$d10_dropped_note")
     rationale+=("Drupal 11 enforces PHP $php_target itself, so no composer require.php is needed.")
   fi
 
@@ -2000,7 +2087,7 @@ recommend_core_target() {
 
   # --- core legs to verify (verify-core-matrix.sh --cores auto) -------------
   local verify_cores_json
-  verify_cores_json="$(core_verify_legs "$req" | jq -R . | jq -sc 'map(select(length > 0))' 2>/dev/null || printf '[]')"
+  verify_cores_json="$(core_matrix_legs "$req" | jq -R . | jq -sc 'map(select(length > 0))' 2>/dev/null || printf '[]')"
   [[ -n "$verify_cores_json" ]] || verify_cores_json='[]'
 
   # --- emit JSON ----------------------------------------------------------

@@ -77,9 +77,11 @@
 # Options:
 #   --subject DIR      The module/theme (under the Drupal 11 test-bed). Required.
 #   --cores SPEC       auto (default; DRUPILOT_VERIFY_CORES): the legs the
-#                      subject's core_version_requirement declares (^10 || ^11
-#                      -> 10,11; ^10.3 || ^11 -> 10.3,11; ^11 -> 11 only, so no
-#                      reference core is built). off: do nothing. Or an explicit
+#                      subject's core_version_requirement declares, each lower
+#                      major also on its floor minor (^10 || ^11 -> 10.0,10,11:
+#                      the declared floor 10.0 and the newest 10.x; ^10.3 || ^11
+#                      -> 10.3,11; ^11 -> 11 only, so no reference core is
+#                      built). off: do nothing. Or an explicit
 #                      comma list of MAJOR or MAJOR.MINOR legs, e.g. 10,11 or
 #                      10.3,11.2. A leg the test-bed core satisfies runs on the
 #                      test-bed; the others get a reference core.
@@ -112,8 +114,9 @@
 #   d10_support is verified-static only when every Drupal 10 leg passed (PHPStan
 #   + php -l clean on that core — runtime, the test suite, is NOT exercised)
 #   AND one of them is the declared floor minor (d10_floor, e.g. 10.3 for
-#   ^10.3). A '^10' leg resolves to the newest 10.x, so a clean run there is
-#   verified-static-above-floor: the floor (10.0) itself was not checked.
+#   ^10.3). A '10' leg resolves to the newest 10.x, so when only that leg ran
+#   (an explicit --cores 10,11) a clean run is verified-static-above-floor: the
+#   floor (10.0) itself was not checked. The default legs (auto) include it.
 #
 # Gate: `test` profile (Docker + daemon + DDEV); the test-bed DDEV project is
 # started when stopped. Output: logs and the human table on STDERR.
@@ -225,7 +228,7 @@ if [[ "$CORES_SPEC" == "off" ]]; then
   exit 0
 elif [[ "$CORES_SPEC" == "auto" ]]; then
   [[ -n "$CORE_REQ" ]] || die "The subject declares no core_version_requirement; pass --cores explicitly." 1
-  while IFS= read -r l; do [[ -n "$l" ]] && LEGS+=("$l"); done < <(core_verify_legs "$CORE_REQ")
+  while IFS= read -r l; do [[ -n "$l" ]] && LEGS+=("$l"); done < <(core_matrix_legs "$CORE_REQ")
 else
   IFS=',' read -r -a _raw <<<"$CORES_SPEC"
   for l in ${_raw[@]+"${_raw[@]}"}; do
@@ -261,7 +264,7 @@ if [[ -z "$BASELINE" ]]; then
   add_note "The test-bed core ($TESTBED_VERSION) is not one of the requested legs; it is analysed as the comparison baseline."
 fi
 # Distinct legs, sorted by version (bash 3.2: no associative arrays).
-LEGS_SORTED="$(printf '%s\n' "${LEGS[@]}" | awk '!seen[$0]++' | sort -t. -k1,1n -k2,2n)"
+LEGS_SORTED="$(printf '%s\n' "${LEGS[@]}" | awk '!seen[$0]++' | sort -s -t. -k1,1n -k2,2n)"
 LEGS=()
 while IFS= read -r l; do [[ -n "$l" ]] && LEGS+=("$l"); done <<<"$LEGS_SORTED"
 
@@ -933,7 +936,7 @@ printf '%s' "$OUT" | jq -r '.legs[] |
   + ([.phpstan.findings[] | select(.kind == "tolerated") | "\n      ~ \(.file):\(.line) \(.message | split("\n")[0]) (runtime-tolerated; review)"] | .[0:5] | join(""))
   + ([.lint[] | .php as $p | .files[]? | "\n      ✗ php -l (PHP \($p)) \(.file): \(.error)"] | .[0:10] | join(""))' >&2
 if [[ "$D10_SUPPORT" == "verified-static-above-floor" ]]; then
-  log_plain "  Drupal 10 support: $D10_SUPPORT (clean on $(printf '%s' "$D10_CHECKED" | jq -r 'join(", ")'); the declared floor $D10_FLOOR was NOT checked: an API newer than $D10_FLOOR would still fatal there)"
+  log_warn "Drupal 10 support: $D10_SUPPORT — clean on $(printf '%s' "$D10_CHECKED" | jq -r 'join(", ")') only; the declared floor $D10_FLOOR was NOT checked: an API newer than $D10_FLOOR would still fatal there. Add the floor leg (--cores $D10_FLOOR,...) or raise the declared floor."
 else
   log_plain "  Drupal 10 support: $D10_SUPPORT"
 fi
