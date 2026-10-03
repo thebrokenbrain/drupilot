@@ -238,6 +238,21 @@ origin_record() {
   return 0
 }
 
+# rescue_dir <origin> -> where the reports and patches of a module whose origin
+# is <origin> are kept: <origin>/.drupilot, unless the origin belongs to a larger
+# repository (a module of a monorepo clone or of a folder of modules), which is
+# never written into: then the hidden state dir of that origin (<state>/artifacts,
+# where its outputs before setup go too).
+rescue_dir() {
+  local o="$1"
+  if find_project_root_nocore "$o" >/dev/null 2>&1 || git_enclosing_repo "$o" >/dev/null 2>&1; then
+    printf '%s/artifacts' "$(project_state_path "$o")"
+  else
+    printf '%s/.drupilot' "$o"
+  fi
+  return 0
+}
+
 # copy_is_redundant <copy> <origin> -> 0 when discarding the copy loses
 # nothing: both are git checkouts on the same commit, the copy is clean, and
 # every local branch, tag and stash of the copy points at a commit the origin
@@ -389,7 +404,7 @@ plan_root() {
         if [[ -L "$s" ]]; then
           act="unlink"; [[ -n "$origin" ]] || origin="$(cd "$s" 2>/dev/null && pwd -P || true)"
           actions="${actions}unlink${TAB}${s}${TAB}"$'\n'
-          [[ -n "$origin" && -d "$origin" ]] && rescue_to="${rescue_to}${origin}"$'\n'
+          [[ -n "$origin" && -d "$origin" ]] && rescue_to="${rescue_to}$(rescue_dir "$origin")"$'\n'
         elif [[ -z "$origin" ]]; then
           act="refuse"; status="refused"
           reason="$s has no recorded origin (it was not placed by drupilot, or before its records existed): move it out of the workspace first"
@@ -398,9 +413,9 @@ plan_root() {
             act="refuse"; status="refused"; reason="$s is a copy, but its origin $origin is gone: move the copy out of the workspace first"
           elif copy_is_redundant "$s" "$origin" || [[ "$DISCARD_COPIES" == "1" ]]; then
             act="discard-copy"
-            actions="${actions}rescue-patches${TAB}${s}${TAB}${origin}/.drupilot/patches"$'\n'
+            actions="${actions}rescue-patches${TAB}${s}${TAB}$(rescue_dir "$origin")/patches"$'\n'
             actions="${actions}rm${TAB}${s}${TAB}discarded copy"$'\n'
-            rescue_to="${rescue_to}${origin}"$'\n'
+            rescue_to="${rescue_to}$(rescue_dir "$origin")"$'\n'
           else
             act="refuse"; status="refused"
             reason="$s is a copy with changes its origin $origin does not have (another commit, uncommitted work, or a branch, tag or stash only the copy holds): bring them over, or pass --discard-copies (its *.patch files are still kept)"
@@ -413,7 +428,7 @@ plan_root() {
           else
             act="restore"
             actions="${actions}restore${TAB}${s}${TAB}${origin}"$'\n'
-            rescue_to="${rescue_to}${origin}"$'\n'
+            rescue_to="${rescue_to}${origin}/.drupilot"$'\n'
           fi
         fi
         subjects="${subjects}$(jq -nc --arg m "$mn" --arg p "$s" --arg pl "${pl:-}" --arg o "${origin:-}" --arg a "$act" \
@@ -424,7 +439,7 @@ plan_root() {
         if [[ -d "$root/.drupilot" ]]; then
           while IFS= read -r p; do
             [[ -n "$p" ]] || continue
-            actions="${actions}rescue-reports${TAB}${root}/.drupilot${TAB}${p}/.drupilot"$'\n'
+            actions="${actions}rescue-reports${TAB}${root}/.drupilot${TAB}${p}"$'\n'
           done < <(printf '%s' "$rescue_to" | awk 'NF && !seen[$0]++')
           if [[ -z "$rescue_to" ]]; then
             # No origin to copy them to: keep them in the root's hidden state

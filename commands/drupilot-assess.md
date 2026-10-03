@@ -206,7 +206,8 @@ with the resolved facts and findings:
 - Write the **human-readable** `viability-report.md` into the visible `.drupilot/`
   artifacts dir at the Drupal root (helper `project_artifacts_dir`; when no Drupal
   root exists yet — assess can run before setup — it falls back to
-  `<subject>/.drupilot/`). Resolve the directory and write there:
+  `<subject>/.drupilot/`, or to the hidden state dir for a module of a larger
+  repository such as a monorepo clone). Resolve the directory and write there:
 
 ```bash
 !bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; \

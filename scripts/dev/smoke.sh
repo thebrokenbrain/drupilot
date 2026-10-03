@@ -931,8 +931,11 @@ test_monorepo_testbed() {
     jq '.drupilot_testbed.created_by = "smoke"' "$m-d11/.drupilot.json" > "$m-d11/.drupilot.json.new" \
       && mv "$m-d11/.drupilot.json.new" "$m-d11/.drupilot.json"
   fi
+  mkdir -p "$m-d11/.drupilot"; printf 'report\n' > "$m-d11/.drupilot/port-report.md"
   run mc1 "$SH" "$REPO/scripts/env/clean.sh" --subject "$dest" --level workspace --dry-run --json
   expect "clean: a pristine seeded copy is redundant" "$(jqo mc1 '[.roots[0].subjects[]?.action]')" '["discard-copy"]'
+  expect "clean: reports and patches are never rescued into the monorepo" \
+    "$(jq -r --arg m "$m/" '[.roots[0].actions[] | select(.op | startswith("rescue")) | (.detail | startswith($m))] | map(tostring) | join(",")' "$TMP/out/mc1.out" 2>/dev/null)" "false,false"
   if [[ -f "$dest/acme_core.info.yml" && -d "$dest/src" ]]; then
     ( sed_inplace "$dest/acme_core.info.yml" -e 's/^core_version_requirement:.*/core_version_requirement: ^10.3 || ^11/' ) 2>/dev/null || true
     printf '<?php\n\nnamespace Drupal\\acme_core;\n\nfinal class Added {}\n' > "$dest/src/Added.php"
@@ -949,6 +952,10 @@ test_monorepo_testbed() {
   expect "module patch applies on the pristine module" "$(cd "$FX/pristine/acme_core" && git apply --check "$mp" >/dev/null 2>&1 && echo ok)" "ok"
   run mc2 "$SH" "$REPO/scripts/env/clean.sh" --subject "$dest" --level workspace --dry-run --json
   expect "clean: a ported copy is kept" "$(jqo mc2 '[.roots[0].subjects[]?.action]')" '["refuse"]'
+  # The layers plan of a monorepo folder goes to the hidden state dir.
+  run ml1 "$SH" "$REPO/scripts/analysis/layers.sh" --dir "$m/web/modules/custom" --json
+  expect "layers in a monorepo: plan saved outside the repository" \
+    "$([[ -f "$(project_state_path "$m/web/modules/custom")/artifacts/layers.md" ]] && echo yes)" "yes"
   expect "monorepo stays clean" "$(git -C "$m" status --porcelain --ignored 2>/dev/null | tr '\n' ';')" ""
   finish
 }

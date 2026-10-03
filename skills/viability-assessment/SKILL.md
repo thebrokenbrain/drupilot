@@ -42,7 +42,9 @@ Drupal 11.
 - drupilot splits where it writes. The **human-readable** `viability-report.md`
   goes into the visible `.drupilot/` artifacts dir at the Drupal root (helper
   `project_artifacts_dir`; with no Drupal root yet — assess can run before setup —
-  it falls back to `<subject>/.drupilot/`) — the folder a developer opens. The
+  it falls back to `<subject>/.drupilot/`, or to the hidden state dir for a
+  module of a larger repository such as a monorepo clone, never written into) —
+  the folder a developer opens. The
   **machine-readable** `assess.json` stays in the hidden per-project state dir
   (helper `project_state_dir`, under `$HOME`, never in the project tree, so it
   cannot leak into a contribution) and is what `/drupilot-status` and later steps

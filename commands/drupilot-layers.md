@@ -37,7 +37,10 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/layers.sh" --dir <dir> --json
 STDOUT is `{layers:[{index, modules, cycle_groups}], cycles, early, modules:[{machine,
 layer, in_cycle, depends_on, declared, implicit, undeclared, proposed}], external,
 totals}` (header of `layers.sh`). It also saves `layers.json` (hidden state) and
-`layers.md` (the visible `.drupilot/`): the canonical plan, all edges. An
+`layers.md` (the visible `.drupilot/`; for a folder of a larger repository with
+no usable Drupal root, such as a monorepo clone, the hidden state dir, so
+nothing lands in that repository: the `Saved:` line names it): the canonical
+plan, all edges. An
 `--edges declared` run saves `layers-declared.json` / `layers-declared.md`
 instead and leaves the canonical plan alone. Exit 1 = no `*.info.yml` under the
 directory: say so and stop.
@@ -97,7 +100,7 @@ Ask with **AskUserQuestion** (skip when `autonomous=true`: print the plan and st
   `info.yml` as a diff; apply them with Edit only after the user confirms the diff
   (one confirmation for all, or per module). Never in autonomous mode. Re-run
   Step 2 afterwards: the layers may change.
-- **Stop** — the plan is in `.drupilot/layers.md`.
+- **Stop** — the plan is in `layers.md` (the path on the `Saved:` line).
 
 ## Step 4 — `run` mode: port one layer, module by module
 

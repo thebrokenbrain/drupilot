@@ -819,6 +819,16 @@ tag the commit `vX.Y.Z`.
   there and every file of that type kept its annotation with "the constructor
   could not be read". A reference core now only counts for attribute classes
   that ship with core; the test-bed still reads every class.
+- **Some outputs still landed inside a monorepo.** For a module or folder of a
+  larger repository with no usable Drupal root (a monorepo clone, a folder of
+  modules inside another repository), `/drupilot-layers` saved its plan to a
+  `.drupilot/` inside the repository (for example
+  `web/modules/custom/.drupilot/layers.md`), as did the layer report and an
+  assessment run before setup, and `clean.sh --level workspace` copied the
+  test-bed's reports and a discarded copy's patches into a `.drupilot/` of each
+  module. They were self-ignored, but they were still files in the user's
+  repository. These outputs now go to the hidden state dir of that module or
+  folder (`<state>/artifacts`); the scripts print the path.
 - **The post-edit lint deleted a `use` the port had just added.** During
   Phase 1 the PostToolUse hook runs `phpcbf` after every edit, so a `use` added
   one edit before the code that needs it was removed as unused in between. In

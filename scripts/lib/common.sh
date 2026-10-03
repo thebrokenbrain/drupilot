@@ -191,7 +191,25 @@ project_state_path() {
 # Drupal root (mounted at /var/www/html in DDEV), the same relative `.drupilot/...`
 # path resolves identically on the host and inside the container.
 # Resolution: DRUPILOT_ARTIFACTS_DIR override > DRUPILOT_PROJECT_DIR > the Drupal
-# root for <base> > <base> itself (a loose subject with no Drupal yet).
+# root for <base> (drupal_run_root) > <base> itself (a loose subject with no
+# Drupal yet) — except when <base> belongs to someone else's repository with no
+# usable Drupal root (a module or folder of a monorepo clone, or a sub-directory
+# of a larger git repository, before setup): its outputs then go to the hidden
+# state dir (<state>/artifacts), so nothing is written into that repository.
+# _artifacts_dir_path <base> -> that directory (the override excluded), not created.
+_artifacts_dir_path() {
+  local base="${1:-$PWD}" root="${DRUPILOT_PROJECT_DIR:-}"
+  [[ -z "$root" ]] && root="$(drupal_run_root "$base" 2>/dev/null || true)"
+  if [[ -z "$root" ]] && { find_project_root_nocore "$base" >/dev/null 2>&1 \
+                           || git_enclosing_repo "$base" >/dev/null 2>&1; }; then
+    printf '%s/artifacts' "$(project_state_path "$base")"
+    return 0
+  fi
+  [[ -z "$root" ]] && root="$base"
+  root="$(cd "$root" 2>/dev/null && pwd || printf '%s' "$root")"
+  printf '%s/.drupilot' "$root"
+  return 0
+}
 project_artifacts_dir() {
   local base="${1:-$PWD}"
   local override; override="$(config_get DRUPILOT_ARTIFACTS_DIR "")"
@@ -200,10 +218,7 @@ project_artifacts_dir() {
     ( cd "$override" 2>/dev/null && pwd ) || printf '%s' "$override"
     return 0
   fi
-  local root="${DRUPILOT_PROJECT_DIR:-}"
-  [[ -z "$root" ]] && root="$(find_drupal_root "$base" 2>/dev/null || true)"
-  [[ -z "$root" ]] && root="$base"
-  local d="$root/.drupilot"
+  local d; d="$(_artifacts_dir_path "$base")"
   mkdir -p "$d" 2>/dev/null || true
   # Self-ignore: a .gitignore containing '*' INSIDE the dir makes git treat the
   # whole .drupilot/ as ignored in ANY repo it lands in — the Drupal root, or a
@@ -1744,17 +1759,13 @@ core_matrix_fresh() {
 # project_artifacts_path [base_dir] -> the directory project_artifacts_dir
 # resolves, WITHOUT creating it (for read-only callers).
 project_artifacts_path() {
-  local base="${1:-$PWD}" override root
+  local base="${1:-$PWD}" override
   override="$(config_get DRUPILOT_ARTIFACTS_DIR "")"
   if [[ -n "$override" ]]; then
     ( cd "$override" 2>/dev/null && pwd ) || printf '%s' "$override"
     return 0
   fi
-  root="${DRUPILOT_PROJECT_DIR:-}"
-  [[ -z "$root" ]] && root="$(find_drupal_root "$base" 2>/dev/null || true)"
-  [[ -z "$root" ]] && root="$base"
-  root="$(cd "$root" 2>/dev/null && pwd || printf '%s' "$root")"
-  printf '%s/.drupilot' "$root"
+  _artifacts_dir_path "$base"
   return 0
 }
 
