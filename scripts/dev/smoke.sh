@@ -36,11 +36,19 @@
 #   signature      scan-signature-changes.sh on legacy_widgets (H10, H14-H16)
 #                  for the declared ^10 floor and for a ^11.3 floor
 #   lint-metadata  lint-extension-metadata.sh on legacy_widgets and on each
-#                  monorepo module (per-module error/warn/info totals)
+#                  monorepo module (per-module error/warn/info totals, an
+#                  undeclared-deps message text)
+#   (every test)   a shell-level error on a script's stderr (syntax error,
+#                  unbound variable, command not found, ...) fails the test
 #   layers         layers.sh on the monorepo: layers, cycle, early module,
 #                  totals, proposed entries, external modules; --edges declared
 #   dry-run        set-core-requirement.sh --dry-run and ensure-gitignore.sh
 #                  --dry-run report their change and write nothing
+#   patterns       every config/deprecations.json ERE is accepted by
+#                  patterns.sh add --dry-run, a PCRE \d is refused, and list
+#                  prints the stored ERE verbatim
+#   status-probe   the /drupilot-status load-time probe and next-step.sh leave
+#                  the subject tree and the data dir unchanged
 #
 # Isolation: the fixtures are copied to a temp dir (legacy_widgets is committed
 # there as a git repo when git exists), and HOME, CLAUDE_PLUGIN_DATA and the
@@ -71,7 +79,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$REPO/tests/fixtures"
 SH="${BASH:-bash}"
 
-ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns"
+ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe"
 
 AS_JSON=0; ONLY=""; SKIP=""; KEEP=0
 
@@ -380,6 +388,24 @@ test_layers() {
   finish
 }
 
+test_status_probe() {
+  # /drupilot-status is read-only: its load-time probes (the bang lines of
+  # commands/drupilot-status.md) leave the subject tree and the data dir as
+  # they were. The probe is a `bash -c '<script>' _ "$1"` line.
+  local c="$FX/status/legacy_widgets" probe before after
+  mkdir -p "$FX/status"; cp -R "$LW" "$c"
+  probe="$(sed -n "s/^.\`bash -c '\(.*\)' _ \"\$1\"\`\$/\1/p" "$REPO/commands/drupilot-status.md" | head -n 1)"
+  expect "probe found" "$([[ -n "$probe" ]] && echo yes || echo no)" "yes"
+  before="$(find "$c" "$CLAUDE_PLUGIN_DATA" | sort)"
+  run stp "$SH" -c "$probe" _ "$c"
+  expect "probe: exit" "$RC" "0"
+  expect_match "probe: machine name" "$(out stp)" 'machine_name=legacy_widgets'
+  run stn "$SH" "$REPO/scripts/env/next-step.sh" --subject "$c" --from-preflight --human
+  after="$(find "$c" "$CLAUDE_PLUGIN_DATA" | sort)"
+  expect "tree and data dir unchanged" "$after" "$before"
+  finish
+}
+
 test_patterns() {
   local p="$REPO/scripts/analysis/patterns.sh" pat n=0 bad="" c="$FX/patterns/legacy_widgets"
   # Every curated ERE in config/deprecations.json is learnable as-is (an
@@ -437,6 +463,7 @@ for t in $ALL_TESTS; do
     layers) test_layers;;
     dry-run) test_dry_run;;
     patterns) test_patterns;;
+    status-probe) test_status_probe;;
   esac
 done
 

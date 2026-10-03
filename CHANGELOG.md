@@ -811,6 +811,14 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **`/drupilot-status` left residue in the subject it looked at.** Its
+  load-time probe resolved `state_dir`, `artifacts_dir` and the lockfile path
+  with the creating helpers, so one status call on an untouched module created
+  `<module>/.drupilot/` (and an empty state dir) inside the developer's
+  checkout, exactly what `origin-hygiene.sh` and the doctor's residue check
+  flag. It now uses the non-creating `project_state_path` /
+  `project_artifacts_path`; a smoke test runs the probe and `next-step.sh` and
+  asserts the tree and the data dir are unchanged.
 - **The autonomy backstop missed non-interactive wrapper runs.**
   `guard-contrib.sh` escalated a push or MR command to "ask" only for
   `DRUPILOT_AUTONOMOUS=true`, so a `--no-confirm` / `DRUPILOT_NONINTERACTIVE=1`
