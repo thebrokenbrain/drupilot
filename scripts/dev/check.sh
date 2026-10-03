@@ -26,6 +26,14 @@
 #                 bash ignores or overrides such assignments silently (a
 #                 `GROUPS=(Unit ...)` once made run-phpunit.sh run no test).
 #                 A line can opt out with a trailing `# special-var-ok` and a reason
+#   - jq-compat   no jq program in those scripts uses a jq keyword (label,
+#                 module, if, then, else, end, as, def, reduce, foreach, try,
+#                 catch, and, or, not, import, include, __loc__) as a --arg /
+#                 --argjson name, an `as $name` binding or a shorthand object
+#                 key (`{module, scope}`): jq 1.6 (Debian 12, Ubuntu 22.04 —
+#                 drupilot's jq_min) rejects each as a syntax error, jq 1.7
+#                 accepts it. `{label: .x}` and `.label` are fine everywhere.
+#                 A line can opt out with a trailing `# jq-compat-ok` and a reason
 #   - bang-lint   no `!`...`` exec span in commands/*.md, skills/*/SKILL.md or
 #                 agents/*.md contains a <placeholder>: those spans run at command
 #                 load, before the model can substitute anything
@@ -58,7 +66,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export CLAUDE_PLUGIN_ROOT="$REPO"
 
-ALL_GATES="validate syntax exec-bit shellcheck portability special-vars bang-lint templates json"
+ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json"
 # Gates known to fail on the current tree, with a fix tracked for 0.9.0. Empty
 # this list as the fixes land so --allow-known stops hiding them.
 KNOWN_FAILING=""
@@ -232,6 +240,35 @@ gate_special_vars() {
     record special-vars fail "$(wc -l < "$out" | tr -d ' ') use(s) of a bash special variable as a plain variable (rename it)" "$out"
   else
     record special-vars pass "${#SCRIPTS[@]} scripts free of bash special-variable collisions"
+  fi
+}
+
+gate_jq_compat() {
+  local out="$TMP/jq-compat.out" f
+  local kw='def|if|then|elif|else|end|as|reduce|foreach|try|catch|label|import|include|and|or|not|module|__loc__'
+  : > "$out"
+  for f in "${SCRIPTS[@]}"; do
+    [[ "$f" == "scripts/dev/check.sh" ]] && continue   # its own patterns would self-match
+    # A brace not preceded by `$` (so not ${var}) opens a jq object; a keyword
+    # right after it or after a comma, followed by `,` or `}`, is a shorthand key.
+    (cd "$REPO" && awk -v F="$f" -v K="$kw" '
+      BEGIN { e = "(" K ")" }
+      /# jq-compat-ok/ { next }
+      {
+        line = $0
+        if (line ~ /^[[:space:]]*#/) next
+        sub(/[[:space:]]#[[:space:]].*$/, "", line)
+        if (line ~ ("--(arg|argjson|slurpfile|rawfile)[[:space:]]+" e "[[:space:]]") ||
+            line ~ ("as[[:space:]]+[$]" e "([^A-Za-z0-9_]|$)") ||
+            line ~ ("(^|[^$])[{][[:space:]]*" e "[[:space:]]*[,}]") ||
+            line ~ ("(^|[^$])[{][^{}]*,[[:space:]]*" e "[[:space:]]*[,}]"))
+          printf "%s:%d: %s\n", F, NR, substr($0, 1, 140)
+      }' "$f") >> "$out"
+  done
+  if [[ -s "$out" ]]; then
+    record jq-compat fail "$(wc -l < "$out" | tr -d ' ') jq keyword(s) used as a variable or shorthand key (jq 1.6 syntax error; rename, e.g. \$lbl / {label: .label})" "$out"
+  else
+    record jq-compat pass "${#SCRIPTS[@]} scripts free of jq 1.7-only keyword names"
   fi
 }
 

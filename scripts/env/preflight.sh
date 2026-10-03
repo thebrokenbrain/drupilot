@@ -192,10 +192,10 @@ CHECKS=()
 emit_check() {
   # emit_check id label detail category profiles kind present version required ok hint
   jq -n \
-    --arg id "$1" --arg label "$2" --arg detail "$3" --arg category "$4" \
+    --arg id "$1" --arg lbl "$2" --arg detail "$3" --arg category "$4" \
     --arg profiles "$5" --arg kind "$6" --argjson present "$7" \
     --arg version "$8" --arg required "$9" --argjson ok "${10}" --arg hint "${11}" \
-    '{id:$id,label:$label,detail:$detail,category:$category,
+    '{id:$id,label:$lbl,detail:$detail,category:$category,
       profiles:($profiles|split(" ")|map(select(length>0))),
       kind:$kind,present:$present,version:$version,required:$required,ok:$ok,hint:$hint}'
 }

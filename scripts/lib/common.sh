@@ -1126,7 +1126,7 @@ negative_controls_summary() {
   digest="$(subject_digest "$s")"
   jq -c --arg d "$digest" '
     if (type == "array") and (length > 0) then
-      [ .[] | {test, type, label, verdict, at, mutation: (.mutation.kind // null),
+      [ .[] | {test, type, label: .label, verdict, at, mutation: (.mutation.kind // null),
                stale: ((.subject_digest // "") != "" and $d != "" and .subject_digest != $d)} ] as $c
       | {total: ($c | length),
          effective: ([ $c[] | select(.verdict == "effective") ] | length),

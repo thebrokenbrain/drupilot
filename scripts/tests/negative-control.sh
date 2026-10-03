@@ -301,8 +301,8 @@ if [[ "$DRY_RUN" == "1" ]]; then
   fi
   log_info "Dry run: no file touched, no test run. A real run does: red run, byte-identical restore, green run."
   if [[ "$JSON" == "1" ]]; then
-    jq -n --arg test "$FILTER" --arg type "$TYPE" --arg label "$LABEL" --argjson mutation "$MUTATION_JSON" \
-      '{dry_run:true, test:$test, type:$type, label:($label | select(. != "") // null), mutation:$mutation}'
+    jq -n --arg test "$FILTER" --arg type "$TYPE" --arg lbl "$LABEL" --argjson mutation "$MUTATION_JSON" \
+      '{dry_run:true, test:$test, type:$type, label:($lbl | select(. != "") // null), mutation:$mutation}'
   fi
   exit 0
 fi
@@ -472,12 +472,12 @@ else
 fi
 
 RECORD="$(jq -n -c \
-  --arg test "$FILTER" --arg type "$TYPE" --arg label "$LABEL" --argjson mutation "$MUTATION_JSON" \
+  --arg test "$FILTER" --arg type "$TYPE" --arg lbl "$LABEL" --argjson mutation "$MUTATION_JSON" \
   --arg mrc "$MUT_RC" --arg grc "$GREEN_RC" --arg mexec "${MUT_EXEC:-}" --arg gexec "${GREEN_EXEC:-}" \
   --argjson red_tests "$RED_TESTS" --argjson identical "$RESTORED_IDENTICAL" \
   --arg verdict "$VERDICT" --arg reason "$REASON" --arg lr "$LOG_RED" --arg lg "$LOG_GREEN" \
   --arg digest "$(subject_digest "$SUBJECT")" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  '{test:$test, type:$type, label:($label | select(. != "") // null), mutation:$mutation,
+  '{test:$test, type:$type, label:($lbl | select(. != "") // null), mutation:$mutation,
     mutated_rc:($mrc | tonumber? // null), restored_rc:($grc | tonumber? // null),
     mutated_executed:($mexec | tonumber? // null), restored_executed:($gexec | tonumber? // null),
     red_tests:$red_tests, restored_identical:$identical,

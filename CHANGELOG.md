@@ -788,6 +788,20 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **jq 1.6 (Debian 12, Ubuntu 22.04) no longer breaks preflight, layers and
+  the negative-control records.** drupilot declares `jq >= 1.6`, but five jq
+  programs used a jq keyword as a variable or a shorthand object key
+  (`--arg label` / `$label` in `preflight.sh`, `negative-control.sh`;
+  `--arg module` in `patterns.sh add`; `{module, scope}` in `layers.sh`;
+  `{test, type, label, ...}` in `negative_controls_summary`), which jq 1.7
+  accepts and jq 1.6 rejects as a syntax error. On jq 1.6 `preflight.sh` printed
+  an empty check list with every `ready` value false, so each command gate
+  and the SessionStart hook reported the environment as not ready; `layers.sh`
+  failed with "Could not compute the layers". The variables are renamed
+  (`$lbl`, `$mod`) and the keys spelled out (`module: .module`,
+  `label: .label`); the output is unchanged. A new `check.sh` gate,
+  `jq-compat`, rejects the pattern (opt out per line with
+  `# jq-compat-ok` and a reason).
 - **`/drupilot-setup` did not restore a missing `vendor/`.** `ddev-up.sh`
   skipped Composer whenever `composer.json` existed, so a root whose `vendor/`
   was gone stayed broken (Rector then died with "vendor/bin/rector is

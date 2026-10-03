@@ -153,7 +153,7 @@ REPORT="$(printf '%s' "$SCAN" | jq --arg edges "$EDGES" --arg at "$(date -u +%Y-
           declared, implicit, undeclared, proposed}],
      external: ([$s.extensions[] | .machine as $m
          | ((.implicit[] | select(.scope != "internal" and (.optional | not)) | {module: .target, scope}),
-            (.declared[] | select(.module as $x | ($set | index($x)) == null) | {module, scope}))
+            (.declared[] | select(.module as $x | ($set | index($x)) == null) | {module: .module, scope}))
          | . + {by: $m}]
        | group_by(.module)
        | map({module: .[0].module,

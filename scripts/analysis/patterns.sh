@@ -475,12 +475,12 @@ cmd_add() {
   entry="$(jq -nc --arg id "$ID" --arg kind "$KIND" --arg pat "$PATTERN" --arg files "$FILES" \
     --argjson icase "$([[ "$ICASE" == "1" ]] && echo true || echo null)" --arg rule "$RULE" \
     --arg symbol "$SYMBOL" --arg category "$CATEGORY" --arg why "$WHY" --arg fix "$FIX" --arg cr "$CR" \
-    --arg module "$MODULE" --arg layer "$LAYER" --arg at "$date" '
+    --arg mod "$MODULE" --arg layer "$LAYER" --arg at "$date" '
     def nz: if . == "" then null else . end;
     {id: $id, kind: $kind,
      detector: {pattern: ($pat | nz), files: ($files | nz), ignore_case: $icase, rule: ($rule | nz)},
      symbol: ($symbol | nz), category: ($category | nz), why: $why, fix: $fix, change_record: ($cr | nz),
-     source: {module: ($module | nz), layer: (if $layer == "" then null else ($layer | tonumber) end), date: $at}}')"
+     source: {module: ($mod | nz), layer: (if $layer == "" then null else ($layer | tonumber) end), date: $at}}')"
   new="$(jq -c --argjson e "$entry" --argjson kg "$kind_given" '
     def clean: if type == "object" then with_entries(select(.value != null) | .value |= clean) else . end;
     ($e | clean) as $e
