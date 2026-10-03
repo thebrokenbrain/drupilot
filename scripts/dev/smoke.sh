@@ -42,7 +42,9 @@
 #   (every test)   a shell-level error on a script's stderr (syntax error,
 #                  unbound variable, command not found, ...) fails the test
 #   layers         layers.sh on the monorepo: layers, cycle, early module,
-#                  totals, proposed entries, external modules; --edges declared;
+#                  totals, proposed entries, external modules; --edges declared
+#                  (saved as a variant, never over the canonical layers.json;
+#                  layer-report.sh reports its edges mode);
 #                  layer-report.sh picks up a linted, unregistered module
 #   dry-run        set-core-requirement.sh --dry-run and ensure-gitignore.sh
 #                  --dry-run report their change and write nothing
@@ -437,6 +439,19 @@ test_layers() {
   run lyd "$SH" "$l" --dir "$MONO" --no-write --json --edges declared
   expect "declared edges: layers" "$(jqo lyd '[.layers[] | .modules | sort]')" \
     '[["acme_core","acme_reports","acme_standalone"],["acme_billing","acme_invoice","acme_utils"],["acme_api"],["acme_search"],["acme_search_ui"]]'
+  # A saved --edges declared run is a variant: the canonical layers.json (all
+  # edges) stays, and layer-report.sh says which layering it reports.
+  local e="$FX/edges/custom" lj
+  mkdir -p "$FX/edges"; cp -R "$CUSTOM" "$e"
+  run lw1 "$SH" "$l" --dir "$e" --json
+  run lw2 "$SH" "$l" --dir "$e" --json --edges declared
+  lj="$(project_state_path "$e")"
+  expect "saved files: canonical and variant" \
+    "$(jq -r .edges "$lj/layers.json" 2>/dev/null)/$(jq -r .edges "$lj/layers-declared.json" 2>/dev/null)" "all/declared"
+  run lr1 "$SH" "$REPO/scripts/analysis/layer-report.sh" --dir "$e" --no-write --json
+  expect "layer-report: canonical edges" "$(jqo lr1 '[.edges, (.modules[] | select(.machine == "acme_reports") | .layer)]')" '["all",3]'
+  run lr2 "$SH" "$REPO/scripts/analysis/layer-report.sh" --dir "$e" --edges declared --no-write --json
+  expect "layer-report: declared edges on request" "$(jqo lr2 '[.edges, (.modules[] | select(.machine == "acme_reports") | .layer)]')" '["declared",0]'
   finish
 }
 

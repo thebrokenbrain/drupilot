@@ -19,14 +19,19 @@
 # code; a value no record holds is "n/a" / "None recorded", never invented.
 #
 # Usage:
-#   layer-report.sh --dir DIR [--layer N|all] [--json] [--output DIR]
-#                   [--no-write]
+#   layer-report.sh --dir DIR [--layer N|all] [--edges all|declared] [--json]
+#                   [--output DIR] [--no-write]
 #   layer-report.sh --subject DIR [--subject DIR]... [--name LABEL] [--json]
 #                   [--output DIR] [--no-write]
 #
 # Options:
 #   --dir DIR      The set given to layers.sh / /drupilot-layers.
 #   --layer N      One layer (default: all layers). With --dir only.
+#   --edges MODE   With --dir: which layering to report — `all` (default: the
+#                  canonical layers.json, declared + implicit dependencies) or
+#                  `declared` (layers.sh --edges declared, layers-declared.json).
+#                  A saved file computed with other edges is not used: the
+#                  layers are recomputed. The report states the mode (`edges`).
 #   --subject DIR  Report on these modules/themes instead of a layers.json set
 #                  (repeatable; e.g. modules ported in separate test-beds).
 #                  Undeclared dependencies are then "n/a" (layers.sh did not
@@ -34,7 +39,8 @@
 #   --name LABEL   With --subject: the report's label (file
 #                  layer-<label>-report.md; default modules-report.md).
 #   --json         Print the JSON on STDOUT:
-#                  {dir, generated_at, layer, layers_generated_at, totals:
+#                  {dir, generated_at, layer, layers_generated_at,
+#                   edges (all | declared; null with --subject), totals:
 #                   {modules, ported, preservation_verified, regressions,
 #                    hygiene_errors, undeclared, with_port_record,
 #                    rector_reversions, post_port_fixes, preexisting_bugs,
@@ -74,6 +80,8 @@ AS_JSON=0
 OUT=""
 WRITE=1
 NAME=""
+EDGES="all"
+EDGES_SET=0
 SUBJECTS=()
 
 usage() { print_usage "$0"; }
@@ -86,6 +94,8 @@ while [[ $# -gt 0 ]]; do
     --layer=*) LAYER="${1#*=}"; LAYER_SET=1; shift;;
     --subject) [[ -n "${2:-}" ]] || die "--subject needs a value" 1; SUBJECTS+=("$2"); shift 2;;
     --subject=*) SUBJECTS+=("${1#*=}"); shift;;
+    --edges) EDGES="${2:-}"; EDGES_SET=1; shift 2 || die "--edges needs a value" 1;;
+    --edges=*) EDGES="${1#*=}"; EDGES_SET=1; shift;;
     --name) NAME="${2:-}"; shift 2 || die "--name needs a value" 1;;
     --name=*) NAME="${1#*=}"; shift;;
     --json) AS_JSON=1; shift;;
@@ -106,6 +116,7 @@ if [[ ${#SUBJECTS[@]} -gt 0 ]]; then
   # --- An explicit set of modules (no layers.json) -------------------------
   [[ -z "$DIR" ]] || die "Use --dir or --subject, not both." 1
   [[ "$LAYER_SET" == "0" ]] || die "--layer works with --dir; label a --subject set with --name." 1
+  [[ "$EDGES_SET" == "0" ]] || die "--edges works with --dir (a --subject set has no layers)." 1
   MODS_JSON="[]"
   LIST_ARGS=()
   for s in "${SUBJECTS[@]}"; do
@@ -117,7 +128,7 @@ if [[ ${#SUBJECTS[@]} -gt 0 ]]; then
       '. + [{machine: $m, layer: null, in_cycle: false, dir: $d, proposed: null}]')"
   done
   LAYER="${NAME:-selected modules}"
-  LAYERS="$(jq -nc --argjson m "$MODS_JSON" '{tool: "layers", root: "", generated_at: null, layers: [], modules: $m}')"
+  LAYERS="$(jq -nc --argjson m "$MODS_JSON" '{tool: "layers", root: "", edges: null, generated_at: null, layers: [], modules: $m}')"
   REG="$(bash "$(plugin_root)/scripts/env/state.sh" list "${LIST_ARGS[@]}" --no-next --json 2>/dev/null || printf '{"subjects":[]}')"
   REPORT_DIR=""
   FIRST="${SUBJECTS[0]}"
@@ -127,14 +138,19 @@ else
   [[ -d "$DIR" ]] || die "Directory not found: $DIR" 1
   [[ -z "$NAME" ]] || die "--name labels a --subject set; with --dir the label is the layer." 1
   [[ "$LAYER" == "all" || "$LAYER" =~ ^[0-9]+$ ]] || die "--layer must be a number or 'all': '$LAYER'" 1
+  case "$EDGES" in all|declared) ;; *) die "--edges must be 'all' or 'declared' (got '$EDGES')." 1;; esac
   DIR="$(cd "$DIR" && pwd)"
   LJ="$(project_state_path "$DIR")/layers.json"
-  if [[ -r "$LJ" ]] && jq -e '.tool == "layers"' "$LJ" >/dev/null 2>&1; then
+  [[ "$EDGES" == "declared" ]] && LJ="$(project_state_path "$DIR")/layers-declared.json"
+  # A saved file is used only when it was computed with these edges (a file
+  # without .edges predates the option and is an all-edges one).
+  if [[ -r "$LJ" ]] && jq -e --arg e "$EDGES" '.tool == "layers" and (.edges // "all") == $e' "$LJ" >/dev/null 2>&1; then
     LAYERS="$(jq -c . "$LJ")"
   else
-    log_info "No layers.json for $DIR yet: computing the layers (layers.sh)."
-    LAYERS="$(bash "$HERE/layers.sh" --dir "$DIR" --json 2>/dev/null)" || die "layers.sh failed for $DIR." 1
+    log_info "No $(basename "$LJ") with $EDGES edges for $DIR: computing the layers (layers.sh --edges $EDGES)."
+    LAYERS="$(bash "$HERE/layers.sh" --dir "$DIR" --edges "$EDGES" --json 2>/dev/null)" || die "layers.sh failed for $DIR." 1
   fi
+  log_info "Layers: $EDGES edges ($(if [[ "$EDGES" == "all" ]]; then echo "declared + implicit dependencies"; else echo "declared dependencies only"; fi))."
   if [[ "$LAYER" != "all" ]]; then
     printf '%s' "$LAYERS" | jq -e --argjson n "$LAYER" '.layers | any(.index == $n)' >/dev/null \
       || die "Layer $LAYER does not exist (layers 0..$(printf '%s' "$LAYERS" | jq '.layers | length - 1'))." 1
@@ -182,7 +198,8 @@ REPORT="$(jq -n --argjson L "$LAYERS" --argjson R "$REG" --argjson H "$HYG" --ar
          hygiene: ($H[$r.subject // $orig] // $H[$orig] // null),
          undeclared: $m.proposed, port: null} ] as $mods
   | {dir: (if $dir == "" then null else $dir end), generated_at: $at, layer: $layer,
-     layers_generated_at: $L.generated_at, modules: $mods}')"
+     layers_generated_at: $L.generated_at,
+     edges: (if $dir == "" then null else ($L.edges // "all") end), modules: $mods}')"
 
 # Each module's port record (manifest + decision log + Rector rule counts).
 while IFS=$'\x1f' read -r i subj; do
@@ -241,7 +258,7 @@ REPORT="$(printf '%s' "$REPORT" | jq -c '
                preexisting_bugs: (.aggregate.preexisting_bugs | length),
                behavior_changes: (.aggregate.behavior_changes | length),
                tooling_deviations: (.aggregate.tooling_deviations | length)}
-  | {dir, generated_at, layer, layers_generated_at, totals, modules, aggregate}')"
+  | {dir, generated_at, layer, layers_generated_at, edges, totals, modules, aggregate}')"
 
 # section <jq program> -> one section's markdown, from the report JSON.
 SECT_DIR=""
@@ -260,7 +277,7 @@ section() {
 render_md() {
   SECT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-layer-report.XXXXXX")" || return 1
   section TITLE '"Porting report — \(if .dir == null then .layer elif .layer == "all" then "all layers" else "layer \(.layer)" end)"'
-  section GENERATED '"Generated by drupilot on \(.generated_at) for \(if .dir == null then "\(.totals.modules) module(s) given with --subject" else "`\(.dir)` (layers computed \(.layers_generated_at))" end). Read from each module'"'"'s own records: the port manifest, the decision log (`decisions.md`), the state registry. `n/a` = not recorded yet."'
+  section GENERATED '"Generated by drupilot on \(.generated_at) for \(if .dir == null then "\(.totals.modules) module(s) given with --subject" else "`\(.dir)` (layers computed \(.layers_generated_at), \(if .edges == "declared" then "**declared dependencies only** (`--edges declared`)" else "declared + implicit dependencies" end))" end). Read from each module'"'"'s own records: the port manifest, the decision log (`decisions.md`), the state registry. `n/a` = not recorded yet."'
   section TOTALS '"**\(.totals.ported)/\(.totals.modules) ported** · preservation verified: \(.totals.preservation_verified) · regressions: \(.totals.regressions) · reverted Rector changes: \(.totals.rector_reversions) · post-port fixes: \(.totals.post_port_fixes) · behavior changes to review: \(.totals.behavior_changes) · pre-existing hygiene errors: \(.totals.hygiene_errors) · undeclared dependencies: \(if .dir == null then "n/a" else .totals.undeclared end)"'
   section MODULE_RESULTS '
     "| Layer | Module | Stage | Effort | Preservation | Drupal 10 | Hygiene (e/w/i) | Undeclared deps | Rector files | Reverted | Post-port fixes | Patch | Report |",

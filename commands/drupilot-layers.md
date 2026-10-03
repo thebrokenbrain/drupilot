@@ -37,7 +37,9 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/layers.sh" --dir <dir> --json
 STDOUT is `{layers:[{index, modules, cycle_groups}], cycles, early, modules:[{machine,
 layer, in_cycle, depends_on, declared, implicit, undeclared, proposed}], external,
 totals}` (header of `layers.sh`). It also saves `layers.json` (hidden state) and
-`layers.md` (the visible `.drupilot/`). Exit 1 = no `*.info.yml` under the
+`layers.md` (the visible `.drupilot/`): the canonical plan, all edges. An
+`--edges declared` run saves `layers-declared.json` / `layers-declared.md`
+instead and leaves the canonical plan alone. Exit 1 = no `*.info.yml` under the
 directory: say so and stop.
 
 Present, concisely:
@@ -172,6 +174,9 @@ Ask with **AskUserQuestion** (skip when `autonomous=true`: print the plan and st
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/layer-report.sh" --dir <dir> --layer <N>
    ```
+
+   Pass the same `--edges declared` when the run used it; the report states the
+   layering it used (`edges`).
 
    It writes `.drupilot/layer-<N>-report.md` from `templates/layer-report.md.tmpl`
    — the same fixed sections for every layer, so layers compare: per-module

@@ -811,6 +811,13 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **`layers.sh --edges declared` replaced the saved porting plan.** It wrote
+  over `layers.json`/`layers.md`, and `layer-report.sh` then reported the
+  declared-only layering without saying so. A declared-edges run is now saved
+  as a variant (`layers-declared.json`/`layers-declared.md`); `layer-report.sh`
+  reads the canonical all-edges plan by default, takes `--edges declared` to
+  report the variant, recomputes when a saved file was made with other edges,
+  and states the mode (`edges` in the JSON, and in the report's header).
 - **The metadata lint counted plugins from other copies of the module.**
   The `plugin-schema` check took every plugin with the subject's machine name
   found anywhere in the `--set-dir` (in a shared test-bed: the subject seen a

@@ -29,7 +29,8 @@
 #                    modules apart (default: the core of the Drupal root above
 #                    DIR, else a built-in list).
 #   --dot            Print a Graphviz digraph on STDOUT instead.
-#   --no-write       Do not save layers.json / layers.md.
+#   --no-write       Do not save layers.json / layers.md (or, with --edges
+#                    declared, layers-declared.json / layers-declared.md).
 #   -h, --help       Show this help.
 #
 # JSON (--json):
@@ -46,7 +47,10 @@
 #
 # Files: the JSON is saved to <state dir of DIR>/layers.json (machine state)
 # and a rendered table to <artifacts dir>/layers.md (the visible, self-ignored
-# .drupilot/ of the Drupal root above DIR, else of DIR).
+# .drupilot/ of the Drupal root above DIR, else of DIR). Those are the
+# CANONICAL plan (--edges all) that /drupilot-layers and layer-report.sh read;
+# an --edges declared run saves its what-if variant beside them, as
+# layers-declared.json / layers-declared.md, and never overwrites them.
 #
 # Exit codes: 0 ok (cycles and undeclared dependencies are data) · 1 usage
 # error or no extension found.
@@ -204,11 +208,13 @@ render_md() {
      else empty end)'
 }
 
+# The canonical plan is the all-edges one; a declared-edges run is a variant.
+BASE="layers"; [[ "$EDGES" == "declared" ]] && BASE="layers-declared"
 if [[ "$WRITE" == "1" ]]; then
   sd="$(project_state_dir "$DIR")"
-  printf '%s\n' "$REPORT" > "$sd/layers.json" 2>/dev/null || log_warn "Could not write $sd/layers.json"
+  printf '%s\n' "$REPORT" > "$sd/$BASE.json" 2>/dev/null || log_warn "Could not write $sd/$BASE.json"
   ad="$(project_artifacts_dir "$DIR")"
-  render_md > "$ad/layers.md" 2>/dev/null || log_warn "Could not write $ad/layers.md"
+  render_md > "$ad/$BASE.md" 2>/dev/null || log_warn "Could not write $ad/$BASE.md"
 fi
 
 # --- Human summary (STDERR) --------------------------------------------------
@@ -225,7 +231,8 @@ if [[ "$UND" -gt 0 ]]; then
 fi
 printf '%s' "$REPORT" | jq -r '.early[] | "  ⚠  \(.module): layer \(.layer), but \(.declared_layer) by its declared dependencies alone (it would be ported too early)."' >&2
 if [[ "$WRITE" == "1" ]]; then
-  log_info "Saved: $(project_state_dir "$DIR")/layers.json · $(project_artifacts_dir "$DIR")/layers.md"
+  log_info "Saved: $(project_state_dir "$DIR")/$BASE.json · $(project_artifacts_dir "$DIR")/$BASE.md"
+  [[ "$EDGES" == "declared" ]] && log_info "Declared-edges variant: the canonical plan (layers.json, all edges) is unchanged."
 fi
 
 # --- STDOUT payload ----------------------------------------------------------
