@@ -63,8 +63,10 @@ PHP support per Drupal 11 branch (drupal.org PHP requirements, read through
 - When the target is 8.5, say so and check the core: `ddev-up.sh` warns, when it
   creates the project, if the lock-pinned core (else the lowest minor the Drupal
   target admits; a dev branch or stability flag is not guessed) is older than
-  11.3, and again when the installed core is older. Composer installs the newest
-  core the target admits, so the first warning is about the declared range.
+  11.3, and again when the installed core is older. Without a lock-pinned core,
+  Composer installs the newest core the target admits, so that first warning is
+  about the declared range; a lock-pinned core is installed as is
+  (`DRUPILOT_DETERMINISTIC=false` or `lock_clear` resolves it fresh).
 
 ## 3. How the target flows into each tool
 
