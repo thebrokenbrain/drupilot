@@ -42,7 +42,11 @@
 # but still refreshes the cache. DRUPILOT_CORE_CACHE_KEEP (default 3) entries
 # are kept. A root ddev-up.sh built (create-project or cache) is marked as a
 # drupilot test-bed in its .drupilot.json (testbed_mark), which is what lets
-# /drupilot-clean remove its vendor/ or the whole workspace.
+# /drupilot-clean remove its vendor/ or the whole workspace. Both the cache
+# and the marker need a root built from nothing: a docroot that already holds
+# files DDEV did not generate is the user's content, never overwritten by the
+# cached tree, never cached and never marked (a failed cache verification
+# removes only what the copy added and puts the original docroot back).
 #   - We READ the generated .ddev/config.yaml for the real values rather than
 #     assuming hostnames/images (PROMPT 2.5 / 7.1).
 #
@@ -262,7 +266,71 @@ if deterministic_mode && [[ ! -f "$PROJECT_DIR/composer.json" ]]; then
   fi
 fi
 
-if [[ "$DO_CREATE" == "1" && ! -f "$PROJECT_DIR/composer.json" && "$CORE_CACHE_MODE" != "off" ]] \
+# docroot_pristine -> 0 when the docroot is absent or holds nothing but what
+# DDEV itself generates (sites/default settings files, an empty files/ dir): a
+# root built from nothing. A docroot with any other file (a site without
+# Composer laid out as <root>/web, a partial earlier run) is the user's content:
+# the cached tree is never copied over it, and the root is never marked as a
+# drupilot test-bed (/drupilot-clean would then treat that content as
+# disposable).
+docroot_pristine() {
+  local d="$PROJECT_DIR/$DOCROOT" extra
+  [[ -d "$d" ]] || return 0
+  extra="$(cd "$d" && find . \( -type f -o -type l \) \
+      ! -path './sites/default/settings.php' ! -path './sites/default/settings.ddev.php' \
+      ! -path './sites/default/settings.local.php' ! -path './sites/default/.gitignore' \
+      -print 2>/dev/null | head -n 1)"
+  [[ -z "$extra" ]]
+}
+DOCROOT_PRISTINE="false"
+if [[ ! -f "$PROJECT_DIR/composer.json" ]] && docroot_pristine; then DOCROOT_PRISTINE="true"; fi
+
+# The top-level entries present before a cached tree is copied in: a failed
+# copy or verification removes only what the copy ADDED, never one of these.
+PRE_ENTRIES=" "
+shopt -s nullglob dotglob
+for _e in "$PROJECT_DIR"/*; do PRE_ENTRIES="$PRE_ENTRIES$(basename "$_e") "; done
+shopt -u nullglob dotglob
+# The pre-existing (pristine) docroot is saved aside so a rollback can put it
+# back exactly; it holds at most DDEV's generated settings files.
+DOCROOT_BACKUP=""
+
+# core_cache_rollback -> take a copied cache tree back out of the root.
+core_cache_rollback() {
+  local e
+  for e in ${RESTORED_ENTRIES[@]+"${RESTORED_ENTRIES[@]}"}; do
+    [[ -n "$e" && "$e" != "." && "$e" != ".." && "$e" != ".ddev" && "$e" != ".git" ]] || continue
+    if [[ "$e" == "$DOCROOT" ]]; then
+      chmod -R u+w "${PROJECT_DIR:?}/$e" 2>/dev/null || true
+      rm -rf "${PROJECT_DIR:?}/$e"
+      if [[ -n "$DOCROOT_BACKUP" && -d "$DOCROOT_BACKUP/$DOCROOT" ]]; then
+        if ! cp -R -p "$DOCROOT_BACKUP/$DOCROOT" "$PROJECT_DIR/" 2>/dev/null; then
+          log_warn "Could not put the original $DOCROOT/ back (a copy is kept in $DOCROOT_BACKUP)."
+          DOCROOT_BACKUP=""   # keep it: drop_docroot_backup must not remove it
+        fi
+      fi
+      continue
+    fi
+    case "$PRE_ENTRIES" in *" $e "*) continue;; esac
+    chmod -R u+w "${PROJECT_DIR:?}/$e" 2>/dev/null || true
+    rm -rf "${PROJECT_DIR:?}/$e"
+  done
+  return 0
+}
+
+# drop_docroot_backup -> remove the saved docroot copy (never fails).
+drop_docroot_backup() {
+  [[ -n "$DOCROOT_BACKUP" ]] && rm -rf "${DOCROOT_BACKUP:?}" 2>/dev/null
+  DOCROOT_BACKUP=""
+  return 0
+}
+
+if [[ "$DO_CREATE" == "1" && ! -f "$PROJECT_DIR/composer.json" && "$CORE_CACHE_MODE" != "off" \
+      && "$DOCROOT_PRISTINE" != "true" ]]; then
+  log_warn "$PROJECT_DIR/$DOCROOT/ already holds files that DDEV did not generate — not restoring the cached base core over them."
+fi
+if [[ "$DO_CREATE" == "1" && ! -f "$PROJECT_DIR/composer.json" && "$CORE_CACHE_MODE" != "off" \
+      && "$DOCROOT_PRISTINE" == "true" ]] \
    && deterministic_mode && have_cmd jq; then
   _entry=""
   if [[ -n "$LOCKED_CORE" ]]; then
@@ -278,6 +346,25 @@ if [[ "$DO_CREATE" == "1" && ! -f "$PROJECT_DIR/composer.json" && "$CORE_CACHE_M
     shopt -s nullglob dotglob
     for _e in "$_entry"/tree/*; do RESTORED_ENTRIES+=("$(basename "$_e")"); done
     shopt -u nullglob dotglob
+    # A pre-existing entry the tree would overwrite (other than the pristine
+    # docroot) is the user's: skip the cache rather than replace it.
+    _clash=""
+    for _e in ${RESTORED_ENTRIES[@]+"${RESTORED_ENTRIES[@]}"}; do
+      [[ "$_e" == "$DOCROOT" || "$_e" == ".ddev" ]] && continue
+      case "$PRE_ENTRIES" in *" $_e "*) _clash="$_clash $_e";; esac
+    done
+    if [[ -z "$_clash" && -d "$PROJECT_DIR/$DOCROOT" ]]; then
+      DOCROOT_BACKUP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-docroot.XXXXXX" 2>/dev/null || true)"
+      if [[ -z "$DOCROOT_BACKUP" ]] || ! cp -R -p "$PROJECT_DIR/$DOCROOT" "$DOCROOT_BACKUP/" 2>/dev/null; then
+        _clash="$DOCROOT (could not save it aside)"
+      fi
+    fi
+  fi
+  if [[ -n "$_entry" && -n "$_clash" ]]; then
+    log_warn "Not restoring the cached base core: it would overwrite existing entries in the root:$_clash."
+    RESTORED_ENTRIES=(); CORE_CACHE_KEY=""
+    drop_docroot_backup
+  elif [[ -n "$_entry" ]]; then
     _t0="$(date +%s)"
     if CORE_CACHE_METHOD="$(fast_copy_tree "$_entry/tree" "$PROJECT_DIR")"; then
       CORE_CACHE_SECS="$(( $(date +%s) - _t0 ))"
@@ -285,11 +372,8 @@ if [[ "$DO_CREATE" == "1" && ! -f "$PROJECT_DIR/composer.json" && "$CORE_CACHE_M
       log_ok "Copied the cached tree in ${CORE_CACHE_SECS}s ($CORE_CACHE_METHOD)."
     else
       log_warn "Could not copy the cached base core — falling back to composer create-project."
-      for _e in ${RESTORED_ENTRIES[@]+"${RESTORED_ENTRIES[@]}"}; do
-        [[ -n "$_e" && "$_e" != "." && "$_e" != ".." && "$_e" != ".ddev" ]] || continue
-        chmod -R u+w "${PROJECT_DIR:?}/$_e" 2>/dev/null || true
-        rm -rf "${PROJECT_DIR:?}/$_e"
-      done
+      core_cache_rollback
+      drop_docroot_backup
       RESTORED_ENTRIES=(); CORE_CACHE_KEY=""; CORE_CACHE_METHOD=""
     fi
   fi
@@ -355,13 +439,11 @@ if [[ "$CORE_SOURCE" == "cache" ]]; then
   log_step "Verifying the restored base core (ddev composer install)"
   if composer_install_bounded; then
     log_ok "The restored base core is consistent with its composer.lock."
+    drop_docroot_backup
   else
     log_warn "Verification failed — discarding cache entry $CORE_CACHE_KEY and running composer create-project instead."
-    for _e in ${RESTORED_ENTRIES[@]+"${RESTORED_ENTRIES[@]}"}; do
-      [[ -n "$_e" && "$_e" != "." && "$_e" != ".." && "$_e" != ".ddev" ]] || continue
-      chmod -R u+w "${PROJECT_DIR:?}/$_e" 2>/dev/null || true
-      rm -rf "${PROJECT_DIR:?}/$_e"
-    done
+    core_cache_rollback
+    drop_docroot_backup
     _bad="$(core_cache_dir)/$CORE_CACHE_KEY"
     if [[ -n "$CORE_CACHE_KEY" && -d "$_bad" ]]; then chmod -R u+w "$_bad" 2>/dev/null || true; rm -rf "${_bad:?}"; fi
     CORE_SOURCE="existing"; CORE_CACHE_KEY=""; CORE_CACHE_METHOD=""; CORE_CACHE_SECS=""
@@ -441,7 +523,10 @@ fi
 # A root this run built from nothing (create-project, or a cached tree copied
 # into an empty root) is a drupilot test-bed: /drupilot-clean may remove its
 # vendor/ or the whole workspace. An existing project is never marked here.
-if [[ "$CORE_SOURCE" == "create" || "$CORE_SOURCE" == "cache" ]]; then
+drop_docroot_backup
+if [[ "$DOCROOT_PRISTINE" != "true" && ( "$CORE_SOURCE" == "create" || "$CORE_SOURCE" == "cache" ) ]]; then
+  log_warn "Not marking $PROJECT_DIR as a drupilot test-bed: its $DOCROOT/ held files before this run, so /drupilot-clean must treat it as your project."
+elif [[ "$CORE_SOURCE" == "create" || "$CORE_SOURCE" == "cache" ]]; then
   testbed_mark "$PROJECT_DIR" "ddev-up.sh" "$CORE_CACHE_KEY" \
     || log_warn "Could not write the test-bed marker into $PROJECT_DIR/.drupilot.json (non-fatal)."
 fi
@@ -495,7 +580,9 @@ core_cache_store() {
   fi
   return 0
 }
-if [[ "$CORE_SOURCE" == "create" && "$CORE_CACHE_MODE" != "off" ]] && have_cmd jq; then
+# Only a tree built from nothing is cached (a pre-existing docroot's own files
+# must never become everyone's base core).
+if [[ "$CORE_SOURCE" == "create" && "$CORE_CACHE_MODE" != "off" && "$DOCROOT_PRISTINE" == "true" ]] && have_cmd jq; then
   core_cache_store || true
   [[ "$CORE_CACHE_STORED" == "true" ]] && testbed_mark "$PROJECT_DIR" "ddev-up.sh" "$CORE_CACHE_KEY" >/dev/null 2>&1 || true
 fi

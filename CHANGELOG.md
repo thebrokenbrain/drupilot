@@ -811,6 +811,19 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **The cached base core could overwrite and then delete an existing
+  docroot.** `ddev-up.sh` restored the cache whenever the root had no
+  `composer.json`, and the clean-root guard lets the docroot through with any
+  contents. On a site without Composer laid out as `<root>/web` (or a
+  `--dir` / `--workspace` pointing at one) the copy overwrote `web/core`,
+  `index.php` and the rest; if `ddev composer install` then failed, the
+  rollback ran `rm -rf <root>/web`, deleting custom modules, `settings.php`
+  and `sites/default/files`; and on success the root was marked as a drupilot
+  test-bed, which a later `/drupilot-clean` treats as disposable. The cache is
+  now used only when the docroot is absent or holds nothing but DDEV's
+  generated settings files, never over a pre-existing top-level entry; a
+  rollback removes only what the copy added and puts the original docroot
+  back. A root whose docroot held other files is neither cached nor marked.
 - **`/drupilot-status` left residue in the subject it looked at.** Its
   load-time probe resolved `state_dir`, `artifacts_dir` and the lockfile path
   with the creating helpers, so one status call on an untouched module created
