@@ -109,6 +109,8 @@
 #
 # Output: writes <output>/port-report.md (default: the visible .drupilot/ artifacts
 #         dir at the Drupal root) and prints its path on STDOUT. Logging on STDERR.
+#         It also refreshes <output>/port-summary.json (port-summary.sh: the
+#         versioned machine summary wrappers read instead of the Markdown).
 # Exit codes: 0 ok · 1 usage/error.
 # =============================================================================
 set -euo pipefail
@@ -647,5 +649,10 @@ if [[ -n "$MANIFEST" && -r "$MANIFEST" ]]; then
       ;;
   esac
 fi
+
+# Refresh the machine summary next to the report (port-summary.json: the JSON
+# a wrapper reads instead of this Markdown). Best effort: never fails the report.
+bash "$(dirname "${BASH_SOURCE[0]}")/port-summary.sh" --subject "$SUBJECT" --output "$OUT_ABS" --json >/dev/null 2>&1 \
+  || log_warn "Could not refresh $OUT_ABS/port-summary.json (run port-summary.sh --subject $SUBJECT --write)."
 printf '%s\n' "$REPORT"
 exit 0

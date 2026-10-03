@@ -187,6 +187,13 @@ mode word, or `DRUPILOT_AUTONOMOUS=true`), run the pipeline unattended:
   and say so plainly; if a stage's hard requirement is missing, stop that stage with
   the actionable report and no side effects, then continue with what is still
   possible (e.g. static port without DDEV).
+- **Under a wrapper** (the router passed `--no-confirm`, `--workspace DIR` or
+  `--json`): prefix every script call with `DRUPILOT_NONINTERACTIVE=1` so no
+  script prompts (each takes its safe default), pass `--workspace DIR` to
+  `resolve-workspace.sh` / `ddev-up.sh` / `place-subject.sh` (or prefix the call
+  with `DRUPILOT_WORKSPACE_DIR=DIR`), and with `--json` end with the output of
+  `port-summary.sh --subject <path> --json` and nothing else (`port-report.sh`
+  already refreshes `port-summary.json` next to `port-report.md`).
 
 ## The pipeline you coordinate
 

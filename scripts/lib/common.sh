@@ -2262,7 +2262,14 @@ core_cache_prune() {
 # reading. `[[ -r /dev/tty ]]` is not enough: the device node is read-permissioned
 # even with no controlling terminal (e.g. the Claude Code Bash tool, cron, CI),
 # where the open() then fails. Opening it for real is the reliable test.
-tty_readable() { { : </dev/tty; } 2>/dev/null; }
+# DRUPILOT_NONINTERACTIVE=1|true (environment only: the switch for wrappers and
+# CI) makes it report "no terminal" even when one exists, so confirm() and
+# choose_one() never prompt and resolve to their default (the recommended,
+# safe answer — never an implicit "yes" to an outward-facing action).
+tty_readable() {
+  case "$(lc "${DRUPILOT_NONINTERACTIVE:-}")" in 1|true|yes|on) return 1;; esac
+  { : </dev/tty; } 2>/dev/null
+}
 
 confirm() {
   local q="$1" default_yes="${2:-0}"

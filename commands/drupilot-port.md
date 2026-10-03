@@ -566,6 +566,13 @@ there is enough. Given the manifest, it also records the **ported** stage in the
 subject's `state.json` (the per-module registry), so `/drupilot-status` and the
 router move past `/drupilot-port`. `SendUserFile` it so it surfaces as a deliverable. Every field
 is optional — the report still renders from partial data, and never invents a value.
+It also refreshes `port-summary.json` beside the report: the versioned machine
+summary (`scripts/analysis/port-summary.sh --subject <dir> --json`: status,
+effort, files changed, Rector rules, reverted rules, manual fixes, preservation,
+core matrix, patch) that wrappers read instead of the Markdown. Add
+`files_changed` (the number of files the port changed, e.g. the `diff --git`
+entries of the local patch) to the manifest so the summary does not have to
+fall back to counting the patch.
 
 ## Step 10 — What next? (developer chooses)
 

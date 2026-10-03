@@ -640,6 +640,30 @@ tag the commit `vX.Y.Z`.
 - **`core_requirement_raise_floor` in `common.sh`:** raises a
   `core_version_requirement` to a MAJOR.MINOR floor and keeps every higher
   major (`'^10 || ^11'` + 10.3 → `'^10.3 || ^11'`, + 11.1 → `'^11.1'`).
+- **A non-interactive contract for wrappers (section 5).** Another skill, a CI
+  job or a script driving `claude -p` used to parse the Markdown reports.
+  - **`scripts/analysis/port-summary.sh` (new):** one versioned JSON object
+    (`schema_version: 1`) with the port's `status` (the stage, or `blocked` with
+    `blockers`), `effort`, `files_changed`, `rector_rules`, `reverted_rules`,
+    `manual_fixes` (plus the other decision lists), `preservation`, `matrix`,
+    `patch` and the report paths. It composes `state.json`, the port manifest,
+    the decision log, `last-test.json` and `core-matrix.json`, and never
+    invents a value (unknown is `null`). A result computed on sources that
+    changed since is shown but never blocks. `--write`/`--output DIR` save
+    `port-summary.json`; `--strict` exits 3 when blocked. `port-report.sh`
+    refreshes `.drupilot/port-summary.json` next to `port-report.md`.
+  - **`DRUPILOT_NONINTERACTIVE=1`:** `tty_readable` reports no terminal, so
+    `confirm`/`choose_one` never prompt and take their default (the safe one:
+    a push or a destructive clean is never implied, unlike
+    `DRUPILOT_ASSUME_YES`). Environment-only.
+  - **`--workspace DIR`** on `resolve-workspace.sh`, `ddev-up.sh` and
+    `place-subject.sh`: the same as `DRUPILOT_WORKSPACE_DIR`, and the flag wins.
+    Without the flag the output is byte-identical to before.
+  - **Router flag words** `--no-confirm` (auto mode + no prompts, never
+    outward-facing), `--workspace DIR` and `--json` (the final message is the
+    `port-summary.sh --json` output). The subject stays the first positional
+    word. README "Running under another tool" documents the contract and the
+    schema.
 ### Changed
 - **The port bumps submodules too.** `/drupilot-port`, `minimal-port` and
   the orchestrator apply the recommended `core_version_requirement` with

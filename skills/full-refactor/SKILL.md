@@ -354,7 +354,8 @@ structured outcome fields of `minimal-port` §8 for this phase: `rector_rules`,
 entries are merged in), and
 re-render with `port-report.sh --subject <path> --manifest <manifest>
 --changes-log <state_dir>/change-log.txt` so `port-report.md` in the visible
-`.drupilot/` dir reflects Phase 2 and its "changes, explained" section.
+`.drupilot/` dir reflects Phase 2 and its "changes, explained" section (it
+also refreshes the machine summary `port-summary.json`; update `files_changed`).
 
 Summarize (in English): each significant change and why (annotations →
 attributes, `\Drupal::` calls → DI, types/`final` added, deprecated APIs

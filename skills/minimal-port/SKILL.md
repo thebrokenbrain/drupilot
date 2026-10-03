@@ -672,6 +672,9 @@ It writes `port-report.md` into the visible `.drupilot/` dir at the Drupal root,
 adding a "Drupal 9/10 → 11 changes, explained" section (each recognized change
 grouped by migration area with what changed, the fix and a change-record link).
 `--changes-log` already defaults to that path, so teeing the file is enough.
+It also refreshes `port-summary.json` beside the report (`port-summary.sh`: the
+versioned JSON summary wrappers read); record `files_changed` (files the port
+changed) in the manifest for it.
 
 **Preservation gate.** Phase 1 is not "done" until `test-adaptation` reports the
 adapted suite **green** (or its red tests documented as external blockers) — that

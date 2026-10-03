@@ -1,6 +1,6 @@
 ---
 description: drupilot router and main entry point for porting. Detects the current state of a Drupal module/theme port (environment, cached assessment, phase). When the user asks to PORT/upgrade/modernize a module ('port this module to Drupal 11', 'upgrade this to D11', 'make it work on Drupal 11'), it RUNS the full setup->assess->port->[refactor]->test flow via the drupal-port-orchestrator — guided with confirmations, or hands-off with the `auto` mode word / DRUPILOT_AUTONOMOUS=true (which writes the local patch and never performs outward-facing contribution). For an exploratory ask or a bare '/drupilot' ('what's next', 'where am I', 'status'), it instead summarizes and recommends the single next step. Use it whenever the user wants to port a module/theme to Drupal 11 or asks what to do next.
-argument-hint: "[subject-path] [full|auto|status|next]"
+argument-hint: "[subject-path] [full|auto|status|next] [--no-confirm] [--workspace DIR] [--json]"
 allowed-tools: Bash, Read, Task, AskUserQuestion
 ---
 
@@ -22,6 +22,27 @@ the user asked you to port/upgrade the module) or **recommend the next logical s
 - `$ARGUMENTS` may carry a subject path (a module/theme directory) and/or an explicit
   mode word: `full`, `auto`, `status`, or `next`. `DRUPILOT_AUTONOMOUS=true` is
   equivalent to the `auto` mode word.
+- **Flag words for wrappers (non-interactive contract).** After the subject,
+  `$ARGUMENTS` may also carry these flags, in any order. They are sugar over the
+  canonical environment variables (which work without them), and the subject
+  stays the first positional word:
+  - `--no-confirm` — the run asks nothing: effective mode **`auto`** (unless an
+    explicit `status`/`next` word is given), no AskUserQuestion tab, every fork
+    resolved with its recommended default. Prefix **every** script you run with
+    `DRUPILOT_NONINTERACTIVE=1` (the scripts' own prompts then take their safe
+    default) and pass `autonomous=true` to the orchestrator. It is exactly as
+    safe as `auto`: never outward-facing (no push, no MR, no contribute).
+  - `--workspace DIR` — the test-bed root for a loose subject. Pass
+    `--workspace DIR` to `resolve-workspace.sh`, `ddev-up.sh` and
+    `place-subject.sh` (or prefix any script with `DRUPILOT_WORKSPACE_DIR=DIR`),
+    and hand it to the orchestrator so every stage uses it.
+  - `--json` — the machine contract: whatever mode runs, your **final message is
+    exactly** the output of
+    `bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-summary.sh" --subject <subject_dir> --json`
+    (one JSON object, schema in that script's header), with no prose before or
+    after it. Progress and explanations go only into intermediate messages.
+  Never take a flag word for the subject path or a mode word. An unknown `--flag`
+  is reported in one line and ignored.
 - **Mode inference (when no explicit mode word is given) — infer from intent:**
   - An **action / port** request ("port this to Drupal 11", "upgrade this module",
     "make it D11", "do the port", "modernize it") → **run the flow**: effective mode
@@ -109,7 +130,8 @@ issue comment — **independently of contributing** the Merge Request later.
 ## Step 5 — Run the flow (`full`) or hands-off (`auto`)
 
 Resolve the effective mode in order: (1) an explicit `$ARGUMENTS` mode word wins;
-(2) else if `autonomous=true` (from Step 2) → `auto`; (3) else infer from the user's
+(2) else if `--no-confirm` is in `$ARGUMENTS` or `autonomous=true` (from Step 2) →
+`auto`; (3) else infer from the user's
 intent per the Hard rules — a port/upgrade request → `full` (or `auto` if they asked
 for unattended), an exploratory ask → `next`, a status ask → `status`. So "port this
 module to Drupal 11" runs the flow (`full`); it does not stop at recommending the next
@@ -152,6 +174,15 @@ If the mode is `auto` (the `auto` mode word, or `DRUPILOT_AUTONOMOUS=true`):
 Honor `DRUPILOT_VIABILITY_THRESHOLD`: if the assessment exceeds it, the
 orchestrator still ports (it never refuses) but says so plainly in the final
 summary.
+
+### Wrapper output (`--json`)
+
+When `$ARGUMENTS` carries `--json`, end every mode (`full`, `auto`, `status`,
+`next`) by running `port-summary.sh --subject <subject_dir> --json` and replying
+with its STDOUT verbatim as the whole final message. Wrappers rely on it to read
+`status` (`not-started` … `contributed`, or `blocked` with `blockers`),
+`effort`, `files_changed`, `rector_rules`, `reverted_rules`, `manual_fixes`,
+`preservation`, `matrix` and `patch` without parsing Markdown.
 
 ### `status` / `next`
 

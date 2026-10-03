@@ -40,7 +40,10 @@
 #
 # Usage:
 #   place-subject.sh [--subject DIR] [--placement move|symlink|copy]
-#                    [--no-exclude] [--dry-run] [--yes] [-h|--help]
+#                    [--workspace DIR] [--no-exclude] [--dry-run] [--yes]
+#                    [-h|--help]
+#   --workspace DIR  the test-bed root, the same as DRUPILOT_WORKSPACE_DIR (the
+#                    flag wins over the variable).
 #
 # Output: the destination path on STDOUT; logging on STDERR.
 # Exit codes: 0 ok (placed or already placed) · 1 usage/error/refused · 2 the
@@ -68,6 +71,8 @@ while [[ $# -gt 0 ]]; do
     --placement) PLACEMENT_OVERRIDE="${2:-}"; shift 2;;
     --placement=*) PLACEMENT_OVERRIDE="${1#*=}"; shift;;
     --dry-run) DRY=1; shift;;
+    --workspace) [[ -n "${2:-}" ]] || die "--workspace needs a directory" 1; export DRUPILOT_WORKSPACE_DIR="$2"; shift 2;;
+    --workspace=*) export DRUPILOT_WORKSPACE_DIR="${1#*=}"; shift;;
     --no-exclude) NO_EXCLUDE=1; shift;;
     --yes|-y) ASSUME=1; shift;;
     -h|--help) usage; exit 0;;

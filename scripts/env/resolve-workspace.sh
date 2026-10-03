@@ -20,8 +20,10 @@
 # Placement mode comes from DRUPILOT_PLACEMENT (move|symlink|copy, default move).
 #
 # Usage:
-#   resolve-workspace.sh [--subject DIR] [--json] [-h|--help]
+#   resolve-workspace.sh [--subject DIR] [--workspace DIR] [--json] [-h|--help]
 #     --subject DIR  Module/theme directory (default: current directory).
+#     --workspace DIR  The test-bed root for a loose subject; the same as
+#                    DRUPILOT_WORKSPACE_DIR (the flag wins over the variable).
 #     --json         Print only the JSON payload (suppress the human table).
 #
 # Output: a human table on STDERR; the recommendation JSON on STDOUT:
@@ -51,6 +53,8 @@ while [[ $# -gt 0 ]]; do
     --subject) SUBJECT="${2:-}"; shift 2;;
     --subject=*) SUBJECT="${1#*=}"; shift;;
     --json) JSON_ONLY=1; shift;;
+    --workspace) [[ -n "${2:-}" ]] || die "--workspace needs a directory" 1; export DRUPILOT_WORKSPACE_DIR="$2"; shift 2;;
+    --workspace=*) export DRUPILOT_WORKSPACE_DIR="${1#*=}"; shift;;
     -h|--help) usage; exit 0;;
     *) log_warn "Unknown argument: $1"; shift;;
   esac

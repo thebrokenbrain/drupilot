@@ -206,7 +206,7 @@ Después, el `state.json` de cada módulo registra `environment: {status: "remov
 
 | Comando | Qué hace |
 | --- | --- |
-| `/drupilot [sujeto] [full\|auto]` | **Router / flujo guiado.** Detecta el estado actual (entorno, último assess, fase) y recomienda el siguiente paso. `full` ejecuta todo el flujo con confirmaciones; `auto` lo ejecuta **sin intervención** (ver más abajo). |
+| `/drupilot [sujeto] [full\|auto\|status\|next] [--no-confirm] [--workspace DIR] [--json]` | **Router / flujo guiado.** Detecta el estado actual (entorno, último assess, fase) y recomienda el siguiente paso. `full` ejecuta todo el flujo con confirmaciones; `auto` lo ejecuta **sin intervención** (ver más abajo). Las palabras flag son para wrappers: ver [Ejecutar bajo otra herramienta](#ejecutar-bajo-otra-herramienta-contrato-no-interactivo). |
 | `/drupilot-doctor [install]` | **Verificación de requisitos.** Tabla de estado por plataforma (Docker + daemon, DDEV, git, composer/php, jq, SSH/PAT) con instrucciones de instalación e instalación asistida opcional (con confirmación). |
 | `/drupilot-setup` | Levanta un sitio **Drupal 11 con DDEV**, instala los add-ons (`ddev-drupal-contrib`, Selenium) y el toolchain de desarrollo de Composer (incluido `drupal/core-dev`, ajustado al core instalado, que aporta PHPUnit), y escribe `rector.php` / `phpstan.neon` / `phpcs.xml.dist` / entorno de tests desde plantillas. Idempotente. |
 | `/drupilot-assess [sujeto]` | Produce el **informe de viabilidad** + plan por etapas con veredicto S/M/L/XL. |
@@ -306,6 +306,53 @@ claude -p "/drupilot web/modules/custom/my_module auto" --permission-mode bypass
 
 En modo autónomo `DRUPILOT_GENERATE_RULES` se trata como `auto` (ponlo en `off` para que la generación de reglas ad-hoc se quede en solo-informar). Todo sigue estando gateado y siendo idempotente: un requisito duro ausente detiene esa etapa limpiamente, y reejecutar salta el trabajo ya hecho. En cambio, `full` ejecuta el mismo pipeline pero **se detiene a pedir tu confirmación** y deja refactor/contribución como opt-in.
 
+### Ejecutar bajo otra herramienta (contrato no interactivo)
+
+Un wrapper (otra skill, un job de CI, un script que conduce `claude -p`) necesita entradas estables y un resultado legible por máquina, no prosa. El contrato:
+
+| Entrada | Variable de entorno (canónica) | Palabra del router (azúcar) | Flag de script |
+| --- | --- | --- | --- |
+| El sujeto | — | primera palabra posicional: `/drupilot <dir> …` | `--subject DIR` (todos los scripts) |
+| Dónde va el test-bed de un sujeto suelto | `DRUPILOT_WORKSPACE_DIR=DIR` | `--workspace DIR` | `--workspace DIR` (`resolve-workspace.sh`, `ddev-up.sh`, `place-subject.sh`; el flag gana a la variable) |
+| No preguntar nunca | `DRUPILOT_NONINTERACTIVE=1` | `--no-confirm` (también selecciona `auto`) | — |
+| Pipeline sin intervención | `DRUPILOT_AUTONOMOUS=true` | `auto` | — |
+| Pre-responder una elección con pestañas | `DRUPILOT_CHOICE_<KEY>=valor` | — | — |
+| Resultado para máquinas | — | `--json` | `port-summary.sh --subject DIR --json` |
+
+- `DRUPILOT_NONINTERACTIVE=1` hace que todos los scripts se comporten como si no hubiera terminal: no se muestra ninguna pregunta y cada una toma su **valor por defecto**, la respuesta recomendada y segura (mover el módulo al test-bed se hace; un push o una limpieza destructiva, no). `DRUPILOT_ASSUME_YES=1` es distinto: responde **sí** a toda confirmación, así que úsalo solo cuando eso es lo que quieres.
+- `--no-confirm` nunca convierte una ejecución en una acción hacia fuera: como `auto`, nunca hace push, abre un Merge Request ni contribuye, y el hook `guard-contrib` sigue preguntando.
+- Con `--json`, el mensaje final del router es exactamente el JSON de `scripts/analysis/port-summary.sh`. Un wrapper también puede ejecutar ese script por su cuenta, lo que es más robusto que leer la respuesta del modelo.
+
+```bash
+# Port headless con un resultado legible por máquina:
+export DRUPILOT_NONINTERACTIVE=1
+claude -p "/drupilot ~/src/my_module auto --no-confirm --workspace ~/src/my_module-d11 --json" \
+  --permission-mode bypassPermissions > result.json
+
+# O lee el resultado directamente de los registros de drupilot (sin modelo):
+bash "$CLAUDE_PLUGIN_ROOT/scripts/analysis/port-summary.sh" --subject ~/src/my_module-d11/web/modules/custom/my_module --json
+```
+
+`port-summary.sh` solo compone lo que drupilot registró (el `state.json` por módulo, el manifiesto del port, el registro de decisiones, la última ejecución de tests, la matriz de cores) y nunca inventa un valor: lo desconocido es `null`. `port-report.sh` también lo guarda como `.drupilot/port-summary.json` junto a `port-report.md`. Sus campos principales:
+
+| Campo | Significado |
+| --- | --- |
+| `schema_version` | `1`. Dentro de una versión pueden añadirse campos; renombrar o quitar uno la incrementa. |
+| `status` | `not-started`, `setup`, `assessed`, `ported`, `refactored`, `tested`, `contributed`, o `blocked` (ver `blockers`). |
+| `blockers` | `[{source, reason}]`: por qué un módulo portado está `blocked` — una regresión de tests, tests que no pudieron ejecutarse o que nunca tuvieron baseline, una pata de la matriz de cores fallida, o errores de port-safety/firmas. Un resultado calculado sobre fuentes anteriores se muestra pero nunca bloquea. |
+| `effort` | El veredicto del assess: `S`, `M`, `L` o `XL`. |
+| `core_version_requirement`, `require_php`, `d10_support` | Lo que declara ahora el módulo, y cómo se verificó su mitad Drupal 10. |
+| `files_changed` | Ficheros que cambió el port (el recuento del manifiesto, si no, los ficheros del parche). |
+| `rector_rules` | `[{rule, hits, passes}]`: reglas de Rector que cambiaron ficheros. |
+| `reverted_rules` | Cambios de Rector deshechos a mano, con el porqué. |
+| `manual_fixes` | Ediciones manuales, con el porqué y un change record. También `post_port_fixes`, `behavior_changes`, `preexisting_bugs`, `tooling_deviations`, `test_adaptations`, `deferred`. |
+| `preservation` | `{verdict, status, executed, tests_failed, fresh, recorded_at}` de la última ejecución de tests. |
+| `matrix` | `{verdict, d10_support, fresh, generated_at}` de la matriz de cores. |
+| `patch` | `{path, kind, at, exists}` del último parche. |
+| `reports` | Rutas de `port-report.md`, `viability-report.md`, `decisions.md` y `port-summary.json`. |
+
+`--strict` hace que el script salga con 3 cuando el estado es `blocked`, para un gate de CI. El esquema completo está en la cabecera del script.
+
 ---
 
 ## Configuración
@@ -357,7 +404,7 @@ Los valores por defecto están en `config/defaults.json`. **Cada clave `DRUPILOT
 | `DRUPILOT_REFACTOR_SCOPE` | _(se pregunta)_ | Conjunto persistido de modernizaciones de Fase 2 a aplicar (atributos / DI / tipados estrictos / final / deprecaciones). Normalmente se elige con el multi-select de `/drupilot-refactor` y se recuerda en `.drupilot.json`. |
 | `DRUPILOT_CHOICE_<KEY>` | — | Pre-responde una elección en pestaña concreta de forma no interactiva (p. ej. `DRUPILOT_CHOICE_CORE_TARGET`), para que no se pregunte. |
 
-Otras variables de entorno útiles: `DRUPILOT_GITLAB_PAT` (tu Personal Access Token de GitLab, leído solo en runtime, nunca persistido), `DRUPILOT_ASSUME_YES=1` (saltar confirmaciones en ejecuciones no interactivas), `NO_COLOR=1`.
+Otras variables de entorno útiles: `DRUPILOT_GITLAB_PAT` (tu Personal Access Token de GitLab, leído solo en runtime, nunca persistido), `DRUPILOT_ASSUME_YES=1` (responder sí a toda confirmación en ejecuciones no interactivas), `DRUPILOT_NONINTERACTIVE=1` (no preguntar nunca: cada pregunta toma su valor por defecto seguro; ver [Ejecutar bajo otra herramienta](#ejecutar-bajo-otra-herramienta-contrato-no-interactivo)), `NO_COLOR=1`.
 
 Ejemplo — apuntar a PHP 8.4 y abandonar el soporte de Drupal 10 durante una sesión:
 

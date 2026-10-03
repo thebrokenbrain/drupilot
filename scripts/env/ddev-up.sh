@@ -48,7 +48,10 @@
 #
 # Usage:
 #   ddev-up.sh [--php X] [--name NAME] [--subject DIR] [--docroot web]
-#              [--dir PROJECT_DIR] [--no-create] [--json] [-h|--help]
+#              [--dir PROJECT_DIR] [--workspace DIR] [--no-create] [--json]
+#              [-h|--help]
+#   --workspace  the test-bed root for a loose --subject, the same as
+#              DRUPILOT_WORKSPACE_DIR (the flag wins over the variable).
 #
 #   --name     DDEV project name (hostname-safe; sanitized). Default: the
 #              project directory's name (for a loose subject, the sibling
@@ -89,6 +92,8 @@ while [[ $# -gt 0 ]]; do
     --name=*) PROJECT_NAME="${1#*=}"; shift;;
     --subject) SUBJECT="${2:-}"; shift 2;;
     --subject=*) SUBJECT="${1#*=}"; shift;;
+    --workspace) [[ -n "${2:-}" ]] || die "--workspace needs a directory" 1; export DRUPILOT_WORKSPACE_DIR="$2"; shift 2;;
+    --workspace=*) export DRUPILOT_WORKSPACE_DIR="${1#*=}"; shift;;
     --docroot) DOCROOT="${2:-web}"; shift 2;;
     --docroot=*) DOCROOT="${1#*=}"; shift;;
     --dir) PROJECT_DIR="${2:-}"; shift 2;;
