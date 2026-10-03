@@ -1,0 +1,97 @@
+{
+  "exit": 0,
+  "stdout": {
+    "checks_run": [
+      "config-schema",
+      "plugin-schema",
+      "configure-route",
+      "services-class",
+      "services-arity",
+      "submodule-core-req",
+      "undeclared-deps"
+    ],
+    "findings": [
+      {
+        "check": "undeclared-deps",
+        "extension": "acme_reports",
+        "file": "acme_reports.module",
+        "line": 12,
+        "message": "'acme_reports' uses project module 'acme_core' (library,plugin,route) without declaring it in acme_reports.info.yml dependencies: installing 'acme_reports' alone fails or breaks at runtime.",
+        "severity": "warn",
+        "suggestion": "Add '- acme_core:acme_core' to dependencies:."
+      },
+      {
+        "check": "undeclared-deps",
+        "extension": "acme_reports",
+        "file": "acme_reports.services.yml",
+        "line": 4,
+        "message": "'acme_reports' uses project module 'acme_utils' (class,service) without declaring it in acme_reports.info.yml dependencies: installing 'acme_reports' alone fails or breaks at runtime.",
+        "severity": "warn",
+        "suggestion": "Add '- acme_utils:acme_utils' to dependencies:."
+      },
+      {
+        "check": "config-schema",
+        "extension": "acme_reports",
+        "file": "config/install/acme_reports.settings.yml",
+        "line": 1,
+        "message": "Config 'acme_reports.settings' has no schema in config/schema/*.schema.yml: strict config schema checks (Kernel/Functional tests, config inspector) fail on it and its values are not typed or translatable.",
+        "severity": "warn",
+        "suggestion": "Add a 'acme_reports.settings:' entry (type: config_object for simple config) to config/schema/acme_reports.schema.yml."
+      },
+      {
+        "check": "undeclared-deps",
+        "extension": "acme_reports",
+        "file": "src/Controller/ReportController.php",
+        "line": 5,
+        "message": "'acme_reports' uses project module 'acme_api' (class,service) without declaring it in acme_reports.info.yml dependencies: installing 'acme_reports' alone fails or breaks at runtime.",
+        "severity": "warn",
+        "suggestion": "Add '- acme_api:acme_api' to dependencies:."
+      },
+      {
+        "check": "undeclared-deps",
+        "extension": "acme_reports",
+        "file": "src/ReportBuilder.php",
+        "line": 7,
+        "message": "'acme_reports' uses core module 'node' (class) without declaring it in acme_reports.info.yml dependencies: installing 'acme_reports' alone fails or breaks at runtime.",
+        "severity": "warn",
+        "suggestion": "Add '- drupal:node' to dependencies:."
+      },
+      {
+        "check": "undeclared-deps",
+        "extension": "acme_reports",
+        "file": "src/SlugCleaner.php",
+        "line": 5,
+        "message": "'acme_reports' uses contrib module 'pathauto' (class) without declaring it in acme_reports.info.yml dependencies: installing 'acme_reports' alone fails or breaks at runtime.",
+        "severity": "warn",
+        "suggestion": "Add '- pathauto:pathauto' to dependencies: (verify the drupal.org project name)."
+      },
+      {
+        "check": "services-arity",
+        "extension": "acme_reports",
+        "file": "acme_reports.services.yml",
+        "line": 7,
+        "message": "Service 'acme_reports.cleaner' passes 1 argument(s); Drupal\\acme_reports\\SlugCleaner has no own constructor (inherited from outside the subject): not checked.",
+        "severity": "info",
+        "suggestion": ""
+      },
+      {
+        "check": "undeclared-deps",
+        "extension": "acme_reports",
+        "file": "src/Controller/ReportController.php",
+        "line": 31,
+        "message": "'acme_reports' uses 'acme_search' (service) only optionally (a moduleExists() guard, config/optional, an @?service, or a plugin of acme_search's own plugin type): fine without a dependency.",
+        "severity": "info",
+        "suggestion": ""
+      }
+    ],
+    "generated_at": "<TS>",
+    "subject": "<SUBJECT>/web/modules/custom/acme_reports",
+    "subject_digest": "ce736f501a102a43ff9141c3cc6b5baf0fc060dc237b3ac7db3ede96e7c85b87",
+    "tool": "lint-extension-metadata",
+    "totals": {
+      "error": 0,
+      "info": 2,
+      "warn": 6
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "exit": 0,
+  "stdout": {
+    "keys": [
+      "ddev_php",
+      "host_php",
+      "supported",
+      "target",
+      "unconfirmed"
+    ],
+    "supported": true,
+    "target": "8.4",
+    "unconfirmed": false
+  }
+}

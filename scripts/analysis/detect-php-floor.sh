@@ -67,19 +67,24 @@ SUBJECT_ABS="$(cd "$SUBJECT" 2>/dev/null && pwd || true)"
 [[ -n "$SUBJECT_ABS" && -d "$SUBJECT_ABS" ]] || die "Subject directory not found: '$SUBJECT'." 1
 have_cmd jq || die "jq is required for detect-php-floor.sh." 1
 
-# PHP source extensions Drupal uses.
-INCLUDES=(--include='*.php' --include='*.module' --include='*.inc' \
-          --include='*.install' --include='*.theme' --include='*.profile' \
-          --include='*.engine')
+# grep_sources <grep args...> -> grep over the PHP source files Drupal uses
+# (find selects them: BusyBox grep has no --include).
+grep_sources() {
+  find "$SUBJECT_ABS" -type f \( -name '*.php' -o -name '*.module' -o -name '*.inc' \
+    -o -name '*.install' -o -name '*.theme' -o -name '*.profile' -o -name '*.engine' \) \
+    -exec grep "$@" {} + 2>/dev/null
+  return 0
+}
 
 FLOOR="8.1"
 SIGNALS_JSON="[]"
-SCANNED="$(grep -rIl "${INCLUDES[@]}" -e '' "$SUBJECT_ABS" 2>/dev/null | wc -l | tr -d ' ')"
+SCANNED="$(grep_sources -Il -e '' | wc -l | tr -d ' ')"
 
 # scan_signal VERSION ERE LABEL -> append a JSON object if found; echo nothing.
+# The first hit in path order (then line order), whatever order find walks in.
 scan_for() {
   local ver="$1" ere="$2" label="$3" hit
-  hit="$(grep -rInE "${INCLUDES[@]}" -e "$ere" "$SUBJECT_ABS" 2>/dev/null | head -n1 || true)"
+  hit="$(grep_sources -HInE -e "$ere" | LC_ALL=C sort -t: -k1,1 -k2,2n | head -n1 || true)"
   if [[ -n "$hit" ]]; then
     # location relative to the subject (file:line), trimmed.
     local loc="${hit%%:*}"; local line; line="$(printf '%s' "$hit" | cut -d: -f2)"

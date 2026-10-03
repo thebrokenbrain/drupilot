@@ -1,0 +1,15 @@
+{
+  "exit": 0,
+  "stdout": {
+    "core_floor": "10.3",
+    "core_requirement": "^10.3",
+    "drupal_root": null,
+    "errors": 0,
+    "findings": [],
+    "infos": 0,
+    "ok": true,
+    "subject": "<SUBJECT>/web/modules/custom/acme_reports",
+    "tool": "scan-signature-changes",
+    "warnings": 0
+  }
+}

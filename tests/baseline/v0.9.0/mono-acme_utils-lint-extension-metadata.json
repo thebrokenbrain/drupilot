@@ -1,0 +1,34 @@
+{
+  "exit": 0,
+  "stdout": {
+    "checks_run": [
+      "config-schema",
+      "plugin-schema",
+      "configure-route",
+      "services-class",
+      "services-arity",
+      "submodule-core-req",
+      "undeclared-deps"
+    ],
+    "findings": [
+      {
+        "check": "services-class",
+        "extension": "acme_utils",
+        "file": "acme_utils.services.yml",
+        "line": 7,
+        "message": "Service 'acme_utils.old_helper' points at class Drupal\\acme_utils\\Legacy\\OldHelper, but src/Legacy/OldHelper.php does not exist (orphan service): fetching it is a fatal error.",
+        "severity": "error",
+        "suggestion": "Remove the service definition, or restore/rename the class."
+      }
+    ],
+    "generated_at": "<TS>",
+    "subject": "<SUBJECT>/web/modules/custom/acme_utils",
+    "subject_digest": "806423bd0488d68d7735d1a939b4cf9a0250bb3393554a5095417a1007330496",
+    "tool": "lint-extension-metadata",
+    "totals": {
+      "error": 1,
+      "info": 0,
+      "warn": 0
+    }
+  }
+}

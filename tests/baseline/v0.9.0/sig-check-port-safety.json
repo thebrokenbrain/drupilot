@@ -1,0 +1,33 @@
+{
+  "exit": 0,
+  "stdout": {
+    "base": null,
+    "checks": [
+      "plugin-di",
+      "removed-use",
+      "static-factory",
+      "fapi-callable",
+      "serialization",
+      "override-attribute",
+      "class-case"
+    ],
+    "core_requirement": "^10.3 || ^11",
+    "diff_mode": false,
+    "drupal_root": null,
+    "errors": 0,
+    "findings": [
+      {
+        "check": "override-attribute",
+        "file": "src/Overridden.php",
+        "introduced": null,
+        "line": 10,
+        "message": "#[\\Override] in Overridden while core_version_requirement '^10.3 || ^11' still includes Drupal 10: confirm the parent method exists on the LOWEST core you declare (without it PHP 8.3+ fatals at compile time). Phase 1 does not add #[\\Override].",
+        "severity": "warn"
+      }
+    ],
+    "ok": true,
+    "subject": "<SUBJECT>",
+    "tool": "check-port-safety",
+    "warnings": 1
+  }
+}

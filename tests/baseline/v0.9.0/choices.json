@@ -1,0 +1,235 @@
+{
+  "exit": 0,
+  "stdout": {
+    "ATTRIBUTE_FLOOR": {
+      "command": "/drupilot-refactor",
+      "default": "keep",
+      "header": "Attribute floor",
+      "options": [
+        "keep",
+        "raise-floor"
+      ]
+    },
+    "CLEAN_CONFIRM": {
+      "command": "/drupilot-clean",
+      "header": "Proceed?",
+      "preanswer": false
+    },
+    "CLEAN_LEVEL": {
+      "command": "/drupilot-clean",
+      "default": "vendor",
+      "header": "Clean level",
+      "options": [
+        "vendor",
+        "ddev",
+        "workspace"
+      ]
+    },
+    "CONFIG_CONFLICT": {
+      "command": "/drupilot-setup",
+      "default": "keep",
+      "header": "Hand-edited config",
+      "options": [
+        "keep",
+        "replace"
+      ]
+    },
+    "CONTRIB_MODE": {
+      "command": "/drupilot-contribute",
+      "default": "semi",
+      "header": "Contribute mode",
+      "options": [
+        "semi",
+        "auto"
+      ],
+      "persist_key": "DRUPILOT_CONTRIB_MODE"
+    },
+    "CORE_TARGET": {
+      "command": "/drupilot-port",
+      "default": "auto",
+      "header": "Core target",
+      "options": [
+        "auto",
+        "keep-d10",
+        "d11-only"
+      ],
+      "persist_key": "DRUPILOT_CORE_TARGET_STRATEGY"
+    },
+    "D10_CHECK": {
+      "command": "/drupilot-port",
+      "default": "fix",
+      "header": "Drupal 10 check",
+      "options": [
+        "fix",
+        "raise-floor",
+        "d11-only",
+        "declared"
+      ],
+      "persist_map": {
+        "d11-only": {
+          "DRUPILOT_CORE_TARGET_STRATEGY": "d11-only"
+        }
+      }
+    },
+    "DIGESTS_RULES": {
+      "command": "/drupilot-port",
+      "default": "review",
+      "header": "Digests rules",
+      "options": [
+        "apply-unflagged",
+        "skip"
+      ]
+    },
+    "DOCTOR_INSTALL": {
+      "command": "/drupilot-doctor",
+      "header": "Install / How",
+      "preanswer": false
+    },
+    "EXISTING_WORK": {
+      "command": "/drupilot-assess",
+      "default": "independent",
+      "header": "Existing work",
+      "options": [
+        "independent",
+        "existing"
+      ]
+    },
+    "INTENT": {
+      "command": "/drupilot",
+      "default": "next",
+      "header": "How to proceed",
+      "options": [
+        "full",
+        "next",
+        "auto"
+      ]
+    },
+    "LAYERS_CONFIRM": {
+      "command": "/drupilot-layers",
+      "default": "proceed",
+      "header": "Port this layer",
+      "options": [
+        "proceed",
+        "stop"
+      ]
+    },
+    "LAYERS_NEXT": {
+      "command": "/drupilot-layers",
+      "default": "next-layer",
+      "header": "Next layer",
+      "options": [
+        "next-layer",
+        "stop"
+      ]
+    },
+    "LAYERS_PLAN": {
+      "command": "/drupilot-layers",
+      "default": "port",
+      "header": "Layers plan",
+      "options": [
+        "port",
+        "stop"
+      ]
+    },
+    "LAYERS_SANDBOX": {
+      "command": "/drupilot-layers",
+      "default": "per-module",
+      "header": "Layers sandbox",
+      "options": [
+        "per-module",
+        "shared"
+      ],
+      "persist_key": "DRUPILOT_LAYERS_SANDBOX"
+    },
+    "LEARN": {
+      "command": "/drupilot-port, /drupilot-refactor",
+      "default": "all",
+      "header": "Learn",
+      "options": [
+        "all",
+        "none"
+      ]
+    },
+    "NEXT_STEP": {
+      "command": "/drupilot-port, /drupilot-refactor",
+      "default": "test",
+      "header": "Next step",
+      "options": [
+        "test",
+        "patch",
+        "refactor",
+        "done"
+      ]
+    },
+    "PATCH_KIND": {
+      "command": "/drupilot-patch",
+      "default": "local",
+      "header": "Patch for",
+      "options": [
+        "local",
+        "issue"
+      ]
+    },
+    "PHPSTAN_LEVEL": {
+      "command": "/drupilot-refactor",
+      "default": "6",
+      "header": "PHPStan level",
+      "options": [
+        "6",
+        "5",
+        "4"
+      ],
+      "persist_key": "DRUPILOT_PHPSTAN_LEVEL_REFACTOR"
+    },
+    "PHP_TARGET": {
+      "command": "/drupilot-setup",
+      "default": "8.4",
+      "header": "PHP target",
+      "options": [
+        "8.3",
+        "8.4",
+        "8.5"
+      ],
+      "persist_key": "DRUPILOT_PHP_TARGET"
+    },
+    "PLACEMENT": {
+      "command": "/drupilot-setup",
+      "default": "move",
+      "header": "Workspace layout",
+      "options": [
+        "move",
+        "symlink",
+        "copy"
+      ],
+      "persist_key": "DRUPILOT_PLACEMENT"
+    },
+    "PORT_ATTRIBUTES": {
+      "command": "/drupilot-port",
+      "default": "skip",
+      "header": "Plugin attributes",
+      "options": [
+        "skip",
+        "add"
+      ]
+    },
+    "PUSH": {
+      "command": "/drupilot-contribute",
+      "header": "Push to Drupal.org",
+      "preanswer": false
+    },
+    "REFACTOR_SCOPE": {
+      "command": "/drupilot-refactor",
+      "default": "attributes,di,strict-types,final,deprecations",
+      "header": "Modernize",
+      "multi": true,
+      "options": [
+        "attributes",
+        "di",
+        "strict-types",
+        "final",
+        "deprecations"
+      ],
+      "persist_key": "DRUPILOT_REFACTOR_SCOPE"
+    }
+  }
+}

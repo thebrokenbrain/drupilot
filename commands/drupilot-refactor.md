@@ -16,7 +16,7 @@ Subject path argument: `$1` (fallback: the current working directory).
 ## Step 0 — Gate (profile `analyze`) and confirm intent
 
 ```bash
-!bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile analyze
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile analyze && bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; copy_legacy_state_once'
 ```
 
 If it exits `2`, show the report, point to `/drupilot-doctor`, and STOP. The dev
@@ -44,8 +44,8 @@ stays reviewable.
 
 The refactor PHPStan target is `DRUPILOT_PHPSTAN_LEVEL_REFACTOR` (default `6`),
 higher than the Phase 1 deprecation level. The PHP target still derives from
-`DRUPILOT_PHP_TARGET` (default `8.3`); never assume PHP 8.5 is supported — branch
-on the runtime check.
+`DRUPILOT_PHP_TARGET` (default `8.3`); PHP 8.5 needs Drupal 11.3 or later and
+has no assumed Rector `php85` set — branch on the runtime check.
 
 Because a refactor introduces typed / `final` public APIs (a BC break),
 re-evaluate the core target in refactor mode:

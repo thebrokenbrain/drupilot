@@ -29,7 +29,7 @@
 # Cached base core (DRUPILOT_CORE_CACHE = auto | locked | off, default auto):
 # after a fresh create-project (+ Drush), the resulting tree (composer.json,
 # composer.lock, vendor/, the docroot with core, recipes/, the scaffold files;
-# never .ddev/, settings*.php or files/) is stored under the plugin data dir,
+# never .ddev/, settings*.php or files/) is stored under drupilot's data dir,
 # keyed by PHP target + exact core version. A later setup of an EMPTY root
 # copies that tree in (copy-on-write: `cp --reflink=auto`, `cp -c` on APFS,
 # else a plain copy) before `ddev start`, then verifies it with
@@ -113,9 +113,10 @@ done
 # Effective PHP target (flag overrides config; config defaults to 8.3).
 [[ -z "$PHP_TARGET" ]] && PHP_TARGET="$(resolve_php_target)"
 
-# Warn (don't block) on an unconfirmed PHP target — DDEV may lack that image.
+# Warn (don't block) on PHP 8.5: DDEV may lack that image, and it needs Drupal
+# 11.3 or later (checked below against the core this run installs, and at the
+# end against the core the test-bed has).
 if php_target_unconfirmed "$PHP_TARGET"; then
-  log_warn "PHP target $PHP_TARGET is not officially confirmed for Drupal 11 (PROMPT 1.2)."
   log_warn "DDEV may not provide a PHP $PHP_TARGET image. Consider 8.3 (default) or 8.4 if 'ddev start' fails."
 fi
 
@@ -271,6 +272,23 @@ if deterministic_mode && [[ ! -f "$PROJECT_DIR/composer.json" ]]; then
   if [[ -n "$LOCKED_CORE" ]]; then
     CREATE_SPEC="drupal/recommended-project:${LOCKED_CORE}"
     log_info "Lockfile pins Drupal core $LOCKED_CORE for this root — honoring it (DRUPILOT_DETERMINISTIC=false resolves '$DRUPAL_TARGET' fresh)."
+  fi
+fi
+
+# PHP 8.5 needs Drupal 11.3 or later: warn (don't block) when the core this run
+# creates may be older — the lock-pinned core, else the floor of the Drupal
+# target. A dev branch or a stability flag (11.x-dev, ^11.3@beta) has no numeric
+# floor: unknown, never guessed. The installed core is checked again at the end.
+if php_target_unconfirmed "$PHP_TARGET" && [[ "$DO_CREATE" == "1" && ! -f "$PROJECT_DIR/composer.json" ]]; then
+  _floor=""; _from=""
+  if [[ -n "$LOCKED_CORE" ]]; then
+    _floor="$LOCKED_CORE"; _from="the lockfile pins Drupal $LOCKED_CORE"
+  elif ! printf '%s' "$DRUPAL_TARGET" | grep -qE '@|-dev|[0-9]\.(x|\*)'; then
+    _floor="$(core_floor_from_requirement "$DRUPAL_TARGET")"
+    _from="the Drupal target $DRUPAL_TARGET also admits $_floor (Composer installs the newest core it admits; the installed one is checked at the end)"
+  fi
+  if [[ -n "$_floor" && "$(php_supported_for "$_floor" "$PHP_TARGET")" == "no" ]]; then
+    log_warn "PHP $PHP_TARGET needs Drupal 11.3 or later; $_from."
   fi
 fi
 
@@ -605,6 +623,14 @@ bash "$PLUGIN_ROOT_DIR/scripts/env/lock-sync.sh" --dir "$PROJECT_DIR" >/dev/null
 # The environment exists again: clear a /drupilot-clean 'removed' record on
 # the modules of this root (next-step.sh stops recommending /drupilot-setup).
 env_status_record "$PROJECT_DIR" ready
+
+# PHP 8.5 on the core this test-bed actually has (warn, never block).
+if php_target_unconfirmed "$PHP_TARGET"; then
+  _core="$(drupal_core_version "$PROJECT_DIR")"
+  if [[ -n "$_core" && "$(php_supported_for "$_core" "$PHP_TARGET")" == "no" ]]; then
+    log_warn "PHP $PHP_TARGET needs Drupal 11.3 or later; this test-bed has Drupal $_core."
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 # Done

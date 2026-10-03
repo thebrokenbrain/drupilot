@@ -14,7 +14,7 @@
       "options": ["8.3", "8.4", "8.5"],
       "default": "8.4",
       "persist_key": "DRUPILOT_PHP_TARGET",
-      "note": "8.5 is not confirmed on any Drupal 11 branch: it is accepted with a warning. A --php X.Y argument wins."
+      "note": "8.5 needs Drupal 11.3 or later: it is accepted, with a warning when the Drupal target or the installed core is older. A --php X.Y argument wins."
     },
     "PLACEMENT": {
       "command": "/drupilot-setup",

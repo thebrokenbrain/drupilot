@@ -39,7 +39,8 @@ commands so behavior stays idempotent, gated and consistent.
 - **PHP target drives everything.** The DDEV `php_version`, the Rector PHP set,
   the PHPStan level expectations and some PHPCS sniffs all derive from
   `DRUPILOT_PHP_TARGET` (default `8.3`). Resolve it with `resolve_php_target`; see
-  the `php-target-tuning` skill for the 8.5 runtime-detection caveat.
+  the `php-target-tuning` skill for the PHP 8.5 caveat (it needs Drupal 11.3 or
+  later).
 
 ## 1. Gate the operation
 
@@ -68,8 +69,10 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/detect-php.sh" --json
 ```
 
 Use `target` for the rest of the flow. If `unconfirmed` is true (i.e. 8.5),
-surface the caveat and prefer the default `8.3` unless the user explicitly
-insists — do not claim "8.5 is supported".
+say that PHP 8.5 needs Drupal 11.3 or later and that no Rector `php85` set is
+assumed; `ddev-up.sh` warns when the core it creates may be older (the
+lock-pinned core, else the lowest minor the Drupal target admits) and when the
+installed core is older.
 
 ## 3. Create / start the Drupal 11 DDEV project
 
@@ -357,8 +360,8 @@ already in place, say "already configured — skipped". Hand off to the
 - `ddev composer create-project` overwrites — only run it when there is no
   `composer.json`. `ddev-up.sh` already guards this; do not call it manually
   inside a populated project.
-- The PHP 8.5 DDEV image may not exist yet; `detect-php.sh` flags this. Fall back
-  to `8.3` rather than failing the whole setup.
+- The installed DDEV may not provide a PHP 8.5 image; `ddev-up.sh` warns about it.
+  Fall back to `8.3` rather than failing the whole setup.
 - The webdriver hostname differs by add-on version — never hardcode
   `selenium-chrome:4444`; read the generated YAML / add-on output.
 - Rector and PHPStan need the Drupal **core tree present** (no database), so they

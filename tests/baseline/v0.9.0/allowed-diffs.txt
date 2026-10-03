@@ -1,0 +1,5 @@
+# Intended differences from the v0.9.0 baseline, one per line:
+#   <file> sha256:<hex of the normalized output> <reason; CHANGELOG entry>
+# scripts/dev/baseline-0.9.sh --check prints the line for each differing file.
+env-public-v0.9.json sha256:9acdd85c331a8ff064b15326371c431140347e0c97ede3cd1493a4f5799fde78 DRUPILOT_HOME added to config/defaults.json and README (T-M0-02, X14; CHANGELOG 0.9.1 Added)
+explain-deprecations-txt.json sha256:ea25b2c3268cc5d49c2f4112367f8f7e7047bba002fb4d20a49d3430416d54f3 Twig spaceless fix text: whitespace control, never the spaceless filter deprecated since Twig 3.12 (T-M0-03, 05-F9; CHANGELOG 0.9.1 Fixed)

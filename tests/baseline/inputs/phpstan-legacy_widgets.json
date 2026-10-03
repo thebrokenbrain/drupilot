@@ -1,0 +1,83 @@
+{
+  "totals": {
+    "errors": 0,
+    "file_errors": 9
+  },
+  "files": {
+    "web/modules/custom/legacy_widgets/legacy_widgets.module": {
+      "errors": 4,
+      "messages": [
+        {
+          "message": "Call to deprecated function user_load_by_mail():\nin drupal:11.4.0 and is removed from drupal:13.0.0.",
+          "line": 58,
+          "ignorable": true,
+          "identifier": "function.deprecated"
+        },
+        {
+          "message": "Call to deprecated function user_load_by_name():\nin drupal:11.4.0 and is removed from drupal:13.0.0.",
+          "line": 60,
+          "ignorable": true,
+          "identifier": "function.deprecated"
+        },
+        {
+          "message": "Call to deprecated function text_summary():\nin drupal:11.4.0 and is removed from drupal:13.0.0.",
+          "line": 75,
+          "ignorable": true,
+          "identifier": "function.deprecated"
+        },
+        {
+          "message": "Function user_roles not found.",
+          "line": 70,
+          "ignorable": true,
+          "identifier": "function.notFound"
+        }
+      ]
+    },
+    "web/modules/custom/legacy_widgets/src/Plugin/Block/WidgetSummaryBlock.php": {
+      "errors": 2,
+      "messages": [
+        {
+          "message": "Call to deprecated function check_markup():\nin drupal:11.4.0 and is removed from drupal:13.0.0.",
+          "line": 63,
+          "ignorable": true,
+          "identifier": "function.deprecated"
+        },
+        {
+          "message": "Call to deprecated function user_load_by_mail():\nin drupal:11.4.0 and is removed from drupal:13.0.0.",
+          "line": 64,
+          "ignorable": true,
+          "identifier": "function.deprecated"
+        }
+      ]
+    },
+    "web/modules/custom/legacy_widgets/src/Plugin/Filter/WidgetSummaryFilter.php": {
+      "errors": 1,
+      "messages": [
+        {
+          "message": "Call to deprecated function text_summary():\nin drupal:11.4.0 and is removed from drupal:13.0.0.",
+          "line": 59,
+          "ignorable": true,
+          "identifier": "function.deprecated"
+        }
+      ]
+    },
+    "web/modules/custom/legacy_widgets/src/Plugin/QueueWorker/WidgetReindexWorker.php": {
+      "errors": 2,
+      "messages": [
+        {
+          "message": "Call to deprecated function user_load_by_name():\nin drupal:11.4.0 and is removed from drupal:13.0.0.",
+          "line": 67,
+          "ignorable": true,
+          "identifier": "function.deprecated"
+        },
+        {
+          "message": "Call to deprecated function drupal_set_message():\nin drupal:8.5.0 and is removed from drupal:9.0.0.",
+          "line": 70,
+          "ignorable": true,
+          "identifier": "function.deprecated"
+        }
+      ]
+    }
+  },
+  "errors": []
+}

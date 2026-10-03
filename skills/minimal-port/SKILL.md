@@ -366,8 +366,9 @@ Apply only the mechanical, behavior-preserving fixes:
   floor), the `d10_support` status and the `version_bump` verdict in the chat
   summary. Do not silently overwrite a `core_version_requirement` the user already
   hand-tuned — if it differs from the recommendation, say so and confirm.
-- **Twig 3:** removed filters/functions; `spaceless` is gone (use
-  `{% apply spaceless %}` or whitespace control) — only when mechanical.
+- **Twig 3:** removed filters/functions; the `{% spaceless %}` tag is gone (use
+  whitespace control, `{%- -%}` / `{{- -}}`; never the `spaceless` filter, which
+  is deprecated since Twig 3.12) — only when mechanical.
 - **CKEditor 5:** CKEditor 4 was removed in D10; migrate config/text-format
   references mechanically where possible.
 - **jQuery / jQuery UI:** `core/jquery.ui.*` libraries were removed/externalized;

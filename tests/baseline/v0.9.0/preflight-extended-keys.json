@@ -1,0 +1,36 @@
+{
+  "exit": 0,
+  "stdout": {
+    "check_keys": [
+      "category",
+      "detail",
+      "hint",
+      "id",
+      "kind",
+      "label",
+      "ok",
+      "present",
+      "profiles",
+      "required",
+      "version"
+    ],
+    "extended": true,
+    "keys": [
+      "checks",
+      "extended",
+      "php_target",
+      "profile",
+      "ready",
+      "toolchain"
+    ],
+    "php_target": "8.3",
+    "profile": "all",
+    "ready": [
+      "analyze",
+      "contribute",
+      "setup",
+      "test"
+    ],
+    "toolchain": null
+  }
+}

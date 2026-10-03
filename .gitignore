@@ -24,7 +24,7 @@ desktop.ini
 .env.local
 *.token
 
-# drupilot writes its caches under CLAUDE_PLUGIN_DATA / XDG (not the repo);
+# drupilot writes its caches under DRUPILOT_HOME / XDG (not the repo);
 # the entries below are guards in case you test the plugin from a checkout.
 
 # --- drupilot build / state artifacts ---

@@ -1,0 +1,24 @@
+{
+  "exit": 0,
+  "stdout": {
+    "checks_run": [
+      "config-schema",
+      "plugin-schema",
+      "configure-route",
+      "services-class",
+      "services-arity",
+      "submodule-core-req",
+      "undeclared-deps"
+    ],
+    "findings": [],
+    "generated_at": "<TS>",
+    "subject": "<SUBJECT>/web/modules/custom/acme_billing",
+    "subject_digest": "0c98075811a498fd466accd6f341a3aaad97a25a8eed025d26132552262248f8",
+    "tool": "lint-extension-metadata",
+    "totals": {
+      "error": 0,
+      "info": 0,
+      "warn": 0
+    }
+  }
+}

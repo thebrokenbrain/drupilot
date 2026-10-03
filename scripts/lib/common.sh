@@ -143,15 +143,125 @@ plugin_revision() {
   return 0
 }
 
-# data_dir -> plugin persistent data directory (cache, state).
-# Prefers CLAUDE_PLUGIN_DATA (provided by Claude Code) and falls back to XDG.
+# data_dir -> drupilot's persistent data directory (state, cache), created.
+# DRUPILOT_HOME (an absolute path, read from the environment only: it locates
+# the state before any project preference can be read), else
+# $XDG_DATA_HOME/drupilot (~/.local/share/drupilot). Never Claude Code's
+# per-plugin data dir: Claude Code exports it to hooks but not to the Bash tool,
+# so a root derived from it split the state in two (0.9.0), and it is deleted
+# when the plugin is uninstalled.
 data_dir() {
   local d; d="$(data_dir_path)"
   mkdir -p "$d" 2>/dev/null || true
   printf '%s' "$d"
 }
 # data_dir_path -> the same path, without creating it (read-only callers).
-data_dir_path() { printf '%s' "${CLAUDE_PLUGIN_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}/drupilot}"; }
+# A leading '~' of DRUPILOT_HOME is expanded (a quoted export or a settings.json
+# env value does not expand it); any other relative DRUPILOT_HOME, and a
+# relative XDG_DATA_HOME (invalid per the XDG spec), are ignored: a hook and a
+# script run from different directories, so a relative root would split the
+# state again and write it into the project tree.
+data_dir_path() {
+  local h="${DRUPILOT_HOME:-}" x="${XDG_DATA_HOME:-}"
+  # shellcheck disable=SC2088  # the literal '~' a quoted value carries is the point
+  case "$h" in "~") h="$HOME";; "~/"*) h="$HOME/${h#"~/"}";; esac
+  h="${h%/}"
+  case "$h" in /*) printf '%s' "$h"; return 0;; esac
+  case "$x" in /*) : ;; *) x="$HOME/.local/share";; esac
+  printf '%s/drupilot' "${x%/}"
+}
+
+# legacy_plugin_data_dir -> the per-plugin data dirs where drupilot 0.9.0 could
+# keep state (Claude Code's ~/.claude/plugins/data/drupilot-<install>/, one per
+# install id; CLAUDE_CONFIG_DIR moves ~/.claude), one per line, sorted, only
+# those with a state/ dir and never the current data root. Read only by
+# copy_legacy_state_once (the 1.0 migration takes it over).
+legacy_plugin_data_dir() {
+  local base="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/data" d root
+  root="$(cd "$(data_dir_path)" 2>/dev/null && pwd -P || printf '%s' "$(data_dir_path)")"
+  for d in "$base"/drupilot-*; do
+    [[ -d "$d/state" ]] || continue
+    [[ "$(cd "$d" && pwd -P)" == "$root" ]] && continue
+    printf '%s\n' "$d"
+  done
+  return 0
+}
+
+# copy_legacy_state_once -> one-time, copy-only import of the state 0.9.0 kept
+# in a per-plugin data dir (legacy_plugin_data_dir) into data_dir_path: every
+# file of <legacy>/state/ missing here is copied (never moved, never
+# overwritten; the first legacy dir wins), the copy is logged on STDERR, and the
+# marker <data root>/legacy-state-copied makes every later call return at once.
+# Each file is copied under a temp name and renamed into place, so a failed
+# copy (a full disk) leaves nothing behind. A file that could not be copied, or
+# a legacy dir that could not be fully listed, is named in a warning and leaves
+# no marker: the next gated command retries only what is still pending (the
+# files already imported or kept are listed in legacy-state-copied.partial, so
+# one the user removed in between is not imported again).
+# Call it ONLY from a command preamble, right after that command's own
+# preflight.sh exited 0 (`preflight.sh ... && ... copy_legacy_state_once`):
+# never from a hook, from preflight.sh or from a helper, so a failing gate
+# changes nothing.
+copy_legacy_state_once() {
+  local root marker partial srcs src rel list dst tmp n=0 nf=0 failed=""
+  root="$(data_dir_path)"; marker="$root/legacy-state-copied"; partial="$marker.partial"
+  [[ -e "$marker" ]] && return 0
+  srcs="$(legacy_plugin_data_dir)"
+  [[ -n "$srcs" ]] || return 0
+  if ! mkdir -p "$root/state" 2>/dev/null; then
+    log_warn "Could not create $root/state: the state drupilot 0.9.0 left in $(printf '%s' "$srcs" | tr '\n' ' ')was not copied (retried by the next command)."
+    return 0
+  fi
+  # Process substitution, not here-strings: bash < 5.1 backs a here-string
+  # with a temp file, and a full /tmp would skip the loop silently. Every
+  # listed line must also be seen, or the import does not count as complete.
+  local want got want_src got_src=0
+  want_src="$(printf '%s\n' "$srcs" | grep -c . || true)"
+  while IFS= read -r src; do
+    [[ -n "$src" ]] || continue
+    got_src=$((got_src + 1))
+    if ! list="$(cd "$src/state" 2>/dev/null && find . -type f 2>/dev/null)"; then
+      nf=$((nf + 1)); failed="$failed $src/state (not fully readable)"
+    fi
+    want="$(printf '%s\n' "$list" | grep -c . || true)"; got=0
+    while IFS= read -r rel; do
+      rel="${rel#./}"
+      [[ -n "$rel" ]] || continue
+      got=$((got + 1))
+      [[ -f "$partial" ]] && grep -qxF -- "$rel" "$partial" 2>/dev/null && continue
+      dst="$root/state/$rel"
+      if [[ -e "$dst" ]]; then
+        printf '%s\n' "$rel" >> "$partial" 2>/dev/null || true
+        continue
+      fi
+      tmp="$dst.drupilot-copy.$$"
+      if mkdir -p "$(dirname "$dst")" 2>/dev/null && cp -p "$src/state/$rel" "$tmp" 2>/dev/null \
+         && mv -f "$tmp" "$dst" 2>/dev/null; then
+        n=$((n + 1)); printf '%s\n' "$rel" >> "$partial" 2>/dev/null || true
+      else
+        rm -f "$tmp" 2>/dev/null
+        nf=$((nf + 1)); failed="$failed $src/state/$rel"
+      fi
+    done < <(printf '%s\n' "$list" | LC_ALL=C sort)
+    if [[ "$got" -ne "$want" ]]; then nf=$((nf + 1)); failed="$failed $src/state (listing not read)"; fi
+  done < <(printf '%s\n' "$srcs")
+  if [[ "$got_src" -ne "$want_src" ]]; then nf=$((nf + 1)); failed="$failed (the legacy dir list was not read)"; fi
+  if [[ "$nf" -gt 0 ]]; then
+    log_warn "Copied $n state file(s) of drupilot 0.9.0 into $root/state; $nf could not be copied and will be retried by the next command:$failed"
+    return 0
+  fi
+  { printf 'copied_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    printf 'files=%s\n' "$n"
+    printf '%s\n' "$srcs" | sed 's#^#from=#; s#$#/state#'
+  } > "$marker" 2>/dev/null || true
+  rm -f "$partial" 2>/dev/null
+  if [[ "$n" -gt 0 ]]; then
+    log_info "Copied $n state file(s) of drupilot 0.9.0 into $root/state (the originals stay in: $(printf '%s' "$srcs" | tr '\n' ' '))."
+  else
+    log_info "Legacy drupilot state found ($(printf '%s' "$srcs" | tr '\n' ' ')): nothing to copy, $root/state already has every file."
+  fi
+  return 0
+}
 
 cache_dir() { local d; d="$(data_dir)/cache"; mkdir -p "$d" 2>/dev/null || true; printf '%s' "$d"; }
 
@@ -448,13 +558,38 @@ php_target_supported() {
   [[ "$v" == "8.3" || "$v" == "8.4" ]]
 }
 
-# php_target_unconfirmed <ver> -> 0 if flagged as not officially confirmed
+# php_target_unconfirmed <ver> -> 0 if the version is in php_support.unconfirmed
+# (8.5): no Rector set is assumed for it, so rector_php_set_arg falls back to the
+# highest supported set. Which core minors run it is php_supported_for's answer
+# (PHP 8.5 needs Drupal 11.3 or later).
 php_target_unconfirmed() {
   local v="$1" file; file="$(drupilot_config_file)"
   if [[ -r "$file" ]] && have_cmd jq; then
     jq -e --arg v "$v" '.php_support.unconfirmed | index($v)' "$file" >/dev/null 2>&1 && return 0
   fi
   [[ "$v" == "8.5" ]]
+}
+
+# php_supported_for <core-minor> <php> -> "yes", "no" or "unknown": whether
+# Drupal core <core-minor> (X.Y) supports PHP <php> (X.Y), per drupal.org's PHP
+# requirements page (api-d7 node 2891690, page of 2026-08-04, re-read
+# 2026-10-03): 10.4-10.6 run 8.1-8.4; 11.1-11.4 run 8.3 and 8.4, not 8.1/8.2;
+# 8.5 runs on 11.3, 11.4 and 12.0 only (never on 11.2 or earlier); 12.0 runs
+# nothing older than 8.5; 8.6 runs on none of 10.4-11.3 (11.4 and 12.0 point
+# at an open issue). Any other pair (an unlisted or future minor, 8.6 on 11.4
+# or 12.0) is "unknown": detect it at runtime, never assume it.
+php_supported_for() {
+  local minor php
+  minor="$(printf '%s' "${1:-}" | sed -n 's/^v\{0,1\}\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
+  php="$(printf '%s' "${2:-}" | sed -n 's/^\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
+  if [[ -z "$minor" || -z "$php" ]]; then printf 'unknown'; return 0; fi
+  case "$minor:$php" in
+    10.[456]:8.[1234]|11.[1234]:8.[34]|11.[34]:8.5|12.0:8.5) printf 'yes';;
+    10.[456]:8.[56]|11.[12]:8.[1256]|11.3:8.[126]|11.4:8.[12]|12.0:8.[1234]) printf 'no';;
+    *:8.5) if version_ge "$minor" "11.3"; then printf 'unknown'; else printf 'no'; fi;;
+    *) printf 'unknown';;
+  esac
+  return 0
 }
 
 # rector_php_set_arg [ver] -> the named argument of Rector's ->withPhpSets()
@@ -2495,7 +2630,7 @@ fast_copy_tree() {
   return 0
 }
 
-# core_cache_dir -> where ddev-up.sh keeps cached base cores (under the plugin
+# core_cache_dir -> where ddev-up.sh keeps cached base cores (under drupilot's
 # data dir, never a project tree). One entry per PHP target and exact core
 # version: <dir>/php<PHP>-<core version>/{tree/, meta.json}.
 core_cache_dir() { printf '%s/core-base' "$(data_dir_path)/cache"; }

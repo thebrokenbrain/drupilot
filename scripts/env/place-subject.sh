@@ -278,7 +278,7 @@ copy_filtered() {
   if [[ "$nm_tracked" == "1" ]]; then
     log_warn "The checkout tracks files under node_modules/; copying node_modules as-is."
   else
-    excl+=(node_modules); tarx=(--exclude=node_modules)
+    excl+=(node_modules); tarx=(--exclude=node_modules)  # portability-ok: tar options, not grep
   fi
   for e in "$src"/* "$src"/.[!.]* "$src"/..?*; do
     [[ -e "$e" || -L "$e" ]] || continue

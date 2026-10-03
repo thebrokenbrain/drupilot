@@ -16,7 +16,7 @@ This step touches Docker, so gate the `setup` profile first. If a hard requireme
 missing, the script prints an actionable report and exits non-zero — in that case
 **stop with no side effects** and tell the user to run `/drupilot-doctor`:
 
-!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile setup`
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile setup && bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; copy_legacy_state_once'`
 
 If that command exited non-zero (missing Docker/daemon/DDEV), do not proceed: show the
 report and recommend `/drupilot-doctor`.
@@ -45,20 +45,21 @@ When its `value` is not null, it is the answer: no tab, export
 persisted it to `.drupilot.json` when a Drupal root exists; otherwise persist it
 after 3a with `prefs_set`), and say so in one line. If `env_override` lists
 `DRUPILOT_PHP_TARGET`, the environment variable wins: say so and keep it. A
-pre-answered `8.5` still gets the unconfirmed warning below. When `value` is null
+pre-answered `8.5` still gets the Drupal 11.3 warning below. When `value` is null
 (unset, or invalid — already warned), continue as above. Offer:
 
 - **8.4 — recommended** (`php_support.recommended`) — current, supported on
   Drupal 11; the default.
 - **8.3 — safe floor** (`DRUPILOT_PHP_TARGET` default) — conservative; supported
   on every Drupal 11 branch.
-- **8.5 — unconfirmed** — **not** officially confirmed on any Drupal 11 branch;
-  if chosen, warn clearly, detect at runtime, and never claim it is supported.
+- **8.5 — needs Drupal 11.3+** — Drupal supports it from 11.3 on (not on 11.2 or
+  earlier) and no Rector `php85` set is assumed (Rector uses `php84`); if chosen,
+  say so, and relay `ddev-up.sh`'s warning when the core is older.
 
 A `--php X.Y` flag always wins over the tab. Apply the choice by exporting
 `DRUPILOT_PHP_TARGET` for the subsequent scripts **and** persisting it with
 `prefs_set DRUPILOT_PHP_TARGET <X.Y>` so the rest of the flow (assess/port/test)
-reuses it without re-asking. Never silently proceed on an unconfirmed target.
+reuses it without re-asking. Never proceed on 8.5 without that note.
 
 ## Step 3 — State the plan, then do the work via the ddev-environment skill
 
@@ -318,8 +319,8 @@ frozen toolchain from the lock). Run it yourself with the subject's final path
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <placed_subject_path> --stage setup
 ```
 
-Then print the final state: DDEV project name and status, PHP target (flag unconfirmed
-targets), which add-ons are installed, the toolchain versions, and which config files
+Then print the final state: DDEV project name and status, PHP target (for 8.5, note
+that it needs Drupal 11.3 or later), which add-ons are installed, the toolchain versions, and which config files
 were written or left untouched. Recommend the next step: `/drupilot-assess`.
 
 For long-running batches, prefer background execution and notify on completion; do not

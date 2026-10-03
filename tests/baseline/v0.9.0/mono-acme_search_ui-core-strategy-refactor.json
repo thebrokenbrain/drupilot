@@ -1,0 +1,31 @@
+{
+  "exit": 0,
+  "stdout": {
+    "bc_break": true,
+    "composer_core_constraint": "^11",
+    "current_core_version_requirement": "^8.8 || ^9 || ^10",
+    "d10_support": "n/a",
+    "has_composer_json": false,
+    "phase": "refactor",
+    "php_floor_detected": "8.1",
+    "php_floor_effective": null,
+    "php_floor_strategy": "detect",
+    "php_floor_target_compatible": true,
+    "php_target": "8.3",
+    "rationale": [
+      "Strategy: d11-only ('^11').",
+      "Drupal 11 enforces PHP 8.3 itself, so no composer require.php is needed.",
+      "Dropping a previously-supported Drupal core major (current '^8.8 || ^9 || ^10' -> '^11') is backwards-incompatible -> MAJOR (cut a new N+1.0.x branch).",
+      "Phase 2 refactor / asserted public-API BC break -> MAJOR."
+    ],
+    "recommended_core_version_requirement": "^11",
+    "require_php": null,
+    "strategy": "d11-only",
+    "suggested_remaining_tasks": [],
+    "verify_cores": [
+      "11"
+    ],
+    "version_bump": "major",
+    "warnings": []
+  }
+}

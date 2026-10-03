@@ -256,7 +256,8 @@ custom_manager_reads() {
   while IFS= read -r f; do
     [[ "$f" == "$self" ]] && continue
     grep -qE 'DefaultPluginManager|AttributeClassDiscovery|AttributeDiscoveryWithAnnotations|parent::__construct\(' "$f" 2>/dev/null && return 0
-  done < <(grep -rlF -e "$fq" -e "$dq" --include='*.php' web/modules web/profiles web/core "$SUBJECT_REL" 2>/dev/null || true)
+  done < <(find web/modules web/profiles web/core "$SUBJECT_REL" -type f -name '*.php' \
+             -exec grep -lF -e "$fq" -e "$dq" {} + 2>/dev/null || true)
   return 1
 }
 

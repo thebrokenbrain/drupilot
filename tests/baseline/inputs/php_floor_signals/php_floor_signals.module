@@ -1,0 +1,13 @@
+<?php
+
+/**
+ * @file
+ * Baseline input: a PHP 8.3 stdlib call in a .module file.
+ */
+
+/**
+ * Tells whether a string is valid JSON.
+ */
+function php_floor_signals_is_json(string $value): bool {
+  return json_validate($value);
+}

@@ -18,7 +18,7 @@ never edits an `info.yml` on its own and never does anything outward-facing.
 
 ## Step 1 — Gate (read-only analysis)
 
-!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile analyze --json`
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile analyze --json && bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; copy_legacy_state_once'`
 
 If `ready.analyze` is false, print the actionable report and stop (no side effects).
 Read the autonomy flag:

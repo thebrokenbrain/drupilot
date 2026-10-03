@@ -1,0 +1,7 @@
+{
+  "name": "drupal/php_floor_signals",
+  "type": "drupal-module",
+  "require": {
+    "php": ">=8.1"
+  }
+}

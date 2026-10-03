@@ -1,0 +1,784 @@
+{
+  "exit": 0,
+  "stdout": {
+    "cycles": [
+      [
+        "acme_billing",
+        "acme_invoice"
+      ]
+    ],
+    "early": [
+      {
+        "declared_layer": 0,
+        "layer": 3,
+        "module": "acme_reports"
+      }
+    ],
+    "edges": "all",
+    "external": [
+      {
+        "module": "node",
+        "required_by": [
+          "acme_reports"
+        ],
+        "scope": "core"
+      },
+      {
+        "module": "pathauto",
+        "required_by": [
+          "acme_reports"
+        ],
+        "scope": "external"
+      },
+      {
+        "module": "search_api",
+        "required_by": [
+          "acme_search"
+        ],
+        "scope": "external"
+      },
+      {
+        "module": "token",
+        "required_by": [
+          "acme_api"
+        ],
+        "scope": "external"
+      }
+    ],
+    "generated_at": "<TS>",
+    "layers": [
+      {
+        "cycle_groups": [],
+        "index": 0,
+        "modules": [
+          "acme_core",
+          "acme_standalone"
+        ]
+      },
+      {
+        "cycle_groups": [
+          [
+            "acme_billing",
+            "acme_invoice"
+          ]
+        ],
+        "index": 1,
+        "modules": [
+          "acme_billing",
+          "acme_invoice",
+          "acme_utils"
+        ]
+      },
+      {
+        "cycle_groups": [],
+        "index": 2,
+        "modules": [
+          "acme_api"
+        ]
+      },
+      {
+        "cycle_groups": [],
+        "index": 3,
+        "modules": [
+          "acme_reports",
+          "acme_search"
+        ]
+      },
+      {
+        "cycle_groups": [],
+        "index": 4,
+        "modules": [
+          "acme_search_ui"
+        ]
+      }
+    ],
+    "modules": [
+      {
+        "core_version_requirement": "^10.3",
+        "declared": [
+          {
+            "entry": "acme_utils:acme_utils",
+            "module": "acme_utils",
+            "scope": "internal",
+            "source": "info"
+          },
+          {
+            "entry": "token:token",
+            "module": "token",
+            "scope": "external",
+            "source": "info"
+          },
+          {
+            "entry": "drupal/token",
+            "module": "token",
+            "scope": "external",
+            "source": "composer"
+          }
+        ],
+        "depends_on": [
+          "acme_core",
+          "acme_utils"
+        ],
+        "dir": "web/modules/custom/acme_api",
+        "implicit": [
+          {
+            "always_enabled": false,
+            "declared": false,
+            "declared_via": null,
+            "evidence": [
+              "web/modules/custom/acme_api/src/Controller/StatusController.php:5 class acme_core",
+              "web/modules/custom/acme_api/src/Controller/StatusController.php:23 service acme_core.formatter"
+            ],
+            "kinds": [
+              "class",
+              "service"
+            ],
+            "optional": false,
+            "proposed": "acme_core:acme_core",
+            "scope": "internal",
+            "target": "acme_core",
+            "verify_project": false
+          },
+          {
+            "always_enabled": false,
+            "declared": true,
+            "declared_via": "info",
+            "evidence": [
+              "web/modules/custom/acme_api/acme_api.services.yml:5 service acme_utils.helper",
+              "web/modules/custom/acme_api/src/Client/ApiClient.php:5 class acme_utils"
+            ],
+            "kinds": [
+              "class",
+              "service"
+            ],
+            "optional": false,
+            "proposed": "acme_utils:acme_utils",
+            "scope": "internal",
+            "target": "acme_utils",
+            "verify_project": false
+          }
+        ],
+        "in_cycle": false,
+        "layer": 2,
+        "machine": "acme_api",
+        "name": "Acme API",
+        "parent": null,
+        "project": "acme_api",
+        "proposed": [
+          "acme_core:acme_core"
+        ],
+        "type": "module",
+        "undeclared": [
+          {
+            "always_enabled": false,
+            "declared": false,
+            "declared_via": null,
+            "evidence": [
+              "web/modules/custom/acme_api/src/Controller/StatusController.php:5 class acme_core",
+              "web/modules/custom/acme_api/src/Controller/StatusController.php:23 service acme_core.formatter"
+            ],
+            "kinds": [
+              "class",
+              "service"
+            ],
+            "optional": false,
+            "proposed": "acme_core:acme_core",
+            "scope": "internal",
+            "target": "acme_core",
+            "verify_project": false
+          }
+        ]
+      },
+      {
+        "core_version_requirement": "^10.3",
+        "declared": [
+          {
+            "entry": "acme_core:acme_core",
+            "module": "acme_core",
+            "scope": "internal",
+            "source": "info"
+          },
+          {
+            "entry": "acme_invoice:acme_invoice",
+            "module": "acme_invoice",
+            "scope": "internal",
+            "source": "info"
+          }
+        ],
+        "depends_on": [
+          "acme_core",
+          "acme_invoice"
+        ],
+        "dir": "web/modules/custom/acme_billing",
+        "implicit": [
+          {
+            "always_enabled": false,
+            "declared": true,
+            "declared_via": "info",
+            "evidence": [
+              "web/modules/custom/acme_billing/config/optional/block.block.acme_billing_banner.yml:5 config acme_core",
+              "web/modules/custom/acme_billing/config/optional/block.block.acme_billing_banner.yml:10 plugin acme_core_banner"
+            ],
+            "kinds": [
+              "config",
+              "plugin"
+            ],
+            "optional": true,
+            "proposed": "acme_core:acme_core",
+            "scope": "internal",
+            "target": "acme_core",
+            "verify_project": false
+          },
+          {
+            "always_enabled": false,
+            "declared": true,
+            "declared_via": "info",
+            "evidence": [
+              "web/modules/custom/acme_billing/acme_billing.services.yml:4 service acme_invoice.generator",
+              "web/modules/custom/acme_billing/src/BillingManager.php:5 class acme_invoice"
+            ],
+            "kinds": [
+              "class",
+              "service"
+            ],
+            "optional": false,
+            "proposed": "acme_invoice:acme_invoice",
+            "scope": "internal",
+            "target": "acme_invoice",
+            "verify_project": false
+          }
+        ],
+        "in_cycle": true,
+        "layer": 1,
+        "machine": "acme_billing",
+        "name": "Acme billing",
+        "parent": null,
+        "project": "acme_billing",
+        "proposed": [],
+        "type": "module",
+        "undeclared": []
+      },
+      {
+        "core_version_requirement": "^10.3",
+        "declared": [],
+        "depends_on": [],
+        "dir": "web/modules/custom/acme_core",
+        "implicit": [],
+        "in_cycle": false,
+        "layer": 0,
+        "machine": "acme_core",
+        "name": "Acme core",
+        "parent": null,
+        "project": "acme_core",
+        "proposed": [],
+        "type": "module",
+        "undeclared": []
+      },
+      {
+        "core_version_requirement": "^10.3",
+        "declared": [
+          {
+            "entry": "acme_core:acme_core",
+            "module": "acme_core",
+            "scope": "internal",
+            "source": "info"
+          },
+          {
+            "entry": "acme_billing:acme_billing",
+            "module": "acme_billing",
+            "scope": "internal",
+            "source": "info"
+          }
+        ],
+        "depends_on": [
+          "acme_billing",
+          "acme_core"
+        ],
+        "dir": "web/modules/custom/acme_invoice",
+        "implicit": [
+          {
+            "always_enabled": false,
+            "declared": true,
+            "declared_via": "info",
+            "evidence": [
+              "web/modules/custom/acme_invoice/src/InvoiceGenerator.php:27 class acme_billing",
+              "web/modules/custom/acme_invoice/src/InvoiceGenerator.php:28 service acme_billing.manager"
+            ],
+            "kinds": [
+              "class",
+              "service"
+            ],
+            "optional": false,
+            "proposed": "acme_billing:acme_billing",
+            "scope": "internal",
+            "target": "acme_billing",
+            "verify_project": false
+          },
+          {
+            "always_enabled": false,
+            "declared": true,
+            "declared_via": "info",
+            "evidence": [
+              "web/modules/custom/acme_invoice/acme_invoice.services.yml:4 service acme_core.formatter",
+              "web/modules/custom/acme_invoice/src/InvoiceGenerator.php:5 class acme_core"
+            ],
+            "kinds": [
+              "class",
+              "service"
+            ],
+            "optional": false,
+            "proposed": "acme_core:acme_core",
+            "scope": "internal",
+            "target": "acme_core",
+            "verify_project": false
+          }
+        ],
+        "in_cycle": true,
+        "layer": 1,
+        "machine": "acme_invoice",
+        "name": "Acme invoice",
+        "parent": null,
+        "project": "acme_invoice",
+        "proposed": [],
+        "type": "module",
+        "undeclared": []
+      },
+      {
+        "core_version_requirement": "^10.3",
+        "declared": [],
+        "depends_on": [
+          "acme_api",
+          "acme_core",
+          "acme_utils"
+        ],
+        "dir": "web/modules/custom/acme_reports",
+        "implicit": [
+          {
+            "always_enabled": false,
+            "declared": false,
+            "declared_via": null,
+            "evidence": [
+              "web/modules/custom/acme_reports/src/Controller/ReportController.php:5 class acme_api",
+              "web/modules/custom/acme_reports/src/Controller/ReportController.php:19 service acme_api.client"
+            ],
+            "kinds": [
+              "class",
+              "service"
+            ],
+            "optional": false,
+            "proposed": "acme_api:acme_api",
+            "scope": "internal",
+            "target": "acme_api",
+            "verify_project": false
+          },
+          {
+            "always_enabled": false,
+            "declared": false,
+            "declared_via": null,
+            "evidence": [
+              "web/modules/custom/acme_reports/acme_reports.module:12 library acme_core",
+              "web/modules/custom/acme_reports/src/Controller/ReportController.php:24 route acme_core.settings",
+              "web/modules/custom/acme_reports/src/Controller/ReportController.php:27 plugin acme_core_banner"
+            ],
+            "kinds": [
+              "library",
+              "plugin",
+              "route"
+            ],
+            "optional": false,
+            "proposed": "acme_core:acme_core",
+            "scope": "internal",
+            "target": "acme_core",
+            "verify_project": false
+          },
+          {
+            "always_enabled": false,
+            "declared": false,
+            "declared_via": null,
+            "evidence": [
+              "web/modules/custom/acme_reports/src/Controller/ReportController.php:31 service acme_search.indexer"
+            ],
+            "kinds": [
+              "service"
+            ],
+            "optional": true,
+            "proposed": "acme_search:acme_search",
+            "scope": "internal",
+            "target": "acme_search",
+            "verify_project": false
+          },
+          {
+            "always_enabled": false,
+            "declared": false,
+            "declared_via": null,
+            "evidence": [
+              "web/modules/custom/acme_reports/acme_reports.services.yml:4 service acme_utils.helper",
+              "web/modules/custom/acme_reports/src/ReportBuilder.php:5 class acme_utils"
+            ],
+            "kinds": [
+              "class",
+              "service"
+            ],
+            "optional": false,
+            "proposed": "acme_utils:acme_utils",
+            "scope": "internal",
+            "target": "acme_utils",
+            "verify_project": false
+          },
+          {
+            "always_enabled": false,
+            "declared": false,
+            "declared_via": null,
+            "evidence": [
+              "web/modules/custom/acme_reports/src/ReportBuilder.php:7 class node"
+            ],
+            "kinds": [
+              "class"
+            ],
+            "optional": false,
+            "proposed": "drupal:node",
+            "scope": "core",
+            "target": "node",
+            "verify_project": false
+          },
+          {
+            "always_enabled": false,
+            "declared": false,
+            "declared_via": null,
+            "evidence": [
+              "web/modules/custom/acme_reports/src/SlugCleaner.php:5 class pathauto"
+            ],
+            "kinds": [
+              "class"
+            ],
+            "optional": false,
+            "proposed": "pathauto:pathauto",
+            "scope": "external",
+            "target": "pathauto",
+            "verify_project": true
+          }
+        ],
+        "in_cycle": false,
+        "layer": 3,
+        "machine": "acme_reports",
+        "name": "Acme reports",
+        "parent": null,
+        "project": "acme_reports",
+        "proposed": [
+          "acme_api:acme_api",
+          "acme_core:acme_core",
+          "acme_utils:acme_utils",
+          "drupal:node",
+          "pathauto:pathauto"
+        ],
+        "type": "module",
+        "undeclared": [
+          {
+            "always_enabled": false,
+            "declared": false,
+            "declared_via": null,
+            "evidence": [
+              "web/modules/custom/acme_reports/src/Controller/ReportController.php:5 class acme_api",
+              "web/modules/custom/acme_reports/src/Controller/ReportController.php:19 service acme_api.client"
+            ],
+            "kinds": [
+              "class",
+              "service"
+            ],
+            "optional": false,
+            "proposed": "acme_api:acme_api",
+            "scope": "internal",
+            "target": "acme_api",
+            "verify_project": false
+          },
+          {
+            "always_enabled": false,
+            "declared": false,
+            "declared_via": null,
+            "evidence": [
+              "web/modules/custom/acme_reports/acme_reports.module:12 library acme_core",
+              "web/modules/custom/acme_reports/src/Controller/ReportController.php:24 route acme_core.settings",
+              "web/modules/custom/acme_reports/src/Controller/ReportController.php:27 plugin acme_core_banner"
+            ],
+            "kinds": [
+              "library",
+              "plugin",
+              "route"
+            ],
+            "optional": false,
+            "proposed": "acme_core:acme_core",
+            "scope": "internal",
+            "target": "acme_core",
+            "verify_project": false
+          },
+          {
+            "always_enabled": false,
+            "declared": false,
+            "declared_via": null,
+            "evidence": [
+              "web/modules/custom/acme_reports/acme_reports.services.yml:4 service acme_utils.helper",
+              "web/modules/custom/acme_reports/src/ReportBuilder.php:5 class acme_utils"
+            ],
+            "kinds": [
+              "class",
+              "service"
+            ],
+            "optional": false,
+            "proposed": "acme_utils:acme_utils",
+            "scope": "internal",
+            "target": "acme_utils",
+            "verify_project": false
+          },
+          {
+            "always_enabled": false,
+            "declared": false,
+            "declared_via": null,
+            "evidence": [
+              "web/modules/custom/acme_reports/src/ReportBuilder.php:7 class node"
+            ],
+            "kinds": [
+              "class"
+            ],
+            "optional": false,
+            "proposed": "drupal:node",
+            "scope": "core",
+            "target": "node",
+            "verify_project": false
+          },
+          {
+            "always_enabled": false,
+            "declared": false,
+            "declared_via": null,
+            "evidence": [
+              "web/modules/custom/acme_reports/src/SlugCleaner.php:5 class pathauto"
+            ],
+            "kinds": [
+              "class"
+            ],
+            "optional": false,
+            "proposed": "pathauto:pathauto",
+            "scope": "external",
+            "target": "pathauto",
+            "verify_project": true
+          }
+        ]
+      },
+      {
+        "core_version_requirement": "^10.3",
+        "declared": [
+          {
+            "entry": "acme_api",
+            "module": "acme_api",
+            "scope": "internal",
+            "source": "info"
+          },
+          {
+            "entry": "drupal/search_api",
+            "module": "search_api",
+            "scope": "external",
+            "source": "composer"
+          }
+        ],
+        "depends_on": [
+          "acme_api"
+        ],
+        "dir": "web/modules/custom/acme_search",
+        "implicit": [
+          {
+            "always_enabled": false,
+            "declared": true,
+            "declared_via": "info",
+            "evidence": [
+              "web/modules/custom/acme_search/acme_search.services.yml:4 service acme_api.client",
+              "web/modules/custom/acme_search/src/Indexer.php:5 class acme_api"
+            ],
+            "kinds": [
+              "class",
+              "service"
+            ],
+            "optional": false,
+            "proposed": "acme_api:acme_api",
+            "scope": "internal",
+            "target": "acme_api",
+            "verify_project": false
+          },
+          {
+            "always_enabled": false,
+            "declared": false,
+            "declared_via": "composer",
+            "evidence": [
+              "web/modules/custom/acme_search/src/Indexer.php:7 class search_api"
+            ],
+            "kinds": [
+              "class"
+            ],
+            "optional": false,
+            "proposed": "search_api:search_api",
+            "scope": "external",
+            "target": "search_api",
+            "verify_project": true
+          }
+        ],
+        "in_cycle": false,
+        "layer": 3,
+        "machine": "acme_search",
+        "name": "Acme search",
+        "parent": null,
+        "project": "acme_search",
+        "proposed": [
+          "search_api:search_api"
+        ],
+        "type": "module",
+        "undeclared": [
+          {
+            "always_enabled": false,
+            "declared": false,
+            "declared_via": "composer",
+            "evidence": [
+              "web/modules/custom/acme_search/src/Indexer.php:7 class search_api"
+            ],
+            "kinds": [
+              "class"
+            ],
+            "optional": false,
+            "proposed": "search_api:search_api",
+            "scope": "external",
+            "target": "search_api",
+            "verify_project": true
+          }
+        ]
+      },
+      {
+        "core_version_requirement": "^8.8 || ^9 || ^10",
+        "declared": [
+          {
+            "entry": "acme_search:acme_search",
+            "module": "acme_search",
+            "scope": "internal",
+            "source": "info"
+          }
+        ],
+        "depends_on": [
+          "acme_core",
+          "acme_search"
+        ],
+        "dir": "web/modules/custom/acme_search/modules/acme_search_ui",
+        "implicit": [
+          {
+            "always_enabled": false,
+            "declared": false,
+            "declared_via": null,
+            "evidence": [
+              "web/modules/custom/acme_search/modules/acme_search_ui/acme_search_ui.libraries.yml:6 library acme_core"
+            ],
+            "kinds": [
+              "library"
+            ],
+            "optional": false,
+            "proposed": "acme_core:acme_core",
+            "scope": "internal",
+            "target": "acme_core",
+            "verify_project": false
+          }
+        ],
+        "in_cycle": false,
+        "layer": 4,
+        "machine": "acme_search_ui",
+        "name": "Acme search UI",
+        "parent": "acme_search",
+        "project": "acme_search",
+        "proposed": [
+          "acme_core:acme_core"
+        ],
+        "type": "module",
+        "undeclared": [
+          {
+            "always_enabled": false,
+            "declared": false,
+            "declared_via": null,
+            "evidence": [
+              "web/modules/custom/acme_search/modules/acme_search_ui/acme_search_ui.libraries.yml:6 library acme_core"
+            ],
+            "kinds": [
+              "library"
+            ],
+            "optional": false,
+            "proposed": "acme_core:acme_core",
+            "scope": "internal",
+            "target": "acme_core",
+            "verify_project": false
+          }
+        ]
+      },
+      {
+        "core_version_requirement": "^10.3",
+        "declared": [],
+        "depends_on": [],
+        "dir": "web/modules/custom/acme_standalone",
+        "implicit": [],
+        "in_cycle": false,
+        "layer": 0,
+        "machine": "acme_standalone",
+        "name": "Acme standalone",
+        "parent": null,
+        "project": "acme_standalone",
+        "proposed": [],
+        "type": "module",
+        "undeclared": []
+      },
+      {
+        "core_version_requirement": "^10.3",
+        "declared": [
+          {
+            "entry": "acme_core:acme_core",
+            "module": "acme_core",
+            "scope": "internal",
+            "source": "info"
+          }
+        ],
+        "depends_on": [
+          "acme_core"
+        ],
+        "dir": "web/modules/custom/acme_utils",
+        "implicit": [
+          {
+            "always_enabled": false,
+            "declared": true,
+            "declared_via": "info",
+            "evidence": [
+              "web/modules/custom/acme_utils/acme_utils.services.yml:4 service acme_core.formatter",
+              "web/modules/custom/acme_utils/src/Helper.php:5 class acme_core"
+            ],
+            "kinds": [
+              "class",
+              "service"
+            ],
+            "optional": false,
+            "proposed": "acme_core:acme_core",
+            "scope": "internal",
+            "target": "acme_core",
+            "verify_project": false
+          }
+        ],
+        "in_cycle": false,
+        "layer": 1,
+        "machine": "acme_utils",
+        "name": "Acme utils",
+        "parent": null,
+        "project": "acme_utils",
+        "proposed": [],
+        "type": "module",
+        "undeclared": []
+      }
+    ],
+    "root": "<SUBJECT>",
+    "tool": "layers",
+    "totals": {
+      "cycles": 1,
+      "layers": 5,
+      "modules": 9,
+      "undeclared": 8,
+      "undeclared_modules": 4
+    }
+  }
+}

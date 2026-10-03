@@ -125,8 +125,8 @@ a deterministic re-run reuses.
 Print a concise English summary:
 
 - Subject: machine name, type (module/theme/profile), `core_version_requirement`.
-- PHP target (and a clear note if it is **unconfirmed**, e.g. 8.5 — never claim it is
-  supported).
+- PHP target (and, when detect-php reports `unconfirmed: true` (8.5), a note that it
+  needs Drupal 11.3 or later and that no Rector `php85` set is assumed).
 - **Reproducibility:** whether deterministic mode is on (`deterministic`), and if a
   lockfile exists, the frozen Drupal core / digests SHA it pins.
 - Environment readiness per profile (analysis / setup+tests / contribution).
@@ -158,6 +158,14 @@ intent per the Hard rules — a port/upgrade request → `full` (or `auto` if th
 for unattended), an exploratory ask → `next`, a status ask → `status`. So "port this
 module to Drupal 11" runs the flow (`full`); it does not stop at recommending the next
 step.
+
+Before delegating a `full` or `auto` flow (never in `status`/`next`, which write
+nothing), rerun the router's gate and, when it passes, the one-time copy of any
+state drupilot 0.9.0 left in Claude Code's per-plugin data dir (copy-only):
+
+```bash
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile all --quiet && bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; copy_legacy_state_once'
+```
 
 ### `full` — guided, with confirmations
 

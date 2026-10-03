@@ -1,0 +1,108 @@
+<?php
+
+/**
+ * drupilot — rector.php
+ * drupilot-template-version: 3
+ *
+ * Self-contained Rector configuration for porting a Drupal module/theme to
+ * Drupal 11. Modeled on vendor/palantirnet/drupal-rector/rector.php.
+ *
+ * Generated for PHP 8.3 by scripts/env/render-templates.sh (or
+ * run-rector.sh when rector.php is missing), which fills in the extension path
+ * under ->withPaths() and the PHP set under ->withPhpSets(). To change the PHP
+ * target, set DRUPILOT_PHP_TARGET and re-render with
+ * render-templates.sh --only rector --force.
+ *
+ * Drupal sets:
+ *   Drupal10SetList::DRUPAL_10  — APIs deprecated in D9/D10 that are removed in D11.
+ *                                 This is the correct set for porting to D11.
+ *   Drupal11SetList::DRUPAL_11  — NOT included: covers D11 deprecations for a future
+ *                                 D12 port, and does not exist in palantirnet/drupal-rector ^0.21.
+ *
+ * PHP sets are selected from the configured PHP target (rector_php_set_arg):
+ *   8.3 -> php83: true
+ *   8.4 -> php84: true
+ *   8.5 -> NOT assumed. PHP 8.5 support on Drupal 11 is unconfirmed and the
+ *          matching Rector LevelSet may not exist in the installed Rector
+ *          version, so drupilot falls back to php84 (with a warning).
+ * Always target a single PHP version per run.
+ *
+ * The complementary dbuytaert/drupal-digests AI rule layer is NOT wired in
+ * here. It runs as a separate, optional pass referenced by its own config:
+ *   vendor/bin/rector process web/modules/custom/legacy_widgets \
+ *     --config "$DIGESTS_CACHE/rector/all.php" --dry-run
+ * (Run the official palantirnet/drupal-rector pass first, then digests.)
+ *
+ * Risky PHP-modernization rules are SKIPPED (see $drupilotRiskySkips below).
+ * None of them is a Drupal 11 compatibility requirement, and each one has
+ * broken real ports:
+ *   ArrayToFirstClassCallableRector  — turns Form/Render API callbacks such as
+ *       '#submit' => [[$this, 'submitX']] into $this->submitX(...). A closure
+ *       is not serializable, so a cached form (#ajax, form state cache) fatals.
+ *   AddOverrideAttributeToOverriddenMethodsRector — adds #[\Override] by looking
+ *       at the sandbox core only. A method that exists in the parent only on
+ *       newer cores (e.g. ContentEntityStorageBase::buildRevisionCacheId(),
+ *       11.3+) then fatals on PHP 8.3+ with every older core you still declare.
+ *   ReadOnlyPropertyRector / ReadOnlyClassRector — readonly properties cannot
+ *       be re-initialized by DependencySerializationTrait::__wakeup() (forms,
+ *       plugins, controllers that get serialized).
+ *   NullToStrictStringFuncCallArgRector — adds (string) casts that change
+ *       semantics and fail stricter project PHPStan levels.
+ * FunctionFirstClassCallableRector is NOT skipped: it only rewrites a string
+ * argument passed to a PHP built-in whose parameter is typed `callable`
+ * (array_map('trim', ...) -> array_map(trim(...), ...)), so it can never reach
+ * a Form/Render API array key; the closure is consumed immediately.
+ * The list is filtered with class_exists() because Rector 2.x refuses to start
+ * when withSkip() names a rule class that does not exist in the installed
+ * version. scripts/analysis/check-port-safety.sh re-checks the result (the
+ * digests pass runs with its own config and does not inherit these skips).
+ *
+ * Rector needs the Drupal core tree present (no database). Run with --dry-run
+ * first, review the diff, then apply.
+ */
+
+declare(strict_types=1);
+
+use DrupalRector\Set\Drupal10SetList;
+use Rector\Config\RectorConfig;
+
+// Rules skipped on purpose (see the header). String FQCNs + class_exists keep
+// this config loadable on any Rector 2.x.
+$drupilotRiskySkips = array_values(array_filter([
+  'Rector\\Php81\\Rector\\Array_\\ArrayToFirstClassCallableRector',
+  'Rector\\Php83\\Rector\\ClassMethod\\AddOverrideAttributeToOverriddenMethodsRector',
+  'Rector\\Php81\\Rector\\Property\\ReadOnlyPropertyRector',
+  'Rector\\Php82\\Rector\\Class_\\ReadOnlyClassRector',
+  'Rector\\Php81\\Rector\\FuncCall\\NullToStrictStringFuncCallArgRector',
+], 'class_exists'));
+
+return RectorConfig::configure()
+  // Process only the target extension. Other paths (e.g. core, contrib) are
+  // left untouched.
+  ->withPaths([
+    'web/modules/custom/legacy_widgets',
+  ])
+  // Never rewrite third-party code or build/test artifacts, and never apply
+  // the risky modernization rules listed above.
+  ->withSkip(array_merge([
+    '*/vendor/*',
+    '*/node_modules/*',
+  ], $drupilotRiskySkips))
+  // Drupal deprecation sets: covers APIs deprecated in D9/D10 removed in D11.
+  ->withSets([
+    Drupal10SetList::DRUPAL_10,
+  ])
+  // PHP language-level upgrades for the configured target (PHP 8.3).
+  // PHP 8.5 is unconfirmed on Drupal 11 — never enable php85 blindly.
+  ->withPhpSets(php83: true)
+  // Drupal extensions Rector should treat as PHP so hooks and *.module files
+  // are processed too.
+  ->withFileExtensions([
+    'php',
+    'module',
+    'theme',
+    'install',
+    'inc',
+    'profile',
+    'engine',
+  ]);

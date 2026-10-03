@@ -62,7 +62,7 @@ TARGET="$(resolve_php_target 2>/dev/null || true)"
 
 PHP_NOTE=""
 if php_target_unconfirmed "$TARGET" 2>/dev/null; then
-  PHP_NOTE=" (not officially confirmed on Drupal 11 yet — detected at runtime, do not assume support)"
+  PHP_NOTE=" (PHP 8.5 needs Drupal 11.3 or later; no Rector php85 set is assumed)"
 fi
 
 # --- Lightweight preflight (report only, never blocks) -----------------------

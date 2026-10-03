@@ -18,7 +18,7 @@ Subject path argument: `$1` (fallback: the current working directory).
 Tests run inside DDEV, so this gates on Docker (daemon up) + DDEV.
 
 ```bash
-!bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile test
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile test && bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; copy_legacy_state_once'
 ```
 
 If it exits `2`, show the report, route the user to `/drupilot-doctor` (and

@@ -1,0 +1,45 @@
+{
+  "exit": 0,
+  "stdout": [
+    {
+      "category": "messenger",
+      "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=drupal_set_message",
+      "fix": "Inject and use the 'messenger' service ($this->messenger()->addStatus(...)).",
+      "hits": 1,
+      "symbol": "drupal_set_message",
+      "why": "Global message helper removed."
+    },
+    {
+      "category": "soft-deprecation",
+      "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=user_load_by_name",
+      "fix": "Handled per DRUPILOT_SOFT_DEPRECATIONS. When fixed: $users = \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties(['name' => $name]) (or ['mail' => $mail]); $account = $users ? reset($users) : FALSE; - works on Drupal 10 and 11.",
+      "hits": 4,
+      "symbol": "user_load_by_name",
+      "why": "user_load_by_name()/user_load_by_mail() are deprecated in drupal:11.4.0 and removed from drupal:13.0.0: they still work on every Drupal 11 and 12 core (a SOFT deprecation)."
+    },
+    {
+      "category": "soft-deprecation",
+      "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=text_summary",
+      "fix": "Handled per DRUPILOT_SOFT_DEPRECATIONS. When fixed while the core floor is below 11.4: DeprecationHelper::backwardsCompatibleCall(\\Drupal::VERSION, '11.4.0', fn() => \\Drupal::service(TextSummary::class)->generate($text, $format, $size), fn() => text_summary($text, $format, $size)) - a bare TextSummary call fatals on older cores. generate() needs an int size: pass the text.settings default_summary_length when the original passed NULL.",
+      "hits": 2,
+      "symbol": "text_summary",
+      "why": "text_summary() is deprecated in drupal:11.4.0 and removed from drupal:13.0.0 (soft: it still works on every Drupal 11 and 12 core). Its replacement, the TextSummary service, exists only from Drupal 11.4."
+    },
+    {
+      "category": "soft-deprecation",
+      "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=check_markup",
+      "fix": "Handled per DRUPILOT_SOFT_DEPRECATIONS. When fixed: return a render array ['#type' => 'processed_text', '#text' => $text, '#format' => $format_id] instead of flattened markup (works on Drupal 10 and 11, and keeps the cacheability metadata); the call site changes from a string to a render array.",
+      "hits": 1,
+      "symbol": "check_markup",
+      "why": "check_markup() is deprecated in drupal:11.4.0 and removed from drupal:13.0.0 (soft: it still works on every Drupal 11 and 12 core). There is no direct replacement."
+    },
+    {
+      "category": "removed-api",
+      "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=user_roles",
+      "fix": "Use \\Drupal\\user\\Entity\\Role::loadMultiple() (available on Drupal 10) and filter inline: user_roles(TRUE) excluded the anonymous role (RoleInterface::ANONYMOUS_ID); user_role_names() mapped the roles to $role->label().",
+      "hits": 1,
+      "symbol": "user_roles",
+      "why": "user_roles() and user_role_names() were deprecated in drupal:10.2.0 and REMOVED in drupal:11.0.0: a call is an undefined-function fatal on every Drupal 11 core (a HARD deprecation, always fixed in Phase 1)."
+    }
+  ]
+}

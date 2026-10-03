@@ -1,0 +1,37 @@
+{
+  "exit": 0,
+  "stdout": {
+    "floor": "8.4",
+    "method": "heuristic-scan",
+    "scanned_files": 5,
+    "signals": [
+      {
+        "location": "src/Visibility.php:10",
+        "pattern": "asymmetric visibility (private(set))",
+        "version": "8.4"
+      },
+      {
+        "location": "src/Overridden.php:10",
+        "pattern": "#[\\Override] attribute",
+        "version": "8.3"
+      },
+      {
+        "location": "php_floor_signals.module:12",
+        "pattern": "json_validate()",
+        "version": "8.3"
+      },
+      {
+        "location": "src/Typed.php:10",
+        "pattern": "typed class constant",
+        "version": "8.3"
+      },
+      {
+        "location": "src/Snapshot.php:8",
+        "pattern": "readonly class",
+        "version": "8.2"
+      }
+    ],
+    "target": "8.3",
+    "target_compatible": false
+  }
+}

@@ -19,7 +19,8 @@
 #                  0 or 2 consistent with .ready.analyze, a passing bash row;
 #                  --profile all always exits 0
 #   detect-php     detect-php.sh --json: target 8.3 by default, the
-#                  DRUPILOT_PHP_TARGET override wins
+#                  DRUPILOT_PHP_TARGET override wins, 8.5 stays "unconfirmed";
+#                  php_supported_for answers per core minor (8.5 from 11.3 on)
 #   next-step      next-step.sh on a fresh module: setup when ready, doctor when
 #                  analysis is not ready, the --human one-liner; a subject
 #                  recorded only as tested, or with only a port manifest, is
@@ -113,19 +114,56 @@
 #                  --persist writes the mapped setting to .drupilot.json, an
 #                  unknown key is a usage error, and choose_one honors the
 #                  same variables
+#   baseline       scripts/dev/baseline-0.9.sh --check: the frozen v0.9.0
+#                  outputs (tests/baseline/v0.9.0/) still match, or the
+#                  difference is listed in its allowed-diffs.txt
+#   data-dir       one state root for scripts and hooks: a known path maps to
+#                  its known state key (CC-19); a script (no
+#                  CLAUDE_PLUGIN_DATA, as the Bash tool runs it) and a hook
+#                  (CLAUDE_PLUGIN_DATA exported, as Claude Code runs it) resolve
+#                  the same state dir; the PHPCS ruleset run-phpcs.sh records
+#                  is the one post-edit-lint.sh lints with (the record is
+#                  written through common.sh when the analyze profile is not
+#                  ready); CLAUDE_PLUGIN_DATA never moves the data dir,
+#                  DRUPILOT_HOME does (a leading ~ expanded; a relative value,
+#                  or a relative XDG_DATA_HOME, ignored from any cwd)
+#   open-mr        open-mr.sh never puts the GitLab PAT on a command line: a
+#                  stub curl records its argv and its config; the PAT reaches it
+#                  through `-K -` (STDIN), and through a mode-0600 temp file
+#                  that is removed afterwards when curl cannot read STDIN; a
+#                  line break in the PAT never adds a config line (needs git)
+#   legacy-state   copy_legacy_state_once copies the state 0.9.0 left in a
+#                  per-plugin data dir (copy-only, never overwriting, logged,
+#                  marker), and a second run copies nothing; a file that could
+#                  not be copied (a blocked dir, a copy dying half way) or a
+#                  dir that could not be listed leaves no marker and nothing
+#                  half-written, and the retry imports only what is pending; every command that
+#                  writes state runs it right after its own preflight call (the
+#                  status, doctor and patch commands, the hooks and preflight.sh
+#                  never do, and running the hooks, preflight, the status probe
+#                  and next-step with legacy state present copies nothing); with a failing preflight (no jq on PATH) the
+#                  setup and assess preambles change neither the legacy nor the
+#                  new data dir (INV2), while the same line without the gate
+#                  would copy
 #
 # Isolation: the fixtures are copied to a temp dir (legacy_widgets is committed
-# there as a git repo when git exists), and HOME, CLAUDE_PLUGIN_DATA and the
-# XDG dirs point inside it; every DRUPILOT_* variable is unset. Nothing is
+# there as a git repo when git exists), and HOME and the XDG dirs point inside
+# it; CLAUDE_PLUGIN_DATA is unset, as in the Bash tool (a test that plays a
+# hook exports it itself), and so is CLAUDE_CONFIG_DIR (~/.claude is under the
+# temp HOME); every DRUPILOT_* variable is unset. Nothing is
 # written to the repository or to the developer's state. The temp dir is
 # removed on exit (--keep leaves it for inspection).
+#
+# XFAIL lists the tests committed ahead of their fix, each with the task that
+# fixes it: such a test that fails is reported as xfail (not a failure); one
+# that passes fails until it is removed from the list.
 #
 # Usage:
 #   scripts/dev/smoke.sh [--only T1,T2] [--skip T1,T2] [--json] [--keep]
 #                        [--list] [-h|--help]
 #     --only/--skip  run a subset of the tests
 #     --json         machine summary on STDOUT (logs stay on STDERR):
-#                    {ok, bash, tests:[{name, status: pass|fail, detail,
+#                    {ok, bash, tests:[{name, status: pass|fail|xfail, detail,
 #                                       failures:[..]}]}
 #     --keep         keep the temp dir and print its path on STDERR
 #     --list         print the test names, one per line, and exit
@@ -143,7 +181,9 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$REPO/tests/fixtures"
 SH="${BASH:-bash}"
 
-ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root monorepo-testbed phpcs-scope choices"
+ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root monorepo-testbed phpcs-scope choices baseline data-dir legacy-state open-mr"
+# Tests committed before their fix: "test:task" words (see the header).
+XFAIL=""
 
 AS_JSON=0; ONLY=""; SKIP=""; KEEP=0
 
@@ -185,11 +225,13 @@ trap cleanup EXIT
 for _v in $(env | sed -n 's/^\(DRUPILOT_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$_v"; done
 export CLAUDE_PLUGIN_ROOT="$REPO"
 export HOME="$TMP/home"
-export CLAUDE_PLUGIN_DATA="$TMP/data"
+unset CLAUDE_PLUGIN_DATA CLAUDE_CONFIG_DIR
 export XDG_DATA_HOME="$TMP/home/.local/share" XDG_STATE_HOME="$TMP/home/.local/state"
 export XDG_CACHE_HOME="$TMP/home/.cache" XDG_CONFIG_HOME="$TMP/home/.config"
 export GIT_CONFIG_NOSYSTEM=1
-mkdir -p "$HOME" "$CLAUDE_PLUGIN_DATA" "$TMP/out"
+# $TMP/data: where 0.9.0 smoke runs kept their state (CLAUDE_PLUGIN_DATA); still
+# watched by the read-only probes, so a write to the old root shows up.
+mkdir -p "$HOME" "$TMP/data" "$TMP/out"
 
 FX="$TMP/fx"
 mkdir -p "$FX"
@@ -253,17 +295,31 @@ expect_match() {
 }
 
 begin() { T_NAME="$1"; : > "$T_FAILS"; }
+# xfail_task <test> -> the task listed for <test> in XFAIL (non-zero if none).
+xfail_task() {
+  local w
+  for w in $XFAIL; do [[ "${w%%:*}" == "$1" ]] && { printf '%s' "${w#*:}"; return 0; }; done
+  return 1
+}
 # finish -> records the current test's verdict from its collected failures.
 finish() {
-  local status detail findings="[]"
+  local status detail findings="[]" task=""
+  task="$(xfail_task "$T_NAME" || true)"
   if [[ -s "$T_FAILS" ]]; then
-    status="fail"; detail="$(wc -l < "$T_FAILS" | tr -d ' ') assertion(s) failed"
-    findings="$(jq -R . < "$T_FAILS" | jq -s -c .)"; FAILED=1
+    findings="$(jq -R . < "$T_FAILS" | jq -s -c .)"
+    if [[ -n "$task" ]]; then
+      status="xfail"; detail="$(wc -l < "$T_FAILS" | tr -d ' ') assertion(s) fail as expected until $task"
+    else
+      status="fail"; detail="$(wc -l < "$T_FAILS" | tr -d ' ') assertion(s) failed"; FAILED=1
+    fi
+  elif [[ -n "$task" ]]; then
+    status="fail"; detail="passes, but XFAIL still lists it for $task: remove it from XFAIL"; FAILED=1
   else status="pass"; detail="ok"; fi
   jq -n -c --arg n "$T_NAME" --arg s "$status" --arg d "$detail" --argjson f "$findings" \
     '{name:$n, status:$s, detail:$d, failures:$f}' >> "$RESULTS"
   case "$status" in
     pass) log_ok "$T_NAME";;
+    xfail) log_warn "$T_NAME: xfail — $detail"; sed 's/^/    /' "$T_FAILS" >&2;;
     fail) log_err "$T_NAME: FAILED — $detail"; sed 's/^/    /' "$T_FAILS" >&2;;
   esac
   return 0
@@ -308,6 +364,13 @@ test_detect_php() {
   expect "default: supported" "$(jqo dp '.supported')" 'true'
   run dp84 env DRUPILOT_PHP_TARGET=8.4 "$SH" "$REPO/scripts/env/detect-php.sh" --json --subject "$LW"
   expect "override: target" "$(jqo dp84 '.target')" '"8.4"'
+  run dp85 env DRUPILOT_PHP_TARGET=8.5 "$SH" "$REPO/scripts/env/detect-php.sh" --json --subject "$LW"
+  expect "8.5: still flagged unconfirmed (no Rector php85 set)" "$(jqo dp85 '[.supported, .unconfirmed]')" '[false,true]'
+  # Which core minor runs which PHP (drupal.org PHP requirements).
+  expect "php_supported_for" "$("$SH" -c '. "$1"
+    for p in 11.2:8.5 11.3:8.5 11.4.8:8.5 10.3:8.5 11.5:8.5 12.0:8.4 11.1:8.3 10.6:8.1 11.4:8.6; do
+      printf "%s=%s " "$p" "$(php_supported_for "${p%%:*}" "${p#*:}")"; done' _ "$REPO/scripts/lib/common.sh" < /dev/null)" \
+    "11.2:8.5=no 11.3:8.5=yes 11.4.8:8.5=yes 10.3:8.5=no 11.5:8.5=unknown 12.0:8.4=no 11.1:8.3=yes 10.6:8.1=yes 11.4:8.6=unknown "
   finish
 }
 
@@ -382,7 +445,7 @@ test_hooks() {
   if "$SH" "$h/post-edit-lint.sh" < "$TMP/edit.json" > "$TMP/out/pe1.out" 2>/dev/null; then RC=0; else RC=$?; fi
   expect "post-edit-lint: exit" "$RC" "0"
   expect "post-edit-lint Phase 1: phpcbf skips the unused-use sniff" \
-    "$(grep -c -- '--exclude=Drupal.Classes.UnusedUseStatement' "$hr/phpcbf-args.log" 2>/dev/null || true)" "1"
+    "$(grep -c -- '--exclude=Drupal.Classes.UnusedUseStatement' "$hr/phpcbf-args.log" 2>/dev/null || true)" "1"  # portability-ok: a grep pattern after --
   printf '{"cwd":"%s"}' "$LW" > "$TMP/session.json"
   if (cd "$LW" && env DRUPILOT_SESSION_CONTEXT=off "$SH" "$h/session-detect-env.sh" < "$TMP/session.json" > "$TMP/out/s1.out" 2>/dev/null); then RC=0; else RC=$?; fi
   expect "session off: exit" "$RC" "0"
@@ -498,6 +561,10 @@ test_layers() {
   finish
 }
 
+# tree_snapshot <dir...> -> every path under the dirs, sorted (a missing dir
+# lists nothing, so its creation shows up as a difference).
+tree_snapshot() { find "$@" 2>/dev/null | LC_ALL=C sort; return 0; }
+
 test_status_probe() {
   # /drupilot-status is read-only: its load-time probes (the bang lines of
   # commands/drupilot-status.md) leave the subject tree and the data dir as
@@ -506,13 +573,15 @@ test_status_probe() {
   mkdir -p "$FX/status"; cp -R "$LW" "$c"
   probe="$(sed -n "s/^.\`bash -c '\(.*\)' _ \"\$1\"\`\$/\1/p" "$REPO/commands/drupilot-status.md" | head -n 1)"
   expect "probe found" "$([[ -n "$probe" ]] && echo yes || echo no)" "yes"
-  before="$(find "$c" "$CLAUDE_PLUGIN_DATA" | sort)"
-  run stp "$SH" -c "$probe" _ "$c"
+  # Run them as a hook-style environment would (CLAUDE_PLUGIN_DATA exported):
+  # neither the resolved data dir nor that old root may change.
+  before="$(tree_snapshot "$c" "$(data_dir_path)" "$TMP/data")"
+  run stp env CLAUDE_PLUGIN_DATA="$TMP/data" "$SH" -c "$probe" _ "$c"
   expect "probe: exit" "$RC" "0"
   expect_match "probe: machine name" "$(out stp)" 'machine_name=legacy_widgets'
-  run stn "$SH" "$REPO/scripts/env/next-step.sh" --subject "$c" --from-preflight --human
-  after="$(find "$c" "$CLAUDE_PLUGIN_DATA" | sort)"
-  expect "tree and data dir unchanged" "$after" "$before"
+  run stn env CLAUDE_PLUGIN_DATA="$TMP/data" "$SH" "$REPO/scripts/env/next-step.sh" --subject "$c" --from-preflight --human
+  after="$(tree_snapshot "$c" "$(data_dir_path)" "$TMP/data")"
+  expect "tree and data dirs unchanged" "$after" "$before"
   finish
 }
 
@@ -1039,6 +1108,274 @@ test_choices() {
   finish
 }
 
+test_data_dir() {
+  # Claude Code exports CLAUDE_PLUGIN_DATA to hooks but not to the Bash tool, so
+  # a state root derived from it splits in two: the hook never sees what a
+  # script recorded (X14, 09-R1).
+  local lib="$REPO/scripts/lib/common.sh" r="$FX/dd-root" b s h sub sd std
+  expect "known path -> known state key (CC-19)" \
+    "$("$SH" -c '. "$1"; p="$(project_state_path "$2")"; printf "%s" "${p##*/state/}"' _ "$lib" '/nonexistent/drupilot smoke/k-1.x' < /dev/null)" \
+    "_nonexistent_drupilot_smoke_k_1_x"
+  s="$("$SH" -c '. "$1"; project_state_path "$2"' _ "$lib" "$LW" < /dev/null)"
+  h="$(env CLAUDE_PLUGIN_DATA="$TMP/plugin-data" "$SH" -c '. "$1"; project_state_path "$2"' _ "$lib" "$LW" < /dev/null)"
+  expect "script and hook resolve the same state dir" "$h" "$s"
+  expect "CLAUDE_PLUGIN_DATA does not move the data dir" \
+    "$(env CLAUDE_PLUGIN_DATA=/x "$SH" -c '. "$1"; data_dir_path' _ "$lib" < /dev/null)" "$XDG_DATA_HOME/drupilot"
+  expect "DRUPILOT_HOME does" \
+    "$(env CLAUDE_PLUGIN_DATA=/x DRUPILOT_HOME=/y/home/ "$SH" -c '. "$1"; data_dir_path' _ "$lib" < /dev/null)" "/y/home"
+  expect "a leading ~ of DRUPILOT_HOME is expanded" \
+    "$(env DRUPILOT_HOME='~/dh' "$SH" -c '. "$1"; data_dir_path' _ "$lib" < /dev/null)" "$HOME/dh"
+  # A relative root would depend on the cwd (hooks and scripts run from
+  # different directories): it is ignored, the same from anywhere.
+  expect "a relative DRUPILOT_HOME is ignored, from any cwd" \
+    "$(cd "$LW" && env DRUPILOT_HOME=rel/dh "$SH" -c '. "$1"; data_dir_path' _ "$lib" < /dev/null)|$(cd "$TMP" && env DRUPILOT_HOME=rel/dh "$SH" -c '. "$1"; data_dir_path' _ "$lib" < /dev/null)" \
+    "$XDG_DATA_HOME/drupilot|$XDG_DATA_HOME/drupilot"
+  expect "a relative XDG_DATA_HOME is ignored" \
+    "$(env XDG_DATA_HOME=rel/xdg "$SH" -c '. "$1"; data_dir_path' _ "$lib" < /dev/null)" "$HOME/.local/share/drupilot"
+  # End to end: the project ruleset recorded in script context is the one the
+  # post-edit-lint hook (CLAUDE_PLUGIN_DATA exported) runs phpcbf with.
+  mk_stub_root "$r" "11.4.8"
+  for b in phpcs phpcbf; do
+    cat > "$r/vendor/bin/$b" <<'STUB'
+#!/usr/bin/env bash
+root="$(cd "$(dirname "$0")/../.." && pwd)"
+case " $* " in *" -i "*) printf 'The installed coding standards are Drupal and DrupalPractice\n'; exit 0;; esac
+printf '%s %s\n' "$(basename "$0")" "$*" >> "$root/phpcs-args.log"
+exit 0
+STUB
+    chmod +x "$r/vendor/bin/$b"
+  done
+  cp -R "$LW" "$r/web/modules/custom/"
+  sub="$r/web/modules/custom/legacy_widgets"
+  sd="$("$SH" -c '. "$1"; project_state_path "$2"' _ "$lib" "$sub" < /dev/null)"
+  if analyze_ready; then
+    run ddr "$SH" "$REPO/scripts/analysis/run-phpcs.sh" --subject "$sub"
+  else
+    log_warn "data-dir: the analyze profile is not ready, the ruleset record is written through common.sh instead of run-phpcs.sh."
+    "$SH" -c '. "$1"
+      f="$2/phpcs.xml.dist"; ck="$(cksum < "$f" | awk "{print \$1}")"
+      jq -n --arg f "$f" --arg ck "$ck" "{ruleset: \$f, standard: \$f, source: \"project\", cksum: \$ck, pass_extensions: true}" \
+        > "$(project_state_dir "$2")/phpcs-ruleset.json"' _ "$lib" "$sub" < /dev/null 2>/dev/null || true
+  fi
+  expect "ruleset recorded in script context" "$(jq -r '.source // empty' "$sd/phpcs-ruleset.json" 2>/dev/null)" "project"
+  std="$(jq -r '.standard // empty' "$sd/phpcs-ruleset.json" 2>/dev/null || true)"
+  : > "$r/phpcs-args.log"
+  printf '{"tool_name":"Edit","tool_input":{"file_path":"%s"}}' "$sub/src/WidgetCounter.php" > "$TMP/dd-edit.json"
+  if env CLAUDE_PLUGIN_DATA="$TMP/plugin-data" "$SH" "$REPO/hooks/scripts/post-edit-lint.sh" \
+       < "$TMP/dd-edit.json" > "$TMP/out/dd-hook.out" 2>/dev/null; then RC=0; else RC=$?; fi
+  expect "post-edit-lint: exit" "$RC" "0"
+  expect "post-edit-lint lints with the recorded ruleset" \
+    "$(grep '^phpcbf ' "$r/phpcs-args.log" 2>/dev/null | grep -c -F -- "--standard=${std:-<none>} " || true)" "1"
+  finish
+}
+
+# path_without <dir> <command> -> <dir> holds a symlink to every command of
+# $PATH but <command> (the first one of each name wins, as in a PATH lookup).
+path_without() {
+  local dir="$1" p
+  mkdir -p "$dir"
+  local IFS=:
+  for p in $PATH; do
+    [[ -d "$p" ]] || continue
+    ln -s "$p"/* "$dir"/ 2>/dev/null || true
+  done
+  rm -f "$dir/$2"
+  return 0
+}
+
+test_legacy_state() {
+  local lib="$REPO/scripts/lib/common.sh" c key="_srv_www_site" uh dh leg before line farm="$FX/nojq-bin"
+  # Every command that writes state copies right after its own gate; the
+  # read-only ones, the hooks and preflight.sh never copy.
+  for c in drupilot drupilot-setup drupilot-assess drupilot-port drupilot-refactor drupilot-test \
+           drupilot-contribute drupilot-layers drupilot-clean; do
+    expect "$c: the copy follows its preflight" \
+      "$(grep -cE 'preflight\.sh" .* && bash -c .*copy_legacy_state_once' "$REPO/commands/$c.md" || true)" "1"
+  done
+  for c in drupilot-status drupilot-doctor drupilot-patch; do
+    expect "$c: never copies" "$(grep -c copy_legacy_state_once "$REPO/commands/$c.md" || true)" "0"
+  done
+  expect "hooks and preflight.sh never copy" \
+    "$(grep -l copy_legacy_state_once "$REPO"/hooks/scripts/*.sh "$REPO/scripts/env/preflight.sh" 2>/dev/null | wc -l | tr -d ' ')" "0"
+  # ... and they do not copy indirectly either: with legacy state present,
+  # every hook, preflight, the status probe and next-step leave no copy.
+  uh="$FX/legacy0/home"; dh="$FX/legacy0/data"
+  mkdir -p "$uh/.claude/plugins/data/drupilot-x/state/$key"
+  printf '{}\n' > "$uh/.claude/plugins/data/drupilot-x/state/$key/drupilot-lock.json"
+  printf '{"tool_name":"Edit","tool_input":{"file_path":"%s"}}' "$LW/legacy_widgets.module" > "$TMP/l0-edit.json"
+  printf '{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}' > "$TMP/l0-push.json"
+  printf '{"cwd":"%s"}' "$LW" > "$TMP/l0-session.json"
+  local -a E=(env HOME="$uh" DRUPILOT_HOME="$dh" CLAUDE_PLUGIN_DATA="$uh/.claude/plugins/data/drupilot-x")
+  "${E[@]}" "$SH" "$REPO/hooks/scripts/post-edit-lint.sh" < "$TMP/l0-edit.json" > /dev/null 2>&1 || true
+  "${E[@]}" "$SH" "$REPO/hooks/scripts/guard-contrib.sh" < "$TMP/l0-push.json" > /dev/null 2>&1 || true
+  (cd "$LW" && "${E[@]}" "$SH" "$REPO/hooks/scripts/session-detect-env.sh" < "$TMP/l0-session.json" > /dev/null 2>&1) || true
+  "${E[@]}" "$SH" "$REPO/scripts/env/preflight.sh" --profile all --json --subject "$LW" > /dev/null 2>&1 < /dev/null || true
+  "${E[@]}" "$SH" "$REPO/scripts/env/next-step.sh" --subject "$LW" --from-preflight > /dev/null 2>&1 < /dev/null || true
+  probe="$(sed -n "s/^.\`bash -c '\(.*\)' _ \"\$1\"\`\$/\1/p" "$REPO/commands/drupilot-status.md" | head -n 1)"
+  [[ -n "$probe" ]] && { "${E[@]}" "$SH" -c "$probe" _ "$LW" > /dev/null 2>&1 < /dev/null || true; }
+  expect "hooks, preflight, status probe, next-step: no copy" \
+    "$([[ -e "$dh/legacy-state-copied" || -e "$dh/state/$key" ]] && echo copied || echo none)" "none"
+  # Copy-only, never overwriting, logged, once.
+  uh="$FX/legacy1/home"; dh="$FX/legacy1/data"
+  leg="$uh/.claude/plugins/data/drupilot-x/state/$key"
+  mkdir -p "$leg" "$dh/state/$key"
+  printf '{"drupal":{"core":"11.4.8"}}\n' > "$leg/drupilot-lock.json"
+  printf '{"stage":"setup"}\n' > "$leg/state.json"
+  printf '{"stage":"ported"}\n' > "$dh/state/$key/state.json"
+  run lc1 env HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c '. "$1"; copy_legacy_state_once' _ "$lib"
+  expect "copy: exit" "$RC" "0"
+  expect "copy: the missing file is copied" "$(cat "$dh/state/$key/drupilot-lock.json" 2>/dev/null)" '{"drupal":{"core":"11.4.8"}}'
+  expect "copy: an existing file is kept" "$(cat "$dh/state/$key/state.json" 2>/dev/null)" '{"stage":"ported"}'
+  expect "copy: the legacy file stays" "$(cat "$leg/drupilot-lock.json" 2>/dev/null)" '{"drupal":{"core":"11.4.8"}}'
+  expect "copy: marker" "$(grep -c '^files=1$' "$dh/legacy-state-copied" 2>/dev/null || true)" "1"
+  expect_match "copy: logged" "$(cat "$TMP/out/lc1.err")" 'Copied 1 state file'
+  rm -f "$dh/state/$key/drupilot-lock.json"
+  before="$(tree_snapshot "$uh" "$dh")"
+  run lc2 env HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c '. "$1"; copy_legacy_state_once' _ "$lib"
+  expect "second run: exit" "$RC" "0"
+  expect "second run: copies nothing" "$(tree_snapshot "$uh" "$dh")" "$before"
+  # A file that cannot be copied (here a regular file sits where its state dir
+  # goes, which defeats root too) leaves no marker: the next run retries only
+  # what is pending, so an imported file removed in between stays removed.
+  local k2="_srv_www_other" sb="$FX/legacy-bin"
+  uh="$FX/legacy3/home"; dh="$FX/legacy3/data"
+  mkdir -p "$uh/.claude/plugins/data/drupilot-x/state/$key" "$uh/.claude/plugins/data/drupilot-x/state/$k2" "$dh/state"
+  printf '{}\n' > "$uh/.claude/plugins/data/drupilot-x/state/$key/drupilot-lock.json"
+  printf '{}\n' > "$uh/.claude/plugins/data/drupilot-x/state/$k2/state.json"
+  : > "$dh/state/$k2"
+  run lc3 env HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c '. "$1"; copy_legacy_state_once' _ "$lib"
+  expect "failed copy: warned, no marker, the rest copied" \
+    "$(grep -c 'could not be copied' "$TMP/out/lc3.err" || true)|$([[ -e "$dh/legacy-state-copied" ]] && echo marker || echo none)|$([[ -f "$dh/state/$key/drupilot-lock.json" ]] && echo copied || echo none)" "1|none|copied"
+  rm -f "$dh/state/$k2" "$dh/state/$key/drupilot-lock.json"
+  run lc4 env HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c '. "$1"; copy_legacy_state_once' _ "$lib"
+  expect "failed copy: retried, marker" \
+    "$([[ -f "$dh/state/$k2/state.json" ]] && echo copied || echo none)|$([[ -e "$dh/legacy-state-copied" ]] && echo marker || echo none)" "copied|marker"
+  expect "failed copy: a file removed after its import is not imported again" \
+    "$([[ -e "$dh/state/$key/drupilot-lock.json" ]] && echo reimported || echo kept-removed)" "kept-removed"
+  # A copy that dies half way (a full disk: here a cp that writes a few bytes
+  # and fails) leaves no partial file to be taken for a finished one.
+  mkdir -p "$sb"
+  printf '#!/bin/sh\nfor a in "$@"; do last="$a"; src="$prev"; prev="$a"; done\nhead -c 3 "$src" > "$last"\nexit 1\n' > "$sb/cp"
+  cat > "$sb/find" <<'STUB'
+#!/bin/sh
+echo ./_srv_www_other/state.json
+exit 1
+STUB
+  chmod +x "$sb/cp" "$sb/find"
+  uh="$FX/legacy4/home"; dh="$FX/legacy4/data"
+  mkdir -p "$uh/.claude/plugins/data/drupilot-x/state/$key"
+  printf '{"drupal":{"core":"11.4.8"}}\n' > "$uh/.claude/plugins/data/drupilot-x/state/$key/drupilot-lock.json"
+  mkdir -p "$sb/cp-only"; ln -s "$sb/cp" "$sb/cp-only/cp"
+  run lc5 env PATH="$sb/cp-only:$PATH" HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c '. "$1"; copy_legacy_state_once' _ "$lib"
+  expect "partial copy: nothing left behind, no marker" \
+    "$(find "$dh" -type f 2>/dev/null | grep -c . || true)|$([[ -e "$dh/legacy-state-copied" ]] && echo marker || echo none)" "0|none"
+  run lc6 env HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c '. "$1"; copy_legacy_state_once' _ "$lib"
+  expect "partial copy: the retry copies the whole file" "$(cat "$dh/state/$key/drupilot-lock.json" 2>/dev/null)" '{"drupal":{"core":"11.4.8"}}'
+  # A legacy dir that cannot be fully listed (find fails) leaves no marker.
+  uh="$FX/legacy5/home"; dh="$FX/legacy5/data"
+  mkdir -p "$uh/.claude/plugins/data/drupilot-x/state/$k2" "$sb/find-only"
+  printf '{}\n' > "$uh/.claude/plugins/data/drupilot-x/state/$k2/state.json"
+  ln -s "$sb/find" "$sb/find-only/find"
+  run lc7 env PATH="$sb/find-only:$PATH" HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c '. "$1"; copy_legacy_state_once' _ "$lib"
+  expect "listing error: warned, no marker" \
+    "$(grep -c 'not fully readable' "$TMP/out/lc7.err" || true)|$([[ -e "$dh/legacy-state-copied" ]] && echo marker || echo none)" "1|none"
+  # INV2 (0.9.1 form): a failing gate (preflight.sh needs jq) changes nothing.
+  path_without "$farm" jq
+  uh="$FX/legacy2/home"; dh="$FX/legacy2/data"
+  leg="$uh/.claude/plugins/data/drupilot-x/state/$key"
+  mkdir -p "$leg"; printf '{}\n' > "$leg/drupilot-lock.json"
+  for c in setup assess; do
+    line="$(sed -n 's/^!`\{0,1\}\(bash "${CLAUDE_PLUGIN_ROOT}\/scripts\/env\/preflight\.sh".*copy_legacy_state_once'"'"'\)`\{0,1\}$/\1/p' \
+              "$REPO/commands/drupilot-$c.md" | head -n 1)"
+    expect "$c: preamble found" "$([[ -n "$line" ]] && echo yes || echo no)" "yes"
+    before="$(tree_snapshot "$uh" "$dh")"
+    run "lp$c" env PATH="$farm" HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c "$line"
+    expect "$c preamble without jq: the gate fails" "$([[ "$RC" != "0" ]] && echo failed || echo passed)" "failed"
+    expect "$c preamble without jq: nothing changed" "$(tree_snapshot "$uh" "$dh")" "$before"
+  done
+  # Control: without the gate the same line does copy in that PATH, so the
+  # check above can see a copy.
+  run lpctl env PATH="$farm" HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c "$(printf '%s' "$line" | sed 's/ && bash -c / ; bash -c /')"
+  expect "control: ungated, the copy runs" "$([[ -f "$dh/state/$key/drupilot-lock.json" ]] && echo copied || echo none)" "copied"
+  finish
+}
+
+test_open_mr() {
+  local d="$FX/mr" bin="$FX/mr/bin" c mode pat="glpat-smoke-SECRET-0123456789"
+  if [[ "$HAVE_GIT" != "1" ]]; then
+    log_warn "open-mr: git is not available, the test is skipped."
+    finish; return 0
+  fi
+  local -a G=(git -c user.name=drupilot-smoke -c user.email=smoke@example.invalid -c commit.gpgsign=false)
+  mkdir -p "$bin" "$d/clone"
+  git init -q --bare "$d/fork.git"
+  git -C "$d/clone" init -q
+  printf 'name: Acme\ntype: module\n' > "$d/clone/acme.info.yml"
+  git -C "$d/clone" add -A && "${G[@]}" -C "$d/clone" commit -q -m "Initial"
+  git -C "$d/clone" checkout -q -b 123-port-to-drupal-11
+  git -C "$d/clone" remote add acme-123 "$d/fork.git"
+  # glab fails (so curl is used); curl records its argv and the config it got
+  # on STDIN or from a -K file, and plays a GitLab 201. In mode "noread" it
+  # cannot read STDIN (curl's exit 26), as an old curl would.
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$bin/glab"
+  cat > "$bin/curl" <<STUB
+#!/usr/bin/env bash
+d="$d"
+printf '%s\n' "\$@" >> "\$d/curl-argv.log"
+prev=""
+for a in "\$@"; do
+  if [[ "\$prev" == "-K" ]]; then
+    if [[ "\$a" == "-" ]]; then
+      [[ "\$(cat "\$d/curl-mode" 2>/dev/null)" == "noread" ]] && exit 26
+      cat >> "\$d/curl-config.log"
+    else
+      cat "\$a" >> "\$d/curl-config.log"; printf '%s\n' "\$a" > "\$d/curl-cfgfile"
+      ls -l "\$a" | cut -c1-10 > "\$d/curl-cfgmode"
+    fi
+  fi
+  prev="\$a"
+done
+printf '{"web_url":"https://git.example.invalid/issue/acme-123/-/merge_requests/1"}\n201'
+STUB
+  chmod +x "$bin/glab" "$bin/curl"
+  for mode in stdin noread; do
+    printf '%s' "$mode" > "$d/curl-mode"
+    : > "$d/curl-argv.log"; : > "$d/curl-config.log"; rm -f "$d/curl-cfgfile" "$d/curl-cfgmode"
+    if (cd "$d/clone" && env PATH="$bin:$PATH" DRUPILOT_GITLAB_PAT="$pat" "$SH" "$REPO/scripts/contrib/open-mr.sh" \
+          --project acme --issue 123 --branch 123-port-to-drupal-11 --mode auto) \
+        > "$TMP/out/mr-$mode.out" 2> "$TMP/out/mr-$mode.err" < /dev/null; then RC=0; else RC=$?; fi
+    expect "$mode: exit" "$RC" "0"
+    expect_match "$mode: MR opened through the API" "$(cat "$TMP/out/mr-$mode.err")" 'Merge request created via the GitLab API'
+    expect "$mode: the PAT is on no argv" "$(grep -c -F -- "$pat" "$d/curl-argv.log" || true)" "0"
+    expect "$mode: the PAT reached curl's config" "$(grep -c -F -- "header = \"PRIVATE-TOKEN: $pat\"" "$d/curl-config.log" || true)" "1"
+    expect "$mode: the PAT is in no output" "$(cat "$TMP/out/mr-$mode.out" "$TMP/out/mr-$mode.err" | grep -c -F -- "$pat" || true)" "0"
+  done
+  # A line break in the PAT (a CRLF file, a pasted value) never reaches curl's
+  # config as a second line: only the first line of the token is sent.
+  printf 'stdin' > "$d/curl-mode"
+  for mode in $'\r' $'\nX-Injected: 1'; do
+    : > "$d/curl-config.log"
+    (cd "$d/clone" && env PATH="$bin:$PATH" DRUPILOT_GITLAB_PAT="$pat$mode" "$SH" "$REPO/scripts/contrib/open-mr.sh" \
+        --project acme --issue 123 --branch 123-port-to-drupal-11 --mode auto) > /dev/null 2> "$TMP/out/mr-nl.err" < /dev/null || true
+    expect "line break in the PAT: one config line, the first" \
+      "$(wc -l < "$d/curl-config.log" | tr -d ' ')|$(grep -c -F -- "header = \"PRIVATE-TOKEN: $pat\"" "$d/curl-config.log" || true)" "1|1"
+    expect_match "line break in the PAT: warned" "$(cat "$TMP/out/mr-nl.err")" 'holds a line break'
+  done
+  c="$(cat "$d/curl-cfgfile" 2>/dev/null || true)"
+  expect "noread: a temp config file was used" "$([[ -n "$c" ]] && echo yes || echo no)" "yes"
+  expect "noread: it was mode 0600" "$(cat "$d/curl-cfgmode" 2>/dev/null)" "-rw-------"
+  expect "noread: and is gone" "$([[ -n "$c" && -e "$c" ]] && echo left || echo gone)" "gone"
+  finish
+}
+
+test_baseline() {
+  run bl "$SH" "$REPO/scripts/dev/baseline-0.9.sh" --check --json
+  expect "baseline --check: exit" "$RC" "0"
+  expect "baseline --check: captures that differ" \
+    "$(jqo bl '[.files[] | select(.status != "same" and .status != "allowed") | .name + ":" + .status]')" '[]'
+  finish
+}
+
 # --- Main -----------------------------------------------------------------------
 log_step "drupilot smoke tests (bash ${BASH_VERSION:-?}, $(uname -s 2>/dev/null || echo ?))"
 for t in $ALL_TESTS; do
@@ -1069,6 +1406,10 @@ for t in $ALL_TESTS; do
     monorepo-testbed) test_monorepo_testbed;;
     phpcs-scope) test_phpcs_scope;;
     choices) test_choices;;
+    baseline) test_baseline;;
+    data-dir) test_data_dir;;
+    legacy-state) test_legacy_state;;
+    open-mr) test_open_mr;;
   esac
 done
 

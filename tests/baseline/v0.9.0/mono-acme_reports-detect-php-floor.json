@@ -1,0 +1,11 @@
+{
+  "exit": 0,
+  "stdout": {
+    "floor": "8.1",
+    "method": "heuristic-scan",
+    "scanned_files": 5,
+    "signals": [],
+    "target": "8.3",
+    "target_compatible": true
+  }
+}

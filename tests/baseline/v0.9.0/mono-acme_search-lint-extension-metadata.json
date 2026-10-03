@@ -1,0 +1,52 @@
+{
+  "exit": 0,
+  "stdout": {
+    "checks_run": [
+      "config-schema",
+      "plugin-schema",
+      "configure-route",
+      "services-class",
+      "services-arity",
+      "submodule-core-req",
+      "undeclared-deps"
+    ],
+    "findings": [
+      {
+        "check": "undeclared-deps",
+        "extension": "acme_search",
+        "file": "src/Indexer.php",
+        "line": 7,
+        "message": "'acme_search' uses contrib module 'search_api' (class) without declaring it in acme_search.info.yml dependencies: it is only required in composer.json, so Drupal does not enable it when 'acme_search' is installed.",
+        "severity": "warn",
+        "suggestion": "Add '- search_api:search_api' to dependencies: (verify the drupal.org project name)."
+      },
+      {
+        "check": "submodule-core-req",
+        "extension": "acme_search_ui",
+        "file": "modules/acme_search_ui/acme_search_ui.info.yml",
+        "line": 5,
+        "message": "Submodule 'acme_search_ui' declares core_version_requirement: ^8.8 || ^9 || ^10, which does not admit Drupal 11: core marks it incompatible and it cannot be installed.",
+        "severity": "warn",
+        "suggestion": "Set it to the parent's constraint ('^10.3'): /drupilot-port does this with set-core-requirement.sh."
+      },
+      {
+        "check": "undeclared-deps",
+        "extension": "acme_search_ui",
+        "file": "modules/acme_search_ui/acme_search_ui.libraries.yml",
+        "line": 6,
+        "message": "'acme_search_ui' uses project module 'acme_core' (library) without declaring it in acme_search_ui.info.yml dependencies: installing 'acme_search_ui' alone fails or breaks at runtime.",
+        "severity": "warn",
+        "suggestion": "Add '- acme_core:acme_core' to dependencies:."
+      }
+    ],
+    "generated_at": "<TS>",
+    "subject": "<SUBJECT>/web/modules/custom/acme_search",
+    "subject_digest": "14623b97d7094e4bf8f2d83ebc06f6ec4717aebefb46485ff821b88fdfee81c1",
+    "tool": "lint-extension-metadata",
+    "totals": {
+      "error": 0,
+      "info": 0,
+      "warn": 3
+    }
+  }
+}

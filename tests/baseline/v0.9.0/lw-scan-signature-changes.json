@@ -1,0 +1,86 @@
+{
+  "exit": 3,
+  "stdout": {
+    "core_floor": "10.0",
+    "core_requirement": "^10",
+    "drupal_root": null,
+    "errors": 2,
+    "findings": [
+      {
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=hook_entity_operation%20CacheableMetadata",
+        "class": null,
+        "d10_compat": "An optional second parameter works on every core; a required one breaks Drupal 10 and 11.0-11.2.",
+        "file": "legacy_widgets.module",
+        "fix": "Keep the one-parameter signature, or add the new parameter as optional: ?CacheableMetadata $cacheability = NULL.",
+        "id": "hook-entity-operation",
+        "kind": "hook-params",
+        "line": 24,
+        "member": "hook_entity_operation",
+        "message": "legacy_widgets_entity_operation() implements hook_entity_operation(), which core invokes with 2 argument(s) from Drupal 11.3; the current 1-parameter form works on every core. If you accept the new parameter, keep it optional while the floor (10.0) is below 11.3.",
+        "severity": "info",
+        "since": "11.3"
+      },
+      {
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=getOriginal%20setOriginal",
+        "class": null,
+        "d10_compat": "Not available on Drupal 10.",
+        "file": "modules/legacy_widgets_extra/legacy_widgets_extra.module",
+        "fix": "While the floor is below 11.2: keep the ->original property, or wrap the call in DeprecationHelper::backwardsCompatibleCall() (core 10.1+): backwardsCompatibleCall(\\Drupal::VERSION, '11.2', fn() => $entity->getOriginal(), fn() => $entity->original). Raise the floor to ^11.2 to use it directly.",
+        "id": "entity-original-accessors-call",
+        "kind": "symbol-min-core",
+        "line": 15,
+        "member": "EntityInterface::getOriginal()/setOriginal()",
+        "message": "EntityInterface::getOriginal()/setOriginal() exists only from Drupal 11.2, below the core floor (10.0): a fatal on older cores unless the receiver is the module's own class. Guard it (DeprecationHelper::backwardsCompatibleCall) or raise the floor to ^11.2.",
+        "severity": "warn",
+        "since": "11.2"
+      },
+      {
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=EntityInterface%3A%3AgetOriginal",
+        "class": "Drupal\\legacy_widgets\\Entity\\LegacyWidget",
+        "d10_compat": "Core's getOriginal() does not exist below 11.2: code kept for ^10 must not call it on core entities (use the deprecated ->original property, or DeprecationHelper::backwardsCompatibleCall()).",
+        "file": "src/Entity/LegacyWidget.php",
+        "fix": "While the core floor is below 11.2: rename the local helper (e.g. getOriginalWidget()) and update its callers. Once the floor is ^11.2: delete it and use core's getOriginal().",
+        "id": "entity-get-original",
+        "kind": "method-signature",
+        "line": 57,
+        "member": "getOriginal",
+        "message": "LegacyWidget::getOriginal() collides with core's EntityInterface::getOriginal() added in Drupal 11.2 and is incompatible (return type 'none' (core: ?static or static)): a fatal 'Declaration must be compatible' when the class loads on 11.2+.",
+        "severity": "error",
+        "since": "11.2"
+      },
+      {
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=ConfigFormBase%20TypedConfigManagerInterface",
+        "class": "Drupal\\legacy_widgets\\Form\\SettingsForm",
+        "d10_compat": "Safe for ^10 || ^11: 10.2+ accepts the argument, and PHP ignores an extra argument on older 10.x/9.x cores.",
+        "file": "src/Form/SettingsForm.php",
+        "fix": "Add TypedConfigManagerInterface $typed_config_manager to the subclass constructor, forward it (parent::__construct($config_factory, $typed_config_manager)) and pass $container->get('config.typed') from create().",
+        "id": "config-form-base-ctor",
+        "kind": "constructor-arity",
+        "line": 32,
+        "member": "__construct",
+        "message": "SettingsForm::__construct() passes 1 argument(s) to ConfigFormBase::__construct(), which requires 2 from Drupal 11.0: ArgumentCountError on Drupal 11.",
+        "severity": "error",
+        "since": "10.2"
+      },
+      {
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=buildRevisionCacheId",
+        "class": "Drupal\\legacy_widgets\\LegacyWidgetStorage",
+        "d10_compat": "Never add #[\\Override] to it while the core floor is below 11.3: the parent method does not exist there and PHP 8.3+ fatals at compile time.",
+        "file": "src/LegacyWidgetStorage.php",
+        "fix": "Rename the module's helper (e.g. buildWidgetRevisionCacheId()) unless overriding core's revision cache id on 11.3+ is intended; if kept, match protected function buildRevisionCacheId($id): string exactly.",
+        "id": "revision-cache-id",
+        "kind": "method-signature",
+        "line": 24,
+        "member": "buildRevisionCacheId",
+        "message": "LegacyWidgetStorage::buildRevisionCacheId() is a module method below Drupal 11.3 and silently OVERRIDES core's ContentEntityStorageBase::buildRevisionCacheId() from 11.3 (core calls it). Rename it unless that override is intended; never mark it with the Override attribute while the floor (10.0) is below 11.3.",
+        "severity": "warn",
+        "since": "11.3"
+      }
+    ],
+    "infos": 1,
+    "ok": false,
+    "subject": "<SUBJECT>",
+    "tool": "scan-signature-changes",
+    "warnings": 2
+  }
+}

@@ -14,8 +14,12 @@
 #   - portability no bash-4-only or GNU-only construct in those scripts (they
 #                 must run on bash 3.2 + BSD tools, i.e. stock macOS): ${x,,},
 #                 ${x^^}, declare/local -A|-n|-g, mapfile/readarray, sed -i,
-#                 readlink -f, realpath, grep -P, date -d, xargs -r, stat -c,
-#                 find -printf, envsubst, and a regex interval ({n}, {n,m})
+#                 readlink -f, realpath, grep -P, an --include, --exclude or
+#                 --exclude-dir option anywhere on a line without tar, rsync,
+#                 curl, phpcs or phpcbf (BusyBox grep has none of them; select
+#                 the files with find; a grep pattern after `--` or another
+#                 tool's option needs `# portability-ok`), date -d,
+#                 xargs -r, stat -c, find -printf, envsubst, a regex interval ({n}, {n,m})
 #                 in an awk regex literal (mawk 1.3.4-20200120, the default awk
 #                 on Debian 12 / Ubuntu 22.04, matches it as literal text),
 #                 and a `case` inside `$(...)` whose patterns lack the leading
@@ -201,6 +205,12 @@ gate_portability() {
     [[ "$f" == "scripts/dev/check.sh" ]] && continue   # its own patterns would self-match
     # Drop full-line comments and trailing " # ..." comments, keep line numbers.
     (cd "$REPO" && awk -v F="$f" '
+      # not_grep_tool <line> -> 1 when tar, rsync, curl, phpcs or phpcbf is a
+      # command word on the line (also through a path: vendor/bin/phpcs): their
+      # own --include/--exclude options are not the grep ones.
+      function not_grep_tool(l) {
+        return (l ~ /(^|[;&|(`[:space:]\/"])(tar|rsync|curl|phpcs|phpcbf)(["[:space:]]|$)/)
+      }
       /# portability-ok/ { next }
       {
         line = $0
@@ -211,6 +221,7 @@ gate_portability() {
             line ~ /(^|[^A-Za-z_])(mapfile|readarray|realpath|envsubst)([^A-Za-z_]|$)/ ||
             line ~ /(^|[^A-Za-z_])sed[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-i/ ||
             line ~ /readlink[[:space:]]+-f/ || line ~ /grep[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*P/ ||
+            (line ~ /(^|[[:space:](="'\''])--(include|exclude|exclude-dir)([=[:space:]"'\'']|$)/ && !not_grep_tool(line)) ||
             line ~ /date[[:space:]]+-d/ || line ~ /xargs[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-r/ ||
             line ~ /stat[[:space:]]+-c/ || line ~ /find[[:space:]].*-printf/ ||
             line ~ /\$\([[:space:]]*case[[:space:]].*[[:space:]]in[[:space:]]+[^([:space:]]/ ||
@@ -367,12 +378,13 @@ gate_json() {
 }
 
 gate_smoke() {
-  local js="$TMP/smoke.json" err="$TMP/smoke.err" out="$TMP/smoke.out" n
+  local js="$TMP/smoke.json" err="$TMP/smoke.err" out="$TMP/smoke.out" n x
   # Same interpreter as this gate, so `/bin/bash scripts/dev/check.sh` on macOS
   # smoke-tests stock bash 3.2 end to end.
   if "$BASH" "$REPO/scripts/dev/smoke.sh" --json > "$js" 2> "$err"; then
     n="$(jq -r '[.tests[] | select(.status == "pass")] | length' "$js" 2>/dev/null || echo '?')"
-    record smoke pass "$n smoke tests passed (bash ${BASH_VERSION:-?})"
+    x="$(jq -r '[.tests[] | select(.status == "xfail") | .name] | if length == 0 then "" else ", xfail: " + join(",") end' "$js" 2>/dev/null || true)"
+    record smoke pass "$n smoke tests passed${x} (bash ${BASH_VERSION:-?})"
   else
     jq -r '.tests[] | select(.status == "fail") | .name as $n | .failures[] | "\($n): \(.)"' "$js" > "$out" 2>/dev/null || true
     [[ -s "$out" ]] || tail -n 20 "$err" > "$out"

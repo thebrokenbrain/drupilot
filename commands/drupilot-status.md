@@ -118,8 +118,8 @@ Render an English summary covering:
 - **Subject:** machine name, type, `core_version_requirement`.
 - **Environment:** readiness per profile (analysis / setup+tests / contribution) and
   DDEV state (configured? running?).
-- **PHP target:** the effective value; explicitly flag it if it is **unconfirmed**
-  (e.g. 8.5) — never claim an unconfirmed version is supported.
+- **PHP target:** the effective value; when `php_unconfirmed=yes` (8.5), say that
+  it needs Drupal 11.3 or later and that no Rector `php85` set is assumed.
 - **Reproducibility:** deterministic mode on/off, and if a lockfile exists, the
   frozen Drupal core and digests SHA it pins (what a re-run will reuse).
 - **Current phase:** `stage` from `state.json` (or the legacy phase marker; else
