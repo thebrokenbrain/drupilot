@@ -60,9 +60,11 @@ PHP support per Drupal 11 branch (drupal.org PHP requirements, read through
   for 8.5: `rector_php_set_arg` then uses `php84` with a warning. Never emit a
   `php85`/`UP_TO_PHP_85` set or assume a DDEV 8.5 image exists — detect them at
   runtime and degrade gracefully, so an 8.5 target never breaks the flow.
-- When the target is 8.5, say so and check the core: `ddev-up.sh` warns when the
-  Drupal target admits a minor older than 11.3, and again when the installed core
-  is older.
+- When the target is 8.5, say so and check the core: `ddev-up.sh` warns, when it
+  creates the project, if the lock-pinned core (else the lowest minor the Drupal
+  target admits; a dev branch or stability flag is not guessed) is older than
+  11.3, and again when the installed core is older. Composer installs the newest
+  core the target admits, so the first warning is about the declared range.
 
 ## 3. How the target flows into each tool
 

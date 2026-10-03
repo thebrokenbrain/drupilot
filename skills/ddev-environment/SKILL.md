@@ -70,8 +70,9 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/detect-php.sh" --json
 
 Use `target` for the rest of the flow. If `unconfirmed` is true (i.e. 8.5),
 say that PHP 8.5 needs Drupal 11.3 or later and that no Rector `php85` set is
-assumed; `ddev-up.sh` warns when the Drupal target or the installed core is
-older.
+assumed; `ddev-up.sh` warns when the core it creates may be older (the
+lock-pinned core, else the lowest minor the Drupal target admits) and when the
+installed core is older.
 
 ## 3. Create / start the Drupal 11 DDEV project
 

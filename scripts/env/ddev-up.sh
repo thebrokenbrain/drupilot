@@ -284,7 +284,8 @@ if php_target_unconfirmed "$PHP_TARGET" && [[ "$DO_CREATE" == "1" && ! -f "$PROJ
   if [[ -n "$LOCKED_CORE" ]]; then
     _floor="$LOCKED_CORE"; _from="the lockfile pins Drupal $LOCKED_CORE"
   elif ! printf '%s' "$DRUPAL_TARGET" | grep -qE '@|-dev|[0-9]\.(x|\*)'; then
-    _floor="$(core_floor_from_requirement "$DRUPAL_TARGET")"; _from="the Drupal target $DRUPAL_TARGET also admits $_floor"
+    _floor="$(core_floor_from_requirement "$DRUPAL_TARGET")"
+    _from="the Drupal target $DRUPAL_TARGET also admits $_floor (Composer installs the newest core it admits; the installed one is checked at the end)"
   fi
   if [[ -n "$_floor" && "$(php_supported_for "$_floor" "$PHP_TARGET")" == "no" ]]; then
     log_warn "PHP $PHP_TARGET needs Drupal 11.3 or later; $_from."

@@ -72,8 +72,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   supports PHP 8.5 from 11.3 on, not on 11.2 or earlier (drupal.org PHP
   requirements, read through its api-d7 JSON). The new helper
   `php_supported_for <core-minor> <php>` answers `yes`, `no` or `unknown` per
-  minor; `/drupilot-setup` (`ddev-up.sh`) now warns when the target is 8.5 and the
-  Drupal target admits, or the test-bed has, an older core. The caveat text of
+  minor. With an 8.5 target, `/drupilot-setup` (`ddev-up.sh`) now warns, when it
+  creates the project, if the lock-pinned core, or else the lowest minor the
+  Drupal target admits, is older than 11.3 (a dev branch or stability flag is
+  not guessed), and again when the installed core is older. The caveat text of
   the setup tab, the session hook, `detect-php`, `run-rector`, the skills, the
   agents and the READMEs now says "PHP 8.5 needs Drupal 11.3 or later".
   Unchanged: `php_target_unconfirmed` stays true for 8.5 (it now means no Rector
