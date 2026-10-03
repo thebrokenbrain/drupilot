@@ -65,6 +65,8 @@ DDEV provides the full Drupal environment (web + database + chromedriver) on top
 
 **Shell:** the scripts and hooks run on **bash ≥ 3.2** and do not assume GNU tools, so stock macOS (`/bin/bash` 3.2, BSD `sed`/`grep`) works as-is — no Homebrew bash or GNU coreutils needed. `/drupilot-doctor` reports the bash version it found.
 
+**Health checks.** Besides the requirements, `/drupilot-doctor` runs `preflight.sh --extended`, a set of report-only checks for known pitfalls (they never block a command): `xmllint` present, the `sed` flavour, a well-formed `phpcs.xml.dist` and a `phpstan.neon` without the deprecated `drupal_root` at the Drupal root, the installed dev toolchain against the known-good reference in `config/toolchain-reference.json` (read from `composer.lock`, with a warning for a known-broken combination such as the one behind "Could not detect twig set"), free disk space (`requirements.disk_free_min_mb`, 5 GB by default) and drupilot or DDEV residue in your module's original checkout. Run it from the module or the Drupal root. The JSON (`--extended --json`) adds rows with `category: "health"` and a `toolchain` object; the existing keys are unchanged.
+
 ---
 
 ## Installation
@@ -205,7 +207,7 @@ Afterwards each module's `state.json` records `environment: {status: "removed", 
 | Command | What it does |
 | --- | --- |
 | `/drupilot [subject] [full\|auto\|status\|next] [--no-confirm] [--workspace DIR] [--json]` | **Router / guided flow.** Detects the current state (environment, last assessment, phase) and recommends the next step. `full` runs the whole flow with confirmations; `auto` runs it **hands-off** (see below). The flag words are for wrappers: see [Running under another tool](#running-under-another-tool-non-interactive-contract). |
-| `/drupilot-doctor [install]` | **Requirements check.** Per-platform status table (Docker + daemon, DDEV, git, composer/php, jq, SSH/PAT) with install instructions and optional assisted installation (with confirmation). |
+| `/drupilot-doctor [install]` | **Requirements check.** Per-platform status table (Docker + daemon, DDEV, git, composer/php, jq, SSH/PAT) with install instructions and optional assisted installation (with confirmation), plus report-only [health checks](#requirements) (generated configs, toolchain vs known-good, disk space, origin residue). |
 | `/drupilot-setup` | Spins up a **Drupal 11 DDEV** site, installs the add-ons (`ddev-drupal-contrib`, Selenium) and the Composer dev toolchain (including `drupal/core-dev`, matched to the installed core, which provides PHPUnit), and writes `rector.php` / `phpstan.neon` / `phpcs.xml.dist` / test env from templates. Idempotent. |
 | `/drupilot-assess [subject]` | Produces the **viability report** + staged plan with an S/M/L/XL verdict. |
 | `/drupilot-port [subject]` | **Phase 1 minimal port.** Official Rector + (optional) digests rules filtered by target + ad-hoc fixes + minimal manual changes; leaves the code compiling with no blocking deprecations. |

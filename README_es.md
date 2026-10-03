@@ -67,6 +67,8 @@ DDEV provee el entorno Drupal completo (web + base de datos + chromedriver) sobr
 
 **Shell:** los scripts y hooks funcionan con **bash ≥ 3.2** y no asumen herramientas GNU, así que un macOS de serie (`/bin/bash` 3.2, `sed`/`grep` BSD) funciona tal cual — no hace falta el bash de Homebrew ni GNU coreutils. `/drupilot-doctor` informa de la versión de bash encontrada.
 
+**Comprobaciones de salud.** Además de los requisitos, `/drupilot-doctor` ejecuta `preflight.sh --extended`, un conjunto de comprobaciones solo informativas de fallos conocidos (nunca bloquean un comando): `xmllint` presente, el sabor de `sed`, un `phpcs.xml.dist` bien formado y un `phpstan.neon` sin el parámetro obsoleto `drupal_root` en la raíz de Drupal, el toolchain de desarrollo instalado frente a la referencia known-good de `config/toolchain-reference.json` (leído de `composer.lock`, con un aviso si es una combinación que se sabe rota, como la que provoca "Could not detect twig set"), el espacio libre en disco (`requirements.disk_free_min_mb`, 5 GB por defecto) y restos de drupilot o DDEV en el checkout original de tu módulo. Ejecútalo desde el módulo o desde la raíz de Drupal. El JSON (`--extended --json`) añade filas con `category: "health"` y un objeto `toolchain`; las claves existentes no cambian.
+
 ---
 
 ## Instalación
@@ -207,7 +209,7 @@ Después, el `state.json` de cada módulo registra `environment: {status: "remov
 | Comando | Qué hace |
 | --- | --- |
 | `/drupilot [sujeto] [full\|auto\|status\|next] [--no-confirm] [--workspace DIR] [--json]` | **Router / flujo guiado.** Detecta el estado actual (entorno, último assess, fase) y recomienda el siguiente paso. `full` ejecuta todo el flujo con confirmaciones; `auto` lo ejecuta **sin intervención** (ver más abajo). Las palabras flag son para wrappers: ver [Ejecutar bajo otra herramienta](#ejecutar-bajo-otra-herramienta-contrato-no-interactivo). |
-| `/drupilot-doctor [install]` | **Verificación de requisitos.** Tabla de estado por plataforma (Docker + daemon, DDEV, git, composer/php, jq, SSH/PAT) con instrucciones de instalación e instalación asistida opcional (con confirmación). |
+| `/drupilot-doctor [install]` | **Verificación de requisitos.** Tabla de estado por plataforma (Docker + daemon, DDEV, git, composer/php, jq, SSH/PAT) con instrucciones de instalación e instalación asistida opcional (con confirmación), más [comprobaciones de salud](#requisitos) solo informativas (configs generadas, toolchain frente a known-good, espacio en disco, restos en el origen). |
 | `/drupilot-setup` | Levanta un sitio **Drupal 11 con DDEV**, instala los add-ons (`ddev-drupal-contrib`, Selenium) y el toolchain de desarrollo de Composer (incluido `drupal/core-dev`, ajustado al core instalado, que aporta PHPUnit), y escribe `rector.php` / `phpstan.neon` / `phpcs.xml.dist` / entorno de tests desde plantillas. Idempotente. |
 | `/drupilot-assess [sujeto]` | Produce el **informe de viabilidad** + plan por etapas con veredicto S/M/L/XL. |
 | `/drupilot-port [sujeto]` | **Portabilidad mínima (Fase 1).** Rector oficial + (opcional) reglas digests filtradas por target + ajustes ad-hoc + cambios manuales mínimos; deja el código compilando sin deprecaciones bloqueantes. |

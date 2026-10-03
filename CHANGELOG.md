@@ -664,6 +664,23 @@ tag the commit `vX.Y.Z`.
     `port-summary.sh --json` output). The subject stays the first positional
     word. README "Running under another tool" documents the contract and the
     schema.
+- **`preflight.sh --extended` health checks, run by `/drupilot-doctor`
+  (section 5).** Report-only rows with `category: "health"` that never change
+  `ready` or the exit code: `xmllint` present, the `sed` flavour (info), the
+  Drupal root's `phpcs.xml.dist` well-formed (`xmllint --noout`) and its
+  `phpstan.neon` free of `drupal_root`, one row per known-good toolchain package
+  installed at the root (read from `composer.lock` with jq: no PHP, no DDEV)
+  plus `toolchain_combo`, false when the installed set matches a
+  `known_broken` entry of `config/toolchain-reference.json`, free disk space
+  against the new `requirements.disk_free_min_mb` (5120), and drupilot/DDEV
+  residue in the subject's origin checkout (origin-hygiene.sh against its
+  baseline, else resolve-workspace.sh's residue scan). `--extended --json` adds
+  `extended: true` and a `toolchain` object `{root, installed, known_good,
+  match, differs, known_broken}`. New `--subject DIR` picks the module or root
+  (default: the current directory). Without `--extended` the output and exit
+  codes are byte-identical to before; the SessionStart hook and the command
+  gates do not pass it. The doctor shows the installed vs known-good table and
+  the `install-toolchain.sh --source reference` repair.
 ### Changed
 - **The port bumps submodules too.** `/drupilot-port`, `minimal-port` and
   the orchestrator apply the recommended `core_version_requirement` with
