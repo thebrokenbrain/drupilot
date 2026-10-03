@@ -811,6 +811,14 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **`/drupilot --subject DIR` probed the wrong directory, and a bare
+  `/drupilot` left residue.** The router took the subject only as the first
+  positional word, so a wrapper's `--subject DIR` reached the load-time
+  `next-step.sh` call as the literal `--subject`, and the recommendation was
+  computed for `$PWD`. A leading `--subject DIR` (or `--subject=DIR`) is now
+  accepted as the subject. The router's Step 2 probe also created
+  `<subject>/.drupilot/` and an empty state dir through the creating path
+  helpers, like `/drupilot-status` did; it now uses the read-only ones.
 - **The macOS CI leg ran the strict ShellCheck gate with whatever Homebrew
   shipped.** The Linux leg pins ShellCheck v0.11.0 because another version
   reports a different warning set; macOS now downloads the same pinned

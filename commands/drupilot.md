@@ -1,6 +1,6 @@
 ---
 description: drupilot router and main entry point for porting. Detects the current state of a Drupal module/theme port (environment, cached assessment, phase). When the user asks to PORT/upgrade/modernize a module ('port this module to Drupal 11', 'upgrade this to D11', 'make it work on Drupal 11'), it RUNS the full setup->assess->port->[refactor]->test flow via the drupal-port-orchestrator — guided with confirmations, or hands-off with the `auto` mode word / DRUPILOT_AUTONOMOUS=true (which writes the local patch and never performs outward-facing contribution). For an exploratory ask or a bare '/drupilot' ('what's next', 'where am I', 'status'), it instead summarizes and recommends the single next step. Use it whenever the user wants to port a module/theme to Drupal 11 or asks what to do next.
-argument-hint: "[subject-path] [full|auto|status|next] [--no-confirm] [--workspace DIR] [--json]"
+argument-hint: "[subject-path | --subject DIR] [full|auto|status|next] [--no-confirm] [--workspace DIR] [--json]"
 allowed-tools: Bash, Read, Task, AskUserQuestion
 ---
 
@@ -26,6 +26,9 @@ the user asked you to port/upgrade the module) or **recommend the next logical s
   `$ARGUMENTS` may also carry these flags, in any order. They are sugar over the
   canonical environment variables (which work without them), and the subject
   stays the first positional word:
+  - `--subject DIR` — the subject, as a flag: the same as giving `DIR` as the
+    first positional word (`/drupilot --subject ~/mod --no-confirm`). Put it
+    first so the load-time probes below see it.
   - `--no-confirm` — the run asks nothing: effective mode **`auto`** (unless an
     explicit `status`/`next` word is given), no AskUserQuestion tab, every fork
     resolved with its recommended default. Prefix **every** script you run with
@@ -71,11 +74,12 @@ From that object read `php_target` and `ready.{analyze,setup,test,contribute}`.
 
 ## Step 2 — Detect the subject and the Drupal/DDEV state
 
-Resolve the subject directory: use `$1` if it points at a Drupal extension, otherwise
-detect it from the current directory. Then collect facts via common.sh helpers and the
+Resolve the subject directory: use `$1` (or the `DIR` of a leading
+`--subject DIR`) if it points at a Drupal extension, otherwise detect it from the
+current directory. Then collect facts via common.sh helpers and the
 detect-php script (all read-only):
 
-!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; ROOT="$(find_drupal_root "$SUBJ" 2>/dev/null || true)"; printf "subject_dir=%s\n" "$SUBJ"; printf "is_extension=%s\n" "$(is_drupal_extension_dir "$SUBJ" && echo yes || echo no)"; printf "machine_name=%s\n" "$(subject_machine_name "$SUBJ" 2>/dev/null || echo -)"; printf "subject_type=%s\n" "$(subject_type "$SUBJ" 2>/dev/null || echo -)"; printf "core_requirement=%s\n" "$(subject_core_requirement "$SUBJ" 2>/dev/null || echo -)"; printf "drupal_root=%s\n" "${ROOT:--}"; printf "ddev_config=%s\n" "$([[ -n "$ROOT" && -f "$ROOT/.ddev/config.yaml" ]] && echo yes || echo no)"; printf "ddev_running=%s\n" "$(ddev_running "$ROOT" 2>/dev/null && echo yes || echo no)"; printf "state_dir=%s\n" "$(project_state_dir "$SUBJ")"; printf "artifacts_dir=%s\n" "$(project_artifacts_dir "$SUBJ")"; printf "lockfile=%s\n" "$(LF="$(DRUPILOT_PROJECT_DIR="${ROOT:-$SUBJ}" drupilot_lock_file 2>/dev/null)"; [[ -f "$LF" ]] && echo "$LF" || echo -)"' _ "$1"`
+!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-}"; case "$SUBJ" in --subject) SUBJ="${2:-}";; --subject=*) SUBJ="${SUBJ#--subject=}";; esac; [[ -n "$SUBJ" && -d "$SUBJ" ]] || SUBJ="$PWD"; ROOT="$(find_drupal_root "$SUBJ" 2>/dev/null || true)"; printf "subject_dir=%s\n" "$SUBJ"; printf "is_extension=%s\n" "$(is_drupal_extension_dir "$SUBJ" && echo yes || echo no)"; printf "machine_name=%s\n" "$(subject_machine_name "$SUBJ" 2>/dev/null || echo -)"; printf "subject_type=%s\n" "$(subject_type "$SUBJ" 2>/dev/null || echo -)"; printf "core_requirement=%s\n" "$(subject_core_requirement "$SUBJ" 2>/dev/null || echo -)"; printf "drupal_root=%s\n" "${ROOT:--}"; printf "ddev_config=%s\n" "$([[ -n "$ROOT" && -f "$ROOT/.ddev/config.yaml" ]] && echo yes || echo no)"; printf "ddev_running=%s\n" "$(ddev_running "$ROOT" 2>/dev/null && echo yes || echo no)"; printf "state_dir=%s\n" "$(project_state_path "$SUBJ")"; printf "artifacts_dir=%s\n" "$(project_artifacts_path "$SUBJ")"; printf "lockfile=%s\n" "$(LF="$(project_state_path "${ROOT:-$SUBJ}")/drupilot-lock.json"; [[ -f "$LF" ]] && echo "$LF" || echo -)"' _ "$1" "$2"`
 
 Then detect the effective PHP target and whether it is confirmed:
 
@@ -119,7 +123,7 @@ restate the ladder here — use the single source of truth. It runs at load (bef
 you can substitute anything), so it reads the readiness booleans from preflight
 itself (`--from-preflight`, one ~0.5 s run):
 
-!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/next-step.sh" --subject "$1" --from-preflight`
+!`bash -c 'S="${1:-}"; case "$S" in --subject) S="${2:-}";; --subject=*) S="${S#--subject=}";; -*) S="";; esac; exec bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/next-step.sh" --subject "${S:-$PWD}" --from-preflight' _ "$1" "$2"`
 
 Relay its `command` + `reason`. The ladder it encodes is
 `doctor → setup → assess → port → [refactor] → test → [contribute]`; `refactor`

@@ -314,7 +314,7 @@ Un wrapper (otra skill, un job de CI, un script que conduce `claude -p`) necesit
 
 | Entrada | Variable de entorno (canónica) | Palabra del router (azúcar) | Flag de script |
 | --- | --- | --- | --- |
-| El sujeto | — | primera palabra posicional: `/drupilot <dir> …` | `--subject DIR` (todos los scripts) |
+| El sujeto | — | primera palabra posicional, `/drupilot <dir> …`, o un `--subject DIR` al principio | `--subject DIR` (todos los scripts) |
 | Dónde va el test-bed de un sujeto suelto | `DRUPILOT_WORKSPACE_DIR=DIR` | `--workspace DIR` | `--workspace DIR` (`resolve-workspace.sh`, `ddev-up.sh`, `place-subject.sh`; el flag gana a la variable) |
 | No preguntar nunca | `DRUPILOT_NONINTERACTIVE=1` | `--no-confirm` (también selecciona `auto`) | — |
 | Pipeline sin intervención | `DRUPILOT_AUTONOMOUS=true` | `auto` | — |

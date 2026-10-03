@@ -312,7 +312,7 @@ A wrapper (another skill, a CI job, a script that drives `claude -p`) needs stab
 
 | Input | Environment variable (canonical) | Router flag word (sugar) | Script flag |
 | --- | --- | --- | --- |
-| The subject | — | first positional word: `/drupilot <dir> …` | `--subject DIR` (every script) |
+| The subject | — | first positional word, `/drupilot <dir> …`, or a leading `--subject DIR` | `--subject DIR` (every script) |
 | Where a loose subject's test-bed goes | `DRUPILOT_WORKSPACE_DIR=DIR` | `--workspace DIR` | `--workspace DIR` (`resolve-workspace.sh`, `ddev-up.sh`, `place-subject.sh`; the flag wins over the variable) |
 | Never prompt | `DRUPILOT_NONINTERACTIVE=1` | `--no-confirm` (also selects `auto`) | — |
 | Hands-off pipeline | `DRUPILOT_AUTONOMOUS=true` | `auto` | — |
