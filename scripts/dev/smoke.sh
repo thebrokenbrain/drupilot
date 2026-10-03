@@ -41,7 +41,8 @@
 #   (every test)   a shell-level error on a script's stderr (syntax error,
 #                  unbound variable, command not found, ...) fails the test
 #   layers         layers.sh on the monorepo: layers, cycle, early module,
-#                  totals, proposed entries, external modules; --edges declared
+#                  totals, proposed entries, external modules; --edges declared;
+#                  layer-report.sh picks up a linted, unregistered module
 #   dry-run        set-core-requirement.sh --dry-run and ensure-gitignore.sh
 #                  --dry-run report their change and write nothing
 #   patterns       every config/deprecations.json ERE is accepted by
@@ -382,6 +383,12 @@ test_layers() {
     '{"acme_api":["acme_core:acme_core"],"acme_reports":["acme_api:acme_api","acme_core:acme_core","acme_utils:acme_utils","drupal:node","pathauto:pathauto"],"acme_search":["search_api:search_api"],"acme_search_ui":["acme_core:acme_core"]}'
   expect "external" "$(jqo ly '[.external[] | .module + ":" + .scope] | sort')" \
     '["node:core","pathauto:external","search_api:external","token:external"]'
+  # layer-report.sh shows the metadata lint record of a module that is linted
+  # but has no state.json yet (acme_utils: 1 error).
+  run lyl "$SH" "$REPO/scripts/analysis/lint-extension-metadata.sh" --subject "$CUSTOM/acme_utils" --json
+  run lyr "$SH" "$REPO/scripts/analysis/layer-report.sh" --dir "$CUSTOM" --no-write --json
+  expect "layer-report: hygiene of an unregistered module" \
+    "$(jqo lyr '[(.modules[] | select(.machine == "acme_utils") | .hygiene.error), .totals.hygiene_errors]')" '[1,1]'
   run lyd "$SH" "$l" --dir "$MONO" --no-write --json --edges declared
   expect "declared edges: layers" "$(jqo lyd '[.layers[] | .modules | sort]')" \
     '[["acme_core","acme_reports","acme_standalone"],["acme_billing","acme_invoice","acme_utils"],["acme_api"],["acme_search"],["acme_search_ui"]]'

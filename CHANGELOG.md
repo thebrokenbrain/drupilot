@@ -811,6 +811,11 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **The layer report dropped the metadata lint of modules not registered
+  yet.** `layer-report.sh` read `metadata-lint.json` only for subjects in the
+  state registry, so a module linted by a `/drupilot-layers` plan but not
+  assessed yet showed hygiene `n/a` and counted 0 errors. It now also reads
+  the record of every module of the set where `layers.sh` found it.
 - **`/drupilot-clean` could lose work it promises to keep.** At the
   `workspace` level: a `copy` placement was discarded when its HEAD matched the
   origin and its tree was clean, although a copy has its own `.git` — an

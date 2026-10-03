@@ -146,14 +146,18 @@ else
   FIRST="$DIR"
 fi
 
-# Per-subject hygiene totals (lint-extension-metadata.sh state file).
+# Per-subject hygiene totals (lint-extension-metadata.sh state file): for every
+# registered subject and every module of the set where layers.sh found it (a
+# module linted but not assessed yet has no state.json, only its lint record).
 HYG="{}"
 while IFS= read -r s; do
   [[ -n "$s" ]] || continue
   f="$(project_state_path "$s")/metadata-lint.json"
   [[ -r "$f" ]] || continue
   HYG="$(printf '%s' "$HYG" | jq -c --arg s "$s" --slurpfile h "$f" '. + {($s): ($h[0].totals // null)}' 2>/dev/null || printf '%s' "$HYG")"
-done < <(printf '%s' "$REG" | jq -r '.subjects[]?.subject // empty')
+done < <({ printf '%s' "$REG" | jq -r '.subjects[]?.subject // empty'
+          printf '%s' "$LAYERS" | jq -r '.root as $r | .modules[]? | (if ($r // "") == "" then .dir else $r + "/" + .dir end) // empty'
+        } | awk 'NF && !seen[$0]++')
 
 REPORT="$(jq -n --argjson L "$LAYERS" --argjson R "$REG" --argjson H "$HYG" --arg layer "$LAYER" \
   --arg dir "$REPORT_DIR" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
@@ -170,7 +174,7 @@ REPORT="$(jq -n --argjson L "$LAYERS" --argjson R "$REG" --argjson H "$HYG" --ar
          d10_support: ($r.core_matrix.d10_support // null),
          patch: ($r.patch.path // null),
          drupal_root: ($r.drupal_root // null), port_report: null,
-         hygiene: ($H[$r.subject // ""] // null),
+         hygiene: ($H[$r.subject // $orig] // $H[$orig] // null),
          undeclared: $m.proposed, port: null} ] as $mods
   | {dir: (if $dir == "" then null else $dir end), generated_at: $at, layer: $layer,
      layers_generated_at: $L.generated_at, modules: $mods}')"
