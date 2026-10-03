@@ -283,8 +283,9 @@ Apply only the mechanical compatibility edits, preserving behavior:
   the helper returned, so a D10 + low-PHP site is blocked at install, not at
   runtime.
 - **Twig 3**: replace removed filters/functions and `{% spaceless %}` with their
-  mechanical equivalents (e.g. the `spaceless` filter / `~` handling) only where
-  the change is unambiguous.
+  mechanical equivalents (whitespace control `{%- -%}` / `{{- -}}` for
+  `spaceless`, never the `spaceless` filter, deprecated since Twig 3.12; `~`
+  handling) only where the change is unambiguous.
 - **CKEditor 5 / jQuery UI**: adjust libraries/usages where the migration is
   mechanical; if it requires real rework, **defer it to Phase 2** and record it.
 - Anything that would change architecture, signatures broadly, or behavior →

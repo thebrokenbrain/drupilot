@@ -47,6 +47,11 @@ tag the commit `vX.Y.Z`.
   `/drupilot-patch`, the hooks and `preflight.sh` never copy. The state key of a
   path is unchanged. `smoke.sh` no longer exports `CLAUDE_PLUGIN_DATA` (that is
   what hid the bug) and gained the `data-dir` and `legacy-state` tests.
+- **The Twig `spaceless` advice pointed at a deprecated filter.** The
+  explainer (`config/deprecations.json`), the `minimal-port` skill and
+  `/drupilot-port` suggested `{% apply spaceless %}` / the `spaceless` filter,
+  which Twig deprecated in 3.12. They now recommend whitespace control
+  (`{%- -%}`, `{{- -}}`) and say not to move to the filter.
 - **`detect-php-floor.sh` failed on BusyBox (Alpine).** It selected the PHP
   files with `grep --include`, which BusyBox grep does not have: the script
   exited 2 with no output, so `core-strategy.sh` lost the detected PHP floor
