@@ -371,12 +371,13 @@ gate_json() {
 }
 
 gate_smoke() {
-  local js="$TMP/smoke.json" err="$TMP/smoke.err" out="$TMP/smoke.out" n
+  local js="$TMP/smoke.json" err="$TMP/smoke.err" out="$TMP/smoke.out" n x
   # Same interpreter as this gate, so `/bin/bash scripts/dev/check.sh` on macOS
   # smoke-tests stock bash 3.2 end to end.
   if "$BASH" "$REPO/scripts/dev/smoke.sh" --json > "$js" 2> "$err"; then
     n="$(jq -r '[.tests[] | select(.status == "pass")] | length' "$js" 2>/dev/null || echo '?')"
-    record smoke pass "$n smoke tests passed (bash ${BASH_VERSION:-?})"
+    x="$(jq -r '[.tests[] | select(.status == "xfail") | .name] | if length == 0 then "" else ", xfail: " + join(",") end' "$js" 2>/dev/null || true)"
+    record smoke pass "$n smoke tests passed${x} (bash ${BASH_VERSION:-?})"
   else
     jq -r '.tests[] | select(.status == "fail") | .name as $n | .failures[] | "\($n): \(.)"' "$js" > "$out" 2>/dev/null || true
     [[ -s "$out" ]] || tail -n 20 "$err" > "$out"

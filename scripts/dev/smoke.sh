@@ -116,19 +116,32 @@
 #   baseline       scripts/dev/baseline-0.9.sh --check: the frozen v0.9.0
 #                  outputs (tests/baseline/v0.9.0/) still match, or the
 #                  difference is listed in its allowed-diffs.txt
+#   data-dir       one state root for scripts and hooks: a known path maps to
+#                  its known state key (CC-19); a script (no
+#                  CLAUDE_PLUGIN_DATA, as the Bash tool runs it) and a hook
+#                  (CLAUDE_PLUGIN_DATA exported, as Claude Code runs it) resolve
+#                  the same state dir; the PHPCS ruleset run-phpcs.sh records
+#                  is the one post-edit-lint.sh lints with (the record is
+#                  written through common.sh when the analyze profile is not
+#                  ready)
 #
 # Isolation: the fixtures are copied to a temp dir (legacy_widgets is committed
-# there as a git repo when git exists), and HOME, CLAUDE_PLUGIN_DATA and the
-# XDG dirs point inside it; every DRUPILOT_* variable is unset. Nothing is
+# there as a git repo when git exists), and HOME and the XDG dirs point inside
+# it; CLAUDE_PLUGIN_DATA is unset, as in the Bash tool (a test that plays a
+# hook exports it itself); every DRUPILOT_* variable is unset. Nothing is
 # written to the repository or to the developer's state. The temp dir is
 # removed on exit (--keep leaves it for inspection).
+#
+# XFAIL lists the tests committed ahead of their fix, each with the task that
+# fixes it: such a test that fails is reported as xfail (not a failure); one
+# that passes fails until it is removed from the list.
 #
 # Usage:
 #   scripts/dev/smoke.sh [--only T1,T2] [--skip T1,T2] [--json] [--keep]
 #                        [--list] [-h|--help]
 #     --only/--skip  run a subset of the tests
 #     --json         machine summary on STDOUT (logs stay on STDERR):
-#                    {ok, bash, tests:[{name, status: pass|fail, detail,
+#                    {ok, bash, tests:[{name, status: pass|fail|xfail, detail,
 #                                       failures:[..]}]}
 #     --keep         keep the temp dir and print its path on STDERR
 #     --list         print the test names, one per line, and exit
@@ -146,7 +159,9 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$REPO/tests/fixtures"
 SH="${BASH:-bash}"
 
-ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root monorepo-testbed phpcs-scope choices baseline"
+ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root monorepo-testbed phpcs-scope choices baseline data-dir"
+# Tests committed before their fix: "test:task" words (see the header).
+XFAIL="data-dir:T-M0-02"
 
 AS_JSON=0; ONLY=""; SKIP=""; KEEP=0
 
@@ -188,11 +203,13 @@ trap cleanup EXIT
 for _v in $(env | sed -n 's/^\(DRUPILOT_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$_v"; done
 export CLAUDE_PLUGIN_ROOT="$REPO"
 export HOME="$TMP/home"
-export CLAUDE_PLUGIN_DATA="$TMP/data"
+unset CLAUDE_PLUGIN_DATA
 export XDG_DATA_HOME="$TMP/home/.local/share" XDG_STATE_HOME="$TMP/home/.local/state"
 export XDG_CACHE_HOME="$TMP/home/.cache" XDG_CONFIG_HOME="$TMP/home/.config"
 export GIT_CONFIG_NOSYSTEM=1
-mkdir -p "$HOME" "$CLAUDE_PLUGIN_DATA" "$TMP/out"
+# $TMP/data: where 0.9.0 smoke runs kept their state (CLAUDE_PLUGIN_DATA); still
+# watched by the read-only probes, so a write to the old root shows up.
+mkdir -p "$HOME" "$TMP/data" "$TMP/out"
 
 FX="$TMP/fx"
 mkdir -p "$FX"
@@ -256,17 +273,31 @@ expect_match() {
 }
 
 begin() { T_NAME="$1"; : > "$T_FAILS"; }
+# xfail_task <test> -> the task listed for <test> in XFAIL (non-zero if none).
+xfail_task() {
+  local w
+  for w in $XFAIL; do [[ "${w%%:*}" == "$1" ]] && { printf '%s' "${w#*:}"; return 0; }; done
+  return 1
+}
 # finish -> records the current test's verdict from its collected failures.
 finish() {
-  local status detail findings="[]"
+  local status detail findings="[]" task=""
+  task="$(xfail_task "$T_NAME" || true)"
   if [[ -s "$T_FAILS" ]]; then
-    status="fail"; detail="$(wc -l < "$T_FAILS" | tr -d ' ') assertion(s) failed"
-    findings="$(jq -R . < "$T_FAILS" | jq -s -c .)"; FAILED=1
+    findings="$(jq -R . < "$T_FAILS" | jq -s -c .)"
+    if [[ -n "$task" ]]; then
+      status="xfail"; detail="$(wc -l < "$T_FAILS" | tr -d ' ') assertion(s) fail as expected until $task"
+    else
+      status="fail"; detail="$(wc -l < "$T_FAILS" | tr -d ' ') assertion(s) failed"; FAILED=1
+    fi
+  elif [[ -n "$task" ]]; then
+    status="fail"; detail="passes, but XFAIL still lists it for $task: remove it from XFAIL"; FAILED=1
   else status="pass"; detail="ok"; fi
   jq -n -c --arg n "$T_NAME" --arg s "$status" --arg d "$detail" --argjson f "$findings" \
     '{name:$n, status:$s, detail:$d, failures:$f}' >> "$RESULTS"
   case "$status" in
     pass) log_ok "$T_NAME";;
+    xfail) log_warn "$T_NAME: xfail — $detail"; sed 's/^/    /' "$T_FAILS" >&2;;
     fail) log_err "$T_NAME: FAILED — $detail"; sed 's/^/    /' "$T_FAILS" >&2;;
   esac
   return 0
@@ -501,6 +532,10 @@ test_layers() {
   finish
 }
 
+# tree_snapshot <dir...> -> every path under the dirs, sorted (a missing dir
+# lists nothing, so its creation shows up as a difference).
+tree_snapshot() { find "$@" 2>/dev/null | LC_ALL=C sort; return 0; }
+
 test_status_probe() {
   # /drupilot-status is read-only: its load-time probes (the bang lines of
   # commands/drupilot-status.md) leave the subject tree and the data dir as
@@ -509,13 +544,15 @@ test_status_probe() {
   mkdir -p "$FX/status"; cp -R "$LW" "$c"
   probe="$(sed -n "s/^.\`bash -c '\(.*\)' _ \"\$1\"\`\$/\1/p" "$REPO/commands/drupilot-status.md" | head -n 1)"
   expect "probe found" "$([[ -n "$probe" ]] && echo yes || echo no)" "yes"
-  before="$(find "$c" "$CLAUDE_PLUGIN_DATA" | sort)"
+  # The resolved data dir, and the old smoke root a stale CLAUDE_PLUGIN_DATA
+  # reader would write to.
+  before="$(tree_snapshot "$c" "$(data_dir_path)" "$TMP/data")"
   run stp "$SH" -c "$probe" _ "$c"
   expect "probe: exit" "$RC" "0"
   expect_match "probe: machine name" "$(out stp)" 'machine_name=legacy_widgets'
   run stn "$SH" "$REPO/scripts/env/next-step.sh" --subject "$c" --from-preflight --human
-  after="$(find "$c" "$CLAUDE_PLUGIN_DATA" | sort)"
-  expect "tree and data dir unchanged" "$after" "$before"
+  after="$(tree_snapshot "$c" "$(data_dir_path)" "$TMP/data")"
+  expect "tree and data dirs unchanged" "$after" "$before"
   finish
 }
 
@@ -1042,6 +1079,54 @@ test_choices() {
   finish
 }
 
+test_data_dir() {
+  # Claude Code exports CLAUDE_PLUGIN_DATA to hooks but not to the Bash tool, so
+  # a state root derived from it splits in two: the hook never sees what a
+  # script recorded (X14, 09-R1).
+  local lib="$REPO/scripts/lib/common.sh" r="$FX/dd-root" b s h sub sd std
+  expect "known path -> known state key (CC-19)" \
+    "$("$SH" -c '. "$1"; p="$(project_state_path "$2")"; printf "%s" "${p##*/state/}"' _ "$lib" '/nonexistent/drupilot smoke/k-1.x' < /dev/null)" \
+    "_nonexistent_drupilot_smoke_k_1_x"
+  s="$("$SH" -c '. "$1"; project_state_path "$2"' _ "$lib" "$LW" < /dev/null)"
+  h="$(env CLAUDE_PLUGIN_DATA="$TMP/plugin-data" "$SH" -c '. "$1"; project_state_path "$2"' _ "$lib" "$LW" < /dev/null)"
+  expect "script and hook resolve the same state dir" "$h" "$s"
+  # End to end: the project ruleset recorded in script context is the one the
+  # post-edit-lint hook (CLAUDE_PLUGIN_DATA exported) runs phpcbf with.
+  mk_stub_root "$r" "11.4.8"
+  for b in phpcs phpcbf; do
+    cat > "$r/vendor/bin/$b" <<'STUB'
+#!/usr/bin/env bash
+root="$(cd "$(dirname "$0")/../.." && pwd)"
+case " $* " in *" -i "*) printf 'The installed coding standards are Drupal and DrupalPractice\n'; exit 0;; esac
+printf '%s %s\n' "$(basename "$0")" "$*" >> "$root/phpcs-args.log"
+exit 0
+STUB
+    chmod +x "$r/vendor/bin/$b"
+  done
+  cp -R "$LW" "$r/web/modules/custom/"
+  sub="$r/web/modules/custom/legacy_widgets"
+  sd="$("$SH" -c '. "$1"; project_state_path "$2"' _ "$lib" "$sub" < /dev/null)"
+  if analyze_ready; then
+    run ddr "$SH" "$REPO/scripts/analysis/run-phpcs.sh" --subject "$sub"
+  else
+    log_warn "data-dir: the analyze profile is not ready, the ruleset record is written through common.sh instead of run-phpcs.sh."
+    "$SH" -c '. "$1"
+      f="$2/phpcs.xml.dist"; ck="$(cksum < "$f" | awk "{print \$1}")"
+      jq -n --arg f "$f" --arg ck "$ck" "{ruleset: \$f, standard: \$f, source: \"project\", cksum: \$ck, pass_extensions: true}" \
+        > "$(project_state_dir "$2")/phpcs-ruleset.json"' _ "$lib" "$sub" < /dev/null 2>/dev/null || true
+  fi
+  expect "ruleset recorded in script context" "$(jq -r '.source // empty' "$sd/phpcs-ruleset.json" 2>/dev/null)" "project"
+  std="$(jq -r '.standard // empty' "$sd/phpcs-ruleset.json" 2>/dev/null)"
+  : > "$r/phpcs-args.log"
+  printf '{"tool_name":"Edit","tool_input":{"file_path":"%s"}}' "$sub/src/WidgetCounter.php" > "$TMP/dd-edit.json"
+  if env CLAUDE_PLUGIN_DATA="$TMP/plugin-data" "$SH" "$REPO/hooks/scripts/post-edit-lint.sh" \
+       < "$TMP/dd-edit.json" > "$TMP/out/dd-hook.out" 2>/dev/null; then RC=0; else RC=$?; fi
+  expect "post-edit-lint: exit" "$RC" "0"
+  expect "post-edit-lint lints with the recorded ruleset" \
+    "$(grep '^phpcbf ' "$r/phpcs-args.log" 2>/dev/null | grep -c -F -- "--standard=${std:-<none>} " || true)" "1"
+  finish
+}
+
 test_baseline() {
   run bl "$SH" "$REPO/scripts/dev/baseline-0.9.sh" --check --json
   expect "baseline --check: exit" "$RC" "0"
@@ -1081,6 +1166,7 @@ for t in $ALL_TESTS; do
     phpcs-scope) test_phpcs_scope;;
     choices) test_choices;;
     baseline) test_baseline;;
+    data-dir) test_data_dir;;
   esac
 done
 
