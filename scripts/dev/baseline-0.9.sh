@@ -162,6 +162,7 @@ export HOME="$TMP/home"
 export XDG_DATA_HOME="$TMP/home/.local/share" XDG_STATE_HOME="$TMP/home/.local/state"
 export XDG_CACHE_HOME="$TMP/home/.cache" XDG_CONFIG_HOME="$TMP/home/.config"
 export CLAUDE_PLUGIN_DATA="$XDG_DATA_HOME/drupilot"
+unset CLAUDE_CONFIG_DIR
 export GIT_CONFIG_NOSYSTEM=1 LC_ALL=C
 mkdir -p "$HOME" "$CLAUDE_PLUGIN_DATA"
 

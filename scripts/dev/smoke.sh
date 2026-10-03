@@ -138,7 +138,8 @@
 #                  not be copied leaves no marker and is retried; every command that
 #                  writes state runs it right after its own preflight call (the
 #                  status, doctor and patch commands, the hooks and preflight.sh
-#                  never do); with a failing preflight (no jq on PATH) the
+#                  never do, and running the hooks, preflight, the status probe
+#                  and next-step with legacy state present copies nothing); with a failing preflight (no jq on PATH) the
 #                  setup and assess preambles change neither the legacy nor the
 #                  new data dir (INV2), while the same line without the gate
 #                  would copy
@@ -146,7 +147,8 @@
 # Isolation: the fixtures are copied to a temp dir (legacy_widgets is committed
 # there as a git repo when git exists), and HOME and the XDG dirs point inside
 # it; CLAUDE_PLUGIN_DATA is unset, as in the Bash tool (a test that plays a
-# hook exports it itself); every DRUPILOT_* variable is unset. Nothing is
+# hook exports it itself), and so is CLAUDE_CONFIG_DIR (~/.claude is under the
+# temp HOME); every DRUPILOT_* variable is unset. Nothing is
 # written to the repository or to the developer's state. The temp dir is
 # removed on exit (--keep leaves it for inspection).
 #
@@ -221,7 +223,7 @@ trap cleanup EXIT
 for _v in $(env | sed -n 's/^\(DRUPILOT_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$_v"; done
 export CLAUDE_PLUGIN_ROOT="$REPO"
 export HOME="$TMP/home"
-unset CLAUDE_PLUGIN_DATA
+unset CLAUDE_PLUGIN_DATA CLAUDE_CONFIG_DIR
 export XDG_DATA_HOME="$TMP/home/.local/share" XDG_STATE_HOME="$TMP/home/.local/state"
 export XDG_CACHE_HOME="$TMP/home/.cache" XDG_CONFIG_HOME="$TMP/home/.config"
 export GIT_CONFIG_NOSYSTEM=1
@@ -569,13 +571,13 @@ test_status_probe() {
   mkdir -p "$FX/status"; cp -R "$LW" "$c"
   probe="$(sed -n "s/^.\`bash -c '\(.*\)' _ \"\$1\"\`\$/\1/p" "$REPO/commands/drupilot-status.md" | head -n 1)"
   expect "probe found" "$([[ -n "$probe" ]] && echo yes || echo no)" "yes"
-  # The resolved data dir, and the old smoke root a stale CLAUDE_PLUGIN_DATA
-  # reader would write to.
+  # Run them as a hook-style environment would (CLAUDE_PLUGIN_DATA exported):
+  # neither the resolved data dir nor that old root may change.
   before="$(tree_snapshot "$c" "$(data_dir_path)" "$TMP/data")"
-  run stp "$SH" -c "$probe" _ "$c"
+  run stp env CLAUDE_PLUGIN_DATA="$TMP/data" "$SH" -c "$probe" _ "$c"
   expect "probe: exit" "$RC" "0"
   expect_match "probe: machine name" "$(out stp)" 'machine_name=legacy_widgets'
-  run stn "$SH" "$REPO/scripts/env/next-step.sh" --subject "$c" --from-preflight --human
+  run stn env CLAUDE_PLUGIN_DATA="$TMP/data" "$SH" "$REPO/scripts/env/next-step.sh" --subject "$c" --from-preflight --human
   after="$(tree_snapshot "$c" "$(data_dir_path)" "$TMP/data")"
   expect "tree and data dirs unchanged" "$after" "$before"
   finish
@@ -1154,7 +1156,7 @@ STUB
         > "$(project_state_dir "$2")/phpcs-ruleset.json"' _ "$lib" "$sub" < /dev/null 2>/dev/null || true
   fi
   expect "ruleset recorded in script context" "$(jq -r '.source // empty' "$sd/phpcs-ruleset.json" 2>/dev/null)" "project"
-  std="$(jq -r '.standard // empty' "$sd/phpcs-ruleset.json" 2>/dev/null)"
+  std="$(jq -r '.standard // empty' "$sd/phpcs-ruleset.json" 2>/dev/null || true)"
   : > "$r/phpcs-args.log"
   printf '{"tool_name":"Edit","tool_input":{"file_path":"%s"}}' "$sub/src/WidgetCounter.php" > "$TMP/dd-edit.json"
   if env CLAUDE_PLUGIN_DATA="$TMP/plugin-data" "$SH" "$REPO/hooks/scripts/post-edit-lint.sh" \
@@ -1193,6 +1195,24 @@ test_legacy_state() {
   done
   expect "hooks and preflight.sh never copy" \
     "$(grep -l copy_legacy_state_once "$REPO"/hooks/scripts/*.sh "$REPO/scripts/env/preflight.sh" 2>/dev/null | wc -l | tr -d ' ')" "0"
+  # ... and they do not copy indirectly either: with legacy state present,
+  # every hook, preflight, the status probe and next-step leave no copy.
+  uh="$FX/legacy0/home"; dh="$FX/legacy0/data"
+  mkdir -p "$uh/.claude/plugins/data/drupilot-x/state/$key"
+  printf '{}\n' > "$uh/.claude/plugins/data/drupilot-x/state/$key/drupilot-lock.json"
+  printf '{"tool_name":"Edit","tool_input":{"file_path":"%s"}}' "$LW/legacy_widgets.module" > "$TMP/l0-edit.json"
+  printf '{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}' > "$TMP/l0-push.json"
+  printf '{"cwd":"%s"}' "$LW" > "$TMP/l0-session.json"
+  local -a E=(env HOME="$uh" DRUPILOT_HOME="$dh" CLAUDE_PLUGIN_DATA="$uh/.claude/plugins/data/drupilot-x")
+  "${E[@]}" "$SH" "$REPO/hooks/scripts/post-edit-lint.sh" < "$TMP/l0-edit.json" > /dev/null 2>&1 || true
+  "${E[@]}" "$SH" "$REPO/hooks/scripts/guard-contrib.sh" < "$TMP/l0-push.json" > /dev/null 2>&1 || true
+  (cd "$LW" && "${E[@]}" "$SH" "$REPO/hooks/scripts/session-detect-env.sh" < "$TMP/l0-session.json" > /dev/null 2>&1) || true
+  "${E[@]}" "$SH" "$REPO/scripts/env/preflight.sh" --profile all --json --subject "$LW" > /dev/null 2>&1 < /dev/null || true
+  "${E[@]}" "$SH" "$REPO/scripts/env/next-step.sh" --subject "$LW" --from-preflight > /dev/null 2>&1 < /dev/null || true
+  probe="$(sed -n "s/^.\`bash -c '\(.*\)' _ \"\$1\"\`\$/\1/p" "$REPO/commands/drupilot-status.md" | head -n 1)"
+  [[ -n "$probe" ]] && { "${E[@]}" "$SH" -c "$probe" _ "$LW" > /dev/null 2>&1 < /dev/null || true; }
+  expect "hooks, preflight, status probe, next-step: no copy" \
+    "$([[ -e "$dh/legacy-state-copied" || -e "$dh/state/$key" ]] && echo copied || echo none)" "none"
   # Copy-only, never overwriting, logged, once.
   uh="$FX/legacy1/home"; dh="$FX/legacy1/data"
   leg="$uh/.claude/plugins/data/drupilot-x/state/$key"
