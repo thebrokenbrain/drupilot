@@ -4,9 +4,10 @@
 # PostToolUse hook for Write|Edit (incremental Drupal lint, PROMPT 5.9).
 #
 # When the just-edited file is a Drupal source file inside a Drupal extension,
-# run phpcbf (autofix) then phpcs best-effort through `drupal_runner`. If
-# violations remain, return them as English `additionalContext` so the model can
-# fix them. Skip silently when phpcs is unavailable or the file is not applicable.
+# run phpcbf (autofix; in Phase 1 without the unused-use sniffs) then phpcs
+# best-effort through `drupal_runner`. If violations remain, return them as
+# English `additionalContext` so the model can fix them. Skip silently when
+# phpcs is unavailable or the file is not applicable.
 #
 # Ruleset: the one scripts/analysis/run-phpcs.sh resolved and verified for this
 # extension (the project's own ruleset when it ships a loadable one), read from
@@ -130,10 +131,17 @@ esac
 # --- phpcbf (autofix, only in autofix mode), then phpcs (report) --------------
 # In autofix mode, report whether phpcbf actually changed the file on disk, so
 # the in-place edit is never silent.
+# Phase 1: the hook runs after EVERY edit, so a `use` added one edit before the
+# code that needs it looks unused in between; the unused-use sniffs are left
+# to the validate loop (run-phpcs.sh --fix --fix-scope changed), which runs
+# once a batch of edits is complete. (PHPCS ignores an excluded sniff the
+# standard does not register.)
+declare -a CBF_ARGS=()
+[[ "$PHASE" != "refactor" ]] && CBF_ARGS=("--exclude=Drupal.Classes.UnusedUseStatement,SlevomatCodingStandard.Namespaces.UnusedUses")
 CHANGED_NOTE=""
 if [[ "$MODE" == "autofix" ]]; then
   BEFORE="$(cksum "$FILE" 2>/dev/null || true)"
-  ( cd "$DRUPAL_ROOT" 2>/dev/null && $RUNNER "$PHPCBF_BIN" --standard="$STD" ${TV_ARGS[@]+"${TV_ARGS[@]}"} "$REL" >/dev/null 2>&1 ) || true
+  ( cd "$DRUPAL_ROOT" 2>/dev/null && $RUNNER "$PHPCBF_BIN" --standard="$STD" ${TV_ARGS[@]+"${TV_ARGS[@]}"} ${CBF_ARGS[@]+"${CBF_ARGS[@]}"} "$REL" >/dev/null 2>&1 ) || true
   AFTER="$(cksum "$FILE" 2>/dev/null || true)"
   [[ -n "$BEFORE" && "$BEFORE" != "$AFTER" ]] && \
     CHANGED_NOTE="phpcbf auto-corrected coding-standard issues in ${REL} (the file on disk was modified). "

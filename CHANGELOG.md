@@ -819,6 +819,14 @@ tag the commit `vX.Y.Z`.
   there and every file of that type kept its annotation with "the constructor
   could not be read". A reference core now only counts for attribute classes
   that ship with core; the test-bed still reads every class.
+- **The post-edit lint deleted a `use` the port had just added.** During
+  Phase 1 the PostToolUse hook runs `phpcbf` after every edit, so a `use` added
+  one edit before the code that needs it was removed as unused in between. In
+  Phase 1 the hook's `phpcbf` now skips the unused-use sniffs; the validate loop
+  (`run-phpcs.sh --fix --fix-scope changed`), which runs after the batch of
+  edits, still removes the ones that really are unused. The minimal-port
+  reference commands now show that scoped autofix instead of a whole-module
+  `phpcbf`.
 - **Placing a monorepo module ran the repository's own git hooks.** Reading
   the module out of the origin's last commit for the copy's baseline is a git
   path checkout, which runs the origin's `post-checkout` hook (husky, custom

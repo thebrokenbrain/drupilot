@@ -48,7 +48,7 @@
   "DRUPILOT_CORE_CACHE_MAX_AGE_DAYS": 7,
   "DRUPILOT_CORE_CACHE_KEEP": 3,
 
-  "_hooks_comment": "Hook behavior toggles. DRUPILOT_POST_EDIT_LINT controls the PostToolUse incremental lint (hooks/scripts/post-edit-lint.sh): 'autofix' (default) runs phpcbf then phpcs and reports when it modified the file; 'report' runs phpcs only (never edits files in place); 'off' disables it. The hook is also phase-aware: during Phase 1 (minimal port) it surfaces compatibility ERRORS only, deferring DrupalPractice style WARNINGS to /drupilot-refactor. DRUPILOT_SESSION_CONTEXT toggles the SessionStart environment summary (hooks/scripts/session-detect-env.sh): 'on' (default) or 'off'.",
+  "_hooks_comment": "Hook behavior toggles. DRUPILOT_POST_EDIT_LINT controls the PostToolUse incremental lint (hooks/scripts/post-edit-lint.sh): 'autofix' (default) runs phpcbf then phpcs and reports when it modified the file; 'report' runs phpcs only (never edits files in place); 'off' disables it. The hook is also phase-aware: during Phase 1 (minimal port) it surfaces compatibility ERRORS only, deferring DrupalPractice style WARNINGS to /drupilot-refactor, and its phpcbf skips the unused-use sniffs (a use added one edit before the code that needs it would be deleted; the validate loop removes truly unused ones). DRUPILOT_SESSION_CONTEXT toggles the SessionStart environment summary (hooks/scripts/session-detect-env.sh): 'on' (default) or 'off'.",
   "DRUPILOT_POST_EDIT_LINT": "autofix",
   "DRUPILOT_SESSION_CONTEXT": "on",
 

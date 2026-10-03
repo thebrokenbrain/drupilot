@@ -362,6 +362,20 @@ test_hooks() {
   if "$SH" "$h/guard-contrib.sh" < "$TMP/garbage.json" > "$TMP/out/g3.out" 2>/dev/null; then RC=0; else RC=$?; fi
   expect "garbage stdin: exit" "$RC" "0"
   expect "garbage stdin: no payload" "$(out g3)" ""
+  # post-edit-lint in Phase 1: phpcbf runs without the unused-use sniffs, so a
+  # `use` added one edit before the code that needs it survives.
+  local hr="$FX/hook-root"
+  mk_stub_root "$hr" "11.4.8"
+  cp -R "$CUSTOM/acme_core" "$hr/web/modules/custom/"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s"\nexit 0\n' "$hr/phpcbf-args.log" > "$hr/vendor/bin/phpcbf"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$hr/vendor/bin/phpcs"
+  chmod +x "$hr/vendor/bin/phpcbf" "$hr/vendor/bin/phpcs"
+  printf '<?php\n\nnamespace Drupal\\acme_core;\n\nuse Drupal\\Core\\Url;\n\nclass Later {}\n' > "$hr/web/modules/custom/acme_core/src/Later.php"
+  printf '{"tool_name":"Edit","tool_input":{"file_path":"%s"}}' "$hr/web/modules/custom/acme_core/src/Later.php" > "$TMP/edit.json"
+  if "$SH" "$h/post-edit-lint.sh" < "$TMP/edit.json" > "$TMP/out/pe1.out" 2>/dev/null; then RC=0; else RC=$?; fi
+  expect "post-edit-lint: exit" "$RC" "0"
+  expect "post-edit-lint Phase 1: phpcbf skips the unused-use sniff" \
+    "$(grep -c -- '--exclude=Drupal.Classes.UnusedUseStatement' "$hr/phpcbf-args.log" 2>/dev/null || true)" "1"
   printf '{"cwd":"%s"}' "$LW" > "$TMP/session.json"
   if (cd "$LW" && env DRUPILOT_SESSION_CONTEXT=off "$SH" "$h/session-detect-env.sh" < "$TMP/session.json" > "$TMP/out/s1.out" 2>/dev/null); then RC=0; else RC=$?; fi
   expect "session off: exit" "$RC" "0"

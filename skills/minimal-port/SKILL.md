@@ -466,7 +466,9 @@ pre-port git base (the same base as the local patch) plus new files, so Phase 1
 never reformats a file the port did not touch (trailing commas, an EOF newline in
 a config YAML): those violations are pre-existing and stay in the report. Run the
 validate loop after a batch of edits is complete, not between an added `use` and
-the code that needs it — `phpcbf` removes a `use` it sees as unused. Without git
+the code that needs it — `phpcbf` removes a `use` it sees as unused (the
+post-edit hook, which runs after every edit, skips the unused-use sniffs in
+Phase 1 for that reason). Without git
 the autofix is skipped (report only). Phase 2 (`full-refactor`) keeps the
 default `--fix-scope all`.
 
@@ -493,7 +495,8 @@ not analyse (invalid config, fatal error): there is no verdict — fix the cause
 shown on stderr, never read it as "issues found" or as clean. Reference commands:
 
 ```bash
-vendor/bin/phpcbf --standard=Drupal,DrupalPractice web/modules/custom/MODULE
+# Phase 1 autofix: only the files the port changed (never the whole module).
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpcs.sh" --subject web/modules/custom/MODULE --fix --fix-scope changed
 vendor/bin/phpcs  --standard=Drupal,DrupalPractice \
   --extensions=php,module,inc,install,test,profile,theme,info,txt,md,yml \
   web/modules/custom/MODULE
