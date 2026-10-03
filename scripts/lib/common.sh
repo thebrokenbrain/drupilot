@@ -1971,6 +1971,254 @@ recommend_core_target() {
 }
 
 # ---------------------------------------------------------------------------
+# Test-bed ownership marker (scripts/env/clean.sh) + cached base core
+# (scripts/env/ddev-up.sh)
+# ---------------------------------------------------------------------------
+# A Drupal root that drupilot BUILT (ddev-up.sh ran `composer create-project`
+# or restored a cached base core into an empty root) carries a marker in its
+# .drupilot.json:
+#
+#   "drupilot_testbed": {
+#     "created_at": "<UTC>", "created_by": "ddev-up.sh", "drupilot_version": "x",
+#     "core_cache": "<cache entry key>" | absent,
+#     "subjects": { "<machine_name>": {"dest": "<abs>", "origin": "<abs>",
+#                                      "placement": "move|copy|symlink",
+#                                      "at": "<UTC>"} }
+#   }
+#
+# place-subject.sh adds one `subjects` entry per placed module/theme, so a
+# later /drupilot-clean knows where a moved checkout came from and can put it
+# back. The marker is not a DRUPILOT_* key on purpose: config_get never reads
+# it, and an environment variable cannot fake it. clean.sh refuses to delete
+# vendor/ or the workspace of a root without it (see testbed_kind).
+
+# _root_prefs_update <root> <jq-filter> [jq args...] -> atomically rewrite
+# <root>/.drupilot.json with <filter> (created as {} when absent). The jq
+# arguments (e.g. --arg k v) go before the filter. Returns 1 without jq, for a
+# missing root or on a jq/write error.
+_root_prefs_update() {
+  local root="$1" filter="$2" f tmp
+  shift 2
+  have_cmd jq || return 1
+  [[ -n "$root" && -d "$root" ]] || return 1
+  f="$root/.drupilot.json"
+  [[ -s "$f" ]] || printf '{}\n' > "$f" 2>/dev/null || return 1
+  tmp="$(mktemp "${f}.XXXXXX" 2>/dev/null)" || return 1
+  if jq "$@" "$filter" "$f" > "$tmp" 2>/dev/null; then
+    mv -f "$tmp" "$f"
+  else
+    rm -f "$tmp" 2>/dev/null || true; return 1
+  fi
+}
+
+# testbed_mark <root> <created_by> [core_cache_key] -> mark <root> as a test-bed
+# drupilot built. Keeps an existing created_at/created_by. Returns 1 on error.
+testbed_mark() {
+  local root="$1" by="${2:-drupilot}" key="${3:-}"
+  _root_prefs_update "$root" '
+    .drupilot_testbed = ((.drupilot_testbed // {})
+      | .created_at = (.created_at // $at)
+      | .created_by = (.created_by // $by)
+      | .drupilot_version = $pv
+      | (if $key == "" then . else .core_cache = $key end))' \
+    --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg by "$by" \
+    --arg pv "$(plugin_version)" --arg key "$key"
+}
+
+# testbed_record_subject <root> <machine_name> <dest> <origin> <placement> ->
+# remember where a placed subject came from (its origin path before a move).
+# Written whether or not the root is marked: the record alone never makes a
+# root deletable. Returns 1 on error.
+testbed_record_subject() {
+  local root="$1" mn="$2" dest="$3" origin="$4" placement="$5"
+  [[ -n "$mn" ]] || return 1
+  _root_prefs_update "$root" '
+    .drupilot_testbed = ((.drupilot_testbed // {})
+      | .subjects = ((.subjects // {})
+        | .[$mn] = {dest: $dest, origin: $origin, placement: $pl, at: $at}))' \
+    --arg mn "$mn" --arg dest "$dest" --arg origin "$origin" --arg pl "$placement" \
+    --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+}
+
+# testbed_kind <root> -> "marker" (drupilot built it: .drupilot_testbed.created_by
+# is set), "legacy" (built before the marker existed: its .drupilot.json pins
+# DRUPILOT_WORKSPACE_DIR to the root itself, which only place-subject.sh does
+# for a loose subject's test-bed, AND it has the default '<name>-d11' or
+# '<name>-d11-N' sibling name) or "none" (anything else: the user's own site).
+# Always returns 0.
+testbed_kind() {
+  local root="${1:-}" f by ws base
+  f="$root/.drupilot.json"
+  if [[ -n "$root" && -r "$f" ]] && have_cmd jq; then
+    by="$(jq -r '.drupilot_testbed.created_by // empty' "$f" 2>/dev/null || true)"
+    if [[ -n "$by" ]]; then printf 'marker'; return 0; fi
+    ws="$(jq -r '.DRUPILOT_WORKSPACE_DIR // empty' "$f" 2>/dev/null || true)"
+    base="$(basename "$root")"
+    if [[ -n "$ws" && "${ws%/}" == "${root%/}" && "$base" =~ -d11(-[0-9]+)?$ ]]; then
+      printf 'legacy'; return 0
+    fi
+  fi
+  printf 'none'
+  return 0
+}
+
+# subjects_with_state_under <root> -> the subject paths (one per line) whose
+# state.json records <root> as their Drupal root, or lives under it. Read-only;
+# used to mark the environment removed/ready on every module of a test-bed.
+subjects_with_state_under() {
+  local root="${1%/}" sd f
+  [[ -n "$root" ]] && have_cmd jq || return 0
+  sd="$(data_dir_path)/state"
+  [[ -d "$sd" ]] || return 0
+  for f in "$sd"/*/state.json; do
+    [[ -r "$f" ]] || continue
+    jq -r --arg r "$root" '
+      select(type == "object" and (.subject // "") != "")
+      | select((.drupal_root // "") == $r or ((.subject // "") | startswith($r + "/")))
+      | .subject' "$f" 2>/dev/null || true
+  done
+  return 0
+}
+
+# env_status_record <root> <status> [level] -> store `.environment = {status,
+# level, at}` in the state.json of every subject under <root>
+# (status: removed | ready). /drupilot-clean records `removed`; ddev-up.sh and
+# place-subject.sh record `ready` on a subject that was marked removed, so
+# next-step.sh recommends /drupilot-setup exactly while the environment is
+# gone. Never fails.
+env_status_record() {
+  local root="$1" status="$2" level="${3:-}" s cur v
+  have_cmd jq || return 0
+  v="$(jq -nc --arg s "$status" --arg l "$level" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    '{status: $s, level: (if $l == "" then null else $l end), at: $at}')"
+  while IFS= read -r s; do
+    [[ -n "$s" ]] || continue
+    if [[ "$status" == "ready" ]]; then
+      cur="$(state_get "$s" .environment.status "")"
+      [[ "$cur" == "removed" ]] || continue
+    fi
+    state_set_json "$s" .environment "$v" 2>/dev/null || true
+  done < <(subjects_with_state_under "$root")
+  return 0
+}
+
+# fast_copy_tree <src> <dest> -> copy the CONTENTS of <src> into <dest>
+# (created), preserving modes, times and symlinks, as cheaply as the filesystem
+# allows: a copy-on-write clone where possible (GNU cp --reflink=auto on
+# btrfs/XFS/..., `cp -c` = clonefile(2) on macOS APFS), a plain `cp -a`
+# otherwise. Prints the method used (reflink-auto | clone | copy) on STDOUT.
+# Returns 1 when the copy fails.
+fast_copy_tree() {
+  local src="$1" dest="$2"
+  [[ -d "$src" ]] || return 1
+  mkdir -p "$dest" 2>/dev/null || return 1
+  if cp --help 2>&1 | grep -q -- '--reflink'; then
+    cp -a --reflink=auto "$src/." "$dest/" 2>/dev/null || return 1
+    printf 'reflink-auto'; return 0
+  fi
+  if [[ "$(uname -s 2>/dev/null)" == "Darwin" ]] && cp -a -c "$src/." "$dest/" 2>/dev/null; then
+    printf 'clone'; return 0
+  fi
+  cp -a "$src/." "$dest/" 2>/dev/null || cp -R -p "$src/." "$dest/" 2>/dev/null || return 1
+  printf 'copy'
+  return 0
+}
+
+# core_cache_dir -> where ddev-up.sh keeps cached base cores (under the plugin
+# data dir, never a project tree). One entry per PHP target and exact core
+# version: <dir>/php<PHP>-<core version>/{tree/, meta.json}.
+core_cache_dir() { printf '%s/core-base' "$(data_dir_path)/cache"; }
+
+# core_cache_lookup <php> <constraint> <drush_spec> [exact_version] [max_age_days]
+# -> the path of a usable cache entry on STDOUT (nothing when there is none).
+# With <exact_version> (the core version the lockfile froze), only that entry.
+# Without it, the newest entry built for the same <constraint> that is at most
+# <max_age_days> old (0 = no age limit). Either way the entry must have been
+# built with the same Drush constraint and hold a complete tree. Read-only.
+core_cache_lookup() {
+  local php="$1" cons="$2" drush="$3" exact="${4:-}" maxage="${5:-7}"
+  local cd e m now best="" best_at=0 at
+  have_cmd jq || return 0
+  cd="$(core_cache_dir)"
+  [[ -d "$cd" ]] || return 0
+  now="$(date +%s)"
+  for e in "$cd"/php"$php"-*; do
+    [[ -d "$e" && -f "$e/meta.json" && -f "$e/tree/composer.lock" && -f "$e/tree/composer.json" ]] || continue
+    m="$e/meta.json"
+    [[ "$(jq -r '.complete // false' "$m" 2>/dev/null)" == "true" ]] || continue
+    [[ "$(jq -r '.drush // empty' "$m" 2>/dev/null)" == "$drush" ]] || continue
+    if [[ -n "$exact" ]]; then
+      [[ "$(jq -r '.version // empty' "$m" 2>/dev/null)" == "$exact" ]] || continue
+      printf '%s' "$e"; return 0
+    fi
+    [[ "$(jq -r '.constraint // empty' "$m" 2>/dev/null)" == "$cons" ]] || continue
+    at="$(jq -r '.created_epoch // 0' "$m" 2>/dev/null || echo 0)"
+    [[ "$at" =~ ^[0-9]+$ ]] || at=0
+    if [[ "$maxage" =~ ^[0-9]+$ && "$maxage" -gt 0 ]] && (( now - at > maxage * 86400 )); then
+      continue
+    fi
+    if (( at > best_at )); then best="$e"; best_at="$at"; fi
+  done
+  [[ -n "$best" ]] && printf '%s' "$best"
+  return 0
+}
+
+# core_cache_entries -> one JSON object per line for every cache entry:
+# {path, key, version, php, constraint, created_at, complete}. Read-only.
+core_cache_entries() {
+  local cd e
+  have_cmd jq || return 0
+  cd="$(core_cache_dir)"
+  [[ -d "$cd" ]] || return 0
+  for e in "$cd"/php*; do
+    [[ -d "$e" ]] || continue
+    if [[ -f "$e/meta.json" ]]; then
+      jq -c --arg p "$e" --arg k "$(basename "$e")" \
+        '{path: $p, key: $k, version: (.version // null), php: (.php // null),
+          constraint: (.constraint // null), created_at: (.created_at // null),
+          complete: (.complete // false)}' "$e/meta.json" 2>/dev/null || true
+    else
+      jq -nc --arg p "$e" --arg k "$(basename "$e")" \
+        '{path: $p, key: $k, version: null, php: null, constraint: null, created_at: null, complete: false}'
+    fi
+  done
+  return 0
+}
+
+# core_cache_prune <keep> -> delete all but the <keep> newest complete entries
+# (and any incomplete leftover). Never fails.
+core_cache_prune() {
+  local keep="${1:-3}" cd e n=0
+  [[ "$keep" =~ ^[0-9]+$ ]] || keep=3
+  cd="$(core_cache_dir)"
+  [[ -d "$cd" ]] && have_cmd jq || return 0
+  while IFS=$'\t' read -r _at e; do
+    [[ -n "$e" && -d "$e" ]] || continue
+    n=$((n + 1))
+    if (( n > keep )); then
+      chmod -R u+w "$e" 2>/dev/null || true
+      rm -rf "${e:?}" 2>/dev/null || true
+    fi
+  done < <(for e in "$cd"/php*; do
+             [[ -d "$e" ]] || continue
+             if [[ "$(jq -r '.complete // false' "$e/meta.json" 2>/dev/null)" != "true" ]]; then
+               printf '0\t%s\n' "$e"; continue
+             fi
+             printf '%s\t%s\n' "$(jq -r '.created_epoch // 0' "$e/meta.json" 2>/dev/null)" "$e"
+           done | sort -t "$(printf '\t')" -k1,1nr)
+  # Incomplete entries sort last (epoch 0) and are removed only past <keep>;
+  # remove them regardless: they can never be used.
+  for e in "$cd"/php*; do
+    [[ -d "$e" ]] || continue
+    if [[ "$(jq -r '.complete // false' "$e/meta.json" 2>/dev/null)" != "true" ]]; then
+      chmod -R u+w "$e" 2>/dev/null || true
+      rm -rf "${e:?}" 2>/dev/null || true
+    fi
+  done
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # Interaction (safe confirmation in non-TTY contexts)
 # ---------------------------------------------------------------------------
 # confirm <question> [default_yes:0/1] -> 0 if the user accepts.

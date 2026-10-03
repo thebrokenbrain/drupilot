@@ -176,6 +176,28 @@ scripts/env/state.sh refresh --subject web/modules/custom/foo --portfolio web/mo
 
 `show` and `list` are read-only (they never create a state dir); the table goes to stderr and `--json` puts the payload on stdout. A module ported before this record existed is still listed by `--root` or `--subject`, its stage derived from its older records.
 
+### Cleaning up test-beds
+
+A test-bed holds a DDEV project (containers, volumes, a database) and a few hundred MB of Composer trees. `/drupilot-clean` (`scripts/env/clean.sh`) frees them **without losing the work**: the `.drupilot/` reports, the hidden state (`state.json`, `assess.json`, the lockfile), the local patches and the module's git checkout with all its branches are always kept. It shows the plan first and acts only after you confirm (`--yes` in a script; `DRUPILOT_ASSUME_YES` and autonomous mode never imply it).
+
+| Level | Removes |
+| --- | --- |
+| `ddev` | The DDEV project: `ddev delete -Oy` (containers, volumes, database; no snapshot). The code and `.ddev/` stay. |
+| `vendor` (default) | Also `vendor/` and every Composer installer path (core, contrib, libraries, recipes); never a `*/custom` path. |
+| `workspace` | Also the whole test-bed. A `move`d module is first moved back to the path it came from (refused if that path is no longer empty), a `symlink` is only unlinked, and a `copy` is discarded only when it holds nothing its origin lacks (same commit, clean tree) or with `--discard-copies`. The test-bed's `.drupilot/` reports are copied to the module's own `.drupilot/` first. |
+
+It only removes `vendor/` or a workspace from a **drupilot test-bed**: a root `ddev-up.sh` built, which it marks in the root's `.drupilot.json` (`drupilot_testbed`, with the origin of every module `place-subject.sh` placed). A test-bed built before that marker existed is recognized by its default `<name>-d11` name and its `DRUPILOT_WORKSPACE_DIR`. On any other Drupal root (your own site) only `--level ddev --foreign-ok` is possible, and it asks again because it deletes that site's database. `--all` cleans every test-bed drupilot has state for (plus those under `--scan DIR`); `--core-cache` also drops the cached base cores.
+
+```bash
+scripts/env/clean.sh --subject web/modules/custom/foo --dry-run           # the plan (vendor level)
+scripts/env/clean.sh --subject ../foo --level workspace --yes --json      # remove the whole test-bed, move foo back
+scripts/env/clean.sh --all --scan ~/drupal-ports --level ddev --dry-run   # every test-bed's DDEV project
+```
+
+Afterwards each module's `state.json` records `environment: {status: "removed", level}`, and the next step is `/drupilot-setup`, which rebuilds what was removed: `ddev-up.sh` runs `ddev composer install` when `composer.json` is there but `vendor/` is not, and creates a removed workspace again with the core version the lockfile froze.
+
+**Cached base core.** After a fresh `composer create-project`, `ddev-up.sh` keeps the resulting tree (Composer files, `vendor/`, core, `recipes/`; never `.ddev/`, `settings*.php` or `files/`) in drupilot's data dir, keyed by PHP target and exact core version. The next setup of an empty root copies it in (copy-on-write where the filesystem supports it: `cp --reflink=auto` on btrfs/XFS, `cp -c` on APFS; else a plain copy), then checks it with `ddev composer install`; if that fails, the entry is discarded and the setup runs `create-project` as before. In the lab (DDEV 1.25, Drupal 11.4.8, btrfs, Composer's download cache already warm), `ddev-up.sh` took about 30 s with `create-project` and 20 s from the cache (the copy itself took under 1 s; a plain copy of the 174 MB tree takes about 1.5 s). DDEV's shared Composer cache already avoids the downloads, so the gain is the install and scaffold work. Control it with `DRUPILOT_CORE_CACHE` (see [Configuration](#configuration)). `/drupilot-layers` already offers one shared test-bed for a whole set (`DRUPILOT_LAYERS_SANDBOX=shared`); one shared sandbox per *layer* is not implemented.
+
 ---
 
 ## Commands
@@ -192,6 +214,7 @@ scripts/env/state.sh refresh --subject web/modules/custom/foo --portfolio web/mo
 | `/drupilot-patch [subject] [issue]` | **Get the `.patch`, decoupled from contributing.** Offline, no push, no gate: a plain local-test patch, or one named for a Drupal.org issue comment. Test now, contribute the MR later. |
 | `/drupilot-contribute [subject] [issue]` | Publishes to **Drupal.org**: issue fork + Merge Request (or legacy patch), in semi or auto mode. User-invocable only; never exposes the PAT. |
 | `/drupilot-layers <dir> [plan\|run] [--layer N]` | **Port a set of modules in dependency order.** `plan` (read-only, the default) shows the porting layers, the dependency cycles, and the undeclared dependencies with a proposed `<project>:<module>` entry and the evidence. `run` ports one layer, module by module, through the normal flow, then writes a consolidated `layer-N-report.md`. It never edits an `info.yml` without your confirmation and never contributes. |
+| `/drupilot-clean [subject] [--all] [--level ddev\|vendor\|workspace]` | **Free a test-bed's disk and Docker resources, keep the work.** Deletes the DDEV project, the Composer trees or the whole derived workspace (moving the module back), only on test-beds drupilot built; previews and asks first. User-invocable only. See [Cleaning up test-beds](#cleaning-up-test-beds). |
 | `/drupilot-status [subject] \| --all [dir\|file]` | Read-only summary of environment, PHP target, current phase, last assessment, test status (with the preservation verdict), the frozen reproducibility lock, and the suggested next step. `--all` tabulates every module/workspace drupilot has state for (see [Per-module state](#per-module-state)). |
 
 ---
@@ -297,7 +320,10 @@ Defaults live in `config/defaults.json`. **Every `DRUPILOT_*` key can be overrid
 | `DRUPILOT_LAYERS_SANDBOX` | _(asked)_ | Applies to `/drupilot-layers` runs on a **loose** folder of modules (a set inside a Drupal root is always ported in place, in that one site). `per-module` gives each module its own `<name>-d11` test-bed. `shared` uses one test-bed for the whole set, `<parent>/<dir>-d11`, so a module and the modules it depends on are installed together. Empty means the command asks; autonomous runs use `per-module`. The answer is remembered in `.drupilot.json`. |
 | `DRUPILOT_ARTIFACTS_DIR` | _(empty)_ | Override for the visible `.drupilot/` outputs directory. Empty means `<root>/.drupilot`. |
 | `DRUPILOT_PATTERNS_FILE` | _(empty)_ | The learned-pattern catalog. Empty means `<root>/.drupilot/patterns.json`; a module ported by `/drupilot-layers` uses the set's catalog. A relative path is taken from the Drupal root, so a team can share a committed file. |
-| `DRUPILOT_DDEV_CREATE_TIMEOUT` | `900` | Seconds `/drupilot-setup` lets `ddev composer create-project` run before stopping it with a clear error (`0` = no limit). Needs `timeout` (or `gtimeout` on macOS); without it the step is unbounded. |
+| `DRUPILOT_DDEV_CREATE_TIMEOUT` | `900` | Seconds `/drupilot-setup` lets `ddev composer create-project` run (and `ddev composer install`, when `vendor/` is missing) before stopping it with a clear error (`0` = no limit). Needs `timeout` (or `gtimeout` on macOS); without it the step is unbounded. |
+| `DRUPILOT_CORE_CACHE` | `auto` | The cached base core of `/drupilot-setup` (see [Cleaning up test-beds](#cleaning-up-test-beds)): `auto` reuses the tree for the core version the lockfile froze, or, when nothing is frozen yet, the newest tree built for the same `DRUPILOT_DRUPAL_TARGET` within `DRUPILOT_CORE_CACHE_MAX_AGE_DAYS` (the lock then freezes that version); `locked` only the frozen version; `off` never reuses or stores one. `DRUPILOT_DETERMINISTIC=false` never reuses a tree but still refreshes the cache. |
+| `DRUPILOT_CORE_CACHE_MAX_AGE_DAYS` | `7` | Oldest cached base core `auto` reuses when no core version is frozen yet (`0` = no limit). |
+| `DRUPILOT_CORE_CACHE_KEEP` | `3` | Cached base cores kept (newest first); `/drupilot-clean --core-cache` removes them all. |
 | `DRUPILOT_CODER_CONSTRAINT` | `^8.3` | `drupal/coder` branch (PHPCS 3.x vs 4.x). |
 | `DRUPILOT_PHPSTAN_LEVEL` | `2` | Base PHPStan level (deprecation detection). |
 | `DRUPILOT_PHPSTAN_LEVEL_REFACTOR` | `6` | PHPStan level used in the refactor phase. |
@@ -347,7 +373,7 @@ Porting the same module twice should yield the same result. drupilot is **determ
 
 The lock also names the drupilot that last wrote it: `drupilot_version` (the `plugin.json` version, refreshed on every lock write) and, when drupilot runs from a git checkout such as a development branch that still carries the last released version, `drupilot_revision` (`git describe`, e.g. `v0.8.3-45-gb97266d`).
 
-It works like a `composer.lock`: the version ranges in `config/defaults.json` stay flexible, but the lock pins exactly what was used. `scripts/env/lock-sync.sh` captures/updates it (`ddev-up.sh`, `ddev-add-ons.sh` and `install-toolchain.sh` call it automatically).
+It works like a `composer.lock`: the version ranges in `config/defaults.json` stay flexible, but the lock pins exactly what was used. That includes rebuilding a removed test-bed: when `ddev-up.sh` has to create the project again (e.g. after `/drupilot-clean --level workspace`), it asks for `drupal/recommended-project:<frozen core version>` instead of the floating `DRUPILOT_DRUPAL_TARGET`. `scripts/env/lock-sync.sh` captures/updates it (`ddev-up.sh`, `ddev-add-ons.sh` and `install-toolchain.sh` call it automatically).
 
 **Known-good reference set.** A project that has no lock yet does not resolve the toolchain ranges fresh: `scripts/env/install-toolchain.sh` installs the **known-good matrix** shipped with the plugin, `config/toolchain-reference.json` — exact versions of `drupal-rector`, `rector/rector`, PHPStan + extensions, `coder`, Drush and `upgrade_status` verified together end to end. So a brand-new test-bed created after a broken upstream release (for example `rector/rector` 2.6.2+, which makes `drupal-rector` 0.21 crash) still gets a working set. Every install ends with a **smoke test** (a Rector dry-run with the Drupal 10 set plus `phpstan --version`) and exits 3 with the installed vs known-good versions when the toolchain is broken.
 

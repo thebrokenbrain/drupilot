@@ -178,6 +178,28 @@ scripts/env/state.sh refresh --subject web/modules/custom/foo --portfolio web/mo
 
 `show` y `list` son de solo lectura (nunca crean un directorio de estado); la tabla va a stderr y `--json` pone el payload en stdout. Un módulo portado antes de que existiera este registro sigue apareciendo con `--root` o `--subject`, con su etapa derivada de sus registros anteriores.
 
+### Limpiar test-beds
+
+Un test-bed ocupa un proyecto DDEV (contenedores, volúmenes, una base de datos) y unos cientos de MB de árboles de Composer. `/drupilot-clean` (`scripts/env/clean.sh`) los libera **sin perder el trabajo**: los informes de `.drupilot/`, el estado oculto (`state.json`, `assess.json`, el lockfile), los patches locales y el checkout git del módulo con todas sus ramas se conservan siempre. Primero muestra el plan y solo actúa cuando confirmas (`--yes` en un script; ni `DRUPILOT_ASSUME_YES` ni el modo autónomo lo implican).
+
+| Nivel | Elimina |
+| --- | --- |
+| `ddev` | El proyecto DDEV: `ddev delete -Oy` (contenedores, volúmenes, base de datos; sin snapshot). El código y `.ddev/` se quedan. |
+| `vendor` (por defecto) | Además `vendor/` y cada ruta de instalación de Composer (core, contrib, librerías, recipes); nunca una ruta `*/custom`. |
+| `workspace` | Además el test-bed entero. Un módulo colocado con `move` vuelve primero a la ruta de la que vino (se rechaza si esa ruta ya no está vacía), un `symlink` solo se desenlaza, y una `copy` solo se descarta si no contiene nada que falte en su origen (mismo commit, árbol limpio) o con `--discard-copies`. Antes se copian los informes de `.drupilot/` del test-bed al `.drupilot/` del propio módulo. |
+
+Solo elimina `vendor/` o un workspace de un **test-bed de drupilot**: una raíz que construyó `ddev-up.sh`, que la marca en el `.drupilot.json` de la raíz (`drupilot_testbed`, con el origen de cada módulo que colocó `place-subject.sh`). Un test-bed construido antes de que existiera esa marca se reconoce por su nombre por defecto `<nombre>-d11` y su `DRUPILOT_WORKSPACE_DIR`. En cualquier otra raíz de Drupal (tu propio sitio) solo se permite `--level ddev --foreign-ok`, y vuelve a preguntar porque borra la base de datos de ese sitio. `--all` limpia todos los test-beds de los que drupilot tiene estado (más los que haya bajo `--scan DIR`); `--core-cache` además borra los cores base cacheados.
+
+```bash
+scripts/env/clean.sh --subject web/modules/custom/foo --dry-run           # el plan (nivel vendor)
+scripts/env/clean.sh --subject ../foo --level workspace --yes --json      # borra el test-bed entero y devuelve foo a su sitio
+scripts/env/clean.sh --all --scan ~/drupal-ports --level ddev --dry-run   # el proyecto DDEV de cada test-bed
+```
+
+Después, el `state.json` de cada módulo registra `environment: {status: "removed", level}`, y el siguiente paso es `/drupilot-setup`, que reconstruye lo eliminado: `ddev-up.sh` ejecuta `ddev composer install` cuando hay `composer.json` pero no `vendor/`, y vuelve a crear un workspace eliminado con la versión de core que congeló el lockfile.
+
+**Core base cacheado.** Tras un `composer create-project` nuevo, `ddev-up.sh` guarda el árbol resultante (ficheros de Composer, `vendor/`, core, `recipes/`; nunca `.ddev/`, `settings*.php` ni `files/`) en el directorio de datos de drupilot, con clave por target de PHP y versión exacta de core. El siguiente setup de una raíz vacía lo copia (copy-on-write donde el sistema de ficheros lo permite: `cp --reflink=auto` en btrfs/XFS, `cp -c` en APFS; si no, una copia normal) y lo comprueba con `ddev composer install`; si falla, la entrada se descarta y el setup ejecuta `create-project` como antes. En el laboratorio (DDEV 1.25, Drupal 11.4.8, btrfs, con la caché de descargas de Composer ya caliente), `ddev-up.sh` tardó unos 30 s con `create-project` y 20 s desde la caché (la copia en sí tardó menos de 1 s; una copia normal del árbol de 174 MB tarda unos 1,5 s). La caché compartida de Composer de DDEV ya evita las descargas, así que la ganancia es el trabajo de instalación y scaffold. Se controla con `DRUPILOT_CORE_CACHE` (ver [Configuración](#configuración)). `/drupilot-layers` ya ofrece un test-bed compartido para todo un conjunto (`DRUPILOT_LAYERS_SANDBOX=shared`); un sandbox compartido por *capa* no está implementado.
+
 ---
 
 ## Comandos
@@ -194,6 +216,7 @@ scripts/env/state.sh refresh --subject web/modules/custom/foo --portfolio web/mo
 | `/drupilot-patch [sujeto] [issue]` | **Obtén el `.patch`, desacoplado de contribuir.** Offline, sin push, sin verja: un patch local de pruebas, o uno con nombre para un comentario de issue de Drupal.org. Pruébalo ya, contribuye el MR después. |
 | `/drupilot-contribute [sujeto] [issue]` | Publica a **Drupal.org**: issue fork + Merge Request (o patch legacy), en modo semi o auto. Solo invocable por el usuario; nunca expone el PAT. |
 | `/drupilot-layers <dir> [plan\|run] [--layer N]` | **Porta un conjunto de módulos en orden de dependencias.** `plan` (solo lectura, por defecto) muestra las capas de porting, los ciclos de dependencias y las dependencias no declaradas con una entrada `<proyecto>:<módulo>` propuesta y la evidencia. `run` porta una capa, módulo a módulo, con el flujo normal y luego escribe un `layer-N-report.md` consolidado. Nunca edita un `info.yml` sin tu confirmación y nunca contribuye. |
+| `/drupilot-clean [sujeto] [--all] [--level ddev\|vendor\|workspace]` | **Libera el disco y los recursos de Docker de un test-bed, conserva el trabajo.** Borra el proyecto DDEV, los árboles de Composer o el workspace derivado entero (devolviendo el módulo a su sitio), solo en test-beds que construyó drupilot; muestra el plan y pregunta antes. Solo invocable por el usuario. Ver [Limpiar test-beds](#limpiar-test-beds). |
 | `/drupilot-status [sujeto] \| --all [dir\|fichero]` | Resumen de solo lectura: entorno, target de PHP, fase actual, último assess, estado de tests (con el veredicto de preservación), el lock de reproducibilidad congelado y el siguiente paso sugerido. `--all` tabula todos los módulos/workspaces de los que drupilot tiene estado (ver [Estado por módulo](#estado-por-módulo)). |
 
 ---
@@ -299,7 +322,10 @@ Los valores por defecto están en `config/defaults.json`. **Cada clave `DRUPILOT
 | `DRUPILOT_LAYERS_SANDBOX` | _(se pregunta)_ | Se aplica a las ejecuciones de `/drupilot-layers` sobre una carpeta **suelta** de módulos (un conjunto dentro de una raíz de Drupal siempre se porta en su sitio, en ese único sitio). `per-module` da a cada módulo su propio banco de pruebas `<nombre>-d11`. `shared` usa un único banco de pruebas para todo el conjunto, `<padre>/<dir>-d11`, para que un módulo y los módulos de los que depende se instalen juntos. Vacío significa que el comando pregunta; las ejecuciones autónomas usan `per-module`. La respuesta se recuerda en `.drupilot.json`. |
 | `DRUPILOT_ARTIFACTS_DIR` | _(vacío)_ | Override del directorio de salidas visible `.drupilot/`. Vacío significa `<raíz>/.drupilot`. |
 | `DRUPILOT_PATTERNS_FILE` | _(vacío)_ | El catálogo de patrones aprendidos. Vacío significa `<raíz>/.drupilot/patterns.json`; un módulo portado por `/drupilot-layers` usa el catálogo del conjunto. Una ruta relativa se toma desde la raíz de Drupal, para que un equipo pueda compartir un fichero versionado. |
-| `DRUPILOT_DDEV_CREATE_TIMEOUT` | `900` | Segundos que `/drupilot-setup` deja correr `ddev composer create-project` antes de pararlo con un error claro (`0` = sin límite). Necesita `timeout` (o `gtimeout` en macOS); sin él el paso no tiene límite. |
+| `DRUPILOT_DDEV_CREATE_TIMEOUT` | `900` | Segundos que `/drupilot-setup` deja correr `ddev composer create-project` (y `ddev composer install`, cuando falta `vendor/`) antes de pararlo con un error claro (`0` = sin límite). Necesita `timeout` (o `gtimeout` en macOS); sin él el paso no tiene límite. |
+| `DRUPILOT_CORE_CACHE` | `auto` | El core base cacheado de `/drupilot-setup` (ver [Limpiar test-beds](#limpiar-test-beds)): `auto` reutiliza el árbol de la versión de core que congeló el lockfile o, si aún no hay ninguna congelada, el árbol más reciente construido para el mismo `DRUPILOT_DRUPAL_TARGET` dentro de `DRUPILOT_CORE_CACHE_MAX_AGE_DAYS` (el lock congela entonces esa versión); `locked` solo la versión congelada; `off` nunca reutiliza ni guarda uno. `DRUPILOT_DETERMINISTIC=false` nunca reutiliza un árbol pero sí refresca la caché. |
+| `DRUPILOT_CORE_CACHE_MAX_AGE_DAYS` | `7` | Antigüedad máxima del core base cacheado que reutiliza `auto` cuando aún no hay versión de core congelada (`0` = sin límite). |
+| `DRUPILOT_CORE_CACHE_KEEP` | `3` | Cores base cacheados que se conservan (los más recientes); `/drupilot-clean --core-cache` los borra todos. |
 | `DRUPILOT_CODER_CONSTRAINT` | `^8.3` | Rama de `drupal/coder` (PHPCS 3.x vs 4.x). |
 | `DRUPILOT_PHPSTAN_LEVEL` | `2` | Nivel base de PHPStan (detección de deprecaciones). |
 | `DRUPILOT_PHPSTAN_LEVEL_REFACTOR` | `6` | Nivel de PHPStan usado en la fase de refactor. |
@@ -349,7 +375,7 @@ Portar el mismo módulo dos veces debería dar el mismo resultado. drupilot es *
 
 El lock también indica qué drupilot lo escribió por última vez: `drupilot_version` (la versión de `plugin.json`, que se actualiza en cada escritura del lock) y, cuando drupilot se ejecuta desde un checkout de git, como una rama de desarrollo que aún lleva la última versión publicada, `drupilot_revision` (`git describe`, p. ej. `v0.8.3-45-gb97266d`).
 
-Funciona como un `composer.lock`: los rangos de versión en `config/defaults.json` siguen siendo flexibles, pero el lock fija exactamente lo que se usó. `scripts/env/lock-sync.sh` lo captura/actualiza (`ddev-up.sh`, `ddev-add-ons.sh` e `install-toolchain.sh` lo llaman automáticamente).
+Funciona como un `composer.lock`: los rangos de versión en `config/defaults.json` siguen siendo flexibles, pero el lock fija exactamente lo que se usó. Eso incluye reconstruir un test-bed eliminado: cuando `ddev-up.sh` tiene que volver a crear el proyecto (p. ej. tras `/drupilot-clean --level workspace`), pide `drupal/recommended-project:<versión de core congelada>` en lugar del `DRUPILOT_DRUPAL_TARGET` flotante. `scripts/env/lock-sync.sh` lo captura/actualiza (`ddev-up.sh`, `ddev-add-ons.sh` e `install-toolchain.sh` lo llaman automáticamente).
 
 **Conjunto de referencia conocido-bueno.** Un proyecto que aún no tiene lock no resuelve de nuevo los rangos de la toolchain: `scripts/env/install-toolchain.sh` instala la **matriz conocida-buena** que trae el plugin, `config/toolchain-reference.json` — versiones exactas de `drupal-rector`, `rector/rector`, PHPStan + extensiones, `coder`, Drush y `upgrade_status` verificadas juntas de principio a fin. Así, un banco de pruebas nuevo creado después de una release rota aguas arriba (por ejemplo `rector/rector` 2.6.2+, que hace fallar a `drupal-rector` 0.21) sigue recibiendo un conjunto que funciona. Cada instalación termina con un **smoke test** (un dry-run de Rector con el set de Drupal 10 más `phpstan --version`) y sale con código 3, mostrando las versiones instaladas frente a las conocidas-buenas, cuando la toolchain está rota.
 

@@ -34,7 +34,9 @@
 # Runs AFTER the Drupal root exists (composer create-project needs an empty root, so the
 # subject is placed once Drupal is scaffolded). Persists the resolved root as
 # DRUPILOT_WORKSPACE_DIR (.drupilot.json) so every later find_drupal_root agrees,
-# and ensures the root's .gitignore covers drupilot's artifacts.
+# records the subject's origin path and placement under drupilot_testbed.subjects
+# in the same file (what /drupilot-clean uses to put a moved checkout back), and
+# ensures the root's .gitignore covers drupilot's artifacts.
 #
 # Usage:
 #   place-subject.sh [--subject DIR] [--placement move|symlink|copy]
@@ -337,6 +339,13 @@ fi
 export DRUPILOT_PROJECT_DIR="$ROOT"
 prefs_set DRUPILOT_WORKSPACE_DIR "$ROOT" 2>/dev/null || true
 prefs_set DRUPILOT_PLACEMENT "$PLACEMENT" 2>/dev/null || true
+# Remember where the checkout came from (the root's .drupilot.json, under
+# drupilot_testbed.subjects): /drupilot-clean moves a 'move'd checkout back to
+# exactly this path before it removes the workspace.
+testbed_record_subject "$ROOT" "$MACHINE" "$DEST_ABS" "$SUBJECT_ABS" "$PLACEMENT" 2>/dev/null \
+  || log_warn "Could not record the subject's origin in $ROOT/.drupilot.json (non-fatal)."
+# A module placed back into a rebuilt test-bed has its environment again.
+env_status_record "$ROOT" ready
 
 GITIGNORE="$(plugin_root)/scripts/env/ensure-gitignore.sh"
 [[ -r "$GITIGNORE" ]] && bash "$GITIGNORE" --root "$ROOT" >&2 || true

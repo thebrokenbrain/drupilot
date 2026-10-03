@@ -532,6 +532,56 @@ tag the commit `vX.Y.Z`.
   - `port-report.sh` renders a "Learned patterns" section from an optional
     manifest key `learned_patterns {scan, recorded}`. Without it, the report
     is unchanged.
+- **`/drupilot-clean` and `scripts/env/clean.sh` (4.5).** Test-beds piled up
+  DDEV projects and a few hundred MB of Composer trees each, and the only way
+  to remove one was a manual `ddev delete` plus `rm -rf`, which with the
+  default `move` placement would also have deleted the developer's only
+  checkout. The new command removes, by level, the DDEV project (`ddev`:
+  `ddev delete -Oy`), the Composer-installed trees (`vendor`, the default:
+  vendor/ plus every installer path, never `*/custom`) or the whole derived
+  workspace (`workspace`), and keeps the reports, the hidden state and
+  lockfile, the local patches and the module's git branches.
+  - Default-safe: it prints the plan and acts only after an interactive "yes"
+    or `--yes`; `DRUPILOT_ASSUME_YES` and autonomous mode never imply it, and
+    without a terminal it only prints the plan. `--dry-run`, `--json`; exit 3
+    when a root is refused or an action fails.
+  - Ownership: `vendor` and `workspace` act only on a root drupilot built
+    (the new `drupilot_testbed` marker in the root's `.drupilot.json`, or a
+    pre-marker `<name>-d11[-N]` test-bed whose `DRUPILOT_WORKSPACE_DIR` is
+    itself). Any other root allows only `--level ddev --foreign-ok`, with a
+    second confirmation.
+  - `workspace` first moves a `move`d module back to its recorded origin
+    (refused if that path is no longer empty), only unlinks a `symlink`,
+    discards a `copy` only when it holds nothing its origin lacks (or with
+    `--discard-copies`, keeping its `*.patch` files), copies the test-bed's
+    `.drupilot/` reports into the module's own `.drupilot/`, and refuses a
+    workspace with its own `.git` or with a module that has no recorded origin.
+  - `--all` cleans every test-bed drupilot has state for (plus `--scan DIR`);
+    `--core-cache` removes the cached base cores; `--no-ddev` skips
+    `ddev delete` when Docker is down.
+  - Each module's `state.json` records `environment: {status: "removed",
+    level, at}`; `next-step.sh` then recommends `/drupilot-setup`
+    (`environment_removed` in its JSON), and `ddev-up.sh` / `place-subject.sh`
+    set it back to `ready`.
+- **Cached base core for `/drupilot-setup` (`DRUPILOT_CORE_CACHE`).** After a
+  fresh `composer create-project` (+ Drush), `ddev-up.sh` stores the tree
+  (never `.ddev/`, `settings*.php` or `files/`) under the plugin data dir,
+  keyed by PHP target and exact core version, and a later setup of an empty
+  root copies it in before `ddev start` (`cp --reflink=auto`, `cp -c` on APFS,
+  else a plain copy), then verifies it with `ddev composer install`; a failed
+  verification discards the entry and falls back to `create-project`. `auto`
+  (default) reuses the lockfile's frozen core version, or the newest entry for
+  the same `DRUPILOT_DRUPAL_TARGET` within `DRUPILOT_CORE_CACHE_MAX_AGE_DAYS`
+  (7); `locked` only the frozen version; `off` disables it;
+  `DRUPILOT_DETERMINISTIC=false` never reuses one. `DRUPILOT_CORE_CACHE_KEEP`
+  (3) entries are kept. Measured in the lab (DDEV 1.25.4, Drupal 11.4.8,
+  btrfs, warm DDEV Composer cache): `ddev-up.sh` 30 s with `create-project`,
+  20 s from the cache. `--json` gains `core_source` (create | cache |
+  existing | install) and `core_cache`.
+- **Test-bed helpers in `common.sh`:** `testbed_mark`, `testbed_record_subject`,
+  `testbed_kind`, `subjects_with_state_under`, `env_status_record`,
+  `fast_copy_tree`, `core_cache_dir`, `core_cache_lookup`,
+  `core_cache_entries`, `core_cache_prune`.
 ### Changed
 - **The port bumps submodules too.** `/drupilot-port`, `minimal-port` and
   the orchestrator apply the recommended `core_version_requirement` with
@@ -616,8 +666,22 @@ tag the commit `vX.Y.Z`.
   as a `<property>` inside a `<rule>` is passed through. This avoids
   PHPCompatibility's "trim(): Passing null" failure, and the script warns when
   PHPCS reports a processing error instead of counting it as a violation.
+- **`place-subject.sh` records where each subject came from** (origin path,
+  placement) under `drupilot_testbed.subjects` in the root's `.drupilot.json`,
+  so `/drupilot-clean --level workspace` can move a `move`d checkout back.
+- **A rebuilt test-bed honors the lockfile's core version.** In deterministic
+  mode, when `ddev-up.sh` has to create the project again for a root whose
+  lock already froze a Drupal core release (e.g. after a workspace clean), it
+  creates `drupal/recommended-project:<that version>` instead of resolving the
+  floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **`/drupilot-setup` did not restore a missing `vendor/`.** `ddev-up.sh`
+  skipped Composer whenever `composer.json` existed, so a root whose `vendor/`
+  was gone stayed broken (Rector then died with "vendor/bin/rector is
+  missing"). It now runs `ddev composer install` (under
+  `DRUPILOT_DDEV_CREATE_TIMEOUT`) when `composer.json` is present but
+  `vendor/autoload.php` is not.
 - **`/drupilot-status` and the router kept recommending `/drupilot-port` after
   a finished port.** `next-step.sh` treated the port as done only when a
   `<state_dir>/phase` marker existed, and nothing ever wrote it. The two

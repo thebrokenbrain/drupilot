@@ -18,6 +18,31 @@
 #     (`ddev composer create` on DDEV < 1.24.2). That step runs with stdin
 #     closed and a wall-clock limit of DRUPILOT_DDEV_CREATE_TIMEOUT seconds
 #     (default 900, 0 = no limit; needs `timeout`/`gtimeout`, else unbounded).
+#     When composer.json exists but vendor/ does not (e.g. after
+#     `/drupilot-clean --level vendor`), `ddev composer install` restores it
+#     from composer.lock, under the same limit.
+#   - In deterministic mode a core version frozen in the lockfile (e.g. by an
+#     earlier setup of this root, before a /drupilot-clean) is honored: the
+#     project is created as drupal/recommended-project:<that exact version>
+#     instead of the floating DRUPILOT_DRUPAL_TARGET.
+#
+# Cached base core (DRUPILOT_CORE_CACHE = auto | locked | off, default auto):
+# after a fresh create-project (+ Drush), the resulting tree (composer.json,
+# composer.lock, vendor/, the docroot with core, recipes/, the scaffold files;
+# never .ddev/, settings*.php or files/) is stored under the plugin data dir,
+# keyed by PHP target + exact core version. A later setup of an EMPTY root
+# copies that tree in (copy-on-write: `cp --reflink=auto`, `cp -c` on APFS,
+# else a plain copy) before `ddev start`, then verifies it with
+# `ddev composer install`; a failed verification discards the entry and falls
+# back to create-project. Reuse: 'locked' = only the exact version the
+# lockfile froze; 'auto' = that, or (deterministic mode, nothing frozen yet)
+# the newest entry built for the same DRUPILOT_DRUPAL_TARGET within
+# DRUPILOT_CORE_CACHE_MAX_AGE_DAYS (default 7), which the lockfile then
+# freezes; DRUPILOT_DETERMINISTIC=false never reuses a tree (fresh resolve)
+# but still refreshes the cache. DRUPILOT_CORE_CACHE_KEEP (default 3) entries
+# are kept. A root ddev-up.sh built (create-project or cache) is marked as a
+# drupilot test-bed in its .drupilot.json (testbed_mark), which is what lets
+# /drupilot-clean remove its vendor/ or the whole workspace.
 #   - We READ the generated .ddev/config.yaml for the real values rather than
 #     assuming hostnames/images (PROMPT 2.5 / 7.1).
 #
@@ -29,7 +54,11 @@
 #              project directory's name (for a loose subject, the sibling
 #              test-bed '<machine_name>-d11').
 #   --json     print a JSON summary on STDOUT when done:
-#              {project_dir, project_name, php_version, primary_url, drupal_target}
+#              {project_dir, project_name, php_version, primary_url, drupal_target,
+#               core_source, core_cache}
+#              core_source: create | cache | existing | install (vendor/
+#              restored by composer install); core_cache: {key, method,
+#              seconds, stored} or null.
 #
 # Output: every log line, the preflight report and the ddev/composer output go
 # to STDERR; STDOUT carries only the --json payload (empty without --json).
@@ -193,6 +222,75 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Step 1b — the base core: honor a frozen core version, reuse a cached tree
+# ---------------------------------------------------------------------------
+DRUPAL_TARGET="$(resolve_drupal_target)"
+DRUSH_CONSTRAINT="$(config_json '.packages.drush' 'drush/drush:^13')"
+CREATE_TIMEOUT="$(config_get DRUPILOT_DDEV_CREATE_TIMEOUT 900)"
+[[ "$CREATE_TIMEOUT" =~ ^[0-9]+$ ]] \
+  || die "DRUPILOT_DDEV_CREATE_TIMEOUT must be a number of seconds (got '$CREATE_TIMEOUT')." 1
+CORE_CACHE_MODE="$(config_get DRUPILOT_CORE_CACHE auto)"
+case "$CORE_CACHE_MODE" in
+  auto|locked|off) : ;;
+  *) log_warn "DRUPILOT_CORE_CACHE='$CORE_CACHE_MODE' is invalid (auto|locked|off) — not using the cached base core."
+     CORE_CACHE_MODE="off";;
+esac
+CORE_CACHE_MAX_AGE="$(config_get DRUPILOT_CORE_CACHE_MAX_AGE_DAYS 7)"
+[[ "$CORE_CACHE_MAX_AGE" =~ ^[0-9]+$ ]] || CORE_CACHE_MAX_AGE=7
+CORE_SOURCE="existing"      # create | cache | existing | install
+CORE_CACHE_KEY=""; CORE_CACHE_METHOD=""; CORE_CACHE_SECS=""; CORE_CACHE_STORED="false"
+RESTORED_ENTRIES=()
+CREATE_SPEC="drupal/recommended-project:${DRUPAL_TARGET}"
+
+# The exact core version the lockfile froze for this root (deterministic mode
+# only), when it is a plain release that the Drupal target still admits.
+LOCKED_CORE=""
+if deterministic_mode && [[ ! -f "$PROJECT_DIR/composer.json" ]]; then
+  LOCKED_CORE="$(DRUPILOT_PROJECT_DIR="$PROJECT_DIR" lock_get .drupal.core "")"
+  if [[ ! "$LOCKED_CORE" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+     || ! core_requirement_admits "$DRUPAL_TARGET" "${LOCKED_CORE%%.*}"; then
+    LOCKED_CORE=""
+  fi
+  if [[ -n "$LOCKED_CORE" ]]; then
+    CREATE_SPEC="drupal/recommended-project:${LOCKED_CORE}"
+    log_info "Lockfile pins Drupal core $LOCKED_CORE for this root — honoring it (DRUPILOT_DETERMINISTIC=false resolves '$DRUPAL_TARGET' fresh)."
+  fi
+fi
+
+if [[ "$DO_CREATE" == "1" && ! -f "$PROJECT_DIR/composer.json" && "$CORE_CACHE_MODE" != "off" ]] \
+   && deterministic_mode && have_cmd jq; then
+  _entry=""
+  if [[ -n "$LOCKED_CORE" ]]; then
+    _entry="$(core_cache_lookup "$PHP_TARGET" "$DRUPAL_TARGET" "$DRUSH_CONSTRAINT" "$LOCKED_CORE")"
+  elif [[ "$CORE_CACHE_MODE" == "auto" ]]; then
+    _entry="$(core_cache_lookup "$PHP_TARGET" "$DRUPAL_TARGET" "$DRUSH_CONSTRAINT" "" "$CORE_CACHE_MAX_AGE")"
+  fi
+  if [[ -n "$_entry" ]]; then
+    CORE_CACHE_KEY="$(basename "$_entry")"
+    log_step "Restoring the cached base core $CORE_CACHE_KEY (skips composer create-project)"
+    # Remember the top-level entries the copy adds, so a failed verification
+    # can take them back out and leave the root clean for create-project.
+    shopt -s nullglob dotglob
+    for _e in "$_entry"/tree/*; do RESTORED_ENTRIES+=("$(basename "$_e")"); done
+    shopt -u nullglob dotglob
+    _t0="$(date +%s)"
+    if CORE_CACHE_METHOD="$(fast_copy_tree "$_entry/tree" "$PROJECT_DIR")"; then
+      CORE_CACHE_SECS="$(( $(date +%s) - _t0 ))"
+      CORE_SOURCE="cache"
+      log_ok "Copied the cached tree in ${CORE_CACHE_SECS}s ($CORE_CACHE_METHOD)."
+    else
+      log_warn "Could not copy the cached base core — falling back to composer create-project."
+      for _e in ${RESTORED_ENTRIES[@]+"${RESTORED_ENTRIES[@]}"}; do
+        [[ -n "$_e" && "$_e" != "." && "$_e" != ".." && "$_e" != ".ddev" ]] || continue
+        chmod -R u+w "${PROJECT_DIR:?}/$_e" 2>/dev/null || true
+        rm -rf "${PROJECT_DIR:?}/$_e"
+      done
+      RESTORED_ENTRIES=(); CORE_CACHE_KEY=""; CORE_CACHE_METHOD=""
+    fi
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # Step 2 — ddev start (idempotent: skip if already running)
 # ---------------------------------------------------------------------------
 # ddev_running reads the real project status (`ddev describe`), so a stopped or
@@ -232,9 +330,57 @@ log_info "Generated config  : $DDEV_CONFIG"
 # ---------------------------------------------------------------------------
 # Step 4 — Composer project (idempotent: skip if composer.json present)
 # ---------------------------------------------------------------------------
-DRUPAL_TARGET="$(resolve_drupal_target)"
+# composer_install_bounded -> `ddev composer install` under the create limit.
+# Returns composer's exit code (124 on the time limit, after stopping it).
+composer_install_bounded() {
+  local rc=0
+  ( cd "$PROJECT_DIR" && run_with_timeout "$CREATE_TIMEOUT" \
+      ddev composer install --no-interaction </dev/null >&2 ) || rc=$?
+  if [[ "$rc" == "124" ]]; then
+    ddev_stop_composer "$PROJECT_DIR" || true
+  fi
+  return "$rc"
+}
+
+# A restored cache tree is verified by `composer install` (a no-op when the
+# tree matches its composer.lock; it also re-runs the scaffold). On failure the
+# entry is discarded and the restored files are removed, so create-project
+# below runs on a clean root as if there had been no cache.
+if [[ "$CORE_SOURCE" == "cache" ]]; then
+  log_step "Verifying the restored base core (ddev composer install)"
+  if composer_install_bounded; then
+    log_ok "The restored base core is consistent with its composer.lock."
+  else
+    log_warn "Verification failed — discarding cache entry $CORE_CACHE_KEY and running composer create-project instead."
+    for _e in ${RESTORED_ENTRIES[@]+"${RESTORED_ENTRIES[@]}"}; do
+      [[ -n "$_e" && "$_e" != "." && "$_e" != ".." && "$_e" != ".ddev" ]] || continue
+      chmod -R u+w "${PROJECT_DIR:?}/$_e" 2>/dev/null || true
+      rm -rf "${PROJECT_DIR:?}/$_e"
+    done
+    _bad="$(core_cache_dir)/$CORE_CACHE_KEY"
+    if [[ -n "$CORE_CACHE_KEY" && -d "$_bad" ]]; then chmod -R u+w "$_bad" 2>/dev/null || true; rm -rf "${_bad:?}"; fi
+    CORE_SOURCE="existing"; CORE_CACHE_KEY=""; CORE_CACHE_METHOD=""; CORE_CACHE_SECS=""
+  fi
+fi
+
 if [[ -f "$PROJECT_DIR/composer.json" ]]; then
-  log_ok "composer.json already present — not running 'ddev composer create-project'."
+  [[ "$CORE_SOURCE" == "cache" ]] \
+    || log_ok "composer.json already present — not running 'ddev composer create-project'."
+  # composer.json without vendor/ (e.g. after /drupilot-clean --level vendor):
+  # every later step needs vendor/, so restore it from composer.lock.
+  _vendor_dir="$(jq -r '.config["vendor-dir"] // "vendor"' "$PROJECT_DIR/composer.json" 2>/dev/null || echo vendor)"
+  [[ -n "$_vendor_dir" ]] || _vendor_dir="vendor"
+  if [[ "$CORE_SOURCE" != "cache" && ! -f "$PROJECT_DIR/$_vendor_dir/autoload.php" ]]; then
+    log_step "composer.json is present but $_vendor_dir/ is not — restoring it (ddev composer install)"
+    _irc=0; composer_install_bounded || _irc=$?
+    if [[ "$_irc" == "124" ]]; then
+      die "'ddev composer install' did not finish within ${CREATE_TIMEOUT}s and was stopped. Check network access, then re-run (raise DRUPILOT_DDEV_CREATE_TIMEOUT, 0 = no limit, for a slow network)." 1
+    elif [[ "$_irc" != "0" ]]; then
+      die "'ddev composer install' failed (exit $_irc). Check network access and the DDEV web container ('ddev logs -s web')." 1
+    fi
+    CORE_SOURCE="install"
+    log_ok "Dependencies restored from composer.lock."
+  fi
 else
   log_step "Creating the Drupal $DRUPAL_TARGET Composer project"
   # `ddev composer create-project` requires an almost-empty root (only "$DOCROOT/" and
@@ -248,12 +394,9 @@ else
   # Bounded and non-interactive: stdin is closed so nothing can wait on a
   # prompt, and DRUPILOT_DDEV_CREATE_TIMEOUT (seconds, 0 = no limit) stops a
   # hung run with a clear error instead of blocking setup indefinitely.
-  CREATE_TIMEOUT="$(config_get DRUPILOT_DDEV_CREATE_TIMEOUT 900)"
-  [[ "$CREATE_TIMEOUT" =~ ^[0-9]+$ ]] \
-    || die "DRUPILOT_DDEV_CREATE_TIMEOUT must be a number of seconds (got '$CREATE_TIMEOUT')." 1
   CREATE_RC=0
   ( cd "$PROJECT_DIR" && run_with_timeout "$CREATE_TIMEOUT" \
-      ddev composer "$CREATE_SUBCMD" --no-interaction "drupal/recommended-project:${DRUPAL_TARGET}" </dev/null >&2 ) \
+      ddev composer "$CREATE_SUBCMD" --no-interaction "$CREATE_SPEC" </dev/null >&2 ) \
     || CREATE_RC=$?
   if [[ "$CREATE_RC" == "124" ]]; then
     # The limit only killed the host-side client: composer keeps running in
@@ -266,13 +409,13 @@ else
   elif [[ "$CREATE_RC" != "0" ]]; then
     die "'ddev composer $CREATE_SUBCMD' failed (exit $CREATE_RC). Check network access and the DDEV web container ('ddev logs -s web')." 1
   fi
+  CORE_SOURCE="create"
   log_ok "Composer project created."
 fi
 
 # ---------------------------------------------------------------------------
 # Step 5 — ensure Drush ^13 (required by Drupal 11)
 # ---------------------------------------------------------------------------
-DRUSH_CONSTRAINT="$(config_json '.packages.drush' 'drush/drush:^13')"
 HAS_DRUSH=0
 if [[ -f "$PROJECT_DIR/composer.json" ]] && have_cmd jq; then
   if jq -e '(.require // {}) | has("drush/drush") or has("drush/drush:^13")' "$PROJECT_DIR/composer.json" >/dev/null 2>&1; then
@@ -288,11 +431,80 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Step 5b — Mark the test-bed, refresh the cached base core
+# ---------------------------------------------------------------------------
+# A root this run built from nothing (create-project, or a cached tree copied
+# into an empty root) is a drupilot test-bed: /drupilot-clean may remove its
+# vendor/ or the whole workspace. An existing project is never marked here.
+if [[ "$CORE_SOURCE" == "create" || "$CORE_SOURCE" == "cache" ]]; then
+  testbed_mark "$PROJECT_DIR" "ddev-up.sh" "$CORE_CACHE_KEY" \
+    || log_warn "Could not write the test-bed marker into $PROJECT_DIR/.drupilot.json (non-fatal)."
+fi
+
+# core_cache_store -> copy the freshly created tree into the cache (staged,
+# then renamed into place). Best-effort: a failure only logs a warning.
+core_cache_store() {
+  local ver key cd stage dest docroot p
+  ver="$(jq -r '((.packages // []) + (."packages-dev" // [])) | map(select(.name == "drupal/core")) | (.[0].version // empty)' \
+    "$PROJECT_DIR/composer.lock" 2>/dev/null || true)"
+  [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { log_info "Core version '${ver:-?}' is not a plain release — not caching the base core."; return 0; }
+  [[ -f "$PROJECT_DIR/vendor/autoload.php" ]] || return 0
+  key="php${PHP_TARGET}-${ver}"
+  cd="$(core_cache_dir)"
+  mkdir -p "$cd" 2>/dev/null || return 0
+  stage="$cd/.staging-${key}.$$"
+  dest="$cd/$key"
+  rm -rf "${stage:?}" 2>/dev/null || true
+  if ! CORE_CACHE_METHOD="$(fast_copy_tree "$PROJECT_DIR" "$stage/tree")"; then
+    chmod -R u+w "$stage" 2>/dev/null || true; rm -rf "${stage:?}"
+    log_warn "Could not copy the new project into the core cache (non-fatal)."
+    return 0
+  fi
+  # Strip everything that belongs to THIS project, not to the base core: the
+  # DDEV config, drupilot's own files, DDEV-generated settings and files/.
+  docroot="$DOCROOT"
+  chmod u+w "$stage/tree/$docroot/sites/default" 2>/dev/null || true
+  for p in .ddev .git .drupilot .drupilot.json .phpstan-cache .drupilot-coverage \
+           "$docroot/sites/default/settings.php" "$docroot/sites/default/settings.ddev.php" \
+           "$docroot/sites/default/settings.local.php" "$docroot/sites/default/.gitignore" \
+           "$docroot/sites/default/files" "$docroot/sites/simpletest" \
+           "$docroot/modules/custom" "$docroot/themes/custom" "$docroot/profiles/custom"; do
+    if [[ -e "$stage/tree/$p" || -L "$stage/tree/$p" ]]; then
+      chmod -R u+w "$stage/tree/$p" 2>/dev/null || true
+      rm -rf "${stage:?}/tree/$p"
+    fi
+  done
+  jq -n --arg v "$ver" --arg php "$PHP_TARGET" --arg c "$DRUPAL_TARGET" --arg d "$DRUSH_CONSTRAINT" \
+     --arg spec "$CREATE_SPEC" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg ep "$(date +%s)" \
+     --arg pv "$(plugin_version)" --arg dr "$docroot" \
+     '{version: $v, php: $php, constraint: $c, drush: $d, created_from: $spec, docroot: $dr,
+       created_at: $at, created_epoch: ($ep | tonumber), drupilot_version: $pv, complete: true}' \
+     > "$stage/meta.json" 2>/dev/null || { rm -rf "${stage:?}"; return 0; }
+  if [[ -d "$dest" ]]; then chmod -R u+w "$dest" 2>/dev/null || true; rm -rf "${dest:?}"; fi
+  if mv "$stage" "$dest" 2>/dev/null; then
+    CORE_CACHE_KEY="$key"; CORE_CACHE_STORED="true"
+    log_ok "Cached this base core as $key ($CORE_CACHE_METHOD) — the next setup with Drupal $ver and PHP $PHP_TARGET copies it instead of running create-project."
+    core_cache_prune "$(config_get DRUPILOT_CORE_CACHE_KEEP 3)"
+  else
+    chmod -R u+w "$stage" 2>/dev/null || true; rm -rf "${stage:?}"
+  fi
+  return 0
+}
+if [[ "$CORE_SOURCE" == "create" && "$CORE_CACHE_MODE" != "off" ]] && have_cmd jq; then
+  core_cache_store || true
+  [[ "$CORE_CACHE_STORED" == "true" ]] && testbed_mark "$PROJECT_DIR" "ddev-up.sh" "$CORE_CACHE_KEY" >/dev/null 2>&1 || true
+fi
+
+# ---------------------------------------------------------------------------
 # Step 6 — Freeze the resolved versions in the reproducibility lockfile
 # ---------------------------------------------------------------------------
 # Best-effort: capture the exact Drupal core (and whatever composer.lock holds so
 # far) so later runs reuse it (deterministic mode). Never fail setup over the lock.
 bash "$PLUGIN_ROOT_DIR/scripts/env/lock-sync.sh" --dir "$PROJECT_DIR" >/dev/null 2>&1 || true
+
+# The environment exists again: clear a /drupilot-clean 'removed' record on
+# the modules of this root (next-step.sh stops recommending /drupilot-setup).
+env_status_record "$PROJECT_DIR" ready
 
 # ---------------------------------------------------------------------------
 # Done
@@ -304,8 +516,13 @@ log_plain "      then place your module/theme under $DOCROOT/modules/custom or $
 if [[ "$JSON_OUT" == "1" ]] && have_cmd jq; then
   jq -c -n --arg project_dir "$PROJECT_DIR" --arg project_name "$PROJECT_NAME" \
     --arg php_version "${EFFECTIVE_PHP:-$PHP_TARGET}" --arg primary_url "$PRIMARY_URL" \
-    --arg drupal_target "$DRUPAL_TARGET" \
+    --arg drupal_target "$DRUPAL_TARGET" --arg core_source "$CORE_SOURCE" \
+    --arg ck "$CORE_CACHE_KEY" --arg cm "$CORE_CACHE_METHOD" --arg cs "$CORE_CACHE_SECS" \
+    --argjson stored "$CORE_CACHE_STORED" \
     '{project_dir:$project_dir, project_name:$project_name, php_version:$php_version,
-      primary_url:$primary_url, drupal_target:$drupal_target}'
+      primary_url:$primary_url, drupal_target:$drupal_target, core_source:$core_source,
+      core_cache: (if $ck == "" then null else
+        {key: $ck, method: (if $cm == "" then null else $cm end),
+         seconds: (if $cs == "" then null else ($cs | tonumber) end), stored: $stored} end)}'
 fi
 exit 0

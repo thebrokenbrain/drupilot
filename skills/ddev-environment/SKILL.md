@@ -90,6 +90,14 @@ What `ddev-up.sh` does (idempotently):
 - `ddev start`.
 - `ddev composer create-project drupal/recommended-project:^11` (`ddev composer create` on DDEV < 1.24.2) only when there is no
   `composer.json` yet (creating a project would overwrite an existing one).
+  In deterministic mode a core release already frozen in the root's lockfile is
+  created exactly (`drupal/recommended-project:<version>`), and a cached base core
+  (`DRUPILOT_CORE_CACHE`, default `auto`) is copied into the empty root instead
+  when one matches, then verified with `ddev composer install`.
+- `ddev composer install` when `composer.json` exists but `vendor/` does not
+  (e.g. after `/drupilot-clean --level vendor`).
+- Marks a root it built as a drupilot test-bed (`drupilot_testbed` in its
+  `.drupilot.json`), which is what lets `/drupilot-clean` remove it later.
 - Ensures `drush/drush:^13` is present (D11 requires Drush 13).
 - **Reads the generated `.ddev/config.yaml`** for the real project name and
   hostnames instead of guessing `*.ddev.site`.

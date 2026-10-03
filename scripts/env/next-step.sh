@@ -38,11 +38,15 @@
 # Output:
 #   --json (default) -> {next, command, reason, phase, assessed, effort,
 #                        ddev_configured, ddev_running, tests, preservation,
-#                        is_extension, type, state_file}
+#                        is_extension, type, state_file,
+#                        environment_removed}
 #                       phase is the stage recorded in the subject's state.json
 #                       (the per-module registry, scripts/env/state.sh); effort
 #                       is the assessment's S/M/L/XL; state_file is null while
-#                       no state.json exists.
+#                       no state.json exists. environment_removed is true
+#                       after /drupilot-clean (until the next setup) or when
+#                       a drupilot test-bed lost its vendor/; next is then
+#                       setup.
 #   --human          -> a one-line "Next: <command> — <reason>" on STDOUT.
 #
 # Exit codes: 0 ok · 1 usage/error. (Read-only: never mutates anything.)
@@ -152,6 +156,18 @@ DDEV_CONFIGURED="false"; DDEV_RUNNING="false"
 [[ -n "$ROOT" && -f "$ROOT/.ddev/config.yaml" ]] && DDEV_CONFIGURED="true"
 ddev_running "$ROOT" 2>/dev/null && DDEV_RUNNING="true"
 
+# Environment removed by /drupilot-clean (state.json .environment, cleared by
+# the next ddev-up.sh / place-subject.sh), or a drupilot test-bed whose vendor/
+# is gone: either way /drupilot-setup is what brings it back.
+ENV_REMOVED="false"; ENV_LEVEL=""
+if [[ "$(state_get "$SUBJECT" .environment.status "")" == "removed" ]]; then
+  ENV_REMOVED="true"; ENV_LEVEL="$(state_get "$SUBJECT" .environment.level "")"
+elif [[ -n "$ROOT" && -f "$ROOT/composer.json" && "$(testbed_kind "$ROOT")" != "none" ]]; then
+  _vd="vendor"
+  have_cmd jq && _vd="$(jq -r '.config["vendor-dir"] // "vendor"' "$ROOT/composer.json" 2>/dev/null || echo vendor)"
+  [[ -f "$ROOT/${_vd:-vendor}/autoload.php" ]] || { ENV_REMOVED="true"; ENV_LEVEL="vendor"; }
+fi
+
 ASSESSED="false"
 { [[ -f "$STATE_DIR/assess.json" ]] || phase_reached "$SUBJECT" assessed; } && ASSESSED="true"
 EFFORT=""
@@ -181,6 +197,9 @@ NEXT=""; CMD=""; REASON=""
 if [[ "$R_ANALYZE" == "false" ]]; then
   NEXT="doctor"; CMD="/drupilot-doctor"
   REASON="The analysis requirements are not met yet — fix them first."
+elif [[ "$R_SETUP" == "true" && "$ENV_REMOVED" == "true" ]]; then
+  NEXT="setup"; CMD="/drupilot-setup"
+  REASON="The environment was removed (${ENV_LEVEL:-clean}) — re-run setup to rebuild it: vendor/ comes back from composer.lock, the core version from the lockfile."
 elif [[ "$R_SETUP" == "true" && "$DDEV_CONFIGURED" == "false" ]]; then
   NEXT="setup"; CMD="/drupilot-setup"
   REASON="No DDEV environment yet — provision Drupal 11 + the toolchain so the port and tests can run."
@@ -234,13 +253,13 @@ if [[ "$AS_JSON" == "1" ]] && have_cmd jq; then
     --arg phase "$PHASE" --argjson assessed "$ASSESSED" --arg effort "$EFFORT" --arg state_file "$STATE_FILE" \
     --argjson ddev_configured "$DDEV_CONFIGURED" --argjson ddev_running "$DDEV_RUNNING" \
     --arg tests "$TESTS" --arg preservation "$PRESERVATION" \
-    --argjson is_extension "$IS_EXT" --arg type "$TYPE" \
+    --argjson is_extension "$IS_EXT" --arg type "$TYPE" --argjson env_removed "$ENV_REMOVED" \
     '{next:$next, command:$command, reason:$reason,
       phase: ($phase | select(. != "") // null),
       assessed:$assessed, effort: ($effort | select(. != "") // null),
       ddev_configured:$ddev_configured, ddev_running:$ddev_running,
       tests:$tests, preservation:$preservation, is_extension:$is_extension, type:$type,
-      state_file: ($state_file | select(. != "") // null)}'
+      state_file: ($state_file | select(. != "") // null), environment_removed: $env_removed}'
 else
   if [[ -n "$CMD" ]]; then printf 'Next: %s — %s\n' "$CMD" "$REASON"
   else printf 'Next: (nothing required) — %s\n' "$REASON"; fi

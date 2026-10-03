@@ -135,6 +135,10 @@ This configures `--project-type=drupal11 --docroot=web --php-version=$(resolve_p
 starts DDEV, runs `ddev composer create-project drupal/recommended-project:^11` (`create` on DDEV < 1.24.2) when there is no
 composer.json, ensures `drush:^13`, and reads the generated `.ddev/config.yaml` rather
 than assuming hostnames/images. It skips if the project is already configured/running.
+A root whose `vendor/` is missing (e.g. after `/drupilot-clean`) gets `ddev composer
+install`; an empty root may be filled from the cached base core (`DRUPILOT_CORE_CACHE`)
+and, in deterministic mode, is created with the core version the lockfile froze. Its
+`--json` says which: `core_source` = create | cache | existing | install.
 
 ### 3b — Install the add-ons
 
