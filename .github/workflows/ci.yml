@@ -49,7 +49,16 @@ jobs:
         run: |
           # xmllint ships with macOS. Homebrew bash is installed only for the
           # bash 5 leg below; the stock /bin/bash 3.2 leg runs afterwards.
-          brew install shellcheck jq bash
+          brew install jq bash
+          # The same pinned ShellCheck as on Linux (Homebrew ships whatever is
+          # current, whose warning set the strict gate is not tuned for).
+          case "$(uname -m)" in
+            arm64) SC_ARCH=aarch64;;
+            *) SC_ARCH=x86_64;;
+          esac
+          curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.darwin.${SC_ARCH}.tar.xz" \
+            | tar -xJ -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/shellcheck-${SHELLCHECK_VERSION}" >> "$GITHUB_PATH"
 
       - name: Tool versions
         run: |

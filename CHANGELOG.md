@@ -811,6 +811,11 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **The macOS CI leg ran the strict ShellCheck gate with whatever Homebrew
+  shipped.** The Linux leg pins ShellCheck v0.11.0 because another version
+  reports a different warning set; macOS now downloads the same pinned
+  release (`darwin.aarch64` / `darwin.x86_64`) instead of `brew install
+  shellcheck`, so a new ShellCheck release cannot turn it red on its own.
 - **`decisions.md` and `port-summary.json` were written mode 0600.** Both
   went through `mktemp` + `mv`, so unlike the other reports in `.drupilot/`
   (0644) a teammate, a CI artifact upload or a wrapper running as another user
