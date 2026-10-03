@@ -255,14 +255,17 @@ config_get() {
   if [[ -n "$envval" ]]; then printf '%s' "$envval"; return 0; fi
   # Project preference tier (.drupilot.json at the Drupal root): remembered
   # tabbed-choice answers, read between the env override and defaults.json.
+  # The jq filter keeps a JSON false/0 (jq's `//` would treat false as missing
+  # and fall through to the defaults), stringified as the env tier would be.
+  local jqf='if type == "object" and has($k) and .[$k] != null then .[$k] | tostring else empty end'
   local pf; pf="$(drupilot_prefs_file 2>/dev/null || true)"
   if [[ -n "$pf" && -r "$pf" ]] && have_cmd jq; then
-    local pv; pv="$(jq -r --arg k "$key" '.[$k] // empty' "$pf" 2>/dev/null)"
+    local pv; pv="$(jq -r --arg k "$key" "$jqf" "$pf" 2>/dev/null)"
     if [[ -n "$pv" && "$pv" != "null" ]]; then printf '%s' "$pv"; return 0; fi
   fi
   local file; file="$(drupilot_config_file)"
   if [[ -r "$file" ]] && have_cmd jq; then
-    local v; v="$(jq -r --arg k "$key" '.[$k] // empty' "$file" 2>/dev/null)"
+    local v; v="$(jq -r --arg k "$key" "$jqf" "$file" 2>/dev/null)"
     if [[ -n "$v" && "$v" != "null" ]]; then printf '%s' "$v"; return 0; fi
   fi
   printf '%s' "$def"
@@ -2624,7 +2627,9 @@ confirm() {
 # label"; the FIRST option is the default. The chosen VALUE is printed to STDOUT
 # (the only thing on stdout); the menu and prompt go to STDERR. Resolution order,
 # highest first: (1) DRUPILOT_CHOICE_<KEY> from env/.drupilot.json/defaults — must
-# match an option value, else ignored with a warning; (2) an interactive /dev/tty
+# match an option value, else ignored with a warning (also ignored for a fork
+# config/choices.json marks 'preanswer': false; scripts/env/choice.sh resolves
+# the same variables for the commands' AskUserQuestion tabs); (2) an interactive /dev/tty
 # selection (by number or by typing the value); (3) the default (first option)
 # when there is no TTY or DRUPILOT_ASSUME_YES=1. Fail-safe: never blocks forever
 # and always echoes a valid option value. In Claude Code commands the real tabs
@@ -2641,7 +2646,15 @@ choose_one() {
   local default_val="${values[0]}"
 
   # 1. Config/env override (DRUPILOT_CHOICE_<KEY>), validated against the options.
+  # A fork the registry (config/choices.json) marks 'preanswer': false stays a
+  # human decision: its variable is ignored with a warning.
   local override; override="$(config_get "DRUPILOT_CHOICE_${key}" "")"
+  local reg; reg="$(plugin_root)/config/choices.json"
+  if [[ -n "$override" && -r "$reg" ]] && have_cmd jq \
+     && [[ "$(jq -r --arg k "$key" '.choices[$k].preanswer != false' "$reg" 2>/dev/null)" == "false" ]]; then
+    log_warn "Ignoring DRUPILOT_CHOICE_${key}='$override': this choice cannot be pre-answered."
+    override=""
+  fi
   if [[ -n "$override" ]]; then
     for v in "${values[@]}"; do
       [[ "$v" == "$override" ]] && { printf '%s' "$v"; return 0; }

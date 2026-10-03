@@ -92,6 +92,9 @@ docker, ddev — not the manual items like the drupal.org account or SSH key), u
   **Show the commands first** (print the per-OS commands, install nothing) /
   **Skip** (leave it to the developer).
 
+These tabs are never pre-answered (`DRUPILOT_CHOICE_DOCTOR_INSTALL` has no
+effect): installing software always needs an explicit answer.
+
 Then:
 
 1. Confirm exactly which tools will be installed (only the selected

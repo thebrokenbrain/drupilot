@@ -106,6 +106,13 @@
 #                  differ from the pre-port git base plus new ones, --fix
 #                  alone still fixes the whole subject, and a subject outside
 #                  git is report-only (needs the analyze profile and git)
+#   choices        choice.sh resolves DRUPILOT_CHOICE_<KEY> against
+#                  config/choices.json: unset -> null, a valid value, an
+#                  invalid one ignored with a warning, a multi-select
+#                  normalized, a fork that is never pre-answered ignored,
+#                  --persist writes the mapped setting to .drupilot.json, an
+#                  unknown key is a usage error, and choose_one honors the
+#                  same variables
 #
 # Isolation: the fixtures are copied to a temp dir (legacy_widgets is committed
 # there as a git repo when git exists), and HOME, CLAUDE_PLUGIN_DATA and the
@@ -136,7 +143,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$REPO/tests/fixtures"
 SH="${BASH:-bash}"
 
-ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root monorepo-testbed phpcs-scope"
+ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root monorepo-testbed phpcs-scope choices"
 
 AS_JSON=0; ONLY=""; SKIP=""; KEEP=0
 
@@ -1002,6 +1009,36 @@ STUB
   finish
 }
 
+test_choices() {
+  local cs="$REPO/scripts/env/choice.sh" root="$FX/choice_root"
+  mkdir -p "$root/.ddev" "$root/web/modules/custom/foo"
+  : > "$root/.ddev/config.yaml"
+  run ch0 "$SH" "$cs" --key CORE_TARGET --subject "$root" --json
+  expect "unset: exit" "$RC" "0"
+  expect "unset: value" "$(jqo ch0 '[.set, .value, .valid]')" '[false,null,false]'
+  run ch1 env DRUPILOT_CHOICE_CORE_TARGET=keep-d10 "$SH" "$cs" --key core_target --subject "$root" --json
+  expect "valid: value" "$(jqo ch1 '[.value, .persist]')" '["keep-d10",[{"key":"DRUPILOT_CORE_TARGET_STRATEGY","value":"keep-d10"}]]'
+  run ch2 env DRUPILOT_CHOICE_CORE_TARGET=bogus "$SH" "$cs" --key CORE_TARGET --subject "$root" --json
+  expect "invalid: value" "$(jqo ch2 '[.set, .value]')" '[true,null]'
+  expect_match "invalid: warning" "$(cat "$TMP/out/ch2.err")" "Ignoring DRUPILOT_CHOICE_CORE_TARGET='bogus'"
+  run ch3 env DRUPILOT_CHOICE_REFACTOR_SCOPE="final, di,di" "$SH" "$cs" --key REFACTOR_SCOPE --subject "$root" --json
+  expect "multi: normalized" "$(jqo ch3 '.value')" '"di,final"'
+  run ch4 env DRUPILOT_CHOICE_PUSH=push "$SH" "$cs" --key PUSH --subject "$root" --json
+  expect "never pre-answered" "$(jqo ch4 '[.preanswer, .value]')" '[false,null]'
+  run ch5 env DRUPILOT_CHOICE_D10_CHECK=d11-only "$SH" "$cs" --key D10_CHECK --subject "$root/web/modules/custom/foo" --persist --json
+  expect "persist: flag" "$(jqo ch5 '.persisted')" 'true'
+  expect "persist: file" "$(jq -c '.DRUPILOT_CORE_TARGET_STRATEGY' "$root/.drupilot.json" 2>/dev/null || echo missing)" '"d11-only"'
+  run ch6 "$SH" "$cs" --key NOPE
+  expect "unknown key: usage error" "$RC" "1"
+  run ch7 "$SH" "$cs" --list --json
+  expect "list: every entry has a header" "$(jqo ch7 '[.[] | select(.header == null)] | length')" '0'
+  run ch8 env DRUPILOT_CHOICE_CLEAN_LEVEL=ddev "$SH" -c '. "$1"; choose_one CLEAN_LEVEL "Level" vendor ddev workspace' _ "$REPO/scripts/lib/common.sh"
+  expect "choose_one: pre-answer" "$(out ch8)" "ddev"
+  run ch9 env DRUPILOT_CHOICE_PUSH=push "$SH" -c '. "$1"; choose_one PUSH "Push" cancel push' _ "$REPO/scripts/lib/common.sh"
+  expect "choose_one: never pre-answered" "$(out ch9)" "cancel"
+  finish
+}
+
 # --- Main -----------------------------------------------------------------------
 log_step "drupilot smoke tests (bash ${BASH_VERSION:-?}, $(uname -s 2>/dev/null || echo ?))"
 for t in $ALL_TESTS; do
@@ -1031,6 +1068,7 @@ for t in $ALL_TESTS; do
     project-root) test_project_root;;
     monorepo-testbed) test_monorepo_testbed;;
     phpcs-scope) test_phpcs_scope;;
+    choices) test_choices;;
   esac
 done
 

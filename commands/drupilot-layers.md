@@ -92,7 +92,11 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/lint-extension-metadata.sh" --subje
 
 ## Step 3 — `plan` mode (default): stop here, offer the next step
 
-Ask with **AskUserQuestion** (skip when `autonomous=true`: print the plan and stop):
+Ask with **AskUserQuestion**, header "Layers plan" (skip when `autonomous=true`:
+print the plan and stop). A pre-answer skips the tab: when
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key LAYERS_PLAN --subject <dir> --json` returns
+`port`, go to Step 4 with the recommended layer; `stop` stops (say so in one line).
+Adding the proposed dependencies is never pre-answered:
 
 - **Port layer `<lowest layer with unported modules>` now** (recommended) — go to
   Step 4 with that layer.
@@ -140,7 +144,8 @@ Ask with **AskUserQuestion** (skip when `autonomous=true`: print the plan and st
      module, so nothing needs to be set), with `copy` placement. Nothing to choose.
    - `repo-subdir` / `standalone` — a loose folder of modules (in a git
      repository that is not a Drupal project, or not in git). Ask with
-     **AskUserQuestion** (autonomous: use the first option, it changes nothing):
+     **AskUserQuestion**, header "Layers sandbox" (autonomous: use the first
+     option, it changes nothing):
      - **One test-bed per module** (today's behavior, recommended when the
        layer's modules do not depend on each other or on earlier layers) — each
        module gets its own `<name>-d11` test-bed, next to the repository
@@ -150,9 +155,13 @@ Ask with **AskUserQuestion** (skip when `autonomous=true`: print the plan and st
        the modules it depends on are placed in the same Drupal site. Placement
        follows `DRUPILOT_PLACEMENT` (`placement` above) for `standalone` modules
        (`move` relocates each checkout — say so before choosing; `copy` leaves the
-       originals untouched); a `repo-subdir` module is always copied.
+       originals untouched); for a `repo-subdir` module `move` becomes `copy`
+       (a `symlink` is kept and edits the module inside its repository).
    A `DRUPILOT_LAYERS_SANDBOX` already set (`per-module` / `shared`, env or
-   `.drupilot.json`) answers this without asking. Persist a new answer once a
+   `.drupilot.json`) answers this without asking, and so does a pre-answer —
+   `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key LAYERS_SANDBOX --subject <first module dir> --json`
+   returning a `value` (it wins over a remembered `.drupilot.json` answer and is
+   persisted below like a tab answer). Persist a new answer once a
    Drupal root exists (the shared test-bed, after its setup):
 
    ```bash
@@ -168,8 +177,10 @@ Ask with **AskUserQuestion** (skip when `autonomous=true`: print the plan and st
    monorepo root. Relay both paths. The origin repository is never written to:
    `origin-hygiene.sh --check --subject <origin module dir>` proves it.
 
-3. **Confirm** the layer and the module order with **AskUserQuestion** (skip when
-   `autonomous=true`): the modules in the layer, those skipped as already ported,
+3. **Confirm** the layer and the module order with **AskUserQuestion**, header
+   "Port this layer" (skip when `autonomous=true`; a `value` from
+   `choice.sh --key LAYERS_CONFIRM --subject <dir> --json`, `proceed` or `stop`,
+   answers it without the tab): the modules in the layer, those skipped as already ported,
    and that each one runs the normal flow (setup → assess → port → test, Phase 1;
    refactor and contribute stay opt-in).
 
@@ -225,8 +236,10 @@ Ask with **AskUserQuestion** (skip when `autonomous=true`: print the plan and st
    totals and the patterns this layer added to the catalog (entries of
    `patterns.sh list --catalog <catalog> --json` whose `seen_in` has `layer: N`
    — they will be checked on the next layer), then ask with **AskUserQuestion** (autonomous: stop after the layer and
-   recommend the next one): **Port layer N+1** (recommended when the layer is clean)
-   / **Stop here**.
+   recommend the next one), header "Next layer": **Port layer N+1** (recommended
+   when the layer is clean) / **Stop here**. A `value` from
+   `choice.sh --key LAYERS_NEXT --subject <dir> --json` (`next-layer` / `stop`)
+   answers it without the tab; a regression still stops before the next layer.
 
 ## Rules
 

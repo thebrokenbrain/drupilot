@@ -37,9 +37,14 @@ then stop with no side effects.
   echo "type=$(subject_type "$SUBJECT" 2>/dev/null || echo "?")"; \
   echo "core_requirement=$(subject_core_requirement "$SUBJECT" 2>/dev/null || echo "<missing>")"; \
   echo "drupal_root=$(find_drupal_root "$SUBJECT" 2>/dev/null || echo "<none>")"; \
-  echo "php_target=$(resolve_php_target)"; echo "drupal_target=$(resolve_drupal_target)"' \
+  echo "php_target=$(resolve_php_target)"; echo "drupal_target=$(resolve_drupal_target)"; \
+  ROOT="$(find_drupal_root "$SUBJECT" 2>/dev/null || true)"; \
+  echo "viability_threshold=$(DRUPILOT_PROJECT_DIR="$ROOT" config_get DRUPILOT_VIABILITY_THRESHOLD medium)"' \
   -- "$1"
 ```
+
+`viability_threshold` is the resolved `DRUPILOT_VIABILITY_THRESHOLD` (env >
+`.drupilot.json` > defaults); the effort verdict compares against it.
 
 If the subject is not a Drupal extension directory (no `*.info.yml`), say so and
 ask the user for the correct path. Note whether `core_version_requirement` is
@@ -58,7 +63,10 @@ It surfaces open issues that look like a Drupal 11 effort (best-effort title sca
 and always prints the pre-filtered issue-queue URL. If it finds a likely match,
 present a tab with **AskUserQuestion** (header "Existing work"): **Base on the
 existing issue/MR** (open the URL, adopt its branch/patch as the starting point) ·
-**Continue independently** (assess fresh anyway). Skip this for a non-contrib /
+**Continue independently** (assess fresh anyway). A pre-answer skips the tab:
+when `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key EXISTING_WORK --subject "$1" --json`
+returns a `value` (`existing` / `independent`), act on it and say so in one line.
+Skip this for a non-contrib /
 custom module, and never let a blocked network stop the assessment — the URL is
 the fallback.
 
@@ -188,8 +196,10 @@ Hand the collected output to the analyst. Produce:
   submodule `core_version_requirement` bump into Phase 1; list the rest as
   follow-ups.
 - **Effort verdict**: one of **S / M / L / XL**, with a one-paragraph rationale.
-  Compare against `DRUPILOT_VIABILITY_THRESHOLD` (default `medium`); if the effort
-  exceeds the threshold, say so plainly — but **still deliver a plan**. drupilot
+  Compare against the resolved `viability_threshold` from Step 1
+  (`DRUPILOT_VIABILITY_THRESHOLD`: `small`/`medium`/`large`/`xl` ≡ S/M/L/XL;
+  default `medium`) and use that value for the report's threshold check
+  (`{{VIABILITY_THRESHOLD}}`); if the effort strictly exceeds the threshold, say so plainly — but **still deliver a plan**. drupilot
   never refuses: it offers a staged plan that preserves the original behavior
   without colliding with native D11 APIs.
 

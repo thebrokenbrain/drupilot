@@ -36,7 +36,9 @@ stays reviewable.
   echo "machine_name=$(subject_machine_name "$SUBJECT" 2>/dev/null || echo "?")"; \
   echo "type=$(subject_type "$SUBJECT" 2>/dev/null || echo "?")"; \
   echo "php_target=$(resolve_php_target)"; \
-  echo "phpstan_level_refactor=$(config_get DRUPILOT_PHPSTAN_LEVEL_REFACTOR 6)"' \
+  ROOT="$(find_drupal_root "$SUBJECT" 2>/dev/null || true)"; \
+  echo "phpstan_level_refactor=$(DRUPILOT_PROJECT_DIR="$ROOT" config_get DRUPILOT_PHPSTAN_LEVEL_REFACTOR 6)"; \
+  echo "refactor_scope=$(DRUPILOT_PROJECT_DIR="$ROOT" config_get DRUPILOT_REFACTOR_SCOPE "")"' \
   -- "$1"
 ```
 
@@ -64,18 +66,33 @@ toolchain commands.
 **Decision point — the developer picks the modernization scope (G3/G4/G5).** The
 "Drupal 11 way / PHP 8.x way" refactor is not all-or-nothing — surface a
 **multi-select** with **AskUserQuestion** (header "Modernize", **all pre-selected**
-by default, droppable) *unless* the run is autonomous or
-`DRUPILOT_REFACTOR_SCOPE` is already pinned:
+by default, droppable) *unless* the run is autonomous or a scope is already
+remembered: a non-empty `refactor_scope` from Step 1 (`DRUPILOT_REFACTOR_SCOPE`,
+from the environment or `.drupilot.json`, where an earlier run saved it) is the
+answer — skip the tab, use only its valid keys, and say so in one line. Each option has a key, used in the
+persisted csv:
 
-- **PHP 8 attributes** for plugins (annotations → `#[Block(...)]` etc.).
-- **Dependency injection** (`\Drupal::service()` → constructor injection).
-- **Strict types** (`declare(strict_types=1)` + parameter/return types).
-- **`final` by default** on classes not designed for extension — note this can
+- **PHP 8 attributes** (`attributes`) for plugins (annotations → `#[Block(...)]` etc.).
+- **Dependency injection** (`di`) (`\Drupal::service()` → constructor injection).
+- **Strict types** (`strict-types`) (`declare(strict_types=1)` + parameter/return types).
+- **`final` by default** (`final`) on classes not designed for extension — note this can
   break downstream extenders, so it is a deliberate opt-in.
-- **Remove all deprecations** (adopt current Symfony 7 / Twig 3 / Guzzle 7 idioms).
+- **Remove all deprecations** (`deprecations`) (adopt current Symfony 7 / Twig 3 / Guzzle 7 idioms).
 
 Plus a single follow-up tab (header "PHPStan level") for the quality bar: **6**
 (default, `DRUPILOT_PHPSTAN_LEVEL_REFACTOR`) / **5** / **4** — higher is stricter.
+
+Pre-answers come first, also in an autonomous run — run both:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key REFACTOR_SCOPE --subject "$1" --persist --json
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key PHPSTAN_LEVEL --subject "$1" --persist --json
+```
+
+A non-null `value` answers that tab (a comma-separated subset of the keys above
+for the scope; `6` / `5` / `4` for the level): skip the tab, use it, and say so in
+one line — the script already persisted it. A null `value` (unset, or invalid and
+already warned) means: ask as above.
 
 Persist the choices so a re-run does not re-ask: `prefs_set DRUPILOT_REFACTOR_SCOPE
 "<csv of selected keys>"` and `prefs_set DRUPILOT_PHPSTAN_LEVEL_REFACTOR <N>` (env
@@ -117,7 +134,9 @@ behavior is preserved):
 
   If `floor_ok` is false (a type's attribute class is newer than the declared
   floor, e.g. an entity type needs 11.1) and the run is not autonomous, ask with
-  **AskUserQuestion** (header "Attribute floor"; default **Keep the annotation**):
+  **AskUserQuestion** (header "Attribute floor"; default **Keep the annotation**;
+  a `value` from `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key ATTRIBUTE_FLOOR --subject "$1" --json`,
+  `keep` or `raise-floor`, answers it without the tab, also in an autonomous run):
   **Keep the annotation for those types** (BC, nothing more to do) or **Strip
   them and raise the floor** to `recommended_requirement` (re-run with
   `--raise-floor --apply`; a further BC break — mention it in the version-bump
@@ -235,7 +254,8 @@ Same as `/drupilot-port` Step 8b: list the candidates
 matches the pre-refactor code for each pitfall worth preventing (a POSIX ERE
 and/or `port-safety:<check>` / `signature:<id>`), ask which to record with
 **AskUserQuestion** (multiSelect, header "Learn"; skipped in an autonomous run,
-which records only detectors it checked and lists their ids), and record each
+which records only detectors it checked and lists their ids; a `value` from
+`choice.sh --key LEARN` answers it as in `/drupilot-port`), and record each
 with `patterns.sh add --subject "<subject>" --id <slug> --kind <kind> --pattern
 '<ERE>' [--rule <ref>] --why "<why>" --fix "<fix>" --json`.
 
@@ -287,7 +307,10 @@ beside the report (`port-summary.sh`; set `files_changed` in the manifest).
 
 **Unless the run is autonomous** (`DRUPILOT_AUTONOMOUS=true` — then print the
 recommendation and stop), offer a closing **AskUserQuestion** fork (header "Next
-step", default = recommended): **Run the tests** (`/drupilot-test`), **Get the
+step", default = recommended; a `value` from
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key NEXT_STEP --subject "$1" --json` answers
+it without the tab: `test`, `patch` or `done` — `refactor` does not apply here and
+is ignored, so ask): **Run the tests** (`/drupilot-test`), **Get the
 local patch** (`/drupilot-patch`), **Patch for a Drupal.org issue**
 (`/drupilot-patch` → issue-comment option), **Contribute upstream**
 (`/drupilot-contribute`, only for a contrib project and **never** autonomously),

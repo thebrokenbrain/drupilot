@@ -144,8 +144,8 @@ outside the site for a test-bed), `project-no-core` (a module of a Composer
 project checkout without installed core, e.g. a monorepo clone: test-bed
 `<parent>/<project>-d11`, outside the repository), `repo-subdir` (a module in a
 git repository that is not a Drupal project: `<parent of the repo>/<name>-d11`)
-or `standalone`. A sub-directory of a repository is always copied (`move`
-becomes `copy`), and the copy gets a git baseline (`git_seed_baseline`): its
+or `standalone`. A sub-directory of a repository is never moved (`move`
+becomes `copy`; a `symlink` is kept and edits the repository directly), and a copy gets a git baseline (`git_seed_baseline`): its
 local patch is module-relative, plus a `-repo.patch` relative to the repository
 root.
 

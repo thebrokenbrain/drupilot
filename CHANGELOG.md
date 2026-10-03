@@ -704,6 +704,26 @@ tag the commit `vX.Y.Z`.
   codes are byte-identical to before; the SessionStart hook and the command
   gates do not pass it. The doctor shows the installed vs known-good table and
   the `install-toolchain.sh --source reference` repair.
+- **Every tabbed choice can be answered in advance with `DRUPILOT_CHOICE_<KEY>`.**
+  The variable was documented but no command applied it. Each command now checks
+  it before showing a tab, skips the tab when the value is valid, says which
+  variable answered it, and remembers the answer in `.drupilot.json` exactly as
+  the tab would (for example `DRUPILOT_CHOICE_CORE_TARGET=keep-d10` is saved as
+  the core target strategy). It also applies in an autonomous run. Keys cover
+  the router intent, PHP target, workspace layout, a hand-edited config, existing
+  upstream work, core target, digests rules, plugin attributes, the Drupal 10
+  check, learned patterns, the next step, refactor scope and PHPStan level, the
+  attribute floor, the patch kind, the contribute mode, the clean level and the
+  `/drupilot-layers` tabs. An invalid value is ignored with a warning and the tab
+  is asked. The push to Drupal.org, the clean confirmation and what
+  `/drupilot-doctor` installs are never pre-answered. The registry is
+  `config/choices.json`; the new `scripts/env/choice.sh` resolves a key
+  (`--json`, `--persist`) and lists them all (`--list`). The shell fallback
+  `choose_one` also ignores a value for a fork that cannot be pre-answered.
+- **`DRUPILOT_WANT_REFACTOR` is now a documented setting** (default `false`, in
+  `config/defaults.json` and the README). `true` makes the next-step
+  recommendation suggest `/drupilot-refactor` right after the port.
+
 ### Changed
 - **Docs: troubleshooting, a scripts reference and the flow (section 5).**
   README / README_es "Troubleshooting" now opens with a pointer to
@@ -810,7 +830,29 @@ tag the commit `vX.Y.Z`.
   creates `drupal/recommended-project:<that version>` instead of resolving the
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
+- **`/drupilot-contribute` remembers the contribute mode** you pick in
+  `.drupilot.json`, so the next run pre-selects it, as the README already said.
+- **README reorganized.** Quick start keeps only the essential commands and a
+  short note on loose checkouts. The reference material moved to its own
+  sections: "Workspaces, outputs and state" (loose checkouts and monorepos, the
+  `.drupilot/` folder, the decision log, learned patterns, per-module state,
+  cleaning up test-beds, and the cached base core, now in its own subsection),
+  "Running under another tool" and "Pre-answering tabbed choices". The table of
+  contents lists every section and the main subsections, in both languages.
+- **The `/drupilot-refactor` scope has named keys** (`attributes`, `di`,
+  `strict-types`, `final`, `deprecations`), used in `DRUPILOT_REFACTOR_SCOPE`.
+
 ### Fixed
+
+- **A re-run of `/drupilot-refactor` asked the Modernize tab again.** The
+  modernization scope you picked is saved in `.drupilot.json`, but the command
+  never read it back. A re-run now reuses the remembered scope (or the one set
+  with `DRUPILOT_REFACTOR_SCOPE`), skips the tab and says so.
+- **A viability threshold set in `.drupilot.json` was not applied.**
+  `/drupilot-assess` and the `/drupilot` router now resolve
+  `DRUPILOT_VIABILITY_THRESHOLD` the same way as every other setting
+  (environment, then `.drupilot.json`, then the default), and the viability
+  report's threshold check shows that value.
 - **A cached reference core stopped every contrib or custom attribute
   conversion.** The attribute constructor check also reads each reference core
   under `.drupilot/cores` (left there by the core matrix of a module that keeps
@@ -1559,6 +1601,71 @@ tag the commit `vX.Y.Z`.
   command ... exit status 2"** from `ddev exec` on stderr, although exit 2 is
   Rector's normal "changes found" result. `run-rector.sh` drops that wrapper
   line when the run finished normally; a real crash keeps it.
+
+- **README corrections (English and Spanish).** A bare `/drupilot <path>` only
+  recommends the next step: the guided port example now uses `full` or a plain
+  request, and says it asks for confirmation before starting. The commands table
+  shows each command's real arguments (`/drupilot-setup [subject-path] [--php
+  X.Y]`, `/drupilot-layers … [--edges all|declared]`, `/drupilot-clean … [--all
+  [dir]] … [--core-cache]`, and the others). The test and patch use cases no
+  longer pass flags the commands do not accept: `--type`, `--coverage` and
+  `--base` are shown as direct script calls. The exit-code legend now lists `4`
+  and what each code means. The `verified-partial` test verdict is explained.
+  Version notes no longer describe unreleased behavior as a past release.
+- **A boolean `false` written in `.drupilot.json` is now honored** instead of
+  falling back to the default. For example `"DRUPILOT_DETERMINISTIC": false` or
+  `"DRUPILOT_USE_DIGESTS_RULES": false` now turn the feature off, as the string
+  `"false"` already did.
+- **`/drupilot-clean --level workspace` no longer copies the cached Drupal 10
+  reference cores** (`.drupilot/cores/`, about 200 MB each) out of the test-bed
+  with the reports. They are a rebuildable cache, so the clean now frees them.
+- **The "large refactor" warning uses one rule everywhere.**
+  `DRUPILOT_VIABILITY_THRESHOLD` takes `small`, `medium`, `large` or `xl` (the
+  S/M/L/XL verdict), and the warning appears only when the verdict is above it:
+  with the default `medium`, an M verdict no longer gets the warning in some
+  places and not in others.
+- **More README corrections (English and Spanish).** By default a loose
+  checkout is moved into the test-bed (it was described as left untouched). A
+  module inside a repository is never moved, but a `symlink` placement is kept
+  and then edits the module in the repository (it was described as always
+  copied). A `copy` placement leaves out only untracked residue and symlinks.
+  The `.drupilot/` folder lists everything it holds (`port-summary.json`, the
+  layer plans, `backups/`, `rector-attributes.php`, `cores/`), and the local
+  patch is written next to the module, not there. `DRUPILOT_ASSUME_YES` covers
+  the scripts' yes/no confirmations with or without a terminal, takes the
+  default of a multi-option choice, and never confirms the `/drupilot-clean`
+  deletion. `DRUPILOT_KEEP_D10` applies only while the core target strategy is
+  `auto`; `DRUPILOT_CODER_CONSTRAINT` applies only to a fresh toolchain
+  resolve. The push/MR guard also asks under `DRUPILOT_NONINTERACTIVE=1`, and
+  `DRUPILOT_HOOKS_GUARD` is listed among the hook switches. Not every script
+  takes `--subject`; `run-upgrade-status.sh` passes Drush's exit code through;
+  the developer gate validates the JSON of `config/`, `hooks/` and
+  `.claude-plugin/`; the smoke-test description no longer reads as the full
+  list. The attribute conversion and the Drupal 10 verification have their own
+  sections, and the table of contents lists them and the eight use cases. The
+  Spanish README uses one term for the test-bed ("banco de pruebas") and for
+  the known-good toolchain ("verificado").
+- **Further README corrections (English and Spanish).** A bare `/drupilot
+  <subject>` only recommends the next step unless `DRUPILOT_AUTONOMOUS=true`
+  (or `--no-confirm`) is set, which makes it run the whole flow hands-off; the
+  Quick start, the commands table, the guided-port use case and the hands-off
+  section now say so. The test verdicts are given by their recorded names
+  (`verified`, `verified-partial`, `regression`, `pre-existing-failures`,
+  `not-verified-unbaselined`, `not-verified-blocked`, `not-verified-no-tests`),
+  and the port summary lists them with the ones that block a port. A failing
+  test the baseline does not contain counts as a regression, and a missing
+  dependency in the baseline also leaves a test not baselined. The Drupal 10
+  support values `failed` (a blocker) and `n/a` (no Drupal 10 half) are
+  documented. The `tested` stage is recorded after a `verified` or
+  `verified-partial` whole-suite run. The exit-code table adds `make-patch.sh`
+  (a contribution patch that does not apply is discarded) and
+  `run-phpunit.sh --baseline` (nothing ran) to exit `1`. The scripts reference
+  lists the shared `lib/` libraries (`common.sh`, `ext-scan.sh`,
+  `php-scan.sh`). The contribute examples use a real path
+  (`web/modules/contrib/some_module`). The Spanish README fixes several
+  translation slips: it no longer turns the staged plan's guarantee into a
+  possibility ("aun así"), says what a crashed baseline group is, and uses
+  one term each for the baseline, the PHP target and the learned pitfalls.
 
 ## [0.8.4] - 2026-06-23
 

@@ -86,6 +86,12 @@ both modes.
     the GitLab API **only if it responds**; if the API is blocked, **degrade
     gracefully** to printing the MR URL for a one-click manual open.
 
+  A pre-answer skips this tab: when
+  `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key CONTRIB_MODE --subject "<SUBJECT>" --persist --json`
+  returns a `value` (`semi` / `auto`), use it and say so in one line. Persist a
+  tab answer the same way, with `prefs_set DRUPILOT_CONTRIB_MODE <mode>`, so the
+  next run pre-selects it.
+
   (An autonomous run never reaches this command — it is `disable-model-invocation`
   and outward-facing.)
 
@@ -139,6 +145,10 @@ developer actually consents:
   instead (route to `/drupilot-patch` → issue-comment option). Lets them validate
   on the issue before committing to an MR.
 - **Cancel** — stop with nothing sent.
+
+This tab is never pre-answered: `DRUPILOT_CHOICE_PUSH` has no effect
+(`config/choices.json` marks it `preanswer: false`). `DRUPILOT_CONTRIB_MODE=auto`
+is the explicit setting that skips it.
 
 In **auto** mode, skip the tab and proceed (the mode's whole point), but the
 `guard-contrib.sh` PreToolUse backstop still applies, and an autonomous run is

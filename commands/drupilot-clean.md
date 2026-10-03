@@ -54,7 +54,10 @@ clean every test-bed drupilot has state for (plus, with a directory after
 
 ## Step 3 — Ask the level (tabbed choice)
 
-Unless `$ARGUMENTS` already names a level, use **AskUserQuestion**, header
+Unless `$ARGUMENTS` already names a level, check for a pre-answer —
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key CLEAN_LEVEL --subject "<SUBJECT>" --json`
+returns a `value` (`vendor` / `ddev` / `workspace`) to use without the tab (say
+so in one line) — and otherwise use **AskUserQuestion**, header
 "Clean level", the recommended option first:
 
 - **vendor (Recommended)** — free most of the disk (vendor/, core, contrib) and
@@ -87,8 +90,9 @@ refusal by deleting things by hand.
 ## Step 5 — Confirm, then clean
 
 If nothing is `planned`, stop here. Otherwise use **AskUserQuestion**, header
-"Proceed?", options **Clean now** / **Cancel** (default: Cancel). Only on
-**Clean now**:
+"Proceed?", options **Clean now** / **Cancel** (default: Cancel). This
+confirmation is never pre-answered (`DRUPILOT_CHOICE_CLEAN_CONFIRM` has no
+effect). Only on **Clean now**:
 
 ```bash
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/clean.sh" --subject "<SUBJECT>" --level <LEVEL> --yes --json

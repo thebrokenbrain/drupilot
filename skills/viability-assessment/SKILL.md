@@ -421,8 +421,10 @@ verdict is auditable and reproduces. The auto-fixable share (official vs digests
 is reported separately as context; it does **not** change the verdict — it
 measures what is cheap, not the remaining effort.
 
-Compare against `DRUPILOT_VIABILITY_THRESHOLD` (order `S < M < L < XL`; default
-`medium`). If the verdict meets or exceeds it, set the "above threshold" flag.
+Compare against `DRUPILOT_VIABILITY_THRESHOLD` (`small` / `medium` / `large` /
+`xl`, or the letters `S` / `M` / `L` / `XL`, case-insensitive; order
+`S < M < L < XL`; default `medium`). If the verdict strictly exceeds it (with
+`medium`: an L or XL verdict), set the "above threshold" flag.
 **Even then, still produce the phased plan** — never withhold it.
 
 ## 6. Produce the artifacts

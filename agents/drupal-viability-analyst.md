@@ -201,8 +201,8 @@ Reason holistically; broad guide:
   migration, jQuery UI removal), or a key contrib dependency lagging on D11.
 - **XL** — multiple hard breaks, deep Symfony 7 surface, large untyped codebase, or a
   blocking contrib dependency with no D11 path.
-Compare the estimate to `DRUPILOT_VIABILITY_THRESHOLD` (default medium). If it
-exceeds the threshold, mark it clearly **and still deliver the plan**.
+Compare the estimate to `DRUPILOT_VIABILITY_THRESHOLD` (`small`/`medium`/`large`/`xl`
+≡ S/M/L/XL; default medium). If it strictly exceeds the threshold, mark it clearly **and still deliver the plan**.
 
 ## Deliverables
 

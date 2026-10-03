@@ -1,0 +1,171 @@
+{
+  "_comment": "Registry of drupilot's tabbed choices and their DRUPILOT_CHOICE_<KEY> pre-answers (resolved and validated by scripts/env/choice.sh). Each entry names the command and tab it answers, the accepted values (the first one listed is not necessarily the tab's default: see 'default'), whether several values may be given ('multi': a comma-separated subset), and what a pre-answer persists to .drupilot.json exactly as the tab's answer would: 'persist_key' copies the value into that setting, 'persist_map' maps a value to {setting: value}. 'preanswer': false marks a fork that must stay a human decision (outward-facing, destructive or privileged); its variable is ignored with a warning. A pre-answer is read through config_get (environment > .drupilot.json > defaults), so the environment variable is the usual way to set it. An explicit command argument (e.g. /drupilot-setup --php, /drupilot-clean --level) always wins over it, and an environment variable of the persisted setting itself (e.g. DRUPILOT_PHP_TARGET) still wins over the persisted value.",
+  "choices": {
+    "INTENT": {
+      "command": "/drupilot",
+      "header": "How to proceed",
+      "options": ["full", "next", "auto"],
+      "default": "next",
+      "note": "Answers only the ambiguous-intent tab; an explicit mode word wins. 'auto' is as safe as the auto mode word: it never pushes, opens a Merge Request or contributes."
+    },
+    "PHP_TARGET": {
+      "command": "/drupilot-setup",
+      "header": "PHP target",
+      "options": ["8.3", "8.4", "8.5"],
+      "default": "8.4",
+      "persist_key": "DRUPILOT_PHP_TARGET",
+      "note": "8.5 is not confirmed on any Drupal 11 branch: it is accepted with a warning. A --php X.Y argument wins."
+    },
+    "PLACEMENT": {
+      "command": "/drupilot-setup",
+      "header": "Workspace layout",
+      "options": ["move", "symlink", "copy"],
+      "default": "move",
+      "persist_key": "DRUPILOT_PLACEMENT",
+      "note": "For a module inside a repository, 'move' becomes 'copy' (moving would delete it from the repository); 'symlink' and 'copy' are kept, and 'symlink' edits the repository directly."
+    },
+    "CONFIG_CONFLICT": {
+      "command": "/drupilot-setup",
+      "header": "Hand-edited config",
+      "options": ["keep", "replace"],
+      "default": "keep",
+      "note": "What to do with a hand-edited rector.php / phpstan.neon / phpcs.xml.dist that differs from the template ('replace' backs the old copy up first)."
+    },
+    "EXISTING_WORK": {
+      "command": "/drupilot-assess",
+      "header": "Existing work",
+      "options": ["independent", "existing"],
+      "default": "independent",
+      "note": "Asked only when an upstream Drupal 11 issue looks like a match."
+    },
+    "CORE_TARGET": {
+      "command": "/drupilot-port",
+      "header": "Core target",
+      "options": ["auto", "keep-d10", "d11-only"],
+      "default": "auto",
+      "persist_key": "DRUPILOT_CORE_TARGET_STRATEGY"
+    },
+    "DIGESTS_RULES": {
+      "command": "/drupilot-port",
+      "header": "Digests rules",
+      "options": ["apply-unflagged", "skip"],
+      "default": "review",
+      "note": "The tab's default, 'Review and pick', is a per-rule review and cannot be pre-answered; leave the variable unset to get it."
+    },
+    "PORT_ATTRIBUTES": {
+      "command": "/drupilot-port",
+      "header": "Plugin attributes",
+      "options": ["skip", "add"],
+      "default": "skip",
+      "note": "'add' adds the attributes next to the annotations and raises core_version_requirement (e.g. ^10.3 || ^11)."
+    },
+    "D10_CHECK": {
+      "command": "/drupilot-port",
+      "header": "Drupal 10 check",
+      "options": ["fix", "raise-floor", "d11-only", "declared"],
+      "default": "fix",
+      "persist_map": {"d11-only": {"DRUPILOT_CORE_TARGET_STRATEGY": "d11-only"}},
+      "note": "Asked only when the core matrix finds a Drupal 10 incompatibility."
+    },
+    "LEARN": {
+      "command": "/drupilot-port, /drupilot-refactor",
+      "header": "Learn",
+      "options": ["all", "none"],
+      "default": "all",
+      "note": "'all' records every proposed pattern whose detector was checked against the pre-port code; 'none' records nothing."
+    },
+    "NEXT_STEP": {
+      "command": "/drupilot-port, /drupilot-refactor",
+      "header": "Next step",
+      "options": ["test", "patch", "refactor", "done"],
+      "default": "test",
+      "note": "'refactor' applies only after /drupilot-port. Contributing upstream and the issue-comment patch are never pre-answered."
+    },
+    "REFACTOR_SCOPE": {
+      "command": "/drupilot-refactor",
+      "header": "Modernize",
+      "options": ["attributes", "di", "strict-types", "final", "deprecations"],
+      "multi": true,
+      "default": "attributes,di,strict-types,final,deprecations",
+      "persist_key": "DRUPILOT_REFACTOR_SCOPE"
+    },
+    "PHPSTAN_LEVEL": {
+      "command": "/drupilot-refactor",
+      "header": "PHPStan level",
+      "options": ["6", "5", "4"],
+      "default": "6",
+      "persist_key": "DRUPILOT_PHPSTAN_LEVEL_REFACTOR"
+    },
+    "ATTRIBUTE_FLOOR": {
+      "command": "/drupilot-refactor",
+      "header": "Attribute floor",
+      "options": ["keep", "raise-floor"],
+      "default": "keep"
+    },
+    "PATCH_KIND": {
+      "command": "/drupilot-patch",
+      "header": "Patch for",
+      "options": ["local", "issue"],
+      "default": "local",
+      "note": "'issue' still needs the issue id (the command's second argument); without it the id is asked."
+    },
+    "CONTRIB_MODE": {
+      "command": "/drupilot-contribute",
+      "header": "Contribute mode",
+      "options": ["semi", "auto"],
+      "default": "semi",
+      "persist_key": "DRUPILOT_CONTRIB_MODE"
+    },
+    "PUSH": {
+      "command": "/drupilot-contribute",
+      "header": "Push to Drupal.org",
+      "preanswer": false,
+      "note": "The push is the point of no return and stays a human decision in semi mode. DRUPILOT_CONTRIB_MODE=auto is the explicit setting that skips this tab."
+    },
+    "CLEAN_LEVEL": {
+      "command": "/drupilot-clean",
+      "header": "Clean level",
+      "options": ["vendor", "ddev", "workspace"],
+      "default": "vendor",
+      "note": "A --level argument wins."
+    },
+    "CLEAN_CONFIRM": {
+      "command": "/drupilot-clean",
+      "header": "Proceed?",
+      "preanswer": false,
+      "note": "Deleting a test-bed always needs an explicit answer after the preview. The cached base cores are removed only with the --core-cache argument."
+    },
+    "DOCTOR_INSTALL": {
+      "command": "/drupilot-doctor",
+      "header": "Install / How",
+      "preanswer": false,
+      "note": "drupilot never installs software without an explicit confirmation."
+    },
+    "LAYERS_PLAN": {
+      "command": "/drupilot-layers",
+      "header": "Layers plan",
+      "options": ["port", "stop"],
+      "default": "port",
+      "note": "Adding the proposed dependencies edits info.yml files and always needs a confirmation, so it is not a pre-answer."
+    },
+    "LAYERS_SANDBOX": {
+      "command": "/drupilot-layers",
+      "header": "Layers sandbox",
+      "options": ["per-module", "shared"],
+      "default": "per-module",
+      "persist_key": "DRUPILOT_LAYERS_SANDBOX"
+    },
+    "LAYERS_CONFIRM": {
+      "command": "/drupilot-layers",
+      "header": "Port this layer",
+      "options": ["proceed", "stop"],
+      "default": "proceed"
+    },
+    "LAYERS_NEXT": {
+      "command": "/drupilot-layers",
+      "header": "Next layer",
+      "options": ["next-layer", "stop"],
+      "default": "next-layer"
+    }
+  }
+}

@@ -71,8 +71,19 @@ you can show the consequences:
 **Decision point — let the developer own the core target (G4/G5).** This is one
 of the most consequential choices in the port, so surface it as a tab with
 **AskUserQuestion** (header "Core target") *unless* the run is autonomous
-(`DRUPILOT_AUTONOMOUS=true`) or `DRUPILOT_CORE_TARGET_STRATEGY` /
-`DRUPILOT_CHOICE_CORE_TARGET` is already pinned. Make the **helper's
+(`DRUPILOT_AUTONOMOUS=true`) or `DRUPILOT_CORE_TARGET_STRATEGY` is already
+pinned. A pre-answer comes first, also in an autonomous run:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key CORE_TARGET --subject "$1" --persist --json
+```
+
+When its `value` is not null (`auto` / `keep-d10` / `d11-only`), it is the
+answer: no tab, the script already persisted it as
+`DRUPILOT_CORE_TARGET_STRATEGY`; re-run `core-strategy.sh` above with
+`DRUPILOT_CORE_TARGET_STRATEGY=<value>` to get its consequences and say so in one
+line (if `env_override` lists the strategy, the environment variable wins). When
+`value` is null (unset or invalid, already warned), continue. Make the **helper's
 recommendation the first/default option**, and show the consequence of each from
 the JSON (`recommended_core_version_requirement`, `require_php`, `version_bump`):
 
@@ -200,7 +211,10 @@ are keeping (from Step 1 — e.g. an 11.2+ API while keeping `^10 || ^11`), sinc
 applying it silently raises the effective `core_version_requirement`. Present the
 review and a tab with **AskUserQuestion** (header "Digests rules", default
 "Review and pick") — skip it only in an autonomous run, where the safe default is
-to **skip** flagged rules:
+to **skip** flagged rules. A pre-answer skips the tab, also in an autonomous
+run: when `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key DIGESTS_RULES --subject "$1" --json`
+returns a `value`, `apply-unflagged` applies every unflagged rule and `skip`
+applies nothing (say so in one line). The per-rule review cannot be pre-answered.
 
 - **Review and pick** — show the per-rule list (rule → target → files, flagged
   ones marked) and apply only the rules the developer keeps.
@@ -288,7 +302,10 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/convert-attributes.sh" --subject "$
 ```
 
 If it reports `changed_files` > 0 **and the run is not autonomous**, ask with
-**AskUserQuestion** (header "Plugin attributes"; default **Skip**):
+**AskUserQuestion** (header "Plugin attributes"; default **Skip**), unless
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key PORT_ATTRIBUTES --subject "$1" --json`
+returns a `value` (`skip` / `add`, also honored in an autonomous run): then act
+on it without the tab and say so in one line.
 
 - **Skip (recommended for a minimal port)** — leave the annotations; Phase 2
   (`/drupilot-refactor`, "PHP 8 attributes") converts them.
@@ -428,6 +445,10 @@ makes the other legs `skipped` (declared-not-verified), never `failed`.
   the floor** (e.g. `^10.3 || ^11`) · **Drop to `^11`** (persist with
   `prefs_set DRUPILOT_CORE_TARGET_STRATEGY d11-only`) · **Keep it
   declared-not-verified** (recorded in the report). Re-run the matrix after a fix.
+  A pre-answer replaces the tab, also in an autonomous run: when
+  `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key D10_CHECK --subject "$1" --persist --json`
+  returns a `value` (`fix` / `raise-floor` / `d11-only` / `declared`), act on that
+  option (`d11-only` is already persisted) and say so in one line.
 - **`d10_support: verified-static`** — report it as a static verification
   (PHPStan + `php -l` on Drupal 10.x.y, including the declared floor minor); the
   runtime is not exercised there.
@@ -478,7 +499,10 @@ deterministic rule (`port-safety:<check>` of `check-port-safety.sh`,
 autonomous**, ask with **AskUserQuestion** (multiSelect, header "Learn"; every
 proposed pattern pre-selected, plus "None"): which ones to record. In an
 autonomous run, record only those whose detector you checked, and list the ids
-in the summary for review. Record each:
+in the summary for review. A pre-answer replaces the tab: when
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key LEARN --subject "$1" --json` returns
+`all`, record every proposed pattern whose detector you checked against the
+pre-port code; `none` records nothing. Record each:
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/patterns.sh" add --subject "<subject>" \
@@ -583,7 +607,12 @@ fall back to counting the patch.
 Phase 1 is done. **Unless the run is autonomous** (`DRUPILOT_AUTONOMOUS=true` —
 then just print the recommendation and stop, doing nothing outward-facing), put
 the developer back in control with an **AskUserQuestion** fork (header "Next
-step", default = the recommended option). Offer the relevant subset of:
+step", default = the recommended option). A pre-answer replaces the tab: when
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key NEXT_STEP --subject "$1" --json` returns
+a `value`, route to it (`test` → `/drupilot-test`, `patch` → `/drupilot-patch`
+local patch, `refactor` → `/drupilot-refactor`, `done` → stop) and say so in one
+line. Contributing and the issue-comment patch are never pre-answered. Offer the
+relevant subset of:
 
 - **Run the tests** (`/drupilot-test`) — recommended: the green suite is the
   evidence behavior was preserved.

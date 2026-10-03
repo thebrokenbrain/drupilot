@@ -32,8 +32,21 @@ cwd), its type (module/theme), and the effective PHP target:
 version pins the whole toolchain (Rector PHP set, PHPStan, PHPCS, DDEV
 `php_version`), so make it an explicit choice with **AskUserQuestion** (header
 "PHP target", default = the recommended option) *unless* a `--php X.Y` flag is in
-`$ARGUMENTS`, or `DRUPILOT_PHP_TARGET` / `DRUPILOT_CHOICE_PHP_TARGET` is already
-pinned, or the run is autonomous. Offer:
+`$ARGUMENTS`, or `DRUPILOT_PHP_TARGET` is already pinned (environment or
+`.drupilot.json`), or the run is autonomous. A pre-answer comes first (after
+`--php`): run
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key PHP_TARGET --subject "<subject_dir>" --persist --json
+```
+
+When its `value` is not null, it is the answer: no tab, export
+`DRUPILOT_PHP_TARGET=<value>` for the following scripts (the script already
+persisted it to `.drupilot.json` when a Drupal root exists; otherwise persist it
+after 3a with `prefs_set`), and say so in one line. If `env_override` lists
+`DRUPILOT_PHP_TARGET`, the environment variable wins: say so and keep it. A
+pre-answered `8.5` still gets the unconfirmed warning below. When `value` is null
+(unset, or invalid — already warned), continue as above. Offer:
 
 - **8.4 — recommended** (`php_support.recommended`) — current, supported on
   Drupal 11; the default.
@@ -105,6 +118,11 @@ resolves with the `move` default). Offer:
   test-bed; the original is untouched. Gate on `autonomous=false`.
 
 Persist the answer with `prefs_set DRUPILOT_PLACEMENT <mode>` so place-subject.sh reuses it.
+Before the tab, check for a pre-answer, which also applies to an autonomous run:
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key PLACEMENT --subject "<subject_dir>" --json`.
+When its `value` is not null (`move` / `symlink` / `copy`), skip the tab, prefix
+`place-subject.sh` with `DRUPILOT_PLACEMENT=<value>` (it persists the placement
+itself) and say so in one line; when it is null, ask.
 
 Then, AFTER 3a has created Drupal, place the subject (idempotent — detect-and-skip when
 already placed). Pass `--yes` because the workspace tab above already captured consent for
@@ -267,7 +285,9 @@ Read the JSON (`files[].status`, `ok`, `restart_needed`) and act on it:
 - `differs` (exit 3) — the file exists, carries the current template generation and is
   not what the template renders, i.e. it was hand-edited. The unified diff is on
   stderr. Do not overwrite a config the user has hand-edited without saying so: show the
-  diff and ask (`AskUserQuestion`: replace / keep). On "replace", re-run with
+  diff and ask (`AskUserQuestion`: replace / keep), unless
+  `choice.sh --key CONFIG_CONFLICT --subject "<subject_dir>" --json` returns a `value` (`keep` / `replace`):
+  then apply it without asking and say so. On "replace", re-run with
   `--only <name> --force` (the old copy is backed up under `<drupal_root>/.drupilot/backups/`).
   An autonomous run keeps the existing file and reports it.
 - `invalid` (exit 3) — the rendered file failed validation and was NOT written; report the

@@ -551,6 +551,9 @@ container, which checks the detected PHP floor for real.
   - **Keep it declared-not-verified** — record the failure in the report.
   An autonomous run takes the safe default: fix the code; if that is not
   mechanical, recommend dropping to `^11` in the report (no tab).
+  `DRUPILOT_CHOICE_D10_CHECK` (`fix` / `raise-floor` / `d11-only` / `declared`,
+  resolved by `scripts/env/choice.sh --key D10_CHECK --persist --json`) answers
+  the tab in advance, also in an autonomous run.
 - **`d10_support: verified-static`** — PHPStan + `php -l` are clean on Drupal 10,
   including the declared floor minor; report it as *static*: the runtime (the
   test suite on Drupal 10) is not exercised.

@@ -25,7 +25,8 @@
 #              followed), and a 'copy' is discarded only when it holds nothing
 #              the origin lacks (same git HEAD, clean tree) or with
 #              --discard-copies. The test-bed's .drupilot/ reports are copied to
-#              each origin's .drupilot/ (self-gitignored) first — or, with no
+#              each origin's .drupilot/ (self-gitignored; the cores/ cache of
+#              reference cores is not copied) first — or, with no
 #              origin to copy them to, to the root's hidden state dir
 #              (<state>/reports-<UTC time>) — and a discarded copy's *.patch
 #              files go to .drupilot/patches/. "Holds nothing the origin
@@ -566,7 +567,14 @@ exec_op() {
       ;;
     rescue-reports)
       mkdir -p "$b" || return 1
-      cp -R -p "$a/." "$b/" || return 1
+      # Everything but cores/: the core matrix's reference cores (about 200 MB
+      # each) are a rebuildable cache, so rescuing them would only move the
+      # disk use the clean is meant to free.
+      for e in "$a"/* "$a"/.[!.]* "$a"/..?*; do
+        [[ -e "$e" || -L "$e" ]] || continue
+        [[ "$(basename "$e")" == "cores" ]] && continue
+        cp -R -p "$e" "$b/" || return 1
+      done
       [[ -f "$b/.gitignore" ]] || printf '*\n' > "$b/.gitignore"
       ;;
     rescue-patches)

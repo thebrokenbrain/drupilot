@@ -1,6 +1,6 @@
 ---
 description: Read-only status summary for a Drupal port - environment readiness, effective PHP target, DDEV state, current phase, last cached assessment, and last test result, plus the suggested next step; with --all, a portfolio table of every module/workspace drupilot has state for. No side effects (never mutates anything, never runs the toolchain). Use for "/drupilot-status", "where am I", "what's the state of this port", "status of all my ports".
-argument-hint: "[subject-path] | --all [dir|registry-file]"
+argument-hint: "[subject-path] | --all [dir|registry-file|everything]"
 allowed-tools: Bash, Read
 ---
 

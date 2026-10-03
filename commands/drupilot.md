@@ -70,6 +70,12 @@ the user asked you to port/upgrade the module) or **recommend the next logical s
   present a tab with **AskUserQuestion** (header "How to proceed", default "Just the
   next step"): **Run the full port** (guided, with confirmations) · **Just recommend
   the next step** (read-only) · **Hands-off auto** (unattended, never outward-facing).
+  Before showing that tab, check for a pre-answer:
+  `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key INTENT --subject "<subject_dir>" --json`.
+  When its `value` is not null (`full`, `next` or `auto`), use it as the answer
+  without the tab and say so in one line (`DRUPILOT_CHOICE_INTENT=<value>`); when
+  it is null, ask (an invalid value was already reported as a warning). It only
+  answers this ambiguous-intent tab: an explicit mode word or a clear request wins.
   Do **not** silently fall back to `next` when the user clearly asked you to port.
 
 ## Step 1 — Detect the environment (gates, no side effects)
@@ -97,7 +103,7 @@ Then detect the effective PHP target and whether it is confirmed:
 Also read the autonomous flag and the contribution mode (so the summary and the
 flow honor them):
 
-!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; printf "autonomous=%s\n" "$(config_get DRUPILOT_AUTONOMOUS false)"; printf "contrib_mode=%s\n" "$(config_get DRUPILOT_CONTRIB_MODE semi)"; printf "generate_rules=%s\n" "$(config_get DRUPILOT_GENERATE_RULES ask)"; printf "deterministic=%s\n" "$(config_get DRUPILOT_DETERMINISTIC true)"'`
+!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; printf "autonomous=%s\n" "$(config_get DRUPILOT_AUTONOMOUS false)"; printf "contrib_mode=%s\n" "$(config_get DRUPILOT_CONTRIB_MODE semi)"; printf "generate_rules=%s\n" "$(config_get DRUPILOT_GENERATE_RULES ask)"; printf "deterministic=%s\n" "$(config_get DRUPILOT_DETERMINISTIC true)"; printf "viability_threshold=%s\n" "$(config_get DRUPILOT_VIABILITY_THRESHOLD medium)"'`
 
 ## Step 3 — Read the cached assessment (if any)
 
@@ -187,7 +193,7 @@ If the mode is `auto` (the `auto` mode word, or `DRUPILOT_AUTONOMOUS=true`):
 3. If a hard requirement is missing for a stage, the orchestrator stops that stage
    with the actionable report and no side effects, exactly as in guided mode.
 
-Honor `DRUPILOT_VIABILITY_THRESHOLD`: if the assessment exceeds it, the
+Honor `DRUPILOT_VIABILITY_THRESHOLD` (the resolved `viability_threshold` above): if the assessment exceeds it, the
 orchestrator still ports (it never refuses) but says so plainly in the final
 summary.
 

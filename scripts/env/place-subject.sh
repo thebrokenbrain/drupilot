@@ -29,7 +29,9 @@
 #           first commit is the pristine module (git_seed_baseline): the local
 #           patch is then module-relative and holds only the port.
 #   A module that is a sub-directory of a repository (resolve-workspace.sh
-#   layout project-no-core / repo-subdir) is copied, never moved.
+#   layout project-no-core / repo-subdir) is never moved: resolve-workspace.sh
+#   turns 'move' into 'copy'. A 'symlink' placement is kept and links the
+#   module inside that repository, so the port edits it there.
 #
 # Origin hygiene: before placing, the origin's git status is recorded with
 # origin-hygiene.sh --snapshot (hidden state, keyed by the Drupal root) so a
