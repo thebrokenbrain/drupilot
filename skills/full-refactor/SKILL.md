@@ -71,6 +71,8 @@ no-op — that is the only discretion.
   `@Action`, `@QueueWorker`, `@EntityType`, `@RenderElement`, …) is converted:
   move ALL metadata into the matching `#[...]` attribute and drop the now-unused
   `use Drupal\...\Annotation\...;`. Never leave a plugin half-converted.
+  Do it with the deterministic pass of §1a, not by hand; hand-convert only what
+  it reports as unsupported, skipped or restored.
 - **`\Drupal::` → dependency injection.** EVERY `\Drupal::service('x')` and
   `\Drupal::` accessor in a class that can receive services is injected:
   `ContainerFactoryPluginInterface::create()` for plugins,
@@ -121,6 +123,60 @@ no-op — that is the only discretion.
 Do **not** introduce value objects/enums or other redesigns unless they are
 required to remove a deprecation: Phase 2 modernizes APIs, it does not redesign
 behavior.
+
+## 1a. Annotations → attributes: the deterministic pass (`attributes` scope)
+
+`scripts/analysis/convert-attributes.sh` (also `run-rector.sh --attributes`)
+runs drupal-rector's `AnnotationToAttributeRector` (shipped by
+palantirnet/drupal-rector 0.21.x but configured in no set) with a config it
+renders from `templates/rector-attributes.php.tmpl` into
+`<root>/.drupilot/rector-attributes.php`. Dry run first, review, then apply:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/convert-attributes.sh" --subject "<path>" --mode strip --json
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/convert-attributes.sh" --subject "<path>" --mode strip --apply --json
+```
+
+- **Mode follows the core target (§1b).** `strip` (remove the annotation) when the
+  requirement is `^11`; a type whose attribute class is newer than the declared
+  floor keeps its annotation next to the attribute (`action: keep`, listed with
+  the reason) — the pass never raises the floor on its own. `--raise-floor`
+  strips those too and rewrites `core_version_requirement` in every `*.info.yml`
+  to `recommended_requirement` (e.g. `^11.1` once an entity type is converted):
+  only with the developer's explicit agreement, it is a BC break. When `^10 || ^11`
+  is deliberately kept, use `--mode keep` (attributes added, annotations kept,
+  BC) and apply the `recommended_requirement` it reports so the declared floor
+  covers the attribute classes (PHPStan on an older core reports them unknown).
+- **Supported core types** (`config/plugin-attributes.json`, each verified
+  against drupal/core source with the minor that ships its attribute class and
+  makes its manager discover it): `Action`, `Block` (10.2); `Archiver`,
+  `Condition`, `DisplayVariant`, `PageDisplayVariant`, `EntityReferenceSelection`,
+  `FieldFormatter`, `FieldWidget`, `FieldType`, `ImageToolkit`,
+  `ImageToolkitOperation`, `Layout`, `Mail`, `QueueWorker`, `RenderElement`,
+  `FormElement`, `DataType`, `Constraint`, `Editor`, `Filter`, `HelpSection`,
+  `ImageEffect`, `LanguageNegotiation`, `SectionStorage`, `MediaSource`,
+  `MigrateDestination`, `MigrateProcessPlugin` → `#[MigrateProcess]`,
+  `MigrateField`, `RestResource`, `SearchPlugin` → `#[Search]`, `WorkflowType`
+  and every `Views*` plugin type (10.3); `EntityType`, `ContentEntityType`,
+  `ConfigEntityType` (11.1); `MigrateSource` (11.2). `CKEditor5Plugin` is not
+  supported (nested annotation objects): convert it by hand.
+- **Custom plugin types** (project or contrib, e.g. `ExtraFieldDisplay`): declare
+  them in `DRUPILOT_ATTRIBUTE_PLUGIN_TYPES` (env or `.drupilot.json`) as
+  `Annotation=Fully\Qualified\AttributeClass[@MAJOR.MINOR]`, comma-separated.
+  A custom type is converted only when its attribute class exists under the
+  Drupal root, and stripped only when a plugin manager references the class
+  (an annotation-only manager would no longer find the plugin).
+- **What the pass guards.** Attributes are printed fully qualified (the 0.21.x
+  rule only recognises an existing attribute by its FQCN, so a short imported
+  one would be duplicated on a re-run); a file already carrying a short-named
+  attribute of a converted type is skipped (`skipped_files`: finish it by hand);
+  after `--apply` a duplicate attribute or a `php -l` failure restores the file
+  from a pre-run backup (`restored_files`); a class constant the annotation named
+  by a namespace-relative qualified name (`type = Drupal\filter\Plugin\FilterInterface::TYPE_…`)
+  is fully qualified (`\Drupal\…`), otherwise PHP resolves it inside the
+  plugin's namespace and plugin discovery fatals. A re-run is a no-op.
+- Afterwards, `run-phpcs.sh --fix` removes the now-unused annotation `use`
+  statements; merge the JSON's `rule_hits` into the manifest's `rector_rules`.
 
 ## 1b. Reconsider the core target (a refactor usually warrants a new major)
 

@@ -1022,6 +1022,41 @@ core_floor_from_requirement() {
   return 0
 }
 
+# core_requirement_raise_floor <constraint> <MAJOR.MINOR> -> the constraint with
+# its lowest admitted core raised to MAJOR.MINOR, keeping every higher major:
+# ('^10 || ^11', 10.3) -> '^10.3 || ^11' · ('^10 || ^11', 11.1) -> '^11.1' ·
+# ('^10.3 || ^11 || ^12', 10.2) -> unchanged · ('^11', 11.1) -> '^11.1' ·
+# ('>=10.2', 10.3) -> '>=10.3' · ('', 10.3) -> '^10.3'. An alternative of a lower major is dropped; one of the
+# same major whose minor is lower is replaced by ^MAJOR.MINOR. Used when a
+# change needs a newer core than declared (e.g. plugin attributes whose
+# annotation is removed: convert-attributes.sh). Pure: STDOUT only.
+core_requirement_raise_floor() {
+  local req="${1:-}" floor="${2:-}"
+  [[ "$floor" =~ ^[0-9]+\.[0-9]+$ ]] || { printf '%s' "$req"; return 0; }
+  printf '%s' "$req" | tr -d "\"'" | tr '|' '\n' | AWKV_f="$floor" awk '
+    BEGIN { split(ENVIRON["AWKV_f"], f, "."); fmaj = f[1] + 0; fmin = f[2] + 0; out = ""; same = 0 }
+    function add(s) { out = (out == "") ? s : out " || " s }
+    {
+      a = $0; sub(/^[ \t]+/, "", a); sub(/[ \t]+$/, "", a)
+      if (a == "") next
+      p = a; sub(/^(\^|~|>=|>|==|=|v)+/, "", p)
+      if (p !~ /^[0-9]+/) { add(a); next }
+      split(p, v, "."); maj = v[1] + 0; mn = (v[2] ~ /^[0-9]+$/) ? v[2] + 0 : 0
+      if (maj < fmaj) next
+      if (maj == fmaj) {
+        same = 1
+        if (mn < fmin) a = (a ~ /^>/) ? ">=" fmaj "." fmin : ((fmin > 0) ? "^" fmaj "." fmin : "^" fmaj)
+      }
+      add(a)
+    }
+    END {
+      fl = (fmin > 0) ? "^" fmaj "." fmin : "^" fmaj
+      if (!same) out = (out == "") ? fl : fl " || " out
+      printf "%s", out
+    }'
+  return 0
+}
+
 # core_verify_legs <constraint> -> the core "legs" a Composer-style constraint
 # asks to verify, one per line, lowest first: the lower bound of each declared
 # major, as MAJOR.MINOR when an explicit minor above 0 is given, else MAJOR

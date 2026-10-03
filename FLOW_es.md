@@ -82,10 +82,11 @@ flowchart TD
     GATE2{"¿Qué sigue?"}:::human
 
     subgraph F2["FASE 2 · Modernización — opcional · solo Drupal 11"]
+      RFA["convert-attributes.sh<br/>anotaciones de plugins → atributos #[...]<br/>(drupal-rector, modo strip)"]:::script
       RF(("La IA reescribe al «estilo Drupal 11»:<br/>atributos · inyección de dependencias<br/>tipado estricto · sin deprecaciones")):::ai
       RFV["Validación a PHPStan nivel 5-6<br/>con los tests en verde"]:::script
       DONE2(["Módulo modernizado — solo Drupal 11<br/>core_version_requirement ^11 · nueva versión major"]):::milestone
-      RF --> RFV --> DONE2
+      RFA --> RF --> RFV --> DONE2
     end
 
     subgraph CT["Contribución — opcional · nunca en modo autónomo"]
@@ -102,7 +103,7 @@ flowchart TD
     ASSESS --> GATE1
     GATE1 -->|continuar| PORT
     DONE1 --> GATE2
-    GATE2 -->|"modernizar (Fase 2)"| RF
+    GATE2 -->|"modernizar (Fase 2)"| RFA
     GATE2 -->|contribuir| CC
 
     style F1 fill:#f0f9ff,stroke:#38bdf8,stroke-width:1px
@@ -154,6 +155,8 @@ flowchart TD
     R3(("Pasada 3 · la IA genera una regla a medida<br/>o corrige manualmente lo que Rector no cubre")):::ai
     MAN(("La IA aplica los cambios manuales<br/>que Rector no puede hacer:<br/>require.php · Twig 3 · CKEditor 5 · jQuery UI")):::ai
     SCR["set-core-requirement.sh<br/>core_version_requirement en el info.yml<br/>principal y en el de cada submódulo"]:::script
+    ATD{"Decisión opcional: atributos de plugins<br/>omitir (por defecto) · añadirlos"}:::human
+    ATA["convert-attributes.sh --mode keep<br/>#[...] junto a las anotaciones<br/>sube el suelo (p. ej. ^10.3 || ^11)"]:::script
 
     subgraph VL["Bucle de validación · la IA itera hasta dejarlo limpio"]
       VS["run-phpcs --fix (phpcbf corrige · phpcs informa)<br/>run-phpstan (deprecaciones)<br/>lint-extension-metadata (higiene, solo informa)"]:::script
@@ -179,7 +182,10 @@ flowchart TD
     R2A --> R3
     R3 --> MAN
     MAN --> SCR
-    SCR --> VS
+    SCR --> ATD
+    ATD -->|omitir| VS
+    ATD -->|añadir| ATA
+    ATA --> VS
     VAI -->|"sin avisos"| MP
     MP --> PR
     PR --> OUT
@@ -192,6 +198,8 @@ flowchart TD
 ```
 
 > Las herramientas no se llaman entre sí: es la IA quien las ordena, interpreta su salida y decide el siguiente paso. Por eso interviene entre una y otra.
+>
+> **Los atributos de plugins son opcionales.** Las anotaciones siguen funcionando en Drupal 11, así que la Fase 1 no hace la conversión salvo que tú la elijas (una ejecución autónoma siempre la omite). Si la eliges, `convert-attributes.sh` añade los atributos `#[...]` junto a las anotaciones para los tipos de plugin cuya clase de atributo existe en Drupal 10.3, y sube `core_version_requirement` de forma explícita (p. ej. `^10.3 || ^11`), porque las clases de atributo no existen en cores anteriores. La Fase 2 ejecuta el mismo script en modo strip, que elimina las anotaciones.
 
 ---
 

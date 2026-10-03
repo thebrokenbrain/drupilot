@@ -1,0 +1,289 @@
+{
+  "_comment": "Core plugin types whose doc-block annotation has a PHP 8 attribute class, for the optional annotation -> attribute pass (scripts/analysis/convert-attributes.sh, template templates/rector-attributes.php.tmpl, rule DrupalRector\\Drupal10\\Rector\\Deprecation\\AnnotationToAttributeRector of palantirnet/drupal-rector 0.21.x, which ships the rule but configures it in no set). annotation = the doc-block tag without @ (it can differ from the attribute name: @MigrateProcessPlugin -> MigrateProcess, @SearchPlugin -> Search); attribute = the attribute class FQCN; since = the first drupal/core minor that ships the attribute class AND whose plugin manager discovers it (verified against drupal/core git tags 10.2.0 .. 11.3.0: the class file first appears at that tag and the manager passes it to its attribute discovery). A type is converted only on a test-bed core >= since. In keep mode the annotation stays next to the attribute (from its since minor on core reads the attribute, older cores read the annotation), so the declared floor is unaffected at runtime; in strip mode the annotation is removed, so the declared core floor must be >= since. Only add entries verified against core source. Project or contrib plugin types are declared with DRUPILOT_ATTRIBUTE_PLUGIN_TYPES, never here.",
+  "_unsupported_comment": "Core types left out on purpose: CKEditor5Plugin (its annotation nests @CKEditor5AspectsOfCKEditor5Plugin / @DrupalAspectsOfCKEditor5Plugin objects, which AnnotationToAttributeRector 0.21.2 cannot convert: it only maps @Translation and @PluralTranslation). Convert those by hand.",
+  "unsupported": [
+    {
+      "annotation": "CKEditor5Plugin",
+      "attribute": "Drupal\\ckeditor5\\Attribute\\CKEditor5Plugin",
+      "since": "10.3",
+      "reason": "nested annotation objects the 0.21.2 rule cannot convert"
+    }
+  ],
+  "types": [
+    {
+      "annotation": "Action",
+      "attribute": "Drupal\\Core\\Action\\Attribute\\Action",
+      "since": "10.2"
+    },
+    {
+      "annotation": "Block",
+      "attribute": "Drupal\\Core\\Block\\Attribute\\Block",
+      "since": "10.2"
+    },
+    {
+      "annotation": "Archiver",
+      "attribute": "Drupal\\Core\\Archiver\\Attribute\\Archiver",
+      "since": "10.3"
+    },
+    {
+      "annotation": "Condition",
+      "attribute": "Drupal\\Core\\Condition\\Attribute\\Condition",
+      "since": "10.3"
+    },
+    {
+      "annotation": "DisplayVariant",
+      "attribute": "Drupal\\Core\\Display\\Attribute\\DisplayVariant",
+      "since": "10.3"
+    },
+    {
+      "annotation": "PageDisplayVariant",
+      "attribute": "Drupal\\Core\\Display\\Attribute\\PageDisplayVariant",
+      "since": "10.3"
+    },
+    {
+      "annotation": "EntityReferenceSelection",
+      "attribute": "Drupal\\Core\\Entity\\Attribute\\EntityReferenceSelection",
+      "since": "10.3"
+    },
+    {
+      "annotation": "FieldFormatter",
+      "attribute": "Drupal\\Core\\Field\\Attribute\\FieldFormatter",
+      "since": "10.3"
+    },
+    {
+      "annotation": "FieldWidget",
+      "attribute": "Drupal\\Core\\Field\\Attribute\\FieldWidget",
+      "since": "10.3"
+    },
+    {
+      "annotation": "FieldType",
+      "attribute": "Drupal\\Core\\Field\\Attribute\\FieldType",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ImageToolkit",
+      "attribute": "Drupal\\Core\\ImageToolkit\\Attribute\\ImageToolkit",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ImageToolkitOperation",
+      "attribute": "Drupal\\Core\\ImageToolkit\\Attribute\\ImageToolkitOperation",
+      "since": "10.3"
+    },
+    {
+      "annotation": "Layout",
+      "attribute": "Drupal\\Core\\Layout\\Attribute\\Layout",
+      "since": "10.3"
+    },
+    {
+      "annotation": "Mail",
+      "attribute": "Drupal\\Core\\Mail\\Attribute\\Mail",
+      "since": "10.3"
+    },
+    {
+      "annotation": "QueueWorker",
+      "attribute": "Drupal\\Core\\Queue\\Attribute\\QueueWorker",
+      "since": "10.3"
+    },
+    {
+      "annotation": "RenderElement",
+      "attribute": "Drupal\\Core\\Render\\Attribute\\RenderElement",
+      "since": "10.3"
+    },
+    {
+      "annotation": "FormElement",
+      "attribute": "Drupal\\Core\\Render\\Attribute\\FormElement",
+      "since": "10.3"
+    },
+    {
+      "annotation": "DataType",
+      "attribute": "Drupal\\Core\\TypedData\\Attribute\\DataType",
+      "since": "10.3"
+    },
+    {
+      "annotation": "Constraint",
+      "attribute": "Drupal\\Core\\Validation\\Attribute\\Constraint",
+      "since": "10.3"
+    },
+    {
+      "annotation": "EntityType",
+      "attribute": "Drupal\\Core\\Entity\\Attribute\\EntityType",
+      "since": "11.1"
+    },
+    {
+      "annotation": "ContentEntityType",
+      "attribute": "Drupal\\Core\\Entity\\Attribute\\ContentEntityType",
+      "since": "11.1"
+    },
+    {
+      "annotation": "ConfigEntityType",
+      "attribute": "Drupal\\Core\\Entity\\Attribute\\ConfigEntityType",
+      "since": "11.1"
+    },
+    {
+      "annotation": "Editor",
+      "attribute": "Drupal\\editor\\Attribute\\Editor",
+      "since": "10.3"
+    },
+    {
+      "annotation": "Filter",
+      "attribute": "Drupal\\filter\\Attribute\\Filter",
+      "since": "10.3"
+    },
+    {
+      "annotation": "HelpSection",
+      "attribute": "Drupal\\help\\Attribute\\HelpSection",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ImageEffect",
+      "attribute": "Drupal\\image\\Attribute\\ImageEffect",
+      "since": "10.3"
+    },
+    {
+      "annotation": "LanguageNegotiation",
+      "attribute": "Drupal\\language\\Attribute\\LanguageNegotiation",
+      "since": "10.3"
+    },
+    {
+      "annotation": "SectionStorage",
+      "attribute": "Drupal\\layout_builder\\Attribute\\SectionStorage",
+      "since": "10.3"
+    },
+    {
+      "annotation": "MediaSource",
+      "attribute": "Drupal\\media\\Attribute\\MediaSource",
+      "since": "10.3"
+    },
+    {
+      "annotation": "MigrateDestination",
+      "attribute": "Drupal\\migrate\\Attribute\\MigrateDestination",
+      "since": "10.3"
+    },
+    {
+      "annotation": "MigrateProcessPlugin",
+      "attribute": "Drupal\\migrate\\Attribute\\MigrateProcess",
+      "since": "10.3"
+    },
+    {
+      "annotation": "MigrateSource",
+      "attribute": "Drupal\\migrate\\Attribute\\MigrateSource",
+      "since": "11.2"
+    },
+    {
+      "annotation": "MigrateField",
+      "attribute": "Drupal\\migrate_drupal\\Attribute\\MigrateField",
+      "since": "10.3"
+    },
+    {
+      "annotation": "RestResource",
+      "attribute": "Drupal\\rest\\Attribute\\RestResource",
+      "since": "10.3"
+    },
+    {
+      "annotation": "SearchPlugin",
+      "attribute": "Drupal\\search\\Attribute\\Search",
+      "since": "10.3"
+    },
+    {
+      "annotation": "WorkflowType",
+      "attribute": "Drupal\\workflows\\Attribute\\WorkflowType",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ViewsAccess",
+      "attribute": "Drupal\\views\\Attribute\\ViewsAccess",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ViewsArea",
+      "attribute": "Drupal\\views\\Attribute\\ViewsArea",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ViewsArgument",
+      "attribute": "Drupal\\views\\Attribute\\ViewsArgument",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ViewsArgumentDefault",
+      "attribute": "Drupal\\views\\Attribute\\ViewsArgumentDefault",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ViewsArgumentValidator",
+      "attribute": "Drupal\\views\\Attribute\\ViewsArgumentValidator",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ViewsCache",
+      "attribute": "Drupal\\views\\Attribute\\ViewsCache",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ViewsDisplay",
+      "attribute": "Drupal\\views\\Attribute\\ViewsDisplay",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ViewsDisplayExtender",
+      "attribute": "Drupal\\views\\Attribute\\ViewsDisplayExtender",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ViewsExposedForm",
+      "attribute": "Drupal\\views\\Attribute\\ViewsExposedForm",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ViewsField",
+      "attribute": "Drupal\\views\\Attribute\\ViewsField",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ViewsFilter",
+      "attribute": "Drupal\\views\\Attribute\\ViewsFilter",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ViewsJoin",
+      "attribute": "Drupal\\views\\Attribute\\ViewsJoin",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ViewsPager",
+      "attribute": "Drupal\\views\\Attribute\\ViewsPager",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ViewsQuery",
+      "attribute": "Drupal\\views\\Attribute\\ViewsQuery",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ViewsRelationship",
+      "attribute": "Drupal\\views\\Attribute\\ViewsRelationship",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ViewsRow",
+      "attribute": "Drupal\\views\\Attribute\\ViewsRow",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ViewsSort",
+      "attribute": "Drupal\\views\\Attribute\\ViewsSort",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ViewsStyle",
+      "attribute": "Drupal\\views\\Attribute\\ViewsStyle",
+      "since": "10.3"
+    },
+    {
+      "annotation": "ViewsWizard",
+      "attribute": "Drupal\\views\\Attribute\\ViewsWizard",
+      "since": "10.3"
+    }
+  ]
+}

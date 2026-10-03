@@ -274,6 +274,46 @@ Apply only the mechanical compatibility edits, preserving behavior:
 - Anything that would change architecture, signatures broadly, or behavior →
   **defer to Phase 2**, do not do it here.
 
+## Step 6b — Optional: plugin annotations → PHP 8 attributes (opt-in)
+
+Converting plugin annotations is **not** a Drupal 11 requirement (annotations
+keep working through Drupal 12), so Phase 1 never does it by default. Preview
+what the optional pass would touch (read-only dry run, keep mode, limited to
+attribute classes that exist on Drupal 10.3 so Drupal 10 stays reachable):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/convert-attributes.sh" --subject "$1" --mode keep --max-since 10.3 --json
+```
+
+If it reports `changed_files` > 0 **and the run is not autonomous**, ask with
+**AskUserQuestion** (header "Plugin attributes"; default **Skip**):
+
+- **Skip (recommended for a minimal port)** — leave the annotations; Phase 2
+  (`/drupilot-refactor`, "PHP 8 attributes") converts them.
+- **Add attributes, keep annotations** — say in the option text that it
+  **raises `core_version_requirement`** to the dry run's
+  `recommended_requirement` (e.g. `^10.3 || ^11`): the attribute classes only
+  exist from Drupal 10.2 (`Block`, `Action`) / 10.3 (the other types), and
+  PHPStan on an older core reports them as unknown (runtime is unaffected: older
+  cores keep reading the annotation). Raising the floor drops Drupal < 10.3
+  sites (a BC break: version bump per `core-strategy.sh`).
+
+Strip mode (removing the annotations) is never offered in Phase 1. An autonomous
+run skips this step. On **Add attributes**, apply and raise the floor explicitly:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/convert-attributes.sh" --subject "$1" --mode keep --max-since 10.3 --raise-floor --apply --json
+```
+
+Then mirror the new floor in `composer.json` (`require.drupal/core`) when the
+module declares one, record the choice (`log-decision.sh --kind manual-override
+--what "Added plugin attributes (keep mode), core floor raised to <req>" --why
+"<the developer's reason>"`), and merge the JSON's `rule_hits` into the
+manifest's `rector_rules`. `restored_files` lists files the pass put back
+(duplicate attribute or `php -l` failure) and `skipped_files` those already
+half-converted by hand: report both. Step 7 validates the result (and Step 7b
+checks the new floor when `^10` is still declared).
+
 ## Step 7 — Validate after each batch of changes
 
 Run the formatter/autofixer, then the linters, then the deprecation-level

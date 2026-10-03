@@ -582,6 +582,64 @@ tag the commit `vX.Y.Z`.
   `testbed_kind`, `subjects_with_state_under`, `env_status_record`,
   `fast_copy_tree`, `core_cache_dir`, `core_cache_lookup`,
   `core_cache_entries`, `core_cache_prune`.
+- **Optional annotation → PHP 8 attribute pass (4.6):
+  `scripts/analysis/convert-attributes.sh`, also `run-rector.sh --attributes`.**
+  Ports needed hand-written Rector configs to convert plugin annotations, because
+  `palantirnet/drupal-rector` 0.21.x ships `AnnotationToAttributeRector` but
+  configures it in no set. The new pass renders its own config from
+  `templates/rector-attributes.php.tmpl` into
+  `<drupal_root>/.drupilot/rector-attributes.php` and runs only that rule; the
+  default official and digests passes are unchanged.
+  - `config/plugin-attributes.json` lists 55 core plugin types with the core
+    minor that ships each attribute class and makes its manager discover it,
+    verified against drupal/core tags 10.2.0 to 11.3.0: `Action` and `Block`
+    10.2; `Condition`, `QueueWorker`, `Filter`, the field, Views, migrate and
+    the other plugin types 10.3; `EntityType` / `ContentEntityType` /
+    `ConfigEntityType` 11.1; `MigrateSource` 11.2. Annotation names that differ
+    from the attribute are mapped (`@MigrateProcessPlugin` → `MigrateProcess`,
+    `@SearchPlugin` → `Search`). `CKEditor5Plugin` is listed as unsupported: its
+    nested annotation objects are beyond the 0.21.2 rule.
+  - `DRUPILOT_ATTRIBUTES_MODE` (`keep`, default, or `strip`; `--mode`). Keep adds
+    the attribute next to the annotation, which core keeps reading on older
+    cores. Strip removes the annotation, but only for types whose minor is at or
+    below the declared core floor; the others keep it and are listed.
+    `--raise-floor` strips them too and rewrites `core_version_requirement`
+    (`set-core-requirement.sh`) to the new `recommended_requirement` (e.g.
+    `^10 || ^11` → `^10.3 || ^11`, `^11.1` with an entity type). Without it the
+    pass never raises the floor. `--max-since X.Y`, `--types`, `--floor`.
+  - `DRUPILOT_ATTRIBUTE_PLUGIN_TYPES` declares project or contrib plugin types
+    (`Annotation=Fully\Qualified\Attribute[@MAJOR.MINOR]`, comma-separated). A
+    custom type is converted only when its attribute class exists under the
+    Drupal root, and stripped only when a plugin manager references it.
+  - Guards: attributes are printed fully qualified, because the 0.21.x rule
+    recognises an existing attribute only by its FQCN and would duplicate a
+    short imported one on a re-run. A file that already has such an attribute is
+    skipped. After `--apply`, a file with a duplicate attribute or a `php -l`
+    failure is restored from a pre-run backup. A class constant the annotation
+    named relative to its namespace (`type = Drupal\filter\Plugin\FilterInterface::TYPE_…`
+    in a `@Filter`) is fully qualified: copied as is, PHP resolves it inside the
+    plugin's namespace, PHPStan reports an unknown class and plugin discovery
+    fails. Rector runs with `--clear-cache`, because its cache of unchanged
+    files ignores rule options and a run after a different mode skipped files.
+  - `--json` reports per-type actions, `attribute_floor`, `floor_ok`,
+    `recommended_requirement`, `skipped_files`, `restored_files`,
+    `qualified_constants` and `rule_hits` for the manifest's `rector_rules`.
+  - Flow: `/drupilot-port` Step 6b offers it as an opt-in tab ("Plugin
+    attributes", default Skip; skipped in autonomous runs), in keep mode limited
+    to the Drupal 10.3 types and with the floor raised explicitly. In
+    `/drupilot-refactor` the "PHP 8 attributes" scope runs it in strip mode
+    instead of a hand conversion, with an "Attribute floor" tab when a type needs
+    a newer core than declared. FLOW.md / FLOW_es.md show both steps.
+  - Proved in the lab on the legacy_widgets fixture (Drupal 11.4.8 test-bed):
+    the Block, Condition, QueueWorker and Filter plugins get attributes in both
+    modes; a re-run is a no-op; PHPStan reports nothing new; the kernel suite
+    (9 tests) stays green; and a probe kernel test that discovers each plugin
+    through attribute-only discovery fails before the pass and passes after it.
+    In strip mode, with the annotations gone, both the suite and the probe stay
+    green, including with the entity type converted and the floor at `^11.1`.
+- **`core_requirement_raise_floor` in `common.sh`:** raises a
+  `core_version_requirement` to a MAJOR.MINOR floor and keeps every higher
+  major (`'^10 || ^11'` + 10.3 → `'^10.3 || ^11'`, + 11.1 → `'^11.1'`).
 ### Changed
 - **The port bumps submodules too.** `/drupilot-port`, `minimal-port` and
   the orchestrator apply the recommended `core_version_requirement` with

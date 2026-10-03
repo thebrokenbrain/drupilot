@@ -105,7 +105,26 @@ Apply **only the modernizations selected in Step 2** (`DRUPILOT_REFACTOR_SCOPE`)
 behavior is preserved):
 
 - **PHP 8 attributes** for plugins instead of annotations (e.g. `#[Block(...)]`,
-  `#[FieldType(...)]`), with the matching `use` statements.
+  `#[FieldType(...)]`) — through the deterministic pass, never by hand first
+  (`full-refactor` §1a). Dry run, show the diff summary, then apply; the mode
+  follows the core target of Step 1 (`strip` for `^11`, `keep` when `^10 || ^11`
+  is deliberately kept):
+
+  ```bash
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/convert-attributes.sh" --subject "$1" --mode strip --json
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/convert-attributes.sh" --subject "$1" --mode strip --apply --json
+  ```
+
+  If `floor_ok` is false (a type's attribute class is newer than the declared
+  floor, e.g. an entity type needs 11.1) and the run is not autonomous, ask with
+  **AskUserQuestion** (header "Attribute floor"; default **Keep the annotation**):
+  **Keep the annotation for those types** (BC, nothing more to do) or **Strip
+  them and raise the floor** to `recommended_requirement` (re-run with
+  `--raise-floor --apply`; a further BC break — mention it in the version-bump
+  summary). An autonomous run keeps them. Hand-convert only what the JSON lists
+  as `skipped` / `skipped_files` / `restored_files` or a type it does not know
+  (declare project/contrib types in `DRUPILOT_ATTRIBUTE_PLUGIN_TYPES`), and
+  merge its `rule_hits` into the manifest's `rector_rules`.
 - **Dependency injection**: replace `\Drupal::service(...)` static calls with
   constructor-injected services; implement `create()` / `ContainerFactoryPluginInterface`
   where appropriate.

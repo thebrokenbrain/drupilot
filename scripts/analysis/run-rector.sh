@@ -21,6 +21,7 @@
 #
 # Usage:
 #   run-rector.sh --subject DIR [--apply] [--digests] [--digests-ref REF] [--config PATH]
+#   run-rector.sh --attributes --subject DIR [convert-attributes.sh options]
 #
 # Options:
 #   --subject DIR      Path to the module/theme to process (relative to the
@@ -51,6 +52,12 @@
 #                      --apply that changes files also keeps it in the
 #                      subject's state dir (rector-rules.json), the fallback
 #                      port-report.sh / layer-report.sh read.
+#   --attributes       Run ONLY the optional annotation -> PHP 8 attribute pass
+#                      instead of the official/digests passes: forwards every
+#                      other argument to scripts/analysis/convert-attributes.sh
+#                      (--subject, --apply, --json, --mode keep|strip,
+#                      --raise-floor, --max-since X.Y, --floor X.Y, --types A,B;
+#                      see its --help for the output and exit codes).
 #   -h, --help         Show this help.
 #
 # Gate: `analyze` profile (git + jq + composer/php).
@@ -99,6 +106,16 @@ DIGESTS_CONFIG=""
 AS_JSON=0
 
 usage() { print_usage "$0"; }
+
+# --attributes: a separate pass with its own script (and CLI); the default
+# official + digests passes are untouched.
+for _a in "$@"; do
+  if [[ "$_a" == "--attributes" ]]; then
+    _fwd=()
+    for _b in "$@"; do [[ "$_b" == "--attributes" ]] || _fwd+=("$_b"); done
+    exec bash "$(dirname "${BASH_SOURCE[0]}")/convert-attributes.sh" "${_fwd[@]+"${_fwd[@]}"}"
+  fi
+done
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

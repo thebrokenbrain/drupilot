@@ -82,10 +82,11 @@ flowchart TD
     GATE2{"What next?"}:::human
 
     subgraph F2["PHASE 2 · Modernization — optional · Drupal 11 only"]
+      RFA["convert-attributes.sh<br/>plugin annotations → #[...] attributes<br/>(drupal-rector, strip mode)"]:::script
       RF(("The AI rewrites to the «Drupal 11 way»:<br/>attributes · dependency injection<br/>strict types · no deprecations")):::ai
       RFV["Validation at PHPStan level 5-6<br/>with tests green"]:::script
       DONE2(["Module modernized — Drupal 11 only<br/>core_version_requirement ^11 · new major version"]):::milestone
-      RF --> RFV --> DONE2
+      RFA --> RF --> RFV --> DONE2
     end
 
     subgraph CT["Contribution — optional · never in autonomous mode"]
@@ -102,7 +103,7 @@ flowchart TD
     ASSESS --> GATE1
     GATE1 -->|continue| PORT
     DONE1 --> GATE2
-    GATE2 -->|"modernize (Phase 2)"| RF
+    GATE2 -->|"modernize (Phase 2)"| RFA
     GATE2 -->|contribute| CC
 
     style F1 fill:#f0f9ff,stroke:#38bdf8,stroke-width:1px
@@ -154,6 +155,8 @@ flowchart TD
     R3(("Pass 3 · the AI generates a custom rule<br/>or manually fixes what Rector doesn't cover")):::ai
     MAN(("The AI applies the manual changes<br/>Rector cannot make:<br/>require.php · Twig 3 · CKEditor 5 · jQuery UI")):::ai
     SCR["set-core-requirement.sh<br/>core_version_requirement in the main<br/>and every submodule info.yml"]:::script
+    ATD{"Optional decision: plugin attributes<br/>skip (default) · add them"}:::human
+    ATA["convert-attributes.sh --mode keep<br/>#[...] next to the annotations<br/>raises the floor (e.g. ^10.3 || ^11)"]:::script
 
     subgraph VL["Validation loop · the AI iterates until clean"]
       VS["run-phpcs --fix (phpcbf fixes · phpcs reports)<br/>run-phpstan (deprecations)<br/>lint-extension-metadata (hygiene, report only)"]:::script
@@ -179,7 +182,10 @@ flowchart TD
     R2A --> R3
     R3 --> MAN
     MAN --> SCR
-    SCR --> VS
+    SCR --> ATD
+    ATD -->|skip| VS
+    ATD -->|add| ATA
+    ATA --> VS
     VAI -->|"clean"| MP
     MP --> PR
     PR --> OUT
@@ -192,6 +198,8 @@ flowchart TD
 ```
 
 > The tools don't call each other: the AI orchestrates them, interprets their output and decides the next step. That's why it steps in between them.
+>
+> **Plugin attributes are optional.** Annotations still work on Drupal 11, so Phase 1 skips the conversion unless you opt in (an autonomous run always skips it). If you do, `convert-attributes.sh` adds the `#[...]` attributes next to the annotations for the plugin types whose attribute class exists on Drupal 10.3, and raises `core_version_requirement` explicitly (e.g. `^10.3 || ^11`), because the attribute classes do not exist on older cores. Phase 2 runs the same script in strip mode, which removes the annotations.
 
 ---
 

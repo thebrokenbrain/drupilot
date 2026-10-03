@@ -376,6 +376,18 @@ Apply only the mechanical, behavior-preserving fixes:
 Do not add features or change behavior. If a fix would require architectural
 change, note it for Phase 2 instead of doing it here.
 
+**Optional — plugin annotations → attributes (opt-in, `/drupilot-port` Step 6b).**
+Annotations still work on Drupal 11, so this is never part of a minimal port by
+default. The developer may opt in through a tab (default: skip; an autonomous
+run skips): `convert-attributes.sh --mode keep --max-since 10.3 --raise-floor
+--apply --json` adds `#[...]` attributes next to the kept annotations for the
+types whose attribute class exists on Drupal 10.3 and **raises
+`core_version_requirement` explicitly** to its `recommended_requirement`
+(`'^10 || ^11'` → `'^10.3 || ^11'`; `Block`/`Action` alone need 10.2), because
+PHPStan on an older core reports the attribute classes as unknown. Strip mode is
+Phase 2 only (`full-refactor` §1a). The raised floor is a BC break: re-read the
+version bump from `core-strategy.sh` and let §6a verify the new floor.
+
 ## 6. The validate loop (after each batch of changes)
 
 Run until clean — never silence findings:

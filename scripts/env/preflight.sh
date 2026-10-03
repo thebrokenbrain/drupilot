@@ -68,6 +68,7 @@ config_enum DRUPILOT_REQUIRE_PHP_FLOOR    detect detect target          >/dev/nu
 config_enum DRUPILOT_GENERATE_RULES       ask    ask auto off           >/dev/null || true
 config_enum DRUPILOT_TOOLCHAIN_SOURCE     auto   auto reference range   >/dev/null || true
 config_enum DRUPILOT_SOFT_DEPRECATIONS    report report defer fix        >/dev/null || true
+config_enum DRUPILOT_ATTRIBUTES_MODE      keep   keep strip             >/dev/null || true
 config_enum DRUPILOT_HOOKS_GUARD          ask    ask off                >/dev/null || true
 config_enum DRUPILOT_CORE_CACHE           auto   auto locked off        >/dev/null || true
 [[ -z "$(config_get DRUPILOT_LAYERS_SANDBOX "")" ]] || config_enum DRUPILOT_LAYERS_SANDBOX "" per-module shared >/dev/null || true

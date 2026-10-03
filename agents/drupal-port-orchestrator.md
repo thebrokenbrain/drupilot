@@ -319,7 +319,12 @@ admit 11); when it returns a `require.php` (for `^10 || ^11`),
 add `"require": { "php": "<require_php>" }` to `composer.json` using the exact
 value returned (`DRUPILOT_REQUIRE_PHP_FLOOR` controls whether it is the real
 detected floor or `>=<target>`). Apply
-the remaining mechanical Twig/CKEditor/jQuery fixes. After each batch, run
+the remaining mechanical Twig/CKEditor/jQuery fixes. Plugin annotations →
+attributes are NOT part of a minimal port: only when the developer opts in at
+the "Plugin attributes" tab (`/drupilot-port` Step 6b; an autonomous run skips
+it) run `scripts/analysis/convert-attributes.sh --subject <DIR> --mode keep
+--max-since 10.3 --raise-floor --apply --json`, which raises
+`core_version_requirement` explicitly. After each batch, run
 `phpcbf` + `phpcs` + `phpstan` + `scripts/analysis/check-port-safety.sh --subject
 <path> --json` + `scripts/analysis/scan-signature-changes.sh --subject <path>
 --json` and leave the subject compiling **without blocking deprecations**
@@ -366,7 +371,9 @@ summary. Put `learned_patterns {scan, recorded}` in the manifest.
 ### Stage 4 — refactor (gate: `analyze`/`test`; Phase 2, OPT-IN ONLY)
 
 Only when the user explicitly opts in (this includes autonomous mode, which opts
-in by design). Use the `full-refactor` skill: PHP 8 attribute plugins, dependency
+in by design). Use the `full-refactor` skill: PHP 8 attribute plugins (through
+`scripts/analysis/convert-attributes.sh --mode strip`, `full-refactor` §1a;
+autonomous: never `--raise-floor`), dependency
 injection, strict typing, modern APIs, zero deprecations (soft ones included:
 `classify-deprecations.sh --phase refactor`, still respecting the core floor),
 raise PHPStan to level 5-6, and clean `Drupal` + `DrupalPractice`, with `check-port-safety.sh` at exit 0
