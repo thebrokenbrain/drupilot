@@ -203,15 +203,22 @@ gate_portability() {
     [[ "$f" == "scripts/dev/check.sh" ]] && continue   # its own patterns would self-match
     # Drop full-line comments and trailing " # ..." comments, keep line numbers.
     (cd "$REPO" && awk -v F="$f" '
-      # grep_files_opt <line> -> 1 when a grep on the line takes --include,
+      # grep_files_opt <line> -> 1 when any grep on the line takes --include,
       # --exclude or --exclude-dir before its end of options (" -- ") or the
-      # end of its command (a pipe, a ";").
-      function grep_files_opt(l,   rest, cut) {
-        if (!match(l, /(^|[^A-Za-z0-9_.-])grep[[:space:]]/)) return 0
-        rest = substr(l, RSTART + RLENGTH - 1)
-        cut = index(rest, " -- "); if (cut > 0) rest = substr(rest, 1, cut)
-        if (match(rest, /[|;]/)) rest = substr(rest, 1, RSTART)
-        return (rest ~ /[[:space:]"'\'']--(include|exclude|exclude-dir)([=[:space:]]|$)/)
+      # end of its command (|, ;, &). Quoted text is blanked first (a quoted
+      # "a|b" pattern does not end the command), except a quoted word that
+      # starts with "--" (a quoted option).
+      function grep_files_opt(l,   s, seg, cut) {
+        s = l
+        gsub(/'\''([^'\''-][^'\'']*)?'\''/, "Q", s); gsub(/"([^"-][^"]*)?"/, "Q", s)
+        while (match(s, /(^|[^A-Za-z0-9_.-])grep[[:space:]]/)) {
+          s = substr(s, RSTART + RLENGTH)
+          seg = s
+          cut = index(seg, " -- "); if (cut > 0) seg = substr(seg, 1, cut)
+          if (match(seg, /[|;&]/)) seg = substr(seg, 1, RSTART - 1)
+          if ((" " seg) ~ /[[:space:]"'\'']--(include|exclude|exclude-dir)([=[:space:]"'\'']|$)/) return 1
+        }
+        return 0
       }
       /# portability-ok/ { next }
       {
@@ -223,8 +230,8 @@ gate_portability() {
             line ~ /(^|[^A-Za-z_])(mapfile|readarray|realpath|envsubst)([^A-Za-z_]|$)/ ||
             line ~ /(^|[^A-Za-z_])sed[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-i/ ||
             line ~ /readlink[[:space:]]+-f/ || line ~ /grep[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*P/ ||
-            line ~ /(^|[[:space:](])--(include|exclude-dir)=/ || grep_files_opt(line) ||
-            (line ~ /(^|[[:space:](])--exclude=/ && line !~ /(^|[^A-Za-z])(tar|phpcs|phpcbf|rsync)/) ||
+            line ~ /(^|[[:space:](])--(include|exclude-dir)([=[:space:]]|$)/ || grep_files_opt(line) ||
+            (line ~ /(^|[[:space:](])--exclude=/ && line !~ /(^|[;&|(`[:space:]])(tar|rsync|phpcs|phpcbf)[[:space:]]/) ||
             line ~ /date[[:space:]]+-d/ || line ~ /xargs[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-r/ ||
             line ~ /stat[[:space:]]+-c/ || line ~ /find[[:space:]].*-printf/ ||
             line ~ /\$\([[:space:]]*case[[:space:]].*[[:space:]]in[[:space:]]+[^([:space:]]/ ||
