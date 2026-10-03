@@ -29,7 +29,7 @@
 # Cached base core (DRUPILOT_CORE_CACHE = auto | locked | off, default auto):
 # after a fresh create-project (+ Drush), the resulting tree (composer.json,
 # composer.lock, vendor/, the docroot with core, recipes/, the scaffold files;
-# never .ddev/, settings*.php or files/) is stored under the plugin data dir,
+# never .ddev/, settings*.php or files/) is stored under drupilot's data dir,
 # keyed by PHP target + exact core version. A later setup of an EMPTY root
 # copies that tree in (copy-on-write: `cp --reflink=auto`, `cp -c` on APFS,
 # else a plain copy) before `ddev start`, then verifies it with

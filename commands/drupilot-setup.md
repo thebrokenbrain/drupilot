@@ -319,8 +319,8 @@ frozen toolchain from the lock). Run it yourself with the subject's final path
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <placed_subject_path> --stage setup
 ```
 
-Then print the final state: DDEV project name and status, PHP target (flag unconfirmed
-targets), which add-ons are installed, the toolchain versions, and which config files
+Then print the final state: DDEV project name and status, PHP target (for 8.5, note
+that it needs Drupal 11.3 or later), which add-ons are installed, the toolchain versions, and which config files
 were written or left untouched. Recommend the next step: `/drupilot-assess`.
 
 For long-running batches, prefer background execution and notify on completion; do not

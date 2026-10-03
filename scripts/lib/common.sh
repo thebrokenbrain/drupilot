@@ -548,8 +548,9 @@ php_target_unconfirmed() {
 # requirements page (api-d7 node 2891690, page of 2026-08-04, re-read
 # 2026-10-03): 10.4-10.6 run 8.1-8.4; 11.1-11.4 run 8.3 and 8.4, not 8.1/8.2;
 # 8.5 runs on 11.3, 11.4 and 12.0 only (never on 11.2 or earlier); 12.0 runs
-# nothing older than 8.5. Any other pair (an unlisted or future minor, PHP
-# 8.6) is "unknown": detect it at runtime, never assume it.
+# nothing older than 8.5; 8.6 runs on none of 10.4-11.3 (11.4 and 12.0 point
+# at an open issue). Any other pair (an unlisted or future minor, 8.6 on 11.4
+# or 12.0) is "unknown": detect it at runtime, never assume it.
 php_supported_for() {
   local minor php
   minor="$(printf '%s' "${1:-}" | sed -n 's/^v\{0,1\}\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
@@ -2602,7 +2603,7 @@ fast_copy_tree() {
   return 0
 }
 
-# core_cache_dir -> where ddev-up.sh keeps cached base cores (under the plugin
+# core_cache_dir -> where ddev-up.sh keeps cached base cores (under drupilot's
 # data dir, never a project tree). One entry per PHP target and exact core
 # version: <dir>/php<PHP>-<core version>/{tree/, meta.json}.
 core_cache_dir() { printf '%s/core-base' "$(data_dir_path)/cache"; }

@@ -730,7 +730,7 @@ Todos los scripts ejecutables viven en `scripts/` (o en `hooks/scripts/` los hoo
 | **`env/`** | |
 | `preflight.sh` | El gate de requisitos (perfiles `analyze`/`setup`/`test`/`contribute`/`all`); `--extended` añade las comprobaciones de salud del doctor. |
 | `install-deps.sh` | Instalación asistida según el SO de git, jq, PHP, Composer, Docker y DDEV (solo tras confirmar). |
-| `detect-php.sh` | El target de PHP efectivo, y si Drupal 11 lo soporta oficialmente. |
+| `detect-php.sh` | El target de PHP efectivo, y si drupilot lo soporta del todo (8.5 requiere Drupal 11.3 o posterior). |
 | `resolve-workspace.sh` | Dónde va el banco de pruebas de un módulo suelto (solo lectura; `--workspace DIR`). |
 | `ddev-up.sh` | Crea y arranca el proyecto DDEV de Drupal 11 (core base en caché, versión de core congelada). |
 | `place-subject.sh` | Mueve, enlaza o copia un módulo suelto dentro del banco de pruebas. |

@@ -728,7 +728,7 @@ Every runnable script lives under `scripts/` (or `hooks/scripts/` for the hooks)
 | **`env/`** | |
 | `preflight.sh` | The requirements gate (profiles `analyze`/`setup`/`test`/`contribute`/`all`); `--extended` adds the doctor's health checks. |
 | `install-deps.sh` | OS-aware assisted installation of git, jq, PHP, Composer, Docker, DDEV (only after confirmation). |
-| `detect-php.sh` | The effective PHP target, and whether Drupal 11 officially supports it. |
+| `detect-php.sh` | The effective PHP target, and whether drupilot fully supports it (8.5 needs Drupal 11.3 or later). |
 | `resolve-workspace.sh` | Where a loose module's test-bed goes (read-only; `--workspace DIR`). |
 | `ddev-up.sh` | Creates and starts the Drupal 11 DDEV project (cached base core, frozen core version). |
 | `place-subject.sh` | Moves, symlinks or copies a loose module into the test-bed. |

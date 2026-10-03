@@ -55,8 +55,9 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   their own preflight gate passes: copy-only, never overwriting, logged, with a
   `legacy-state-copied` marker written only once every file is copied); `/drupilot-status`, `/drupilot-doctor`,
   `/drupilot-patch`, the hooks and `preflight.sh` never copy. The state key of a
-  path is unchanged. `smoke.sh` no longer exports `CLAUDE_PLUGIN_DATA` (that is
-  what hid the bug) and gained the `data-dir` and `legacy-state` tests.
+  path is unchanged, and the cached base core moves with the data dir too.
+  `smoke.sh` no longer exports `CLAUDE_PLUGIN_DATA` (that is what hid the bug)
+  and gained the `data-dir` and `legacy-state` tests.
 - **The GitLab PAT was on curl's command line.** `open-mr.sh` passed it as
   `-H "PRIVATE-TOKEN: ..."`, visible to any local user through `ps` or `/proc`
   while the request ran. curl now reads that header as a config on STDIN

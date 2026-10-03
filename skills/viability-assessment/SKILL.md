@@ -442,7 +442,8 @@ PLAN_TMPL="$ROOT/templates/port-plan.md.tmpl"
 ```
 
 - `viability-report.md` (into `$ART_DIR`, from `templates/viability-report.md.tmpl`):
-  subject + type, PHP/Drupal target (note "unconfirmed" if applicable), the **core
+  subject + type, PHP/Drupal target (for 8.5, note "needs Drupal 11.3 or later; no
+  Rector php85 set assumed"), the **core
   compatibility decision** (strategy, recommended `core_version_requirement`,
   composer constraint, `require.php`, the **version-bump verdict** and rationale,
   and any PHP-floor warning — from §3.5), verdict (S/M/L/XL) with the
