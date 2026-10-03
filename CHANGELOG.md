@@ -811,6 +811,14 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **A cached reference core stopped every contrib or custom attribute
+  conversion.** The attribute constructor check also reads each reference core
+  under `.drupilot/cores` (left there by the core matrix of a module that keeps
+  Drupal 10). Those hold core only, so a contrib or custom attribute class (for
+  example `web/modules/contrib/foo/src/Attribute/Foo.php`) could not be read
+  there and every file of that type kept its annotation with "the constructor
+  could not be read". A reference core now only counts for attribute classes
+  that ship with core; the test-bed still reads every class.
 - **The Phase 1 autofix reformatted files the port never touched.**
   `run-phpcs.sh --fix` ran `phpcbf` over the whole module, so a minimal port's
   patch also carried trailing commas, removed `use` lines and a missing EOF

@@ -360,6 +360,12 @@ attr_params() {
       mkdir -p "$PHPSCAN_DIR/ext" "$PHPSCAN_DIR/memo"; : > "$PHPSCAN_DIR/index.tsv"
       [[ -s "$PHPSCAN_DIR/extmap.tsv" ]] || php_scan_extmap "$SUBJECT_ABS"
       { printf '#%s\n' "$label"; php_ctor_params "$fq"; } > "$PARAMS_DIR/$key.$n"
+      # Whether the class ships with core (core/lib or core/modules) in the
+      # test-bed: only then must a reference core be able to read it too.
+      if [[ "$label" == test-bed* ]]; then
+        _cf="$(php_class_file "$fq")"
+        case "$_cf" in "$dr"/core/*) : > "$PARAMS_DIR/$key.incore";; esac
+      fi
     )
   done < "$DOCROOTS"
   : > "$PARAMS_DIR/$key.done"
@@ -367,15 +373,22 @@ attr_params() {
 }
 # rejected_keys <file> <annotation> <attribute FQCN> <since|-> -> one line per
 # annotation key an applicable core's constructor rejects ("key<TAB>core"), or
-# "?<TAB>core" when that core's attribute class cannot be read.
+# "?<TAB>core" when that core's attribute class cannot be read. A reference
+# core holds core only: a contrib or custom attribute class (not under the
+# test-bed's core/ tree) is absent there by design, so its `?` does not apply.
 rejected_keys() {
-  local f="$1" ann="$2" fq="$3" since="$4" keys pf label
+  local f="$1" ann="$2" fq="$3" since="$4" keys pf label key incore=0
   attr_params "$fq" "$since"
   keys="$(php_annotation_keys "$f" "$ann")"
-  for pf in "$PARAMS_DIR/$(php_scan_key "$fq")".[0-9]*; do
+  key="$(php_scan_key "$fq")"
+  [[ -e "$PARAMS_DIR/$key.incore" ]] && incore=1
+  for pf in "$PARAMS_DIR/$key".[0-9]*; do
     [[ -f "$pf" ]] || continue
     label="$(head -n 1 "$pf")"; label="${label#\#}"
-    if grep -qx '?' "$pf"; then printf '?\t%s\n' "$label"; continue; fi
+    if grep -qx '?' "$pf"; then
+      [[ "$label" == reference* && "$incore" == "0" ]] && continue
+      printf '?\t%s\n' "$label"; continue
+    fi
     grep -q '^\.\.\.' "$pf" && continue
     [[ -n "$keys" ]] || continue
     printf '%s\n' "$keys" | while IFS= read -r k; do

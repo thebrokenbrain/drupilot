@@ -680,6 +680,19 @@ PHP
   expect "convert-attributes: plain file converted" "$(jqo at '[.types[] | .annotation + ":" + .action + ":" + (.converted_files | tostring)]')" '["MigrateSource:keep:1"]'
   expect "convert-attributes: skipped file in the Rector skip list" \
     "$(grep -c "acme_mig/src/Plugin/migrate/source/AcmeRoles.php" "$r/.drupilot/rector-attributes.php" 2>/dev/null || true)" "1"
+  # A contrib attribute type (no @since) still converts once a reference core
+  # (core only, no contrib) is cached under .drupilot/cores.
+  mkdir -p "$r/web/modules/contrib/foo/src/Attribute" "$r/.drupilot/cores/drupal-10/web/core/lib/Drupal" "$mod/src/Plugin/Foo"
+  printf 'name: Foo\ntype: module\n' > "$r/web/modules/contrib/foo/foo.info.yml"
+  printf '<?php\n\nnamespace Drupal\\foo\\Attribute;\n\nclass Foo {\n\n  public function __construct(public readonly string $id, public readonly ?string $label = NULL) {}\n\n}\n' \
+    > "$r/web/modules/contrib/foo/src/Attribute/Foo.php"
+  printf "<?php\nclass Drupal {\n  const VERSION = '10.3.0';\n}\n" > "$r/.drupilot/cores/drupal-10/web/core/lib/Drupal.php"
+  printf '<?php\n\n/**\n * A foo.\n *\n * @Foo(\n *   id = "acme_foo",\n *   label = "Acme"\n * )\n */\nclass AcmeFoo {}\n' > "$mod/src/Plugin/Foo/AcmeFoo.php"
+  run at2 env 'DRUPILOT_ATTRIBUTE_PLUGIN_TYPES=Foo=Drupal\foo\Attribute\Foo' "$SH" "$REPO/scripts/analysis/convert-attributes.sh" --subject "$mod" --json
+  expect "convert-attributes + reference core: contrib type converted" \
+    "$(jqo at2 '[.types[] | select(.annotation == "Foo") | .converted_files] | add')" '1'
+  expect "convert-attributes + reference core: contrib file not skipped" \
+    "$(jqo at2 '[.skipped_files[] | select(.file | test("AcmeFoo"))] | length')" '0'
   finish
 }
 
