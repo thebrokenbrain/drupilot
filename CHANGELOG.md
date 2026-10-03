@@ -61,8 +61,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `-H "PRIVATE-TOKEN: ..."`, visible to any local user through `ps` or `/proc`
   while the request ran. curl now reads that header as a config on STDIN
   (`-K -`, written by the shell's builtin `printf`), or from a mode-0600 temp
-  file removed right after when curl cannot read STDIN. A smoke test with a stub
-  curl checks that the PAT is on no argv and in no output.
+  file removed right after when curl cannot read STDIN. A token with a line
+  break (a CRLF file, a pasted value) is cut at it, with a warning, so it can
+  never add a second config line. A smoke test with a stub curl checks that the
+  PAT is on no argv and in no output.
 - **PHP 8.5 was described as "not confirmed on any Drupal 11 branch".** Drupal
   supports PHP 8.5 from 11.3 on, not on 11.2 or earlier (drupal.org PHP
   requirements, read through its api-d7 JSON). The new helper

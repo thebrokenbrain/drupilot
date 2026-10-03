@@ -130,8 +130,8 @@
 #   open-mr        open-mr.sh never puts the GitLab PAT on a command line: a
 #                  stub curl records its argv and its config; the PAT reaches it
 #                  through `-K -` (STDIN), and through a mode-0600 temp file
-#                  that is removed afterwards when curl cannot read STDIN
-#                  (needs git)
+#                  that is removed afterwards when curl cannot read STDIN; a
+#                  line break in the PAT never adds a config line (needs git)
 #   legacy-state   copy_legacy_state_once copies the state 0.9.0 left in a
 #                  per-plugin data dir (copy-only, never overwriting, logged,
 #                  marker), and a second run copies nothing; a file that could
@@ -1315,6 +1315,17 @@ STUB
     expect "$mode: the PAT is on no argv" "$(grep -c -F -- "$pat" "$d/curl-argv.log" || true)" "0"
     expect "$mode: the PAT reached curl's config" "$(grep -c -F -- "header = \"PRIVATE-TOKEN: $pat\"" "$d/curl-config.log" || true)" "1"
     expect "$mode: the PAT is in no output" "$(cat "$TMP/out/mr-$mode.out" "$TMP/out/mr-$mode.err" | grep -c -F -- "$pat" || true)" "0"
+  done
+  # A line break in the PAT (a CRLF file, a pasted value) never reaches curl's
+  # config as a second line: only the first line of the token is sent.
+  printf 'stdin' > "$d/curl-mode"
+  for mode in $'\r' $'\nX-Injected: 1'; do
+    : > "$d/curl-config.log"
+    (cd "$d/clone" && env PATH="$bin:$PATH" DRUPILOT_GITLAB_PAT="$pat$mode" "$SH" "$REPO/scripts/contrib/open-mr.sh" \
+        --project acme --issue 123 --branch 123-port-to-drupal-11 --mode auto) > /dev/null 2> "$TMP/out/mr-nl.err" < /dev/null || true
+    expect "line break in the PAT: one config line, the first" \
+      "$(wc -l < "$d/curl-config.log" | tr -d ' ')|$(grep -c -F -- "header = \"PRIVATE-TOKEN: $pat\"" "$d/curl-config.log" || true)" "1|1"
+    expect_match "line break in the PAT: warned" "$(cat "$TMP/out/mr-nl.err")" 'holds a line break'
   done
   c="$(cat "$d/curl-cfgfile" 2>/dev/null || true)"
   expect "noread: a temp config file was used" "$([[ -n "$c" ]] && echo yes || echo no)" "yes"

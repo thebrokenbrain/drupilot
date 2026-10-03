@@ -192,14 +192,25 @@ MR_TARGET="${BASE:-}"
 
 # Prefer glab if present and authenticated; otherwise curl with the PAT.
 PAT="${!PAT_ENV_VAR:-}"   # read once; never echoed.
+# A token read from a CRLF file or pasted with a newline: only its first line
+# is the token (curl -H sent just that line before; a line break would now end
+# the curl config line early).
+_nl=$'\n'; _cr=$'\r'
+case "$PAT" in
+  *"$_nl"*|*"$_cr"*)
+    log_warn "\$$PAT_ENV_VAR holds a line break: only its first line is used as the API token."
+    PAT="${PAT%%"$_nl"*}"; PAT="${PAT%%"$_cr"*}";;
+esac
 
 # curl_with_header <header> <curl args...> -> curl with one more request header
 # that never reaches curl's argv (where `ps` or /proc would show the PAT): the
 # builtin printf hands it over as a curl config on STDIN (-K -). If curl cannot
 # read that config (exit 26), a mode-0600 temp file, removed on return and by
-# a trap, carries it instead.
+# a trap, carries it instead. A line break would end the config line early and
+# the rest would be read as curl options: only the header's first line is sent.
 curl_with_header() {
-  local hdr="$1" rc cfg; shift
+  local hdr="$1" rc cfg nl=$'\n' cr=$'\r'; shift
+  hdr="${hdr%%"$nl"*}"; hdr="${hdr%%"$cr"*}"
   hdr="${hdr//\\/\\\\}"; hdr="${hdr//\"/\\\"}"
   printf 'header = "%s"\n' "$hdr" | curl -K - "$@"
   rc="${PIPESTATUS[1]}"
