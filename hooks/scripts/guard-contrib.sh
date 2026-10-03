@@ -7,7 +7,8 @@
 # contribution action (git push, push to git.drupal.org / issue/ remotes,
 # `glab mr ...`, or a curl to a GitLab API) it returns permissionDecision "ask"
 # with an English reason so the developer confirms before anything leaves the
-# machine. Precedence: DRUPILOT_AUTONOMOUS=true ALWAYS asks (an autonomous run
+# machine. Precedence: DRUPILOT_AUTONOMOUS=true or DRUPILOT_NONINTERACTIVE=1
+# (environment, or a prefix of the command) ALWAYS asks (an unattended run
 # must never push on its own, even in 'auto' contribution mode); otherwise
 # DRUPILOT_CONTRIB_MODE=semi asks and 'auto' allows. Everything else is a no-op.
 #
@@ -198,8 +199,18 @@ fi
 # these commands in autonomous mode; this backstop enforces the promise if one
 # ever slips through, by requiring a human confirmation that an unattended run
 # cannot give. It takes precedence over DRUPILOT_CONTRIB_MODE.
-if config_bool DRUPILOT_AUTONOMOUS 0; then
-  emit_decision "ask" "drupilot is in AUTONOMOUS mode, which never performs outward-facing actions on its own. ${REASON} A human must confirm this — an unattended run will not proceed. To contribute, run /drupilot-contribute yourself. You can get a local patch any time with /drupilot-patch (no push, no network).${HOOKS_REASON:+ Also: $HOOKS_REASON}"
+# A non-interactive wrapper run (`/drupilot --no-confirm`, or the canonical
+# DRUPILOT_NONINTERACTIVE=1 in the environment or as a prefix of the command
+# itself, which is how the router passes it) promises the same: it is treated
+# as autonomous here.
+UNATTENDED=0
+config_bool DRUPILOT_AUTONOMOUS 0 && UNATTENDED=1
+case "$(lc "${DRUPILOT_NONINTERACTIVE:-}")" in 1|true|yes|on) UNATTENDED=1;; esac
+if printf '%s' "$CMD" | grep -qiE '(^|[;&|[:space:]])(env[[:space:]]+)?DRUPILOT_(NONINTERACTIVE|AUTONOMOUS)=["'"'"']?(1|true|yes|on)([^A-Za-z0-9_]|$)'; then
+  UNATTENDED=1
+fi
+if [[ "$UNATTENDED" == "1" ]]; then
+  emit_decision "ask" "drupilot is in AUTONOMOUS (or non-interactive) mode, which never performs outward-facing actions on its own. ${REASON} A human must confirm this — an unattended run will not proceed. To contribute, run /drupilot-contribute yourself. You can get a local patch any time with /drupilot-patch (no push, no network).${HOOKS_REASON:+ Also: $HOOKS_REASON}"
 fi
 
 # --- Decide based on the contribution mode -----------------------------------

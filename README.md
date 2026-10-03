@@ -320,7 +320,7 @@ A wrapper (another skill, a CI job, a script that drives `claude -p`) needs stab
 | Machine result | — | `--json` | `port-summary.sh --subject DIR --json` |
 
 - `DRUPILOT_NONINTERACTIVE=1` makes every script behave as if there were no terminal: no prompt is shown and each question takes its **default**, the recommended and safe answer (a move into the test-bed proceeds, a push or a destructive clean does not). `DRUPILOT_ASSUME_YES=1` is different: it answers **yes** to every confirmation, so use it only when that is what you mean.
-- `--no-confirm` never makes a run outward-facing: like `auto`, it never pushes, opens a Merge Request or contributes, and the `guard-contrib` hook still asks.
+- `--no-confirm` never makes a run outward-facing: like `auto`, it never pushes, opens a Merge Request or contributes. The `guard-contrib` hook enforces it: whenever `DRUPILOT_NONINTERACTIVE=1` is in its environment or prefixes the command, it asks before any push or Merge Request command, even with `DRUPILOT_CONTRIB_MODE=auto`.
 - With `--json`, the router's final message is exactly the JSON of `scripts/analysis/port-summary.sh`. A wrapper can also run that script itself, which is more robust than reading the model's reply.
 
 ```bash

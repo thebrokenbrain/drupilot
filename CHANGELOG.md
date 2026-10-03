@@ -811,6 +811,13 @@ tag the commit `vX.Y.Z`.
   floating `DRUPILOT_DRUPAL_TARGET`, which could silently move the core.
 
 ### Fixed
+- **The autonomy backstop missed non-interactive wrapper runs.**
+  `guard-contrib.sh` escalated a push or MR command to "ask" only for
+  `DRUPILOT_AUTONOMOUS=true`, so a `--no-confirm` / `DRUPILOT_NONINTERACTIVE=1`
+  run with `DRUPILOT_CONTRIB_MODE=auto` got "allow", although the router
+  promises such a run is as safe as `auto`. `DRUPILOT_NONINTERACTIVE` truthy,
+  in the hook's environment or as a prefix of the command (how the router
+  passes it), now asks the same way.
 - **Undeclared-dependency messages were garbled on bash 3.2 (stock macOS).**
   `lint-extension-metadata.sh` built the message with a `case` inside `$(...)`;
   bash 3.2 ends the substitution at the first pattern's `)`, printed a syntax

@@ -285,7 +285,7 @@ flowchart LR
     classDef result fill:#e5e7eb,stroke:#6b7280,color:#111827;
 ```
 
-> `--no-confirm` es tan seguro como `auto`: nunca hace push, abre un Merge Request ni contribuye, y el hook `guard-contrib` sigue preguntando. `port-summary.sh` solo lee lo que registró el flujo, así que un wrapper también puede ejecutarlo directamente, sin el modelo.
+> `--no-confirm` es tan seguro como `auto`: nunca hace push, abre un Merge Request ni contribuye, y el hook `guard-contrib` pregunta antes de cualquier comando de push o de Merge Request siempre que `DRUPILOT_NONINTERACTIVE=1` esté activo, igual que con `DRUPILOT_AUTONOMOUS=true`. `port-summary.sh` solo lee lo que registró el flujo, así que un wrapper también puede ejecutarlo directamente, sin el modelo.
 
 ---
 

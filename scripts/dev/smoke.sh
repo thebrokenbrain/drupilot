@@ -21,8 +21,11 @@
 #   detect-php     detect-php.sh --json: target 8.3 by default, the
 #                  DRUPILOT_PHP_TARGET override wins
 #   next-step      next-step.sh on a fresh module: setup when ready, doctor when
-#                  analysis is not ready, the --human one-liner
-#   hooks          guard-contrib.sh asks before `git push` in autonomous mode,
+#                  analysis is not ready, the --human one-liner; a subject
+#                  recorded only as tested, or with only a port manifest, is
+#                  not sent back to port
+#   hooks          guard-contrib.sh asks before `git push` in autonomous and
+#                  non-interactive mode (even with DRUPILOT_CONTRIB_MODE=auto),
 #                  no-ops on other commands and on garbage stdin (exit 0);
 #                  session-detect-env.sh honors DRUPILOT_SESSION_CONTEXT=off
 #   port-safety    check-port-safety.sh on legacy_widgets: the pre-existing
@@ -275,6 +278,15 @@ test_hooks() {
   if env DRUPILOT_AUTONOMOUS=true "$SH" "$h/guard-contrib.sh" < "$TMP/push.json" > "$TMP/out/g1.out" 2>/dev/null; then RC=0; else RC=$?; fi
   expect "autonomous push: exit" "$RC" "0"
   expect "autonomous push: decision" "$(jqo g1 '.hookSpecificOutput.permissionDecision')" '"ask"'
+  # A non-interactive wrapper run is as unattended as auto: it asks even in
+  # the 'auto' contribution mode (env, or a prefix of the command itself).
+  if env DRUPILOT_NONINTERACTIVE=1 DRUPILOT_CONTRIB_MODE=auto "$SH" "$h/guard-contrib.sh" < "$TMP/push.json" > "$TMP/out/g4.out" 2>/dev/null; then RC=0; else RC=$?; fi
+  expect "non-interactive push: decision" "$(jqo g4 '.hookSpecificOutput.permissionDecision')" '"ask"'
+  printf '%s' '{"tool_name":"Bash","tool_input":{"command":"DRUPILOT_NONINTERACTIVE=1 git push origin main"}}' > "$TMP/push-ni.json"
+  if env DRUPILOT_CONTRIB_MODE=auto "$SH" "$h/guard-contrib.sh" < "$TMP/push-ni.json" > "$TMP/out/g5.out" 2>/dev/null; then RC=0; else RC=$?; fi
+  expect "prefixed non-interactive push: decision" "$(jqo g5 '.hookSpecificOutput.permissionDecision')" '"ask"'
+  if env DRUPILOT_CONTRIB_MODE=auto "$SH" "$h/guard-contrib.sh" < "$TMP/push.json" > "$TMP/out/g6.out" 2>/dev/null; then RC=0; else RC=$?; fi
+  expect "auto-mode push: decision" "$(jqo g6 '.hookSpecificOutput.permissionDecision')" '"allow"'
   if "$SH" "$h/guard-contrib.sh" < "$TMP/ls.json" > "$TMP/out/g2.out" 2>/dev/null; then RC=0; else RC=$?; fi
   expect "plain command: exit" "$RC" "0"
   expect "plain command: no payload" "$(out g2)" ""

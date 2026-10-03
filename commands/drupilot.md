@@ -31,7 +31,10 @@ the user asked you to port/upgrade the module) or **recommend the next logical s
     resolved with its recommended default. Prefix **every** script you run with
     `DRUPILOT_NONINTERACTIVE=1` (the scripts' own prompts then take their safe
     default) and pass `autonomous=true` to the orchestrator. It is exactly as
-    safe as `auto`: never outward-facing (no push, no MR, no contribute).
+    safe as `auto`: never outward-facing (no push, no MR, no contribute). The
+    PreToolUse backstop enforces it: `guard-contrib.sh` asks before a push or
+    MR command whenever `DRUPILOT_NONINTERACTIVE=1` is in its environment or
+    prefixes the command, exactly as for `DRUPILOT_AUTONOMOUS=true`.
   - `--workspace DIR` — the test-bed root for a loose subject. Pass
     `--workspace DIR` to `resolve-workspace.sh`, `ddev-up.sh` and
     `place-subject.sh` (or prefix any script with `DRUPILOT_WORKSPACE_DIR=DIR`),
