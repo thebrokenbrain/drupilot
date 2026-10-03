@@ -192,25 +192,38 @@ legacy_plugin_data_dir() {
 # file of <legacy>/state/ missing here is copied (never moved, never
 # overwritten; the first legacy dir wins), the copy is logged on STDERR, and the
 # marker <data root>/legacy-state-copied makes every later call return at once.
+# A file that could not be copied is named in a warning and leaves no marker,
+# so the next gated command tries it again.
 # Call it ONLY from a command preamble, right after that command's own
 # preflight.sh exited 0 (`preflight.sh ... && ... copy_legacy_state_once`):
 # never from a hook, from preflight.sh or from a helper, so a failing gate
 # changes nothing.
 copy_legacy_state_once() {
-  local root marker srcs src rel n=0
+  local root marker srcs src rel n=0 failed="" nf=0
   root="$(data_dir_path)"; marker="$root/legacy-state-copied"
   [[ -e "$marker" ]] && return 0
   srcs="$(legacy_plugin_data_dir)"
   [[ -n "$srcs" ]] || return 0
-  mkdir -p "$root/state" 2>/dev/null || return 0
+  if ! mkdir -p "$root/state" 2>/dev/null; then
+    log_warn "Could not create $root/state: the state drupilot 0.9.0 left in $(printf '%s' "$srcs" | tr '\n' ' ')was not copied (retried by the next command)."
+    return 0
+  fi
   while IFS= read -r src; do
     [[ -n "$src" ]] || continue
     while IFS= read -r rel; do
       [[ -n "$rel" && ! -e "$root/state/$rel" ]] || continue
-      mkdir -p "$(dirname "$root/state/$rel")" 2>/dev/null || continue
-      cp -p "$src/state/$rel" "$root/state/$rel" 2>/dev/null && n=$((n + 1))
+      if mkdir -p "$(dirname "$root/state/$rel")" 2>/dev/null \
+         && cp -p "$src/state/$rel" "$root/state/$rel" 2>/dev/null; then
+        n=$((n + 1))
+      else
+        nf=$((nf + 1)); failed="$failed $src/state/$rel"
+      fi
     done < <(cd "$src/state" 2>/dev/null && find . -type f 2>/dev/null | sed 's#^\./##' | LC_ALL=C sort)
   done <<< "$srcs"
+  if [[ "$nf" -gt 0 ]]; then
+    log_warn "Copied $n state file(s) of drupilot 0.9.0 into $root/state; $nf could not be copied and will be retried by the next command:$failed"
+    return 0
+  fi
   { printf 'copied_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf 'files=%s\n' "$n"
     printf '%s\n' "$srcs" | sed 's#^#from=#; s#$#/state#'

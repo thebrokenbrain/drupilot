@@ -134,7 +134,8 @@
 #                  (needs git)
 #   legacy-state   copy_legacy_state_once copies the state 0.9.0 left in a
 #                  per-plugin data dir (copy-only, never overwriting, logged,
-#                  marker), and a second run copies nothing; every command that
+#                  marker), and a second run copies nothing; a file that could
+#                  not be copied leaves no marker and is retried; every command that
 #                  writes state runs it right after its own preflight call (the
 #                  status, doctor and patch commands, the hooks and preflight.sh
 #                  never do); with a failing preflight (no jq on PATH) the
@@ -1211,6 +1212,19 @@ test_legacy_state() {
   run lc2 env HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c '. "$1"; copy_legacy_state_once' _ "$lib"
   expect "second run: exit" "$RC" "0"
   expect "second run: copies nothing" "$(tree_snapshot "$uh" "$dh")" "$before"
+  # A file that cannot be copied (here a regular file sits where its state dir
+  # goes, which defeats root too) leaves no marker: the next run retries it.
+  uh="$FX/legacy3/home"; dh="$FX/legacy3/data"
+  mkdir -p "$uh/.claude/plugins/data/drupilot-x/state/$key" "$dh/state"
+  printf '{}\n' > "$uh/.claude/plugins/data/drupilot-x/state/$key/drupilot-lock.json"
+  : > "$dh/state/$key"
+  run lc3 env HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c '. "$1"; copy_legacy_state_once' _ "$lib"
+  expect "failed copy: warned, no marker" \
+    "$(grep -c 'could not be copied' "$TMP/out/lc3.err" || true)|$([[ -e "$dh/legacy-state-copied" ]] && echo marker || echo none)" "1|none"
+  rm -f "$dh/state/$key"
+  run lc4 env HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c '. "$1"; copy_legacy_state_once' _ "$lib"
+  expect "failed copy: retried" \
+    "$([[ -f "$dh/state/$key/drupilot-lock.json" ]] && echo copied || echo none)|$([[ -e "$dh/legacy-state-copied" ]] && echo marker || echo none)" "copied|marker"
   # INV2 (0.9.1 form): a failing gate (preflight.sh needs jq) changes nothing.
   path_without "$farm" jq
   uh="$FX/legacy2/home"; dh="$FX/legacy2/data"

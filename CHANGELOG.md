@@ -51,7 +51,7 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   read. The commands that write state copy, once, any state 0.9.0 left in
   Claude Code's per-plugin data directory (`copy_legacy_state_once`, right after
   their own preflight gate passes: copy-only, never overwriting, logged, with a
-  `legacy-state-copied` marker); `/drupilot-status`, `/drupilot-doctor`,
+  `legacy-state-copied` marker written only once every file is copied); `/drupilot-status`, `/drupilot-doctor`,
   `/drupilot-patch`, the hooks and `preflight.sh` never copy. The state key of a
   path is unchanged. `smoke.sh` no longer exports `CLAUDE_PLUGIN_DATA` (that is
   what hid the bug) and gained the `data-dir` and `legacy-state` tests.
