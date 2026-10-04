@@ -50,8 +50,20 @@ assert_match "an unverified PHP version (its core floor drives php_supported_for
 undo php/versions.json
 cp "$r/schemas/target.schema.json" "$T_TMP/target.schema.json"
 jq '.properties.as_of = {"$ref": "#/$defs/no_such_def"}' "$T_TMP/target.schema.json" > "$r/schemas/target.schema.json"
-assert_match "a \$ref that does not resolve fails" "$(dc)" '^1\|schema: \$\.as_of: unresolved \$ref #/\$defs/no_such_def'
+assert_match "a \$ref that does not resolve fails" "$(dc)" '^1\|schema-refs: properties\.as_of: unresolved \$ref #/\$defs/no_such_def'
+jq '.properties.eol.properties.date.anyOf[1]["$ref"] = "#/$defs/no_such_date"' "$T_TMP/target.schema.json" > "$r/schemas/target.schema.json"
+assert_match "... also inside an anyOf branch no value reaches" "$(dc)" '^1\|schema-refs: properties\.eol\.properties\.date\.anyOf\.1: unresolved'
 cp "$T_TMP/target.schema.json" "$r/schemas/target.schema.json"
+# The hard-gate walker on a synthetic schema: the annotation on a matching
+# anyOf branch counts (inline or next to a $ref), a branch the value does not
+# match is not walked, and a node annotated twice is reported once.
+cat > "$T_TMP/s1.json" <<'JSON'
+{"type":"object","properties":{"a":{"anyOf":[{"type":"null"},{"x-drupilot-hard-gate":true,"$ref":"#/$defs/g"}]},"b":{"anyOf":[{"type":"null"},{"x-drupilot-hard-gate":true,"type":"object"}]},"c":{"anyOf":[{"type":"null"},{"$ref":"#/$defs/ga"}]},"d":{"x-drupilot-hard-gate":true,"anyOf":[{"$ref":"#/$defs/ga"}]}},"$defs":{"g":{"type":"object"},"ga":{"x-drupilot-hard-gate":true,"type":"object"}}}
+JSON
+assert_eq "hard(): matching branches only, annotations on branches read, no duplicate" \
+  "$(printf '%s' '{"a":{"verified":false},"b":{"verified":false},"c":null,"d":{"verified":true}}' \
+     | jq -c --slurpfile s "$T_TMP/s1.json" "$(cat "$T_REPO/scripts/dev/jsonschema.jq") . as \$d | \$s[0] as \$r | [[\$d | hard(\$r; \$r; \"\$\")] | unique_by(.path)[] | .path]")" \
+  '["$.a","$.b","$.d"]'
 
 edit php/rules.json '(.rules[] | select(.id == "removed-each") | .src) = "02-F9"'
 assert_match "a verified removed-no-rule rule must cite php.net" "$(dc)" '^1\|coherence: removed-each: a verified removed-no-rule rule must cite php\.net'

@@ -3,7 +3,8 @@
 # drupilot — scripts/dev/data-check.sh
 # Check drupilot's version data and catalogs (a developer/CI tool: no command,
 # skill or hook calls it; scripts/dev/check.sh runs it as its `data` gate):
-#   schema      config/targets/<major>.json (schemas/target.schema.json),
+#   schema      every $ref of the schemas resolves (whatever the data);
+#               config/targets/<major>.json (schemas/target.schema.json),
 #               config/php/versions.json and rules.json, config/paths/eras.json
 #               and graph.json, and every config/catalog/*.json validate
 #               against their schema (the jq validator, scripts/dev/
@@ -111,6 +112,11 @@ paths(type == "object") as $p | getpath($p) as $o
     (if ((($o.php_supported // null) != null) or (($o.php_unsupported // null) != null)) and ((($o.php_src // "") | length) == 0)
      then "\($at): PHP support list without php_src" else empty end) )'
 
+# Every $ref of every schema used resolves (once per schema, whatever the data).
+for schema in $(printf '%s' "$FILES" | cut -f2 | LC_ALL=C sort -u); do
+  report schema-refs "schemas/$schema" "$(jq -r "$JQ_LIB bad_refs" "$ROOT/schemas/$schema" 2>&1 || true)"
+done
+
 while IFS="$(printf '\t')" read -r file schema; do
   [[ -n "$file" ]] || continue
   src="$ROOT/$file"
@@ -123,7 +129,7 @@ while IFS="$(printf '\t')" read -r file schema; do
     errs="$(jq -r '.entries[]? | select(.blocking == true) | select(.verified != true or has("verified_as")) | "entry \(.id): blocking but not verified (or announced)"' "$src" 2>&1 || true)"
   else
     errs="$(jq -r --slurpfile schema "$ROOT/schemas/$schema" "$JQ_LIB
-      . as \$doc | \$schema[0] as \$root | \$doc | hard(\$root; \$root; \"\$\")
+      . as \$doc | \$schema[0] as \$root | [\$doc | hard(\$root; \$root; \"\$\")] | unique_by(.path)[]
       | select((.node | type) != \"object\" or ((.node.status // \"\") != \"detect\" and (.node.verified != true or (.node | has(\"verified_as\")))))
       | \"\\(.path): feeds a hard gate but is not verified (or is announced)\"" "$src" 2>&1 || true)"
   fi

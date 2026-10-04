@@ -21,9 +21,10 @@
 # the core tree at the previous major's newest tag (or at the minor that
 # introduced it) and gone at the removal tag (an obsolete one: still there with
 # lifecycle: obsolete), the same for every removed core library; that nothing
-# else disappeared between those two tags (every core/modules and core/themes
-# extension directory, read through git.drupalcode.org's repository-tree API,
-# and every core.libraries.yml key gone at the major's .0 must be listed); and
+# else disappeared between those two tags (every .info.yml under core/modules
+# and core/themes, nested modules included, tests/ and theme engines left
+# out, listed from a tree-only `git fetch --filter=blob:none` of the tag, and
+# every core.libraries.yml key gone at the major's .0 must be listed); and
 # that the drupal.org pages in hand_sources did not change since they were read
 # (api-d7 JSON, never HTML). Every fetched file is cached, and --offline reads
 # only the cache: two offline runs on the same input give byte-identical files
@@ -43,7 +44,7 @@
 #     --data-dir  the directory holding targets/ (default <repo>/config)
 #     --as-of     the date stamped on changed values (default: today, UTC)
 #
-# Requires bash >= 3.2, jq and (unless --offline) curl. Exit codes: 0 done ·
+# Requires bash >= 3.2, jq and (unless --offline) curl and git. Exit codes: 0 done ·
 # 1 a usage, fetch or parse error · 3 done, but a mismatch or a stale hand
 # source needs a human.
 # =============================================================================
@@ -85,7 +86,7 @@ trap 'rm -rf "$TMP"' EXIT
 FETCHED=""; PROBED=""; GEN=""
 UA="drupilot-dev refresh-data (https://github.com/thebrokenbrain/drupilot)"
 RAW="https://git.drupalcode.org/project/drupal/-/raw"
-TREE="https://git.drupalcode.org/api/v4/projects/project%2Fdrupal/repository/tree"
+GITURL="https://git.drupalcode.org/project/drupal.git"
 
 # The fetch helpers run in the main shell (never inside $(...), where a die
 # would only end a subshell) and hand back their result in a variable.
@@ -145,8 +146,26 @@ newest_of_major() {
 raw() { fetch "$RAW/$1/$2" "git/$1/$(printf '%s' "$2" | tr '/' '_')"; }
 # rawprobe TAG PATH -> PROBED: 200 or 404 for PATH at TAG.
 rawprobe() { probe "$RAW/$1/$2" "git/$1/$(printf '%s' "$2" | tr '/' '_')"; }
-# lstree TAG DIR -> FETCHED: the repository-tree listing (JSON) of DIR at TAG.
-lstree() { fetch "$TREE?path=$2&ref=$1&per_page=100" "api/tree-$1-$(printf '%s' "$2" | tr '/' '_').json"; }
+# infolist TAG -> FETCHED: the sorted .info.yml paths under core/modules and
+# core/themes at TAG (tests/ and core/themes/engines/ left out), from a
+# tree-only fetch of the tag (no file contents are downloaded).
+infolist() {
+  local tag="$1" f="$CACHE/git/$1/info-yml-paths.txt" g="$TMP/gt-$1"
+  if [[ "$OFFLINE" == "1" ]]; then
+    [[ -f "$f" ]] || die "--offline: the core tree listing at $tag is not in the cache ($f)" 1
+  else
+    have_cmd git || die "git is required to list the core tree (or pass --offline)" 1
+    mkdir -p "$g" "$(dirname "$f")"
+    if ! ( cd "$g" && git init -q && git fetch -q --depth 1 --filter=blob:none "$GITURL" "refs/tags/$tag" \
+             && git ls-tree -r --name-only FETCH_HEAD -- core/modules core/themes ) < /dev/null > "$g.list" 2> /dev/null; then
+      die "could not list the core tree at $tag" 1
+    fi
+    awk '/\.info\.yml$/ && !/\/tests\// && !/^core\/themes\/engines\//' "$g.list" | LC_ALL=C sort > "$f.part"
+    [[ -s "$f.part" ]] || die "the core tree listing at $tag holds no .info.yml" 1
+    mv "$f.part" "$f"
+  fi
+  FETCHED="$f"
+}
 # libkeys FILE -> the top-level keys of a core.libraries.yml, sorted.
 libkeys() { sed -n 's/^\([A-Za-z0-9_.-][A-Za-z0-9_.-]*\):[[:space:]]*$/\1/p' "$1" | LC_ALL=C sort -u; }
 
@@ -268,19 +287,16 @@ EOF
       jq -e --arg n "core/$key" --arg r "$major.0" 'any(.removed_libraries[]; .name == $n and .removed_in == $r)' "$file" > /dev/null \
         || mismatch "$rel" "removed_libraries" "core/$key is in core.libraries.yml at $prev but not at $at0, and is not listed"
     done < <(LC_ALL=C comm -23 "$TMP/k-prev" "$TMP/k-at")
-    for dir in modules themes; do
-      lstree "$prev" "core/$dir"; jq -r '.[] | select(.type == "tree") | .name' "$FETCHED" | LC_ALL=C sort > "$TMP/d-prev"
-      [[ "$(jq 'length' "$FETCHED")" -lt 100 ]] || mismatch "$rel" "removed_extensions" "the core/$dir listing at $prev is truncated"
-      lstree "$at0" "core/$dir"; jq -r '.[] | select(.type == "tree") | .name' "$FETCHED" | LC_ALL=C sort > "$TMP/d-at"
-      while IFS= read -r name; do
-        [[ -n "$name" ]] || continue
-        # Only an extension directory counts (core/themes/engines holds none).
-        rawprobe "$prev" "core/$dir/$name/$name.info.yml"
-        [[ "$PROBED" == "200" ]] || continue
-        jq -e --arg n "$name" --arg r "$major.0" 'any(.removed_extensions[]; .name == $n and .removed_in == $r)' "$file" > /dev/null \
-          || mismatch "$rel" "removed_extensions" "core/$dir/$name is in the tree at $prev but not at $at0, and is not listed"
-      done < <(LC_ALL=C comm -23 "$TMP/d-prev" "$TMP/d-at")
-    done
+    infolist "$prev"; cp "$FETCHED" "$TMP/i-prev"
+    infolist "$at0"; cp "$FETCHED" "$TMP/i-at"
+    while IFS= read -r path; do
+      [[ -n "$path" ]] || continue
+      name="$(basename "$path" .info.yml)"
+      # Listed under its own info_path, or by name at the standard location.
+      jq -e --arg n "$name" --arg p "$path" --arg r "$major.0" \
+        'any(.removed_extensions[]; .removed_in == $r and ((.info_path // "") == $p or ((.info_path // "") == "" and .name == $n)))' "$file" > /dev/null \
+        || mismatch "$rel" "removed_extensions" "$path is in the core tree at $prev but not at $at0, and is not listed"
+    done < <(LC_ALL=C comm -23 "$TMP/i-prev" "$TMP/i-at")
   fi
 
   # Hand sources: an api-d7 node whose `changed` moved since it was read.

@@ -11,8 +11,12 @@
 # violation, prefixed with the instance path $p.
 # hard($root; $sch; $p): {path, node} for every instance node that a
 # subschema annotated "x-drupilot-hard-gate": true describes, the annotation
-# read next to a $ref too and inside anyOf branches (data-check.sh requires
+# read next to a $ref too and on the anyOf branches the instance matches (a
+# node may come out twice: callers dedupe by path; data-check.sh requires
 # each of them to be verified and never "announced").
+# bad_refs: every "$ref" of a schema (the input) that is not a local
+# "#/$defs/<name>" naming an existing definition, checked once per schema, so
+# a typo inside an anyOf branch no instance reaches is still caught.
 # A $ref that does not resolve is a violation, never a silent pass. A pattern's
 # final $ matches only at the very end (jq's Oniguruma would also match before
 # a trailing newline; JSON Schema's ECMA-262 regexes do not).
@@ -64,7 +68,7 @@ def hard($root; $sch; $p):
     else
       (if $s["x-drupilot-hard-gate"] == true or (($sch | type) == "object" and $sch["x-drupilot-hard-gate"] == true)
        then {path: $p, node: $x} else empty end),
-      (($s.anyOf // [])[] as $b | $x | hard($root; $b | if type == "object" then del(.["x-drupilot-hard-gate"]) else . end; $p)),
+      (($s.anyOf // [])[] as $b | select([$x | chk($root; $b; $p)] | length == 0) | $x | hard($root; $b; $p)),
       (if ($x | type) == "object" then
          (($s.properties // {}) | to_entries[] | select(.key as $k | $x | has($k)) | .key as $k | .value as $ps
            | $x[$k] | hard($root; $ps; "\($p).\($k)")),
@@ -76,3 +80,9 @@ def hard($root; $sch; $p):
          ($x | to_entries[] | .key as $i | .value | hard($root; $s.items; "\($p)[\($i)]"))
        else empty end)
     end;
+def bad_refs:
+  . as $root
+  | paths as $q | select(($q | length) > 0 and $q[-1] == "$ref") | getpath($q) as $r
+  | select(($r | type) != "string" or ($r | startswith("#/$defs/") | not)
+           or ((($root["$defs"] // {}) | has($r | ltrimstr("#/$defs/"))) | not))
+  | "\($q[:-1] | map(tostring) | join(".")): unresolved $ref \($r | tostring)";

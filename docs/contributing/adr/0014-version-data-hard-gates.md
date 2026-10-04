@@ -35,9 +35,9 @@ plan's examples in several places.
    `scripts/dev/refresh-data.sh` rewrites only the derived fields of each
    minor, from its newest tag, and writes the files in jq's layout so offline
    runs are byte-identical; it reports, never writes, what needs a human
-   (removals the core tree contradicts, an extension directory or a
-   `core.libraries.yml` key that disappears at a major's .0 without being
-   listed, drupal.org pages changed since read). Where the
+   (removals the core tree contradicts, an extension `.info.yml`, nested
+   modules included, or a `core.libraries.yml` key that disappears at a
+   major's .0 without being listed, drupal.org pages changed since read). Where the
    deprecated-and-obsolete page and the core tree disagree, the tree wins
    and the entry's note says so.
 4. **Major 10 is not a target.** `toolchain_cell`, `php_defaults` and
@@ -58,10 +58,11 @@ plan's examples in several places.
      page's sentence names Migrate Drupal UI by mistake), Field Layout
      11.3.0 (the page says 11.4), Telephone 11.5.0 (the page says 11.4.0, but
      only the 11.5.x branch marks it deprecated);
-   - the extensions the page lists but AR-02 does not are there too:
-     `simpletest` (an obsolete stub removed in 10.0), `help_topics` (11.0)
-     and `node_storage_body_field` (added in 11.3.0, removed in 12.0, nested
-     under the node module: `info_path`);
+   - the extensions AR-02 does not name are there too: `simpletest` (an
+     obsolete stub removed in 10.0), `help_topics` (11.0), and four modules
+     nested under another and removed in 12.0 (`info_path`):
+     `node_storage_body_field`, `block_content_storage_body_field` (added in
+     11.3.0) and `search_help`, `search_node` (added in 11.4.0);
    - "a required parameter after an optional one" is deprecated in PHP 8.0,
      not a hard break (php.net's 8.0 deprecations page), and the historical
      `implode()` argument order was removed in 8.0;

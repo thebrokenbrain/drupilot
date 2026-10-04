@@ -333,6 +333,63 @@
         "12.0.0"
       ],
       "note": "A configuration placeholder (the node body field storage) added in 11.3.0 as deprecated; sites copy its field.storage.node.body.yml instead."
+    },
+    {
+      "name": "block_content_storage_body_field",
+      "kind": "module",
+      "removed_in": "12.0",
+      "deprecated_in": "11.3.0",
+      "replacement_project": null,
+      "replacement_available": null,
+      "rewrite": "hard-break",
+      "introduced_in": "11.3",
+      "info_path": "core/modules/block_content/modules/block_content_storage_body_field/block_content_storage_body_field.info.yml",
+      "src": "core tree: absent at 11.2.14, present at 11.3.0 and 11.4.8 (lifecycle: deprecated, hidden; its lifecycle_link points at https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions)), absent at 12.0.0-beta1",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ],
+      "note": "A configuration placeholder (the block_content body field storage), the twin of node_storage_body_field."
+    },
+    {
+      "name": "search_help",
+      "kind": "module",
+      "removed_in": "12.0",
+      "deprecated_in": null,
+      "replacement_project": null,
+      "replacement_available": null,
+      "rewrite": "hard-break",
+      "introduced_in": "11.4",
+      "info_path": "core/modules/search/modules/search_help/search_help.info.yml",
+      "src": "core tree: absent at 11.3.18, present at 11.4.0 and 11.4.8, absent at 12.0.0-beta1 (removed with the search module)",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ],
+      "note": "A submodule of search, added in 11.4.0. Whether the contributed Search project carries it on is not verified."
+    },
+    {
+      "name": "search_node",
+      "kind": "module",
+      "removed_in": "12.0",
+      "deprecated_in": null,
+      "replacement_project": null,
+      "replacement_available": null,
+      "rewrite": "hard-break",
+      "introduced_in": "11.4",
+      "info_path": "core/modules/search/modules/search_node/search_node.info.yml",
+      "src": "core tree: absent at 11.3.18, present at 11.4.0 and 11.4.8, absent at 12.0.0-beta1 (removed with the search module)",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ],
+      "note": "A submodule of search, added in 11.4.0. Whether the contributed Search project carries it on is not verified."
     }
   ],
   "removed_libraries": [
@@ -356,7 +413,7 @@
       "name": "core/js-cookie",
       "removed_in": "12.0",
       "deprecated_in": "10.1.0",
-      "src": "core/core.libraries.yml: present at 11.4.8, absent at 12.0.0-beta1 ; https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes)",
+      "src": "core/core.libraries.yml: present at 11.4.8, absent at 12.0.0-beta1",
       "verified": true,
       "note": "Its deprecation message announced removal in 11.0.0; it was removed in 12.0."
     }

@@ -215,6 +215,9 @@ Sources:
 | `migrate_drupal_ui` | module (obsolete) | 12.0 | 11.3.0 |  | hard-break | yes |
 | `text_with_summary` | module | 12.0 |  | text_with_summary | dependency | yes |
 | `node_storage_body_field` | module | 12.0 | 11.3.0 |  | hard-break | yes |
+| `block_content_storage_body_field` | module | 12.0 | 11.3.0 |  | hard-break | yes |
+| `search_help` | module | 12.0 |  |  | hard-break | yes |
+| `search_node` | module | 12.0 |  |  | hard-break | yes |
 
 Sources:
 
@@ -234,12 +237,15 @@ Sources:
 - `migrate_drupal_ui`: https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes): removed from core and not moved to a contributed project ; core tree: lifecycle deprecated at 11.4.8, lifecycle obsolete at 12.0.0-beta1 Still in the 12.0.0-beta1 tree as lifecycle: obsolete (cannot be installed).
 - `text_with_summary`: https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions): the field type moves to a core module text_with_summary in 11.5.0 and is removed in 12.0 ; core tree: no core/modules/text_with_summary and no TextWithSummaryItem at 12.0.0-beta1 (TextWithSummaryItem is in core/modules/text at 11.4.8) ; https://updates.drupal.org/release-history/text_with_summary/current: 1.0.0, core_compatibility ^11.5 || ^12 On 11.4 and earlier the field type lives in the text module; the core module text_with_summary exists only from 11.5.0.
 - `node_storage_body_field`: https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions) ; core tree: absent at 11.2.14, present at 11.3.0 and 11.4.8 (lifecycle: deprecated, hidden), absent at 12.0.0-beta1 A configuration placeholder (the node body field storage) added in 11.3.0 as deprecated; sites copy its field.storage.node.body.yml instead.
+- `block_content_storage_body_field`: core tree: absent at 11.2.14, present at 11.3.0 and 11.4.8 (lifecycle: deprecated, hidden; its lifecycle_link points at https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions)), absent at 12.0.0-beta1 A configuration placeholder (the block_content body field storage), the twin of node_storage_body_field.
+- `search_help`: core tree: absent at 11.3.18, present at 11.4.0 and 11.4.8, absent at 12.0.0-beta1 (removed with the search module) A submodule of search, added in 11.4.0. Whether the contributed Search project carries it on is not verified.
+- `search_node`: core tree: absent at 11.3.18, present at 11.4.0 and 11.4.8, absent at 12.0.0-beta1 (removed with the search module) A submodule of search, added in 11.4.0. Whether the contributed Search project carries it on is not verified.
 
 ### Removed core libraries
 
 - `core/internal.backbone`, removed in 12.0: core/core.libraries.yml: present at 11.4.8, absent at 12.0.0-beta1 ; https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes) Internal since 10.0 (the public core/backbone was removed in 10.0).
 - `core/internal.underscore`, removed in 12.0: core/core.libraries.yml: present at 11.4.8, absent at 12.0.0-beta1 ; https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes) Internal since 10.0 (the public core/underscore was removed in 10.0).
-- `core/js-cookie`, removed in 12.0, deprecated in 10.1.0: core/core.libraries.yml: present at 11.4.8, absent at 12.0.0-beta1 ; https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes) Its deprecation message announced removal in 11.0.0; it was removed in 12.0.
+- `core/js-cookie`, removed in 12.0, deprecated in 10.1.0: core/core.libraries.yml: present at 11.4.8, absent at 12.0.0-beta1 Its deprecation message announced removal in 11.0.0; it was removed in 12.0.
 
 ## PHP
 

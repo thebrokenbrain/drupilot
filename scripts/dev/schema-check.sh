@@ -118,6 +118,12 @@ for f in "$REPO"/schemas/*.schema.json; do
 done
 
 log_step "drupilot schemas: jq$([[ "$MODE" != "jq" ]] && printf ' + check-jsonschema (%s)' "$MODE")"
+# Every $ref of every schema resolves, whatever the instances reach.
+for f in "$REPO"/schemas/*.schema.json; do
+  [[ -f "$f" ]] || continue
+  errs="$(jq -r "$(cat "$REPO/scripts/dev/jsonschema.jq") bad_refs" "$f" 2>&1 || true)"
+  [[ -z "$errs" ]] || result "$(basename "$f")" refs jq fail "$(printf '%s\n' "$errs" | head -n 5 | tr '\n' ';')"
+done
 # --- jq engine --------------------------------------------------------------------
 while IFS="$(printf '\t')" read -r schema inst out; do
   [[ -n "$schema" ]] || continue

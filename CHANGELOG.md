@@ -128,16 +128,20 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   source and whether it was verified; an unknown value is `null` or a minor
   `{"status": "detect"}`. Schemas in `schemas/` (target, php-versions,
   php-rules, paths, catalog). The removals follow the core tree at both
-  tags: every module, theme and `core.libraries.yml` key that disappears at a
-  major's .0 is listed (22 libraries in 10.0, 14 in 11.0, 3 in 12.0), and
+  tags: every module (nested ones included, such as
+  `node_storage_body_field` and `search_node`), theme and
+  `core.libraries.yml` key that disappears at a major's .0 is listed (22
+  libraries in 10.0, 14 in 11.0, 3 in 12.0), and
   Migrate Drupal and Migrate Drupal UI are recorded as still shipped in
   12.0.0-beta1 with `lifecycle: obsolete`.
 - **`scripts/dev/refresh-data.sh`** (developer only, never run by a port)
   regenerates the derived fields of `config/targets/*.json` from packagist and
   git.drupalcode.org at each minor's newest tag, keeps the hand-maintained
   fields, checks every removed extension and library against the core tree at
-  both tags, reports any extension directory or library that disappears at a
-  major's .0 without being listed, and reports a drupal.org page (read
+  both tags, reports any extension (every `.info.yml` under `core/modules`
+  and `core/themes`, nested modules included, listed from a tree-only git
+  fetch of each tag) or library that disappears at a major's .0 without
+  being listed, and reports a drupal.org page (read
   through api-d7) that changed since it was read. Every fetch is cached;
   `--offline` runs are byte-identical, and nothing is written unless every
   fetch succeeded.
@@ -162,9 +166,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   another copy of the data.
 - The jq schema validator moved to `scripts/dev/jsonschema.jq` and learned
   `anyOf`, `pattern`, `propertyNames`, `minItems`, `minLength` and a schema
-  as `additionalProperties`. A `$ref` that does not resolve is now a
-  violation, and a pattern's final `$` no longer matches before a trailing
-  newline (as in JSON Schema).
+  as `additionalProperties`. Every `$ref` of every schema must resolve
+  (checked once per schema, whatever the instances reach), and a pattern's
+  final `$` no longer matches before a trailing newline (as in JSON
+  Schema).
 - The logo moved from `assets/` to `docs/assets/` (the README image paths
   follow), and `/drupilot-status` and `scripts/env/state.sh` cite
   `docs/reference/state.md` instead of a README section.

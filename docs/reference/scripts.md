@@ -3187,7 +3187,8 @@ Requires bash >= 3.2, jq and git. Exit codes: 0 every snapshot passes ·
 drupilot — scripts/dev/data-check.sh
 Check drupilot's version data and catalogs (a developer/CI tool: no command,
 skill or hook calls it; scripts/dev/check.sh runs it as its `data` gate):
-  schema      config/targets/<major>.json (schemas/target.schema.json),
+  schema      every $ref of the schemas resolves (whatever the data);
+              config/targets/<major>.json (schemas/target.schema.json),
               config/php/versions.json and rules.json, config/paths/eras.json
               and graph.json, and every config/catalog/*.json validate
               against their schema (the jq validator, scripts/dev/
@@ -3384,9 +3385,10 @@ It also checks, without writing anything: that every removed extension is in
 the core tree at the previous major's newest tag (or at the minor that
 introduced it) and gone at the removal tag (an obsolete one: still there with
 lifecycle: obsolete), the same for every removed core library; that nothing
-else disappeared between those two tags (every core/modules and core/themes
-extension directory, read through git.drupalcode.org's repository-tree API,
-and every core.libraries.yml key gone at the major's .0 must be listed); and
+else disappeared between those two tags (every .info.yml under core/modules
+and core/themes, nested modules included, tests/ and theme engines left
+out, listed from a tree-only `git fetch --filter=blob:none` of the tag, and
+every core.libraries.yml key gone at the major's .0 must be listed); and
 that the drupal.org pages in hand_sources did not change since they were read
 (api-d7 JSON, never HTML). Every fetched file is cached, and --offline reads
 only the cache: two offline runs on the same input give byte-identical files
@@ -3406,7 +3408,7 @@ Usage:
     --data-dir  the directory holding targets/ (default <repo>/config)
     --as-of     the date stamped on changed values (default: today, UTC)
 
-Requires bash >= 3.2, jq and (unless --offline) curl. Exit codes: 0 done ·
+Requires bash >= 3.2, jq and (unless --offline) curl and git. Exit codes: 0 done ·
 1 a usage, fetch or parse error · 3 done, but a mismatch or a stale hand
 source needs a human.
 ```

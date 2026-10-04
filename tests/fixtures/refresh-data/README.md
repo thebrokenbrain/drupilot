@@ -7,6 +7,6 @@ down to the fields the script reads; their values come from the real sources
 on 2026-10-04 (packagist p2 `drupal/core`, git.drupalcode.org at `11.3.18`,
 api-d7 node 2891690), except the `11.5.0-beta1` tag, which is made up to
 prove that a supported major ignores pre-release tags, and the trimmed
-`core.libraries.yml` and repository-tree listings at `10.6.18` and `11.0.0`
-(`git/`, `api/`), which hold just enough for the completeness check: `book`
+`core.libraries.yml` files and `.info.yml` listings at `10.6.18` and
+`11.0.0` (`git/`), which hold just enough for the completeness check: `book`
 disappears and is listed, nothing else does.
