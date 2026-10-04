@@ -1,6 +1,8 @@
 {
   "applied": false,
   "changed_files": 1,
+  "compat_files": [],
+  "compat_status": "ok",
   "digests_pass": false,
   "digests_sha": null,
   "digests_status": "off",
@@ -13,6 +15,8 @@
     "web/modules/custom/legacy_widgets/src/Form/WidgetImportForm.php"
   ],
   "pass2_files": [],
+  "php_ceiling": "8.5",
+  "php_floor": "8.1",
   "rule_hits": {
     "official": {
       "FunctionFirstClassCallableRector": 1

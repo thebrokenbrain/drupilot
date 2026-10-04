@@ -224,6 +224,12 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 - `config/php/rules.json`: `p81-null-to-internal`
   (`NullToStrictStringFuncCallArgRector`) is `drupal_safe: false`, as the
   template has always skipped it.
+- **The `legacy_widgets` H10 golden is re-recorded** (lab, Drupal 11.4.8, PHP
+  8.3, cell 11 toolchain). The port patch, `phpstan.json` and `phpcs.json`
+  are byte-identical to the M1 recording, and so is every file with the cell
+  11 pins alone; `raw/rector-dryrun.json` gains `compat_files`,
+  `compat_status`, `php_floor` and `php_ceiling`. The golden is pinned to a
+  new data snapshot (the `rules.json` change above).
 - **New test-beds get the cell 11 toolchain:** palantirnet/drupal-rector
   1.1.3, rector/rector 2.6.1 and phpstan/phpstan 2.2.16 (were 0.21.2, 2.5.2
   and 2.2.2); the other pins are unchanged. On `legacy_widgets` and
