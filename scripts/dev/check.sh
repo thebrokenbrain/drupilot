@@ -388,6 +388,9 @@ dummy_for() {
     SUBJECT_PATH) printf 'web/modules/custom/example';;
     PHP_TARGET) printf '8.3';;
     PHP_SET) printf 'php83';;
+    PHP_FLOOR) printf '8.1';;
+    PHP_FLOOR_ID) printf 'PHP_81';;
+    PHP_FLOOR_SET) printf 'php81';;
     PHPSTAN_LEVEL|PHPSTAN_LEVEL_REFACTOR) printf '5';;
     PROJECT_NAME) printf 'example';;
     WEBDRIVER_HOST) printf 'selenium-chrome';;

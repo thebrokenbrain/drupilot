@@ -68,7 +68,7 @@
 - **You stay in control** — the consequential decisions are **tabbed choices** (core target, PHP target, the digests rules to apply, refactor scope, push-or-not), with the recommendation pre-selected and your answers remembered per project. Nothing important happens silently.
 - **Insight, not just output** — a per-port **report card** (`port-report.md`: what changed and why, the preservation verdict), a **dependency D11-readiness panel** (which contrib deps block the port), an **upstream issue search** (is someone already porting this?), and a **deprecation explainer** that turns cryptic output into a fix + a change-records link.
 
-The configured default PHP target is **8.3**, the safe floor, used whenever no tab is shown (an autonomous run, or `DRUPILOT_PHP_TARGET` already set); the guided `/drupilot-setup` tab recommends and pre-selects **8.4**, with 8.3 offered as the safe floor. The target is fully configurable; everything (Rector sets, PHPStan level, PHPCS sniffs, DDEV `php_version`) derives from a single setting. In-flow choices persist in a per-project `.drupilot.json` (read between environment variables and the defaults).
+The configured default PHP target is **8.3**, the safe floor, used whenever no tab is shown (an autonomous run, or `DRUPILOT_PHP_TARGET` already set); the guided `/drupilot-setup` tab recommends and pre-selects **8.4**, with 8.3 offered as the safe floor. The target is fully configurable; everything (PHPStan level, PHPCS sniffs, DDEV `php_version`) derives from a single setting. Rector's PHP sets follow the floor of the declared core range and the composer `require.php` instead (usually 8.1 for `^10 || ^11`), never above the target, so the official Rector pass does not add syntax the lowest declared PHP cannot run, as far as drupilot's version data knows that PHP (a kept Drupal 9 leg without a composer `require.php` falls back to PHP 7.4, with a warning). In-flow choices persist in a per-project `.drupilot.json` (read between environment variables and the defaults).
 
 ---
 
@@ -433,7 +433,7 @@ Defaults live in `config/defaults.json`. **Every `DRUPILOT_*` key can be overrid
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `DRUPILOT_PHP_TARGET` | `8.3` | Target PHP version (drives Rector / PHPStan / PHPCS / DDEV). |
+| `DRUPILOT_PHP_TARGET` | `8.3` | Target PHP version (drives PHPStan / PHPCS / DDEV, and caps Rector's PHP floor). |
 | `DRUPILOT_DRUPAL_TARGET` | `^11` | Target core range. |
 | `DRUPILOT_CORE_TARGET_STRATEGY` | `auto` | Core compatibility decision: `auto` (keep `^10 \|\| ^11` while backwards-compatible, switch to `^11` on a BC break / refactor), `d11-only`, or `keep-d10`. Keeping D10 also declares a composer `require.php` floor (see `DRUPILOT_REQUIRE_PHP_FLOOR`), and the choice yields a SemVer version-bump verdict. |
 | `DRUPILOT_KEEP_D10` | _(legacy)_ | Legacy boolean (`true` → keep D10, `false` → D11-only), honored only while `DRUPILOT_CORE_TARGET_STRATEGY` is `auto`; an explicit strategy wins. Prefer `DRUPILOT_CORE_TARGET_STRATEGY`. |

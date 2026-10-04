@@ -104,10 +104,13 @@ All output you produce — messages, summaries, plans — is in **English**.
 - **drupal-rector**: `palantirnet/drupal-rector` **1.1.x** (toolchain cell 11; a project locked by drupilot 0.9 keeps 0.21.x until refreshed; community-maintained;
   the `palantirnet/` namespace is kept, `palantirnet/drupal8-rector` is obsolete).
   Covers D10.0 -> D11.4 deprecations. drupilot's `rector.php` uses
-  `Drupal10SetList::DRUPAL_10` (APIs removed in D11) plus the target PHP set
+  `Drupal10SetList::DRUPAL_10` (APIs removed in D11) plus the PHP sets up to the
+  floor of the declared core range (`->withPhpVersion()`; 8.1 for
+  `^10 || ^11`, a compat pass fixes implicit nullables when it is below 8.4)
   minus the risky rules it skips (`ArrayToFirstClassCallableRector`,
   `AddOverrideAttributeToOverriddenMethodsRector`, `ReadOnlyPropertyRector`,
-  `ReadOnlyClassRector`, `NullToStrictStringFuncCallArgRector`);
+  `ReadOnlyClassRector`, `NullToStrictStringFuncCallArgRector`, the `__sleep`/
+  `__wakeup` rewrites, `#[\Override]` on properties);
   `Drupal11SetList::DRUPAL_11` (D11 deprecations, for a future D12 port) is not
   included.
 - **drupal-digests** (`dbuytaert/drupal-digests`): a complementary, AI-generated

@@ -179,8 +179,64 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `install-toolchain.sh --json` reports it (`cell`). A lock drupilot 1.0
   creates starts as `{"schema": 1}`, which is how a lock 0.9 created is told
   apart. ADR 0015.
+- **The Rector compat pass** (ADR 0002). `templates/rector-compat.php.tmpl`
+  registers only PHP deprecation fixes whose output still runs on the PHP
+  floor (today `ExplicitNullableParamTypeRector`: `Foo $x = NULL` becomes
+  `?Foo $x = NULL`) and no set. `run-rector.sh` renders it at the Drupal root
+  and runs it right after the official pass when the floor is below PHP 8.4
+  and the declared core range runs on 8.4 or later. Its `--json` reports it
+  (`compat_status`, `compat_files`, `rule_hits.compat`, errors with `pass: 3`)
+  with `php_floor` and `php_ceiling`; its dry-run record holds the compat
+  pass's `--apply` to what it announced, and a crash counts as an
+  official-pass crash (exit 3), although the rule record of what the
+  official pass already applied is kept. `render-templates.sh` gains the
+  `rector-compat` target (`--only rector` implies it; `skipped` when no
+  compat rule applies) and `php_floor`/`php_ceiling` in its `--json`. New
+  helpers: `php_constraint_floor` (`plan.sh`: the lowest PHP a `require.php`
+  constraint admits), `rector_php_bounds`, `rector_compat_needed`,
+  `rector_floor_tokens`, `rector_config_floor` and `rector_config_pristine`
+  (`common.sh`).
+- The `data` gate checks that every rule `templates/rector.php.tmpl` skips is
+  `drupal_safe: false` in `config/php/rules.json`, and that every rule of
+  `templates/rector-compat.php.tmpl` is a `drupal_safe` compat rule there.
 
 ### Changed
+- **Rector targets the PHP floor of the declared core range, not the PHP
+  target** (T-M2-13, ADR 0002). `rector.php` (template marker 4) sets
+  `->withPhpVersion(PhpVersion::PHP_<L>)` and `->withPhpSets(php<L>: true)`,
+  where L is the lowest PHP the core range `core-strategy.sh` recommends and
+  the `require.php` composer will enforce admit, never above
+  `DRUPILOT_PHP_TARGET`: usually 8.1 for `^10 || ^11`, 8.3 for `^11`. A
+  range leg the version data does not hold (a Drupal 9 leg kept as-is)
+  leaves the floor to the enforced `require.php`, else the lowest PHP the
+  data knows, with a warning; the compat pass's ceiling comes from the legs
+  it does know. 0.9 applied the target's sets, so a port
+  that kept Drupal 10 on a PHP 8.3 bed could gain PHP 8.3 syntax (a typed
+  class constant, `AddTypeToConstRector`) that its PHP 8.1 sites cannot
+  parse. For `^11` with a PHP 8.4 target the sets drop from php84 to php83,
+  and the compat pass keeps the implicit-nullable fix. A `rector.php` from an
+  older template is backed up and regenerated as before; an untouched
+  current render of `rector.php` or `rector-compat.php` is also regenerated
+  when its floor moves (the core target chosen at port time is not the one
+  setup assumed) or, in `render-templates.sh`, when it was rendered for
+  another subject of a shared test-bed (0.9 reported that as `differs`,
+  exit 3); a hand-edited one is kept with a warning. A project's own `rector.php` without
+  `withPhpVersion()` gets a warning.
+- **Rector skips three more rules** (T-M2-14): `SleepToSerializeRector` and
+  `WakeupToUnserializeRector` (`DependencySerializationTrait` defines
+  `__sleep()`/`__wakeup()`) and
+  `AddOverrideAttributeToOverriddenPropertiesRector` (`#[\Override]` on a
+  property needs PHP 8.5), in both Rector configs, still filtered with
+  `class_exists()`.
+- `config/php/rules.json`: `p81-null-to-internal`
+  (`NullToStrictStringFuncCallArgRector`) is `drupal_safe: false`, as the
+  template has always skipped it.
+- **The `legacy_widgets` H10 golden is re-recorded** (lab, Drupal 11.4.8, PHP
+  8.3, cell 11 toolchain). The port patch, `phpstan.json` and `phpcs.json`
+  are byte-identical to the M1 recording, and so is every file with the cell
+  11 pins alone; `raw/rector-dryrun.json` gains `compat_files`,
+  `compat_status`, `php_floor` and `php_ceiling`. The golden is pinned to a
+  new data snapshot (the `rules.json` change above).
 - **New test-beds get the cell 11 toolchain:** palantirnet/drupal-rector
   1.1.3, rector/rector 2.6.1 and phpstan/phpstan 2.2.16 (were 0.21.2, 2.5.2
   and 2.2.2); the other pins are unchanged. On `legacy_widgets` and

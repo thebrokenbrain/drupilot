@@ -70,7 +70,7 @@
 - **Tú mantienes el control** — las decisiones de peso son **elecciones en pestañas** (target de core, target de PHP, qué reglas digests aplicar, alcance del refactor, hacer push o no), con la recomendación preseleccionada y tus respuestas recordadas por proyecto. Nada importante ocurre en silencio.
 - **Información, no solo salida** — un **boletín** por portabilidad (`port-report.md`: qué cambió y por qué, el veredicto de preservación), un **panel de preparación D11 de las dependencias** (qué deps contrib bloquean la portabilidad), una **búsqueda de issue upstream** (¿hay alguien ya portando esto?) y un **explicador de deprecaciones** que convierte la salida críptica en un fix + un enlace a los change-records.
 
-El target de PHP configurado por defecto es **8.3**, el suelo seguro, que se usa siempre que no se muestra la pestaña (una ejecución autónoma, o con `DRUPILOT_PHP_TARGET` ya fijado); la pestaña guiada de `/drupilot-setup` recomienda y preselecciona **8.4**, y ofrece 8.3 como suelo seguro. El target es totalmente configurable; todo (sets de Rector, nivel de PHPStan, sniffs de PHPCS, `php_version` de DDEV) deriva de un único ajuste. Las elecciones del flujo persisten en un `.drupilot.json` por proyecto (leído entre las variables de entorno y los valores por defecto).
+El target de PHP configurado por defecto es **8.3**, el suelo seguro, que se usa siempre que no se muestra la pestaña (una ejecución autónoma, o con `DRUPILOT_PHP_TARGET` ya fijado); la pestaña guiada de `/drupilot-setup` recomienda y preselecciona **8.4**, y ofrece 8.3 como suelo seguro. El target es totalmente configurable; todo (nivel de PHPStan, sniffs de PHPCS, `php_version` de DDEV) deriva de un único ajuste. Los sets de PHP de Rector siguen en cambio el suelo del rango de core declarado y del `require.php` de composer (normalmente 8.1 para `^10 || ^11`), nunca por encima del target, de modo que el pase oficial de Rector no añade sintaxis que el PHP más bajo declarado no pueda ejecutar, hasta donde los datos de versiones de drupilot conocen ese PHP (una pata de Drupal 9 que se mantiene sin `require.php` en composer cae a PHP 7.4, con un aviso). Las elecciones del flujo persisten en un `.drupilot.json` por proyecto (leído entre las variables de entorno y los valores por defecto).
 
 ---
 
@@ -435,7 +435,7 @@ Los valores por defecto están en `config/defaults.json`. **Cada clave `DRUPILOT
 
 | Variable | Por defecto | Efecto |
 | --- | --- | --- |
-| `DRUPILOT_PHP_TARGET` | `8.3` | Versión de PHP destino (controla Rector / PHPStan / PHPCS / DDEV). |
+| `DRUPILOT_PHP_TARGET` | `8.3` | Versión de PHP destino (controla PHPStan / PHPCS / DDEV, y limita por arriba el suelo de PHP de Rector). |
 | `DRUPILOT_DRUPAL_TARGET` | `^11` | Rango de core destino. |
 | `DRUPILOT_CORE_TARGET_STRATEGY` | `auto` | Decisión de compatibilidad de core: `auto` (mantiene `^10 \|\| ^11` mientras sea retrocompatible, pasa a `^11` ante una ruptura BC / refactor), `d11-only` o `keep-d10`. Mantener D10 declara además un suelo composer `require.php` (ver `DRUPILOT_REQUIRE_PHP_FLOOR`), y la elección produce un veredicto SemVer de subida de versión. |
 | `DRUPILOT_KEEP_D10` | _(legacy)_ | Booleano legacy (`true` → mantener D10, `false` → solo D11); solo se respeta mientras `DRUPILOT_CORE_TARGET_STRATEGY` sea `auto`, y una estrategia explícita prevalece. Prefiere `DRUPILOT_CORE_TARGET_STRATEGY`. |

@@ -4,10 +4,20 @@
 # Run drupal-rector against a module/theme to find and (optionally) fix
 # Drupal 9/10 -> Drupal 11 deprecations.
 #
-# Two passes:
+# Passes, in this order:
 #   Pass 1 (always): the official, stable `palantirnet/drupal-rector`. A
 #                    `rector.php` is ensured at the Drupal root (copied from
-#                    vendor or the plugin template if missing).
+#                    vendor or the plugin template if missing). It targets the
+#                    PHP floor L (ADR 0002, rector_php_bounds: the lowest PHP
+#                    the core range core-strategy.sh recommends and the
+#                    effective require.php admit, never above the PHP target):
+#                    ->withPhpVersion() and the level sets stop at L.
+#   Compat pass (when the floor is below PHP 8.4 and the range runs on 8.4 or
+#                    later, rector_compat_needed): `--config rector-compat.php`
+#                    (templates/rector-compat.php.tmpl, ensured at the root
+#                    like rector.php), only the PHP deprecation fixes whose
+#                    output still runs on L (`Foo $x = NULL` -> `?Foo $x =
+#                    NULL`). Errors and the dry-run record call it pass 3.
 #   Pass 2 (--digests): the COMPLEMENTARY, AI-generated `dbuytaert/drupal-digests`
 #                    rules, cloned at runtime into the plugin cache and run via
 #                    `--config <cache>/rector/all.php`.
@@ -35,19 +45,25 @@
 #                      (overrides the cloned digests all.php). Implies --digests.
 #   --json             Emit a JSON summary on STDOUT instead of the plain file
 #                      list: {status, ok, errors, changed_files, files,
-#                      pass1_files, pass2_files, rules, digests_status,
-#                      digests_sha} — pass1 = official, pass2 = digests. Used
-#                      for the reproducible verdict and the per-pass digests
-#                      review. status is "ok", "error" (the official pass
-#                      crashed: no verdict) or "partial" (only the digests pass
-#                      crashed: the official result stands, ok stays true);
-#                      errors is [{pass, exit_code, message}]; digests_status is
-#                      "off", "ok", "error" or "skipped". rules is the
-#                      sorted list of Rector rule names Rector reported as
-#                      applied (its "Applied rules:" sections, both passes);
+#                      pass1_files, compat_files, pass2_files, rules,
+#                      digests_status, digests_sha, compat_status, php_floor,
+#                      php_ceiling} — pass1 = official, compat = the compat
+#                      pass, pass2 = digests. Used for the reproducible verdict
+#                      and the per-pass digests review. status is "ok",
+#                      "error" (the official or the compat pass crashed: no
+#                      verdict) or "partial" (only the digests pass crashed:
+#                      the official result stands, ok stays true); errors is
+#                      [{pass, exit_code, message}] (pass 1 official, 2
+#                      digests, 3 compat — not the generated-rules "Pass 3"
+#                      of /drupilot-port); digests_status and compat_status
+#                      are "off", "ok", "error" or "skipped". php_floor and
+#                      php_ceiling are the L and U of the Rector configs. rules
+#                      is the sorted list of Rector rule names Rector reported
+#                      as applied (its "Applied rules:" sections, every pass);
 #                      rule_hits counts them per pass, {official: {Rule: n},
-#                      digests: {Rule: n}} (n = files the rule changed; the
-#                      digests key only when that pass changed something) —
+#                      compat: {Rule: n}, digests: {Rule: n}} (n = files the
+#                      rule changed; the compat and digests keys only when that
+#                      pass changed something) —
 #                      copy it into the port manifest's rector_rules. An
 #                      --apply that changes files also keeps it in the
 #                      subject's state dir (rector-rules.json), the fallback
@@ -69,8 +85,10 @@
 # crash — e.g. "[ERROR] Could not detect twig set." from an incompatible
 # rector/rector, a PHP fatal, or per-file processing errors — is reported as
 # status "error" with the error text and exit 3, never as "0 files would
-# change". The file lists of a failed pass are partial at best. After a crash
-# of the official pass the digests pass is skipped. A crash of the digests pass
+# change". The file lists of a failed pass are partial at best. The compat
+# pass runs on the same toolchain, so its crash counts as the official one's.
+# After a crash of the official or the compat pass the passes after it are
+# skipped. A crash of the digests pass
 # alone is a problem of that third-party ruleset (e.g. a broken upstream
 # commit), not of the toolchain: status "partial", digests_status "error",
 # exit 4, and the official result is still reported. A digests SHA is frozen
@@ -81,21 +99,28 @@
 # one is left untouched unless it uses the legacy API or was generated by an
 # OLDER drupilot template (no current "drupilot-template-version" marker): then
 # it is backed up to <root>/.drupilot/backups/ and regenerated, so the risky-rule
-# skips (Form API callbacks -> closures, #[\Override], readonly, string casts)
-# reach projects set up before them. A hand-written rector.php is never
+# skips (Form API callbacks -> closures, #[\Override], readonly, string casts,
+# __sleep/__wakeup) reach projects set up before them. The same happens when its
+# PHP floor is not the current one (the core target changed after setup) and it
+# is exactly a drupilot render (rector_config_pristine); an edited copy at
+# another floor is kept, with a warning. A hand-written rector.php is never
 # replaced; a warning is printed when it does not skip
-# ArrayToFirstClassCallableRector.
+# ArrayToFirstClassCallableRector or has no withPhpVersion(). rector-compat.php
+# follows the same rules (written when missing, regenerated from an older
+# marker) when the compat pass runs.
 #
 # Every pass runs with --clear-cache (Rector's cache is shared across configs,
 # so a file another config cached as unchanged would otherwise be skipped). A
 # dry-run records its per-pass counts (<state_dir>/rector-dryrun.json, with the
-# subject digest and the rector.php checksum); an --apply on the same code and
-# config that changes 0 files in a pass whose dry-run announced changes is an
-# error (status "error" for the official pass, exit 3; "partial" for digests).
+# subject digest and the rector.php / rector-compat.php checksum); an --apply on
+# the same code and config that changes 0 files in a pass whose dry-run
+# announced changes is an error (status "error" for the official and the compat
+# pass, exit 3; "partial" for digests).
 #
 # Exit codes: 0 ok · 1 usage error · 2 gate (requirements, Drupal root,
-# vendor/bin/rector or a source for rector.php missing) · 3 the official pass
-# crashed or reported errors (toolchain/config broken; the diagnostic lists the
+# vendor/bin/rector or a source for rector.php missing) · 3 the official or the
+# compat pass crashed or reported errors (toolchain/config broken, or a broken
+# rector-compat.php; the diagnostic lists the
 # installed vs known-good versions from config/toolchain-reference.json) ·
 # 4 only the digests pass crashed (the official result stands; fix with
 # --digests-ref <known-good commit> or DRUPILOT_USE_DIGESTS_RULES=false).
@@ -181,6 +206,14 @@ ddev_ensure_running_or_host "$DRUPAL_ROOT" rector \
   || die "Could not start the DDEV project at $DRUPAL_ROOT, and there is no host vendor/bin/rector to fall back to." 1
 RUNNER="$(drupal_runner "$DRUPAL_ROOT")"   # "ddev exec" when DDEV is up, else ""
 PHP_TARGET="$(resolve_php_target)"
+# The PHP floor L of the Rector configs and the ceiling U (ADR 0002).
+_b="$(rector_php_bounds "$SUBJECT_ABS" "$PHP_TARGET")"
+PHP_FLOOR="${_b%% *}"; PHP_CEIL="${_b##* }"
+FLOOR_TOKENS=()
+for _t in $(rector_floor_tokens "$PHP_FLOOR" || true); do FLOOR_TOKENS+=("$_t"); done
+[[ "${#FLOOR_TOKENS[@]}" -eq 3 ]] || die "Could not derive the Rector tokens of the PHP floor '$PHP_FLOOR'." 1
+COMPAT=0
+if rector_compat_needed "$PHP_FLOOR" "$PHP_CEIL"; then COMPAT=1; fi
 
 log_info "Drupal root : $DRUPAL_ROOT"
 log_info "Subject     : $SUBJECT_REL"
@@ -190,8 +223,9 @@ if [[ -n "$RUNNER" ]]; then
 else
   log_info "Runner      : host (vendor/bin)"
 fi
-if php_target_unconfirmed "$PHP_TARGET"; then
-  log_warn "PHP target $PHP_TARGET (PHP 8.5 needs Drupal 11.3 or later): no Rector php85 set is assumed, Rector uses the highest set drupilot supports."
+log_info "PHP floor   : $PHP_FLOOR (Rector withPhpVersion and level sets) · ceiling: $PHP_CEIL · compat pass: $([[ "$COMPAT" == "1" ]] && echo yes || echo no)"
+if php_target_unconfirmed "$PHP_FLOOR"; then
+  log_warn "PHP floor $PHP_FLOOR (PHP 8.5 needs Drupal 11.3 or later): no Rector php85 set is assumed, the main pass uses the highest set drupilot supports."
 fi
 
 # --- Verify the Rector binary is present ----------------------------------
@@ -210,19 +244,20 @@ RECTOR_TEMPLATE_VERSION="$(grep -oE 'drupilot-template-version: [0-9]+' "$TEMPLA
 # write_rector_from_template — render the drupilot template into rector.php.
 write_rector_from_template() {
   render_template "$TEMPLATE_RECTOR" "$RECTOR_PHP" \
-    "SUBJECT_PATH=$SUBJECT_REL" "PHP_TARGET=$PHP_TARGET" "PHP_SET=$(rector_php_set_arg "$PHP_TARGET" 2>/dev/null)" \
-    "DRUPAL_TARGET=$(resolve_drupal_target)" \
+    "SUBJECT_PATH=$SUBJECT_REL" "PHP_TARGET=$PHP_TARGET" "DRUPAL_TARGET=$(resolve_drupal_target)" \
+    ${FLOOR_TOKENS[@]+"${FLOOR_TOKENS[@]}"} \
     || die "Could not render $TEMPLATE_RECTOR into $RECTOR_PHP." 1
 }
 
-# backup_rector_php — copy the current rector.php to <root>/.drupilot/backups/
-# (gitignored; same place render-templates.sh --force uses) and print the path.
-backup_rector_php() {
-  local bdir backup
+# backup_config [file] — copy a config (default rector.php) to
+# <root>/.drupilot/backups/ (gitignored; same place render-templates.sh --force
+# uses) and print the path.
+backup_config() {
+  local f="${1:-$RECTOR_PHP}" bdir backup
   bdir="$(project_artifacts_dir "$DRUPAL_ROOT")/backups"
   mkdir -p "$bdir"
-  backup="$bdir/rector.php.$(date -u +%Y%m%dT%H%M%SZ)"
-  cp -p "$RECTOR_PHP" "$backup"
+  backup="$bdir/$(basename "$f").$(date -u +%Y%m%dT%H%M%SZ)"
+  cp -p "$f" "$backup"
   printf '%s' "$backup"
 }
 
@@ -244,9 +279,27 @@ if [[ -f "$RECTOR_PHP" ]]; then
     # A rector.php drupilot generated from an OLDER template: it lacks the
     # risky-rule skips (Form API callbacks -> closures, #[\Override], readonly,
     # (string) casts), so regenerate it. The old copy is backed up first.
-    _bk="$(backup_rector_php)"
+    _bk="$(backup_config)"
     write_rector_from_template
     log_warn "rector.php was generated by an older drupilot template; regenerated (${RECTOR_TEMPLATE_VERSION}). Previous copy: ${_bk#"$DRUPAL_ROOT"/}"
+  elif grep -q "drupilot — rector.php" "$RECTOR_PHP" \
+       && _old_floor="$(rector_config_floor "$RECTOR_PHP")" && [[ -n "$_old_floor" && "$_old_floor" != "$PHP_FLOOR" ]]; then
+    # The floor moved since rector.php was rendered (e.g. the core target
+    # chosen at port time is not the one setup assumed).
+    if rector_config_pristine "$TEMPLATE_RECTOR" "$RECTOR_PHP"; then
+      _bk="$(backup_config)"
+      write_rector_from_template
+      log_warn "rector.php targeted the PHP floor $_old_floor; the declared core range and require.php now give $PHP_FLOOR. Regenerated (it was an untouched drupilot render). Previous copy: ${_bk#"$DRUPAL_ROOT"/}"
+    else
+      log_warn "rector.php targets PHP $_old_floor (withPhpVersion), but the PHP floor of the declared core range and require.php is $PHP_FLOOR; it was edited by hand, so it is left untouched."
+      if version_ge "$_old_floor" "$PHP_FLOOR"; then
+        log_warn "Rules up to PHP $_old_floor may emit code PHP $PHP_FLOOR cannot run. Re-render it (the current copy is backed up):"
+      else
+        log_warn "Rector will modernize less than the floor allows. Re-render it (the current copy is backed up):"
+      fi
+      log_plain "   bash \"$(plugin_root)/scripts/env/render-templates.sh\" --subject \"$SUBJECT_ABS\" --only rector --force"
+      log_plain "   (it re-renders rector-compat.php too)."
+    fi
   else
     log_ok "rector.php already present at the Drupal root (left untouched)."
     if ! grep -q "drupilot — rector.php" "$RECTOR_PHP" \
@@ -254,6 +307,11 @@ if [[ -f "$RECTOR_PHP" ]]; then
       log_warn "Your own rector.php does not skip ArrayToFirstClassCallableRector: with a PHP 8.1+ set it turns"
       log_warn "Form/Render API callbacks ([\$this, 'method']) into unserializable closures. See templates/rector.php.tmpl"
       log_warn "for the recommended skip list; check-port-safety.sh flags any such conversion after the port."
+    fi
+    if ! grep -q "drupilot — rector.php" "$RECTOR_PHP" && ! grep -q "withPhpVersion" "$RECTOR_PHP"; then
+      log_warn "Your own rector.php has no withPhpVersion(): Rector then takes the PHP version from composer.json or the"
+      log_warn "running PHP, and may emit code PHP $PHP_FLOOR (the floor of the declared core range) cannot run. Add"
+      log_warn "->withPhpVersion(PhpVersion::PHP_${PHP_FLOOR//./}) and stop the level sets there (see templates/rector.php.tmpl)."
     fi
   fi
 elif [[ -f "$TEMPLATE_RECTOR" ]]; then
@@ -268,6 +326,29 @@ elif [[ -f "$VENDOR_RECTOR" ]]; then
   log_warn "rector.php copied from vendor/palantirnet/drupal-rector/rector.php (legacy fallback). Run /drupilot-setup to regenerate it from the drupilot template."
 else
   die "No rector.php found and no source to create one (neither $TEMPLATE_RECTOR nor $VENDOR_RECTOR exists)." 2
+fi
+
+# --- Ensure rector-compat.php when the compat pass runs (ADR 0002) ---------
+RECTOR_COMPAT_PHP="$DRUPAL_ROOT/rector-compat.php"
+TEMPLATE_COMPAT="$(plugin_root)/templates/rector-compat.php.tmpl"
+if [[ "$COMPAT" == "1" ]]; then
+  [[ -f "$TEMPLATE_COMPAT" ]] || die "The compat pass needs $TEMPLATE_COMPAT, which is missing." 2
+  COMPAT_TEMPLATE_VERSION="$(grep -oE 'drupilot-template-version: [0-9]+' "$TEMPLATE_COMPAT" 2>/dev/null | head -n1 || true)"
+  write_compat_from_template() {
+    render_template "$TEMPLATE_COMPAT" "$RECTOR_COMPAT_PHP" "SUBJECT_PATH=$SUBJECT_REL" ${FLOOR_TOKENS[@]+"${FLOOR_TOKENS[@]}"} \
+      || die "Could not render $TEMPLATE_COMPAT into $RECTOR_COMPAT_PHP." 1
+  }
+  if [[ ! -f "$RECTOR_COMPAT_PHP" ]]; then
+    write_compat_from_template
+    log_ok "Wrote rector-compat.php from the drupilot template (the compat pass for the PHP floor $PHP_FLOOR)."
+  elif grep -q "drupilot — rector-compat.php" "$RECTOR_COMPAT_PHP" \
+       && [[ -n "$COMPAT_TEMPLATE_VERSION" ]] && ! grep -qF "$COMPAT_TEMPLATE_VERSION" "$RECTOR_COMPAT_PHP"; then
+    _bk="$(backup_config "$RECTOR_COMPAT_PHP")"
+    write_compat_from_template
+    log_warn "rector-compat.php was generated by an older drupilot template; regenerated (${COMPAT_TEMPLATE_VERSION}). Previous copy: ${_bk#"$DRUPAL_ROOT"/}"
+  else
+    log_ok "rector-compat.php already present at the Drupal root (left untouched)."
+  fi
 fi
 
 # --- Helpers --------------------------------------------------------------
@@ -340,6 +421,9 @@ emit_changed_files() {
 DRYRUN_REC="$(project_state_dir "$SUBJECT_ABS")/rector-dryrun.json"
 PRE_DIGEST="$(subject_digest "$SUBJECT_ABS")"
 RECTOR_SUM="$(cksum < "$RECTOR_PHP" 2>/dev/null | awk '{ print $1 "-" $2 }' || true)"
+if [[ "$COMPAT" == "1" ]]; then
+  RECTOR_SUM="$RECTOR_SUM+$(cksum < "$RECTOR_COMPAT_PHP" 2>/dev/null | awk '{ print $1 "-" $2 }' || true)"
+fi
 
 # --- Pass 1: official palantirnet/drupal-rector ---------------------------
 hr
@@ -352,6 +436,32 @@ else
   run_rector_pass 1 1 || PASS1_OK=0
 fi
 PASS1_RAW="$RECTOR_RAW"
+# Whether pass 1 itself finished normally and, on --apply, did what its dry-run
+# announced (cleared below when it did not); a later compat crash clears only
+# PASS1_OK, since an --apply has written pass 1's changes by then.
+PASS1_RAN_OK="$PASS1_OK"
+
+# --- Compat pass: rector-compat.php (ADR 0002) ---------------------------------
+PASS3_RAW=""
+COMPAT_STATUS="off"       # off | ok | error | skipped
+if [[ "$COMPAT" == "1" && "$PASS1_OK" != "1" ]]; then
+  COMPAT_STATUS="skipped"
+  hr
+  log_warn "Skipping the compat pass: the official pass crashed, so the toolchain is broken (fix it first)."
+elif [[ "$COMPAT" == "1" ]]; then
+  hr
+  log_step "Compat pass — PHP deprecation fixes that still run on PHP $PHP_FLOOR (rector-compat.php)"
+  if [[ "$APPLY" == "1" ]]; then
+    run_rector_pass 3 0 --config rector-compat.php || true
+  else
+    run_rector_pass 3 1 --config rector-compat.php || true
+  fi
+  PASS3_RAW="$RECTOR_RAW"
+  case " $FAILED_PASSES " in
+    *" 3 "*) COMPAT_STATUS="error"; PASS1_OK=0;;
+    *) COMPAT_STATUS="ok";;
+  esac
+fi
 
 # --- Pass 2: complementary dbuytaert/drupal-digests (optional) ------------
 PASS2_RAW=""
@@ -361,7 +471,7 @@ DIGESTS_FROM_LOCK=0
 if [[ "$USE_DIGESTS" == "1" ]]; then DIGESTS_STATUS="skipped"; fi
 if [[ "$USE_DIGESTS" == "1" && "$PASS1_OK" != "1" ]]; then
   hr
-  log_warn "Skipping the digests pass: the official pass crashed, so the toolchain is broken (fix it first)."
+  log_warn "Skipping the digests pass: the official or the compat pass crashed, so the toolchain is broken (fix it first)."
 elif [[ "$USE_DIGESTS" == "1" ]]; then
   hr
   log_step "Pass 2 — dbuytaert/drupal-digests (complementary, AI-generated)"
@@ -484,33 +594,50 @@ hr
 PASS1_FILES="$(emit_changed_files "$PASS1_RAW" 2>/dev/null || true)"
 PASS2_FILES=""
 [[ -n "$PASS2_RAW" ]] && PASS2_FILES="$(emit_changed_files "$PASS2_RAW" 2>/dev/null || true)"
-CHANGED="$( { printf '%s\n' "$PASS1_FILES"; printf '%s\n' "$PASS2_FILES"; } | grep -v '^$' | sort -u || true)"
+PASS3_FILES=""
+[[ -n "$PASS3_RAW" ]] && PASS3_FILES="$(emit_changed_files "$PASS3_RAW" 2>/dev/null || true)"
+CHANGED="$( { printf '%s\n' "$PASS1_FILES"; printf '%s\n' "$PASS3_FILES"; printf '%s\n' "$PASS2_FILES"; } | grep -v '^$' | sort -u || true)"
 
 # Dry-run vs apply consistency (see DRYRUN_REC above).
 P1N="$(printf '%s\n' "$PASS1_FILES" | grep -c . || true)"
 P2N="$(printf '%s\n' "$PASS2_FILES" | grep -c . || true)"
+P3N="$(printf '%s\n' "$PASS3_FILES" | grep -c . || true)"
 if [[ "$APPLY" != "1" && "$PASS1_OK" == "1" && -n "$PRE_DIGEST" ]] && have_cmd jq; then
   jq -n --arg d "$PRE_DIGEST" --arg r "$RECTOR_SUM" --argjson dg "$([[ "$USE_DIGESTS" == "1" ]] && echo true || echo false)" \
     --arg dc "${DIGESTS_SHA:-$DIGESTS_CONFIG}" --argjson p1 "$P1N" --argjson p2 "$P2N" --arg ds "$DIGESTS_STATUS" \
-    --arg f2 "$PASS2_FILES" \
+    --arg f2 "$PASS2_FILES" --arg cs "$COMPAT_STATUS" --argjson p3 "$P3N" --arg f3 "$PASS3_FILES" \
     --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     '{tool: "run-rector", generated_at: $at, subject_digest: $d, rector_php: $r, digests: $dg,
       digests_config: $dc, digests_status: $ds, pass1_files: $p1, pass2_files: $p2,
-      pass2_list: ($f2 | split("\n") | map(select(length > 0)))}' \
+      pass2_list: ($f2 | split("\n") | map(select(length > 0))),
+      compat_status: $cs, compat_files: $p3, compat_list: ($f3 | split("\n") | map(select(length > 0)))}' \
     > "$DRYRUN_REC" 2>/dev/null || true
 elif [[ "$APPLY" == "1" && -n "$PRE_DIGEST" && -r "$DRYRUN_REC" ]] && have_cmd jq; then
   _rec="$(jq -c --arg d "$PRE_DIGEST" --arg r "$RECTOR_SUM" 'select(.subject_digest == $d and .rector_php == $r)' "$DRYRUN_REC" 2>/dev/null || true)"
   if [[ -n "$_rec" ]]; then
     _dp1="$(printf '%s' "$_rec" | jq -r '.pass1_files // 0')"
     if [[ "$PASS1_OK" == "1" && "$_dp1" -gt 0 && "$P1N" == "0" ]]; then
-      PASS1_OK=0; FAILED_PASSES="$FAILED_PASSES 1"
+      PASS1_OK=0; PASS1_RAN_OK=0; FAILED_PASSES="$FAILED_PASSES 1"
       _m="The dry-run on this same code and rector.php reported $_dp1 file(s) to change, but the apply changed none (a stale Rector cache or a run that skipped the files). Nothing was ported: re-run the dry-run, then --apply."
       ERRORS_JSON="$(printf '%s' "$ERRORS_JSON" | jq -c --arg m "$_m" '. + [{pass: 1, exit_code: 0, message: $m}]')"
       log_err "Pass 1: $_m"
     fi
-    # Pass 2 runs on pass 1's output, so only the files pass 1 left alone must
-    # still change (a digests rule may duplicate an official one).
-    _dp2="$(printf '%s' "$_rec" | jq -r --arg dc "${DIGESTS_SHA:-$DIGESTS_CONFIG}" --arg f1 "$PASS1_FILES" '
+    # The compat pass runs on pass 1's output, so only the files pass 1 left
+    # alone must still change.
+    _dp3="$(printf '%s' "$_rec" | jq -r --arg f1 "$PASS1_FILES" '
+      ($f1 | split("\n") | map(select(length > 0))) as $p1
+      | if .compat_status == "ok"
+        then [(.compat_list // [])[] | select(. as $f | any($p1[]; . == $f) | not)] | length else 0 end')"
+    if [[ "$COMPAT_STATUS" == "ok" && "$_dp3" -gt 0 && "$P3N" == "0" ]]; then
+      PASS1_OK=0; COMPAT_STATUS="error"; FAILED_PASSES="$FAILED_PASSES 3"
+      _m="The compat dry-run on this same code and rector-compat.php reported $_dp3 file(s) to change, but the apply changed none."
+      ERRORS_JSON="$(printf '%s' "$ERRORS_JSON" | jq -c --arg m "$_m" '. + [{pass: 3, exit_code: 0, message: $m}]')"
+      log_err "Compat pass: $_m"
+    fi
+    # Pass 2 runs on the output of pass 1 and the compat pass, so only the
+    # files they left alone must still change (a digests rule may duplicate an
+    # official one).
+    _dp2="$(printf '%s' "$_rec" | jq -r --arg dc "${DIGESTS_SHA:-$DIGESTS_CONFIG}" --arg f1 "$PASS1_FILES"$'\n'"$PASS3_FILES" '
       ($f1 | split("\n") | map(select(length > 0))) as $p1
       | if .digests and .digests_status == "ok" and .digests_config == $dc
         then [(.pass2_list // [])[] | select(. as $f | any($p1[]; . == $f) | not)] | length else 0 end')"
@@ -526,7 +653,7 @@ fi
 # Rule names from Rector's "Applied rules:" sections only (rector_applied_rules:
 # the bullets of a "skipped rule is never registered" warning are not rules
 # that ran).
-APPLIED_RULES="$({ rector_applied_rules "$PASS1_RAW"; rector_applied_rules "$PASS2_RAW"; } | sort -u || true)"
+APPLIED_RULES="$({ rector_applied_rules "$PASS1_RAW"; rector_applied_rules "$PASS3_RAW"; rector_applied_rules "$PASS2_RAW"; } | sort -u || true)"
 
 # rule_hits_json <raw> -> {Rule: files} from one pass's "Applied rules:"
 # sections (Rector lists the rules once per changed file). `{}` when none or
@@ -540,8 +667,10 @@ rule_hits_json() {
   printf '%s' "$out"
   return 0
 }
-RULE_HITS="$(jq -nc --argjson o "$(rule_hits_json "$PASS1_RAW")" --argjson d "$(rule_hits_json "$PASS2_RAW")" \
-  '{official: $o} + (if ($d | length) > 0 then {digests: $d} else {} end)' 2>/dev/null || printf '{}')"
+RULE_HITS="$(jq -nc --argjson o "$(rule_hits_json "$PASS1_RAW")" --argjson c "$(rule_hits_json "$PASS3_RAW")" \
+  --argjson d "$(rule_hits_json "$PASS2_RAW")" \
+  '{official: $o} + (if ($c | length) > 0 then {compat: $c} else {} end)
+   + (if ($d | length) > 0 then {digests: $d} else {} end)' 2>/dev/null || printf '{}')"
 
 COUNT=0
 [[ -n "$CHANGED" ]] && COUNT="$(printf '%s\n' "$CHANGED" | grep -c . || true)"
@@ -581,9 +710,10 @@ fi
 
 # An --apply that changed files records its rule counts in the subject's
 # hidden state dir (rector-rules.json), the fallback for the port manifest's
-# rector_rules in port-report.sh / layer-report.sh. A later apply that changes
-# nothing (a re-run on ported code) keeps the record of the real port.
-if [[ "$APPLY" == "1" && "$FAILED" == "0" && "$COUNT" != "0" ]] && have_cmd jq; then
+# rector_rules in port-report.sh / layer-report.sh — also when the compat pass
+# crashed after the official pass had written its changes. A later apply that
+# changes nothing (a re-run on ported code) keeps the record of the real port.
+if [[ "$APPLY" == "1" && "$PASS1_RAN_OK" == "1" && "$COUNT" != "0" ]] && have_cmd jq; then
   jq -n --arg s "$SUBJECT_ABS" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson h "$RULE_HITS" \
     --arg dsha "$DIGESTS_SHA" --argjson n "$COUNT" \
     '{tool: "run-rector", subject: $s, generated_at: $at, changed_files: $n,
@@ -602,6 +732,8 @@ if [[ "$AS_JSON" == "1" ]]; then
       --argjson files "$(lines_to_json "$CHANGED")" \
       --argjson pass1 "$(lines_to_json "$PASS1_FILES")" \
       --argjson pass2 "$(lines_to_json "$PASS2_FILES")" \
+      --argjson pass3 "$(lines_to_json "$PASS3_FILES")" --arg cstatus "$COMPAT_STATUS" \
+      --arg floor "$PHP_FLOOR" --arg ceil "$PHP_CEIL" \
       --argjson count "$COUNT" --argjson digests "$([[ "$USE_DIGESTS" == "1" ]] && echo true || echo false)" \
       --argjson applied "$([[ "$APPLY" == "1" ]] && echo true || echo false)" \
       --argjson errors "$ERRORS_JSON" \
@@ -613,8 +745,8 @@ if [[ "$AS_JSON" == "1" ]]; then
         ok:$p1ok, errors:$errors,
         digests_status:$dstatus, digests_sha:(if $dsha == "" then null else $dsha end),
         applied:$applied, digests_pass:$digests, changed_files:$count,
-        files:$files, pass1_files:$pass1, pass2_files:$pass2, rules:$rules,
-        rule_hits:$hits}'
+        files:$files, pass1_files:$pass1, compat_files:$pass3, pass2_files:$pass2, rules:$rules,
+        rule_hits:$hits, compat_status:$cstatus, php_floor:$floor, php_ceiling:$ceil}'
   fi
 elif [[ -n "$CHANGED" ]]; then
   printf '%s\n' "$CHANGED"

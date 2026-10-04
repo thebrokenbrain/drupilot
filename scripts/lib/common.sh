@@ -777,6 +777,167 @@ rector_php_set_arg() {
   return 0
 }
 
+# The PHP floor of the Rector configs (ADR 0002). templates/rector.php.tmpl
+# runs the main pass at the floor L: ->withPhpVersion(PhpVersion::PHP_<L>) and
+# ->withPhpSets(php<L>: true), so no version-bound rule and no level set above
+# L applies. templates/rector-compat.php.tmpl is the narrow compat pass: the
+# PHP deprecation fixes whose output still runs on L (today only
+# ExplicitNullableParamTypeRector, deprecated in PHP 8.4), run right after the
+# official pass. M5 generates the compat list from config/php/rules.json.
+RECTOR_COMPAT_FROM_PHP="8.4"
+
+# _rector_range_legs RANGE -> one caret leg per alternative of a core range,
+# one per line ("^10.3"), or "?" for an alternative it cannot read. ^X.Y,
+# ~X.Y, X.Y.*, X.x and a bare version read as ^X.Y; an open >=X.Y as ^X.Y plus
+# ^M for every higher major the version data holds.
+_rector_range_legs() {
+  local alt maj min f m dir
+  local re_c='^[~^]?v?([0-9]+)(\.([0-9]+|[*xX]))?(\.([0-9]+|[*xX]))?$' re_ge='^>=?v?([0-9]+)(\.([0-9]+))?(\.[0-9]+)?$'
+  dir="$(version_data_dir)"
+  while IFS= read -r alt; do
+    alt="$(printf '%s' "$alt" | tr -d " \"'")"
+    [[ -n "$alt" ]] || continue
+    if [[ "$alt" =~ $re_c ]]; then
+      maj="${BASH_REMATCH[1]}"; min="${BASH_REMATCH[3]}"
+      case "$min" in ''|'*'|x|X) min=0;; esac
+      printf '^%s.%s\n' "$maj" "$min"
+    elif [[ "$alt" =~ $re_ge ]]; then
+      maj="${BASH_REMATCH[1]}"; min="${BASH_REMATCH[3]:-0}"
+      printf '^%s.%s\n' "$maj" "$min"
+      for f in "$dir"/targets/*.json; do
+        [[ -f "$f" ]] || continue
+        m="${f##*/}"; m="${m%.json}"
+        [[ "$m" =~ ^[0-9]+$ ]] && (( m > maj )) && printf '^%s\n' "$m"
+      done
+    else
+      printf '?\n'
+    fi
+  done <<EOF
+$(printf '%s\n' "${1:-}" | tr '|' '\n')
+EOF
+  return 0
+}
+
+# _rector_leg_major ^X.Y -> X
+_rector_leg_major() { local l="${1#^}"; printf '%s' "${l%%.*}"; }
+
+# rector_php_bounds <subject_dir> [php_target] -> "L U".
+# L, the floor, is the highest of the lowest PHP the declared core range
+# supports (core-strategy.sh's recommendation, which honors
+# DRUPILOT_CORE_TARGET_STRATEGY; each of its legs through
+# php_bounds_for_range) and the floor of the require.php composer will
+# enforce (core-strategy's require_php, which honors
+# DRUPILOT_REQUIRE_PHP_FLOOR, else the subject's own; only when the subject
+# has a composer.json), never above the PHP target P. A leg whose minor is not
+# verified yet is bounded by its major's verified minors. When a leg is one
+# the version data does not hold (a Drupal 9 leg kept as-is, an unusual
+# constraint), the range floor is unknown: L is the enforced require.php
+# floor, else the lowest PHP the data knows, with a warning. U, the highest
+# PHP the code must run on, is max(P, the highest ceiling of the known legs).
+rector_php_bounds() {
+  local subj="${1:-}" p="${2:-}" cs="" req="" rphp="" leg b lo="" hi="" f="" unknown=1 n=0
+  [[ -n "$p" ]] || p="$(resolve_php_target)"
+  if [[ -n "$subj" && -d "$subj" ]] && have_cmd jq; then
+    cs="$(DRUPILOT_PHP_TARGET="$p" bash "$(plugin_root)/scripts/analysis/core-strategy.sh" --subject "$subj" --json 2>/dev/null </dev/null || true)"
+    req="$(printf '%s' "$cs" | jq -r '.recommended_core_version_requirement // empty' 2>/dev/null || true)"
+    if [[ -f "$subj/composer.json" ]]; then
+      rphp="$(printf '%s' "$cs" | jq -r '.require_php // empty' 2>/dev/null || true)"
+      [[ -n "$rphp" ]] || rphp="$(jq -r '.require.php // empty' "$subj/composer.json" 2>/dev/null || true)"
+      f="$(php_constraint_floor "$rphp")"
+    fi
+    if [[ -n "$req" ]]; then
+      unknown=0
+      while IFS= read -r leg; do
+        [[ -n "$leg" ]] || continue
+        b=""; [[ "$leg" == "?" ]] || b="$(php_bounds_for_range "$leg")"
+        if [[ -z "$b" && "$leg" != "?" && -r "$(version_data_dir)/targets/$(_rector_leg_major "$leg").json" ]]; then
+          # The major is in the data but no verified minor reaches the leg's
+          # (^11.5 before 11.5 is verified): its verified minors bound it. A
+          # major with no verified minor at all (a future one) adds nothing.
+          b="$(php_bounds_for_range "^$(_rector_leg_major "$leg")")"
+          [[ -n "$b" ]] || continue
+        fi
+        n=$((n + 1))
+        if [[ -z "$b" ]]; then unknown=1; continue; fi
+        if [[ -z "$lo" ]] || ! version_ge "${b%% *}" "$lo"; then lo="${b%% *}"; fi
+        if [[ -z "$hi" ]] || ! version_ge "$hi" "${b##* }"; then hi="${b##* }"; fi
+      done <<EOF
+$(_rector_range_legs "$req")
+EOF
+      [[ "$n" -gt 0 ]] || unknown=1
+    fi
+  fi
+  if [[ "$unknown" == "1" ]]; then
+    lo="$f"
+    # A range drupilot could not bound (not no range at all: then P).
+    if [[ -z "$lo" && -n "$req" ]]; then
+      lo="$(jq -r '.versions | keys | sort_by(split(".") | map(tonumber)) | .[0] // empty' \
+        "$(version_data_dir)/php/versions.json" 2>/dev/null || true)"
+      log_warn "The PHP floor of the core range '$req' is not in drupilot's version data and no composer require.php bounds it: Rector targets PHP ${lo:-$p}, the lowest PHP drupilot knows."
+    fi
+  elif [[ -n "$f" ]] && ! version_ge "$lo" "$f"; then
+    lo="$f"
+  fi
+  [[ -n "$lo" ]] || lo="$p"
+  [[ -n "$hi" ]] || hi="$p"
+  version_ge "$p" "$lo" || lo="$p"
+  version_ge "$hi" "$p" || hi="$p"
+  printf '%s %s' "$lo" "$hi"
+  return 0
+}
+
+# rector_compat_needed L U -> 0 when the compat pass has a rule to run: the
+# floor is below the PHP that deprecates it, and the window reaches that PHP
+# (from L >= 8.4 on, the php84 level set of the main pass holds the rule).
+rector_compat_needed() {
+  [[ -n "${1:-}" && -n "${2:-}" ]] || return 1
+  version_ge "$1" "$RECTOR_COMPAT_FROM_PHP" && return 1
+  version_ge "$2" "$RECTOR_COMPAT_FROM_PHP"
+}
+
+# rector_floor_tokens L -> the template tokens of a floor, one KEY=VALUE per
+# line: PHP_FLOOR=8.1, PHP_FLOOR_ID=PHP_81 (Rector's PhpVersion constant) and
+# PHP_FLOOR_SET=php81 (the ->withPhpSets() argument; an unconfirmed 8.5 floor
+# gets rector_php_set_arg's php84, since no php85 set is assumed). Returns 1
+# when L is not a PHP minor.
+rector_floor_tokens() {
+  local l="${1:-}" set
+  [[ "$l" =~ ^[0-9]\.[0-9]$ ]] || return 1
+  if php_target_unconfirmed "$l"; then set="$(rector_php_set_arg "$l" 2>/dev/null)"; else set="php${l//./}"; fi
+  printf 'PHP_FLOOR=%s\nPHP_FLOOR_ID=PHP_%s\nPHP_FLOOR_SET=%s\n' "$l" "${l//./}" "$set"
+  return 0
+}
+
+# rector_config_floor FILE -> the floor a rendered rector.php targets (8.1 from
+# its ->withPhpVersion(PhpVersion::PHP_81)); nothing when it has none.
+rector_config_floor() {
+  sed -n 's/.*->withPhpVersion(PhpVersion::PHP_\([0-9]\)\([0-9]\)).*/\1.\2/p' "${1:-}" 2>/dev/null | head -n 1
+  return 0
+}
+
+# rector_config_pristine TEMPLATE FILE -> 0 when FILE is exactly what TEMPLATE
+# renders for FILE's own floor and subject path (rector.php, or
+# rector-compat.php, whose withPhpVersion is the rules' own): a drupilot
+# render nobody edited, which may be regenerated when its inputs change. A
+# hand edit, another template generation or a file of the developer's own -> 1.
+rector_config_pristine() {
+  local tpl="${1:-}" f="${2:-}" fl sp rc=1
+  [[ -f "$tpl" && -f "$f" ]] || return 1
+  fl="$(rector_config_floor "$f")"
+  [[ -n "$fl" ]] || return 1
+  # shellcheck disable=SC2016  # awk program, not a shell expansion
+  sp="$(awk -v q="'" '/->withPaths\(\[/ { if ((getline l) > 0) { sub("^[[:space:]]*" q, "", l); sub(q ",[[:space:]]*$", "", l); print l }; exit }' "$f" 2>/dev/null || true)"
+  [[ -n "$sp" ]] || return 1
+  # Rendered to STDOUT and compared through a pipe: no temp file, whatever
+  # TMPDIR holds (pipefail makes a failed render a mismatch).
+  # shellcheck disable=SC2046  # one KEY=VALUE word per line, no spaces in them
+  if ( set -o pipefail; render_template "$tpl" - "SUBJECT_PATH=$sp" $(rector_floor_tokens "$fl") 2>/dev/null \
+       | cmp -s - "$f" ); then
+    rc=0
+  fi
+  return "$rc"
+}
+
 # ---------------------------------------------------------------------------
 # Drupal subject detection (module / theme) and Drupal root
 # ---------------------------------------------------------------------------

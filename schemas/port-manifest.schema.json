@@ -76,7 +76,7 @@
       }
     },
     "rector_rules": {
-      "description": "Rector rule hits: run-rector.sh --json .rule_hits ({official: {Rule: n}, digests: {...}}), {Rule: n}, [Rule, ...] or [{rule, hits?, pass?}] (common.sh _rules normalizes them).",
+      "description": "Rector rule hits: run-rector.sh --json .rule_hits ({official: {Rule: n}, compat: {...}, digests: {...}}), {Rule: n}, [Rule, ...] or [{rule, hits?, pass?}] (common.sh _rules normalizes them).",
       "type": ["object", "array"]
     },
     "rector_reversions": {

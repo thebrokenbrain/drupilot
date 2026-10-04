@@ -26,8 +26,11 @@
 #               php/versions.json; a minor never lists a PHP as both supported
 #               and unsupported; versions.json ids and rector_level match the
 #               key; rules have unique ids and a verified removed-no-rule rule
-#               cites php.net; graph edges are unique, named from-to, join
-#               known eras, and every forbidden route chains from -> to
+#               cites php.net; a rule templates/rector.php.tmpl skips is
+#               drupal_safe false, and every rule templates/rector-compat.php.tmpl
+#               runs is a drupal_safe compat rule (when the tree has templates/);
+#               graph edges are unique, named from-to, join known eras, and
+#               every forbidden route chains from -> to
 #
 # Usage:
 #   scripts/dev/data-check.sh [--root DIR] [--json] [-h|--help]
@@ -179,6 +182,34 @@ if [[ -f "$RULES" ]]; then
     (.rules[] | select(.kind == "removed-no-rule" and .verified == true and ((.src // "") | test("php\\.net") | not)) | "\(.id): a verified removed-no-rule rule must cite php.net"),
     (.rules[] | select(.kind == "removed-no-rule" and .rule != null) | "\(.id): a removed-no-rule rule has no Rector rule")' "$RULES" 2>&1 || true)"
   report coherence config/php/rules.json "$errs"
+fi
+# tpl_rules FILE VAR -> the rule classes of a Rector template's VAR list, one
+# per line, as written in the PHP source ('Rector\\Php81\\...').
+tpl_rules() {
+  awk -v v="$2" -v q="'" 'index($0, v " = array_values(array_filter([") { inb = 1; next }
+    inb && index($0, "], " q "class_exists" q) { exit }
+    inb { n = split($0, a, q); if (n >= 3) print a[2] }' "$1" 2>/dev/null || true
+  return 0
+}
+TPL_MAIN="$ROOT/templates/rector.php.tmpl"; TPL_COMPAT="$ROOT/templates/rector-compat.php.tmpl"
+if [[ -f "$RULES" && -f "$TPL_MAIN" && -f "$TPL_COMPAT" ]]; then
+  SKIPS="$(tpl_rules "$TPL_MAIN" '$drupilotRiskySkips')"
+  CRULES="$(tpl_rules "$TPL_COMPAT" '$drupilotCompatRules')"
+  if [[ -z "$SKIPS" || -z "$CRULES" ]]; then
+    errs="could not read the skip list of templates/rector.php.tmpl or the rules of templates/rector-compat.php.tmpl"
+  else
+    errs="$(jq -r --arg sk "$SKIPS" --arg cr "$CRULES" 'def norm: split("\\") | map(select(. != "")) | join("\\");
+      .rules as $rules
+      | ($sk | split("\n") | map(select(length > 0) | norm)) as $skips
+      | ($cr | split("\n") | map(select(length > 0) | norm)) as $compat
+      | ($rules[] | select(.rule != null) | select((.rule | norm) as $r | $skips | index($r) != null)
+          | select(.drupal_safe != false)
+          | "\(.id): templates/rector.php.tmpl skips \(.rule), so drupal_safe must be false"),
+        ($compat[] | . as $r
+          | select([$rules[] | select(.rule != null and (.rule | norm) == $r and .kind == "compat" and .drupal_safe == true)] | length == 0)
+          | "templates/rector-compat.php.tmpl runs \($r), which is not a drupal_safe compat rule of config/php/rules.json")' "$RULES" 2>&1 || true)"
+  fi
+  report coherence templates/rector.php.tmpl "$errs"
 fi
 GRAPH="$ROOT/config/paths/graph.json"; ERAS="$ROOT/config/paths/eras.json"
 if [[ -f "$GRAPH" && -f "$ERAS" ]]; then

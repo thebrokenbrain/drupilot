@@ -2,9 +2,9 @@
 name: php-target-tuning
 description: >-
   Use this skill whenever a PHP version target matters for the port — i.e.
-  deciding or changing DRUPILOT_PHP_TARGET, and translating it into the Rector
-  PHP sets, the PHPStan level/expectations, the PHPCS sniffs and the DDEV
-  php_version. It is the single source of truth for how one variable
+  deciding or changing DRUPILOT_PHP_TARGET, and translating it into the
+  PHPStan level/expectations, the PHPCS sniffs, the DDEV php_version and the
+  ceiling of Rector's PHP floor. It is the single source of truth for how one variable
   (DRUPILOT_PHP_TARGET, default 8.3) flows through the whole toolchain, and for
   the PHP 8.5 caveat (8.5 needs Drupal 11.3 or later, and no Rector php85 set is
   assumed — check the core minor, never hardcode). Invoke it from /drupilot-setup,
@@ -72,28 +72,44 @@ PHP support per Drupal 11 branch (drupal.org PHP requirements, read through
 
 Resolve `TARGET` first, then:
 
-### Rector — PHP set selection (`rector.php`)
+### Rector — the PHP floor, not the target (`rector.php`, ADR 0002)
 
-PHP sets are cumulative; target exactly **one** PHP version per run:
-
-- `8.3` → `LevelSetList::UP_TO_PHP_83`, or the modern API `->withPhpSets(php83: true)`
-- `8.4` → `UP_TO_PHP_84` / `->withPhpSets(php84: true)`
-- `8.5` → `php84` (no `php85` set is assumed; `rector_php_set_arg` warns). Use a
-  `php85` set only after verifying it exists in the installed Rector.
+Rector does not follow the target directly. The ported code must keep running on
+the lowest PHP its declarations admit, so the main pass targets the **PHP floor
+L** (`rector_php_bounds`): the highest of the lowest PHP the core range
+`core-strategy.sh` recommends supports (from `config/targets/<major>.json`) and
+the floor of the composer `require.php` it will enforce (only when the subject
+has a `composer.json`), never above the target. For `^10 || ^11` with the
+default `DRUPILOT_REQUIRE_PHP_FLOOR=detect` that is usually 8.1 (8.2 when the
+code already needs 8.2; the target with `=target`); for `^11` it is 8.3. A range
+leg the data does not hold (a Drupal 9 leg kept as-is) leaves the floor to the
+enforced `require.php`, else the lowest PHP in `config/php/versions.json`, with
+a warning. The ceiling U is max(target, the highest PHP of the range's known
+legs). `rector.php`
+renders `->withPhpVersion(PhpVersion::PHP_<L>)` and `->withPhpSets(php<L>: true)`:
+Rector drops every version-bound rule above L, and the level sets (cumulative,
+one per run) stop at L. A floor of 8.5 uses the `php84` sets (no `php85` set is
+assumed). PHP deprecation fixes whose output still runs on L (`Foo $x = NULL` ->
+`?Foo $x = NULL`, deprecated in 8.4) run in a second, narrow pass,
+`rector-compat.php`, rendered and run only when L < 8.4 and the range reaches
+8.4 (`rector_compat_needed`).
 
 The Drupal set (`Drupal10SetList::DRUPAL_10`: APIs removed in D11) is independent
 of the PHP target; `Drupal11SetList::DRUPAL_11` (D11 deprecations, for a future
 D12 port) is deliberately not included. The PHP level set is applied minus the
 rules the template skips (`ArrayToFirstClassCallableRector`,
 `AddOverrideAttributeToOverriddenMethodsRector`, `ReadOnlyPropertyRector`,
-`ReadOnlyClassRector`, `NullToStrictStringFuncCallArgRector`): they are not
-compatibility fixes, they break Form API callbacks / serialization / Drupal 10,
-and the `#[\Override]` and `readonly` they add would also raise the PHP floor
-`detect-php-floor.sh` reports. The `rector.php.tmpl`
-template encodes this; `scripts/env/render-templates.sh` (and `run-rector.sh` when it
-writes a missing `rector.php`) derives the `->withPhpSets()` argument from the
-target via `rector_php_set_arg` (`8.3` → `php83`, `8.4` → `php84`, `8.5` →
-`php84` with a warning) — never edit it by hand. (The digests complementary
+`ReadOnlyClassRector`, `NullToStrictStringFuncCallArgRector`,
+`SleepToSerializeRector`, `WakeupToUnserializeRector`,
+`AddOverrideAttributeToOverriddenPropertiesRector`): they are not compatibility
+fixes, they break Form API callbacks / serialization / Drupal 10, and the
+`#[\Override]` and `readonly` they add would also raise the PHP floor
+`detect-php-floor.sh` reports. The `rector.php.tmpl` template encodes this;
+`scripts/env/render-templates.sh` (and `run-rector.sh` when it writes a missing
+`rector.php`) fills in the floor (`rector_floor_tokens`: `8.1` → `PHP_81` /
+`php81`) — never edit it by hand. An untouched render is regenerated when the
+floor moves (the core target chosen at port time differs from the one setup
+assumed); a hand-edited one is kept, with a warning. (The digests complementary
 pass runs separately via `--config`, see the `minimal-port` skill.)
 
 ### PHPStan — level and expectations (`phpstan.neon`)
@@ -142,7 +158,8 @@ export DRUPILOT_PHP_TARGET=8.4
 Then re-derive: re-run `detect-php.sh --json`, regenerate `rector.php`,
 `phpstan.neon` and `phpcs.xml.dist` from the templates for the new target
 (`export DRUPILOT_PHP_TARGET=8.4`, then `render-templates.sh --root <drupal_root>
---subject-path <path> --force`; the Rector PHP set follows the target), and reconfigure DDEV (`ddev config --php-version=8.4` then
+--subject-path <path> --force`; the Rector floor follows the declared core range
+and never exceeds the target), and reconfigure DDEV (`ddev config --php-version=8.4` then
 `ddev restart`). Keep all four in lockstep — a mismatch between the Rector PHP
 set, PHPStan, PHPCS and the DDEV runtime produces confusing, inconsistent
 findings.
@@ -186,7 +203,8 @@ verified by tests, or "not verified" when there are no tests.
 
 ## Gotchas
 
-- **One PHP version per run.** Do not stack `php83` + `php84` Rector sets.
+- **One PHP version per run.** Do not stack `php83` + `php84` Rector sets; the
+  main pass uses the floor's set only.
 - **Never hardcode 8.5 anywhere.** Go through `php_target_unconfirmed` and
   `php_supported_for`, and detect the concrete capability (Rector constant, DDEV
   image) at runtime.
