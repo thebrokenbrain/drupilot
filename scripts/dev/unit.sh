@@ -13,7 +13,9 @@
 # assertion and no "not ok" line, so a forgotten t_done or an early `exit 0`
 # fails. Each test runs with stdin from /dev/null, without a controlling
 # terminal where `setsid --wait` exists, and under a 300 s timeout where
-# `timeout` exists, so a test that would prompt fails instead of blocking.
+# `timeout`/`gtimeout` exists; t_isolate sets DRUPILOT_NONINTERACTIVE=1, so on
+# every platform drupilot's own prompts take their default. Ctrl-C stops the
+# run (exit 130) and kills the running test.
 #
 # Usage:
 #   scripts/dev/unit.sh [--only T1,T2] [--json] [--list] [-h|--help]
@@ -70,16 +72,33 @@ RESULTS="$TMP/results.jsonl"
 FAILED=0
 
 # Detach each test from the controlling terminal when `setsid --wait` exists
-# (util-linux); BusyBox and macOS have no such flag and run it as is.
+# (util-linux); BusyBox and macOS have no such flag and run it as is. The
+# timeout runs inside the new session, so its kill on expiry reaches the
+# test's whole process group.
 DETACH=""
 if have_cmd setsid && setsid --wait true < /dev/null > /dev/null 2>&1; then DETACH="setsid --wait"; fi
+TIMEOUT=""
+if have_cmd timeout; then TIMEOUT="timeout 300"; elif have_cmd gtimeout; then TIMEOUT="gtimeout 300"; fi
+# A test runs in the background and is waited for, so Ctrl-C (or a TERM)
+# reaches this shell even when the test sits in another session or process
+# group: the trap kills the test's group and stops the run (exit 130).
+CHILD=""
+stop_run() {
+  if [[ -n "$CHILD" ]]; then kill -TERM -- "-$CHILD" 2>/dev/null || kill -TERM "$CHILD" 2>/dev/null || true; fi
+  log_err "unit.sh: interrupted"
+  exit 130
+}
+trap stop_run INT TERM HUP
 
 log_step "drupilot unit tests (bash ${BASH_VERSION:-?}, $(uname -s 2>/dev/null || echo ?))"
 while IFS="$(printf '\t')" read -r name path; do
   [[ -n "$name" ]] || continue
   if [[ -n "$ONLY" ]] && ! in_list "$name" "$ONLY"; then continue; fi
-  # shellcheck disable=SC2086  # DETACH is empty or two words
-  if run_with_timeout 300 $DETACH "$SH" "$path" > "$TMP/$name.out" 2>&1 < /dev/null; then rc=0; else rc=$?; fi
+  # shellcheck disable=SC2086  # DETACH and TIMEOUT are empty or two words
+  $DETACH $TIMEOUT "$SH" "$path" > "$TMP/$name.out" 2>&1 < /dev/null &
+  CHILD=$!
+  if wait "$CHILD"; then rc=0; else rc=$?; fi
+  CHILD=""
   n_ok="$(grep -c '^ok - ' "$TMP/$name.out" || true)"
   if [[ "$rc" == "0" ]]; then
     if grep -q '^not ok - ' "$TMP/$name.out"; then rc="0 with a not-ok line"

@@ -19,8 +19,11 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   self-test; `scripts/dev/unit.sh` runs it and every `tests/unit/*.sh` with the
   same bash, and `scripts/dev/check.sh` runs that as its new `unit` gate
   (`--gate` is now an alias of `--only`). A test passes only with its summary
-  line, at least one assertion and no failed one; each runs detached from the
-  terminal and under a timeout, so none can block on a prompt. The first
+  line, at least one assertion and no failed one. `t_isolate` sets
+  `DRUPILOT_NONINTERACTIVE=1`, so no test can block on one of drupilot's
+  prompts on any platform; where `setsid --wait` and `timeout` exist a test
+  also runs detached from the terminal and under a 300 s timeout, and Ctrl-C
+  stops the run and the running test. The first
   tests freeze 0.9 behaviour: `config_get` precedence, `version_ge`, the
   `project_state_path` key (symlinked paths included), `lock_resolve`,
   `choose_one` pre-answers, the `keep-current` core strategy, the hooks'

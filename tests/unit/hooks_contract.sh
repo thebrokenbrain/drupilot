@@ -14,7 +14,11 @@ cp -R "$T_REPO/tests/fixtures/legacy_widgets" "$T_TMP/fx/"
 printf '{"name": "drupilot-unit/stub-root"}\n' > "$T_TMP/root/composer.json"
 printf "<?php\nclass Drupal {\n  const VERSION = '11.4.8';\n}\n" > "$T_TMP/root/web/core/lib/Drupal.php"
 cp -R "$T_REPO/tests/fixtures/legacy_widgets" "$T_TMP/root/web/modules/custom/"
-for b in phpcs phpcbf; do printf '#!/bin/sh\nexit 0\n' > "$T_TMP/root/vendor/bin/$b"; chmod +x "$T_TMP/root/vendor/bin/$b"; done
+# phpcs reports one error, so post-edit-lint reaches its STDOUT path (the
+# PostToolUse context); phpcbf changes nothing.
+printf '#!/bin/sh\nprintf " 3 | ERROR | [x] Missing file doc comment\\n"\nexit 2\n' > "$T_TMP/root/vendor/bin/phpcs"
+printf '#!/bin/sh\nexit 0\n' > "$T_TMP/root/vendor/bin/phpcbf"
+chmod +x "$T_TMP/root/vendor/bin/phpcs" "$T_TMP/root/vendor/bin/phpcbf"
 printf '%s' 'not json {' > "$T_TMP/garbage.json"
 printf '{"tool_name":"Bash","tool_input":{"command":"git push origin main"}}' > "$T_TMP/push.json"
 printf '{"tool_name":"Bash","tool_input":{"command":"ls -la"}}' > "$T_TMP/ls.json"
@@ -57,6 +61,12 @@ for h in session-detect-env post-edit-lint guard-contrib; do
   assert_eq "$h: no jq -> exit 0, no stdout" "$T_RC|$(t_out)" "0|"
   hook "$h" "$good"
   assert_eq "$h: its representative payload -> exit 0, at most a hookSpecificOutput" "$(contract)" "0|ok"
+  case "$h" in
+    post-edit-lint) assert_eq "$h: it reports the finding as PostToolUse context" \
+      "$(jq -r '.hookSpecificOutput.hookEventName // empty' "$T_OUT" 2>/dev/null)" "PostToolUse";;
+    session-detect-env) assert_eq "$h: it prints SessionStart context" \
+      "$(jq -r '.hookSpecificOutput.hookEventName // empty' "$T_OUT" 2>/dev/null)" "SessionStart";;
+  esac
   hook "$h" "$benign" HOME="$rohome" XDG_DATA_HOME="$rohome/.local/share" XDG_STATE_HOME="$rohome/.local/state" \
     XDG_CACHE_HOME="$rohome/.cache" XDG_CONFIG_HOME="$rohome/.config"
   assert_eq "$h: a HOME it cannot write -> exit 0, at most a hookSpecificOutput" "$(contract)" "0|ok"

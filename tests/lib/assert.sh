@@ -27,7 +27,10 @@
 # Helpers:
 #   t_isolate   a temp dir ($T_TMP) as HOME, XDG dirs and working directory
 #               (so no caller's .drupilot.json is found); every DRUPILOT_*,
-#               CLAUDE_PLUGIN_DATA and CLAUDE_CONFIG_DIR unset;
+#               CLAUDE_PLUGIN_DATA and CLAUDE_CONFIG_DIR unset, then
+#               DRUPILOT_NONINTERACTIVE=1 (prompts take their default; note
+#               guard-contrib then asks before any push: unset it to test
+#               another mode);
 #               CLAUDE_PLUGIN_ROOT is the repo; removed on exit (T_KEEP=1 keeps it)
 #   t_run <cmd...>  runs cmd in a subshell (stdin /dev/null; an `exit` in a
 #               function under test ends only the subshell): STDOUT in $T_OUT
@@ -69,6 +72,9 @@ t_isolate() {
   T_TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-unit.XXXXXX")" || { echo "t_isolate: mktemp failed" >&2; exit 1; }
   T_TMP="$(cd "$T_TMP" && pwd -P)"
   for v in $(env | sed -n 's/^\(DRUPILOT_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$v"; done
+  # No test may block on one of drupilot's /dev/tty prompts (confirm,
+  # choose_one), on any platform; a test of the interactive path unsets it.
+  export DRUPILOT_NONINTERACTIVE=1
   unset CLAUDE_PLUGIN_DATA CLAUDE_CONFIG_DIR
   export CLAUDE_PLUGIN_ROOT="$T_REPO"
   export HOME="$T_TMP/home"
