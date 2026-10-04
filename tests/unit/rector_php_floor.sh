@@ -91,6 +91,18 @@ L95N="$(mod l95n '^9.5 || ^10 || ^11' none)"
 assert_eq "... without composer.json: the lowest PHP of the data" "$(bounds rector_php_bounds "$L95N" 8.3)" "7.4 8.5"
 t_run rector_php_bounds "$L95N" 8.3
 assert_match "... with a warning naming the range" "$(tr '\n' ' ' < "$T_ERR")" "core range '\\^9\\.5 \\|\\| \\^10 \\|\\| \\^11' is not in drupilot's version data"
+# A minor the data has not verified yet: its major's verified minors bound it.
+L115="$(mod l115 '^11.5' 'del(.require)')"
+assert_eq "^11.5 before 11.5 is verified: Drupal 11's verified PHP, no warning" \
+  "$(bounds rector_php_bounds "$L115" 8.3)" "8.3 8.5"
+t_run rector_php_bounds "$L115" 8.3
+assert_eq "... and no warning" "$(grep -c 'not in drupilot' "$T_ERR" || true)" "0"
+# A future major with no verified minor adds nothing to an open >= range.
+D3="$T_TMP/data3"; cp -R "$D" "$D3"
+printf '%s\n' '{"major":13,"minors":{"13.0":{"status":"detect"}}}' > "$D3/targets/13.json"
+LGE="$(mod lge '>=11' 'del(.require)')"
+assert_eq ">=11 with an unverified major 13: the verified majors bound it" \
+  "$(DRUPILOT_VERSION_DATA_DIR="$D3" bounds rector_php_bounds "$LGE" 8.3)" "8.3 8.5"
 mkdir -p "$T_TMP/nodata"
 assert_eq "no version data: L is the require.php floor, U = P" \
   "$(DRUPILOT_VERSION_DATA_DIR="$T_TMP/nodata" bounds rector_php_bounds "$LW" 8.3)" "8.1 8.3"

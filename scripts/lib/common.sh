@@ -818,6 +818,9 @@ EOF
   return 0
 }
 
+# _rector_leg_major ^X.Y -> X
+_rector_leg_major() { local l="${1#^}"; printf '%s' "${l%%.*}"; }
+
 # rector_php_bounds <subject_dir> [php_target] -> "L U".
 # L, the floor, is the highest of the lowest PHP the declared core range
 # supports (core-strategy.sh's recommendation, which honors
@@ -825,8 +828,9 @@ EOF
 # php_bounds_for_range) and the floor of the require.php composer will
 # enforce (core-strategy's require_php, which honors
 # DRUPILOT_REQUIRE_PHP_FLOOR, else the subject's own; only when the subject
-# has a composer.json), never above the PHP target P. When a leg is one the
-# version data does not hold (a Drupal 9 leg kept as-is, an unusual
+# has a composer.json), never above the PHP target P. A leg whose minor is not
+# verified yet is bounded by its major's verified minors. When a leg is one
+# the version data does not hold (a Drupal 9 leg kept as-is, an unusual
 # constraint), the range floor is unknown: L is the enforced require.php
 # floor, else the lowest PHP the data knows, with a warning. U, the highest
 # PHP the code must run on, is max(P, the highest ceiling of the known legs).
@@ -845,8 +849,15 @@ rector_php_bounds() {
       unknown=0
       while IFS= read -r leg; do
         [[ -n "$leg" ]] || continue
-        n=$((n + 1))
         b=""; [[ "$leg" == "?" ]] || b="$(php_bounds_for_range "$leg")"
+        if [[ -z "$b" && "$leg" != "?" && -r "$(version_data_dir)/targets/$(_rector_leg_major "$leg").json" ]]; then
+          # The major is in the data but no verified minor reaches the leg's
+          # (^11.5 before 11.5 is verified): its verified minors bound it. A
+          # major with no verified minor at all (a future one) adds nothing.
+          b="$(php_bounds_for_range "^$(_rector_leg_major "$leg")")"
+          [[ -n "$b" ]] || continue
+        fi
+        n=$((n + 1))
         if [[ -z "$b" ]]; then unknown=1; continue; fi
         if [[ -z "$lo" ]] || ! version_ge "${b%% *}" "$lo"; then lo="${b%% *}"; fi
         if [[ -z "$hi" ]] || ! version_ge "$hi" "${b##* }"; then hi="${b##* }"; fi
@@ -910,21 +921,20 @@ rector_config_floor() {
 # render nobody edited, which may be regenerated when its inputs change. A
 # hand edit, another template generation or a file of the developer's own -> 1.
 rector_config_pristine() {
-  local tpl="${1:-}" f="${2:-}" fl sp tmp rc=1
+  local tpl="${1:-}" f="${2:-}" fl sp rc=1
   [[ -f "$tpl" && -f "$f" ]] || return 1
   fl="$(rector_config_floor "$f")"
   [[ -n "$fl" ]] || return 1
   # shellcheck disable=SC2016  # awk program, not a shell expansion
   sp="$(awk -v q="'" '/->withPaths\(\[/ { if ((getline l) > 0) { sub("^[[:space:]]*" q, "", l); sub(q ",[[:space:]]*$", "", l); print l }; exit }' "$f" 2>/dev/null || true)"
   [[ -n "$sp" ]] || return 1
-  # Next to the file (as render_template does), whatever TMPDIR holds.
-  tmp="$(mktemp "$(dirname "$f")/.$(basename "$f").drupilot-pristine.XXXXXX")" || return 1
+  # Rendered to STDOUT and compared through a pipe: no temp file, whatever
+  # TMPDIR holds (pipefail makes a failed render a mismatch).
   # shellcheck disable=SC2046  # one KEY=VALUE word per line, no spaces in them
-  if render_template "$tpl" "$tmp" "SUBJECT_PATH=$sp" $(rector_floor_tokens "$fl") 2>/dev/null \
-     && cmp -s "$tmp" "$f"; then
+  if ( set -o pipefail; render_template "$tpl" - "SUBJECT_PATH=$sp" $(rector_floor_tokens "$fl") 2>/dev/null \
+       | cmp -s - "$f" ); then
     rc=0
   fi
-  rm -f "$tmp"
   return "$rc"
 }
 

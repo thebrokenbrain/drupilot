@@ -436,8 +436,9 @@ else
   run_rector_pass 1 1 || PASS1_OK=0
 fi
 PASS1_RAW="$RECTOR_RAW"
-# Whether pass 1 itself finished normally (a later compat crash or consistency
-# check may clear PASS1_OK, but an --apply has written pass 1's changes).
+# Whether pass 1 itself finished normally and, on --apply, did what its dry-run
+# announced (cleared below when it did not); a later compat crash clears only
+# PASS1_OK, since an --apply has written pass 1's changes by then.
 PASS1_RAN_OK="$PASS1_OK"
 
 # --- Compat pass: rector-compat.php (ADR 0002) ---------------------------------
@@ -616,7 +617,7 @@ elif [[ "$APPLY" == "1" && -n "$PRE_DIGEST" && -r "$DRYRUN_REC" ]] && have_cmd j
   if [[ -n "$_rec" ]]; then
     _dp1="$(printf '%s' "$_rec" | jq -r '.pass1_files // 0')"
     if [[ "$PASS1_OK" == "1" && "$_dp1" -gt 0 && "$P1N" == "0" ]]; then
-      PASS1_OK=0; FAILED_PASSES="$FAILED_PASSES 1"
+      PASS1_OK=0; PASS1_RAN_OK=0; FAILED_PASSES="$FAILED_PASSES 1"
       _m="The dry-run on this same code and rector.php reported $_dp1 file(s) to change, but the apply changed none (a stale Rector cache or a run that skipped the files). Nothing was ported: re-run the dry-run, then --apply."
       ERRORS_JSON="$(printf '%s' "$ERRORS_JSON" | jq -c --arg m "$_m" '. + [{pass: 1, exit_code: 0, message: $m}]')"
       log_err "Pass 1: $_m"

@@ -53,7 +53,8 @@ case "$cfg" in
     case "$m" in *" digests-overlap "*) [ "$dry" = 1 ] && change src/WidgetLookup.php SomeDigestsRector;; esac;;
   *)
     case "$m" in *" official-changes "*) change src/Form/WidgetImportForm.php FunctionFirstClassCallableRector;;
-      *" official-lookup "*) change src/WidgetLookup.php FunctionFirstClassCallableRector;; esac;;
+      *" official-lookup "*) change src/WidgetLookup.php FunctionFirstClassCallableRector;;
+      *" official-dry-only "*) [ "$dry" = 1 ] && change src/Form/WidgetImportForm.php FunctionFirstClassCallableRector;; esac;;
 esac
 echo " [OK] Rector is done!"; exit 0
 STUB
@@ -114,6 +115,14 @@ rm -f "$RULES_REC"
 ra 'official-changes compat-crash' --apply
 assert_eq "a compat crash on --apply keeps the official pass's rule record" \
   "$T_RC|$(jq -c '.rule_hits.official' "$RULES_REC" 2> /dev/null)" '3|{"FunctionFirstClassCallableRector":1}'
+
+# Pass 1 announced a change its --apply did not make: nothing was ported, so
+# no rule record is written, whatever the compat pass changed.
+rm -f "$RULES_REC"
+ra official-dry-only
+ra official-dry-only --apply
+assert_eq "pass 1 skipped its announced change: error, exit 3, no rule record" \
+  "$T_RC|$(j '[.status, [.errors[].pass]]')|$([[ -e "$RULES_REC" ]] && echo yes || echo no)" '3|["error",[1]]|no'
 
 # Digests after compat: its dry-run announced the file the compat pass changes;
 # the apply leaves it alone, which is no error.

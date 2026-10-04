@@ -16,7 +16,8 @@
 #   --check     diff the current state against the baseline and classify each NEW
 #               untracked entry as drupilot-attributable (.ddev/, .drupilot*,
 #               .phpstan-cache/, vendor/, node_modules/, rector.php,
-#               phpstan.neon, phpcs.xml.dist, *-port-to-drupal-11*.patch,
+#               rector-compat.php, phpstan.neon, phpcs.xml.dist,
+#               *-port-to-drupal-11*.patch,
 #               symlinks resolving outside the origin) or other. Tracked files
 #               the port modified are listed separately (expected for move /
 #               symlink / in-place; unexpected for copy).
