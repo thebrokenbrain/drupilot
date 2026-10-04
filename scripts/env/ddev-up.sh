@@ -320,6 +320,22 @@ shopt -u nullglob dotglob
 # The pre-existing (pristine) docroot is saved aside so a rollback can put it
 # back exactly; it holds at most DDEV's generated settings files.
 DOCROOT_BACKUP=""
+_DOCROOT_REPLACED=0   # 1 while the cached tree may have replaced the original docroot
+
+# On any exit (an error, Ctrl-C, a TERM) with the saved copy still around: if
+# the original docroot is still in place the copy is removed; if the cached
+# tree may have replaced it, the copy is the only original left, so it is kept
+# and its path reported.
+docroot_backup_on_exit() {
+  [[ -n "$DOCROOT_BACKUP" && -d "$DOCROOT_BACKUP" ]] || return 0
+  if [[ "$_DOCROOT_REPLACED" == "1" ]]; then
+    log_warn "Stopped after the cached base core replaced $DOCROOT/: the original $DOCROOT/ is kept in $DOCROOT_BACKUP (put it back, or delete it once the test-bed is set up)."
+  else
+    rm -rf "${DOCROOT_BACKUP:?}" 2>/dev/null || true
+  fi
+  return 0
+}
+trap docroot_backup_on_exit EXIT
 
 # core_cache_rollback -> take a copied cache tree back out of the root.
 core_cache_rollback() {
@@ -333,6 +349,8 @@ core_cache_rollback() {
         if ! cp -R -p "$DOCROOT_BACKUP/$DOCROOT" "$PROJECT_DIR/" 2>/dev/null; then
           log_warn "Could not put the original $DOCROOT/ back (a copy is kept in $DOCROOT_BACKUP)."
           DOCROOT_BACKUP=""   # keep it: drop_docroot_backup must not remove it
+        else
+          _DOCROOT_REPLACED=0
         fi
       fi
       continue
@@ -392,6 +410,7 @@ if [[ "$DO_CREATE" == "1" && ! -f "$PROJECT_DIR/composer.json" && "$CORE_CACHE_M
     drop_docroot_backup
   elif [[ -n "$_entry" ]]; then
     _t0="$(date +%s)"
+    _DOCROOT_REPLACED=1
     if CORE_CACHE_METHOD="$(fast_copy_tree "$_entry/tree" "$PROJECT_DIR")"; then
       CORE_CACHE_SECS="$(( $(date +%s) - _t0 ))"
       CORE_SOURCE="cache"

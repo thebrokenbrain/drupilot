@@ -128,6 +128,26 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `FormBase`'s `$loggerFactory` as `private readonly` and typed, a fatal error
   when the class loads. The fixture is unchanged (part of H12).
 
+## [0.9.2] - 2026-10-04
+
+### Fixed
+- `run-phpcs.sh` no longer exits 1 when PHPCS cannot load a project ruleset
+  and its message names no ERROR line: an explicit ruleset is refused (exit
+  2) and an auto-detected one falls back to Drupal,DrupalPractice, as
+  documented.
+- `run-phpunit.sh --coverage` checks for a coverage driver (PCOV, or Xdebug in
+  coverage mode) first; without one the tests run without coverage flags,
+  instead of a PHPUnit warning that a failOnWarning configuration turned into
+  a false `regression` verdict.
+- `ddev-up.sh` no longer leaves its saved docroot copy in the temp dir when it
+  stops early; if the cached core already replaced the docroot, the copy is
+  kept and its path reported.
+- `/drupilot-status` loads in `claude -p` and without an approval prompt: its
+  core-matrix line now calls `core_matrix_summary` instead of an inline jq
+  program, which Claude Code refused as an unverifiable `bash -c` script.
+- A port manifest whose patch path is relative to the Drupal root no longer
+  makes the patch look missing in `port-summary.sh` and `/drupilot-status`.
+
 ## [0.9.1] - 2026-10-03
 
 ### Added
@@ -2479,7 +2499,8 @@ verdict, what-changed report card, frozen lock), and new insight tools
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.4...v0.9.0
 [0.8.4]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.3...v0.8.4

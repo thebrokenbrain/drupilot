@@ -925,6 +925,16 @@ test_port_summary() {
   expect "port-summary: recorded false kept" "$(jqo ps '[.digests.applied, .digests.skipped, .preservation.fresh, .matrix.fresh]')" '[false,false,false,true]'
   expect "port-summary: one d10 source" "$(jqo ps '[.d10_support, .d10_support_source, .status, ([.blockers[].source] | join(","))]')" \
     '["failed","core-matrix","blocked","core-matrix"]'
+  # A manifest whose patch path is relative to the Drupal root (not to the
+  # subject) still finds the patch.
+  local r="$FX/summary-root" m
+  mk_stub_root "$r" "11.4.8"; cp -R "$CUSTOM/acme_core" "$r/web/modules/custom/"
+  m="$r/web/modules/custom/acme_core"; : > "$m/acme_core-port-to-drupal-11.patch"
+  sd="$(project_state_dir "$m")"
+  printf '{"machine_name":"acme_core","phase":"port","patch":"web/modules/custom/acme_core/acme_core-port-to-drupal-11.patch"}\n' > "$sd/port-manifest.json"
+  run ps2 "$SH" "$REPO/scripts/analysis/port-summary.sh" --subject "$m" --json
+  expect "port-summary: a root-relative manifest patch path resolves" \
+    "$(jqo ps2 '[.patch.path, .patch.exists]')" "[\"$m/acme_core-port-to-drupal-11.patch\",true]"
   finish
 }
 
@@ -1072,6 +1082,21 @@ STUB
   expect "no git: report only" "$RC|$(grep -c '^phpcbf ' "$r/phpcs-args.log" 2>/dev/null || true)" "0|0"
   run pc4 "$SH" "$rp" --subject "$sub" --fix --fix-scope bogus
   expect "bad scope: usage error" "$RC" "1"
+  # A ruleset PHPCS cannot load, with a message that names no ERROR: the
+  # explicit one is refused (exit 2), the auto-detected one falls back.
+  cat > "$r/vendor/bin/phpcs" <<'STUB'
+#!/usr/bin/env bash
+case " $* " in
+  *" -e "*) printf 'Something odd happened while loading the ruleset\n'; exit 3;;
+  *" --report=json "*) printf '{"totals":{"errors":0,"warnings":0,"fixable":0},"files":{}}\n';;
+esac
+exit 0
+STUB
+  run pc5 "$SH" "$rp" --subject "$sub" --ruleset "$sub/phpcs.xml.dist" --json
+  expect "unloadable explicit ruleset, no ERROR line: refused (exit 2)" "$RC" "2"
+  run pc6 "$SH" "$rp" --subject "$sub" --json
+  expect "unloadable auto ruleset, no ERROR line: falls back" \
+    "$RC|$(jqo pc6 '.drupilot.source')" '0|"fallback"'
   finish
 }
 

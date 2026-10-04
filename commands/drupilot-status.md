@@ -100,7 +100,7 @@ Read these if they exist (do not recompute anything):
   `verified-static-above-floor` / `failed` / `declared-not-verified`), and whether it is still fresh (computed on the
   current sources). Read-only: this never runs the matrix.
 
-  !`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; SUBJ="$(cd "$SUBJ" && pwd)"; F="$(core_matrix_file "$SUBJ")"; if [[ -r "$F" ]]; then printf "core_matrix_fresh=%s\n" "$(core_matrix_fresh "$SUBJ" && echo yes || echo no)"; jq -c "{d10_support, verdict, generated_at, legs: [.legs[] | {core: (.version // .core), role, status, reason}]}" "$F"; else echo "core_matrix=none"; fi' _ "$1"`
+  !`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; core_matrix_summary "$(cd "$SUBJ" && pwd)"' _ "$1"`
 - `@<state_dir>/port-manifest.json` and `@<artifacts_dir>/port-report.md` if present
   — the per-port "what changed and why" record and its human report card.
 - origin hygiene — whether drupilot left anything behind in the developer's origin
