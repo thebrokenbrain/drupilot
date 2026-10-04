@@ -3,9 +3,13 @@
 # drupilot — scripts/dev/golden.sh
 # The golden outputs (a developer/CI tool: no command, skill or hook calls it;
 # scripts/dev/check.sh runs it as its `golden` gate). Two kinds of golden
-# directory, each with a golden.json manifest carrying a `data_hash` (the
-# config/targets|php|paths snapshot it was computed with: empty until those
-# data files exist, T-M2-15):
+# directory, each with a golden.json manifest carrying a `data_hash`: the
+# sha256 of the version data (config/targets|php|paths) it was computed with.
+# That data is vendored as a snapshot, tests/fixtures/data-snapshots/<hash>/,
+# and the goldens are checked against the snapshot, never against the live
+# config/: a data commit never changes an existing golden. Only an --update
+# (a re-recording, with its CHANGELOG entry) vendors the live data as a new
+# snapshot and repins the goldens to it.
 #   baseline-0.9   tests/baseline/v0.9.0/: the Docker-free outputs of v0.9.0,
 #                  checked by rerunning them (scripts/dev/baseline-0.9.sh
 #                  --check, which this absorbs)
@@ -14,13 +18,19 @@
 #                  outputs; every file is pinned by its sha256 in golden.json,
 #                  so a byte edit fails, and the nightly DDEV end-to-end run
 #                  (G-E2E) is what regenerates them
+# The data hash: the sha256 of the lines "<path> <sha256>" of every file under
+# targets/, php/ and paths/ (path relative to the data dir, sorted). A snapshot
+# whose content no longer gives its own name fails, and so does a golden
+# pinned to a missing snapshot. Snapshots no golden uses are reported.
 #
 # Usage:
 #   scripts/dev/golden.sh [--check | --update] [--only G1,G2] [--json] [-h|--help]
 #     --check   verify every golden directory (the default)
 #     --update  rewrite the `files` map of the fixture goldens' golden.json
 #               from the files present (after a deliberate re-recording; a
-#               golden change is its own commit with a CHANGELOG entry, H10)
+#               golden change is its own commit with a CHANGELOG entry, H10),
+#               vendor the live data as a snapshot if it is new, and pin
+#               every updated golden (baseline-0.9 included) to it
 #     --only    a subset (baseline-0.9, or a fixture name)
 #     --json    {ok, mode, goldens:[{name, status, detail}]} on STDOUT
 #
@@ -76,6 +86,33 @@ golden_files() {
   return 0
 }
 
+# data_hash_of <data dir> -> the data hash (empty when the dir holds no data).
+data_hash_of() {
+  local d="$1" f lines=""
+  [[ -d "$d" ]] || return 0
+  while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+    lines="$lines$f $(sha "$d/$f")
+"
+  done < <( cd "$d" && find targets php paths -type f -name '*.json' 2> /dev/null | LC_ALL=C sort )
+  [[ -n "$lines" ]] || return 0
+  printf '%s' "$lines" | $HASHER | cut -d' ' -f1
+  return 0
+}
+SNAPS="$REPO/tests/fixtures/data-snapshots"
+# check_snapshot <name> <dir> -> 0 when the golden's data_hash names an intact
+# snapshot (SNAP is then its path); otherwise one fail result and 1.
+check_snapshot() {
+  local name="$1" h
+  h="$(jq -r '.data_hash // ""' "$2/golden.json" 2> /dev/null || true)"
+  if [[ ! "$h" =~ ^[0-9a-f]{64}$ ]]; then result "$name" fail "golden.json has no data_hash (run --update to pin the data snapshot)"; return 1; fi
+  SNAP="$SNAPS/$h"
+  [[ -d "$SNAP" ]] || { result "$name" fail "its data snapshot ${SNAP#"$REPO"/} is missing"; return 1; }
+  [[ "$(data_hash_of "$SNAP")" == "$h" ]] || { result "$name" fail "the data snapshot ${SNAP#"$REPO"/} was edited (its content no longer hashes to its name)"; return 1; }
+  return 0
+}
+SNAP=""; USED=""
+
 # The golden directories: "name<TAB>dir".
 GOLDENS="$(printf 'baseline-0.9\t%s\n' "$REPO/tests/baseline/v0.9.0"
            for d in "$REPO"/tests/fixtures/*.golden; do
@@ -111,13 +148,26 @@ check_manifest() {
 }
 
 log_step "drupilot goldens: $MODE"
+LIVE_HASH=""
+if [[ "$MODE" == "update" ]]; then
+  LIVE_HASH="$(data_hash_of "$REPO/config")"
+  [[ -n "$LIVE_HASH" ]] || die "config/ holds no version data to snapshot" 1
+  if [[ ! -d "$SNAPS/$LIVE_HASH" ]]; then
+    mkdir -p "$SNAPS/$LIVE_HASH"
+    for _d in targets php paths; do [[ -d "$REPO/config/$_d" ]] && cp -R "$REPO/config/$_d" "$SNAPS/$LIVE_HASH/"; done
+    log_ok "vendored the live data as tests/fixtures/data-snapshots/$LIVE_HASH"
+  fi
+fi
+# pin <golden.json> -> set its data_hash to the live data hash.
+pin() { jq --arg h "$LIVE_HASH" '.data_hash = $h' "$1" > "$TMP/p.json" && mv "$TMP/p.json" "$1"; }
 while IFS="$(printf '\t')" read -r name dir; do
   [[ -n "$name" ]] || continue
   if [[ -n "$ONLY" ]] && ! in_list "$name" "$ONLY"; then continue; fi
   if [[ "$MODE" == "update" ]]; then
     if [[ "$name" == "baseline-0.9" ]]; then
       [[ -f "$dir/golden.json" ]] || jq -n '{data_hash: ""}' > "$dir/golden.json"
-      result "$name" updated "its captures are refreshed by scripts/dev/baseline-0.9.sh --capture, not here"
+      pin "$dir/golden.json"
+      result "$name" updated "pinned to data snapshot $LIVE_HASH (its captures are refreshed by scripts/dev/baseline-0.9.sh --capture, not here)"
       continue
     fi
     files="$(golden_files "$dir" \
@@ -127,13 +177,17 @@ while IFS="$(printf '\t')" read -r name dir; do
     else
       jq -n --argjson f "$files" '{data_hash: "", files: $f}' > "$dir/golden.json"
     fi
-    result "$name" updated "golden.json pins $(printf '%s' "$files" | jq 'length') file(s)"
+    pin "$dir/golden.json"
+    result "$name" updated "golden.json pins $(printf '%s' "$files" | jq 'length') file(s), data snapshot $LIVE_HASH"
     continue
   fi
-  if [[ "$name" != "baseline-0.9" ]]; then check_manifest "$name" "$dir"; continue; fi
   if [[ ! -f "$dir/golden.json" ]] || ! jq -e 'has("data_hash")' "$dir/golden.json" > /dev/null 2>&1; then
-    result "$name" fail "${dir#"$REPO"/}/golden.json is missing or has no data_hash"
-  elif "$SH" "$REPO/scripts/dev/baseline-0.9.sh" --check --json > "$TMP/bl.json" 2> "$TMP/bl.err"; then
+    result "$name" fail "${dir#"$REPO"/}/golden.json is missing or has no data_hash"; continue
+  fi
+  check_snapshot "$name" "$dir" || continue
+  USED="$USED ${SNAP##*/}"
+  if [[ "$name" != "baseline-0.9" ]]; then check_manifest "$name" "$dir"; continue; fi
+  if "$SH" "$REPO/scripts/dev/baseline-0.9.sh" --check --json --data-dir "$SNAP" > "$TMP/bl.json" 2> "$TMP/bl.err"; then
     result "$name" pass "$(jq -r '.files | length' "$TMP/bl.json") capture(s) match v0.9.0 (or an allowed difference)"
   else
     _why="$(jq -r '[.files[] | select(.status != "same" and .status != "allowed") | "\(.name): \(.status)"] | join("; ")' "$TMP/bl.json" 2>/dev/null || true)"
@@ -144,6 +198,13 @@ while IFS="$(printf '\t')" read -r name dir; do
   fi
 done <<< "$GOLDENS"
 
+# A snapshot no golden is pinned to (a full --check only).
+if [[ "$MODE" == "check" && -z "$ONLY" && -d "$SNAPS" ]]; then
+  for _s in "$SNAPS"/*; do
+    [[ -d "$_s" ]] || continue
+    case " $USED " in *" ${_s##*/} "*) ;; *) result "data-snapshots" fail "${_s#"$REPO"/} is not used by any golden (remove it)";; esac
+  done
+fi
 if [[ "$MODE" == "update" ]]; then log_ok "golden.sh: manifests updated"
 elif [[ "$FAILED" == "1" ]]; then log_err "golden.sh: a golden output differs"
 else log_ok "golden.sh: every golden output matches"; fi
