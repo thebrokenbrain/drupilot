@@ -105,8 +105,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   on a release tag (`vX.Y.Z`, never a pre-release such as `v1.0.0-alpha.1`)
   or a manual run.
 - **Architecture decision records** in `docs/contributing/adr/`: the owner's
-  answers to the 1.0 plan's open questions (0000) and the decisions taken
-  while building M1 and M2 (0007–0014).
+  answers to the 1.0 plan's open questions (0000), the lab spikes of M2 (0001
+  toolchain cell 11, 0002 the Rector compat pass, 0003 PHPCompatibility, 0004
+  the provisional Drupal 12 cell, 0006 hooks keep `ask` under headless
+  `claude -p`) and the decisions taken while building M1 and M2 (0007–0014).
 - **JSON Schemas for the persisted artifacts** (`schemas/`): the port
   summary (v1), `assess.json`, `last-test.json`, `port-manifest.json`, the
   lockfile and `preflight --json`, describing 0.9 as it is.

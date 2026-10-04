@@ -79,6 +79,11 @@ nav:
       - Decisions:
           - contributing/adr/index.md
           - contributing/adr/0000-owner-decisions.md
+          - contributing/adr/0001-toolchain-pins.md
+          - contributing/adr/0002-rector-compat-pass.md
+          - contributing/adr/0003-phpcompatibility.md
+          - contributing/adr/0004-d12-bed.md
+          - contributing/adr/0006-headless-ask.md
           - contributing/adr/0007-golden-next-to-the-fixture.md
           - contributing/adr/0008-live-router-evals-harness.md
           - contributing/adr/0009-tab-sequence-counts-shown-tabs.md
