@@ -56,6 +56,17 @@
 #                 and config/migrations.json is coherent (every aliased `new`
 #                 and `when` key exists in config/defaults.json, every
 #                 remove_in is a later major than the version)
+#   - config-keys every DRUPILOT_* key a script, hook, command, skill or agent
+#                 reads is declared in config/config-reference.json (as a key,
+#                 a runtime_only key or a pattern such as DRUPILOT_CHOICE_*);
+#                 its defaults.json keys are exactly those of defaults.json;
+#                 every entry has a tier, a type and a description, a
+#                 default_ref that resolves and an enum holding the default;
+#                 every name the 0.9 README documents is public. These findings
+#                 WARN (status warn, not a failure) until M11; a _*_comment of
+#                 defaults.json longer than 1800 characters fails (AR-27: the
+#                 prose stays until M11 but must not grow). Comment lines of the
+#                 scripts and scripts/dev/ are not scanned
 #   - unit        the unit tests (scripts/dev/unit.sh: tests/lib/selftest.sh and
 #                 tests/unit/*.sh, run with this same bash; a test skipped
 #                 until its milestone is not a failure)
@@ -86,7 +97,7 @@
 #                    failure instead of a skip; implies --smoke
 #
 # Output (--json):
-#   {ok, gates:[{name, status: pass|fail|skip|allowed-fail, detail, findings:[..]}]}
+#   {ok, gates:[{name, status: pass|fail|skip|allowed-fail|warn, detail, findings:[..]}]}
 #
 # Exit codes: 0 all gates pass/skip/allowed-fail · 1 a gate failed or usage error.
 # Read-only: renders templates into a temp dir that is removed on exit.
@@ -99,7 +110,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export CLAUDE_PLUGIN_ROOT="$REPO"
 
-ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json version unit contract evals golden smoke"
+ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json version config-keys unit contract evals golden smoke"
 # Gates that run only when asked for (--smoke, --ci, or named in --only).
 OPTIONAL_GATES="golden smoke"
 # Gates known to fail on the current tree, with a fix tracked for 0.9.0. Empty
@@ -154,6 +165,7 @@ record() {
   case "$status" in
     pass) log_ok "$gate: $detail";;
     skip) log_warn "$gate: skipped — $detail";;
+    warn) log_warn "$gate: WARNING — $detail";;
     allowed-fail) log_warn "$gate: FAILED (allowed) — $detail";;
     fail) log_err "$gate: FAILED — $detail"; FAILED=1;;
   esac
@@ -443,6 +455,67 @@ gate_version() {
   fi
   if [[ -s "$out" ]]; then record version fail "the release version is inconsistent" "$out"
   else record version pass "$v (CHANGELOG, tag, branch ${branch:-?}, migrations.json)"; fi
+}
+
+gate_config_keys() {
+  local out="$TMP/ck.out" hard="$TMP/ck.hard" ref="$REPO/config/config-reference.json" read="$TMP/ck.read" f
+  : > "$out"; : > "$hard"
+  # A _*_comment of defaults.json may not grow past 1800 characters (hard).
+  jq -r 'to_entries[] | select((.key | startswith("_")) and (.key | endswith("_comment")) and (.value | type) == "string" and (.value | length) > 1800)
+         | "defaults.json \(.key) is \(.value | length) characters (limit 1800; the prose moves to config-reference.json and the docs in M11)"' \
+    "$REPO/config/defaults.json" >> "$hard" 2>/dev/null || echo "defaults.json: not valid JSON" >> "$hard"
+  if [[ ! -f "$ref" ]]; then
+    echo "config/config-reference.json is missing" >> "$out"
+  elif ! jq empty "$ref" 2>/dev/null; then
+    echo "config/config-reference.json is not valid JSON" >> "$hard"
+  else
+    # Every DRUPILOT_* name read (not inside a word such as _DRUPILOT_X).
+    { for f in "$REPO"/scripts/*/*.sh "$REPO"/hooks/scripts/*.sh; do
+        case "$f" in "$REPO"/scripts/dev/*) continue;; esac
+        grep -vE '^[[:space:]]*#' "$f" 2>/dev/null || true
+      done
+      cat "$REPO"/commands/*.md "$REPO"/skills/*/SKILL.md "$REPO"/agents/*.md 2>/dev/null || true
+    } | grep -oE '(^|[^A-Za-z0-9_])DRUPILOT_[A-Z0-9_]+' | sed -E 's/^[^D]//' | LC_ALL=C sort -u > "$read"
+    jq -r --rawfile r "$read" --slurpfile d "$REPO/config/defaults.json" --slurpfile c "$REPO/config/choices.json" '
+      def entries: ((.keys // {}) + (.runtime_only // {}) + (.patterns // {}));
+      def resolves($p): ($p | split("#/")) as $q
+        | if $q[0] == "defaults.json" then ($d[0] | getpath($q[1] | split("/")) != null)
+          elif $q[0] == "choices.json" then ($c[0] | getpath($q[1] | split("/")) != null)
+          else false end;
+      . as $ref
+      | ($ref.patterns // {} | keys | map(rtrimstr("*"))) as $pre
+      | (entries | keys) as $declared
+      | ($r | split("\n") | map(select(length > 0))[]
+          | . as $n
+          | select(($declared | index($n)) == null and ([$pre[] | select(. as $p | $n | startswith($p))] | length) == 0
+                   and ([$pre[] | select(. == $n)] | length) == 0)
+          | "\($n) is read but not declared in config/config-reference.json"),
+        (([$d[0] | keys[] | select(startswith("DRUPILOT_"))] | sort) as $dk
+          | ([$ref.keys // {} | to_entries[] | select((.value.default_ref // "") | startswith("defaults.json#/")) | .key] | sort) as $rk
+          | ($dk - $rk)[] | "\(.) is in defaults.json but not in config-reference.json keys"),
+        (entries | to_entries[] | .key as $k | .value as $v | .value
+          | (if (["public", "advanced", "internal", "runtime_only"] | index($v.tier // "")) == null then "\($k): tier must be public, advanced, internal or runtime_only" else empty end),
+            (if ((.type // "") | length) == 0 then "\($k): no type" else empty end),
+            (if ((.description // "") | length) == 0 then "\($k): no description" else empty end),
+            (if .default_ref != null and (resolves(.default_ref) | not) then "\($k): default_ref \(.default_ref) does not resolve" else empty end),
+            (if .enum != null and ((.default_ref // "") | startswith("defaults.json#/"))
+                and (($v.enum | index($d[0][$k] | tostring)) == null) then "\($k): its enum lacks the default" else empty end))
+    ' "$ref" >> "$out" 2>/dev/null || echo "config-keys: the check itself failed (jq)" >> "$out"
+    # CC-06: every name the 0.9 README documents stays public.
+    if [[ -f "$REPO/tests/baseline/v0.9.0/env-public-v0.9.json" ]]; then
+      jq -r --slurpfile ref "$ref" '
+        ($ref[0] | [(.keys // {}), (.runtime_only // {}) | to_entries[] | select(.value.tier == "public") | .key]) as $pub
+        | ($ref[0].patterns // {} | to_entries | map(select(.value.tier == "public") | .key | rtrimstr("*"))) as $pp
+        | (.stdout.public // .public // [])[]
+        | sub("<KEY>$"; "") as $n
+        | select(($pub | index($n)) == null and ([$pp[] | select(. as $p | $n | startswith($p))] | length) == 0)
+        | "\($n) is documented by the 0.9 README but not public in config-reference.json"' \
+        "$REPO/tests/baseline/v0.9.0/env-public-v0.9.json" >> "$out" 2>/dev/null || true
+    fi
+  fi
+  if [[ -s "$hard" ]]; then cat "$out" >> "$hard"; record config-keys fail "a defaults.json comment is too long, or the reference is invalid" "$hard"
+  elif [[ -s "$out" ]]; then record config-keys warn "$(grep -c . "$out") undeclared or inconsistent key(s) (warn mode until M11)" "$out"
+  else record config-keys pass "$(grep -c . "$read") DRUPILOT_* names read, all declared; comments within 1800 characters"; fi
 }
 
 gate_unit() {
