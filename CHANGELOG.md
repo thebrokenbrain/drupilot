@@ -176,7 +176,9 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   is re-verified in M6), `d7-pre`, the PHPCompatibility set (ADR 0003), and
   `legacy_v1`, the set drupilot 0.9 shipped. A test-bed uses the cell its
   installed core major names; the lock records it (`toolchain_cell`), and
-  `install-toolchain.sh --json` reports it (`cell`). ADR 0015.
+  `install-toolchain.sh --json` reports it (`cell`). A lock drupilot 1.0
+  creates starts as `{"schema": 1}`, which is how a lock 0.9 created is told
+  apart. ADR 0015.
 
 ### Changed
 - **New test-beds get the cell 11 toolchain:** palantirnet/drupal-rector

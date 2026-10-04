@@ -19,16 +19,22 @@ writes `drush/drush` into `.toolchain` before any toolchain is installed.
 1. **The lock records its cell in a top-level `toolchain_cell`**, which
    `install-toolchain.sh` writes after a successful install and lock sync.
    `.toolchain` stays a package map.
-2. **A 0.9 lock is one that pins `rector/rector` and records no
-   `toolchain_cell`.** Only `install-toolchain.sh` installs Rector, so a lock
-   with only the drush pin of `ddev-up.sh` is not mistaken for one. Such a
-   lock is cell `legacy_v1`: in `auto` deterministic mode its own pins are
+2. **A 0.9 lock is one that 0.9 created and that pins `rector/rector`.** A
+   lock drupilot 1.0 creates starts as `{"schema": 1}` (the stamp T-M3-04
+   plans, landed here: no schema means 0), so neither a lock that `ddev-up.sh`
+   created with only its drush pin nor one that `lock-sync.sh` filled from a
+   `composer.lock` drupilot never set up (which may already hold Rector) is
+   mistaken for one. The rule is: no `schema`, no `toolchain_cell`, and a
+   `rector/rector` pin (only 0.9's `install-toolchain.sh` installed Rector).
+   Such a lock is cell `legacy_v1`: in `auto` deterministic mode its own pins are
    installed, as 0.9 did, a notice names the refresh command, and its cell
    is not recorded. `--source reference` (or `range`) refreshes it to the
    cell of the installed core's major and records that cell.
 3. **The cell of a test-bed** is, in order: the lock's `toolchain_cell`;
    `legacy_v1` for a 0.9 lock; the `toolchain_cell` that
    `config/targets/<major>.json` names for the installed core's major; `11`.
+   Reading it never creates drupilot's data directory (`preflight.sh` reads
+   it, and its `--extended` checks write nothing).
 4. **Only a verified cell pins anything.** An unverified cell (12 while
    Drupal 12 is a pre-release) makes `install-toolchain.sh` warn and resolve
    every package from the `.packages` ranges, exit 0. `preflight.sh`
@@ -37,7 +43,9 @@ writes `drush/drush` into `.toolchain` before any toolchain is installed.
    because `preflight.sh` matches it against installed versions. The
    install-time conflicts AR-42 found on a Drupal 12 bed (coder 8.3.31 and
    phpstan 2.2.2 next to `drupal/core-dev` 12, drush 13 on core 12) are in
-   cell 12's note: Composer already refuses them.
+   cell 12's note: Composer already refuses them. `preflight.sh` matches the
+   rules against every package a rule or the remediation names, so a broken
+   combination is found even on a root whose cell pins nothing.
 6. **The PHPCompatibility set of ADR 0003** is a cell-independent
    `phpcompat` entry of the same file, with the same shape as a cell.
 

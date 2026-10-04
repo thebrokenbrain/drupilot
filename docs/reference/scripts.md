@@ -3062,6 +3062,9 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
                 key (`{module, scope}`): jq 1.6 (Debian 12, Ubuntu 22.04 —
                 drupilot's jq_min) rejects each as a syntax error, jq 1.7
                 accepts it. `{label: .x}` and `.label` are fine everywhere.
+                It also rejects an object value joined with and/or outside
+                parentheses (`{ok: (a) and (b)}`, a jq 1.6 syntax error;
+                write `{ok: ((a) and (b))}`).
                 A line can opt out with a trailing `# jq-compat-ok` and a reason
   - bang-lint   no `!`...`` exec span in commands/*.md, skills/*/SKILL.md or
                 agents/*.md contains a <placeholder>: those spans run at command

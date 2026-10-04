@@ -652,8 +652,10 @@ lock_get() {
 }
 
 # lock_set <jq-path> <value> -> set a STRING value at <jq-path>, creating the
-# lock (and any intermediate objects) if absent. Atomic (temp file + mv). No-op
-# (return 1) without jq. <jq-path> is plugin-controlled, never user input.
+# lock (and any intermediate objects) if absent: a lock drupilot 1.0 creates
+# starts as {"schema": 1}, so one with no schema was created by 0.9 (schema
+# 0). Atomic (temp file + mv). No-op (return 1) without jq. <jq-path> is
+# plugin-controlled, never user input.
 # Every lock write also stamps `.drupilot_version` (plugin.json's version), so
 # the lock names the drupilot that last wrote it, not only the one that ran
 # lock-sync.sh at setup.
@@ -661,7 +663,7 @@ lock_set() {
   local path="$1" value="$2" f tmp
   have_cmd jq || return 1
   f="$(drupilot_lock_file)"
-  [[ -f "$f" ]] || printf '{}\n' > "$f" 2>/dev/null || return 1
+  [[ -f "$f" ]] || printf '{"schema": 1}\n' > "$f" 2>/dev/null || return 1
   tmp="$(mktemp "${f}.XXXXXX" 2>/dev/null)" || return 1
   if jq --arg v "$value" --arg pv "$(plugin_version)" "${path} = \$v | .drupilot_version = \$pv" "$f" > "$tmp" 2>/dev/null; then
     mv -f "$tmp" "$f"
@@ -676,7 +678,7 @@ lock_set_json() {
   local path="$1" value="$2" f tmp
   have_cmd jq || return 1
   f="$(drupilot_lock_file)"
-  [[ -f "$f" ]] || printf '{}\n' > "$f" 2>/dev/null || return 1
+  [[ -f "$f" ]] || printf '{"schema": 1}\n' > "$f" 2>/dev/null || return 1
   tmp="$(mktemp "${f}.XXXXXX" 2>/dev/null)" || return 1
   if jq --argjson v "$value" --arg pv "$(plugin_version)" "${path} = \$v | .drupilot_version = \$pv" "$f" > "$tmp" 2>/dev/null; then
     mv -f "$tmp" "$f"
@@ -3159,16 +3161,19 @@ toolchain_reference_file() { printf '%s/config/toolchain-reference.json' "$(plug
 
 # toolchain_cell_for <root> [fresh] -> the toolchain cell of a test-bed: the
 # cell its lock records (.toolchain_cell); "legacy_v1" for a lock drupilot 0.9
-# wrote (it pins rector/rector, which only install-toolchain.sh installs, and
-# records no cell: it keeps 0.9's set until it is refreshed); else, and always
-# with a second argument (a refresh), the cell config/targets/<major>.json
-# names for the installed core's major; else "11".
+# created (no .schema; it pins rector/rector, which only install-toolchain.sh
+# installs, and records no cell: it keeps 0.9's set until it is refreshed);
+# else, and always with a second argument (a refresh), the cell
+# config/targets/<major>.json names for the installed core's major; else
+# "11". Reads the lock without creating drupilot's data dir.
 toolchain_cell_for() {
-  local r="${1:-}" c="" major
-  if [[ -n "$r" && -z "${2:-}" ]]; then
-    c="$(DRUPILOT_PROJECT_DIR="$r" lock_get .toolchain_cell "")"
-    if [[ -z "$c" && -n "$(DRUPILOT_PROJECT_DIR="$r" lock_get '.toolchain["rector/rector"]' "")" ]]; then
-      c="legacy_v1"
+  local r="${1:-}" c="" major lf
+  if [[ -n "$r" && -z "${2:-}" ]] && have_cmd jq; then
+    lf="$(project_state_path "$r")/drupilot-lock.json"
+    if [[ -r "$lf" ]]; then
+      c="$(jq -r 'if (.toolchain_cell // "") != "" then .toolchain_cell
+                  elif (.schema // 0) == 0 and ((.toolchain // {})["rector/rector"] // "") != "" then "legacy_v1"
+                  else "" end' "$lf" 2> /dev/null || true)"
     fi
   fi
   if [[ -z "$c" && -n "$r" ]]; then
@@ -3294,9 +3299,14 @@ rector_error_excerpt() {
 # versions of the Rector/PHPStan packages and the exact remediation command.
 # Used after a failed smoke test and by run-rector.sh after a Rector crash.
 toolchain_diagnostics() {
-  local r="${1:-}" f pkg inst ref cmd differs=0 cell
+  local r="${1:-}" f pkg inst ref cmd differs=0 cell fix_cell
   f="$(toolchain_reference_file)"
   cell="$(toolchain_cell_for "$r")"
+  if ! toolchain_cell_verified "$cell"; then
+    log_plain "   Toolchain cell $cell has no verified set yet ($(basename "$f")): there is no known-good"
+    log_plain "   version to compare with. Check its known_broken combinations, or the Rector config."
+    return 0
+  fi
   log_plain "   Installed vs known-good toolchain ($(basename "$f"), cell $cell):"
   for pkg in rector/rector palantirnet/drupal-rector phpstan/phpstan mglaman/phpstan-drupal; do
     inst="$(installed_package_version "$r" "$pkg")"
@@ -3309,8 +3319,12 @@ toolchain_diagnostics() {
     log_plain "   (rector.php; regenerate it with render-templates.sh --only rector --force) or the error above."
     return 0
   fi
-  cmd="$(toolchain_reference_require_cmd "$cell")"
+  # The fix installs the cell --source reference installs: for a 0.9 lock,
+  # the refreshed cell, not legacy_v1.
+  fix_cell="$cell"; [[ "$cell" == "legacy_v1" ]] && fix_cell="$(toolchain_cell_for "$r" fresh)"
+  cmd="$(toolchain_reference_require_cmd "$fix_cell")"
   if [[ -n "$cmd" ]]; then
+    [[ "$fix_cell" == "$cell" ]] || log_plain "   This project's lock was written by drupilot 0.9 (legacy_v1); the fix refreshes it to cell $fix_cell."
     log_plain "   Fix: reinstall the known-good set (from the Drupal root):"
     log_plain "     bash \"$(plugin_root)/scripts/env/install-toolchain.sh\" --dir \"$r\" --source reference"
     log_plain "   or by hand:  $cmd"

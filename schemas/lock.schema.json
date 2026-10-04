@@ -61,6 +61,11 @@
         "drupal/core-dev": {"type": "string"}
       }
     },
+    "schema": {
+      "description": "The lock format: 1 for a lock drupilot 1.0 created (lock_set / lock_set_json start it as {\"schema\": 1}); absent (0) for one drupilot 0.9 created.",
+      "type": "integer",
+      "minimum": 1
+    },
     "toolchain_cell": {
       "description": "The cell of config/toolchain-reference.json the toolchain was installed from (install-toolchain.sh, from 1.0). A lock that pins rector/rector without it was written by drupilot 0.9 and is read as cell legacy_v1 until it is refreshed.",
       "type": "string"
