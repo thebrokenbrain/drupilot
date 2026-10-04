@@ -195,14 +195,14 @@ PHPCompatibility `testVersion` passed on every `run-phpcs.sh` run with `--runtim
 Base PHPStan level (deprecation detection).
 
 - **Default:** `2`
-- **Type:** int
+- **Type:** enum — one of `0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `max`
 
 ### `DRUPILOT_PHPSTAN_LEVEL_REFACTOR`
 
 PHPStan level used in the refactor phase.
 
 - **Default:** `6`
-- **Type:** int
+- **Type:** enum — one of `0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `max`
 
 ### `DRUPILOT_PHP_TARGET`
 
@@ -341,13 +341,6 @@ Persisted set of Phase 2 modernizations to apply, a comma-separated subset of `a
 Pre-answers one tabbed choice, so it is not asked. See Pre-answering tabbed choices for the keys and their values. One variable per key of config/choices.json; a fork marked preanswer:false (PUSH) is never pre-answered.
 
 - **Default:** per choice (see Choices)
-- **Type:** string
-
-### `DRUPILOT_ISSUE_*`
-
-The Drupal.org issue-field defaults make-issue.sh reads by name (DRUPILOT_ISSUE_&lt;FIELD&gt;); each one is a key of its own above.
-
-- **Default:** none
 - **Type:** string
 
 ## Internal

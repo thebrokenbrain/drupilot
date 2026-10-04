@@ -3060,8 +3060,10 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
                 pre-release version on `main` (GITHUB_BASE_REF for a pull
                 request, else GITHUB_REF_NAME, else the checked-out branch);
                 and config/migrations.json is coherent (every aliased `new`
-                and `when` key exists in config/defaults.json, every
-                remove_in is a later major than the version)
+                and `when` key is declared in config/config-reference.json,
+                names are valid variable names, every remove_in is a later
+                major than the version). The version is compared with the
+                released CHANGELOG heading of highest SemVer precedence
   - config-keys every DRUPILOT_* key a script, hook, command, skill or agent
                 reads is declared in config/config-reference.json (as a key,
                 a runtime_only key or a pattern such as DRUPILOT_CHOICE_*);
@@ -3186,8 +3188,10 @@ two layers (G-EVALS):
       with no choice.sh call, such as PUSH). New tabs may only be inserted:
       the 0.9 sequence must stay a subsequence (CC-02);
     * the router's mode words, in its argument-hint;
-    * the router's mode-inference rules: each cue sits in the rule that
-      names its mode.
+    * the router's mode-inference rules: each cue's mode is the first bold
+      **`mode`** after it in its rule, else the last one before it;
+    * the auto_rules of tab-sequence.json: the prompt rules that keep an
+      `auto` run tab-free and push-free must still be stated.
   --live (opt-in, never in --ci: needs a logged-in `claude` CLI) — real
     `claude -p --plugin-dir` runs, told to report instead of acting:
     * mode inference: `/drupilot <subject> <args>` must report the expected
@@ -3314,7 +3318,8 @@ drupilot — scripts/dev/release.sh
 Cut a release (a maintainer tool: no command, skill or hook calls it), as
 09-R4 lays it out, and nothing more:
   1. validate <version> (X.Y.Z or X.Y.Z-pre.N; it must be newer than the
-     current one, and no pre-release on `main`);
+     current one, and no pre-release on `main`; [Unreleased] must list a
+     change, unless a pre-release of <version> is promoted unchanged);
   2. set .claude-plugin/plugin.json `version` (the single version source);
   3. rename CHANGELOG.md `## [Unreleased]` to `## [<version>] - <date>`, add
      an empty `[Unreleased]` above it and update the compare links
