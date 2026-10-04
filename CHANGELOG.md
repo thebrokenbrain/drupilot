@@ -63,6 +63,27 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   pinned by `sha256` in `golden.json`. `tests/fixtures/autologout.pointer.json`
   pins the autologout 8.x-1.4 corpus by commit and tarball hash.
 
+- **The `version` gate.** `scripts/dev/check.sh` checks that plugin.json
+  equals the top released CHANGELOG heading, that a `v*` tag on HEAD is
+  `v<version>`, that `main` never carries a pre-release version (also on a
+  pull request into it, through `GITHUB_BASE_REF`), and that
+  `config/migrations.json` is coherent.
+- **`scripts/dev/release.sh`** cuts a release: version checks (SemVer
+  precedence, pre-releases included), plugin.json, the CHANGELOG heading and
+  compare links, `claude plugin validate` and `check.sh --ci`, then a
+  `chore(release)` commit and an annotated `vX.Y.Z` tag. It never pushes;
+  `--dry-run` writes nothing.
+- **Alias layer for renamed settings.** `config/migrations.json` (no row
+  yet) lets `config_get` resolve an old key name, or one old value, to the
+  new key, from the environment and then from `.drupilot.json`, with one
+  deprecation warning per process; the environment still wins over every
+  file tier.
+- **`config/config-reference.json` and the `config-keys` gate.** Every
+  `DRUPILOT_*` key the scripts, hooks and prompts read is declared with its
+  tier, type, enum, default source and docs page; the gate warns on an
+  undeclared read or an inconsistent entry, and fails when a
+  `config/defaults.json` comment grows past 1800 characters.
+
 ### Fixed
 - `tests/fixtures/legacy_widgets.EXPECTED.md` no longer calls the fixture valid
   Drupal 10.3 code without qualification: `WidgetImportForm` redeclares
