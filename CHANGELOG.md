@@ -158,6 +158,15 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   the whole branch (`12.0.0-beta1` == `12.0`).
 - **`docs/reference/version-matrix.md`**, generated from the version data by
   `scripts/dev/gen-docs.sh`.
+- **Data snapshots for the goldens.** Each golden's `data_hash` is the
+  sha256 of the version data it was computed with, vendored under
+  `tests/fixtures/data-snapshots/<hash>/`; `golden.sh` checks the goldens
+  against that snapshot (`baseline-0.9.sh --data-dir`), never against the
+  live `config/` (the baseline golden's scripts read the snapshot through
+  `DRUPILOT_VERSION_DATA_DIR`), so a data commit never changes an existing
+  golden. An edited or missing snapshot fails, and so does one no golden is
+  pinned to; `golden.sh --update` vendors the live data as a new, verified
+  snapshot, repins, and (without `--only`) removes the unused ones.
 
 ### Changed
 - `php_supported_for` reads `config/targets` and `config/php/versions.json`

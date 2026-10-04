@@ -2986,7 +2986,7 @@ golden.json in the same directory are recorded by hand
 
 Usage:
   scripts/dev/baseline-0.9.sh [--capture | --check] [--json] [--keep]
-                              [-h|--help]
+                              [--data-dir DIR] [-h|--help]
     --capture  capture from the v0.9.0 tag into tests/baseline/v0.9.0/
                (needs git and the tag; run once, commit the result)
     --check    capture from this checkout and compare (the default)
@@ -2995,6 +2995,9 @@ Usage:
                same | allowed | differs | missing | unexpected | error |
                tampered (the committed file does not match SHA256SUMS)
     --keep     keep the temp dir and print its path on STDERR
+    --data-dir the version data the scripts read (DRUPILOT_VERSION_DATA_DIR,
+               which the isolation would otherwise unset): golden.sh passes
+               the data snapshot the baseline is pinned to
 
 Requires bash >= 3.2 and jq; --capture also git and the v0.9.0 tag; a
 sha256 tool (sha256sum or shasum) to honour allowed-diffs.txt.
@@ -3306,9 +3309,13 @@ Requires bash >= 3.2 and jq. Exit codes: 0 generated / no drift · 1 drift
 drupilot — scripts/dev/golden.sh
 The golden outputs (a developer/CI tool: no command, skill or hook calls it;
 scripts/dev/check.sh runs it as its `golden` gate). Two kinds of golden
-directory, each with a golden.json manifest carrying a `data_hash` (the
-config/targets|php|paths snapshot it was computed with: empty until those
-data files exist, T-M2-15):
+directory, each with a golden.json manifest carrying a `data_hash`: the
+sha256 of the version data (config/targets|php|paths) it was computed with.
+That data is vendored as a snapshot, tests/fixtures/data-snapshots/<hash>/,
+and the goldens are checked against the snapshot, never against the live
+config/: a data commit never changes an existing golden. Only an --update
+(a re-recording, with its CHANGELOG entry) vendors the live data as a new
+snapshot and repins the goldens to it.
   baseline-0.9   tests/baseline/v0.9.0/: the Docker-free outputs of v0.9.0,
                  checked by rerunning them (scripts/dev/baseline-0.9.sh
                  --check, which this absorbs)
@@ -3317,13 +3324,20 @@ data files exist, T-M2-15):
                  outputs; every file is pinned by its sha256 in golden.json,
                  so a byte edit fails, and the nightly DDEV end-to-end run
                  (G-E2E) is what regenerates them
+The data hash: the sha256 of the lines "<path> <sha256>" of every file under
+targets/, php/ and paths/ (path relative to the data dir, sorted). A snapshot
+whose content no longer gives its own name fails, and so does a golden
+pinned to a missing snapshot. A full --check also fails on a snapshot no
+golden is pinned to; a full --update removes such snapshots.
 
 Usage:
   scripts/dev/golden.sh [--check | --update] [--only G1,G2] [--json] [-h|--help]
     --check   verify every golden directory (the default)
     --update  rewrite the `files` map of the fixture goldens' golden.json
               from the files present (after a deliberate re-recording; a
-              golden change is its own commit with a CHANGELOG entry, H10)
+              golden change is its own commit with a CHANGELOG entry, H10),
+              vendor the live data as a snapshot if it is new, and pin
+              every updated golden (baseline-0.9 included) to it
     --only    a subset (baseline-0.9, or a fixture name)
     --json    {ok, mode, goldens:[{name, status, detail}]} on STDOUT
 

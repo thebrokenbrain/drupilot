@@ -35,7 +35,7 @@ yet). The gate is bash 3.2-compatible and read-only.
 | `unit` | The unit tests (`scripts/dev/unit.sh`): the assert library, `common.sh` helpers, the hooks' fail-safe contract and the invariants INV1..INV12 (`tests/INVARIANTS.md`). |
 | `contract` | The 0.9 public surface is unchanged, or the change is listed in `tests/contract/allowed-changes.json` (`scripts/dev/contract.sh`). |
 | `evals` | The router's tab sequence, mode words and mode-inference rules are unchanged (`scripts/dev/evals.sh`, static; `--live` runs the model, never in CI). |
-| `golden` | Optional. The v0.9.0 baseline and the lab goldens match (`scripts/dev/golden.sh`). |
+| `golden` | Optional. The v0.9.0 baseline and the lab goldens match (`scripts/dev/golden.sh`), each against the version-data snapshot it is pinned to (`tests/fixtures/data-snapshots/<hash>/`), never against the live `config/`; an edited or missing snapshot fails, and so does a snapshot no golden uses (a full `golden.sh --update` removes it). |
 | `smoke` | Optional. Docker-free smoke tests with expected results on the fixtures (`scripts/dev/smoke.sh`). |
 
 CI (`.github/workflows/ci.yml`) runs the gate on Ubuntu and macOS (also under

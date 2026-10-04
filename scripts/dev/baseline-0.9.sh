@@ -76,7 +76,7 @@
 #
 # Usage:
 #   scripts/dev/baseline-0.9.sh [--capture | --check] [--json] [--keep]
-#                               [-h|--help]
+#                               [--data-dir DIR] [-h|--help]
 #     --capture  capture from the v0.9.0 tag into tests/baseline/v0.9.0/
 #                (needs git and the tag; run once, commit the result)
 #     --check    capture from this checkout and compare (the default)
@@ -85,6 +85,9 @@
 #                same | allowed | differs | missing | unexpected | error |
 #                tampered (the committed file does not match SHA256SUMS)
 #     --keep     keep the temp dir and print its path on STDERR
+#     --data-dir the version data the scripts read (DRUPILOT_VERSION_DATA_DIR,
+#                which the isolation would otherwise unset): golden.sh passes
+#                the data snapshot the baseline is pinned to
 #
 # Requires bash >= 3.2 and jq; --capture also git and the v0.9.0 tag; a
 # sha256 tool (sha256sum or shasum) to honour allowed-diffs.txt.
@@ -105,7 +108,7 @@ INPUTS="$REPO/tests/baseline/inputs"
 ALLOWED="$BASE_DIR/allowed-diffs.txt"
 PHP_TARGETS="8.3 8.4 8.5"
 
-MODE="check"; AS_JSON=0; KEEP=0
+MODE="check"; AS_JSON=0; KEEP=0; DATA_DIR=""
 
 usage() { print_usage "${BASH_SOURCE[0]}"; }
 
@@ -115,6 +118,8 @@ while [[ $# -gt 0 ]]; do
     --check) MODE="check"; shift;;
     --json) AS_JSON=1; shift;;
     --keep) KEEP=1; shift;;
+    --data-dir) DATA_DIR="${2:-}"; shift 2 || die "--data-dir needs a value" 1;;
+    --data-dir=*) DATA_DIR="${1#*=}"; shift;;
     -h|--help) usage; exit 0;;
     *) die "Unknown argument: $1 (see --help)" 1;;
   esac
@@ -160,6 +165,10 @@ fi
 
 # --- Isolated environment -----------------------------------------------------
 for _v in $(env | sed -n 's/^\(DRUPILOT_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$_v"; done
+if [[ -n "$DATA_DIR" ]]; then
+  [[ -d "$DATA_DIR/targets" ]] || die "--data-dir $DATA_DIR holds no targets/" 1
+  export DRUPILOT_VERSION_DATA_DIR="$DATA_DIR"
+fi
 export CLAUDE_PLUGIN_ROOT="$PR"
 export HOME="$TMP/home"
 export XDG_DATA_HOME="$TMP/home/.local/share" XDG_STATE_HOME="$TMP/home/.local/state"

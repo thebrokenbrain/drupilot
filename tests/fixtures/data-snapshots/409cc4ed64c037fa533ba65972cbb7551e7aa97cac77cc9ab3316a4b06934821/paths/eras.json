@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-10-04",
+  "eras": {
+    "7": {
+      "track": "d7-assisted",
+      "signals": [
+        {
+          "id": "info-core-7x",
+          "kind": "info",
+          "match": ".info: core = 7.x",
+          "src": "drupilot 1.0 architecture AR-05 (source detection signals), signal 1",
+          "verified": true,
+          "note": "A Drupal 7 extension has a .info file (no .info.yml)."
+        },
+        {
+          "id": "d7-test-case",
+          "kind": "test-api",
+          "match": "ere:extends[[:space:]]+Drupal(Web|Unit)TestCase",
+          "src": "drupilot 1.0 architecture AR-05 (source detection signals), signal 6",
+          "verified": true
+        }
+      ]
+    },
+    "8": {
+      "track": "standard",
+      "signals": [
+        {
+          "id": "info-core-8x",
+          "kind": "info",
+          "match": ".info.yml: core: 8.x without core_version_requirement",
+          "src": "drupilot 1.0 architecture AR-05 (source detection signals), signal 2",
+          "verified": true,
+          "note": "S <= 8: the minor is not used."
+        },
+        {
+          "id": "simpletest-webtestbase",
+          "kind": "test-api",
+          "match": "ere:(Drupal\\\\simpletest\\\\WebTestBase|extends[[:space:]]+WebTestBase)",
+          "removed_in": "9.0",
+          "src": "drupilot 1.0 architecture AR-05 (source detection signals), signal 5 ; WebTestBase deprecated in 8.8.0, removed in 9.0.0 (04-F-64)",
+          "verified": true,
+          "note": "Tests under src/Tests/ that extend SimpleTest."
+        }
+      ]
+    },
+    "9": {
+      "track": "standard",
+      "signals": [
+        {
+          "id": "removed-symbols-9",
+          "kind": "symbols",
+          "match": "catalog:config/deprecations.json#lifecycle",
+          "src": "drupilot 1.0 architecture AR-05 (source detection signals), signal 4 (needs the test-bed: Rector per-era hits plus PHPStan unknown symbols joined to removed_in)",
+          "verified": true
+        }
+      ]
+    },
+    "10": {
+      "track": "standard",
+      "signals": [
+        {
+          "id": "removed-symbols-10",
+          "kind": "symbols",
+          "match": "catalog:config/deprecations.json#lifecycle",
+          "src": "drupilot 1.0 architecture AR-05 (source detection signals), signal 4",
+          "verified": true
+        }
+      ]
+    },
+    "11": {
+      "track": "standard",
+      "signals": [
+        {
+          "id": "removed-symbols-11",
+          "kind": "symbols",
+          "match": "catalog:config/deprecations.json#lifecycle",
+          "src": "drupilot 1.0 architecture AR-05 (source detection signals), signal 4",
+          "verified": true
+        }
+      ]
+    },
+    "12": {
+      "track": "standard",
+      "signals": []
+    }
+  }
+}

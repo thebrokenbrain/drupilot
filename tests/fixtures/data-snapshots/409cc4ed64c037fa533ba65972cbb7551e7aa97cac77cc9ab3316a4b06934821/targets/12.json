@@ -1,0 +1,465 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-10-04",
+  "major": 12,
+  "status": "pre-release",
+  "status_src": {
+    "url": "https://updates.drupal.org/release-history/drupal/current",
+    "verified": true,
+    "checked_at": "2026-10-04",
+    "note": "The newest 12.x release is 12.0.0-beta1 (2026-09-30); there is no stable 12.0.0."
+  },
+  "released": {
+    "planned": "2026-12-07/week",
+    "actual": null,
+    "src": "https://www.drupal.org/about/core/policies/core-release-cycles/schedule (02-F1, read 2026-10-03)",
+    "verified": true
+  },
+  "eol": {
+    "date": null,
+    "text": null,
+    "src": "https://www.drupal.org/about/core/policies/core-release-cycles/schedule (02-F1: unknown)",
+    "verified": true
+  },
+  "upgrade_from_min": {
+    "value": "11.3",
+    "src": "https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes): updates added prior to Drupal 11.3.0 have been removed and the update system will refuse to update from Drupal 11.2 or earlier",
+    "verified": true
+  },
+  "ddev_type": "drupal12",
+  "composer_stability_while_prerelease": "beta",
+  "toolchain_cell": "12",
+  "php_defaults": {
+    "env": "8.5",
+    "tab": "8.5"
+  },
+  "default_ranges": {
+    "target-only": "^12",
+    "keep-previous": "^11.3 || ^12",
+    "widest": "^11.3 || ^12"
+  },
+  "minors": {
+    "12.0": {
+      "latest": "12.0.0-beta1",
+      "released": null,
+      "php_min": "8.5",
+      "php_recommended": "8.5",
+      "php_supported": [
+        "8.5"
+      ],
+      "php_unsupported": [
+        "8.1",
+        "8.2",
+        "8.3",
+        "8.4"
+      ],
+      "symfony_major": 8,
+      "twig_major": 3,
+      "phpunit_constraint": "^12.5.22",
+      "coder_constraint": "^9.0",
+      "phpstan_constraint": "^2.2.14",
+      "phpstan_drupal_constraint": "^2.2.1",
+      "src": "https://git.drupalcode.org/project/drupal/-/raw/12.0.0-beta1/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json",
+      "php_src": "https://www.drupal.org/api-d7/node.json?nid=2891690 (PHP requirements, changed 2026-08-04)",
+      "verified": true,
+      "checked_at": "2026-10-04"
+    }
+  },
+  "removed_extensions": [
+    {
+      "name": "ban",
+      "kind": "module",
+      "removed_in": "12.0",
+      "deprecated_in": "11.3",
+      "replacement_project": "ban",
+      "replacement_available": null,
+      "rewrite": "dependency",
+      "src": "https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes) ; https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions) ; core tree: present at 11.4.8, absent at 12.0.0-beta1 (https://git.drupalcode.org/project/drupal/-/tree/12.0.0-beta1/core)",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ]
+    },
+    {
+      "name": "contact",
+      "kind": "module",
+      "removed_in": "12.0",
+      "deprecated_in": "11.4",
+      "replacement_project": "contact",
+      "replacement_available": null,
+      "rewrite": "dependency",
+      "src": "https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes) ; https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions) ; core tree: present at 11.4.8, absent at 12.0.0-beta1 (https://git.drupalcode.org/project/drupal/-/tree/12.0.0-beta1/core)",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ]
+    },
+    {
+      "name": "field_layout",
+      "kind": "module",
+      "removed_in": "12.0",
+      "deprecated_in": "11.3.0",
+      "replacement_project": "field_layout",
+      "replacement_available": null,
+      "rewrite": "dependency",
+      "src": "https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes) ; https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions) ; core tree: present at 11.4.8, absent at 12.0.0-beta1 (https://git.drupalcode.org/project/drupal/-/tree/12.0.0-beta1/core)",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ],
+      "note": "The deprecated-and-obsolete page says 11.4; field_layout.info.yml is lifecycle: experimental at 11.2.14 and deprecated from 11.3.0."
+    },
+    {
+      "name": "history",
+      "kind": "module",
+      "removed_in": "12.0",
+      "deprecated_in": "11.4",
+      "replacement_project": "history",
+      "replacement_available": null,
+      "rewrite": "dependency",
+      "src": "https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes) ; https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions) ; core tree: present at 11.4.8, absent at 12.0.0-beta1 (https://git.drupalcode.org/project/drupal/-/tree/12.0.0-beta1/core)",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ]
+    },
+    {
+      "name": "search",
+      "kind": "module",
+      "removed_in": "12.0",
+      "deprecated_in": "11.5.0",
+      "replacement_project": "search",
+      "replacement_available": null,
+      "rewrite": "dependency",
+      "src": "https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes) ; https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions) ; core tree: present at 11.4.8, absent at 12.0.0-beta1 (https://git.drupalcode.org/project/drupal/-/tree/12.0.0-beta1/core)",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ]
+    },
+    {
+      "name": "settings_tray",
+      "kind": "module",
+      "removed_in": "12.0",
+      "deprecated_in": "11.5.0",
+      "replacement_project": "settings_tray",
+      "replacement_available": null,
+      "rewrite": "dependency",
+      "src": "https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes) ; https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions) ; core tree: present at 11.4.8, absent at 12.0.0-beta1 (https://git.drupalcode.org/project/drupal/-/tree/12.0.0-beta1/core)",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ]
+    },
+    {
+      "name": "shortcut",
+      "kind": "module",
+      "removed_in": "12.0",
+      "deprecated_in": "11.5.0",
+      "replacement_project": "shortcut",
+      "replacement_available": null,
+      "rewrite": "dependency",
+      "src": "https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes) ; https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions) ; core tree: present at 11.4.8, absent at 12.0.0-beta1 (https://git.drupalcode.org/project/drupal/-/tree/12.0.0-beta1/core)",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ]
+    },
+    {
+      "name": "telephone",
+      "kind": "module",
+      "removed_in": "12.0",
+      "deprecated_in": "11.5.0",
+      "replacement_project": "telephone",
+      "replacement_available": null,
+      "rewrite": "dependency",
+      "src": "https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes) ; https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions) ; core tree: present at 11.4.8, absent at 12.0.0-beta1 (https://git.drupalcode.org/project/drupal/-/tree/12.0.0-beta1/core)",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ],
+      "note": "The deprecated-and-obsolete page says 11.4.0, but telephone.info.yml has no lifecycle at 11.4.8; the 11.5.x branch marks it deprecated (as search, settings_tray, shortcut, claro and olivero)."
+    },
+    {
+      "name": "toolbar",
+      "kind": "module",
+      "removed_in": "12.0",
+      "deprecated_in": null,
+      "replacement_project": "toolbar",
+      "replacement_available": null,
+      "rewrite": "dependency",
+      "src": "https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes) ; https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions) ; core tree: present at 11.4.8, absent at 12.0.0-beta1 (https://git.drupalcode.org/project/drupal/-/tree/12.0.0-beta1/core)",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ]
+    },
+    {
+      "name": "claro",
+      "kind": "theme",
+      "removed_in": "12.0",
+      "deprecated_in": "11.5.0",
+      "replacement_project": "claro",
+      "replacement_available": null,
+      "rewrite": "base-theme",
+      "src": "https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes) ; https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions) ; core tree: present at 11.4.8, absent at 12.0.0-beta1 (https://git.drupalcode.org/project/drupal/-/tree/12.0.0-beta1/core)",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ],
+      "core_alternative": "default_admin"
+    },
+    {
+      "name": "olivero",
+      "kind": "theme",
+      "removed_in": "12.0",
+      "deprecated_in": "11.5.0",
+      "replacement_project": "olivero",
+      "replacement_available": null,
+      "rewrite": "base-theme",
+      "src": "https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes) ; https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions) ; core tree: present at 11.4.8, absent at 12.0.0-beta1 (https://git.drupalcode.org/project/drupal/-/tree/12.0.0-beta1/core)",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ]
+    },
+    {
+      "name": "stable9",
+      "kind": "theme",
+      "removed_in": "12.0",
+      "deprecated_in": null,
+      "replacement_project": "stable9",
+      "replacement_available": null,
+      "rewrite": "base-theme",
+      "src": "https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes) ; https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions) ; core tree: present at 11.4.8, absent at 12.0.0-beta1 (https://git.drupalcode.org/project/drupal/-/tree/12.0.0-beta1/core)",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ]
+    },
+    {
+      "name": "migrate_drupal",
+      "kind": "module",
+      "removed_in": "12.0",
+      "deprecated_in": "11.4.0",
+      "replacement_project": null,
+      "replacement_available": null,
+      "rewrite": "hard-break",
+      "src": "https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes): removed from core and not moved to a contributed project ; core tree: lifecycle deprecated at 11.4.8, lifecycle obsolete at 12.0.0-beta1",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ],
+      "state_at_removal": "obsolete",
+      "note": "Still in the 12.0.0-beta1 tree as lifecycle: obsolete (cannot be installed). Deprecated from 11.4.0 (lifecycle: deprecated at 11.4.0, none at 11.3.18); the page's sentence names Migrate Drupal UI by mistake but gives the same 11.4.0."
+    },
+    {
+      "name": "migrate_drupal_ui",
+      "kind": "module",
+      "removed_in": "12.0",
+      "deprecated_in": "11.3.0",
+      "replacement_project": null,
+      "replacement_available": null,
+      "rewrite": "hard-break",
+      "src": "https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes): removed from core and not moved to a contributed project ; core tree: lifecycle deprecated at 11.4.8, lifecycle obsolete at 12.0.0-beta1",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ],
+      "state_at_removal": "obsolete",
+      "note": "Still in the 12.0.0-beta1 tree as lifecycle: obsolete (cannot be installed)."
+    },
+    {
+      "name": "text_with_summary",
+      "kind": "module",
+      "removed_in": "12.0",
+      "deprecated_in": null,
+      "replacement_project": "text_with_summary",
+      "replacement_available": null,
+      "rewrite": "dependency",
+      "src": "https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions): the field type moves to a core module text_with_summary in 11.5.0 and is removed in 12.0 ; core tree: no core/modules/text_with_summary and no TextWithSummaryItem at 12.0.0-beta1 (TextWithSummaryItem is in core/modules/text at 11.4.8) ; https://updates.drupal.org/release-history/text_with_summary/current: 1.0.0, core_compatibility ^11.5 || ^12",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ],
+      "introduced_in": "11.5",
+      "note": "On 11.4 and earlier the field type lives in the text module; the core module text_with_summary exists only from 11.5.0."
+    },
+    {
+      "name": "node_storage_body_field",
+      "kind": "module",
+      "removed_in": "12.0",
+      "deprecated_in": "11.3.0",
+      "replacement_project": null,
+      "replacement_available": null,
+      "rewrite": "hard-break",
+      "introduced_in": "11.3",
+      "info_path": "core/modules/node/modules/node_storage_body_field/node_storage_body_field.info.yml",
+      "src": "https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions) ; core tree: absent at 11.2.14, present at 11.3.0 and 11.4.8 (lifecycle: deprecated, hidden), absent at 12.0.0-beta1",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ],
+      "note": "A configuration placeholder (the node body field storage) added in 11.3.0 as deprecated; sites copy its field.storage.node.body.yml instead."
+    },
+    {
+      "name": "block_content_storage_body_field",
+      "kind": "module",
+      "removed_in": "12.0",
+      "deprecated_in": "11.3.0",
+      "replacement_project": null,
+      "replacement_available": null,
+      "rewrite": "hard-break",
+      "introduced_in": "11.3",
+      "info_path": "core/modules/block_content/modules/block_content_storage_body_field/block_content_storage_body_field.info.yml",
+      "src": "core tree: absent at 11.2.14, present at 11.3.0 and 11.4.8 (lifecycle: deprecated, hidden; its lifecycle_link points at https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions)), absent at 12.0.0-beta1",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ],
+      "note": "A configuration placeholder (the block_content body field storage), the twin of node_storage_body_field."
+    },
+    {
+      "name": "search_help",
+      "kind": "module",
+      "removed_in": "12.0",
+      "deprecated_in": null,
+      "replacement_project": null,
+      "replacement_available": null,
+      "rewrite": "hard-break",
+      "introduced_in": "11.4",
+      "info_path": "core/modules/search/modules/search_help/search_help.info.yml",
+      "src": "core tree: absent at 11.3.18, present at 11.4.0 and 11.4.8, absent at 12.0.0-beta1 (removed with the search module)",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ],
+      "note": "A submodule of search, added in 11.4.0. Whether the contributed Search project carries it on is not verified."
+    },
+    {
+      "name": "search_node",
+      "kind": "module",
+      "removed_in": "12.0",
+      "deprecated_in": null,
+      "replacement_project": null,
+      "replacement_available": null,
+      "rewrite": "hard-break",
+      "introduced_in": "11.4",
+      "info_path": "core/modules/search/modules/search_node/search_node.info.yml",
+      "src": "core tree: absent at 11.3.18, present at 11.4.0 and 11.4.8, absent at 12.0.0-beta1 (removed with the search module)",
+      "verified": true,
+      "verified_at": "12.0.0-beta1",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ],
+      "note": "A submodule of search, added in 11.4.0. Whether the contributed Search project carries it on is not verified."
+    }
+  ],
+  "removed_libraries": [
+    {
+      "name": "core/internal.backbone",
+      "removed_in": "12.0",
+      "deprecated_in": null,
+      "src": "core/core.libraries.yml: present at 11.4.8, absent at 12.0.0-beta1 ; https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes)",
+      "verified": true,
+      "note": "Internal since 10.0 (the public core/backbone was removed in 10.0)."
+    },
+    {
+      "name": "core/internal.underscore",
+      "removed_in": "12.0",
+      "deprecated_in": null,
+      "src": "core/core.libraries.yml: present at 11.4.8, absent at 12.0.0-beta1 ; https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes)",
+      "verified": true,
+      "note": "Internal since 10.0 (the public core/underscore was removed in 10.0)."
+    },
+    {
+      "name": "core/js-cookie",
+      "removed_in": "12.0",
+      "deprecated_in": "10.1.0",
+      "src": "core/core.libraries.yml: present at 11.4.8, absent at 12.0.0-beta1",
+      "verified": true,
+      "note": "Its deprecation message announced removal in 11.0.0; it was removed in 12.0."
+    }
+  ],
+  "hard_break_detectors": [
+    "base-theme-removed",
+    "dependency-removed",
+    "migrate-drupal-usage",
+    "phpunit-annotations",
+    "symfony8-constraint-validator",
+    "library-removed"
+  ],
+  "rector_sets": {
+    "own_major": [
+      "Drupal12SetList::DRUPAL_120"
+    ],
+    "src": "https://raw.githubusercontent.com/palantirnet/drupal-rector/1.1.3/src/Set/Drupal12SetList.php (absent at 0.21.2)",
+    "verified": true
+  },
+  "hand_sources": [
+    {
+      "id": "php-requirements",
+      "url": "https://www.drupal.org/api-d7/node.json?nid=2891690",
+      "changed": "2026-08-04",
+      "fields": [
+        "minors.*.php_supported",
+        "minors.*.php_unsupported"
+      ]
+    },
+    {
+      "id": "deprecated-and-obsolete",
+      "url": "https://www.drupal.org/api-d7/node.json?nid=3223395",
+      "changed": "2026-09-21",
+      "fields": [
+        "removed_extensions"
+      ]
+    },
+    {
+      "id": "release-12.0.0-beta1",
+      "url": "https://www.drupal.org/api-d7/node.json?nid=3627048",
+      "changed": "2026-10-02",
+      "fields": [
+        "upgrade_from_min",
+        "removed_extensions",
+        "removed_libraries"
+      ]
+    }
+  ]
+}
