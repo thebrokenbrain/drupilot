@@ -12,17 +12,28 @@
 # via core_dev_requirement) and, with --with-upgrade-status, drupal/upgrade_status.
 # Drush is NOT installed here (ddev-up.sh owns it, as a regular require).
 #
+# The known-good reference is a matrix (config/toolchain-reference.json): one
+# cell per Drupal major family. The test-bed's cell is the one its lock records
+# (toolchain_cell), else the one config/targets/<major>.json names for the
+# installed core's major; a lock drupilot 0.9 wrote (it pins rector/rector and
+# records no cell) is cell legacy_v1, 0.9's own set, until it is refreshed
+# (--source reference), and a notice says so. A cell that is not verified yet
+# (cell 12 while Drupal 12 is a pre-release) pins nothing: its packages resolve
+# from the ranges, with a warning.
+#
 # Where each version comes from (--source, default DRUPILOT_TOOLCHAIN_SOURCE=auto):
 #   auto       Deterministic mode (DRUPILOT_DETERMINISTIC, default true):
 #                - the project lock, when it pins EVERY package of the
-#                  known-good reference set (a complete, previously working set);
-#                - otherwise the shipped reference config/toolchain-reference.json
-#                  as a whole (a partial lock is never mixed with the reference:
-#                  that combination was never tested);
+#                  cell's known-good set (a complete, previously working set);
+#                - otherwise the cell's set as a whole (a partial lock is never
+#                  mixed with the reference: that combination was never
+#                  tested);
 #                - packages the reference does not pin: lock, else the range.
 #              Non-deterministic mode: the .packages ranges (fresh resolve).
-#   reference  The reference set, ignoring the lock (the repair path after a
-#              broken resolve); the lock is then refreshed from what got installed.
+#   reference  The set of the installed core's cell, ignoring the lock (the
+#              repair path after a broken resolve, and the refresh of a 0.9
+#              lock); the lock is then refreshed from what got installed and
+#              records the cell.
 #   range      The .packages ranges only (fresh resolve).
 # If Composer cannot resolve the pinned set against this project (e.g. a newer
 # core needs a newer PHPStan), it retries once with the ranges and says so.
@@ -47,8 +58,8 @@
 #   --smoke-only           Do not install; only run the smoke test (+ diagnostics).
 #   --dry-run              Print the resolved package specs; run nothing.
 #   --json                 JSON summary on STDOUT:
-#                          {ok, status, root, source, deterministic, packages:
-#                           [{name, spec, source, installed}], composer_ran,
+#                          {ok, status, root, source, deterministic, cell,
+#                           packages: [{name, spec, source, installed}], composer_ran,
 #                           fallback_to_ranges, smoke:{ok, error}, lock_synced}
 #                          status: installed | unchanged | dry-run | smoke-only |
 #                                  smoke-failed | composer-failed
@@ -118,9 +129,20 @@ export DRUPILOT_PROJECT_DIR="$ROOT"
 REF_FILE="$(toolchain_reference_file)"
 
 DETERMINISTIC=true; deterministic_mode || DETERMINISTIC=false
+# The toolchain cell: the lock's (a 0.9 lock: legacy_v1) when the lock decides
+# (auto, deterministic), else the cell of the installed core's major.
+if [[ "$SOURCE" == "auto" && "$DETERMINISTIC" == "true" ]]; then CELL="$(toolchain_cell_for "$ROOT")"
+else CELL="$(toolchain_cell_for "$ROOT" fresh)"; fi
 log_step "drupilot toolchain"
 log_info "Drupal root   : $ROOT"
 log_info "Version source: $SOURCE (deterministic: $DETERMINISTIC)"
+log_info "Toolchain cell: $CELL"
+if [[ "$CELL" == "legacy_v1" ]]; then
+  log_warn "This project's lock was written by drupilot 0.9: it keeps 0.9's toolchain (legacy_v1) until you refresh it to cell $(toolchain_cell_for "$ROOT" fresh):"
+  log_warn "  bash \"$(plugin_root)/scripts/env/install-toolchain.sh\" --dir \"$ROOT\" --source reference"
+elif [[ "$SOURCE" != "range" ]] && ! toolchain_cell_verified "$CELL"; then
+  log_warn "Toolchain cell $CELL has no verified set yet: its packages resolve from the config/defaults.json ranges."
+fi
 
 # --- Gate (not for a dry run) -----------------------------------------------
 if [[ "$DRY" != "1" ]]; then
@@ -166,7 +188,7 @@ fi
 lock_complete=1
 for i in "${!PKG_NAMES[@]}"; do
   n="${PKG_NAMES[$i]}"
-  [[ -n "$(toolchain_reference_version "$n")" ]] || continue
+  [[ -n "$(toolchain_reference_version "$n" "$CELL")" ]] || continue
   [[ -n "$(lock_get ".toolchain.\"$n\"" "")" ]] || { lock_complete=0; break; }
 done
 
@@ -175,7 +197,7 @@ spec_for() {
   local i="$1" mode="$2" n r lockv refv
   n="${PKG_NAMES[$i]}"; r="${PKG_RANGES[$i]}"
   lockv="$(lock_get ".toolchain.\"$n\"" "")"
-  refv="$(toolchain_reference_version "$n")"
+  refv="$(toolchain_reference_version "$n" "$CELL")"
   if [[ "$mode" == "pinned" ]]; then
     case "$SOURCE" in
       reference)
@@ -255,10 +277,10 @@ emit_json() {
         --arg requested "$SOURCE" --argjson det "$DETERMINISTIC" --argjson packages "$pk" \
         --argjson composer_ran "$COMPOSER_RAN" --argjson fallback "$FALLBACK" \
         --argjson smoke_ok "$SMOKE_OK" --arg smoke_err "$SMOKE_ERR" \
-        --argjson lock_synced "$LOCK_SYNCED" --arg reference "$REF_FILE" \
+        --argjson lock_synced "$LOCK_SYNCED" --arg reference "$REF_FILE" --arg cell "$CELL" \
     '{ok: ($status|IN("installed","unchanged","dry-run","smoke-only")) and ($smoke_ok != false),
       status:$status, root:$root, source:$source, requested_source:$requested,
-      deterministic:$det, reference:$reference, packages:$packages,
+      deterministic:$det, reference:$reference, cell:$cell, packages:$packages,
       composer_ran:$composer_ran, fallback_to_ranges:$fallback,
       smoke:{ok:$smoke_ok, error:(if $smoke_err=="" then null else $smoke_err end)},
       lock_synced:$lock_synced}'
@@ -348,6 +370,9 @@ run_smoke || SMOKE_RC=3
 
 if bash "$(plugin_root)/scripts/env/lock-sync.sh" --dir "$ROOT" >/dev/null 2>&1; then
   LOCK_SYNCED=true
+  # A refreshed lock names its cell; a 0.9 lock reused as is stays legacy_v1.
+  [[ "$CELL" == "legacy_v1" ]] || DRUPILOT_PROJECT_DIR="$ROOT" lock_set .toolchain_cell "$CELL" \
+    || log_warn "Could not record the toolchain cell in the lock."
   log_info "Lock re-synced: $(drupilot_lock_file "$ROOT")"
 else
   log_warn "Could not re-sync the lock (lock-sync.sh)."

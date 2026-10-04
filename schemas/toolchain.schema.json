@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thebrokenbrain.github.io/drupilot/schemas/toolchain.schema.json",
+  "title": "drupilot known-good toolchain matrix (config/toolchain-reference.json, schema_version 2)",
+  "description": "One cell per Drupal major family: the exact dev-toolchain versions verified together in a DDEV test-bed. install-toolchain.sh pins a test-bed to the verified cell its installed core major names (config/targets/<major>.json toolchain_cell); an unverified cell resolves from the config/defaults.json .packages ranges. legacy_v1 is the single set drupilot 0.9 shipped, which a lock written by 0.9 keeps until it is refreshed. known_broken lists combinations that install but crash (preflight.sh matches them against the installed versions: an exact version or >=X).",
+  "type": "object",
+  "required": ["schema_version", "cells", "remediation_packages", "known_broken", "legacy_v1"],
+  "additionalProperties": false,
+  "properties": {
+    "_comment": {"type": "string"},
+    "_remediation_comment": {"type": "string"},
+    "_legacy_v1_comment": {"type": "string"},
+    "schema_version": {"const": 2},
+    "cells": {
+      "type": "object",
+      "propertyNames": {"type": "string", "pattern": "^[0-9]+$|^d7-pre$"},
+      "additionalProperties": {"$ref": "#/$defs/cell"}
+    },
+    "phpcompat": {"$ref": "#/$defs/cell"},
+    "remediation_packages": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/package"}},
+    "known_broken": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["packages", "symptom", "cause"],
+        "additionalProperties": false,
+        "properties": {
+          "packages": {"type": "object", "propertyNames": {"$ref": "#/$defs/package"}, "additionalProperties": {"type": "string", "pattern": "^(>=)?v?[0-9]+\\.[0-9]+\\.[0-9]+$"}},
+          "symptom": {"type": "string", "minLength": 1},
+          "cause": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "legacy_v1": {
+      "type": "object",
+      "required": ["verified_on", "verified_with", "toolchain"],
+      "additionalProperties": false,
+      "properties": {
+        "verified_on": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+        "verified_with": {"type": "object"},
+        "toolchain": {"$ref": "#/$defs/pins"}
+      }
+    }
+  },
+  "$defs": {
+    "package": {"type": "string", "pattern": "^[a-z0-9_.-]+/[a-z0-9_.-]+$"},
+    "pins": {
+      "description": "{composer package: exact version}; null: the cell installs no version of it (drush on a Drupal 12 bed).",
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/package"},
+      "additionalProperties": {"anyOf": [{"type": "null"}, {"type": "string", "pattern": "^v?[0-9]+\\.[0-9]+\\.[0-9]+(-(alpha|beta|RC|rc)[0-9]+)?$"}]}
+    },
+    "cell": {
+      "type": "object",
+      "required": ["status", "verified", "src", "toolchain"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {"description": "verified: pinned; provisional: recorded, not pinned yet; planned: not defined yet.", "enum": ["verified", "provisional", "planned"]},
+        "verified": {"type": "boolean"},
+        "src": {"description": "The ADR that records how the cell was verified.", "type": "string", "minLength": 1},
+        "verified_on": {
+          "type": "object",
+          "required": ["date", "core", "php", "ddev"],
+          "additionalProperties": false,
+          "properties": {
+            "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+            "core": {"type": "string", "minLength": 1},
+            "php": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"}},
+            "ddev": {"type": "string", "minLength": 1}
+          }
+        },
+        "verified_with": {"type": "array", "items": {"type": "string"}},
+        "toolchain": {"$ref": "#/$defs/pins"},
+        "note": {"type": "string"}
+      }
+    }
+  }
+}

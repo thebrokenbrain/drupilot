@@ -1,0 +1,19 @@
+{
+  "drupilot_testbed": {
+    "created_at": "2026-10-04T12:24:36Z",
+    "created_by": "ddev-up.sh",
+    "drupilot_version": "0.9.1",
+    "core_cache": "php8.3-11.4.8",
+    "subjects": {
+      "legacy_widgets": {
+        "dest": "@HOME@/Proyectos/drupilot-lab/m2/lm22/dpl-m2-mig09-d11/web/modules/custom/legacy_widgets",
+        "origin": "@HOME@/Proyectos/drupilot-lab/m2/lm22/src/legacy_widgets",
+        "placement": "move",
+        "at": "2026-10-04T12:26:41Z"
+      }
+    }
+  },
+  "DRUPILOT_PHP_TARGET": "8.3",
+  "DRUPILOT_WORKSPACE_DIR": "@HOME@/Proyectos/drupilot-lab/m2/lm22/dpl-m2-mig09-d11",
+  "DRUPILOT_PLACEMENT": "move"
+}

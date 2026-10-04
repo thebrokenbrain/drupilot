@@ -8,8 +8,9 @@
 #               config/php/versions.json and rules.json, config/paths/eras.json
 #               and graph.json, and every config/catalog/*.json validate
 #               against their schema (the jq validator, scripts/dev/
-#               jsonschema.jq); the seven core files (targets/10, 11 and 12,
-#               php/versions and rules, paths/eras and graph) must exist
+#               jsonschema.jq); the eight core files (targets/10, 11 and 12,
+#               php/versions and rules, paths/eras and graph, and the toolchain
+#               matrix toolchain-reference.json) must exist
 #   provenance  every object that carries `verified` names its source (src or
 #               url), every object holding a version value names one too (a
 #               PHP support list: php_src), and every `verified_as` object
@@ -20,7 +21,8 @@
 #               {"status": "detect"} minor holds no value)
 #   coherence   a target file's major matches its name and its minors; a
 #               target major (11 and up) has toolchain_cell, php_defaults and
-#               default_ranges; every PHP version a target names is in
+#               default_ranges, and its toolchain_cell is a cell of the
+#               toolchain matrix; a verified cell says where and pins a set; every PHP version a target names is in
 #               php/versions.json; a minor never lists a PHP as both supported
 #               and unsupported; versions.json ids and rector_level match the
 #               key; rules have unique ids and a verified removed-no-rule rule
@@ -85,7 +87,8 @@ for f in "$ROOT"/config/targets/*.json; do
 "
 done
 for p in "php/versions.json	php-versions.schema.json" "php/rules.json	php-rules.schema.json" \
-         "paths/eras.json	paths.schema.json" "paths/graph.json	paths.schema.json"; do
+         "paths/eras.json	paths.schema.json" "paths/graph.json	paths.schema.json" \
+         "toolchain-reference.json	toolchain.schema.json"; do
   f="${p%%	*}"
   if [[ -f "$ROOT/config/$f" ]]; then FILES="${FILES}config/$p
 "; else result schema "config/$f" fail "missing"; fi
@@ -100,7 +103,7 @@ JQ_LIB="$(cat "$LIB")"
 PROV='
 def vkeys: ["php_min", "php_recommended", "latest", "released", "symfony_major", "twig_major",
             "phpunit_constraint", "coder_constraint", "phpstan_constraint", "phpstan_drupal_constraint",
-            "removed_in", "deprecated_in", "introduced_in", "value", "actual", "planned", "date",
+            "removed_in", "deprecated_in", "introduced_in", "value", "actual", "planned",
             "active_until", "security_until", "output_min_php", "drupal_core_floor"];
 def hassrc: ((.src // "") | tostring | length) > 0 or ((.url // "") | tostring | length) > 0;
 paths(type == "object") as $p | getpath($p) as $o
@@ -137,14 +140,23 @@ while IFS="$(printf '\t')" read -r file schema; do
 done <<< "$FILES"
 
 # --- coherence ---------------------------------------------------------------
+TCR="$ROOT/config/toolchain-reference.json"
+if [[ -f "$TCR" ]]; then
+  errs="$(jq -r '(.cells // {}) | to_entries[] | select(.value.verified == true)
+    | (if (.value.verified_on | type) != "object" then "cell \(.key): verified without verified_on" else empty end),
+      (if ((.value.toolchain // {}) | length) == 0 then "cell \(.key): verified with no pins" else empty end)' "$TCR" 2>&1 || true)"
+  report coherence config/toolchain-reference.json "$errs"
+fi
 VERS="$ROOT/config/php/versions.json"
 if [[ -f "$VERS" ]]; then
   for f in "$ROOT"/config/targets/*.json; do
     [[ -f "$f" ]] || continue
     n="$(basename "$f" .json)"
-    errs="$(jq -r --arg n "$n" --slurpfile v "$VERS" '
-      ($v[0].versions // {}) as $vs
-      | (if (.major | tostring) != $n then "major \(.major) in \($n).json" else empty end),
+    errs="$(jq -r --arg n "$n" --slurpfile v "$VERS" --slurpfile t "$([[ -f "$TCR" ]] && printf '%s' "$TCR" || printf /dev/null)" '
+      ($v[0].versions // {}) as $vs | (($t[0].cells // {}) | keys) as $cells
+      | (if has("toolchain_cell") and (.toolchain_cell as $tc | $cells | index($tc) | not)
+         then "toolchain_cell \(.toolchain_cell) is not a cell of config/toolchain-reference.json" else empty end),
+        (if (.major | tostring) != $n then "major \(.major) in \($n).json" else empty end),
         (.minors | keys[] | select(startswith($n + ".") | not) | "minor \(.) is not of major \($n)"),
         (if (.major >= 11) and ((has("toolchain_cell") and has("php_defaults") and has("default_ranges")) | not)
          then "a target major needs toolchain_cell, php_defaults and default_ranges" else empty end),

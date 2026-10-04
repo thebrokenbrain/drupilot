@@ -26,7 +26,8 @@
 #     phpstan_config phpstan.neon does not set the deprecated drupal_root
 #     toolchain:*    one row per known-good package installed at the root
 #                    (composer.lock, read with jq: no PHP, no DDEV), compared
-#                    with config/toolchain-reference.json; plus
+#                    with the root's cell of config/toolchain-reference.json
+#                    (legacy_v1 for a lock drupilot 0.9 wrote); plus
 #                    toolchain_combo, false when the installed set matches a
 #                    known-broken combination (e.g. "Could not detect twig set")
 #     disk_free      free space on the root's (else the current dir's)
@@ -376,15 +377,16 @@ if [[ "$EXTENDED" == "1" ]]; then
   # Toolchain at the root vs the known-good reference (composer.lock, jq only).
   REF_FILE="$(toolchain_reference_file)"
   if [[ -n "$HROOT" && -f "$HROOT/composer.lock" && -r "$REF_FILE" ]]; then
-    _installed="$(jq -c --slurpfile ref "$REF_FILE" '
+    # The known-good set of this root's toolchain cell (a 0.9 lock: legacy_v1).
+    _kg="$(toolchain_reference_set "$(toolchain_cell_for "$HROOT")")"
+    _installed="$(jq -c --argjson kg "$_kg" '
         ((.packages // []) + (."packages-dev" // [])) as $all
-        | [($ref[0].toolchain // {}) | keys[] as $k
+        | [$kg | keys[] as $k
            | ($all | map(select(.name == $k)) | .[0].version // empty) as $v
            | {key: $k, value: ($v | ltrimstr("v"))}] | from_entries' "$HROOT/composer.lock" 2>/dev/null || true)"
     [[ -n "$_installed" ]] || _installed='{}'
-    TOOLCHAIN_JSON="$(jq -c --argjson inst "$_installed" --arg root "$HROOT" '
-        (.toolchain // {}) as $kg
-        | ($kg | with_entries(select($inst[.key] != null))) as $kgi
+    TOOLCHAIN_JSON="$(jq -c --argjson inst "$_installed" --arg root "$HROOT" --argjson kg "$_kg" '
+        ($kg | with_entries(select($inst[.key] != null))) as $kgi
         | {root: $root, installed: $inst, known_good: $kgi,
            differs: [$inst | to_entries[] | select($kg[.key] != .value) | .key],
            known_broken_rules: (.known_broken // [])}

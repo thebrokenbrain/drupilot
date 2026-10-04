@@ -1,0 +1,99 @@
+{
+  "schema": 1,
+  "tool": "drupilot-assess",
+  "drupilot_version": "0.9.1",
+  "timestamp": "2026-10-04T12:47:22Z",
+  "subject": "@HOME@/Proyectos/drupilot-lab/m2/lm22/dpl-m2-mig09-d11/web/modules/custom/legacy_widgets",
+  "machine_name": "legacy_widgets",
+  "type": "module",
+  "contrib": false,
+  "drupal_root": "@HOME@/Proyectos/drupilot-lab/m2/lm22/dpl-m2-mig09-d11",
+  "php_target": "8.3",
+  "drupal_target": "^11",
+  "core_floor_assessed": "10.0",
+  "verdict": "S",
+  "effort": "S",
+  "rubric": {
+    "manual": 3,
+    "hard_breaks": 0,
+    "blocking_deps": 0,
+    "matched_rule": "S: otherwise (hard_breaks == 0 AND manual < 5 AND blocking_deps == 0)",
+    "manual_items": [
+      {"id": "M1", "source": "scan-signature-changes:entity-get-original", "file": "src/Entity/LegacyWidget.php", "line": 57, "fix": "Rename getOriginal() to getOriginalWidget() (keep body) and update the caller in modules/legacy_widgets_extra/legacy_widgets_extra.module:15"},
+      {"id": "M2", "source": "scan-signature-changes:config-form-base-ctor", "file": "src/Form/SettingsForm.php", "line": 32, "fix": "Inject TypedConfigManagerInterface and forward it to ConfigFormBase::__construct()"},
+      {"id": "M3", "source": "phpstan:property.readOnly/visibility/extraNativeType", "file": "src/Form/WidgetImportForm.php", "line": 21, "fix": "Stop redeclaring FormBase::$loggerFactory (use setLoggerFactory()); make $entityTypeManager protected, non-readonly"}
+    ]
+  },
+  "viability_threshold": "medium",
+  "above_threshold": false,
+  "auto_fixable_pct": 25,
+  "manual_pct": 75,
+  "rector": {
+    "status": "ok",
+    "official_changed_files": 1,
+    "official_rules": ["FunctionFirstClassCallableRector"],
+    "digests": "not-run (DRUPILOT_USE_DIGESTS_RULES=false)"
+  },
+  "phpstan": {
+    "level": 2,
+    "status": "findings",
+    "file_errors": 30,
+    "deprecations_total": 8
+  },
+  "deprecations_hard": 0,
+  "deprecations_soft": 8,
+  "deprecations_unknown": 0,
+  "soft_deprecations_policy": "report",
+  "soft_deprecations": [
+    {"symbol": "check_markup", "occurrences": 1, "deprecated_in": "11.4.0", "removed_in": "13.0.0", "effort": "M", "replacement_at_floor": true, "action": "report"},
+    {"symbol": "text_summary", "occurrences": 2, "deprecated_in": "11.4.0", "removed_in": "13.0.0", "effort": "M", "replacement_at_floor": false, "action": "report"},
+    {"symbol": "user_load_by_mail", "occurrences": 3, "deprecated_in": "11.4.0", "removed_in": "13.0.0", "effort": "S", "replacement_at_floor": true, "action": "report"},
+    {"symbol": "user_load_by_name", "occurrences": 2, "deprecated_in": "11.4.0", "removed_in": "13.0.0", "effort": "S", "replacement_at_floor": true, "action": "report"}
+  ],
+  "signature_changes": {"errors": 2, "warnings": 2, "infos": 1},
+  "hard_breaks": [],
+  "hard_break_categories": {
+    "twig3": [],
+    "ckeditor4": [],
+    "jquery_ui": [],
+    "symfony7": []
+  },
+  "phpcs": {
+    "errors": 0,
+    "warnings": 0,
+    "fixable": 0,
+    "ruleset_source": "fallback",
+    "standard": "Drupal,DrupalPractice",
+    "fallback_reason": "subject phpcs.xml.dist references PHPCompatibility, not installed"
+  },
+  "upgrade_status": "skipped (Drupal not installed in the database)",
+  "info_yml": {
+    "core_version_requirement_present": true,
+    "current": "^10",
+    "d11_compatible": false,
+    "submodules": [
+      {"machine_name": "legacy_widgets_extra", "current": "^8.8 || ^9 || ^10", "d11_compatible": false}
+    ]
+  },
+  "core_target": {
+    "strategy": "keep-d10",
+    "recommended_core_version_requirement": "^10 || ^11",
+    "composer_core_constraint": "^10 || ^11",
+    "require_php": ">=8.1",
+    "version_bump": "minor",
+    "bc_break": false,
+    "php_floor_detected": "8.1",
+    "php_floor_target_compatible": true,
+    "d10_support": "declared-not-verified",
+    "verify_cores": ["10.0", "10", "11"]
+  },
+  "dependencies": {"ready": 3, "blockers": 0, "unknown": 0},
+  "hygiene": {"error": 2, "warn": 8, "info": 0},
+  "ready": {
+    "environment": true,
+    "toolchain": true,
+    "drupal_installed": false
+  },
+  "report": "@HOME@/Proyectos/drupilot-lab/m2/lm22/dpl-m2-mig09-d11/.drupilot/viability-report.md",
+  "plan": "@HOME@/Proyectos/drupilot-lab/m2/lm22/dpl-m2-mig09-d11/.drupilot/port-plan.md"
+}

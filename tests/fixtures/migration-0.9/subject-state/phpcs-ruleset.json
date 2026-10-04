@@ -1,0 +1,13 @@
+{
+  "ruleset": "@HOME@/Proyectos/drupilot-lab/m2/lm22/dpl-m2-mig09-d11/web/modules/custom/legacy_widgets/phpcs.xml.dist",
+  "standard": "Drupal,DrupalPractice",
+  "source": "fallback",
+  "mode": "auto",
+  "location": "subject",
+  "fallback_reason": "PHPCS cannot load it (exit 3): ERROR: Referenced sniff \"PHPCompatibility\" does not exist",
+  "test_version": "8.1-",
+  "test_version_source": "ruleset-property",
+  "pass_extensions": true,
+  "cksum": "382390646",
+  "at": "2026-10-04T12:55:55Z"
+}

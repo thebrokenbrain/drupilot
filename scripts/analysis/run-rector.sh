@@ -523,9 +523,10 @@ elif [[ "$APPLY" == "1" && -n "$PRE_DIGEST" && -r "$DRYRUN_REC" ]] && have_cmd j
   fi
 fi
 
-# Rule names from Rector's "Applied rules:" sections (" * SomeRector" lines).
-APPLIED_RULES="$(printf '%s\n%s\n' "$PASS1_RAW" "$PASS2_RAW" \
-  | grep -E '^ \* [A-Za-z0-9_\\]+Rector$' | sed -E 's/^ \* //' | sort -u || true)"
+# Rule names from Rector's "Applied rules:" sections only (rector_applied_rules:
+# the bullets of a "skipped rule is never registered" warning are not rules
+# that ran).
+APPLIED_RULES="$({ rector_applied_rules "$PASS1_RAW"; rector_applied_rules "$PASS2_RAW"; } | sort -u || true)"
 
 # rule_hits_json <raw> -> {Rule: files} from one pass's "Applied rules:"
 # sections (Rector lists the rules once per changed file). `{}` when none or
@@ -533,7 +534,7 @@ APPLIED_RULES="$(printf '%s\n%s\n' "$PASS1_RAW" "$PASS2_RAW" \
 rule_hits_json() {
   have_cmd jq || { printf '{}'; return 0; }
   local out
-  out="$(printf '%s\n' "${1:-}" | { grep -E '^ \* [A-Za-z0-9_\\]+Rector$' || true; } | sed -E 's/^ \* //' \
+  out="$(rector_applied_rules "${1:-}" \
     | jq -R . | jq -s -c 'group_by(.) | map({key: .[0], value: length}) | from_entries' 2>/dev/null || true)"
   [[ -n "$out" ]] || out='{}'
   printf '%s' "$out"

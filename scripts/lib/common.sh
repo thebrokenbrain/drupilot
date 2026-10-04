@@ -3147,31 +3147,76 @@ render_template() {
 # Toolchain health: the known-good reference set + Rector crash detection
 # ---------------------------------------------------------------------------
 # config/toolchain-reference.json is the KNOWN-GOOD dev-toolchain matrix shipped
-# with the plugin: exact versions verified together end to end (install + a
-# Rector dry-run + PHPStan). install-toolchain.sh pins to it when a project has
-# no lock yet (deterministic mode), so a fresh test-bed created after a broken
-# upstream release still gets a set that works.
+# with the plugin: one cell per Drupal major family (.cells["11"], ["12"], ...),
+# each an exact set verified together end to end (install + a Rector dry-run and
+# apply + PHPStan), plus the single set drupilot 0.9 shipped (.legacy_v1).
+# install-toolchain.sh pins a test-bed to its cell when the project has no lock
+# yet (deterministic mode), so a fresh test-bed created after a broken upstream
+# release still gets a set that works. Only a verified cell is pinned.
 
 # toolchain_reference_file -> path to the shipped reference matrix.
 toolchain_reference_file() { printf '%s/config/toolchain-reference.json' "$(plugin_root)"; }
 
-# toolchain_reference_version <package> -> the known-good exact version of a
-# Composer package (e.g. rector/rector -> 2.5.2), or nothing when the reference
-# does not pin it. Never fatal.
-toolchain_reference_version() {
-  local f; f="$(toolchain_reference_file)"
-  [[ -r "$f" ]] && have_cmd jq || return 0
-  jq -r --arg n "${1:-}" '.toolchain[$n] // empty' "$f" 2>/dev/null || true
+# toolchain_cell_for <root> [fresh] -> the toolchain cell of a test-bed: the
+# cell its lock records (.toolchain_cell); "legacy_v1" for a lock drupilot 0.9
+# wrote (it pins rector/rector, which only install-toolchain.sh installs, and
+# records no cell: it keeps 0.9's set until it is refreshed); else, and always
+# with a second argument (a refresh), the cell config/targets/<major>.json
+# names for the installed core's major; else "11".
+toolchain_cell_for() {
+  local r="${1:-}" c="" major
+  if [[ -n "$r" && -z "${2:-}" ]]; then
+    c="$(DRUPILOT_PROJECT_DIR="$r" lock_get .toolchain_cell "")"
+    if [[ -z "$c" && -n "$(DRUPILOT_PROJECT_DIR="$r" lock_get '.toolchain["rector/rector"]' "")" ]]; then
+      c="legacy_v1"
+    fi
+  fi
+  if [[ -z "$c" && -n "$r" ]]; then
+    major="$(drupal_core_version "$r" | sed -n 's/^v\{0,1\}\([0-9][0-9]*\)\..*/\1/p')"
+    [[ -n "$major" ]] && c="$(target_get "$major" .toolchain_cell)"
+  fi
+  printf '%s' "${c:-11}"
   return 0
 }
 
-# toolchain_reference_require_cmd -> the exact command that installs the
-# reference set (Rector + PHPStan core packages), printed for remediation
-# messages. Empty when the reference is unreadable.
+# toolchain_cell_verified <cell> -> 0 when the cell holds a verified set
+# (legacy_v1 always does: drupilot 0.9 verified it).
+toolchain_cell_verified() {
+  local f; f="$(toolchain_reference_file)"
+  [[ "${1:-}" == "legacy_v1" ]] && return 0
+  [[ -r "$f" ]] && have_cmd jq || return 1
+  jq -e --arg c "${1:-}" '.cells[$c].verified == true' "$f" > /dev/null 2>&1
+}
+
+# toolchain_reference_set [cell] -> the cell's pins as one JSON object
+# ({package: version}; a null pin is left out), {} for an unverified or unknown
+# cell. Default cell: 11.
+toolchain_reference_set() {
+  local f; f="$(toolchain_reference_file)"
+  [[ -r "$f" ]] && have_cmd jq || { printf '{}'; return 0; }
+  jq -c --arg c "${1:-11}" '(if $c == "legacy_v1" then .legacy_v1 else (.cells[$c] | select(.verified == true)) end
+      | .toolchain // {}) // {} | with_entries(select(.value != null))' "$f" 2>/dev/null || printf '{}'
+  return 0
+}
+
+# toolchain_reference_version <package> [cell] -> the known-good exact version
+# of a Composer package in that cell (e.g. rector/rector -> 2.6.1 in cell 11),
+# or nothing when the cell does not pin it or is not verified. Never fatal.
+toolchain_reference_version() {
+  local f; f="$(toolchain_reference_file)"
+  [[ -r "$f" ]] && have_cmd jq || return 0
+  jq -r --arg n "${1:-}" --arg c "${2:-11}" '(if $c == "legacy_v1" then .legacy_v1 else (.cells[$c] | select(.verified == true)) end
+      | .toolchain[$n]) // empty' "$f" 2>/dev/null || true
+  return 0
+}
+
+# toolchain_reference_require_cmd [cell] -> the exact command that installs the
+# cell's set (Rector + PHPStan core packages), printed for remediation
+# messages. Empty when the reference is unreadable or the cell is not verified.
 toolchain_reference_require_cmd() {
   local f specs; f="$(toolchain_reference_file)"
   [[ -r "$f" ]] && have_cmd jq || return 0
-  specs="$(jq -r '(.remediation_packages // []) as $p | .toolchain as $t
+  specs="$(jq -r --argjson t "$(toolchain_reference_set "${1:-11}")" '(.remediation_packages // []) as $p
                   | [$p[] | select($t[.] != null) | "\(.):\($t[.])"] | join(" ")' "$f" 2>/dev/null || true)"
   [[ -n "$specs" ]] && printf 'ddev composer require --dev -W %s' "$specs"
   return 0
@@ -3199,6 +3244,19 @@ rector_output_ok() {
   local rc="${1:-1}" raw="${2:-}"
   case "$rc" in 0|2) ;; *) return 1;; esac
   printf '%s\n' "$raw" | grep -qE '^[[:space:]]*\[OK\][[:space:]]' || return 1
+  return 0
+}
+
+# rector_applied_rules <raw_output> -> the " * SomeRector" lines of Rector's
+# "Applied rules:" blocks, without the bullet, one per line (once per changed
+# file, as Rector prints them). Only inside those blocks: Rector also bullets
+# the rules of a "[WARNING] This skipped rule is never registered" notice, and
+# those were never applied. Never fails.
+rector_applied_rules() {
+  printf '%s\n' "${1:-}" | awk '
+    /^Applied rules:[[:space:]]*$/ { inb = 1; next }
+    inb && /^ \* [A-Za-z0-9_\\]+Rector[[:space:]]*$/ { sub(/^ \* /, ""); sub(/[[:space:]]+$/, ""); print; next }
+    { inb = 0 }'
   return 0
 }
 
@@ -3236,12 +3294,13 @@ rector_error_excerpt() {
 # versions of the Rector/PHPStan packages and the exact remediation command.
 # Used after a failed smoke test and by run-rector.sh after a Rector crash.
 toolchain_diagnostics() {
-  local r="${1:-}" f pkg inst ref cmd differs=0
+  local r="${1:-}" f pkg inst ref cmd differs=0 cell
   f="$(toolchain_reference_file)"
-  log_plain "   Installed vs known-good toolchain ($(basename "$f")):"
+  cell="$(toolchain_cell_for "$r")"
+  log_plain "   Installed vs known-good toolchain ($(basename "$f"), cell $cell):"
   for pkg in rector/rector palantirnet/drupal-rector phpstan/phpstan mglaman/phpstan-drupal; do
     inst="$(installed_package_version "$r" "$pkg")"
-    ref="$(toolchain_reference_version "$pkg")"
+    ref="$(toolchain_reference_version "$pkg" "$cell")"
     [[ -n "$ref" && "$inst" != "$ref" ]] && differs=1
     log_plain "     $(printf '%-28s' "$pkg") installed: ${inst:-?}   known-good: ${ref:-?}"
   done
@@ -3250,7 +3309,7 @@ toolchain_diagnostics() {
     log_plain "   (rector.php; regenerate it with render-templates.sh --only rector --force) or the error above."
     return 0
   fi
-  cmd="$(toolchain_reference_require_cmd)"
+  cmd="$(toolchain_reference_require_cmd "$cell")"
   if [[ -n "$cmd" ]]; then
     log_plain "   Fix: reinstall the known-good set (from the Drupal root):"
     log_plain "     bash \"$(plugin_root)/scripts/env/install-toolchain.sh\" --dir \"$r\" --source reference"

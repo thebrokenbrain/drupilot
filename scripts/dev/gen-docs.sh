@@ -190,24 +190,34 @@ gen_choices() {
 gen_toolchain() {
   printf '%s\n\n# Toolchain\n\n' "$GEN"
   jq -r "$JQ_ESC"'
-    "The known-good development toolchain `scripts/env/install-toolchain.sh` installs when the project lock does not pin the whole set, from `config/toolchain-reference.json`. A version enters it only after it was installed and verified together in a DDEV test-bed.",
+    def pins: if (.toolchain // {}) | length == 0 then "No set yet.\n" else
+      "| Package | Version |", "|---|---|", (.toolchain | to_entries[] | "| `\(.key)` | \(if .value == null then "not installed" else "`\(.value)`" end) |"), "" end;
+    def where: if .verified_on then "Verified on \(.verified_on.date): Drupal core \(.verified_on.core), PHP \(.verified_on.php | join(", ")), DDEV \(.verified_on.ddev)\(if (.verified_with // []) | length > 0 then ", with " + ((.verified_with | map(esc)) | join(" and ")) else "" end)." else empty end;
+    "The known-good development toolchain matrix `scripts/env/install-toolchain.sh` installs from `config/toolchain-reference.json` when the project lock does not pin the whole set. A test-bed uses the cell its installed Drupal core major names (`toolchain_cell` in `config/targets/<major>.json`); only a verified cell is pinned, an unverified one resolves from the `.packages` ranges of `config/defaults.json`. A version enters a cell only after it was installed and verified together in a DDEV test-bed.",
     "",
-    "Verified on \(.verified_on) with Drupal core \(.verified_with.drupal_core // "?"), PHP \(.verified_with.php // "?"), DDEV \(.verified_with.ddev // "?") and \(.verified_with.subject // "a test subject" | esc).",
-    "",
-    "## Packages",
-    "",
-    "| Package | Version |",
-    "|---|---|",
-    (.toolchain | to_entries[] | "| `\(.key)` | `\(.value)` |"),
-    "",
-    "## Remediation packages",
-    "",
+    (.cells | to_entries[] |
+      "## Cell \(.key) (\(.value.status))\n",
+      (.value | where),
+      "Source: \(.value.src | esc).\n",
+      (.value | pins),
+      (if .value.note then "\(.value.note | esc)\n" else empty end)),
+    (if .phpcompat then
+      "## PHPCompatibility (\(.phpcompat.status))\n",
+      "Its own Composer tree, for the report-only PHP compatibility check. Source: \(.phpcompat.src | esc).\n",
+      (.phpcompat | pins),
+      (if .phpcompat.note then "\(.phpcompat.note | esc)\n" else empty end)
+     else empty end),
+    "## Remediation packages\n",
     "Reinstalled together when the toolchain smoke test fails: " + ([.remediation_packages[] | "`\(.)`"] | join(", ")) + ".",
     "",
     "## Known broken combinations",
     (.known_broken[] |
       "\n- " + ([.packages | to_entries[] | "`\(.key)` \(.value | esc)"] | join(" with ")) + ": \(.symptom | esc)",
-      "  \(.cause | esc)")
+      "  \(.cause | esc)"),
+    "",
+    "## The drupilot 0.9 set (legacy_v1)\n",
+    "A project lock written by drupilot 0.9 keeps this set until it is refreshed with `install-toolchain.sh --source reference`. Verified on \(.legacy_v1.verified_on) with Drupal core \(.legacy_v1.verified_with.drupal_core // "?"), PHP \(.legacy_v1.verified_with.php // "?"), DDEV \(.legacy_v1.verified_with.ddev // "?") and \(.legacy_v1.verified_with.subject // "a test subject" | esc).\n",
+    (.legacy_v1 | pins)
   ' "$REPO/config/toolchain-reference.json"
 }
 
