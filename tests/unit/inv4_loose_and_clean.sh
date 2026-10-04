@@ -18,4 +18,12 @@ assert_tree_unchanged "clean.sh --dry-run on a site drupilot did not build chang
   "$T_SH" "$T_REPO/scripts/env/clean.sh" --subject "$T_TMP/site/web/modules/custom/legacy_widgets" --level workspace --dry-run --json
 assert_json_eq "... and proposes no action" "$(jq -c '[.roots[] | {kind: (.testbed_kind // .kind), actions: [.actions[]?.op]}]' "$T_OUT")" \
   '[{"kind":"none","actions":[]}]'
+assert_match "... refused as not a drupilot test-bed" "$(jq -r '.roots[0] | .status + ": " + .reason' "$T_OUT")" \
+  '^refused: not a drupilot test-bed'
+# --level vendor has no placed-subject check of its own, and a real run
+# (--yes, no --dry-run) must still leave the site untouched.
+assert_tree_unchanged "clean.sh --level vendor --yes on that site changes nothing" "$T_TMP/site" \
+  "$T_SH" "$T_REPO/scripts/env/clean.sh" --subject "$T_TMP/site/web/modules/custom/legacy_widgets" --level vendor --yes --json
+assert_match "... refused as not a drupilot test-bed" "$(jq -r '.roots[0] | .status + ": " + .reason' "$T_OUT")" \
+  '^refused: not a drupilot test-bed'
 t_done

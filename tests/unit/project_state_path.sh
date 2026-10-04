@@ -14,5 +14,13 @@ assert_eq "a trailing slash of a missing path is kept in the key" "$(project_sta
 mkdir -p "$T_TMP/real/mod"
 assert_eq "an existing relative path is made absolute" "$(cd "$T_TMP/real" && project_state_path mod)" \
   "$T_TMP/dh/state/$(printf '%s' "$T_TMP/real/mod" | tr -c 'A-Za-z0-9' '_')"
+# 0.9 makes a path absolute with a logical `pwd`, so a path reached through a
+# symlink keeps the link in its key (macOS /var -> /private/var, symlinked
+# workspaces): resolving it physically would orphan existing state.
+ln -s real "$T_TMP/link"
+assert_eq "a symlinked path keeps the link in its key" "$(project_state_path "$T_TMP/link/mod")" \
+  "$T_TMP/dh/state/$(printf '%s' "$T_TMP/link/mod" | tr -c 'A-Za-z0-9' '_')"
+assert_eq "... also when relative" "$(cd "$T_TMP" && project_state_path link/mod)" \
+  "$T_TMP/dh/state/$(printf '%s' "$T_TMP/link/mod" | tr -c 'A-Za-z0-9' '_')"
 assert_eq "it creates nothing" "$([[ -e "$T_TMP/dh" ]] && echo created || echo none)" "none"
 t_done
