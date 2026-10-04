@@ -13,6 +13,8 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-10-04
+
 ### Fixed
 - `run-phpcs.sh` no longer exits 1 when PHPCS cannot load a project ruleset
   and its message names no ERROR line: an explicit ruleset is refused (exit
@@ -2382,7 +2384,8 @@ verdict, what-changed report card, frozen lock), and new insight tools
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.4...v0.9.0
 [0.8.4]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.3...v0.8.4
