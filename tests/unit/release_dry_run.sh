@@ -7,7 +7,7 @@
 # check.sh --ci, so it is exercised by hand on a release branch.)
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
-unset GITHUB_BASE_REF GITHUB_REF_NAME GITHUB_REF_TYPE
+unset GITHUB_BASE_REF GITHUB_REF_NAME GITHUB_REF_TYPE RELEASE_FROM
 r="$T_TMP/repo"
 mkdir -p "$r/scripts/dev" "$r/scripts/lib" "$r/config" "$r/.claude-plugin"
 cp "$T_REPO/scripts/dev/check.sh" "$T_REPO/scripts/dev/release.sh" "$r/scripts/dev/"

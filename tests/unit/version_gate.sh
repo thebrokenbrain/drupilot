@@ -1,33 +1,42 @@
 #!/usr/bin/env bash
 # The `version` gate of scripts/dev/check.sh (09-R4), on a scratch repository
-# holding the gate's inputs: plugin.json equals the top released CHANGELOG
-# heading; a v* tag on HEAD must be v<version>; no pre-release version on
-# `main` (the branch, or GITHUB_BASE_REF / GITHUB_REF_NAME in CI); and
-# config/migrations.json rows are coherent.
+# holding the gate's inputs, with a synthetic plugin.json and CHANGELOG.md (so
+# the test never depends on the repository's own release history):
+# plugin.json equals the released CHANGELOG heading of highest SemVer
+# precedence; a v* tag on HEAD must be v<version> (or the promoted
+# RELEASE_FROM); no pre-release version on `main` (the branch, or
+# GITHUB_BASE_REF / GITHUB_REF_NAME in CI); config/migrations.json rows are
+# coherent.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
-unset GITHUB_BASE_REF GITHUB_REF_NAME GITHUB_REF_TYPE
+# Inherited from a release.sh or CI run, these would change the gate's answer.
+unset GITHUB_BASE_REF GITHUB_REF_NAME GITHUB_REF_TYPE RELEASE_FROM
 r="$T_TMP/repo"
 mkdir -p "$r/scripts/dev" "$r/scripts/lib" "$r/config" "$r/.claude-plugin"
 cp "$T_REPO/scripts/dev/check.sh" "$r/scripts/dev/"
 cp "$T_REPO/scripts/lib/common.sh" "$r/scripts/lib/"
 cp "$T_REPO/config/defaults.json" "$T_REPO/config/migrations.json" "$T_REPO/config/config-reference.json" "$r/config/"
-cp "$T_REPO/CHANGELOG.md" "$r/"
-cp "$T_REPO/.claude-plugin/plugin.json" "$r/.claude-plugin/"
+# changelog <version...> -> a CHANGELOG.md with those released headings, in order.
+changelog() {
+  { printf '# Changelog\n\n## [Unreleased]\n\n'
+    for h in "$@"; do printf '## [%s] - 2026-10-04\n\n### Fixed\n- Something.\n\n' "$h"; done
+    printf '[Unreleased]: https://example.invalid/compare/v%s...HEAD\n' "$1"; } > "$r/CHANGELOG.md"
+}
+# setver <version> -> plugin.json at <version>, released on top of 0.9.0.
+setver() {
+  printf '{"name": "drupilot", "version": "%s"}\n' "$1" > "$r/.claude-plugin/plugin.json"
+  changelog "$1" 0.9.0
+}
+setver 0.9.1
+v=0.9.1
 g() { git -C "$r" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false -c tag.gpgsign=false "$@"; }
 g init -q -b main 2>/dev/null || { g init -q && g checkout -q -b main; }
 g add -A && g commit -qm base
-v="$(jq -r .version "$r/.claude-plugin/plugin.json")"
 
 # gate [env...] -> "<status>|<first finding>" of `check.sh --only version`.
 gate() {
   env "$@" "$T_SH" "$r/scripts/dev/check.sh" --only version --json 2>/dev/null \
     | jq -r '.gates[0] | "\(.status)|\(.findings[0] // "")"'
-}
-setver() {
-  jq --arg v "$1" '.version = $v' "$r/.claude-plugin/plugin.json" > "$T_TMP/p" && mv "$T_TMP/p" "$r/.claude-plugin/plugin.json"
-  awk -v v="$1" 'BEGIN { done = 0 } /^## \[/ && !done && $2 != "[Unreleased]" { print "## [" v "] - 2026-10-04"; print ""; done = 1 } { print }' \
-    "$T_REPO/CHANGELOG.md" > "$r/CHANGELOG.md"
 }
 
 assert_eq "the released version on main passes" "$(gate)" "pass|"
@@ -80,9 +89,15 @@ cp "$T_REPO/config/migrations.json" "$r/config/migrations.json"
 # On the integration branch, a 0.9.x section merged from main and dated after
 # the latest pre-release sits above it (09-R5): the highest precedence wins.
 setver 1.0.0-alpha.1
-awk 'BEGIN { done = 0 } /^## \[/ && !done && $2 != "[Unreleased]" { print "## [0.9.9] - 2026-11-10"; print ""; done = 1 } { print }' \
-  "$r/CHANGELOG.md" > "$T_TMP/cl" && mv "$T_TMP/cl" "$r/CHANGELOG.md"
+changelog 0.9.9 1.0.0-alpha.1 0.9.1
 assert_eq "a 0.9.x section above the 1.0 pre-release passes" "$(gate)" "pass|"
+# A later release in the history: the version under test must be the highest.
+setver 1.0.0
+changelog 1.0.0 1.0.0-rc.1 0.9.9
+assert_eq "1.0.0 above its rc and a 0.9.x passes" "$(gate)" "pass|"
+setver 1.0.0-alpha.1
+changelog 1.0.0 1.0.0-alpha.1
+assert_match "a version below a released heading fails" "$(gate)" "^fail\|.*highest released CHANGELOG.md heading '\[1.0.0\]'"
 # release.sh promoting an rc: HEAD still carries the rc tag while it checks.
 setver 1.0.0-rc.1
 g add -A && g commit -qm rc1 && g tag v1.0.0-rc.1

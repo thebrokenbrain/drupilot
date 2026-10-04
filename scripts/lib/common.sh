@@ -532,10 +532,26 @@ _config_alias() {
 
 # _config_alias_prewarn -> warn now, in the main shell, about every row
 # already in use, so later $(config_get ...) subshells stay quiet about it.
+# Cheap: the environment tier needs no fork; the .drupilot.json tier costs one
+# lookup of the file and one jq listing its keys, and `when` is evaluated only
+# for the rows that hit. Skipped in a hook, which discards its STDERR (and is
+# latency-bound): a lookup there still resolves the alias, silently.
 _config_alias_prewarn() {
-  local i=0
+  local i=0 pf keys
+  [[ "$_DRUPILOT_ALIAS_N" -gt 0 ]] || return 0
+  case "${0:-}" in */hooks/scripts/*) return 0;; esac
   while [[ "$i" -lt "$_DRUPILOT_ALIAS_N" ]]; do
-    if _config_alias_applies "$i" env || _config_alias_applies "$i" prefs; then _config_alias_warn "$i"; fi
+    if _config_alias_applies "$i" env; then _config_alias_warn "$i"; fi
+    i=$((i + 1))
+  done
+  pf="$(drupilot_prefs_file 2>/dev/null || true)"
+  [[ -n "$pf" && -r "$pf" ]] && have_cmd jq || return 0
+  keys="|$(jq -r 'if type == "object" then keys[] else empty end' "$pf" 2>/dev/null | tr '\n' '|')"
+  i=0
+  while [[ "$i" -lt "$_DRUPILOT_ALIAS_N" ]]; do
+    case "$keys" in
+      *"|${_DA_OLD[i]}|"*) if _config_alias_applies "$i" prefs; then _config_alias_warn "$i"; fi;;
+    esac
     i=$((i + 1))
   done
   return 0

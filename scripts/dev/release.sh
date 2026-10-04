@@ -144,8 +144,11 @@ if [[ -n "$OTHER" ]]; then
   printf '%s\n' "$OTHER" | sed 's/^/    /' >&2; restore
   die "claude plugin validate reports a warning other than the known CLAUDE.md-at-root one; nothing was committed" 1
 fi
-# HEAD may still carry the tag of the pre-release being promoted.
-if ! RELEASE_FROM="$PREV" "$SH" "$REPO/scripts/dev/check.sh" --ci >&2; then
+# Every gate but `version` as usual; `version` alone with RELEASE_FROM, since
+# HEAD may still carry the tag of the pre-release being promoted (so nothing
+# else, the unit tests included, inherits it).
+if ! "$SH" "$REPO/scripts/dev/check.sh" --ci --skip version >&2 \
+   || ! RELEASE_FROM="$PREV" "$SH" "$REPO/scripts/dev/check.sh" --ci --only version >&2; then
   restore; die "check.sh --ci failed; nothing was committed" 1
 fi
 
