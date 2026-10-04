@@ -166,32 +166,45 @@ gen_names() {
      testbed_project_checkout: ($w2 | sub("^repo"; "<project>"))}'
 }
 
-# The closed value sets: name, values, and the files (relative to the plugin
-# root) where each value must still appear as a whole word.
-ENUMS='preservation|verified verified-partial regression not-verified-blocked not-verified-no-tests pre-existing-failures not-verified-unbaselined|scripts/tests/run-phpunit.sh
-strategy_inputs|auto d11-only keep-d10|scripts/env/preflight.sh scripts/lib/common.sh
-strategy_resolved_only|keep-current|scripts/lib/common.sh
-stages|setup assessed ported refactored tested contributed|scripts/lib/common.sh
-d10_support|declared-not-verified verified-static verified-static-above-floor failed n/a|scripts/lib/common.sh scripts/analysis/verify-core-matrix.sh scripts/analysis/port-summary.sh
-deps_status|ready not-ready not-on-drupalorg unknown|scripts/analysis/deps-status.sh
-port_summary_status|not-started setup assessed ported refactored tested contributed blocked|scripts/analysis/port-summary.sh'
+# The closed value sets, each read from the code that EMITS it (comment lines
+# skipped), sorted: renaming, adding or dropping an emitted value changes the
+# snapshot. (A whole-word grep of the file would still find a renamed value in
+# a comment or a log line.)
+# code <file> -> the file without its comment lines.
+code() { grep -vE '^[[:space:]]*#' "$PR/$1" 2>/dev/null || true; }
+# fn_body <file> <function> -> the code of one shell function.
+fn_body() { code "$1" | awk -v f="$2" '$0 ~ "^" f "\\(\\) *\\{" { on = 1 } on { print } on && /^}/ { exit }'; }
+sorted() { tr ' ' '\n' | grep -v '^$' | LC_ALL=C sort -u | jq -R . | jq -s -c .; }
 
 gen_enums() {
-  local line name vals srcs v f found out="{}"
-  while IFS= read -r line; do
-    name="${line%%|*}"; vals="${line#*|}"; srcs="${vals#*|}"; vals="${vals%%|*}"
-    found=""
-    for v in $vals; do
-      for f in $srcs; do
-        if grep -qE "(^|[^A-Za-z0-9_/-])$v([^A-Za-z0-9_/-]|$)" "$PR/$f" 2>/dev/null; then
-          found="$found $v"; break
-        fi
-      done
-    done
-    out="$(printf '%s' "$out" | jq -c --arg n "$name" --arg v "$found" '.[$n] = ($v | split(" ") | map(select(. != "")))')"
-  done <<< "$ENUMS"
-  out="$(printf '%s' "$out" | jq -c --argjson rs "$(jq -c '.choices.REFACTOR_SCOPE.options' "$PR/config/choices.json")" '.refactor_scope = $rs')"
-  printf '%s' "$out" | jq .
+  local preservation stages inputs resolved d10 deps pstatus
+  # run-phpunit.sh: every PRESERVATION="..." assignment.
+  preservation="$(code scripts/tests/run-phpunit.sh | grep -oE 'PRESERVATION="[a-z-]+"' | sed 's/.*="//; s/"$//' | sorted)"
+  # common.sh stage_rank: its case labels.
+  stages="$(fn_body scripts/lib/common.sh stage_rank | grep -oE '[a-z]+\) printf [1-9]' | sed 's/).*//' | sorted)"
+  # preflight.sh: the values config_enum accepts for the strategy.
+  inputs="$(code scripts/env/preflight.sh | awk '$1 == "config_enum" && $2 == "DRUPILOT_CORE_TARGET_STRATEGY" { for (i = 4; i <= NF && $i !~ /^[>|]/; i++) printf "%s ", $i }' | sorted)"
+  # common.sh: resolved="..." strategies that are not inputs.
+  resolved="$(code scripts/lib/common.sh | grep -oE 'resolved="[a-z0-9-]+"' | sed 's/.*="//; s/"$//' | sorted \
+    | jq -c --argjson in "$inputs" '. - $in')"
+  # d10_support: D10_SUPPORT/d10_support assignments, the literals of the jq
+  # program that computes D10_SUPPORT, and verify-core-matrix's jq default.
+  d10="$( { code scripts/analysis/verify-core-matrix.sh | grep -oE 'D10_SUPPORT="[a-z/-]+"'
+            code scripts/analysis/verify-core-matrix.sh | awk '/^D10_SUPPORT="\$\(/ { on = 1 } on { print } on && /'"'"'\)"$/ { exit }' \
+              | grep -oE '(then|else) "[a-z/-]+"'
+            code scripts/analysis/verify-core-matrix.sh | grep -oE 'd10_support: \(if .* end\)' | grep -oE '"[a-z/-]+"'
+            code scripts/lib/common.sh | grep -oE 'd10_support="[a-z/-]+"'; } \
+          | grep -oE '"[a-z/-]+"' | tr -d '"' | sorted)"
+  # deps-status.sh d11_status: what it prints.
+  deps="$(fn_body scripts/analysis/deps-status.sh d11_status | grep -oE "printf '[a-z-]+'" | sed "s/printf '//; s/'$//" | sorted)"
+  # port-summary.sh: the literals of its status expression, plus the stages it passes through.
+  pstatus="$(code scripts/analysis/port-summary.sh | grep -E '^[[:space:]]*status: \(if' | grep -oE '"[a-z-]+"' | tr -d '"' | sorted \
+    | jq -c --argjson st "$stages" '. + $st | unique')"
+  jq -n --argjson preservation "$preservation" --argjson stages "$stages" --argjson inputs "$inputs" \
+    --argjson resolved "$resolved" --argjson d10 "$d10" --argjson deps "$deps" --argjson ps "$pstatus" \
+    --argjson rs "$(jq -c '.choices.REFACTOR_SCOPE.options' "$PR/config/choices.json")" \
+    '{preservation: $preservation, stages: $stages, strategy_inputs: $inputs, strategy_resolved_only: $resolved,
+      d10_support: $d10, deps_status: $deps, port_summary_status: $ps, refactor_scope: $rs}' | jq -S .
 }
 
 # --- Exit codes (CC-05) --------------------------------------------------------
@@ -299,9 +312,12 @@ result() {
   esac
   return 0
 }
+# allowed_for <snapshot> <sha256> -> the reason of the allowed-changes.json
+# entry that pins this exact new snapshot (any entry of the snapshot may: a
+# snapshot changed twice has two entries), or nothing.
 allowed_for() {
-  [[ -f "$ALLOWED" ]] || return 0
-  jq -r --arg f "$1.json" '.changes[]? | select(.snapshot == $f) | "\(.sha256)\t\(.reason)"' "$ALLOWED" 2>/dev/null | head -n 1
+  [[ -f "$ALLOWED" && -n "$2" ]] || return 0
+  jq -r --arg f "$1.json" --arg h "$2" '[.changes[]? | select(.snapshot == $f and .sha256 == $h) | .reason][0] // empty' "$ALLOWED" 2>/dev/null || true
   return 0
 }
 
@@ -335,8 +351,8 @@ for name in $ALL; do
     continue
   fi
   h=""; [[ -n "$HASHER" ]] && h="$($HASHER < "$new" | cut -d' ' -f1)"
-  a="$(allowed_for "$name")"
-  if [[ -n "$a" && -n "$h" && "${a%%$'\t'*}" == "$h" ]]; then result "$name" allowed "${a#*$'\t'}"; continue; fi
+  a="$(allowed_for "$name" "$h")"
+  if [[ -n "$a" ]]; then result "$name" allowed "$a"; continue; fi
   diff -u "$frozen" "$new" 2>/dev/null | head -n 40 | sed 's/^/    /' >&2 || true
   result "$name" differs "differs from tests/contract/$name.json; to allow, add {\"snapshot\": \"$name.json\", \"sha256\": \"$h\", \"reason\": \"...\"} to allowed-changes.json"
 done

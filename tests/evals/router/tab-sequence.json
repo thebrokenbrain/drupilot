@@ -1,5 +1,5 @@
 {
-  "_comment": "The ordered tab sequence of a guided `full` run, as drupilot 0.9.0 declares it (captured from the v0.9.0 tag): each command's `choice.sh --key KEY` calls in document order, plus the tabs declared only by an AskUserQuestion header (a key of config/choices.json with no choice.sh call, such as PUSH, which is never pre-answered) or, in a command, by a `\"<header>\" tab` it shows (drupilot-refactor.md reuses the port's Drupal 10 check tab, so D10_CHECK appears in both stages). Conditional tabs appear only when their condition fires. New tabs may only be inserted (CC-02); `auto` shows none.",
+  "_comment": "The ordered tab sequence of a guided `full` run, as drupilot 0.9.0 declares it (captured from the v0.9.0 tag): each command's `choice.sh --key KEY` calls in document order, plus the tabs declared only by an AskUserQuestion header (a key of config/choices.json with no choice.sh call, such as PUSH, which is never pre-answered) or, in a command, by a `\"<header>\" tab` it shows (drupilot-refactor.md reuses the port's Drupal 10 check tab, so D10_CHECK appears in both stages). Conditional tabs appear only when their condition fires. New tabs may only be inserted (CC-02); `auto` shows none: the --live layer asks for an explicit NO_TABS reply, and auto_rules are the prompt rules that keep an auto run tab-free and push-free, checked statically.",
   "flow": [
     "commands/drupilot.md",
     "commands/drupilot-setup.md",
@@ -30,5 +30,23 @@
     "CONTRIB_MODE",
     "PUSH"
   ],
-  "auto": []
+  "auto": [],
+  "auto_rules": [
+    {
+      "file": "agents/drupal-port-orchestrator.md",
+      "cue": "a null `value` means ask, or take the autonomous default"
+    },
+    {
+      "file": "agents/drupal-port-orchestrator.md",
+      "cue": "In autonomous mode do **not** present the interactive end-of-stage fork"
+    },
+    {
+      "file": "agents/drupal-port-orchestrator.md",
+      "cue": "**Never perform any outward-facing action.**"
+    },
+    {
+      "file": "commands/drupilot.md",
+      "cue": "**never** performs any outward-facing action"
+    }
+  ]
 }

@@ -105,8 +105,8 @@ tabs_of() {
 
 # --- Static layer -----------------------------------------------------------------
 static_layer() {
-  local f got want words hint block cue mode bullet
-  got="$(for f in $(jq -r '.flow[]' "$EVD/tab-sequence.json"); do [[ -f "$PR/$f" ]] && tabs_of "$PR/$f"; done | jq -R . | jq -s -c .)"
+  local f got want words hint block cue mode
+  got="$(for f in $(jq -r '.flow[]' "$EVD/tab-sequence.json"); do if [[ -f "$PR/$f" ]]; then tabs_of "$PR/$f"; fi; done | jq -R . | jq -s -c .)"
   want="$(jq -c '.full' "$EVD/tab-sequence.json")"
   if [[ "$got" == "$want" ]]; then
     result "tab-sequence" pass "the full run declares the 0.9 tab sequence ($(printf '%s' "$want" | jq 'length') tabs)"
@@ -126,17 +126,37 @@ static_layer() {
   # top-level bullet, split into its sub-bullets.
   block="$(awk '/\*\*Mode inference/ { f = 1; next } f && /^- / { exit } f' "$PR/commands/drupilot.md")"
   [[ -n "$block" ]] || { result "mode-inference" fail "no 'Mode inference' rules in commands/drupilot.md"; return 0; }
+  # A cue's mode is the first bold **`mode`** after it in its rule (the
+  # clause's result), else the last one before it (a qualifier listed after
+  # its mode, e.g. the unattended cues after **`auto`**).
   while IFS="$(printf '\t')" read -r cue mode; do
-    bullet="$(printf '%s\n' "$block" | awk -v c="$cue" '
-      /^  - / { if (b != "" && index(b, c)) { print b; found = 1; exit } b = $0; next }
+    got="$(printf '%s\n' "$block" | awk -v c="$cue" '
+      function bind(b,    p, rest, before, last) {
+        gsub(/[[:space:]]+/, " ", b); p = index(b, c); if (!p) return ""
+        rest = substr(b, p + length(c))
+        if (match(rest, /[*][*]`[a-z]+`[*][*]/)) return substr(rest, RSTART + 3, RLENGTH - 6)
+        before = substr(b, 1, p - 1); last = ""
+        while (match(before, /[*][*]`[a-z]+`[*][*]/)) { last = substr(before, RSTART + 3, RLENGTH - 6); before = substr(before, RSTART + RLENGTH) }
+        return last
+      }
+      /^  - / { if (b != "") { m = bind(b); if (m != "") { print m; done = 1; exit } } b = $0; next }
       { b = b " " $0 }
-      END { if (!found && b != "" && index(b, c)) print b }')"
-    if [[ -n "$bullet" ]] && printf '%s' "$bullet" | grep -qF -- "**\`$mode\`**"; then
+      END { if (!done && b != "") { m = bind(b); if (m != "") print m } }')"
+    if [[ "$got" == "$mode" ]]; then
       result "mode-inference: $cue" pass "-> $mode"
     else
-      result "mode-inference: $cue" fail "the rule holding \"$cue\" does not name **\`$mode\`**"
+      result "mode-inference: $cue" fail "the rule holding \"$cue\" maps it to **\`${got:-nothing}\`**, want **\`$mode\`**"
     fi
   done < <(jq -r '.static_cues[] | "\(.cue)\t\(.mode)"' "$EVD/mode-inference.json")
+  # The rules that keep an auto run tab-free and push-free (the live layer
+  # checks the behaviour itself): each must still be stated where listed.
+  while IFS="$(printf '\t')" read -r f cue; do
+    if tr '\n' ' ' < "$PR/$f" 2>/dev/null | tr -s '[:space:]' ' ' | grep -qF -- "$cue"; then
+      result "auto rule: $cue" pass "stated in $f"
+    else
+      result "auto rule: $cue" fail "$f no longer states it"
+    fi
+  done < <(jq -r '.auto_rules[]? | "\(.file)\t\(.cue)"' "$EVD/tab-sequence.json")
   return 0
 }
 
@@ -152,7 +172,8 @@ live_run() {
   ( cd "$TMP/work" && DRUPILOT_HOME="$TMP/data" XDG_DATA_HOME="$TMP/xdg" \
       run_with_timeout 600 claude --plugin-dir "$PR" --settings "$TMP/settings.json" -p "$3" \
       --append-system-prompt "$2" \
-      --disallowedTools "Edit Write NotebookEdit Task Skill AskUserQuestion WebFetch WebSearch" < /dev/null > "$1" 2>/dev/null ) || true
+      --disallowedTools "Edit Write NotebookEdit Task Skill AskUserQuestion WebFetch WebSearch" < /dev/null > "$1" 2>/dev/null \
+    && echo 0 > "$1.rc" || echo 1 > "$1.rc" )
   return 0
 }
 
@@ -183,7 +204,10 @@ live_layer() {
     for f in commands/drupilot-setup.md commands/drupilot-assess.md commands/drupilot-port.md commands/drupilot-refactor.md commands/drupilot-contribute.md; do
       printf 'tabs\t%s\t/%s:%s %s\t%s\n' "$(basename "$f" .md)" "$ns" "$(basename "$f" .md)" "$subj" "$(tabs_of "$PR/$f" | paste -sd, -)"
     done
-    printf 'tabs\tdrupilot auto\t/%s:drupilot %s auto\t\n' "$ns" "$subj"
+    # The auto run: the tabs tests/evals/router/tab-sequence.json .auto lists,
+    # or, for none, an explicit NO_TABS reply.
+    printf 'tabs\tdrupilot auto\t/%s:drupilot %s auto\t%s\n' "$ns" "$subj" \
+      "$(jq -r '.auto | if length == 0 then "NO_TABS" else join(",") end' "$EVD/tab-sequence.json")"
   } > "$TMP/cases.tsv"
   # Run every case --runs times, --jobs at a time.
   n=0
@@ -202,8 +226,12 @@ live_layer() {
   while IFS="$(printf '\t')" read -r kind name prompt want; do
     local ok=0 got obs=""
     for ((i = 1; i <= RUNS; i++)); do
-      if [[ "$kind" == "mode" ]]; then
+      if [[ "$(cat "$TMP/runs/$n.$i.rc" 2>/dev/null)" != "0" || ! -s "$TMP/runs/$n.$i" ]]; then
+        got=""   # no answer (claude failed, timed out or printed nothing): never a pass
+      elif [[ "$kind" == "mode" ]]; then
         got="$(sed -n 's/.*DRUPILOT_MODE=\([a-z]*\).*/\1/p' "$TMP/runs/$n.$i" 2>/dev/null | head -n 1)"
+      elif ! grep -q 'TAB=' "$TMP/runs/$n.$i" && grep -qx '[[:space:]]*NO_TABS[[:space:]]*' "$TMP/runs/$n.$i"; then
+        got="NO_TABS"
       else
         got="$(sed -n 's/^.*TAB=[[:space:]]*//p' "$TMP/runs/$n.$i" 2>/dev/null | while IFS= read -r h; do
                  h="$(printf '%s' "$h" | sed -E 's/[*`"]//g; s/[[:space:]]+$//')"

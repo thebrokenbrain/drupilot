@@ -40,17 +40,20 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `argument-hint` token may only be added, in order), skills and agents,
   `config/choices.json`, the key sets of `preflight --json`, the port-summary v1
   and `core-strategy --json`, the generated branch/patch/test-bed names, the
-  enums (preservation, stages, `d10_support`, ...) and every script's documented
-  exit codes. An intended change is an entry in
-  `tests/contract/allowed-changes.json`, pinned by its `sha256`.
+  enums (preservation, stages, `d10_support`, ...), each read from the code
+  that emits it, and every script's documented exit codes. An intended change
+  is an entry in `tests/contract/allowed-changes.json`, pinned by the sha256 of
+  the new snapshot (a snapshot changed twice has two entries).
 - **Router evals and the `evals` gate.** `scripts/dev/evals.sh` checks the
-  router statically: the ordered tab sequence of a guided `full` run (an
-  `auto` run shows none), the mode words and the mode-inference rules
-  (`tests/evals/router/`). A command's tabs include the ones it shows by
+  router statically: the ordered tab sequence of a guided `full` run, the
+  mode words, the mode-inference rules (each cue bound to the mode its rule
+  gives it, a bare `/drupilot` included) and the prompt rules that keep an
+  `auto` run tab-free and push-free (`tests/evals/router/`). A command's tabs include the ones it shows by
   header, so the refactor stage's reuse of the port's "Drupal 10 check" tab is
   part of the frozen sequence. `--live` replays the inference cases and each
   command's tab order through `claude -p` with every tool call denied by a
-  hook (pass at 90% or more; opt-in, never in CI).
+  hook (pass at 90% or more; opt-in, never in CI); an `auto` run must answer
+  NO_TABS, and a failed or empty run never counts as a pass.
 - **Golden outputs and the optional `golden` gate.** `scripts/dev/golden.sh`
   absorbs `baseline-0.9.sh --check` (the smoke test `baseline` is gone; the
   gate runs with `--smoke`/`--ci`, so on every CI leg) and checks

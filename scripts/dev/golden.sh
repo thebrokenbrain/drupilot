@@ -65,6 +65,15 @@ result() {
 sha() { $HASHER < "$1" | cut -d' ' -f1; }
 IN_GIT=0
 git -C "$REPO" rev-parse --git-dir > /dev/null 2>&1 && IN_GIT=1
+# golden_files <dir> -> the files of a golden directory, but golden.json and
+# what git ignores (.DS_Store, editor swap files), sorted.
+golden_files() {
+  ( cd "$1" && find . -type f ! -name golden.json | sed 's#^\./##' | LC_ALL=C sort ) | while IFS= read -r f; do
+    if [[ "$IN_GIT" == "1" ]] && git -C "$1" check-ignore -q -- "$f" 2>/dev/null; then continue; fi
+    printf '%s\n' "$f"
+  done
+  return 0
+}
 
 # The golden directories: "name<TAB>dir".
 GOLDENS="$(printf 'baseline-0.9\t%s\n' "$REPO/tests/baseline/v0.9.0"
@@ -95,7 +104,7 @@ check_manifest() {
   while IFS= read -r f; do
     [[ -n "$f" ]] || continue
     printf '%s\n' "$listed" | grep -qxF -- "$f" || { result "$name" fail "$f is not pinned in golden.json"; return 0; }
-  done < <(cd "$dir" && find . -type f ! -name golden.json | sed 's#^\./##' | LC_ALL=C sort)
+  done < <(golden_files "$dir")
   result "$name" pass "$(printf '%s\n' "$listed" | grep -c .) pinned file(s) match"
   return 0
 }
@@ -110,7 +119,7 @@ while IFS="$(printf '\t')" read -r name dir; do
       result "$name" updated "its captures are refreshed by scripts/dev/baseline-0.9.sh --capture, not here"
       continue
     fi
-    files="$(cd "$dir" && find . -type f ! -name golden.json | sed 's#^\./##' | LC_ALL=C sort \
+    files="$(golden_files "$dir" \
              | while IFS= read -r f; do jq -n -c --arg f "$f" --arg h "$(sha "$dir/$f")" '{($f): $h}'; done | jq -s -c 'add // {}')"
     if [[ -f "$dir/golden.json" ]]; then
       jq --argjson f "$files" '.files = $f' "$dir/golden.json" > "$TMP/g.json" && mv "$TMP/g.json" "$dir/golden.json"

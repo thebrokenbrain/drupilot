@@ -1,35 +1,35 @@
 {
   "d10_support": [
     "declared-not-verified",
-    "verified-static",
-    "verified-static-above-floor",
     "failed",
-    "n/a"
+    "n/a",
+    "verified-static",
+    "verified-static-above-floor"
   ],
   "deps_status": [
-    "ready",
-    "not-ready",
     "not-on-drupalorg",
+    "not-ready",
+    "ready",
     "unknown"
   ],
   "port_summary_status": [
-    "not-started",
-    "setup",
     "assessed",
+    "blocked",
+    "contributed",
+    "not-started",
     "ported",
     "refactored",
-    "tested",
-    "contributed",
-    "blocked"
+    "setup",
+    "tested"
   ],
   "preservation": [
-    "verified",
-    "verified-partial",
-    "regression",
     "not-verified-blocked",
     "not-verified-no-tests",
+    "not-verified-unbaselined",
     "pre-existing-failures",
-    "not-verified-unbaselined"
+    "regression",
+    "verified",
+    "verified-partial"
   ],
   "refactor_scope": [
     "attributes",
@@ -39,12 +39,12 @@
     "deprecations"
   ],
   "stages": [
-    "setup",
     "assessed",
+    "contributed",
     "ported",
     "refactored",
-    "tested",
-    "contributed"
+    "setup",
+    "tested"
   ],
   "strategy_inputs": [
     "auto",
