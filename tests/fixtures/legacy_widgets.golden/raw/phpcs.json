@@ -1,0 +1,125 @@
+{
+  "drupilot": {
+    "fallback_reason": "PHPCS cannot load it (exit 3): ERROR: Referenced sniff \"PHPCompatibility\" does not exist",
+    "location": "subject",
+    "mode": "auto",
+    "pass_extensions": true,
+    "ruleset": "web/modules/custom/legacy_widgets/phpcs.xml.dist",
+    "source": "fallback",
+    "standard": "Drupal,DrupalPractice",
+    "test_version": "8.1-",
+    "test_version_source": "ruleset-property"
+  },
+  "files": {
+    "web/modules/custom/legacy_widgets/config/install/legacy_widgets.settings.yml": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/legacy_widgets/legacy_widgets.info.yml": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/legacy_widgets/legacy_widgets.module": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/legacy_widgets/legacy_widgets.permissions.yml": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/legacy_widgets/legacy_widgets.routing.yml": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/legacy_widgets/legacy_widgets.services.yml": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/legacy_widgets/modules/legacy_widgets_extra/legacy_widgets_extra.info.yml": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/legacy_widgets/modules/legacy_widgets_extra/legacy_widgets_extra.module": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/legacy_widgets/src/Controller/WidgetStatusController.php": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/legacy_widgets/src/Entity/LegacyWidget.php": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/legacy_widgets/src/Form/SettingsForm.php": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/legacy_widgets/src/Form/WidgetImportForm.php": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/legacy_widgets/src/LegacyWidgetStorage.php": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/legacy_widgets/src/Plugin/Block/WidgetSummaryBlock.php": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/legacy_widgets/src/Plugin/Condition/WidgetsEnabledCondition.php": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/legacy_widgets/src/Plugin/Filter/WidgetSummaryFilter.php": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/legacy_widgets/src/Plugin/QueueWorker/WidgetReindexWorker.php": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/legacy_widgets/src/WidgetCounter.php": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/legacy_widgets/src/WidgetLookup.php": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/legacy_widgets/tests/src/Kernel/LegacyWidgetsKernelTest.php": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/legacy_widgets/tests/src/Unit/WidgetCounterTest.php": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    }
+  },
+  "totals": {
+    "errors": 0,
+    "fixable": 0,
+    "warnings": 0
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "applied": false,
+  "changed_files": 1,
+  "digests_pass": false,
+  "digests_sha": null,
+  "digests_status": "off",
+  "errors": [],
+  "files": [
+    "web/modules/custom/legacy_widgets/src/Form/WidgetImportForm.php"
+  ],
+  "ok": true,
+  "pass1_files": [
+    "web/modules/custom/legacy_widgets/src/Form/WidgetImportForm.php"
+  ],
+  "pass2_files": [],
+  "rule_hits": {
+    "official": {
+      "FunctionFirstClassCallableRector": 1
+    }
+  },
+  "rules": [
+    "FunctionFirstClassCallableRector"
+  ],
+  "status": "ok",
+  "tool": "rector"
+}

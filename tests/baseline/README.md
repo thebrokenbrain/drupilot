@@ -8,9 +8,9 @@ later change is measured against. `scripts/dev/baseline-0.9.sh` owns it (its
   on copies of `tests/fixtures/legacy_widgets` and `tests/fixtures/monorepo`,
   normalizes the output and writes it to `v0.9.0/`. It ran once; its output is
   committed.
-- `--check` (the smoke test `baseline`, so every CI leg) runs the same captures
-  with the checkout's scripts and compares them byte for byte. It never needs
-  the tag.
+- `--check` (the `baseline-0.9` golden of `scripts/dev/golden.sh`, so the
+  `golden` gate on every CI leg) runs the same captures with the checkout's
+  scripts and compares them byte for byte. It never needs the tag.
 
 `inputs/` holds the committed inputs: a hand-made PHPStan sample in the 0.9 text
 table and native JSON formats (read by `classify-deprecations.sh` and
@@ -32,3 +32,8 @@ allowed output is pinned by its hash, so a later unintended change to the same
 file still fails. `v0.9.0/SHA256SUMS`, written by `--capture`, pins the committed
 baseline files themselves, so editing one fails `--check` too. Never re-capture
 to make a difference go away.
+
+The other files of `v0.9.0/` are recorded by hand, not captured (`--capture`
+keeps them, `--check` ignores them): `hook-latency.json`
+(`scripts/dev/hook-latency.sh`), `samples/` (state files from the lab) and
+`golden.json` (the `scripts/dev/golden.sh` manifest).

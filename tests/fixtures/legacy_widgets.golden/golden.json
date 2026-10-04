@@ -1,0 +1,10 @@
+{
+  "data_hash": "",
+  "files": {
+    "README.md": "633c1fd472ef18413a0f00a784f4ca6d7d2c65506854b42ff7809f1fe436efa1",
+    "golden/port-to-drupal-11.patch": "27fd76cbf1c5e4838ee9e3e209f1e14fb0857dbb5e121ba00f9712962e2b72a0",
+    "raw/phpcs.json": "60a72e0365ef067fc61d22596a623aa808186fce593718d458fcd836d71cee7d",
+    "raw/phpstan.json": "9bb920da1d3e0af5551266c0c59e60667daa1d33c378d55ee83fc1e708ad1a23",
+    "raw/rector-dryrun.json": "fa83eebead6ced5ded08592b82018239ddf819989124e55c2bdf2caad2cdef38"
+  }
+}

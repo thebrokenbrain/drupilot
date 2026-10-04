@@ -57,6 +57,10 @@
 #   - evals       the static router evals (scripts/dev/evals.sh: the ordered tab
 #                 sequence of a `full` run, the mode words and the mode-inference
 #                 rules, against tests/evals/router/*.json; no model)
+#   - golden      OPTIONAL (only with --smoke, --ci or --only golden): the
+#                 golden outputs (scripts/dev/golden.sh --check: the v0.9.0
+#                 baseline of tests/baseline/v0.9.0/ rerun Docker-free, and
+#                 the sha256-pinned lab recordings in tests/fixtures/*.golden/)
 #   - smoke       OPTIONAL (only with --smoke, --ci or --only smoke): the
 #                 Docker-free smoke tests of scripts/dev/smoke.sh (expected
 #                 results on tests/fixtures/), run with this same bash
@@ -69,7 +73,7 @@
 #     --allow-fail   report these gates' failures as "allowed-fail" (exit 0)
 #     --allow-known  shorthand for --allow-fail with the gates listed in
 #                    KNOWN_FAILING below (failures already tracked for a fix)
-#     --smoke        also run the optional smoke gate (~15 s)
+#     --smoke        also run the optional golden and smoke gates (~30 s)
 #     --ci           a missing optional tool (claude/shellcheck/xmllint) is a
 #                    failure instead of a skip; implies --smoke
 #
@@ -87,9 +91,9 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export CLAUDE_PLUGIN_ROOT="$REPO"
 
-ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json unit contract evals smoke"
+ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json unit contract evals golden smoke"
 # Gates that run only when asked for (--smoke, --ci, or named in --only).
-OPTIONAL_GATES="smoke"
+OPTIONAL_GATES="golden smoke"
 # Gates known to fail on the current tree, with a fix tracked for 0.9.0. Empty
 # this list as the fixes land so --allow-known stops hiding them.
 KNOWN_FAILING=""
@@ -420,6 +424,17 @@ gate_evals() {
     jq -r '.checks[] | select(.status != "pass") | "\(.name): \(.detail)"' "$js" > "$out" 2>/dev/null || true
     [[ -s "$out" ]] || tail -n 20 "$err" > "$out"
     record evals fail "scripts/dev/evals.sh: the router evals failed" "$out"
+  fi
+}
+
+gate_golden() {
+  local js="$TMP/golden.json" err="$TMP/golden.err" out="$TMP/golden.out"
+  if "$BASH" "$REPO/scripts/dev/golden.sh" --check --json > "$js" 2> "$err"; then
+    record golden pass "$(jq -r '[.goldens[] | .name] | join(", ")' "$js" 2>/dev/null || echo '?'): every golden output matches"
+  else
+    jq -r '.goldens[] | select(.status != "pass") | "\(.name): \(.detail)"' "$js" > "$out" 2>/dev/null || true
+    [[ -s "$out" ]] || tail -n 20 "$err" > "$out"
+    record golden fail "scripts/dev/golden.sh: a golden output differs" "$out"
   fi
 }
 
