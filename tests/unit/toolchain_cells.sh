@@ -70,6 +70,23 @@ assert_eq "a lock 1.0 creates carries schema 1" "$(jq -c .schema "$LOCK")" "1"
 out="$(dry "$F" --no-core-dev)"
 assert_eq "... and is not read as legacy_v1" "$(printf '%s' "$out" | jq -r .cell)" "11"
 
+# A recorded cell that no longer fits the core (the root was rebuilt on
+# Drupal 12) gives way to the core's cell; so does a 0.9 lock.
+D2="$T_TMP/d12again"; mkroot "$D2" 12.0.0-beta1
+LOCK="$(DRUPILOT_PROJECT_DIR="$D2" CLAUDE_PLUGIN_ROOT="$T_REPO" "$T_SH" -c '. "$1"; drupilot_lock_file' _ "$T_LIB")"
+mkdir -p "$(dirname "$LOCK")"; jq '. + {schema: 1, toolchain_cell: "11"}' "$FX/root-state/drupilot-lock.json" > "$LOCK"
+out="$(dry "$D2" --no-core-dev)"
+assert_eq "a cell-11 lock on a Drupal 12 root: cell 12" "$(printf '%s' "$out" | jq -r .cell)" "12"
+assert_match "... with the unverified-cell warning" "$(cat "$T_TMP/err")" 'Toolchain cell 12 has no verified set yet'
+cp "$FX/root-state/drupilot-lock.json" "$LOCK"
+assert_eq "a 0.9 lock on a Drupal 12 root: cell 12, not legacy_v1" "$(dry "$D2" --no-core-dev | jq -r .cell)" "12"
+
+# The smoke-test diagnosis compares with the cell just installed, not the
+# lock's (a --source reference refresh of a 0.9 lock).
+diag="$(CLAUDE_PLUGIN_ROOT="$T_REPO" "$T_SH" -c '. "$1"; toolchain_diagnostics "$2" 11' _ "$T_LIB" "$R" 2>&1)"
+assert_match "toolchain_diagnostics ROOT 11 uses cell 11" "$diag" 'cell 11\)'
+assert_eq "... not 0.9's versions" "$(printf '%s\n' "$diag" | grep -cF 'known-good: 2.5.2' || true)" "0"
+
 # Reading the cell never creates drupilot's data dir (preflight runs it).
 rm -rf "$DRUPILOT_HOME"
 c="$(CLAUDE_PLUGIN_ROOT="$T_REPO" "$T_SH" -c '. "$1"; toolchain_cell_for "$2"' _ "$T_LIB" "$N")"

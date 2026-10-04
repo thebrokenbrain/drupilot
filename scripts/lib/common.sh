@@ -3165,9 +3165,15 @@ toolchain_reference_file() { printf '%s/config/toolchain-reference.json' "$(plug
 # installs, and records no cell: it keeps 0.9's set until it is refreshed);
 # else, and always with a second argument (a refresh), the cell
 # config/targets/<major>.json names for the installed core's major; else
-# "11". Reads the lock without creating drupilot's data dir.
+# "11". A lock's answer that no longer fits the installed core's cell (the
+# root was rebuilt on another major) gives way to the core's. Reads the lock
+# without creating drupilot's data dir.
 toolchain_cell_for() {
-  local r="${1:-}" c="" major lf
+  local r="${1:-}" c="" major core_cell="" lf
+  if [[ -n "$r" ]]; then
+    major="$(drupal_core_version "$r" | sed -n 's/^v\{0,1\}\([0-9][0-9]*\)\..*/\1/p')"
+    [[ -n "$major" ]] && core_cell="$(target_get "$major" .toolchain_cell)"
+  fi
   if [[ -n "$r" && -z "${2:-}" ]] && have_cmd jq; then
     lf="$(project_state_path "$r")/drupilot-lock.json"
     if [[ -r "$lf" ]]; then
@@ -3175,12 +3181,12 @@ toolchain_cell_for() {
                   elif (.schema // 0) == 0 and ((.toolchain // {})["rector/rector"] // "") != "" then "legacy_v1"
                   else "" end' "$lf" 2> /dev/null || true)"
     fi
+    # legacy_v1 is 0.9's Drupal 11 set.
+    if [[ -n "$c" && -n "$core_cell" ]]; then
+      if [[ "$c" == "legacy_v1" && "$core_cell" != "11" ]] || [[ "$c" != "legacy_v1" && "$c" != "$core_cell" ]]; then c=""; fi
+    fi
   fi
-  if [[ -z "$c" && -n "$r" ]]; then
-    major="$(drupal_core_version "$r" | sed -n 's/^v\{0,1\}\([0-9][0-9]*\)\..*/\1/p')"
-    [[ -n "$major" ]] && c="$(target_get "$major" .toolchain_cell)"
-  fi
-  printf '%s' "${c:-11}"
+  printf '%s' "${c:-${core_cell:-11}}"
   return 0
 }
 
@@ -3295,13 +3301,13 @@ rector_error_excerpt() {
   return 0
 }
 
-# toolchain_diagnostics <root> -> log (STDERR) the installed vs known-good
+# toolchain_diagnostics <root> [cell] -> log (STDERR) the installed vs known-good
 # versions of the Rector/PHPStan packages and the exact remediation command.
 # Used after a failed smoke test and by run-rector.sh after a Rector crash.
 toolchain_diagnostics() {
-  local r="${1:-}" f pkg inst ref cmd differs=0 cell fix_cell
+  local r="${1:-}" f pkg inst ref cmd differs=0 cell="${2:-}" fix_cell
   f="$(toolchain_reference_file)"
-  cell="$(toolchain_cell_for "$r")"
+  [[ -n "$cell" ]] || cell="$(toolchain_cell_for "$r")"
   if ! toolchain_cell_verified "$cell"; then
     log_plain "   Toolchain cell $cell has no verified set yet ($(basename "$f")): there is no known-good"
     log_plain "   version to compare with. Check its known_broken combinations, or the Rector config."

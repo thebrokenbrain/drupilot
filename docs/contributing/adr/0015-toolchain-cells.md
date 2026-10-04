@@ -33,8 +33,11 @@ writes `drush/drush` into `.toolchain` before any toolchain is installed.
 3. **The cell of a test-bed** is, in order: the lock's `toolchain_cell`;
    `legacy_v1` for a 0.9 lock; the `toolchain_cell` that
    `config/targets/<major>.json` names for the installed core's major; `11`.
-   Reading it never creates drupilot's data directory (`preflight.sh` reads
-   it, and its `--extended` checks write nothing).
+   A lock's answer that no longer fits the installed core's cell (the root
+   was rebuilt on another major, or a 0.9 lock sits under a Drupal 12 core)
+   gives way to the core's cell. Reading it never creates drupilot's data
+   directory (`preflight.sh` reads it, and its `--extended` checks write
+   nothing).
 4. **Only a verified cell pins anything.** An unverified cell (12 while
    Drupal 12 is a pre-release) makes `install-toolchain.sh` warn and resolve
    every package from the `.packages` ranges, exit 0. `preflight.sh`

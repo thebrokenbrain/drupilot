@@ -46,7 +46,8 @@
 # does not accept (e.g. `source_module` on @MigrateSource) is skipped and keeps
 # its annotation, as Drupal core does for such plugins, because the attribute
 # would fatal with "Unknown named parameter" when the plugin is discovered.
-# After --apply, every changed file is checked: a duplicate attribute, a
+# After --apply, every changed file is checked: a duplicate attribute, an
+# annotation removed without its attribute, a
 # `php -l` failure or a PHPStan (level 0) finding that names a converted
 # attribute class restores the file from the backup taken just before the run. A class constant the annotation names by a
 # qualified but not fully qualified name (`Drupal\filter\Plugin\FilterInterface::
@@ -229,16 +230,43 @@ fi
 
 # --- Scan the subject: annotation tags and existing attributes per file -----
 # TAG<TAB>file<TAB>Annotation   (a doc-block line ` * @Annotation(`)
-# ATTR<TAB>file<TAB>name        (an attribute as written: `#[\Drupal\...\Block(`)
+# ATTR<TAB>file<TAB>name        (each attribute as written, every name of a
+#                               group `#[A, B(...)]`, one-line or not)
 SCAN="$TMPD/scan.tsv"
 find "$SUBJECT_REL" -type f -name '*.php' ! -path '*/vendor/*' ! -path '*/node_modules/*' -exec awk '
+  FNR == 1 { ingrp = 0; depth = 0; expect = 0; q = "" }
   /^[ \t]*\*[ \t]*@[A-Za-z_][A-Za-z0-9_]*[ \t]*\(/ {
     s = $0; sub(/^[ \t]*\*[ \t]*@/, "", s); sub(/[ \t]*\(.*$/, "", s)
     print "TAG\t" FILENAME "\t" s
   }
-  /^[ \t]*#\[/ {
-    s = $0; sub(/^[ \t]*#\[[ \t]*/, "", s)
-    if (match(s, /^[A-Za-z0-9_\\]+/)) print "ATTR\t" FILENAME "\t" substr(s, RSTART, RLENGTH)
+  # An attribute group opens at a line-leading #[ and ends at its top-level ];
+  # a name follows the #[ and every top-level comma (strings are skipped).
+  ingrp || /^[ \t]*#\[/ {
+    line = $0; n = length(line); i = 1
+    if (!ingrp) { i = index(line, "#[") + 2; ingrp = 1; depth = 0; expect = 1; q = "" }
+    while (i <= n) {
+      ch = substr(line, i, 1)
+      if (q != "") { if (ch == q) q = ""; i++; continue }
+      if (ch == "\047" || ch == "\"") { q = ch; i++; continue }
+      if (expect && ch ~ /[A-Za-z0-9_\\]/) {
+        match(substr(line, i), /^[A-Za-z0-9_\\]+/)
+        print "ATTR\t" FILENAME "\t" substr(line, i, RLENGTH)
+        i += RLENGTH; expect = 0; continue
+      }
+      if (ch == "(" || ch == "[") depth++
+      else if (ch == ")") depth--
+      else if (ch == "]") {
+        if (depth > 0) depth--
+        else {
+          ingrp = 0
+          p = index(substr(line, i + 1), "#[")
+          if (p == 0) break
+          i += p + 2; ingrp = 1; depth = 0; expect = 1; continue
+        }
+      }
+      else if (ch == "," && depth == 0) expect = 1
+      i++
+    }
   }' {} + > "$SCAN" 2>/dev/null || true
 
 # custom_class_file <FQCN> -> a file under the Drupal root declaring it.
@@ -595,6 +623,16 @@ if [[ "$APPLY" == "1" && -n "$CHANGED" ]]; then
       if [[ "${c:-0}" -gt 1 ]]; then dup="$short"; break; fi
     done < "$ACTIVE"
     if [[ -n "$dup" ]]; then restore "$f" "duplicate #[$dup] attribute after the pass"; continue; fi
+    # 2b) No annotation removed without its attribute (the rule takes any
+    #     attribute with the type's short name for the converted one).
+    lost=""
+    while IFS=$'\t' read -r ann attr since action; do
+      grep -qE "^[[:space:]]*\*[[:space:]]*@${ann}[[:space:]]*\(" "$TMPD/backup/$f" 2>/dev/null || continue
+      grep -qE "^[[:space:]]*\*[[:space:]]*@${ann}[[:space:]]*\(" "$f" && continue
+      grep -qF "#[\\${attr}(" "$f" && continue
+      lost="$ann"; break
+    done < "$ACTIVE"
+    if [[ -n "$lost" ]]; then restore "$f" "the @$lost annotation was removed but no attribute was added"; continue; fi
     # 3) It must still parse. (stdin from /dev/null: `ddev exec` would eat the file list.)
     if ! "${RUN[@]+"${RUN[@]}"}" php -l "$f" </dev/null >/dev/null 2>&1; then
       restore "$f" "php -l failed after the pass"; continue

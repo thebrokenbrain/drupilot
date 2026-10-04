@@ -195,7 +195,11 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   1.1.3, `convert-attributes.sh` gives byte-identical results on the
   fixtures, and it now converts a plugin annotation with a keyless value
   (`@FormElement("x")`), which 0.21.2 emitted without its argument and the
-  script restored.
+  script restored. Because 1.1.x matches an existing attribute by its short
+  name, `convert-attributes.sh` now reads every name of an attribute group
+  (`#[Cacheable, Block]`, also over several lines) when it decides which
+  files to skip, and restores a file whose annotation was removed with no
+  attribute added.
 - `php_supported_for` reads `config/targets` and `config/php/versions.json`
   instead of a table in `common.sh`. Its answers are unchanged (a unit test
   pins the whole grid). `DRUPILOT_VERSION_DATA_DIR` (internal) points it at

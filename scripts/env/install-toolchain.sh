@@ -141,7 +141,7 @@ if [[ "$CELL" == "legacy_v1" ]]; then
   log_warn "This project's lock was written by drupilot 0.9: it keeps 0.9's toolchain (legacy_v1) until you refresh it to cell $(toolchain_cell_for "$ROOT" fresh):"
   log_warn "  bash \"$(plugin_root)/scripts/env/install-toolchain.sh\" --dir \"$ROOT\" --source reference"
 elif [[ "$SOURCE" != "range" ]] && ! toolchain_cell_verified "$CELL"; then
-  log_warn "Toolchain cell $CELL has no verified set yet: its packages resolve from the config/defaults.json ranges."
+  log_warn "Toolchain cell $CELL has no verified set yet: its packages come from the project lock when it pins them, else from the config/defaults.json ranges."
 fi
 
 # --- Gate (not for a dry run) -----------------------------------------------
@@ -298,7 +298,7 @@ run_smoke() {
   SMOKE_OK=false; SMOKE_ERR="$out"
   log_err "Toolchain smoke test FAILED — the installed toolchain is broken:"
   printf '%s\n' "$out" | sed 's/^/     /' >&2
-  toolchain_diagnostics "$ROOT"
+  toolchain_diagnostics "$ROOT" "$CELL"
   return 1
 }
 

@@ -205,7 +205,8 @@ above the type's `since` (.drupilot/cores): a file with a key the constructor
 does not accept (e.g. `source_module` on @MigrateSource) is skipped and keeps
 its annotation, as Drupal core does for such plugins, because the attribute
 would fatal with "Unknown named parameter" when the plugin is discovered.
-After --apply, every changed file is checked: a duplicate attribute, a
+After --apply, every changed file is checked: a duplicate attribute, an
+annotation removed without its attribute, a
 `php -l` failure or a PHPStan (level 0) finding that names a converted
 attribute class restores the file from the backup taken just before the run. A class constant the annotation names by a
 qualified but not fully qualified name (`Drupal\filter\Plugin\FilterInterface::
