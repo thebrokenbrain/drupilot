@@ -54,7 +54,8 @@
 #                      verdict) or "partial" (only the digests pass crashed:
 #                      the official result stands, ok stays true); errors is
 #                      [{pass, exit_code, message}] (pass 1 official, 2
-#                      digests, 3 compat); digests_status and compat_status
+#                      digests, 3 compat — not the generated-rules "Pass 3"
+#                      of /drupilot-port); digests_status and compat_status
 #                      are "off", "ok", "error" or "skipped". php_floor and
 #                      php_ceiling are the L and U of the Rector configs. rules
 #                      is the sorted list of Rector rule names Rector reported
@@ -118,7 +119,8 @@
 #
 # Exit codes: 0 ok · 1 usage error · 2 gate (requirements, Drupal root,
 # vendor/bin/rector or a source for rector.php missing) · 3 the official or the
-# compat pass crashed or reported errors (toolchain/config broken; the diagnostic lists the
+# compat pass crashed or reported errors (toolchain/config broken, or a broken
+# rector-compat.php; the diagnostic lists the
 # installed vs known-good versions from config/toolchain-reference.json) ·
 # 4 only the digests pass crashed (the official result stands; fix with
 # --digests-ref <known-good commit> or DRUPILOT_USE_DIGESTS_RULES=false).
@@ -296,6 +298,7 @@ if [[ -f "$RECTOR_PHP" ]]; then
         log_warn "Rector will modernize less than the floor allows. Re-render it (the current copy is backed up):"
       fi
       log_plain "   bash \"$(plugin_root)/scripts/env/render-templates.sh\" --subject \"$SUBJECT_ABS\" --only rector --force"
+      log_plain "   (it re-renders rector-compat.php too)."
     fi
   else
     log_ok "rector.php already present at the Drupal root (left untouched)."
@@ -433,6 +436,9 @@ else
   run_rector_pass 1 1 || PASS1_OK=0
 fi
 PASS1_RAW="$RECTOR_RAW"
+# Whether pass 1 itself finished normally (a later compat crash or consistency
+# check may clear PASS1_OK, but an --apply has written pass 1's changes).
+PASS1_RAN_OK="$PASS1_OK"
 
 # --- Compat pass: rector-compat.php (ADR 0002) ---------------------------------
 PASS3_RAW=""
@@ -703,9 +709,10 @@ fi
 
 # An --apply that changed files records its rule counts in the subject's
 # hidden state dir (rector-rules.json), the fallback for the port manifest's
-# rector_rules in port-report.sh / layer-report.sh. A later apply that changes
-# nothing (a re-run on ported code) keeps the record of the real port.
-if [[ "$APPLY" == "1" && "$FAILED" == "0" && "$COUNT" != "0" ]] && have_cmd jq; then
+# rector_rules in port-report.sh / layer-report.sh — also when the compat pass
+# crashed after the official pass had written its changes. A later apply that
+# changes nothing (a re-run on ported code) keeps the record of the real port.
+if [[ "$APPLY" == "1" && "$PASS1_RAN_OK" == "1" && "$COUNT" != "0" ]] && have_cmd jq; then
   jq -n --arg s "$SUBJECT_ABS" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson h "$RULE_HITS" \
     --arg dsha "$DIGESTS_SHA" --argjson n "$COUNT" \
     '{tool: "run-rector", subject: $s, generated_at: $at, changed_files: $n,

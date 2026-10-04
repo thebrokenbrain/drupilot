@@ -2,9 +2,9 @@
 name: php-target-tuning
 description: >-
   Use this skill whenever a PHP version target matters for the port — i.e.
-  deciding or changing DRUPILOT_PHP_TARGET, and translating it into the Rector
-  PHP sets, the PHPStan level/expectations, the PHPCS sniffs and the DDEV
-  php_version. It is the single source of truth for how one variable
+  deciding or changing DRUPILOT_PHP_TARGET, and translating it into the
+  PHPStan level/expectations, the PHPCS sniffs, the DDEV php_version and the
+  ceiling of Rector's PHP floor. It is the single source of truth for how one variable
   (DRUPILOT_PHP_TARGET, default 8.3) flows through the whole toolchain, and for
   the PHP 8.5 caveat (8.5 needs Drupal 11.3 or later, and no Rector php85 set is
   assumed — check the core minor, never hardcode). Invoke it from /drupilot-setup,
@@ -78,8 +78,14 @@ Rector does not follow the target directly. The ported code must keep running on
 the lowest PHP its declarations admit, so the main pass targets the **PHP floor
 L** (`rector_php_bounds`): the highest of the lowest PHP the core range
 `core-strategy.sh` recommends supports (from `config/targets/<major>.json`) and
-the floor of the effective composer `require.php`, never above the target. For
-`^10 || ^11` that is 8.1 whatever the target; for `^11` it is 8.3. `rector.php`
+the floor of the composer `require.php` it will enforce (only when the subject
+has a `composer.json`), never above the target. For `^10 || ^11` with the
+default `DRUPILOT_REQUIRE_PHP_FLOOR=detect` that is usually 8.1 (8.2 when the
+code already needs 8.2; the target with `=target`); for `^11` it is 8.3. A range
+leg the data does not hold (a Drupal 9 leg kept as-is) leaves the floor to the
+enforced `require.php`, else the lowest PHP in `config/php/versions.json`, with
+a warning. The ceiling U is max(target, the highest PHP of the range's known
+legs). `rector.php`
 renders `->withPhpVersion(PhpVersion::PHP_<L>)` and `->withPhpSets(php<L>: true)`:
 Rector drops every version-bound rule above L, and the level sets (cumulative,
 one per run) stop at L. A floor of 8.5 uses the `php84` sets (no `php85` set is

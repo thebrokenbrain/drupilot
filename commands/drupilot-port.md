@@ -98,8 +98,10 @@ the JSON (`recommended_core_version_requirement`, `require_php`, `version_bump`)
 - **Let drupilot decide** — apply the helper's `strategy` verdict as-is.
 
 Persist the answer so later runs don't re-ask: write the chosen strategy with
-`prefs_set DRUPILOT_CORE_TARGET_STRATEGY <auto|keep-d10|d11-only>` (env still
-wins). Then apply the resolved `recommended_core_version_requirement` in Step 6.
+`prefs_set DRUPILOT_CORE_TARGET_STRATEGY <auto|keep-d10|d11-only>`, run with
+`DRUPILOT_PROJECT_DIR=<drupal_root>` so it lands in the test-bed root's
+`.drupilot.json` (env still wins). `run-rector.sh` reads it there to set Rector's
+PHP floor, so a choice that is not persisted ports to the floor of `auto`. Then apply the resolved `recommended_core_version_requirement` in Step 6.
 When it returns a `require.php` (for `^10 || ^11`, since Drupal 10 allows PHP 8.1
 while the port needs a higher floor), add `"require": { "php": "<require_php>" }`
 to `composer.json` using the **exact** `require_php` value the helper returns
@@ -181,9 +183,13 @@ dir, the report's fallback. Undo or rewrite any applied hunk only with a
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "$1" --apply
 ```
 
-**Exit 3 means the official Rector pass crashed** (`[ERROR] Could not detect twig set.`, a PHP fatal,
-per-file errors): its output is not a "no changes" result and nothing should be
-applied on top of it. Show the diagnostic (installed vs known-good toolchain),
+**Exit 3 means the official Rector pass or the compat pass after it crashed** (`[ERROR] Could not detect twig set.`, a PHP fatal,
+per-file errors; `errors[].pass` is `1` for the official pass, `3` for the compat
+pass): its output is not a "no changes" result and nothing should be
+applied on top of it. A compat-pass crash with a healthy official pass points at
+`rector-compat.php` first: regenerate it with
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/render-templates.sh" --subject <path> --only rector-compat --force`
+before touching the toolchain. Show the diagnostic (installed vs known-good toolchain),
 repair with `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-toolchain.sh" --dir <drupal_root> --source reference`
 (or fix `rector.php` when the toolchain already matches the known-good set), and
 re-run the pass. The digests pass is skipped automatically after such a crash.

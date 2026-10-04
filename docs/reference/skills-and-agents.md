@@ -24,7 +24,7 @@ Use this skill for Phase 1 — minimal Drupal 9/10 → Drupal 11 compatibility �
 
 ### php-target-tuning
 
-Use this skill whenever a PHP version target matters for the port — i.e. deciding or changing DRUPILOT_PHP_TARGET, and translating it into the Rector PHP sets, the PHPStan level/expectations, the PHPCS sniffs and the DDEV php_version. It is the single source of truth for how one variable (DRUPILOT_PHP_TARGET, default 8.3) flows through the whole toolchain, and for the PHP 8.5 caveat (8.5 needs Drupal 11.3 or later, and no Rector php85 set is assumed — check the core minor, never hardcode). Invoke it from /drupilot-setup, /drupilot-assess, /drupilot-port and /drupilot-refactor before configuring any tool, and whenever the user asks to target a specific PHP version.
+Use this skill whenever a PHP version target matters for the port — i.e. deciding or changing DRUPILOT_PHP_TARGET, and translating it into the PHPStan level/expectations, the PHPCS sniffs, the DDEV php_version and the ceiling of Rector's PHP floor. It is the single source of truth for how one variable (DRUPILOT_PHP_TARGET, default 8.3) flows through the whole toolchain, and for the PHP 8.5 caveat (8.5 needs Drupal 11.3 or later, and no Rector php85 set is assumed — check the core minor, never hardcode). Invoke it from /drupilot-setup, /drupilot-assess, /drupilot-port and /drupilot-refactor before configuring any tool, and whenever the user asks to target a specific PHP version.
 
 ### test-adaptation
 

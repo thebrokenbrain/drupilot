@@ -202,7 +202,7 @@ attributable() {
   name="${rel%/}"; name="${name##*/}"
   case "$name" in
     .ddev|.drupilot|.drupilot.json|.phpstan-cache|.drupilot-coverage|vendor|node_modules) return 0;;
-    rector.php|phpstan.neon|phpcs.xml.dist|*-port-to-drupal-11.patch|*-port-to-drupal-11-*.patch) return 0;;
+    rector.php|rector-compat.php|phpstan.neon|phpcs.xml.dist|*-port-to-drupal-11.patch|*-port-to-drupal-11-*.patch) return 0;;
   esac
   symlink_escapes "$1" "$rel" && return 0
   return 1

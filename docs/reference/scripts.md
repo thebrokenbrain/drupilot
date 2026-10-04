@@ -1141,7 +1141,8 @@ Options:
                      verdict) or "partial" (only the digests pass crashed:
                      the official result stands, ok stays true); errors is
                      [{pass, exit_code, message}] (pass 1 official, 2
-                     digests, 3 compat); digests_status and compat_status
+                     digests, 3 compat — not the generated-rules "Pass 3"
+                     of /drupilot-port); digests_status and compat_status
                      are "off", "ok", "error" or "skipped". php_floor and
                      php_ceiling are the L and U of the Rector configs. rules
                      is the sorted list of Rector rule names Rector reported
@@ -1205,7 +1206,8 @@ pass, exit 3; "partial" for digests).
 
 Exit codes: 0 ok · 1 usage error · 2 gate (requirements, Drupal root,
 vendor/bin/rector or a source for rector.php missing) · 3 the official or the
-compat pass crashed or reported errors (toolchain/config broken; the diagnostic lists the
+compat pass crashed or reported errors (toolchain/config broken, or a broken
+rector-compat.php; the diagnostic lists the
 installed vs known-good versions from config/toolchain-reference.json) ·
 4 only the digests pass crashed (the official result stands; fix with
 --digests-ref <known-good commit> or DRUPILOT_USE_DIGESTS_RULES=false).
@@ -2566,9 +2568,10 @@ drupilot generated from an OLDER template (its "drupilot — <file>" header is
 there but the template's current "drupilot-template-version: N" marker is
 not) is upgraded without --force, after the same backup — e.g. the invalid
 0.8.x phpcs.xml.dist or a phpstan.neon with the deprecated drupal_root. So is
-a rector.php that is exactly what the current template renders for its own
-floor and subject (rector_config_pristine): nobody edited it, and its floor
-moved (the core target changed) or it was rendered for another subject. Any
+a rector.php or rector-compat.php that is exactly what the current template
+renders for its own floor and subject (rector_config_pristine): nobody edited
+it, and its floor moved (the core target changed) or it was rendered for
+another subject of a shared test-bed (0.9 reported that as "differs"). Any
 other current-generation copy that differs counts as hand-edited.
 
 rector-compat.php is rendered only when the compat pass has a rule to run
@@ -2594,9 +2597,9 @@ Options:
                       the floor; `testing` is skipped when the root has no
                       .ddev/ directory).
   --set KEY=VALUE     Override one token value (repeatable), e.g.
-                      --set WEBDRIVER_HOST=selenium-chrome:4444, or
-                      --set PHP_FLOOR=8.2 (also sets PHP_FLOOR_ID and
-                      PHP_FLOOR_SET).
+                      --set WEBDRIVER_HOST=selenium-chrome:4444. The PHP
+                      floor is not a token: it follows the core target and
+                      DRUPILOT_REQUIRE_PHP_FLOOR.
   --force             Replace a file that differs (after backing it up).
   --dry-run           Render and validate, report what would happen; write
                       nothing.

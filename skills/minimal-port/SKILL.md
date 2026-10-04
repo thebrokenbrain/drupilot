@@ -189,7 +189,9 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "<path>"
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "<path>" --apply
 ```
 
-**Exit 3 = the official Rector pass crashed** (e.g. `[ERROR] Could not detect twig set.` from an
+**Exit 3 = the official Rector pass or the compat pass after it crashed** (`errors[].pass` 1 or 3;
+a compat-only crash points at `rector-compat.php` first — regenerate it with
+`render-templates.sh --only rector-compat --force`) (e.g. `[ERROR] Could not detect twig set.` from an
 incompatible `rector/rector`, a PHP fatal, or per-file processing errors): the
 `--json` payload has `status: "error"` and `errors[]` with the message, and there
 is **no verdict** — never read it as "0 files would change". Stop, show the

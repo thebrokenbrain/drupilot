@@ -206,7 +206,7 @@ PHPStan level used in the refactor phase.
 
 ### `DRUPILOT_PHP_TARGET`
 
-Target PHP version (drives Rector / PHPStan / PHPCS / DDEV).
+Target PHP version (drives PHPStan / PHPCS / DDEV, and caps Rector's PHP floor: Rector targets the lowest PHP the declared core range and require.php admit, ADR 0002).
 
 - **Default:** `8.3`
 - **Type:** string
@@ -227,7 +227,7 @@ The PostToolUse incremental lint: `autofix` (run phpcbf + phpcs, and **say** whe
 
 ### `DRUPILOT_REQUIRE_PHP_FLOOR`
 
-When keeping `^10 || ^11`, how to set composer `require.php`: `detect` derives the real floor from a heuristic scan of the ported code (e.g. `>=8.1` when it uses no PHP 8.2/8.3 constructs, for genuine Drupal 10 support); `target` keeps the conservative `>=<php target>`. A lowered floor is best-effort — confirm with PHPCompatibility.
+When keeping `^10 || ^11`, how to set composer `require.php`: `detect` derives the real floor from a heuristic scan of the ported code (e.g. `>=8.1` when it uses no PHP 8.2/8.3 constructs, for genuine Drupal 10 support); `target` keeps the conservative `>=<php target>`. A lowered floor is best-effort — confirm with PHPCompatibility. When the module has a composer.json, the floor is also Rector's PHP floor (ADR 0002).
 
 - **Default:** `detect`
 - **Type:** enum — one of `detect`, `target`

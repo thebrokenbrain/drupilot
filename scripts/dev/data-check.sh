@@ -207,8 +207,7 @@ if [[ -f "$RULES" && -f "$TPL_MAIN" && -f "$TPL_COMPAT" ]]; then
           | "\(.id): templates/rector.php.tmpl skips \(.rule), so drupal_safe must be false"),
         ($compat[] | . as $r
           | select([$rules[] | select(.rule != null and (.rule | norm) == $r and .kind == "compat" and .drupal_safe == true)] | length == 0)
-          | "templates/rector-compat.php.tmpl runs \($r), which is not a drupal_safe compat rule of config/php/rules.json"),
-        ($compat[] | select(. as $r | $skips | index($r) != null) | "\(.) is both skipped and a compat rule")' "$RULES" 2>&1 || true)"
+          | "templates/rector-compat.php.tmpl runs \($r), which is not a drupal_safe compat rule of config/php/rules.json")' "$RULES" 2>&1 || true)"
   fi
   report coherence templates/rector.php.tmpl "$errs"
 fi

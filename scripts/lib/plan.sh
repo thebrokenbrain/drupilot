@@ -37,10 +37,11 @@
 #                                certain) or no minor is known
 #   php_constraint_floor C       the lowest PHP minor a Composer `require.php`
 #                                constraint admits ('>=8.1' / '^8.1' / '~8.1.0'
-#                                / '8.1.*' -> 8.1; '^8.3 || ^8.1' -> 8.1;
-#                                '>=8' -> 8.0); nothing when an alternative has
-#                                no lower bound ('*', '<8.4') or C is not a
-#                                constraint
+#                                / '8.1.*' / '8.1.x' / '8.1 - 8.3' /
+#                                '>=8.1@dev' / '>=8.1.0-beta1' -> 8.1;
+#                                '^8.3 || ^8.1' -> 8.1; '>=8' -> 8.0); nothing
+#                                when an alternative has no lower bound ('*',
+#                                '<8.4') or C is not a constraint
 #   core_version_cmp A B         compare two core versions: returns 0 when
 #                                A == B, 1 when A < B, 2 when A > B, 3 when one
 #                                is not a version. Pre-releases order dev <
@@ -159,12 +160,16 @@ php_constraint_floor() {
       } }
     NF == 0 { next }
     {
-      lo = ""
+      lo = ""; upper = 0
       for (i = 1; i <= NF; i++) {
         t = $i
+        # "8.1 - 8.3": the token after the hyphen is the upper bound.
+        if (t == "-") { upper = 1; continue }
+        if (upper) { upper = 0; continue }
         if (t ~ /^(<|!=)/) continue
         sub(/^(>=|==|>|\^|~|=)/, "", t); sub(/^v/, "", t)
-        if (t !~ /^[0-9]+(\.([0-9]+|\*))*$/) { bad = 1; next }
+        sub(/@.*$/, "", t); sub(/-.*$/, "", t)
+        if (t !~ /^[0-9]+(\.([0-9]+|\*|x|X))*$/) { bad = 1; next }
         n = split(t, p, ".")
         v = p[1] "." ((n >= 2 && p[2] ~ /^[0-9]+$/) ? p[2] + 0 : 0)
         if (lo == "" || key(v) > key(lo)) lo = v
