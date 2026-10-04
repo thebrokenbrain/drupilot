@@ -1,0 +1,223 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thebrokenbrain.github.io/drupilot/schemas/target.schema.json",
+  "title": "drupilot target major (config/targets/<major>.json)",
+  "description": "What one Drupal major needs, one file per major (10, 11, 12). Hand-maintained fields (status, the php_supported/php_unsupported support table, removals, defaults) sit next to fields scripts/dev/refresh-data.sh generates from git.drupalcode.org and packagist (each minor's latest tag, release date, php_min, php_recommended and the Symfony/Twig/PHPUnit/Coder/PHPStan constraints). Every leaf group carries its source (src, url or php_src) and verified; only verified groups that are never verified_as 'announced' may drive a hard gate, and the subschemas marked x-drupilot-hard-gate are exactly those groups (scripts/dev/data-check.sh enforces it). An unknown value is null, or a minor is {\"status\": \"detect\"}: unknown is detected at runtime, never assumed.",
+  "type": "object",
+  "required": ["schema_version", "as_of", "major", "status", "status_src", "released", "eol", "upgrade_from_min", "ddev_type", "composer_stability_while_prerelease", "minors", "removed_extensions", "removed_libraries", "hand_sources"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": 1},
+    "as_of": {"description": "The date of the last change of a generated value (refresh-data.sh) or a hand edit.", "$ref": "#/$defs/date"},
+    "major": {"type": "integer", "minimum": 7},
+    "status": {"description": "supported | pre-release (needs an explicit opt-in) | eol. A data commit flips it; today's date never does.", "enum": ["supported", "pre-release", "eol"]},
+    "status_src": {
+      "x-drupilot-hard-gate": true,
+      "type": "object",
+      "required": ["url", "verified", "checked_at"],
+      "additionalProperties": false,
+      "properties": {
+        "url": {"$ref": "#/$defs/src"},
+        "verified": {"type": "boolean"},
+        "checked_at": {"$ref": "#/$defs/date"},
+        "note": {"type": "string"}
+      }
+    },
+    "released": {
+      "type": "object",
+      "required": ["planned", "actual", "src", "verified"],
+      "additionalProperties": false,
+      "properties": {
+        "planned": {"type": ["string", "null"]},
+        "actual": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/date"}]},
+        "src": {"$ref": "#/$defs/src"},
+        "verified": {"type": "boolean"}
+      }
+    },
+    "eol": {
+      "type": "object",
+      "required": ["date", "text", "src", "verified"],
+      "additionalProperties": false,
+      "properties": {
+        "date": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/date"}]},
+        "text": {"type": ["string", "null"]},
+        "src": {"$ref": "#/$defs/src"},
+        "verified": {"type": "boolean"}
+      }
+    },
+    "upgrade_from_min": {
+      "description": "The oldest core a site must run before it can update to this major.",
+      "x-drupilot-hard-gate": true,
+      "type": "object",
+      "required": ["value", "src", "verified"],
+      "additionalProperties": false,
+      "properties": {
+        "value": {"type": ["string", "null"], "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$"},
+        "src": {"$ref": "#/$defs/src"},
+        "verified": {"type": "boolean"},
+        "note": {"type": "string"}
+      }
+    },
+    "ddev_type": {"type": "string", "pattern": "^drupal[0-9]+$"},
+    "composer_stability_while_prerelease": {"description": "The Composer stability flag a pre-release major needs (e.g. beta), else null.", "enum": [null, "dev", "alpha", "beta", "RC"]},
+    "toolchain_cell": {"description": "The cell of config/toolchain-reference.json this major's test-beds use.", "type": "string", "minLength": 1},
+    "php_defaults": {
+      "description": "env: the DRUPILOT_PHP_TARGET default; tab: the PHP_TARGET tab's pre-selection (0.9 keeps them apart, CC-08).",
+      "type": "object",
+      "required": ["env", "tab"],
+      "additionalProperties": false,
+      "properties": {"env": {"$ref": "#/$defs/php"}, "tab": {"$ref": "#/$defs/php"}}
+    },
+    "default_ranges": {
+      "description": "The declared core range each compat strategy writes for this target (a product decision, not an ecosystem fact).",
+      "type": "object",
+      "required": ["target-only", "keep-previous", "widest"],
+      "additionalProperties": false,
+      "properties": {
+        "target-only": {"type": "string", "minLength": 1},
+        "keep-previous": {"type": "string", "minLength": 1},
+        "widest": {"type": "string", "minLength": 1}
+      }
+    },
+    "minors": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/minor_key"},
+      "additionalProperties": {
+        "x-drupilot-hard-gate": true,
+        "anyOf": [{"$ref": "#/$defs/minor_detect"}, {"$ref": "#/$defs/minor"}]
+      }
+    },
+    "removed_extensions": {
+      "description": "Core modules and themes removed in a minor of this major (verified against the core tree at both tags).",
+      "type": "array",
+      "items": {"x-drupilot-hard-gate": true, "$ref": "#/$defs/removed_extension"}
+    },
+    "removed_libraries": {
+      "type": "array",
+      "items": {
+        "x-drupilot-hard-gate": true,
+        "type": "object",
+        "required": ["name", "removed_in", "src", "verified"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "pattern": "^[a-z0-9_]+/[a-z0-9_.-]+$"},
+          "removed_in": {"$ref": "#/$defs/minor_key"},
+          "deprecated_in": {"description": "The version the library's own deprecated: message names, else null.", "type": ["string", "null"]},
+          "src": {"$ref": "#/$defs/src"},
+          "verified": {"type": "boolean"},
+          "note": {"type": "string"}
+        }
+      }
+    },
+    "namespace_moves": {
+      "description": "Advisory notes (never a hard gate): code that moves to another namespace in a minor of this major.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "from_ns", "to_ns", "introduced_in", "rewrite", "src", "verified", "verified_as", "reverify_at"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string"},
+          "from_ns": {"type": "string"},
+          "to_ns": {"type": "string"},
+          "classes": {"description": "The classes that move (their short names), when not the whole namespace does.", "type": "array", "items": {"type": "string"}},
+          "introduced_in": {"$ref": "#/$defs/minor_key"},
+          "rewrite": {"enum": ["residual"]},
+          "src": {"$ref": "#/$defs/src"},
+          "verified": {"type": "boolean"},
+          "verified_as": {"enum": ["announced"]},
+          "reverify_at": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+          "note": {"type": "string"}
+        }
+      }
+    },
+    "hard_break_detectors": {"description": "The detector ids (M6) that look for this major's hard breaks.", "type": "array", "items": {"type": "string"}},
+    "rector_sets": {
+      "description": "The fallback list of this major's per-minor drupal-rector set constants, used only when no test-bed can be reflected (the installed set list wins).",
+      "type": "object",
+      "required": ["own_major", "src", "verified"],
+      "additionalProperties": false,
+      "properties": {
+        "own_major": {"type": "array", "items": {"type": "string", "pattern": "^Drupal[0-9]+SetList::DRUPAL_[0-9]+(_BREAKING)?$"}},
+        "breaking": {"type": "array", "items": {"type": "string", "pattern": "^Drupal[0-9]+SetList::DRUPAL_[0-9]+_BREAKING$"}},
+        "src": {"$ref": "#/$defs/src"},
+        "verified": {"type": "boolean"}
+      }
+    },
+    "hand_sources": {
+      "description": "The drupal.org pages the hand-maintained fields come from, with the change date read when they were last checked; refresh-data.sh reports a page that changed since.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "url", "changed"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9.-]+$"},
+          "url": {"$ref": "#/$defs/src"},
+          "changed": {"$ref": "#/$defs/date"},
+          "fields": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "php": {"type": "string", "pattern": "^[5-9]\\.[0-9]+$"},
+    "minor_key": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"},
+    "src": {"type": "string", "minLength": 1},
+    "php_list": {"anyOf": [{"type": "null"}, {"type": "array", "items": {"$ref": "#/$defs/php"}}]},
+    "minor_detect": {
+      "description": "A minor not released yet (or not readable): every value is detected at runtime.",
+      "type": "object",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": {"status": {"const": "detect"}, "note": {"type": "string"}}
+    },
+    "minor": {
+      "type": "object",
+      "required": ["latest", "released", "php_min", "php_recommended", "php_supported", "php_unsupported", "symfony_major", "twig_major", "phpunit_constraint", "coder_constraint", "phpstan_constraint", "phpstan_drupal_constraint", "src", "php_src", "verified", "checked_at"],
+      "additionalProperties": false,
+      "properties": {
+        "latest": {"description": "Generated: the newest tag of this minor (a pre-release only for a pre-release major).", "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-(alpha|beta|rc)[0-9]+)?$"},
+        "released": {"description": "Generated: the date of the minor's .0 release, null while it is a pre-release.", "anyOf": [{"type": "null"}, {"$ref": "#/$defs/date"}]},
+        "php_min": {"description": "Generated: core/composer.json require.php at the latest tag.", "anyOf": [{"type": "null"}, {"$ref": "#/$defs/php"}]},
+        "php_recommended": {"description": "Generated: Drupal::RECOMMENDED_PHP at the latest tag.", "anyOf": [{"type": "null"}, {"$ref": "#/$defs/php"}]},
+        "php_supported": {"description": "Hand: the PHP versions drupal.org's PHP requirements table marks Yes for this minor (null: the minor is not in the table).", "$ref": "#/$defs/php_list"},
+        "php_unsupported": {"description": "Hand: the PHP versions the table marks No. A version in neither list is unknown (e.g. 'Follow issue #3608511').", "$ref": "#/$defs/php_list"},
+        "symfony_major": {"type": ["integer", "null"]},
+        "twig_major": {"type": ["integer", "null"]},
+        "phpunit_constraint": {"type": ["string", "null"]},
+        "coder_constraint": {"type": ["string", "null"]},
+        "phpstan_constraint": {"type": ["string", "null"]},
+        "phpstan_drupal_constraint": {"type": ["string", "null"]},
+        "src": {"description": "Generated: where the generated fields come from.", "$ref": "#/$defs/src"},
+        "php_src": {"description": "Hand: where php_supported/php_unsupported come from (null when both are null).", "type": ["string", "null"]},
+        "verified": {"type": "boolean"},
+        "checked_at": {"$ref": "#/$defs/date"}
+      }
+    },
+    "removed_extension": {
+      "type": "object",
+      "required": ["name", "kind", "removed_in", "deprecated_in", "replacement_project", "rewrite", "src", "verified"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"description": "The core machine name.", "type": "string", "pattern": "^[a-z0-9_]+$"},
+        "kind": {"enum": ["module", "theme"]},
+        "removed_in": {"$ref": "#/$defs/minor_key"},
+        "state_at_removal": {"description": "absent (default): the extension is gone from the core tree; obsolete: still in the tree with lifecycle: obsolete, so it can no longer be installed.", "enum": ["absent", "obsolete"]},
+        "introduced_in": {"description": "For an extension core added after the previous major's newest release: the minor that adds it (its presence is checked there once that minor has a tag).", "$ref": "#/$defs/minor_key"},
+        "info_path": {"description": "The extension's .info.yml path in the core tree when it is not core/modules/<name>/<name>.info.yml or core/themes/<name>/<name>.info.yml (a module nested under another).", "type": "string", "pattern": "^core/[a-z0-9_/]+\\.info\\.yml$"},
+        "deprecated_in": {"type": ["string", "null"]},
+        "replacement_project": {"description": "The drupal.org project that carries it on, or null when nothing does.", "type": ["string", "null"]},
+        "replacement_available": {"description": "null: checked at runtime against updates.drupal.org/release-history/<project>/current.", "type": ["boolean", "null"]},
+        "core_alternative": {"type": ["string", "null"]},
+        "rewrite": {"description": "dependency: require the contrib project; base-theme: rebase the theme; hard-break: no automatic rewrite.", "enum": ["dependency", "base-theme", "hard-break"]},
+        "src": {"$ref": "#/$defs/src"},
+        "verified": {"type": "boolean"},
+        "verified_at": {"type": "string"},
+        "reverify_at": {"type": "array", "items": {"type": "string"}},
+        "note": {"type": "string"}
+      }
+    }
+  }
+}

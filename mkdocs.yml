@@ -71,6 +71,7 @@ nav:
       - reference/skills-and-agents.md
       - reference/toolchain.md
       - reference/deprecations.md
+      - reference/version-matrix.md
       - reference/state.md
   - Contributing:
       - contributing/index.md
@@ -85,4 +86,5 @@ nav:
           - contributing/adr/0011-release-validation-without-strict.md
           - contributing/adr/0012-docs-site-in-m1.md
           - contributing/adr/0013-config-keys-scope.md
+          - contributing/adr/0014-version-data-hard-gates.md
   - Changelog: changelog.md

@@ -11,7 +11,7 @@ unset GITHUB_BASE_REF GITHUB_REF_NAME GITHUB_REF_TYPE RELEASE_FROM
 r="$T_TMP/repo"
 mkdir -p "$r/scripts/dev" "$r/scripts/lib" "$r/config" "$r/.claude-plugin"
 cp "$T_REPO/scripts/dev/check.sh" "$T_REPO/scripts/dev/release.sh" "$r/scripts/dev/"
-cp "$T_REPO/scripts/lib/common.sh" "$r/scripts/lib/"
+cp "$T_REPO"/scripts/lib/*.sh "$r/scripts/lib/"
 cp "$T_REPO"/config/*.json "$r/config/"
 cp "$T_REPO/.claude-plugin/plugin.json" "$r/.claude-plugin/"
 # A CHANGELOG with an [Unreleased] entry, a released 0.9.1 and its links.

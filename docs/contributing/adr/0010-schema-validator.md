@@ -25,5 +25,7 @@ schemas are therefore restricted to the keywords it understands: `type`,
 
 ## Consequences
 
-One Python tool in CI, no Node. A schema needing `oneOf`, `pattern` or
-`format` would first need the jq validator extended.
+One Python tool in CI, no Node. A schema needing another keyword first needs
+the jq validator extended: M2 moved it to `scripts/dev/jsonschema.jq` and
+added `anyOf`, `pattern`, `propertyNames`, `minItems`, `minLength` and a
+schema as `additionalProperties` for the version data (ADR 0014).

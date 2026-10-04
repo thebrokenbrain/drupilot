@@ -3085,10 +3085,16 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
                 docs/es/ only warns (English-only site); a root FLOW*.md is
                 only noted in the detail (its content moves to the docs in
                 the content step, M11)
-  - schemas     the persisted 0.9 artifacts validate against schemas/
-                (scripts/dev/schema-check.sh: jq always, check-jsonschema
-                where it is installed; with --ci, check-jsonschema from PATH
-                or the pinned Docker image, and a failure when neither)
+  - schemas     the persisted 0.9 artifacts and the version data validate
+                against schemas/ (scripts/dev/schema-check.sh: jq always,
+                check-jsonschema where it is installed; with --ci,
+                check-jsonschema from PATH or the pinned Docker image, and a
+                failure when neither)
+  - data        the version data and catalogs (scripts/dev/data-check.sh):
+                config/targets|php|paths and config/catalog/*.json match
+                their schema, every value names its source, every node a
+                hard gate reads is verified and never "announced", and the
+                files agree with each other
   - unit        the unit tests (scripts/dev/unit.sh: tests/lib/selftest.sh and
                 tests/unit/*.sh, run with this same bash; a test skipped
                 until its milestone is not a failure)
@@ -3175,6 +3181,46 @@ Requires bash >= 3.2, jq and git. Exit codes: 0 every snapshot passes ·
 1 a difference or a usage error.
 ```
 
+### dev/data-check.sh
+
+```text
+drupilot — scripts/dev/data-check.sh
+Check drupilot's version data and catalogs (a developer/CI tool: no command,
+skill or hook calls it; scripts/dev/check.sh runs it as its `data` gate):
+  schema      every $ref of the schemas resolves (whatever the data);
+              config/targets/<major>.json (schemas/target.schema.json),
+              config/php/versions.json and rules.json, config/paths/eras.json
+              and graph.json, and every config/catalog/*.json validate
+              against their schema (the jq validator, scripts/dev/
+              jsonschema.jq); the seven core files (targets/10, 11 and 12,
+              php/versions and rules, paths/eras and graph) must exist
+  provenance  every object that carries `verified` names its source (src or
+              url), every object holding a version value names one too (a
+              PHP support list: php_src), and every `verified_as` object
+              lists when to re-verify it (reverify_at)
+  hard-gate   every node a schema marks x-drupilot-hard-gate (next to a
+              $ref or inside an anyOf too; a catalog entry: blocking: true)
+              is verified:true and never verified_as "announced" (a
+              {"status": "detect"} minor holds no value)
+  coherence   a target file's major matches its name and its minors; a
+              target major (11 and up) has toolchain_cell, php_defaults and
+              default_ranges; every PHP version a target names is in
+              php/versions.json; a minor never lists a PHP as both supported
+              and unsupported; versions.json ids and rector_level match the
+              key; rules have unique ids and a verified removed-no-rule rule
+              cites php.net; graph edges are unique, named from-to, join
+              known eras, and every forbidden route chains from -> to
+
+Usage:
+  scripts/dev/data-check.sh [--root DIR] [--json] [-h|--help]
+    --root   the tree to check (holding config/ and schemas/; default: this
+             repo), so a test can check an altered copy
+    --json   {ok, root, checks:[{check, file, status, detail}]} on STDOUT
+
+Requires bash >= 3.2 and jq. Exit codes: 0 every check passes · 1 a check
+failed or a usage error.
+```
+
 ### dev/evals.sh
 
 ```text
@@ -3236,6 +3282,9 @@ comment and is never edited by hand:
   reference/choices.md            config/choices.json
   reference/toolchain.md          config/toolchain-reference.json
   reference/deprecations.md       config/deprecations.json (Drupal's deprecations)
+  reference/version-matrix.md     config/targets/*.json, config/php/*.json and
+                                  config/paths/*.json (every value with its
+                                  as_of, source, verified and verified_as)
 The output is byte-identical on every platform (bash 3.2, BSD/BusyBox,
 mawk, jq 1.6): sorted with LC_ALL=C, no timestamps, paths or tool versions.
 A "See" link is written only when its docs page exists.
@@ -3312,6 +3361,58 @@ Needs a millisecond clock: bash >= 5 ($EPOCHREALTIME). Exit codes: 0 ok ·
 1 usage error or no millisecond clock.
 ```
 
+### dev/refresh-data.sh
+
+```text
+drupilot — scripts/dev/refresh-data.sh
+Refresh the generated fields of the version data (a developer tool: no
+command, skill, hook or port ever runs it). For every minor of
+config/targets/<major>.json it reads, at that minor's newest tag:
+  - repo.packagist.org/p2/drupal/core.json: the newest tag of the minor
+    (stable only; alpha/beta/rc too for a pre-release major) and the date of
+    its .0 release
+  - git.drupalcode.org/project/drupal/-/raw/<tag>/: core/composer.json
+    (require.php -> php_min, symfony/http-kernel -> symfony_major,
+    twig/twig -> twig_major), composer/Metapackage/DevDependencies/
+    composer.json (the phpunit, coder, phpstan and phpstan-drupal
+    constraints) and core/lib/Drupal.php (RECOMMENDED_PHP -> php_recommended)
+and merges them with the hand-maintained fields, which it never changes
+(php_supported, php_unsupported, php_src, verified, the removals, status,
+defaults). A {"status": "detect"} minor is filled once a tag of it exists;
+its hand fields stay null until someone reads drupal.org's table. A minor
+whose values changed gets checked_at = --as-of, and its file as_of too.
+It also checks, without writing anything: that every removed extension is in
+the core tree at the previous major's newest tag (or at the minor that
+introduced it) and gone at the removal tag (an obsolete one: still there with
+lifecycle: obsolete), the same for every removed core library; that nothing
+else disappeared between those two tags (every .info.yml under core/modules
+and core/themes, nested modules included, tests/ and theme engines left
+out, listed from a tree-only `git fetch --filter=blob:none` of the tag, and
+every core.libraries.yml key gone at the major's .0 must be listed); and
+that the drupal.org pages in hand_sources did not change since they were read
+(api-d7 JSON, never HTML). Every fetched file is cached, and --offline reads
+only the cache: two offline runs on the same input give byte-identical files
+and output. Nothing is written until every fetch has succeeded, so a failed
+run leaves the data as it was.
+
+Usage:
+  scripts/dev/refresh-data.sh [--dry-run] [--json] [--offline] [--cache DIR]
+                              [--data-dir DIR] [--as-of YYYY-MM-DD] [-h|--help]
+    --dry-run   compute and report; write nothing
+    --json      {ok, dry_run, offline, changed:[{file, path, from, to}],
+                 mismatches:[{file, entry, detail}], stale_hand_sources:
+                 [{file, id, recorded, current}]} on STDOUT
+    --offline   read only the cache (a file missing from it is an error)
+    --cache     the fetch cache (default $XDG_CACHE_HOME/drupilot-dev/
+                refresh-data, else ~/.cache/drupilot-dev/refresh-data)
+    --data-dir  the directory holding targets/ (default <repo>/config)
+    --as-of     the date stamped on changed values (default: today, UTC)
+
+Requires bash >= 3.2, jq and (unless --offline) curl and git. Exit codes: 0 done ·
+1 a usage, fetch or parse error · 3 done, but a mismatch or a stale hand
+source needs a human.
+```
+
 ### dev/release.sh
 
 ```text
@@ -3352,14 +3453,15 @@ error, a refused version, a dirty tree or a failed check.
 drupilot — scripts/dev/schema-check.sh
 Validate drupilot's persisted artifacts against schemas/*.schema.json (a
 developer/CI tool: no command, skill or hook calls it; scripts/dev/check.sh
-runs it as its `schemas` gate). Each schema is checked against the 0.9
-instances listed below: the captures of tests/baseline/v0.9.0/, the lab
-samples of tests/baseline/v0.9.0/samples/, and a live `preflight.sh --json`.
-Two engines:
-  jq         always available: a structural validator reading the same
-             schemas (type, required, properties, additionalProperties,
-             items, enum, const, minimum, $defs/$ref) — the keywords the
-             schemas are restricted to, so the bash-only CI legs still check
+runs it as its `schemas` gate). Each schema is checked against the
+instances listed below: the 0.9 captures of tests/baseline/v0.9.0/, the lab
+samples of tests/baseline/v0.9.0/samples/, a live `preflight.sh --json`, the
+version data of config/targets|php|paths and an example catalog (the data
+gate, scripts/dev/data-check.sh, also checks their provenance). Two engines:
+  jq         always available: the structural validator of
+             scripts/dev/jsonschema.jq, reading the same schemas (only the
+             keywords that file lists, which the schemas are restricted
+             to), so the bash-only CI legs still check
   validator  check-jsonschema (07-Q11), CI-only, never a plugin runtime
              dependency: the one on PATH, or (--mode docker) version
              0.38.2 in the pinned python:3.13-alpine image below

@@ -79,10 +79,16 @@
 #                 docs/es/ only warns (English-only site); a root FLOW*.md is
 #                 only noted in the detail (its content moves to the docs in
 #                 the content step, M11)
-#   - schemas     the persisted 0.9 artifacts validate against schemas/
-#                 (scripts/dev/schema-check.sh: jq always, check-jsonschema
-#                 where it is installed; with --ci, check-jsonschema from PATH
-#                 or the pinned Docker image, and a failure when neither)
+#   - schemas     the persisted 0.9 artifacts and the version data validate
+#                 against schemas/ (scripts/dev/schema-check.sh: jq always,
+#                 check-jsonschema where it is installed; with --ci,
+#                 check-jsonschema from PATH or the pinned Docker image, and a
+#                 failure when neither)
+#   - data        the version data and catalogs (scripts/dev/data-check.sh):
+#                 config/targets|php|paths and config/catalog/*.json match
+#                 their schema, every value names its source, every node a
+#                 hard gate reads is verified and never "announced", and the
+#                 files agree with each other
 #   - unit        the unit tests (scripts/dev/unit.sh: tests/lib/selftest.sh and
 #                 tests/unit/*.sh, run with this same bash; a test skipped
 #                 until its milestone is not a failure)
@@ -126,7 +132,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export CLAUDE_PLUGIN_ROOT="$REPO"
 
-ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json version config-keys docs schemas unit contract evals golden smoke"
+ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json version config-keys docs schemas data unit contract evals golden smoke"
 # Gates that run only when asked for (--smoke, --ci, or named in --only).
 OPTIONAL_GATES="golden smoke"
 # Gates known to fail on the current tree, with a fix tracked for 0.9.0. Empty
@@ -611,6 +617,17 @@ gate_schemas() {
     jq -r '.checks[] | select(.status != "pass") | "\(.engine): \(.schema) <- \(.instance): \(.detail)"' "$js" > "$out" 2>/dev/null || true
     [[ -s "$out" ]] || tail -n 20 "$err" > "$out"
     record schemas fail "an artifact does not match its schema" "$out"
+  fi
+}
+
+gate_data() {
+  local js="$TMP/data.json" err="$TMP/data.err" out="$TMP/data.out"
+  if "$BASH" "$REPO/scripts/dev/data-check.sh" --json > "$js" 2> "$err"; then
+    record data pass "$(jq -r '[.checks[].file] | unique | length' "$js" 2>/dev/null || echo '?') data file(s): valid, sourced and safe for the hard gates"
+  else
+    jq -r '.checks[] | select(.status != "pass") | "\(.check): \(.file): \(.detail)"' "$js" > "$out" 2>/dev/null || true
+    [[ -s "$out" ]] || tail -n 20 "$err" > "$out"
+    record data fail "the version data has problems (scripts/dev/data-check.sh)" "$out"
   fi
 }
 

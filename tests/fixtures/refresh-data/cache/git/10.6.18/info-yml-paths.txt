@@ -1,0 +1,3 @@
+core/modules/book/book.info.yml
+core/modules/node/node.info.yml
+core/themes/olivero/olivero.info.yml

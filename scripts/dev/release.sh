@@ -112,7 +112,7 @@ if [[ "$DRY" == "1" ]]; then
   # The version gate on a temp copy holding the new files.
   mkdir -p "$TMP/tree/scripts/dev" "$TMP/tree/scripts/lib" "$TMP/tree/config" "$TMP/tree/.claude-plugin"
   cp "$REPO/scripts/dev/check.sh" "$TMP/tree/scripts/dev/"
-  cp "$REPO/scripts/lib/common.sh" "$TMP/tree/scripts/lib/"
+  cp "$REPO"/scripts/lib/*.sh "$TMP/tree/scripts/lib/"
   cp "$REPO"/config/*.json "$TMP/tree/config/"
   cp "$TMP/plugin.json" "$TMP/tree/.claude-plugin/plugin.json"
   cp "$TMP/CHANGELOG.md" "$TMP/tree/CHANGELOG.md"
