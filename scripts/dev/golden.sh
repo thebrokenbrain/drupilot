@@ -21,7 +21,8 @@
 # The data hash: the sha256 of the lines "<path> <sha256>" of every file under
 # targets/, php/ and paths/ (path relative to the data dir, sorted). A snapshot
 # whose content no longer gives its own name fails, and so does a golden
-# pinned to a missing snapshot. Snapshots no golden uses are reported.
+# pinned to a missing snapshot. A full --check also fails on a snapshot no
+# golden is pinned to; a full --update removes such snapshots.
 #
 # Usage:
 #   scripts/dev/golden.sh [--check | --update] [--only G1,G2] [--json] [-h|--help]
@@ -152,9 +153,17 @@ LIVE_HASH=""
 if [[ "$MODE" == "update" ]]; then
   LIVE_HASH="$(data_hash_of "$REPO/config")"
   [[ -n "$LIVE_HASH" ]] || die "config/ holds no version data to snapshot" 1
-  if [[ ! -d "$SNAPS/$LIVE_HASH" ]]; then
-    mkdir -p "$SNAPS/$LIVE_HASH"
-    for _d in targets php paths; do [[ -d "$REPO/config/$_d" ]] && cp -R "$REPO/config/$_d" "$SNAPS/$LIVE_HASH/"; done
+  if [[ -d "$SNAPS/$LIVE_HASH" ]]; then
+    # An existing snapshot must really hold the live data (an interrupted
+    # vendoring leaves a partial one behind).
+    [[ "$(data_hash_of "$SNAPS/$LIVE_HASH")" == "$LIVE_HASH" ]] \
+      || die "tests/fixtures/data-snapshots/$LIVE_HASH exists but does not hold the live data: remove it and re-run --update" 1
+  else
+    # Vendor into a temp dir, verify, then move into place.
+    mkdir -p "$SNAPS" "$TMP/snap"
+    for _d in targets php paths; do [[ -d "$REPO/config/$_d" ]] && cp -R "$REPO/config/$_d" "$TMP/snap/"; done
+    [[ "$(data_hash_of "$TMP/snap")" == "$LIVE_HASH" ]] || die "the copied data does not hash to $LIVE_HASH" 1
+    mv "$TMP/snap" "$SNAPS/$LIVE_HASH"
     log_ok "vendored the live data as tests/fixtures/data-snapshots/$LIVE_HASH"
   fi
 fi
@@ -184,8 +193,9 @@ while IFS="$(printf '\t')" read -r name dir; do
   if [[ ! -f "$dir/golden.json" ]] || ! jq -e 'has("data_hash")' "$dir/golden.json" > /dev/null 2>&1; then
     result "$name" fail "${dir#"$REPO"/}/golden.json is missing or has no data_hash"; continue
   fi
+  # A pinned snapshot counts as used even when its integrity check fails.
+  USED="$USED $(jq -r '.data_hash // ""' "$dir/golden.json" 2> /dev/null || true)"
   check_snapshot "$name" "$dir" || continue
-  USED="$USED ${SNAP##*/}"
   if [[ "$name" != "baseline-0.9" ]]; then check_manifest "$name" "$dir"; continue; fi
   if "$SH" "$REPO/scripts/dev/baseline-0.9.sh" --check --json --data-dir "$SNAP" > "$TMP/bl.json" 2> "$TMP/bl.err"; then
     result "$name" pass "$(jq -r '.files | length' "$TMP/bl.json") capture(s) match v0.9.0 (or an allowed difference)"
@@ -198,7 +208,19 @@ while IFS="$(printf '\t')" read -r name dir; do
   fi
 done <<< "$GOLDENS"
 
-# A snapshot no golden is pinned to (a full --check only).
+# A full --update (no --only) removes the snapshots no golden is pinned to any
+# more; a full --check fails on one.
+if [[ "$MODE" == "update" && -z "$ONLY" && -d "$SNAPS" ]]; then
+  for _s in "$SNAPS"/*; do
+    [[ -d "$_s" && "${_s##*/}" != "$LIVE_HASH" ]] || continue
+    _pinned=0
+    while IFS="$(printf '\t')" read -r _n _d; do
+      [[ -n "$_n" ]] || continue
+      [[ "$(jq -r '.data_hash // ""' "$_d/golden.json" 2> /dev/null || true)" == "${_s##*/}" ]] && _pinned=1
+    done <<< "$GOLDENS"
+    if [[ "$_pinned" == "0" ]]; then rm -rf "${_s:?}"; log_ok "removed the unused data snapshot ${_s#"$REPO"/}"; fi
+  done
+fi
 if [[ "$MODE" == "check" && -z "$ONLY" && -d "$SNAPS" ]]; then
   for _s in "$SNAPS"/*; do
     [[ -d "$_s" ]] || continue
