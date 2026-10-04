@@ -3558,7 +3558,9 @@ assert.sh). Exit 0 counts as a pass only with that line, at least one
 assertion and no "not ok" line, so a forgotten t_done or an early `exit 0`
 fails. Each test runs with stdin from /dev/null, without a controlling
 terminal where `setsid --wait` exists, and under a 300 s timeout where
-`timeout` exists, so a test that would prompt fails instead of blocking.
+`timeout`/`gtimeout` exists; t_isolate sets DRUPILOT_NONINTERACTIVE=1, so on
+every platform drupilot's own prompts take their default. Ctrl-C stops the
+run (exit 130) and kills the running test.
 
 Usage:
   scripts/dev/unit.sh [--only T1,T2] [--json] [--list] [-h|--help]
