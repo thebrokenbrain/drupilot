@@ -46,8 +46,11 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 - **Router evals and the `evals` gate.** `scripts/dev/evals.sh` checks the
   router statically: the ordered tab sequence of a guided `full` run (an
   `auto` run shows none), the mode words and the mode-inference rules
-  (`tests/evals/router/`). `--live` replays the inference cases through
-  `claude -p` (pass at 90% or more; opt-in, never in CI).
+  (`tests/evals/router/`). A command's tabs include the ones it shows by
+  header, so the refactor stage's reuse of the port's "Drupal 10 check" tab is
+  part of the frozen sequence. `--live` replays the inference cases and each
+  command's tab order through `claude -p` with every tool call denied by a
+  hook (pass at 90% or more; opt-in, never in CI).
 - **Golden outputs and the optional `golden` gate.** `scripts/dev/golden.sh`
   absorbs `baseline-0.9.sh --check` (the smoke test `baseline` is gone; the
   gate runs with `--smoke`/`--ci`, so on every CI leg) and checks

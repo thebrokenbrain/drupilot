@@ -19,7 +19,13 @@
 #       mode (tests/evals/router/mode-inference.json live_cases);
 #     * tab order: each command of the flow must report its tabs in the
 #       statically extracted order, and `/drupilot ... auto` none;
-#     each case runs --runs times and passes at >= 90% of the runs.
+#     each case runs --runs times and passes at >= 90% of the runs. A run
+#     invokes the namespaced command (`/drupilot:<command>`) with a settings
+#     file whose PreToolUse hook denies every tool call, so the model can
+#     read but never act; the command's load-time lines still run (Claude
+#     Code refuses them when Bash is disallowed). The same settings disable,
+#     for that run only, any installed `drupilot@*` plugin, so the tree under
+#     test is the only drupilot loaded.
 #
 # Usage:
 #   scripts/dev/evals.sh [--live] [--runs N] [--jobs N] [--plugin-root DIR]
@@ -73,20 +79,26 @@ result() {
   return 0
 }
 
-# tabs_of <file> -> the tab keys the file declares, in order, one per line.
+# tabs_of <file> -> the tab keys the file declares, in order, one per line:
+# its `choice.sh --key KEY` calls, plus each choices.json header the file
+# declares without such a call — as an AskUserQuestion `header "..."`, or, in
+# a command, as a `"<header>" tab` it shows (drupilot-refactor.md reuses the
+# port's "Drupal 10 check" tab that way). An agent's `"<header>" tab` mentions
+# narrate the commands' tabs and are not counted again.
 tabs_of() {
-  local f="$1" toks keyed
-  toks="$(tr '\n' ' ' < "$f" | grep -oE 'choice\.sh"? --key [A-Z0-9_]+|header[[:space:]]+"[^"]+"' || true)"
+  local f="$1" toks keyed h k
+  toks="$(tr '\n' ' ' < "$f" | grep -oE 'choice\.sh"? --key [A-Z0-9_]+|header[[:space:]]+"[^"]+"|"[^"]{1,60}"[[:space:]]+tabs?[^a-zA-Z]' || true)"
   keyed="$(printf '%s\n' "$toks" | sed -n 's/^choice\.sh"\{0,1\} --key //p' | LC_ALL=C sort -u)"
   printf '%s\n' "$toks" | while IFS= read -r t; do
     [[ -n "$t" ]] || continue
     case "$t" in
-      choice*) printf '%s\n' "${t##* }";;
-      header*)
-        h="$(printf '%s' "$t" | sed -E 's/^header[[:space:]]+"(.*)"$/\1/')"
-        k="$(jq -r --arg h "$h" '[.choices | to_entries[] | select(.value.header == $h) | .key][0] // empty' "$PR/config/choices.json")"
-        [[ -n "$k" ]] && ! printf '%s\n' "$keyed" | grep -qxF -- "$k" && printf '%s\n' "$k";;
+      choice*) printf '%s\n' "${t##* }"; continue;;
+      header*) h="$(printf '%s' "$t" | sed -E 's/^header[[:space:]]+"(.*)"$/\1/')";;
+      *) case "$f" in */commands/*) ;; *) continue;; esac
+         h="$(printf '%s' "$t" | sed -E 's/^"([^"]*)".*$/\1/')";;
     esac
+    k="$(jq -r --arg h "$h" '[.choices | to_entries[] | select(.value.header == $h) | .key][0] // empty' "$PR/config/choices.json")"
+    if [[ -n "$k" ]] && ! printf '%s\n' "$keyed" | grep -qxF -- "$k"; then printf '%s\n' "$k"; fi
   done
   return 0
 }
@@ -129,28 +141,49 @@ static_layer() {
 }
 
 # --- Live layer ---------------------------------------------------------------------
-EVAL_MODE='This is an automated evaluation of the drupilot router. Do not call any tool and do not change anything. Read the command you were given and decide the effective run mode exactly as it instructs, from the arguments only. Then reply with exactly one line, DRUPILOT_MODE=<full|auto|next|status>, and nothing else.'
-EVAL_TABS='This is an automated evaluation of a drupilot command. Do not call any tool and do not change anything. Read the command you were given and list, in order, every AskUserQuestion tab a guided interactive run of it would show when every condition fires, as one line TAB=<the tab header> each, and nothing else. If the run would show no tab at all, reply with exactly NO_TABS.'
+EVAL_MODE='This is an automated evaluation of the drupilot router. Do not call any tool and do not change anything. Read the command you were given and decide the effective run mode exactly as it instructs, from the arguments only. Then reply in English with exactly one line, DRUPILOT_MODE=<full|auto|next|status>, and nothing else.'
+EVAL_TABS='This is an automated evaluation of a drupilot command. Do not call any tool and do not change anything. Read the command you were given and list, in order, every AskUserQuestion tab that this exact invocation would show, assuming that every condition depending on the state of the project or of the environment fires, but that the arguments you were given (such as a mode word) still rule out what they rule out. Reply in English with one line TAB=<the tab header> per tab, copying each header verbatim as written in the command or in config/choices.json, and nothing else. If the invocation would show no tab at all, reply with exactly NO_TABS.'
 
 # live_run <out> <system-prompt> <prompt> -> one claude -p run, its text in <out>.
+# The command's load-time lines run real (read-only) scripts: their data dir
+# is a temp one (DRUPILOT_HOME for 0.9.1+, XDG_DATA_HOME as its fallback), so
+# a run never reads or migrates the developer's own drupilot state.
 live_run() {
-  ( cd "$TMP/work" && timeout 600 claude --plugin-dir "$PR" -p "$3" --append-system-prompt "$2" \
-      --disallowedTools "Bash Edit Write NotebookEdit Task Skill AskUserQuestion WebFetch WebSearch" < /dev/null > "$1" 2>/dev/null ) || true
+  ( cd "$TMP/work" && DRUPILOT_HOME="$TMP/data" XDG_DATA_HOME="$TMP/xdg" \
+      run_with_timeout 600 claude --plugin-dir "$PR" --settings "$TMP/settings.json" -p "$3" \
+      --append-system-prompt "$2" \
+      --disallowedTools "Edit Write NotebookEdit Task Skill AskUserQuestion WebFetch WebSearch" < /dev/null > "$1" 2>/dev/null ) || true
+  return 0
+}
+
+# live_settings -> $TMP/settings.json: a PreToolUse hook that denies every tool
+# call, and every installed drupilot@* plugin disabled for these runs.
+live_settings() {
+  local deny installed
+  deny='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"drupilot evals: no tool may run"}}'
+  installed="$(jq -c '[.enabledPlugins // {} | keys[] | select(startswith("drupilot@"))] | map({(.): false}) | add // {}' \
+                 "$HOME/.claude/settings.json" 2>/dev/null || echo '{}')"
+  jq -n --arg cmd "printf '%s' '$deny'" --argjson off "$installed" \
+    '{enabledPlugins: $off, hooks: {PreToolUse: [{matcher: "*", hooks: [{type: "command", command: $cmd}]}]}}' \
+    > "$TMP/settings.json"
   return 0
 }
 
 live_layer() {
   have_cmd claude || die "--live needs the claude CLI (logged in)" 1
-  mkdir -p "$TMP/work" "$TMP/runs"
+  mkdir -p "$TMP/work" "$TMP/runs" "$TMP/data" "$TMP/xdg"
+  live_settings
+  local ns
+  ns="$(jq -r '.name // "drupilot"' "$PR/.claude-plugin/plugin.json" 2>/dev/null || echo drupilot)"
   cp -R "$REPO/tests/fixtures/legacy_widgets" "$TMP/work/"
   local subj="$TMP/work/legacy_widgets" i n name want prompt kind
   # The cases: "kind<TAB>name<TAB>prompt<TAB>expected".
   {
-    jq -r --arg s "$subj" '.live_cases[] | "mode\t\(.name)\t/drupilot \($s) \(.args)\t\(.mode)"' "$EVD/mode-inference.json"
+    jq -r --arg s "$subj" --arg ns "$ns" '.live_cases[] | "mode\t\(.name)\t/\($ns):drupilot \($s) \(.args)\t\(.mode)"' "$EVD/mode-inference.json"
     for f in commands/drupilot-setup.md commands/drupilot-assess.md commands/drupilot-port.md commands/drupilot-refactor.md commands/drupilot-contribute.md; do
-      printf 'tabs\t%s\t/%s %s\t%s\n' "$(basename "$f" .md)" "$(basename "$f" .md)" "$subj" "$(tabs_of "$PR/$f" | paste -sd, -)"
+      printf 'tabs\t%s\t/%s:%s %s\t%s\n' "$(basename "$f" .md)" "$ns" "$(basename "$f" .md)" "$subj" "$(tabs_of "$PR/$f" | paste -sd, -)"
     done
-    printf 'tabs\tdrupilot auto\t/drupilot %s auto\t\n' "$subj"
+    printf 'tabs\tdrupilot auto\t/%s:drupilot %s auto\t\n' "$ns" "$subj"
   } > "$TMP/cases.tsv"
   # Run every case --runs times, --jobs at a time.
   n=0
@@ -174,7 +207,9 @@ live_layer() {
       else
         got="$(sed -n 's/^.*TAB=[[:space:]]*//p' "$TMP/runs/$n.$i" 2>/dev/null | while IFS= read -r h; do
                  h="$(printf '%s' "$h" | sed -E 's/[*`"]//g; s/[[:space:]]+$//')"
-                 jq -r --arg h "$h" '[.choices | to_entries[] | select((.value.header | ascii_downcase) == ($h | ascii_downcase)) | .key][0] // ("?" + $h)' "$PR/config/choices.json"
+                 jq -r --arg h "$h" '($h | ascii_upcase | gsub("[^A-Z0-9]+"; "_")) as $k
+                   | [.choices | to_entries[] | select((.value.header | ascii_downcase) == ($h | ascii_downcase) or .key == $k) | .key][0]
+                     // ("?" + $h)' "$PR/config/choices.json"
                done | paste -sd, -)"
       fi
       [[ "$got" == "$want" ]] && ok=$((ok + 1))

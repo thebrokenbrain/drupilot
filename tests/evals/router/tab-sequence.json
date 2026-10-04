@@ -1,5 +1,5 @@
 {
-  "_comment": "The ordered tab sequence of a guided `full` run, as drupilot 0.9.0 declares it (captured from the v0.9.0 tag): each command's `choice.sh --key KEY` calls in document order, plus the tabs declared only by an AskUserQuestion header (a key of config/choices.json with no choice.sh call, such as PUSH, which is never pre-answered). Conditional tabs appear only when their condition fires. New tabs may only be inserted (CC-02); `auto` shows none.",
+  "_comment": "The ordered tab sequence of a guided `full` run, as drupilot 0.9.0 declares it (captured from the v0.9.0 tag): each command's `choice.sh --key KEY` calls in document order, plus the tabs declared only by an AskUserQuestion header (a key of config/choices.json with no choice.sh call, such as PUSH, which is never pre-answered) or, in a command, by a `\"<header>\" tab` it shows (drupilot-refactor.md reuses the port's Drupal 10 check tab, so D10_CHECK appears in both stages). Conditional tabs appear only when their condition fires. New tabs may only be inserted (CC-02); `auto` shows none.",
   "flow": [
     "commands/drupilot.md",
     "commands/drupilot-setup.md",
@@ -11,11 +11,24 @@
   ],
   "full": [
     "INTENT",
-    "PHP_TARGET", "PLACEMENT", "CONFIG_CONFLICT",
+    "PHP_TARGET",
+    "PLACEMENT",
+    "CONFIG_CONFLICT",
     "EXISTING_WORK",
-    "CORE_TARGET", "DIGESTS_RULES", "PORT_ATTRIBUTES", "D10_CHECK", "LEARN", "NEXT_STEP",
-    "REFACTOR_SCOPE", "PHPSTAN_LEVEL", "ATTRIBUTE_FLOOR", "LEARN", "NEXT_STEP",
-    "CONTRIB_MODE", "PUSH"
+    "CORE_TARGET",
+    "DIGESTS_RULES",
+    "PORT_ATTRIBUTES",
+    "D10_CHECK",
+    "LEARN",
+    "NEXT_STEP",
+    "REFACTOR_SCOPE",
+    "PHPSTAN_LEVEL",
+    "ATTRIBUTE_FLOOR",
+    "D10_CHECK",
+    "LEARN",
+    "NEXT_STEP",
+    "CONTRIB_MODE",
+    "PUSH"
   ],
   "auto": []
 }
