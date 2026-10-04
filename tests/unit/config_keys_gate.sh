@@ -38,6 +38,15 @@ jq '.keys.DRUPILOT_CONTRIB_MODE.enum = ["auto"]' "$T_TMP/ref.bak" > "$r/config/c
 assert_eq "an enum without its default warns" "$(gate)" "warn|DRUPILOT_CONTRIB_MODE: its enum lacks the default"
 jq '.keys.DRUPILOT_CONTRIB_MODE.default_ref = "defaults.json#/DRUPILOT_NOPE"' "$T_TMP/ref.bak" > "$r/config/config-reference.json"
 assert_match "a default_ref that does not resolve warns" "$(gate)" "^warn\|.*default_ref defaults.json#/DRUPILOT_NOPE does not resolve"
+jq '.keys.DRUPILOT_ISSUE_TITLE.tier = "internal"' "$T_TMP/ref.bak" > "$r/config/config-reference.json"
+assert_eq "a README-documented key with its own entry cannot be demoted" "$(gate)" \
+  "warn|DRUPILOT_ISSUE_TITLE is documented by the 0.9 README but not public in config-reference.json"
+cp "$T_TMP/ref.bak" "$r/config/config-reference.json"
+cp "$r/scripts/env/clean.sh" "$T_TMP/clean2.bak"
+printf '\nv="$(config_get DRUPILOT_ISSUE_VERSION "")"\n' >> "$r/scripts/env/clean.sh"
+assert_eq "an undeclared key of a declared family's prefix warns" "$(gate)" \
+  "warn|DRUPILOT_ISSUE_VERSION is read but not declared in config/config-reference.json"
+cp "$T_TMP/clean2.bak" "$r/scripts/env/clean.sh"
 cp "$T_TMP/ref.bak" "$r/config/config-reference.json"
 
 jq --arg c "$(printf 'x%.0s' $(seq 1 1801))" '._placement_comment = $c' "$T_REPO/config/defaults.json" > "$r/config/defaults.json"

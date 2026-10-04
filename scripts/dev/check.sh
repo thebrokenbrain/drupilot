@@ -54,8 +54,10 @@
 #                 pre-release version on `main` (GITHUB_BASE_REF for a pull
 #                 request, else GITHUB_REF_NAME, else the checked-out branch);
 #                 and config/migrations.json is coherent (every aliased `new`
-#                 and `when` key exists in config/defaults.json, every
-#                 remove_in is a later major than the version)
+#                 and `when` key is declared in config/config-reference.json,
+#                 names are valid variable names, every remove_in is a later
+#                 major than the version). The version is compared with the
+#                 released CHANGELOG heading of highest SemVer precedence
 #   - config-keys every DRUPILOT_* key a script, hook, command, skill or agent
 #                 reads is declared in config/config-reference.json (as a key,
 #                 a runtime_only key or a pattern such as DRUPILOT_CHOICE_*);
@@ -418,12 +420,21 @@ gate_version() {
   if ! printf '%s\n' "$v" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
     echo "plugin.json: '$v' is not a valid version (X.Y.Z or X.Y.Z-pre.N)" >> "$out"
   fi
-  top="$(awk '/^## \[/ { h = $2; gsub(/[][]/, "", h); if (h != "Unreleased") { print h; exit } }' "$REPO/CHANGELOG.md" 2>/dev/null || true)"
-  [[ "$top" == "$v" ]] || echo "plugin.json version '$v' differs from the top released CHANGELOG.md heading '[${top:-none}]'" >> "$out"
+  # The released heading of highest SemVer precedence (on the integration
+  # branch a 0.9.x section merged from main may be dated, so placed, above the
+  # latest 1.0 pre-release: 09-R5).
+  top=""
+  for t in $(awk '/^## \[/ { h = $2; gsub(/[][]/, "", h); if (h != "Unreleased") print h }' "$REPO/CHANGELOG.md" 2>/dev/null || true); do
+    if [[ -z "$top" ]] || semver_gt "$t" "$top"; then top="$t"; fi
+  done
+  [[ "$top" == "$v" ]] || echo "plugin.json version '$v' differs from the highest released CHANGELOG.md heading '[${top:-none}]'" >> "$out"
   if git -C "$REPO" rev-parse --git-dir > /dev/null 2>&1; then
     tags="$(git -C "$REPO" tag --points-at HEAD 2>/dev/null | grep '^v' || true)"
     for t in $tags; do
-      [[ "$t" == "v$v" ]] || echo "HEAD is tagged '$t', but plugin.json says '$v' (want 'v$v')" >> "$out"
+      # release.sh runs this gate before its commit, on a HEAD that may still
+      # carry the tag of the release it promotes (RELEASE_FROM, e.g. an rc).
+      [[ "$t" == "v$v" || ( -n "${RELEASE_FROM:-}" && "$t" == "v$RELEASE_FROM" ) ]] \
+        || echo "HEAD is tagged '$t', but plugin.json says '$v' (want 'v$v')" >> "$out"
     done
   fi
   branch="${GITHUB_BASE_REF:-}"
@@ -435,19 +446,26 @@ gate_version() {
   mf="$REPO/config/migrations.json"
   if [[ -f "$mf" ]]; then
     major="${v%%.*}"
-    jq -r --slurpfile d "$REPO/config/defaults.json" --arg major "$major" '
+    jq -r --slurpfile ref "$REPO/config/config-reference.json" --arg major "$major" '
       def maj: tostring | split(".")[0] | tonumber? // -1;
+      def name_ok: type == "string" and test("^[A-Za-z_][A-Za-z0-9_]*(=.*)?$");
+      def declared($n): ($ref[0] | ((.keys // {}) | has($n)) or ((.runtime_only // {}) | has($n))
+                          or ([(.patterns // {}) | keys[] | rtrimstr("*")] | any(. as $p | $n | startswith($p))));
       if .schema != 1 then "migrations.json: schema must be 1" else empty end,
       (["env_aliases", "value_aliases", "removed"][] as $a
         | if (.[$a] | type) != "array" then "migrations.json: \($a) must be an array" else empty end),
       ((.env_aliases // []) | to_entries[] | .key as $i | .value
         | (if ([.old, .new, .since, .remove_in] | all(type == "string")) then empty
            else "migrations.json: env_aliases[\($i)] needs string old, new, since and remove_in" end),
+          (if (.old | name_ok) and (.new | name_ok) then empty
+           else "migrations.json: env_aliases[\($i)] old and new must be variable names (KEY or KEY=value)" end),
           ((.new // "" | tostring | split("=")[0]) as $k
-            | if ($d[0] | has($k)) then empty else "migrations.json: env_aliases[\($i)] new key \($k) is not in config/defaults.json" end),
+            | if declared($k) then empty else "migrations.json: env_aliases[\($i)] new key \($k) is not declared in config/config-reference.json" end),
           (if .when == null then empty
-           elif ((.when.key // "") as $w | $d[0] | has($w)) then empty
-           else "migrations.json: env_aliases[\($i)] when.key \(.when.key // "" | tostring) is not in config/defaults.json" end)),
+           elif (.when | type) != "object" or ((.when.key // null) | name_ok | not) or ((.when.equals | type) as $t | ["string", "number", "boolean"] | index($t) | not)
+           then "migrations.json: env_aliases[\($i)] when must be {key: a variable name, equals: a string, number or boolean}"
+           elif declared(.when.key) then empty
+           else "migrations.json: env_aliases[\($i)] when.key \(.when.key) is not declared in config/config-reference.json" end)),
       ((.env_aliases // []) + (.value_aliases // []) + (.removed // []) | .[] | select(has("remove_in"))
         | if (.remove_in | maj) > ($major | tonumber) then empty
           else "migrations.json: \(.old // "?") has remove_in \(.remove_in), not a later major than \($major)" end)
@@ -487,8 +505,12 @@ gate_config_keys() {
       | (entries | keys) as $declared
       | ($r | split("\n") | map(select(length > 0))[]
           | . as $n
-          | select(($declared | index($n)) == null and ([$pre[] | select(. as $p | $n | startswith($p))] | length) == 0
-                   and ([$pre[] | select(. == $n)] | length) == 0)
+          # declared: an exact entry; a name of a pattern family; or a bare
+          # prefix mention (DRUPILOT_ISSUE_<FIELD> in prose reads as
+          # DRUPILOT_ISSUE_) that some declared key or pattern starts with.
+          | select(($declared | index($n)) == null
+                   and ([$pre[] | select(. as $p | $n | startswith($p))] | length) == 0
+                   and (($n | endswith("_")) and ([$declared[], $pre[] | select(startswith($n))] | length) > 0 | not))
           | "\($n) is read but not declared in config/config-reference.json"),
         (([$d[0] | keys[] | select(startswith("DRUPILOT_"))] | sort) as $dk
           | ([$ref.keys // {} | to_entries[] | select((.value.default_ref // "") | startswith("defaults.json#/")) | .key] | sort) as $rk
@@ -504,11 +526,13 @@ gate_config_keys() {
     # CC-06: every name the 0.9 README documents stays public.
     if [[ -f "$REPO/tests/baseline/v0.9.0/env-public-v0.9.json" ]]; then
       jq -r --slurpfile ref "$ref" '
-        ($ref[0] | [(.keys // {}), (.runtime_only // {}) | to_entries[] | select(.value.tier == "public") | .key]) as $pub
+        ($ref[0] | ((.keys // {}) + (.runtime_only // {}))) as $exact
         | ($ref[0].patterns // {} | to_entries | map(select(.value.tier == "public") | .key | rtrimstr("*"))) as $pp
         | (.stdout.public // .public // [])[]
         | sub("<KEY>$"; "") as $n
-        | select(($pub | index($n)) == null and ([$pp[] | select(. as $p | $n | startswith($p))] | length) == 0)
+        # An exact entry decides; a pattern only covers names with no entry.
+        | select(if ($exact | has($n)) then $exact[$n].tier != "public"
+                 else ([$pp[] | select(. as $p | $n | startswith($p))] | length) == 0 end)
         | "\($n) is documented by the 0.9 README but not public in config-reference.json"' \
         "$REPO/tests/baseline/v0.9.0/env-public-v0.9.json" >> "$out" 2>/dev/null || true
     fi

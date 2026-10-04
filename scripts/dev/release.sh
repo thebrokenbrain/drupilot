@@ -4,7 +4,8 @@
 # Cut a release (a maintainer tool: no command, skill or hook calls it), as
 # 09-R4 lays it out, and nothing more:
 #   1. validate <version> (X.Y.Z or X.Y.Z-pre.N; it must be newer than the
-#      current one, and no pre-release on `main`);
+#      current one, and no pre-release on `main`; [Unreleased] must list a
+#      change, unless a pre-release of <version> is promoted unchanged);
 #   2. set .claude-plugin/plugin.json `version` (the single version source);
 #   3. rename CHANGELOG.md `## [Unreleased]` to `## [<version>] - <date>`, add
 #      an empty `[Unreleased]` above it and update the compare links
@@ -64,39 +65,7 @@ SEMVER='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
 printf '%s\n' "$VERSION" | grep -qE "$SEMVER" || die "'$VERSION' is not a valid version (X.Y.Z or X.Y.Z-pre.N)" 1
 PREV="$(jq -r '.version // empty' "$PJ")"
 
-# semver_gt A B -> 0 when A has a higher SemVer precedence than B (2.0.0 §11:
-# numeric core fields; a release outranks its pre-releases; pre-release
-# identifiers compare numerically when both are numbers, else as ASCII, a
-# numeric one ranking lower; a longer list wins when all shared ones tie).
-semver_gt() {
-  local ac="${1%%-*}" bc="${2%%-*}" ap="" bp="" i x y na nb LC_ALL=C
-  [[ "$1" == *-* ]] && ap="${1#*-}"
-  [[ "$2" == *-* ]] && bp="${2#*-}"
-  for i in 1 2 3; do
-    x="$(printf '%s' "$ac" | cut -d. -f"$i")"; y="$(printf '%s' "$bc" | cut -d. -f"$i")"
-    [[ "$x" -gt "$y" ]] && return 0
-    [[ "$x" -lt "$y" ]] && return 1
-  done
-  [[ -z "$ap" && -z "$bp" ]] && return 1
-  [[ -z "$ap" ]] && return 0
-  [[ -z "$bp" ]] && return 1
-  na=$(( $(printf '%s' "$ap" | tr -cd . | wc -c) + 1 )); nb=$(( $(printf '%s' "$bp" | tr -cd . | wc -c) + 1 ))
-  i=1
-  while [[ "$i" -le "$na" && "$i" -le "$nb" ]]; do
-    x="$(printf '%s' "$ap" | cut -d. -f"$i")"; y="$(printf '%s' "$bp" | cut -d. -f"$i")"
-    if [[ "$x" =~ ^[0-9]+$ && "$y" =~ ^[0-9]+$ ]]; then
-      [[ "$x" -gt "$y" ]] && return 0
-      [[ "$x" -lt "$y" ]] && return 1
-    elif [[ "$x" =~ ^[0-9]+$ ]]; then return 1
-    elif [[ "$y" =~ ^[0-9]+$ ]]; then return 0
-    else
-      [[ "$x" > "$y" ]] && return 0
-      [[ "$x" < "$y" ]] && return 1
-    fi
-    i=$((i + 1))
-  done
-  [[ "$na" -gt "$nb" ]]
-}
+# semver_gt comes from common.sh.
 semver_gt "$VERSION" "$PREV" || die "'$VERSION' is not newer than the current version '$PREV' (never reuse or lower a version)" 1
 git -C "$REPO" rev-parse -q --verify "refs/tags/v$VERSION" > /dev/null && die "Tag v$VERSION already exists" 1
 BRANCH="$(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
@@ -106,7 +75,14 @@ if [[ "$DRY" != "1" ]]; then
 fi
 grep -q '^## \[Unreleased\]' "$CL" || die "CHANGELOG.md has no '## [Unreleased]' section" 1
 UNREL_BODY="$(awk '/^## \[Unreleased\]/ { f = 1; next } f && /^## \[/ { exit } f && NF' "$CL")"
-[[ -n "$UNREL_BODY" ]] || die "CHANGELOG.md [Unreleased] is empty: nothing to release" 1
+# An empty [Unreleased] is only allowed when promoting a pre-release of this
+# very version unchanged (1.0.0-rc.2 -> 1.0.0, 09-R3: "rc unchanged").
+PROMOTE=0
+if [[ -z "$UNREL_BODY" ]]; then
+  [[ "$PREV" == *-* && "${PREV%%-*}" == "$VERSION" ]] \
+    || die "CHANGELOG.md [Unreleased] is empty: nothing to release (only a pre-release of $VERSION may be promoted unchanged)" 1
+  PROMOTE=1
+fi
 
 # --- 2-3. The new plugin.json and CHANGELOG.md, in a temp dir ---------------------
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-release.XXXXXX")"
@@ -114,8 +90,11 @@ trap 'rm -rf "$TMP"' EXIT
 jq --arg v "$VERSION" '.version = $v' "$PJ" > "$TMP/plugin.json"
 BASE_URL="$(sed -n 's#^\[Unreleased\]: \(.*\)/compare/.*#\1#p' "$CL" | head -n 1)"
 [[ -n "$BASE_URL" ]] || die "CHANGELOG.md has no '[Unreleased]: <repo>/compare/...' link" 1
-awk -v v="$VERSION" -v d="$DATE" -v p="$PREV" -v u="$BASE_URL" '
-  /^## \[Unreleased\]/ && !h { print; print ""; print "## [" v "] - " d; h = 1; next }
+awk -v v="$VERSION" -v d="$DATE" -v p="$PREV" -v u="$BASE_URL" -v promote="$PROMOTE" '
+  /^## \[Unreleased\]/ && !h {
+    print; print ""; print "## [" v "] - " d
+    if (promote == "1") { print ""; print "No changes since " p "." }
+    h = 1; next }
   /^\[Unreleased\]: / && !l {
     print "[Unreleased]: " u "/compare/v" v "...HEAD"
     print "[" v "]: " u "/compare/v" p "...v" v
@@ -165,7 +144,8 @@ if [[ -n "$OTHER" ]]; then
   printf '%s\n' "$OTHER" | sed 's/^/    /' >&2; restore
   die "claude plugin validate reports a warning other than the known CLAUDE.md-at-root one; nothing was committed" 1
 fi
-if ! "$SH" "$REPO/scripts/dev/check.sh" --ci >&2; then
+# HEAD may still carry the tag of the pre-release being promoted.
+if ! RELEASE_FROM="$PREV" "$SH" "$REPO/scripts/dev/check.sh" --ci >&2; then
   restore; die "check.sh --ci failed; nothing was committed" 1
 fi
 

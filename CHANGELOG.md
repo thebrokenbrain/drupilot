@@ -64,20 +64,25 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   pins the autologout 8.x-1.4 corpus by commit and tarball hash.
 
 - **The `version` gate.** `scripts/dev/check.sh` checks that plugin.json
-  equals the top released CHANGELOG heading, that a `v*` tag on HEAD is
-  `v<version>`, that `main` never carries a pre-release version (also on a
-  pull request into it, through `GITHUB_BASE_REF`), and that
-  `config/migrations.json` is coherent.
+  equals the released CHANGELOG heading of highest SemVer precedence (so a
+  0.9.x section merged from main above a 1.0 pre-release is fine), that a `v*`
+  tag on HEAD is `v<version>`, that `main` never carries a pre-release version
+  (also on a pull request into it, through `GITHUB_BASE_REF`), and that
+  `config/migrations.json` is coherent (valid variable names, aliased keys
+  declared in `config/config-reference.json`). `semver_gt` in `common.sh`
+  compares versions with pre-releases (`version_ge` strips them).
 - **`scripts/dev/release.sh`** cuts a release: version checks (SemVer
   precedence, pre-releases included), plugin.json, the CHANGELOG heading and
   compare links, `claude plugin validate` and `check.sh --ci`, then a
   `chore(release)` commit and an annotated `vX.Y.Z` tag. It never pushes;
-  `--dry-run` writes nothing.
+  `--dry-run` writes nothing. An unchanged pre-release can be promoted to its
+  release (`1.0.0-rc.N` -> `1.0.0`) with an empty `[Unreleased]`.
 - **Alias layer for renamed settings.** `config/migrations.json` (no row
   yet) lets `config_get` resolve an old key name, or one old value, to the
   new key, from the environment and then from `.drupilot.json`, with one
-  deprecation warning per process; the environment still wins over every
-  file tier.
+  deprecation warning per process (decided when `common.sh` is sourced, so
+  the `$(config_get ...)` subshells do not repeat it); the environment still
+  wins over every file tier.
 - **`config/config-reference.json` and the `config-keys` gate.** Every
   `DRUPILOT_*` key the scripts, hooks and prompts read is declared with its
   tier, type, enum, default source and docs page; the gate warns on an

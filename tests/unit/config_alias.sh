@@ -15,7 +15,10 @@ cat > "$pr/config/migrations.json" <<'JSON'
    {"old": "DRUPILOT_OLD_PHP", "new": "DRUPILOT_PHP_TARGET", "since": "1.0.0", "remove_in": "2.0.0", "note": "synthetic"},
    {"old": "DRUPILOT_OLD_MODE", "new": "DRUPILOT_CONTRIB_MODE", "since": "1.0.0", "remove_in": "2.0.0", "note": "synthetic"},
    {"old": "DRUPILOT_KEEP_D10=true", "new": "DRUPILOT_CORE_TARGET_STRATEGY=keep-previous", "since": "1.0.0", "remove_in": "2.0.0",
-    "note": "synthetic", "when": {"key": "DRUPILOT_CORE_TARGET_STRATEGY", "equals": "auto"}}
+    "note": "synthetic", "when": {"key": "DRUPILOT_CORE_TARGET_STRATEGY", "equals": "auto"}},
+   {"old": "DRUPILOT_OLD_GEN", "new": "DRUPILOT_GENERATE_RULES", "since": "1.0.0", "remove_in": "2.0.0",
+    "note": "synthetic", "when": {"key": "DRUPILOT_AUTONOMOUS", "equals": false}},
+   {"old": "DRUPILOT-BAD-NAME", "new": "DRUPILOT_SESSION_CONTEXT", "since": "1.0.0", "remove_in": "2.0.0", "note": "an invalid name"}
  ],
  "value_aliases": [], "removed": []}
 JSON
@@ -23,7 +26,7 @@ export CLAUDE_PLUGIN_ROOT="$pr" DRUPILOT_PROJECT_DIR="$T_TMP/root"
 # shellcheck source=../../scripts/lib/common.sh
 . "$T_LIB"
 
-assert_eq "the rows are loaded once, at source time" "$_DRUPILOT_ALIAS_N" "3"
+assert_eq "the rows are loaded once, at source time (the invalid name ignored)" "$_DRUPILOT_ALIAS_N" "4"
 assert_eq "no alias in use: defaults.json" "$(config_get DRUPILOT_PHP_TARGET x)" "8.3"
 
 # One warning per process: two lookups in this shell, one warning.
@@ -55,6 +58,21 @@ printf '{"DRUPILOT_CORE_TARGET_STRATEGY":"d11-only"}\n' > "$T_TMP/root/.drupilot
 assert_eq "when fails: an explicit strategy in .drupilot.json wins" "$(DRUPILOT_KEEP_D10=true config_get DRUPILOT_CORE_TARGET_STRATEGY x 2>/dev/null)" "d11-only"
 rm -f "$T_TMP/root/.drupilot.json"
 assert_eq "an explicit env strategy wins" "$(DRUPILOT_KEEP_D10=true DRUPILOT_CORE_TARGET_STRATEGY=keep-d10 config_get DRUPILOT_CORE_TARGET_STRATEGY x 2>/dev/null)" "keep-d10"
+
+# `equals: false` matches a JSON false of defaults.json (DRUPILOT_AUTONOMOUS).
+assert_eq "when equals false: the alias applies while the key is false" "$(DRUPILOT_OLD_GEN=off config_get DRUPILOT_GENERATE_RULES x 2>/dev/null)" "off"
+assert_eq "... and not when it is true" "$(DRUPILOT_AUTONOMOUS=true DRUPILOT_OLD_GEN=off config_get DRUPILOT_GENERATE_RULES x 2>/dev/null)" "ask"
+assert_eq "a row with an invalid variable name never breaks a lookup" "$(config_get DRUPILOT_SESSION_CONTEXT x 2>/dev/null)" "on"
+
+# Once per process, through the $(config_get ...) subshells scripts use: the
+# row in use is warned about when common.sh is sourced, in the main shell.
+n="$(env DRUPILOT_OLD_PHP=8.4 "$T_SH" -c '. "$1"; a="$(config_get DRUPILOT_PHP_TARGET x)"; b="$(config_get DRUPILOT_PHP_TARGET x)"; c="$(config_enum DRUPILOT_PHP_TARGET 8.3 8.3 8.4)"; printf "%s %s %s\n" "$a" "$b" "$c" >&2' _ "$T_LIB" 2>&1 | grep -c 'DRUPILOT_OLD_PHP is deprecated')"
+assert_eq "three reads through command substitution: one warning" "$n" "1"
+printf '{"DRUPILOT_OLD_MODE":"auto"}\n' > "$T_TMP/root/.drupilot.json"
+n="$("$T_SH" -c '. "$1"; a="$(config_get DRUPILOT_CONTRIB_MODE x)"; b="$(config_get DRUPILOT_CONTRIB_MODE x)"' _ "$T_LIB" 2>&1 | grep -c 'DRUPILOT_OLD_MODE is deprecated')"
+assert_eq "a .drupilot.json alias: one warning too" "$n" "1"
+rm -f "$T_TMP/root/.drupilot.json"
+assert_eq "an alias not in use: no warning" "$("$T_SH" -c '. "$1"; a="$(config_get DRUPILOT_PHP_TARGET x)"' _ "$T_LIB" 2>&1 | grep -c 'deprecated' || true)" "0"
 
 # The shipped file has no row: nothing is loaded and nothing changes.
 assert_eq "the shipped migrations.json has no alias row" \

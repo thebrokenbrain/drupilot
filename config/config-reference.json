@@ -50,16 +50,40 @@
       "see": "concepts/determinism-lockfile.md"
     },
     "DRUPILOT_PHPSTAN_LEVEL": {
-      "type": "int",
-      "enum": null,
+      "type": "enum",
+      "enum": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "max"
+      ],
       "tier": "public",
       "default_ref": "defaults.json#/DRUPILOT_PHPSTAN_LEVEL",
       "description": "Base PHPStan level (deprecation detection).",
       "see": "guides/assess.md"
     },
     "DRUPILOT_PHPSTAN_LEVEL_REFACTOR": {
-      "type": "int",
-      "enum": null,
+      "type": "enum",
+      "enum": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "max"
+      ],
       "tier": "public",
       "default_ref": "defaults.json#/DRUPILOT_PHPSTAN_LEVEL_REFACTOR",
       "description": "PHPStan level used in the refactor phase.",
@@ -468,14 +492,6 @@
       "default_ref": "choices.json#/choices",
       "description": "Pre-answers one tabbed choice, so it is not asked. See Pre-answering tabbed choices for the keys and their values. One variable per key of config/choices.json; a fork marked preanswer:false (PUSH) is never pre-answered.",
       "see": "concepts/decisions.md"
-    },
-    "DRUPILOT_ISSUE_*": {
-      "type": "string",
-      "enum": null,
-      "tier": "public",
-      "default_ref": null,
-      "description": "The Drupal.org issue-field defaults make-issue.sh reads by name (DRUPILOT_ISSUE_<FIELD>); each one is a key of its own above.",
-      "see": "guides/contribute.md"
     },
     "DRUPILOT_TPL_*": {
       "type": "string",

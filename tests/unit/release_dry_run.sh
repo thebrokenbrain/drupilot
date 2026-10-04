@@ -80,4 +80,10 @@ awk '/^### Added/ { skip = 1; next } skip && /^- Something\.$/ { skip = 0; next 
 jq '.version = "0.9.1"' "$r/.claude-plugin/plugin.json" > "$T_TMP/p" && mv "$T_TMP/p" "$r/.claude-plugin/plugin.json"
 assert_eq "an empty [Unreleased] is refused" "$(rel 0.9.2)" "1"
 assert_match "... with the reason" "$(t_err)" "\\[Unreleased\\] is empty"
+# Promoting an unchanged rc (09-R3): allowed with an empty [Unreleased], and
+# only for a pre-release of the same version.
+jq '.version = "1.0.0-rc.1"' "$r/.claude-plugin/plugin.json" > "$T_TMP/p" && mv "$T_TMP/p" "$r/.claude-plugin/plugin.json"
+sed 's/^## \[0.9.1\] - 2026-10-03/## [1.0.0-rc.1] - 2026-10-03/' "$r/CHANGELOG.md" > "$T_TMP/c" && mv "$T_TMP/c" "$r/CHANGELOG.md"
+assert_eq "an unchanged rc can be promoted to its release" "$(rel 1.0.0)" "0"
+assert_eq "... but not to another version" "$(rel 1.0.1)" "1"
 t_done

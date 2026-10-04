@@ -60,6 +60,41 @@ print_usage() {
        { sub(/^# ?/, ""); print }' "$1"
 }
 
+# semver_gt A B -> 0 when version A has a higher SemVer 2.0.0 precedence than
+# B (§11: numeric core fields; a release outranks its pre-releases;
+# pre-release identifiers compare numerically when both are numbers, else as
+# ASCII, a numeric one ranking lower; a longer list wins when all shared ones
+# tie). Unlike version_ge (which strips the suffix), 1.0.0-rc.1 < 1.0.0.
+semver_gt() {
+  local ac="${1%%-*}" bc="${2%%-*}" ap="" bp="" i x y na nb LC_ALL=C
+  [[ "$1" == *-* ]] && ap="${1#*-}"
+  [[ "$2" == *-* ]] && bp="${2#*-}"
+  for i in 1 2 3; do
+    x="$(printf '%s' "$ac" | cut -d. -f"$i")"; y="$(printf '%s' "$bc" | cut -d. -f"$i")"
+    [[ "${x:-0}" -gt "${y:-0}" ]] && return 0
+    [[ "${x:-0}" -lt "${y:-0}" ]] && return 1
+  done
+  [[ -z "$ap" && -z "$bp" ]] && return 1
+  [[ -z "$ap" ]] && return 0
+  [[ -z "$bp" ]] && return 1
+  na=$(( $(printf '%s' "$ap" | tr -cd . | wc -c) + 1 )); nb=$(( $(printf '%s' "$bp" | tr -cd . | wc -c) + 1 ))
+  i=1
+  while [[ "$i" -le "$na" && "$i" -le "$nb" ]]; do
+    x="$(printf '%s' "$ap" | cut -d. -f"$i")"; y="$(printf '%s' "$bp" | cut -d. -f"$i")"
+    if [[ "$x" =~ ^[0-9]+$ && "$y" =~ ^[0-9]+$ ]]; then
+      [[ "$x" -gt "$y" ]] && return 0
+      [[ "$x" -lt "$y" ]] && return 1
+    elif [[ "$x" =~ ^[0-9]+$ ]]; then return 1
+    elif [[ "$y" =~ ^[0-9]+$ ]]; then return 0
+    else
+      [[ "$x" > "$y" ]] && return 0
+      [[ "$x" < "$y" ]] && return 1
+    fi
+    i=$((i + 1))
+  done
+  [[ "$na" -gt "$nb" ]]
+}
+
 # extract_semver <string> -> first X.Y(.Z) found
 extract_semver() {
   printf '%s' "$1" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1
@@ -402,20 +437,26 @@ _config_resolve() {
 # `old` of DRUPILOT_X=true applies only while DRUPILOT_X is "true"; a `new` of
 # DRUPILOT_Y=v resolves DRUPILOT_Y to v). `when` ({key, equals}) applies the
 # row only while <key>, resolved WITHOUT aliases (env, .drupilot.json,
-# defaults), equals that value — e.g. a legacy boolean honored only while a
-# strategy is still at its default. Each row used warns once per shell
-# process (a command substitution is its own process). value_aliases and
-# removed are read by their owners and by the `version` gate, not here.
+# defaults), equals that value (compared as text, case-insensitively, so
+# `equals: false` matches a JSON false) — e.g. a legacy boolean honored only
+# while a strategy is still at its default. value_aliases and removed are read
+# by their owners and by the `version` gate, not here.
+# Warnings: a row in use is reported once per process. The rows are loaded,
+# and the ones already in use (environment, or the .drupilot.json found from
+# the working directory) are warned about, when this file is sourced, in the
+# main shell, so the many `$(config_get ...)` subshells inherit the mark; a row
+# first met later (another project root) is warned about where it is met.
 _DRUPILOT_ALIAS_N=0
 _DRUPILOT_ALIAS_VALUE=""
 _DRUPILOT_ALIAS_WARNED="|"
 
 # _config_alias_load -> the env_aliases rows in parallel arrays (_DA_NEW,
 # _DA_NV, _DA_OLD, _DA_OV, _DA_WK, _DA_WE, _DA_SINCE, _DA_RIN) and their count
-# in _DRUPILOT_ALIAS_N. Runs once when this file is sourced; without a row (the
-# common case) it reads the file without forking jq.
+# in _DRUPILOT_ALIAS_N. Without a row (the common case) it reads the file
+# without forking jq. A row whose old, new or when key is not a valid variable
+# name is ignored (the version gate reports it).
 _config_alias_load() {
-  local f content="" a b c d e g h k z sep
+  local f content="" a b c d e g h k z sep re='^[A-Za-z_][A-Za-z0-9_]*$'
   _DRUPILOT_ALIAS_N=0
   f="$(plugin_root)/config/migrations.json"
   [[ -r "$f" ]] || return 0
@@ -426,7 +467,8 @@ _config_alias_load() {
   # z takes the "." sentinel that keeps a trailing empty field from being dropped.
   # shellcheck disable=SC2034  # z is only the sentinel
   while IFS="$sep" read -r a b c d e g h k z; do
-    [[ -n "$a" && -n "$c" ]] || continue
+    [[ "$a" =~ $re && "$c" =~ $re ]] || continue
+    [[ -z "$e" || "$e" =~ $re ]] || continue
     _DA_NEW[_DRUPILOT_ALIAS_N]="$a"; _DA_NV[_DRUPILOT_ALIAS_N]="$b"
     _DA_OLD[_DRUPILOT_ALIAS_N]="$c"; _DA_OV[_DRUPILOT_ALIAS_N]="$d"
     _DA_WK[_DRUPILOT_ALIAS_N]="$e"; _DA_WE[_DRUPILOT_ALIAS_N]="$g"
@@ -435,42 +477,69 @@ _config_alias_load() {
   done < <(jq -r '.env_aliases[]? | select(type == "object" and (.old | type) == "string" and (.new | type) == "string")
              | (.new | split("=")) as $n | (.old | split("=")) as $o
              | [$n[0], ($n[1:] | join("=")), $o[0], ($o[1:] | join("=")),
-                (.when.key // ""), (.when.equals // "" | tostring), (.since // ""), (.remove_in // ""), "."]
+                (if (.when | type) == "object" then (.when.key // "" | tostring) else "" end),
+                (if (.when | type) == "object" and (.when | has("equals")) then (.when.equals | tostring) else "" end),
+                (.since // "" | tostring), (.remove_in // "" | tostring), "."]
              | join("\u001f")' "$f" 2>/dev/null || true)
   return 0
 }
 
+# _config_alias_applies <row> <env|prefs> -> 0 and _DRUPILOT_ALIAS_VALUE when
+# the row's old name is set in that tier (with its value, if the row names
+# one) and its `when` holds; 1 otherwise. Never warns.
+_config_alias_applies() {
+  local i="$1" tier="$2" ok ov got="" pf
+  ok="${_DA_OLD[i]}"; ov="${_DA_OV[i]}"
+  if [[ "$tier" == "env" ]]; then
+    got="${!ok:-}"
+  else
+    pf="$(drupilot_prefs_file 2>/dev/null || true)"
+    if [[ -n "$pf" && -r "$pf" ]] && have_cmd jq; then
+      got="$(jq -r --arg k "$ok" 'if type == "object" and has($k) and .[$k] != null then .[$k] | tostring else empty end' "$pf" 2>/dev/null || true)"
+    fi
+  fi
+  [[ -n "$got" ]] || return 1
+  [[ -z "$ov" || "$(lc "$got")" == "$(lc "$ov")" ]] || return 1
+  if [[ -n "${_DA_WK[i]}" ]]; then
+    [[ "$(lc "$(_config_resolve "${_DA_WK[i]}" "" 0)")" == "$(lc "${_DA_WE[i]}")" ]] || return 1
+  fi
+  _DRUPILOT_ALIAS_VALUE="${_DA_NV[i]:-$got}"
+  return 0
+}
+
+# _config_alias_warn <row> -> the deprecation warning, once per process.
+_config_alias_warn() {
+  local i="$1"
+  case "$_DRUPILOT_ALIAS_WARNED" in *"|$i|"*) return 0;; esac
+  _DRUPILOT_ALIAS_WARNED="$_DRUPILOT_ALIAS_WARNED$i|"
+  log_warn "${_DA_OLD[i]}${_DA_OV[i]:+=${_DA_OV[i]}} is deprecated since ${_DA_SINCE[i]:-1.0.0} and will be removed in ${_DA_RIN[i]:-2.0.0}; use ${_DA_NEW[i]}${_DA_NV[i]:+=${_DA_NV[i]}}"
+  return 0
+}
+
 # _config_alias <env|prefs> <KEY> -> 0 and _DRUPILOT_ALIAS_VALUE when a row
-# aliasing KEY applies in that tier; 1 otherwise.
+# aliasing KEY applies in that tier (warning about it once); 1 otherwise.
 _config_alias() {
-  local tier="$1" key="$2" i=0 ok ov got pf
+  local tier="$1" key="$2" i=0
   while [[ "$i" -lt "$_DRUPILOT_ALIAS_N" ]]; do
-    if [[ "${_DA_NEW[i]}" == "$key" ]]; then
-      ok="${_DA_OLD[i]}"; ov="${_DA_OV[i]}"; got=""
-      if [[ "$tier" == "env" ]]; then
-        got="${!ok:-}"
-      else
-        pf="$(drupilot_prefs_file 2>/dev/null || true)"
-        if [[ -n "$pf" && -r "$pf" ]] && have_cmd jq; then
-          got="$(jq -r --arg k "$ok" 'if type == "object" and has($k) and .[$k] != null then .[$k] | tostring else empty end' "$pf" 2>/dev/null || true)"
-        fi
-      fi
-      if [[ -n "$got" ]] && { [[ -z "$ov" ]] || [[ "$(lc "$got")" == "$(lc "$ov")" ]]; } \
-         && { [[ -z "${_DA_WK[i]}" ]] || [[ "$(_config_resolve "${_DA_WK[i]}" "" 0)" == "${_DA_WE[i]}" ]]; }; then
-        _DRUPILOT_ALIAS_VALUE="${_DA_NV[i]:-$got}"
-        case "$_DRUPILOT_ALIAS_WARNED" in
-          *"|$i|"*) ;;
-          *) _DRUPILOT_ALIAS_WARNED="$_DRUPILOT_ALIAS_WARNED$i|"
-             log_warn "$ok${ov:+=$ov} is deprecated since ${_DA_SINCE[i]:-1.0.0} and will be removed in ${_DA_RIN[i]:-2.0.0}; use $key${_DA_NV[i]:+=${_DA_NV[i]}}";;
-        esac
-        return 0
-      fi
+    if [[ "${_DA_NEW[i]}" == "$key" ]] && _config_alias_applies "$i" "$tier"; then
+      _config_alias_warn "$i"
+      return 0
     fi
     i=$((i + 1))
   done
   return 1
 }
-_config_alias_load
+
+# _config_alias_prewarn -> warn now, in the main shell, about every row
+# already in use, so later $(config_get ...) subshells stay quiet about it.
+_config_alias_prewarn() {
+  local i=0
+  while [[ "$i" -lt "$_DRUPILOT_ALIAS_N" ]]; do
+    if _config_alias_applies "$i" env || _config_alias_applies "$i" prefs; then _config_alias_warn "$i"; fi
+    i=$((i + 1))
+  done
+  return 0
+}
 
 # prefs_set <KEY> <value> -> persist a preference into .drupilot.json at the
 # Drupal root (atomic temp-file + mv). Used to remember a tabbed-choice answer
@@ -3583,3 +3652,8 @@ git_active_commit_hooks() {
   done
   return 0
 }
+
+# The alias rows (config/migrations.json), and a warning for each row already
+# in use, once, in the main shell (see the alias layer above).
+_config_alias_load
+_config_alias_prewarn

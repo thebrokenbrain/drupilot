@@ -11,7 +11,7 @@ r="$T_TMP/repo"
 mkdir -p "$r/scripts/dev" "$r/scripts/lib" "$r/config" "$r/.claude-plugin"
 cp "$T_REPO/scripts/dev/check.sh" "$r/scripts/dev/"
 cp "$T_REPO/scripts/lib/common.sh" "$r/scripts/lib/"
-cp "$T_REPO/config/defaults.json" "$T_REPO/config/migrations.json" "$r/config/"
+cp "$T_REPO/config/defaults.json" "$T_REPO/config/migrations.json" "$T_REPO/config/config-reference.json" "$r/config/"
 cp "$T_REPO/CHANGELOG.md" "$r/"
 cp "$T_REPO/.claude-plugin/plugin.json" "$r/.claude-plugin/"
 g() { git -C "$r" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false -c tag.gpgsign=false "$@"; }
@@ -49,7 +49,7 @@ assert_match "a CI push to main (GITHUB_REF_NAME) fails" "$(gate GITHUB_REF_NAME
 assert_eq "a CI push to integration/1.0.0 passes" "$(gate GITHUB_REF_NAME=integration/1.0.0 GITHUB_REF_TYPE=branch)" "pass|"
 
 jq '.version = "0.9.2"' "$r/.claude-plugin/plugin.json" > "$T_TMP/p" && mv "$T_TMP/p" "$r/.claude-plugin/plugin.json"
-assert_match "plugin.json ahead of the CHANGELOG fails" "$(gate)" "^fail\|.*plugin.json version '0.9.2' differs"
+assert_match "plugin.json ahead of the CHANGELOG fails" "$(gate)" "^fail\|.*plugin.json version '0.9.2' differs from the highest released"
 setver 1.0
 assert_match "a malformed version fails" "$(gate)" "^fail\|.*'1.0' is not a valid version"
 setver "$v"
@@ -60,11 +60,33 @@ row() {
 row '{"old":"DRUPILOT_OLD","new":"DRUPILOT_PHP_TARGET","since":"1.0.0","remove_in":"2.0.0","note":"x"}'
 assert_eq "a coherent alias row passes" "$(gate)" "pass|"
 row '{"old":"DRUPILOT_OLD","new":"DRUPILOT_NO_SUCH_KEY=v","since":"1.0.0","remove_in":"2.0.0","note":"x"}'
-assert_match "an aliased key missing from defaults.json fails" "$(gate)" "^fail\|.*new key DRUPILOT_NO_SUCH_KEY is not in config/defaults.json"
+assert_match "an aliased key not declared in config-reference.json fails" "$(gate)" "^fail\|.*new key DRUPILOT_NO_SUCH_KEY is not declared in config/config-reference.json"
+row '{"old":"DRUPILOT_CHOICE_CORE","new":"DRUPILOT_CHOICE_CORE_TARGET","since":"1.0.0","remove_in":"2.0.0","note":"x"}'
+assert_eq "a DRUPILOT_CHOICE_* target (a declared pattern) passes" "$(gate)" "pass|"
+row '{"old":"DRUPILOT-OLD","new":"DRUPILOT_PHP_TARGET","since":"1.0.0","remove_in":"2.0.0","note":"x"}'
+assert_match "an old name that is not a variable name fails" "$(gate)" "^fail\|.*old and new must be variable names"
+row '{"old":"DRUPILOT_OLD","new":"DRUPILOT_PHP_TARGET","since":"1.0.0","remove_in":"2.0.0","note":"x","when":{"key":"DRUPILOT_AUTONOMOUS","equals":{"a":1}}}'
+assert_match "a when.equals that is not a scalar fails" "$(gate)" "^fail\|.*when must be"
+row '{"old":"DRUPILOT_OLD","new":"DRUPILOT_PHP_TARGET","since":"1.0.0","remove_in":"2.0.0","note":"x","when":{"key":"DRUPILOT_AUTONOMOUS","equals":false}}'
+assert_eq "a when.equals false passes" "$(gate)" "pass|"
 row '{"old":"DRUPILOT_OLD","new":"DRUPILOT_PHP_TARGET","since":"1.0.0","remove_in":"2.0.0","note":"x","when":{"key":"DRUPILOT_NOPE","equals":"a"}}'
-assert_match "a when.key missing from defaults.json fails" "$(gate)" "^fail\|.*when.key DRUPILOT_NOPE"
+assert_match "a when.key not declared fails" "$(gate)" "^fail\|.*when.key DRUPILOT_NOPE is not declared"
 row '{"old":"DRUPILOT_OLD","new":"DRUPILOT_PHP_TARGET","since":"0.9.0","remove_in":"0.10.0","note":"x"}'
 assert_match "a remove_in in the current major fails" "$(gate)" "^fail\|.*remove_in 0.10.0, not a later major"
 row '{"old":"DRUPILOT_OLD","new":"DRUPILOT_PHP_TARGET"}'
 assert_match "a row without since/remove_in fails" "$(gate)" "^fail\|.*needs string old, new, since and remove_in"
+cp "$T_REPO/config/migrations.json" "$r/config/migrations.json"
+
+# On the integration branch, a 0.9.x section merged from main and dated after
+# the latest pre-release sits above it (09-R5): the highest precedence wins.
+setver 1.0.0-alpha.1
+awk 'BEGIN { done = 0 } /^## \[/ && !done && $2 != "[Unreleased]" { print "## [0.9.9] - 2026-11-10"; print ""; done = 1 } { print }' \
+  "$r/CHANGELOG.md" > "$T_TMP/cl" && mv "$T_TMP/cl" "$r/CHANGELOG.md"
+assert_eq "a 0.9.x section above the 1.0 pre-release passes" "$(gate)" "pass|"
+# release.sh promoting an rc: HEAD still carries the rc tag while it checks.
+setver 1.0.0-rc.1
+g add -A && g commit -qm rc1 && g tag v1.0.0-rc.1
+setver 1.0.0
+assert_match "a promotion on the rc-tagged HEAD fails without RELEASE_FROM" "$(gate)" "^fail\|.*HEAD is tagged 'v1.0.0-rc.1'"
+assert_eq "... and passes while release.sh promotes it (RELEASE_FROM)" "$(gate RELEASE_FROM=1.0.0-rc.1)" "pass|"
 t_done
