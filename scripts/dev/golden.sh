@@ -63,6 +63,8 @@ result() {
   return 0
 }
 sha() { $HASHER < "$1" | cut -d' ' -f1; }
+IN_GIT=0
+git -C "$REPO" rev-parse --git-dir > /dev/null 2>&1 && IN_GIT=1
 
 # The golden directories: "name<TAB>dir".
 GOLDENS="$(printf 'baseline-0.9\t%s\n' "$REPO/tests/baseline/v0.9.0"
@@ -84,6 +86,11 @@ check_manifest() {
     if [[ ! -f "$dir/$f" ]]; then result "$name" fail "$f is pinned but missing"; return 0; fi
     got="$(sha "$dir/$f")"
     [[ "$got" == "$want" ]] || { result "$name" fail "$f differs from its pinned sha256 (a deliberate re-recording runs --update in its own commit)"; return 0; }
+    # A pinned file must be committed: an ignore rule (such as *.patch) would
+    # keep it out of a clone while it still exists here.
+    if [[ "$IN_GIT" == "1" ]] && ! git -C "$REPO" ls-files --error-unmatch "${dir#"$REPO"/}/$f" > /dev/null 2>&1; then
+      result "$name" fail "$f is pinned but not tracked by git$(git -C "$REPO" check-ignore -q "$dir/$f" 2>/dev/null && echo ' (an ignore rule matches it)')"; return 0
+    fi
   done <<< "$listed"
   while IFS= read -r f; do
     [[ -n "$f" ]] || continue
