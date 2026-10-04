@@ -101,7 +101,7 @@ All output you produce — messages, summaries, plans — is in **English**.
 - **PHP per D11 branch**: minimum 8.3 across the 11.x series; 8.4 recommended from
   11.1+. **PHP 8.5 needs Drupal 11.3 or later** (not 11.2 or earlier) -> default to
   8.3, check the core minor (`php_supported_for`), never assume a Rector `php85` set.
-- **drupal-rector**: `palantirnet/drupal-rector` **0.21.x** (community-maintained;
+- **drupal-rector**: `palantirnet/drupal-rector` **1.1.x** (toolchain cell 11; a project locked by drupilot 0.9 keeps 0.21.x until refreshed; community-maintained;
   the `palantirnet/` namespace is kept, `palantirnet/drupal8-rector` is obsolete).
   Covers D10.0 -> D11.4 deprecations. drupilot's `rector.php` uses
   `Drupal10SetList::DRUPAL_10` (APIs removed in D11) plus the target PHP set

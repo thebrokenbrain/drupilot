@@ -190,7 +190,12 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   refreshes it. A Drupal 12 test-bed resolves its toolchain from the ranges,
   with a warning, while cell 12 is provisional. `known_broken` now names
   rector 2.5.2 with any phpstan from 2.2.6 on, and drupal-rector 1.1.2 with
-  rector 2.6.2 or later.
+  rector 2.6.2 or later. The `drupal_rector` range of `config/defaults.json`
+  is now `^1.1.3`, so a fallback to the ranges lands on the same set. With
+  1.1.3, `convert-attributes.sh` gives byte-identical results on the
+  fixtures, and it now converts a plugin annotation with a keyless value
+  (`@FormElement("x")`), which 0.21.2 emitted without its argument and the
+  script restored.
 - `php_supported_for` reads `config/targets` and `config/php/versions.json`
   instead of a table in `common.sh`. Its answers are unchanged (a unit test
   pins the whole grid). `DRUPILOT_VERSION_DATA_DIR` (internal) points it at

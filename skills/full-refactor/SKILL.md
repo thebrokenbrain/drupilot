@@ -129,7 +129,7 @@ behavior.
 
 `scripts/analysis/convert-attributes.sh` (also `run-rector.sh --attributes`)
 runs drupal-rector's `AnnotationToAttributeRector` (shipped by
-palantirnet/drupal-rector 0.21.x but configured in no set) with a config it
+palantirnet/drupal-rector 1.1.x, as by 0.21.x, but configured in no set) with a config it
 renders from `templates/rector-attributes.php.tmpl` into
 `<root>/.drupilot/rector-attributes.php`. Dry run first, review, then apply:
 
@@ -167,10 +167,10 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/convert-attributes.sh" --subject "<
   A custom type is converted only when its attribute class exists under the
   Drupal root, and stripped only when a plugin manager references the class
   (an annotation-only manager would no longer find the plugin).
-- **What the pass guards.** Attributes are printed fully qualified (the 0.21.x
-  rule only recognises an existing attribute by its FQCN, so a short imported
-  one would be duplicated on a re-run); a file already carrying a short-named
-  attribute of a converted type is skipped (`skipped_files`: finish it by hand);
+- **What the pass guards.** Attributes are printed fully qualified; a file
+  already carrying a short-named attribute with a converted type's short name
+  is skipped (`skipped_files`: finish it by hand), because the rule takes any
+  attribute of that short name for the converted one;
   so is a file whose annotation has a key the attribute constructor does not
   declare (e.g. `source_module` on `@MigrateSource`: core's MigrateSource
   attribute takes only id, requirements_met, minimum_version and deriver, so

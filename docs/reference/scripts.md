@@ -162,8 +162,8 @@ ungated, no toolchain (bash + jq + awk).
 drupilot — scripts/analysis/convert-attributes.sh
 Optional, opt-in pass that converts plugin doc-block annotations (@Block(...),
 @QueueWorker(...), @Filter(...), ...) into PHP 8 attributes with the
-AnnotationToAttributeRector rule of palantirnet/drupal-rector (0.21.x ships
-the rule but configures it in no set). It is independent of run-rector.sh's
+AnnotationToAttributeRector rule of palantirnet/drupal-rector (0.21.x and
+1.1.x ship the rule but configure it in no set). It is independent of run-rector.sh's
 official and digests passes: it renders its own config,
 templates/rector-attributes.php.tmpl -> <drupal_root>/.drupilot/rector-attributes.php
 (reachable at the same relative path inside DDEV, gitignored), and runs only
@@ -192,10 +192,12 @@ Modes (DRUPILOT_ATTRIBUTES_MODE or --mode; default keep):
 
 The annotation is removed by the rule only when the test-bed core is >= the
 configured removeVersion: drupilot writes the type's `since` to strip and
-999.0.0 to keep. Names are printed fully qualified (no import), because the
-0.21.x rule detects an existing attribute by its FQCN: a file that already
-carries a short-named (imported) attribute of a converted type is skipped (it
-would get a duplicate). The rule copies every annotation key into a named
+999.0.0 to keep. Names are printed fully qualified (no import). A file that
+already carries a short-named (imported) #[X] attribute of a converted
+type's short name is skipped: the 1.1.x rule takes ANY attribute with that
+short name for the converted one (an unrelated class of the same name would
+suppress the Drupal attribute, and strip mode would then lose the plugin),
+and drupilot does not resolve the imports to tell the cases apart. The rule copies every annotation key into a named
 argument as is, so before the run each annotation's top-level keys are
 checked against the attribute constructor's parameters, read from the
 attribute class in the test-bed core and in every cached reference core at or

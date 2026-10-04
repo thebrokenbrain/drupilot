@@ -3,8 +3,8 @@
 # drupilot — scripts/analysis/convert-attributes.sh
 # Optional, opt-in pass that converts plugin doc-block annotations (@Block(...),
 # @QueueWorker(...), @Filter(...), ...) into PHP 8 attributes with the
-# AnnotationToAttributeRector rule of palantirnet/drupal-rector (0.21.x ships
-# the rule but configures it in no set). It is independent of run-rector.sh's
+# AnnotationToAttributeRector rule of palantirnet/drupal-rector (0.21.x and
+# 1.1.x ship the rule but configure it in no set). It is independent of run-rector.sh's
 # official and digests passes: it renders its own config,
 # templates/rector-attributes.php.tmpl -> <drupal_root>/.drupilot/rector-attributes.php
 # (reachable at the same relative path inside DDEV, gitignored), and runs only
@@ -33,10 +33,12 @@
 #
 # The annotation is removed by the rule only when the test-bed core is >= the
 # configured removeVersion: drupilot writes the type's `since` to strip and
-# 999.0.0 to keep. Names are printed fully qualified (no import), because the
-# 0.21.x rule detects an existing attribute by its FQCN: a file that already
-# carries a short-named (imported) attribute of a converted type is skipped (it
-# would get a duplicate). The rule copies every annotation key into a named
+# 999.0.0 to keep. Names are printed fully qualified (no import). A file that
+# already carries a short-named (imported) #[X] attribute of a converted
+# type's short name is skipped: the 1.1.x rule takes ANY attribute with that
+# short name for the converted one (an unrelated class of the same name would
+# suppress the Drupal attribute, and strip mode would then lose the plugin),
+# and drupilot does not resolve the imports to tell the cases apart. The rule copies every annotation key into a named
 # argument as is, so before the run each annotation's top-level keys are
 # checked against the attribute constructor's parameters, read from the
 # attribute class in the test-bed core and in every cached reference core at or
@@ -168,7 +170,7 @@ export DRUPILOT_PROJECT_DIR="$DRUPAL_ROOT"
   || die "vendor/bin/rector is missing. Install the toolchain first (/drupilot-setup)." 2
 RULE_SRC="$DRUPAL_ROOT/vendor/palantirnet/drupal-rector/src/Drupal10/Rector/Deprecation/AnnotationToAttributeRector.php"
 [[ -f "$RULE_SRC" ]] \
-  || die "The installed palantirnet/drupal-rector has no AnnotationToAttributeRector (needs 0.20+; the known-good toolchain ships 0.21.x)." 2
+  || die "The installed palantirnet/drupal-rector has no AnnotationToAttributeRector (needs 0.20+; the known-good toolchain ships 1.1.x)." 2
 
 CORE_VER="$(drupal_core_version "$DRUPAL_ROOT")"
 CORE_MM="$(printf '%s' "$CORE_VER" | grep -oE '^[0-9]+\.[0-9]+' || true)"
@@ -400,8 +402,9 @@ rejected_keys() {
   return 0
 }
 # Files carrying a converted annotation, and those to skip: a short-named
-# attribute of the same type already present (the 0.21.x rule would
-# duplicate), or an annotation key the attribute constructor rejects.
+# attribute with the type's short name already present (the rule matches on
+# the short name and could skip the real conversion), or an annotation key the
+# attribute constructor rejects.
 CAND="$TMPD/cand.txt"; : > "$CAND"
 SKIPPED_JSON="[]"; SKIP_LINES=""
 while IFS= read -r f; do
@@ -423,7 +426,7 @@ while IFS= read -r f; do
     if AWKV_fq="\\$attr" awk -F '\t' -v f="$f" -v s="$short" '
          $1 == "ATTR" && $2 == f { n = split($3, p, "\\"); if (p[n] == s && $3 != ENVIRON["AWKV_fq"]) bad = 1 }
          END { exit !bad }' "$SCAN"; then
-      skip_reason="already has a non fully-qualified #[$short] attribute (the 0.21.x rule would add a duplicate): finish it by hand"
+      skip_reason="already has a non fully-qualified #[$short] attribute (the rule could take it for the converted one): finish it by hand"
     fi
   done < "$ACTIVE"
   if [[ -n "$skip_reason" ]]; then
