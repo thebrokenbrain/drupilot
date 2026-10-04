@@ -114,9 +114,6 @@
 #                  --persist writes the mapped setting to .drupilot.json, an
 #                  unknown key is a usage error, and choose_one honors the
 #                  same variables
-#   baseline       scripts/dev/baseline-0.9.sh --check: the frozen v0.9.0
-#                  outputs (tests/baseline/v0.9.0/) still match, or the
-#                  difference is listed in its allowed-diffs.txt
 #   data-dir       one state root for scripts and hooks: a known path maps to
 #                  its known state key (CC-19); a script (no
 #                  CLAUDE_PLUGIN_DATA, as the Bash tool runs it) and a hook
@@ -181,7 +178,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$REPO/tests/fixtures"
 SH="${BASH:-bash}"
 
-ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root monorepo-testbed phpcs-scope choices baseline data-dir legacy-state open-mr"
+ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root monorepo-testbed phpcs-scope choices data-dir legacy-state open-mr"
 # Tests committed before their fix: "test:task" words (see the header).
 XFAIL=""
 
@@ -1368,14 +1365,6 @@ STUB
   finish
 }
 
-test_baseline() {
-  run bl "$SH" "$REPO/scripts/dev/baseline-0.9.sh" --check --json
-  expect "baseline --check: exit" "$RC" "0"
-  expect "baseline --check: captures that differ" \
-    "$(jqo bl '[.files[] | select(.status != "same" and .status != "allowed") | .name + ":" + .status]')" '[]'
-  finish
-}
-
 # --- Main -----------------------------------------------------------------------
 log_step "drupilot smoke tests (bash ${BASH_VERSION:-?}, $(uname -s 2>/dev/null || echo ?))"
 for t in $ALL_TESTS; do
@@ -1406,7 +1395,6 @@ for t in $ALL_TESTS; do
     monorepo-testbed) test_monorepo_testbed;;
     phpcs-scope) test_phpcs_scope;;
     choices) test_choices;;
-    baseline) test_baseline;;
     data-dir) test_data_dir;;
     legacy-state) test_legacy_state;;
     open-mr) test_open_mr;;

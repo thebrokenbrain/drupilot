@@ -1,0 +1,58 @@
+{
+  "_comment": "The router's run modes (commands/drupilot.md, CC-02). static_cues: in the router's 'Mode inference' rules, the first bold mode after each cue (else the last one before it) must be its mode. live_cases: what `scripts/dev/evals.sh --live` asks a real `claude -p` run and the mode it must infer (pass at >= 9 of 10 runs).",
+  "mode_words": [
+    "full",
+    "auto",
+    "status",
+    "next"
+  ],
+  "static_cues": [
+    {
+      "cue": "port this to Drupal 11",
+      "mode": "full"
+    },
+    {
+      "cue": "do everything yourself",
+      "mode": "auto"
+    },
+    {
+      "cue": "a bare `/drupilot`",
+      "mode": "next"
+    },
+    {
+      "cue": "what's next",
+      "mode": "next"
+    },
+    {
+      "cue": "how's it going",
+      "mode": "status"
+    }
+  ],
+  "live_cases": [
+    {
+      "name": "natural-language port",
+      "args": "port this module to Drupal 11",
+      "mode": "full"
+    },
+    {
+      "name": "bare",
+      "args": "",
+      "mode": "next"
+    },
+    {
+      "name": "auto word",
+      "args": "auto",
+      "mode": "auto"
+    },
+    {
+      "name": "status word",
+      "args": "status",
+      "mode": "status"
+    },
+    {
+      "name": "unattended port",
+      "args": "port this module to Drupal 11 and do everything yourself without stopping",
+      "mode": "auto"
+    }
+  ]
+}

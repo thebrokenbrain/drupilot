@@ -1,0 +1,113 @@
+{
+  "commands": [
+    {
+      "argument_hint": [
+        "[subject-path",
+        "|",
+        "--subject",
+        "DIR]",
+        "[full|auto|status|next]",
+        "[--no-confirm]",
+        "[--workspace",
+        "DIR]",
+        "[--json]"
+      ],
+      "disable_model_invocation": false,
+      "name": "drupilot"
+    },
+    {
+      "argument_hint": [
+        "[module-or-theme-path]"
+      ],
+      "disable_model_invocation": false,
+      "name": "drupilot-assess"
+    },
+    {
+      "argument_hint": [
+        "[subject-path]",
+        "[--all",
+        "[dir]]",
+        "[--level",
+        "ddev|vendor|workspace]",
+        "[--core-cache]"
+      ],
+      "disable_model_invocation": true,
+      "name": "drupilot-clean"
+    },
+    {
+      "argument_hint": [
+        "[module-path]",
+        "[issue-id]"
+      ],
+      "disable_model_invocation": true,
+      "name": "drupilot-contribute"
+    },
+    {
+      "argument_hint": [
+        "[install]"
+      ],
+      "disable_model_invocation": false,
+      "name": "drupilot-doctor"
+    },
+    {
+      "argument_hint": [
+        "<dir>",
+        "[plan|run]",
+        "[--layer",
+        "N]",
+        "[--edges",
+        "all|declared]"
+      ],
+      "disable_model_invocation": false,
+      "name": "drupilot-layers"
+    },
+    {
+      "argument_hint": [
+        "[subject-path]",
+        "[issue-id]"
+      ],
+      "disable_model_invocation": false,
+      "name": "drupilot-patch"
+    },
+    {
+      "argument_hint": [
+        "[module-or-theme-path]"
+      ],
+      "disable_model_invocation": false,
+      "name": "drupilot-port"
+    },
+    {
+      "argument_hint": [
+        "[module-or-theme-path]"
+      ],
+      "disable_model_invocation": false,
+      "name": "drupilot-refactor"
+    },
+    {
+      "argument_hint": [
+        "[subject-path]",
+        "[--php",
+        "X.Y]"
+      ],
+      "disable_model_invocation": false,
+      "name": "drupilot-setup"
+    },
+    {
+      "argument_hint": [
+        "[subject-path]",
+        "|",
+        "--all",
+        "[dir|registry-file|everything]"
+      ],
+      "disable_model_invocation": false,
+      "name": "drupilot-status"
+    },
+    {
+      "argument_hint": [
+        "[module-or-theme-path]"
+      ],
+      "disable_model_invocation": false,
+      "name": "drupilot-test"
+    }
+  ]
+}

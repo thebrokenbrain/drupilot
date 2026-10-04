@@ -1,0 +1,36 @@
+diff --git a/legacy_widgets.info.yml b/legacy_widgets.info.yml
+index 1154109..0599bbe 100644
+--- a/legacy_widgets.info.yml
++++ b/legacy_widgets.info.yml
+@@ -2,7 +2,7 @@ name: 'Legacy widgets'
+ type: module
+ description: 'Synthetic Drupal 10 fixture that plants recurring port-quality hazards.'
+ package: 'drupilot fixtures'
+-core_version_requirement: ^10
++core_version_requirement: ^10 || ^11
+ configure: legacy_widgets.settings
+ dependencies:
+   - drupal:filter
+diff --git a/modules/legacy_widgets_extra/legacy_widgets_extra.info.yml b/modules/legacy_widgets_extra/legacy_widgets_extra.info.yml
+index 0836cea..a8daf51 100644
+--- a/modules/legacy_widgets_extra/legacy_widgets_extra.info.yml
++++ b/modules/legacy_widgets_extra/legacy_widgets_extra.info.yml
+@@ -2,4 +2,4 @@ name: 'Legacy widgets extra'
+ type: module
+ description: 'Optional extras for Legacy widgets.'
+ package: 'drupilot fixtures'
+-core_version_requirement: ^8.8 || ^9 || ^10
++core_version_requirement: ^10 || ^11
+diff --git a/src/Form/WidgetImportForm.php b/src/Form/WidgetImportForm.php
+index c662ce5..0d91a17 100644
+--- a/src/Form/WidgetImportForm.php
++++ b/src/Form/WidgetImportForm.php
+@@ -61,7 +61,7 @@ class WidgetImportForm extends FormBase {
+    */
+   public function submitForm(array &$form, FormStateInterface $form_state) {
+     $storage = $this->entityTypeManager->getStorage('legacy_widget');
+-    $labels = array_filter(array_map('trim', explode("\n", trim($form_state->getValue('labels')))));
++    $labels = array_filter(array_map(trim(...), explode("\n", trim($form_state->getValue('labels')))));
+     foreach ($labels as $label) {
+       $storage->create(['label' => $label])->save();
+     }

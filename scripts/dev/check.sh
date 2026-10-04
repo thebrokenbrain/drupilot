@@ -51,6 +51,16 @@
 #   - unit        the unit tests (scripts/dev/unit.sh: tests/lib/selftest.sh and
 #                 tests/unit/*.sh, run with this same bash; a test skipped
 #                 until its milestone is not a failure)
+#   - contract    the 0.9 public-surface contract (scripts/dev/contract.sh:
+#                 commands, choices, JSON key sets, name generators, enums and
+#                 the per-script exit codes, against tests/contract/*.json)
+#   - evals       the static router evals (scripts/dev/evals.sh: the ordered tab
+#                 sequence of a `full` run, the mode words and the mode-inference
+#                 rules, against tests/evals/router/*.json; no model)
+#   - golden      OPTIONAL (only with --smoke, --ci or --only golden): the
+#                 golden outputs (scripts/dev/golden.sh --check: the v0.9.0
+#                 baseline of tests/baseline/v0.9.0/ rerun Docker-free, and
+#                 the sha256-pinned lab recordings in tests/fixtures/*.golden/)
 #   - smoke       OPTIONAL (only with --smoke, --ci or --only smoke): the
 #                 Docker-free smoke tests of scripts/dev/smoke.sh (expected
 #                 results on tests/fixtures/), run with this same bash
@@ -63,7 +73,7 @@
 #     --allow-fail   report these gates' failures as "allowed-fail" (exit 0)
 #     --allow-known  shorthand for --allow-fail with the gates listed in
 #                    KNOWN_FAILING below (failures already tracked for a fix)
-#     --smoke        also run the optional smoke gate (~15 s)
+#     --smoke        also run the optional golden and smoke gates (~30 s)
 #     --ci           a missing optional tool (claude/shellcheck/xmllint) is a
 #                    failure instead of a skip; implies --smoke
 #
@@ -81,9 +91,9 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export CLAUDE_PLUGIN_ROOT="$REPO"
 
-ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json unit smoke"
+ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json unit contract evals golden smoke"
 # Gates that run only when asked for (--smoke, --ci, or named in --only).
-OPTIONAL_GATES="smoke"
+OPTIONAL_GATES="golden smoke"
 # Gates known to fail on the current tree, with a fix tracked for 0.9.0. Empty
 # this list as the fixes land so --allow-known stops hiding them.
 KNOWN_FAILING=""
@@ -391,6 +401,40 @@ gate_unit() {
     jq -r '.tests[] | select(.status == "fail") | .name as $n | (.failures[]? // .detail) | "\($n): \(.)"' "$js" > "$out" 2>/dev/null || true
     [[ -s "$out" ]] || tail -n 20 "$err" > "$out"
     record unit fail "scripts/dev/unit.sh reported failures (re-run it for the full log)" "$out"
+  fi
+}
+
+gate_contract() {
+  local js="$TMP/contract.json" err="$TMP/contract.err" out="$TMP/contract.out" n
+  if "$BASH" "$REPO/scripts/dev/contract.sh" --check --json > "$js" 2> "$err"; then
+    n="$(jq -r '.snapshots | length' "$js" 2>/dev/null || echo '?')"
+    record contract pass "$n snapshots keep the 0.9 contract (or an allowed change)"
+  else
+    jq -r '.snapshots[] | select(.status == "differs" or .status == "missing") | "\(.name): \(.detail)"' "$js" > "$out" 2>/dev/null || true
+    [[ -s "$out" ]] || tail -n 20 "$err" > "$out"
+    record contract fail "scripts/dev/contract.sh: the public surface differs from the 0.9 contract" "$out"
+  fi
+}
+
+gate_evals() {
+  local js="$TMP/evals.json" err="$TMP/evals.err" out="$TMP/evals.out"
+  if "$BASH" "$REPO/scripts/dev/evals.sh" --json > "$js" 2> "$err"; then
+    record evals pass "$(jq -r '.checks | length' "$js" 2>/dev/null || echo '?') static router checks passed"
+  else
+    jq -r '.checks[] | select(.status != "pass") | "\(.name): \(.detail)"' "$js" > "$out" 2>/dev/null || true
+    [[ -s "$out" ]] || tail -n 20 "$err" > "$out"
+    record evals fail "scripts/dev/evals.sh: the router evals failed" "$out"
+  fi
+}
+
+gate_golden() {
+  local js="$TMP/golden.json" err="$TMP/golden.err" out="$TMP/golden.out"
+  if "$BASH" "$REPO/scripts/dev/golden.sh" --check --json > "$js" 2> "$err"; then
+    record golden pass "$(jq -r '[.goldens[] | .name] | join(", ")' "$js" 2>/dev/null || echo '?'): every golden output matches"
+  else
+    jq -r '.goldens[] | select(.status != "pass") | "\(.name): \(.detail)"' "$js" > "$out" 2>/dev/null || true
+    [[ -s "$out" ]] || tail -n 20 "$err" > "$out"
+    record golden fail "scripts/dev/golden.sh: a golden output differs" "$out"
   fi
 }
 

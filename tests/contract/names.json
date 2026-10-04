@@ -1,0 +1,7 @@
+{
+  "issue_branch": "<issue>-port-to-drupal-11",
+  "issue_patch": "<module>-port-to-drupal-11-<issue>-<comment>.patch",
+  "local_patch": "<module>-port-to-drupal-11.patch",
+  "testbed_loose_module": "<module>-d11",
+  "testbed_project_checkout": "<project>-d11"
+}

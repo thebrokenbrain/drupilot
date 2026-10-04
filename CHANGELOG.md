@@ -35,6 +35,39 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 - **Hook latency baseline.** `scripts/dev/hook-latency.sh` measures each hook's
   p50/p95 on a fixed payload; the 0.9 numbers are recorded in
   `tests/baseline/v0.9.0/hook-latency.json`.
+- **Contract snapshots and the `contract` gate.** `scripts/dev/contract.sh`
+  freezes the 0.9 public surface in `tests/contract/*.json`: the commands (an
+  `argument-hint` token may only be added, in order), skills and agents,
+  `config/choices.json`, the key sets of `preflight --json`, the port-summary v1
+  and `core-strategy --json`, the generated branch/patch/test-bed names, the
+  enums (preservation, stages, `d10_support`, ...), each read from the code
+  that emits it, and every script's documented exit codes. An intended change
+  is an entry in `tests/contract/allowed-changes.json`, pinned by the sha256 of
+  the new snapshot (a snapshot changed twice has two entries).
+- **Router evals and the `evals` gate.** `scripts/dev/evals.sh` checks the
+  router statically: the ordered tab sequence of a guided `full` run, the
+  mode words, the mode-inference rules (each cue bound to the mode its rule
+  gives it, a bare `/drupilot` included) and the prompt rules that keep an
+  `auto` run tab-free and push-free (`tests/evals/router/`). A command's tabs include the ones it shows by
+  header, so the refactor stage's reuse of the port's "Drupal 10 check" tab is
+  part of the frozen sequence. `--live` replays the inference cases and each
+  command's tab order through `claude -p` with every tool call denied by a
+  hook (pass at 90% or more; opt-in, never in CI); an `auto` run must answer
+  NO_TABS, and a failed or empty run never counts as a pass.
+- **Golden outputs and the optional `golden` gate.** `scripts/dev/golden.sh`
+  absorbs `baseline-0.9.sh --check` (the smoke test `baseline` is gone; the
+  gate runs with `--smoke`/`--ci`, so on every CI leg) and checks
+  `tests/fixtures/legacy_widgets.golden/`: the patch and raw Rector, PHPStan
+  and PHPCS JSON of the scripted `legacy_widgets` port recorded in the DDEV lab
+  (core 11.4.8, PHP 8.3, digests off), byte-identical with v0.9.0's, each file
+  pinned by `sha256` in `golden.json`. `tests/fixtures/autologout.pointer.json`
+  pins the autologout 8.x-1.4 corpus by commit and tarball hash.
+
+### Fixed
+- `tests/fixtures/legacy_widgets.EXPECTED.md` no longer calls the fixture valid
+  Drupal 10.3 code without qualification: `WidgetImportForm` redeclares
+  `FormBase`'s `$loggerFactory` as `private readonly` and typed, a fatal error
+  when the class loads. The fixture is unchanged (part of H12).
 
 ## [0.9.1] - 2026-10-03
 
