@@ -69,6 +69,9 @@
 #                 defaults.json longer than 1800 characters fails (AR-27: the
 #                 prose stays until M11 but must not grow). Comment lines of the
 #                 scripts and scripts/dev/ are not scanned
+#   - schemas     the persisted 0.9 artifacts validate against schemas/
+#                 (scripts/dev/schema-check.sh: jq always, check-jsonschema
+#                 where it is installed; a failure with --ci when it is not)
 #   - unit        the unit tests (scripts/dev/unit.sh: tests/lib/selftest.sh and
 #                 tests/unit/*.sh, run with this same bash; a test skipped
 #                 until its milestone is not a failure)
@@ -112,7 +115,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export CLAUDE_PLUGIN_ROOT="$REPO"
 
-ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json version config-keys unit contract evals golden smoke"
+ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json version config-keys schemas unit contract evals golden smoke"
 # Gates that run only when asked for (--smoke, --ci, or named in --only).
 OPTIONAL_GATES="golden smoke"
 # Gates known to fail on the current tree, with a fix tracked for 0.9.0. Empty
@@ -540,6 +543,21 @@ gate_config_keys() {
   if [[ -s "$hard" ]]; then cat "$out" >> "$hard"; record config-keys fail "a defaults.json comment is too long, or the reference is invalid" "$hard"
   elif [[ -s "$out" ]]; then record config-keys warn "$(grep -c . "$out") undeclared or inconsistent key(s) (warn mode until M11)" "$out"
   else record config-keys pass "$(grep -c . "$read") DRUPILOT_* names read, all declared; comments within 1800 characters"; fi
+}
+
+gate_schemas() {
+  local js="$TMP/schemas.json" err="$TMP/schemas.err" out="$TMP/schemas.out" mode="auto"
+  if [[ "$CI" == "1" ]] && ! have_cmd check-jsonschema; then
+    record schemas fail "check-jsonschema is not installed (--ci needs it: pipx install check-jsonschema==0.38.2)"; return 0
+  fi
+  [[ "$CI" == "1" ]] && mode="validator"
+  if "$BASH" "$REPO/scripts/dev/schema-check.sh" --mode "$mode" --json > "$js" 2> "$err"; then
+    record schemas pass "$(jq -r '[.checks[] | select(.engine == "jq")] | length' "$js" 2>/dev/null || echo '?') artifact(s) match their schema ($(jq -r '.engines | join(" + ")' "$js" 2>/dev/null || echo jq))"
+  else
+    jq -r '.checks[] | select(.status != "pass") | "\(.engine): \(.schema) <- \(.instance): \(.detail)"' "$js" > "$out" 2>/dev/null || true
+    [[ -s "$out" ]] || tail -n 20 "$err" > "$out"
+    record schemas fail "an artifact does not match its schema" "$out"
+  fi
 }
 
 gate_unit() {

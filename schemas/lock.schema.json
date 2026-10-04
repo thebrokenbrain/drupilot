@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thebrokenbrain.github.io/drupilot/schemas/lock.schema.json",
+  "title": "drupilot reproducibility lockfile (drupilot-lock.json)",
+  "description": "The per-project lockfile that freezes what drupilot resolved (DRUPILOT_DETERMINISTIC). It lives in the hidden state dir of the Drupal ROOT (drupilot_lock_file: project_state_dir of the root, under drupilot's data dir), never in the project tree. It is built key by key: the lock_set (string) and lock_set_json (raw JSON) helpers of scripts/lib/common.sh create it as {} on first write and stamp drupilot_version on every write; scripts/env/lock-sync.sh writes the metadata, php_target, phpstan_level, core_strategy, drupal.core, toolchain.* and ddev_addons.* (and --refresh deletes digests.sha); scripts/analysis/run-rector.sh writes digests.ref/sha; scripts/analysis/verify-core-matrix.sh writes verify_cores.*; scripts/env/install-toolchain.sh only reads it and re-runs lock-sync.sh. Every section is optional: a lock holds only what was frozen so far.",
+  "type": "object",
+  "required": ["drupilot_version"],
+  "properties": {
+    "drupilot_version": {
+      "description": "plugin.json's version of the drupilot that last wrote the lock (stamped by every lock_set / lock_set_json).",
+      "type": "string"
+    },
+    "drupilot_revision": {
+      "description": "git describe of the drupilot checkout that ran lock-sync.sh; removed again when drupilot runs from an installed copy.",
+      "type": "string"
+    },
+    "created": {
+      "description": "UTC timestamp of the first lock-sync.sh run (a lock first written by run-rector.sh or verify-core-matrix.sh has none until then).",
+      "type": "string"
+    },
+    "updated": {
+      "description": "UTC timestamp of the last lock-sync.sh run.",
+      "type": "string"
+    },
+    "php_target": {
+      "description": "The effective DRUPILOT_PHP_TARGET at the last lock-sync.sh run.",
+      "type": "string"
+    },
+    "phpstan_level": {
+      "description": "The effective DRUPILOT_PHPSTAN_LEVEL (an int setting), written as raw JSON by lock_set_json.",
+      "type": "integer"
+    },
+    "core_strategy": {
+      "description": "The effective DRUPILOT_CORE_TARGET_STRATEGY as configured (auto, d11-only, keep-d10; not validated before it is written).",
+      "type": "string"
+    },
+    "drupal": {
+      "description": "Present once composer.lock was read.",
+      "type": "object",
+      "required": ["core"],
+      "properties": {
+        "core": {
+          "description": "Exact drupal/core (else drupal/core-recommended) version from composer.lock.",
+          "type": "string"
+        }
+      }
+    },
+    "toolchain": {
+      "description": "{composer package: exact version from composer.lock} for each config/defaults.json .packages entry that is installed.",
+      "type": "object",
+      "properties": {
+        "palantirnet/drupal-rector": {"type": "string"},
+        "rector/rector": {"type": "string"},
+        "phpstan/phpstan": {"type": "string"},
+        "phpstan/extension-installer": {"type": "string"},
+        "mglaman/phpstan-drupal": {"type": "string"},
+        "phpstan/phpstan-deprecation-rules": {"type": "string"},
+        "drupal/coder": {"type": "string"},
+        "drush/drush": {"type": "string"},
+        "drupal/upgrade_status": {"type": "string"},
+        "drupal/core-dev": {"type": "string"}
+      }
+    },
+    "ddev_addons": {
+      "description": "Installed DDEV add-on versions (\"installed\" when the version is unknown); only add-ons found in the project.",
+      "type": "object",
+      "properties": {
+        "ddev-drupal-contrib": {"type": "string"},
+        "ddev-selenium-standalone-chrome": {"type": "string"}
+      }
+    },
+    "digests": {
+      "description": "The dbuytaert/drupal-digests checkout frozen by run-rector.sh after a digests pass finished normally; lock-sync.sh --refresh drops sha.",
+      "type": "object",
+      "properties": {
+        "ref": {
+          "description": "The configured ref (default main).",
+          "type": "string"
+        },
+        "sha": {
+          "description": "The commit the ref resolved to.",
+          "type": "string"
+        }
+      }
+    },
+    "verify_cores": {
+      "description": "Reference Drupal cores frozen by verify-core-matrix.sh, keyed by leg (e.g. \"10\", \"10.0\", \"10.3\"); each value is {constraint, version}, both strings (the composer constraint the leg resolved and the exact core it got).",
+      "type": "object"
+    }
+  }
+}

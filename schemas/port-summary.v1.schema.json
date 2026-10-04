@@ -1,0 +1,309 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thebrokenbrain.github.io/drupilot/schemas/port-summary.v1.schema.json",
+  "title": "drupilot port summary (schema_version 1)",
+  "description": "The machine summary of a port printed on STDOUT by scripts/analysis/port-summary.sh (with or without --json), and saved as port-summary.json in the visible, gitignored <Drupal root>/.drupilot/ artifacts dir with --write (or into --output DIR; port-report.sh refreshes it after every report). It composes state.json plus a fresh snapshot (common.sh state_view_json), the port record (common.sh port_record_json: the port manifest merged with the decision log) and the subject's info.yml / composer.json; it computes nothing new. The whole object is one jq literal: every key below is always present, and an unknown value is null, never invented.",
+  "type": "object",
+  "required": [
+    "schema_version", "drupilot_version", "generated_at", "subject", "machine_name", "type",
+    "drupal_root", "origin", "status", "stage", "blockers", "effort", "assessed_at",
+    "core_version_requirement", "require_php", "d10_support", "d10_support_source",
+    "files_changed", "rector_rules", "rector_rules_source", "digests", "reverted_rules",
+    "manual_fixes", "post_port_fixes", "behavior_changes", "preexisting_bugs",
+    "tooling_deviations", "test_adaptations", "deferred", "deprecations_remaining",
+    "preservation", "matrix", "safety", "patch", "reports", "decisions"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "record_source": {
+      "description": "Where a port-record item comes from: the port manifest, or a log-decision.sh entry (decisions.jsonl).",
+      "enum": ["manifest", "decision-log"]
+    }
+  },
+  "properties": {
+    "schema_version": {
+      "description": "1 for this shape; an additive change keeps it, a renamed or removed key bumps it.",
+      "const": 1
+    },
+    "drupilot_version": {
+      "description": "plugin.json's version (plugin_version); null when it cannot be read.",
+      "type": ["string", "null"]
+    },
+    "generated_at": {
+      "description": "UTC timestamp of this summary (date -u +%Y-%m-%dT%H:%M:%SZ).",
+      "type": "string"
+    },
+    "subject": {
+      "description": "Absolute path of the module/theme directory.",
+      "type": "string"
+    },
+    "machine_name": {"type": ["string", "null"]},
+    "type": {
+      "description": "The info.yml type (module, theme, profile, ...), else the manifest's.",
+      "type": ["string", "null"]
+    },
+    "drupal_root": {"type": ["string", "null"]},
+    "origin": {
+      "description": "The subject's origin checkout (origin baseline, else the test-bed marker); null when it was ported in place.",
+      "type": ["string", "null"]
+    },
+    "status": {
+      "description": "The stage, \"not-started\" before any, or \"blocked\" once ported with a blocker.",
+      "enum": ["not-started", "setup", "assessed", "ported", "refactored", "tested", "contributed", "blocked"]
+    },
+    "stage": {
+      "description": "The highest stage recorded in state.json (or the legacy phase marker).",
+      "enum": ["setup", "assessed", "ported", "refactored", "tested", "contributed", null]
+    },
+    "blockers": {
+      "description": "Why status is \"blocked\"; always empty before the ported stage.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "source": {"enum": ["tests", "core-matrix", "port-safety", "signature-changes"]},
+          "reason": {"type": "string"}
+        }
+      }
+    },
+    "effort": {
+      "description": "The viability verdict (S/M/L/XL) recorded in state.json or read from assess.json (.verdict, else .effort).",
+      "type": ["string", "null"]
+    },
+    "assessed_at": {
+      "description": "assess.json's .timestamp, else .generated_at.",
+      "type": ["string", "null"]
+    },
+    "core_version_requirement": {
+      "description": "The info.yml core_version_requirement as declared now (quotes stripped).",
+      "type": ["string", "null"]
+    },
+    "require_php": {
+      "description": "composer.json require.php as declared now.",
+      "type": ["string", "null"]
+    },
+    "d10_support": {
+      "description": "From a core matrix computed on the current sources, else the manifest's value as recorded: declared-not-verified, verified-static, verified-static-above-floor, failed or n/a (a manifest value is passed through unchecked).",
+      "type": ["string", "null"]
+    },
+    "d10_support_source": {"enum": ["core-matrix", "manifest", null]},
+    "files_changed": {
+      "description": "manifest.files_changed (a count, or the length of a list), else the number of files in the patch.",
+      "type": ["number", "null"]
+    },
+    "rector_rules": {
+      "description": "Rector rule hits, merged by short rule name: from the manifest's rector_rules, else run-rector.sh's rector-rules.json.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rule", "hits", "passes"],
+        "additionalProperties": false,
+        "properties": {
+          "rule": {
+            "description": "The rule's short class name (namespace dropped).",
+            "type": "string"
+          },
+          "hits": {
+            "description": "Files changed by the rule, summed over passes; null when no source counted them.",
+            "type": ["number", "null"]
+          },
+          "passes": {
+            "description": "The passes that applied it (official, digests, ...), deduplicated.",
+            "type": "array"
+          }
+        }
+      }
+    },
+    "rector_rules_source": {"enum": ["manifest", "run-rector", null]},
+    "digests": {
+      "description": "The manifest's digests object reduced to three keys (each value exactly as recorded, null when absent); null when the manifest has no digests object.",
+      "type": ["object", "null"],
+      "required": ["applied", "rejected", "skipped"],
+      "additionalProperties": false,
+      "properties": {
+        "applied": {"description": "As recorded: a list of rules, or a boolean in some manifests."},
+        "rejected": {"description": "As recorded: normally [{rule, reason}]."},
+        "skipped": {"description": "As recorded: normally a boolean."}
+      }
+    },
+    "reverted_rules": {
+      "description": "Rector changes undone by hand: manifest rector_reversions items (any extra keys kept, strings normalized, \"\" to null) and rector-revert decision-log entries {rule, file, why, what, source, ts}; deduplicated by rule + file.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rule", "source"],
+        "properties": {
+          "rule": {"description": "Never null or empty (items without one are dropped)."},
+          "source": {"$ref": "#/$defs/record_source"}
+        }
+      }
+    },
+    "manual_fixes": {
+      "description": "The manifest's manual_edits, each normalized to {edit, why, change_record} (a plain string becomes {edit: string, why: null, change_record: null}).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["edit", "why", "change_record"],
+        "additionalProperties": false,
+        "properties": {
+          "edit": {"description": "The edit (manifest .edit, else .what, else \"edit\")."},
+          "why": {"description": "As recorded, or null."},
+          "change_record": {"description": "As recorded, or null."}
+        }
+      }
+    },
+    "post_port_fixes": {
+      "description": "Fixes made after the validate loop / tests / core matrix found a problem: manifest items and post-port-fix decision-log entries {fix, file, why, detected_by, source, ts}.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["fix", "source"],
+        "properties": {
+          "fix": {"description": "Never null or empty."},
+          "source": {"$ref": "#/$defs/record_source"}
+        }
+      }
+    },
+    "behavior_changes": {
+      "description": "Changes a reviewer must check: manifest items and behavior-change decision-log entries {change, why, review_hint, file, source, ts}.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["change", "source"],
+        "properties": {
+          "change": {"description": "Never null or empty."},
+          "source": {"$ref": "#/$defs/record_source"}
+        }
+      }
+    },
+    "preexisting_bugs": {
+      "description": "Bugs found but not fixed by the port: manifest items and preexisting-bug decision-log entries {issue, file, note, source, ts}.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["issue", "source"],
+        "properties": {
+          "issue": {"description": "Never null or empty."},
+          "source": {"$ref": "#/$defs/record_source"}
+        }
+      }
+    },
+    "tooling_deviations": {
+      "description": "Where the flow or a tool's output was not followed: manifest items and script-divergence / skip / manual-override / tooling-deviation decision-log entries {what, why, kind, script, file, source, ts}.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["what", "source"],
+        "properties": {
+          "what": {"description": "Never null or empty."},
+          "source": {"$ref": "#/$defs/record_source"}
+        }
+      }
+    },
+    "test_adaptations": {
+      "description": "test-adaptation decision-log entries only (the manifest has no such field).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["what", "why", "file", "ts"],
+        "additionalProperties": false,
+        "properties": {
+          "what": {"description": "As logged (null when absent)."},
+          "why": {"description": "As logged (null when absent)."},
+          "file": {"description": "As logged (null when absent)."},
+          "ts": {"description": "As logged (null when absent)."}
+        }
+      }
+    },
+    "deferred": {
+      "description": "The manifest's deferred_to_phase2 items (non-string items serialized as JSON text).",
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "deprecations_remaining": {
+      "description": "manifest.deprecations_remaining as a number (a list counts its items, a numeric string is converted).",
+      "type": ["number", "null"]
+    },
+    "preservation": {
+      "description": "The last recorded test run (last-test.json through state.json); null when none.",
+      "type": ["object", "null"],
+      "required": ["verdict", "status", "executed", "tests_failed", "fresh", "recorded_at"],
+      "additionalProperties": false,
+      "properties": {
+        "verdict": {
+          "description": "last-test.json's preservation verdict, as recorded.",
+          "type": ["string", "null"]
+        },
+        "status": {
+          "description": "last-test.json's run status (passed, failed, none-run), as recorded.",
+          "type": ["string", "null"]
+        },
+        "executed": {"type": ["number", "null"]},
+        "tests_failed": {
+          "description": "Tests with status fail or error.",
+          "type": ["number", "null"]
+        },
+        "fresh": {
+          "description": "True when the run is on the current sources (same subject digest); null when unknown.",
+          "type": ["boolean", "null"]
+        },
+        "recorded_at": {"type": ["string", "null"]}
+      }
+    },
+    "matrix": {
+      "description": "The last core matrix (verify-core-matrix.sh's core-matrix.json through state.json); null when none.",
+      "type": ["object", "null"],
+      "required": ["verdict", "d10_support", "fresh", "generated_at"],
+      "additionalProperties": false,
+      "properties": {
+        "verdict": {"type": ["string", "null"]},
+        "d10_support": {"type": ["string", "null"]},
+        "fresh": {"type": ["boolean", "null"]},
+        "generated_at": {"type": ["string", "null"]}
+      }
+    },
+    "safety": {
+      "description": "Error counts the manifest recorded from check-port-safety.sh and scan-signature-changes.sh; null when it recorded neither.",
+      "type": ["object", "null"],
+      "required": ["port_safety_errors", "signature_errors"],
+      "additionalProperties": false,
+      "properties": {
+        "port_safety_errors": {"type": ["number", "null"]},
+        "signature_errors": {"type": ["number", "null"]}
+      }
+    },
+    "patch": {
+      "description": "The last patch: recorded by make-patch.sh (state_patch_record), else the manifest's patch or the newest local *.patch next to the subject (kind local, at null); exists is added when the path is known. Null when there is none.",
+      "type": ["object", "null"],
+      "required": ["path", "kind", "at"],
+      "properties": {
+        "path": {
+          "description": "Absolute path of the patch file.",
+          "type": "string"
+        },
+        "kind": {"enum": ["local", "issue", "contribution"]},
+        "at": {"type": ["string", "null"]},
+        "exists": {"type": "boolean"}
+      }
+    },
+    "reports": {
+      "description": "Paths of the human reports that exist (null otherwise); summary is this file's path when --write saved it.",
+      "type": "object",
+      "required": ["port_report", "viability_report", "decisions", "summary"],
+      "additionalProperties": false,
+      "properties": {
+        "port_report": {"type": ["string", "null"]},
+        "viability_report": {"type": ["string", "null"]},
+        "decisions": {"type": ["string", "null"]},
+        "summary": {"type": ["string", "null"]}
+      }
+    },
+    "decisions": {
+      "description": "Number of decision-log entries for the subject.",
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

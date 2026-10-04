@@ -1,0 +1,328 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thebrokenbrain.github.io/drupilot/schemas/port-manifest.schema.json",
+  "title": "drupilot port manifest (port-manifest.json)",
+  "description": "The record of what a port or refactor did, in the subject's hidden state dir (<state_dir>/port-manifest.json, project_state_dir, under drupilot's data dir; never in the project tree). The model writes it with the Write tool at the end of a port (commands/drupilot-port.md, skills/minimal-port/SKILL.md section 8) and rewrites it after a refactor (commands/drupilot-refactor.md, skills/full-refactor/SKILL.md), pasting the --json output of several scripts into it; scripts/tests/negative-control.sh --manifest FILE is the only script that writes into it (verification.negative_controls). It is read by scripts/analysis/port-report.sh (every field optional, rendered n/a when absent), common.sh port_record_json / state_snapshot_json / port_manifest_stage, port-summary.sh and layer-report.sh. Only phase is required: it is the one field every instruction names (readers still default it to port). Model-written values are described leniently: list items may be strings or objects, and the embedded script outputs are typed as their scripts print them, with no required keys (the model may paste them in part).",
+  "type": "object",
+  "required": ["phase"],
+  "properties": {
+    "phase": {
+      "description": "\"port\" (Phase 1) or \"refactor\" (Phase 2) as instructed; readers also accept ported / refactored in any case.",
+      "type": "string"
+    },
+    "machine_name": {"type": "string"},
+    "type": {"description": "module, theme or profile.", "type": "string"},
+    "generated_at": {"description": "When the manifest was written (state_snapshot_json reads it, else recorded_at).", "type": "string"},
+    "recorded_at": {"type": "string"},
+    "core_strategy": {"description": "The core target strategy used, possibly with a note on how it was resolved.", "type": "string"},
+    "core_version_requirement": {"description": "The info.yml core_version_requirement after the port.", "type": "string"},
+    "require_php": {"description": "composer.json require.php after the port.", "type": ["string", "null"]},
+    "php_target": {"type": "string"},
+    "version_bump": {"description": "The SemVer bump the core target implies.", "type": ["string", "null"]},
+    "d10_support": {
+      "description": "declared-not-verified, verified-static, verified-static-above-floor, failed or n/a (from verify-core-matrix.sh when it ran, else core-strategy.sh).",
+      "type": ["string", "null"]
+    },
+    "preservation": {
+      "description": "Optional override of the preservation verdict; port-report.sh otherwise reads last-test.json.",
+      "type": "string"
+    },
+    "rector_official_files": {"description": "Files the official drupal-rector pass changed.", "type": ["integer", "null"]},
+    "files_changed": {
+      "description": "Files the port changed: a count, or the list of files (port-summary.sh counts it).",
+      "type": ["integer", "array", "null"]
+    },
+    "deprecations_remaining": {
+      "description": "Hard + unknown deprecations left (soft ones are not counted).",
+      "type": ["integer", "null"]
+    },
+    "deferred_to_phase2": {
+      "description": "Items left for /drupilot-refactor (strings; port-summary.sh serializes any other item).",
+      "type": "array"
+    },
+    "patch": {
+      "description": "The local patch path (relative to the subject, or absolute); a non-string is ignored by the readers.",
+      "type": ["string", "null"]
+    },
+    "digests": {
+      "description": "The drupal-digests pass.",
+      "type": "object",
+      "properties": {
+        "applied": {"description": "The applied rules (a list), or a boolean."},
+        "rejected": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "rule": {"type": "string"},
+              "reason": {"type": "string"}
+            }
+          }
+        },
+        "skipped": {"type": "boolean"},
+        "reason": {"description": "Why it was skipped.", "type": "string"}
+      }
+    },
+    "manual_edits": {
+      "description": "The manual changes Rector could not make: a plain string, or {edit, why?, change_record?}.",
+      "type": "array",
+      "items": {
+        "type": ["string", "object"],
+        "properties": {
+          "edit": {"type": "string"},
+          "why": {"type": ["string", "null"]},
+          "change_record": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "rector_rules": {
+      "description": "Rector rule hits: run-rector.sh --json .rule_hits ({official: {Rule: n}, digests: {...}}), {Rule: n}, [Rule, ...] or [{rule, hits?, pass?}] (common.sh _rules normalizes them).",
+      "type": ["object", "array"]
+    },
+    "rector_reversions": {
+      "description": "Rector changes undone by hand: [{rule, file?, why}] (a plain string is accepted as the rule).",
+      "type": "array",
+      "items": {
+        "type": ["string", "object"],
+        "properties": {
+          "rule": {"type": "string"},
+          "file": {"type": ["string", "null"]},
+          "why": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "post_port_fixes": {
+      "description": "Fixes made after the validate loop / tests / core matrix found a problem: [{fix, file?, why, detected_by?}] (a plain string is accepted as the fix).",
+      "type": "array",
+      "items": {
+        "type": ["string", "object"],
+        "properties": {
+          "fix": {"type": "string"},
+          "file": {"type": ["string", "null"]},
+          "why": {"type": ["string", "null"]},
+          "detected_by": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "preexisting_bugs": {
+      "description": "Bugs found and NOT fixed by the port: [{issue, file?, note?}].",
+      "type": "array",
+      "items": {
+        "type": ["string", "object"],
+        "properties": {
+          "issue": {"type": "string"},
+          "file": {"type": ["string", "null"]},
+          "note": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "behavior_changes": {
+      "description": "Changes a reviewer must check in the PR: [{change, why?, review_hint?}].",
+      "type": "array",
+      "items": {
+        "type": ["string", "object"],
+        "properties": {
+          "change": {"type": "string"},
+          "why": {"type": ["string", "null"]},
+          "review_hint": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "tooling_deviations": {
+      "description": "Where the flow or a tool's output was not followed: [{what, why}].",
+      "type": "array",
+      "items": {
+        "type": ["string", "object"],
+        "properties": {
+          "what": {"type": "string"},
+          "why": {"type": ["string", "null"]}
+        }
+      }
+    },
+    "validation": {
+      "description": "How the result was validated (strings; port_record_json serializes any other item).",
+      "type": "array"
+    },
+    "learned_patterns": {
+      "description": "The learned-pattern catalog: the scan run before the port and the ids recorded at its end.",
+      "type": "object",
+      "properties": {
+        "scan": {
+          "description": "The JSON of scripts/analysis/patterns.sh scan --json.",
+          "type": "object",
+          "properties": {
+            "tool": {"type": "string"},
+            "subject": {"type": "string"},
+            "machine_name": {"type": "string"},
+            "catalog": {"type": "string"},
+            "catalog_exists": {"type": "boolean"},
+            "patterns": {"type": "integer"},
+            "total": {"type": "integer"},
+            "skipped": {"type": "array"},
+            "by_pattern": {"type": "array"},
+            "hits": {"type": "array"}
+          }
+        },
+        "recorded": {
+          "description": "Ids added with patterns.sh add.",
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "port_safety": {
+      "description": "The JSON of scripts/analysis/check-port-safety.sh --json.",
+      "type": "object",
+      "properties": {
+        "tool": {"type": "string"},
+        "subject": {"type": "string"},
+        "drupal_root": {"type": ["string", "null"]},
+        "base": {"type": ["string", "null"]},
+        "diff_mode": {"type": "boolean"},
+        "core_requirement": {"type": ["string", "null"]},
+        "checks": {"type": "array"},
+        "ok": {"type": "boolean"},
+        "errors": {"type": "integer", "minimum": 0},
+        "warnings": {"type": "integer", "minimum": 0},
+        "findings": {"type": "array"}
+      }
+    },
+    "signature_changes": {
+      "description": "The JSON of scripts/analysis/scan-signature-changes.sh --json.",
+      "type": "object",
+      "properties": {
+        "tool": {"type": "string"},
+        "subject": {"type": "string"},
+        "drupal_root": {"type": ["string", "null"]},
+        "core_requirement": {"type": ["string", "null"]},
+        "core_floor": {"type": ["string", "null"]},
+        "ok": {"type": "boolean"},
+        "errors": {"type": "integer", "minimum": 0},
+        "warnings": {"type": "integer", "minimum": 0},
+        "infos": {"type": "integer", "minimum": 0},
+        "findings": {"type": "array"}
+      }
+    },
+    "soft_deprecations": {
+      "description": "The JSON of scripts/analysis/classify-deprecations.sh --json (the final run of the phase).",
+      "type": "object",
+      "properties": {
+        "tool": {"type": "string"},
+        "policy": {"type": "string"},
+        "phase": {"type": "string"},
+        "target_major": {"type": "integer"},
+        "core_requirement": {"type": ["string", "null"]},
+        "core_floor": {"type": ["string", "null"]},
+        "blocking": {"type": "integer", "minimum": 0},
+        "counts": {
+          "type": "object",
+          "properties": {
+            "hard": {"type": "integer", "minimum": 0},
+            "soft": {"type": "integer", "minimum": 0},
+            "unknown": {"type": "integer", "minimum": 0},
+            "other": {"type": "integer"}
+          }
+        },
+        "symbols": {"type": "array"},
+        "hard": {"type": "array"},
+        "soft": {"type": "array"},
+        "unknown": {"type": "array"}
+      }
+    },
+    "metadata_lint": {
+      "description": "The JSON of scripts/analysis/lint-extension-metadata.sh --json (port-report.sh renders it only when tool is lint-extension-metadata).",
+      "type": "object",
+      "properties": {
+        "tool": {"type": "string"},
+        "subject": {"type": "string"},
+        "generated_at": {"type": "string"},
+        "checks_run": {"type": "array"},
+        "subject_digest": {"type": ["string", "null"]},
+        "findings": {"type": "array"},
+        "totals": {
+          "type": "object",
+          "properties": {
+            "error": {"type": "integer", "minimum": 0},
+            "warn": {"type": "integer", "minimum": 0},
+            "info": {"type": "integer", "minimum": 0}
+          }
+        }
+      }
+    },
+    "origin_hygiene": {
+      "description": "The JSON of scripts/env/origin-hygiene.sh --check --json ({origin, placement, baseline, git, clean, new_untracked, ...}); without it port-report.sh runs the check itself.",
+      "type": "object"
+    },
+    "verification": {
+      "description": "Evidence beyond the validate loop; each key falls back to the state file its script records.",
+      "type": "object",
+      "properties": {
+        "core_matrix": {
+          "description": "The JSON of scripts/analysis/verify-core-matrix.sh --json.",
+          "type": "object",
+          "properties": {
+            "tool": {"type": "string"},
+            "subject": {"type": "string"},
+            "machine_name": {"type": "string"},
+            "drupal_root": {"type": "string"},
+            "core_version_requirement": {"type": ["string", "null"]},
+            "level": {"type": "string"},
+            "container_php": {"type": "string"},
+            "subject_digest": {"type": "string"},
+            "generated_at": {"type": "string"},
+            "dry_run": {"type": "boolean"},
+            "legs": {"type": "array"},
+            "d10_support": {"type": "string"},
+            "d10_floor": {"type": ["string", "null"]},
+            "d10_checked": {"type": "array"},
+            "d10_floor_checked": {"type": "boolean"},
+            "verdict": {"type": "string"},
+            "tests_analysed": {"type": "boolean"},
+            "notes": {"type": "array"}
+          }
+        },
+        "phpcs_ruleset": {
+          "description": "The .drupilot object of scripts/analysis/run-phpcs.sh --json: which ruleset was used and why.",
+          "type": "object",
+          "properties": {
+            "ruleset": {"type": ["string", "null"]},
+            "standard": {"type": "string"},
+            "source": {"type": "string"},
+            "mode": {"type": "string"},
+            "location": {"type": ["string", "null"]},
+            "fallback_reason": {"type": ["string", "null"]},
+            "test_version": {"type": "string"},
+            "test_version_source": {"type": "string"},
+            "pass_extensions": {"type": "boolean"}
+          }
+        },
+        "commit_hooks": {
+          "description": "The JSON of scripts/contrib/git-hooks.sh --run-equivalents when a hook was substituted, else {bypassed: false, note}.",
+          "type": "object",
+          "properties": {
+            "bypassed": {"type": "boolean"},
+            "note": {"type": "string"},
+            "all_green": {"type": "boolean"},
+            "complete": {"type": "boolean"},
+            "ran": {"type": "array"}
+          }
+        },
+        "negative_controls": {
+          "description": "Records of scripts/tests/negative-control.sh --json (one per test + type + label; negative-control.sh --manifest writes them here itself).",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "test": {"type": "string"},
+              "type": {"type": "string"},
+              "label": {"type": ["string", "null"]},
+              "verdict": {"type": "string"},
+              "reason": {"type": "string"},
+              "at": {"type": "string"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

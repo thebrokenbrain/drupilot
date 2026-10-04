@@ -20,6 +20,9 @@ concurrency:
 
 env:
   SHELLCHECK_VERSION: v0.11.0
+  # The schema validator of the `schemas` gate (CI-only, never a plugin
+  # runtime dependency; docs/contributing/adr/0010-schema-validator.md).
+  CHECK_JSONSCHEMA_VERSION: 0.38.2
 
 jobs:
   checks:
@@ -43,6 +46,7 @@ jobs:
           curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.x86_64.tar.xz" \
             | tar -xJ -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/shellcheck-${SHELLCHECK_VERSION}" >> "$GITHUB_PATH"
+          pipx install "check-jsonschema==${CHECK_JSONSCHEMA_VERSION}"
 
       - name: Install tools (macOS)
         if: runner.os == 'macOS'
@@ -59,6 +63,7 @@ jobs:
           curl -fsSL "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.darwin.${SC_ARCH}.tar.xz" \
             | tar -xJ -C "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/shellcheck-${SHELLCHECK_VERSION}" >> "$GITHUB_PATH"
+          pipx install "check-jsonschema==${CHECK_JSONSCHEMA_VERSION}"
 
       - name: Tool versions
         run: |
@@ -67,6 +72,7 @@ jobs:
           shellcheck --version | sed -n 2p
           jq --version
           xmllint --version 2>&1 | head -n 1
+          check-jsonschema --version
           awk --version 2>/dev/null | head -n 1 || awk -W version 2>/dev/null | head -n 1 || true
 
       # `claude plugin validate` runs in its own job (plugin-validate) so the
