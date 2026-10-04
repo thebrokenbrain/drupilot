@@ -25,6 +25,9 @@ jq '.preservation = "green"' "$T_TMP/lt.bak" > "$S/last-test.json"
 assert_match "a value outside the enum fails" "$(sc)" '^1\|last-test\.schema\.json: \$\.preservation: "green" is not one of'
 jq '.extra = 1' "$T_TMP/lt.bak" > "$S/last-test.json"
 assert_match "an unexpected key under additionalProperties:false fails" "$(sc)" '^1\|last-test\.schema\.json: \$: unexpected key extra'
+: > "$S/last-test.json"
+assert_match "an empty instance fails (jq exits 0 on empty input)" "$(sc)" '^1\|last-test\.schema\.json: not exactly one JSON value'
+cp "$T_TMP/lt.bak" "$S/last-test.json"
 cp "$T_TMP/lt.bak" "$S/last-test.json"
 
 cp "$S/drupilot-lock.json" "$T_TMP/lock.bak"

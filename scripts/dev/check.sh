@@ -81,7 +81,8 @@
 #                 the content step, M11)
 #   - schemas     the persisted 0.9 artifacts validate against schemas/
 #                 (scripts/dev/schema-check.sh: jq always, check-jsonschema
-#                 where it is installed; a failure with --ci when it is not)
+#                 where it is installed; with --ci, check-jsonschema from PATH
+#                 or the pinned Docker image, and a failure when neither)
 #   - unit        the unit tests (scripts/dev/unit.sh: tests/lib/selftest.sh and
 #                 tests/unit/*.sh, run with this same bash; a test skipped
 #                 until its milestone is not a failure)
@@ -588,7 +589,7 @@ gate_docs() {
   # 5. English only (warn).
   ( cd "$REPO/docs" && find . -name '*_es.md' -o -type d -name es ) | sed 's#^\./#docs/#; s#$# (the site is English only)#' >> "$warn"
   local flow=""
-  for f in "$REPO"/FLOW*.md; do [[ -f "$f" ]] && flow="$flow ${f#"$REPO"/}"; done
+  for f in $( (cd "$REPO" && ls FLOW*.md 2>/dev/null || true) | LC_ALL=C sort); do flow="$flow $f"; done
   [[ -z "$flow" ]] || flow="; to move into docs/concepts/how-it-works.md:$flow"
   if [[ -s "$out" ]]; then record docs fail "the docs site is inconsistent" "$out"
   elif [[ -s "$warn" ]]; then record docs warn "$(grep -c . "$pages") pages consistent; $(grep -c . "$warn") language note(s)" "$warn"
@@ -597,10 +598,13 @@ gate_docs() {
 
 gate_schemas() {
   local js="$TMP/schemas.json" err="$TMP/schemas.err" out="$TMP/schemas.out" mode="auto"
-  if [[ "$CI" == "1" ]] && ! have_cmd check-jsonschema; then
-    record schemas fail "check-jsonschema is not installed (--ci needs it: pipx install check-jsonschema==0.38.2)"; return 0
+  # --ci needs the second engine: check-jsonschema from PATH, else the pinned
+  # Docker image (ADR 0010); neither is a failure.
+  if [[ "$CI" == "1" ]]; then
+    if have_cmd check-jsonschema; then mode="validator"
+    elif have_cmd docker && docker info > /dev/null 2>&1; then mode="docker"
+    else record schemas fail "--ci needs check-jsonschema on PATH (pipx install check-jsonschema==0.38.2) or a running Docker"; return 0; fi
   fi
-  [[ "$CI" == "1" ]] && mode="validator"
   if "$BASH" "$REPO/scripts/dev/schema-check.sh" --mode "$mode" --json > "$js" 2> "$err"; then
     record schemas pass "$(jq -r '[.checks[] | select(.engine == "jq")] | length' "$js" 2>/dev/null || echo '?') artifact(s) match their schema ($(jq -r '.engines | join(" + ")' "$js" 2>/dev/null || echo jq))"
   else

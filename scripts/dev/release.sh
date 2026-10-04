@@ -26,8 +26,8 @@
 #     --date     the release date (default: today, UTC)
 #     --json     {ok, version, previous, dry_run, tag, commit, push} on STDOUT
 #
-# Requires bash >= 3.2, git, jq; the real run also `claude`, shellcheck and
-# xmllint (check.sh --ci). Exit codes: 0 released (or dry run ok) · 1 usage
+# Requires bash >= 3.2, git, jq; the real run also `claude`, shellcheck,
+# xmllint and check-jsonschema or a running Docker (check.sh --ci). Exit codes: 0 released (or dry run ok) · 1 usage
 # error, a refused version, a dirty tree or a failed check.
 # =============================================================================
 set -euo pipefail

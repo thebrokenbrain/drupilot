@@ -219,7 +219,9 @@ gen_deprecations() {
       (if .category then "- **Category:** \(.category)" else empty end),
       "- **What changed:** \(.why // "" | esc)",
       "- **Fix:** \(.fix // "" | esc)",
-      "- **Change records:** <\($cr)\(.symbol // .pattern | @uri)>")
+      # jq 1.6 leaves the !, *, apostrophe and parentheses unencoded and jq
+      # 1.7+ encodes them: encode them here too, so every jq gives one page.
+      "- **Change records:** <\($cr)\(.symbol // .pattern | @uri | gsub("!"; "%21") | gsub("\\*"; "%2A") | gsub("'"'"'"; "%27") | gsub("\\("; "%28") | gsub("\\)"; "%29"))>")
   ' "$REPO/config/deprecations.json"
 }
 

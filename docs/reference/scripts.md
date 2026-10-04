@@ -3087,7 +3087,8 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
                 the content step, M11)
   - schemas     the persisted 0.9 artifacts validate against schemas/
                 (scripts/dev/schema-check.sh: jq always, check-jsonschema
-                where it is installed; a failure with --ci when it is not)
+                where it is installed; with --ci, check-jsonschema from PATH
+                or the pinned Docker image, and a failure when neither)
   - unit        the unit tests (scripts/dev/unit.sh: tests/lib/selftest.sh and
                 tests/unit/*.sh, run with this same bash; a test skipped
                 until its milestone is not a failure)
@@ -3340,8 +3341,8 @@ Usage:
     --date     the release date (default: today, UTC)
     --json     {ok, version, previous, dry_run, tag, commit, push} on STDOUT
 
-Requires bash >= 3.2, git, jq; the real run also `claude`, shellcheck and
-xmllint (check.sh --ci). Exit codes: 0 released (or dry run ok) · 1 usage
+Requires bash >= 3.2, git, jq; the real run also `claude`, shellcheck,
+xmllint and check-jsonschema or a running Docker (check.sh --ci). Exit codes: 0 released (or dry run ok) · 1 usage
 error, a refused version, a dirty tree or a failed check.
 ```
 

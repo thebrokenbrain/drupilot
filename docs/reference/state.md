@@ -17,7 +17,7 @@ The record is written by the flow, not by memory: `port-report.sh` records `port
 | `tests` | The last recorded PHPUnit run: `status`, `preservation`, `executed`, `tests_failed`, group counts, `recorded_at`, and `fresh` (computed on the current sources). |
 | `core_matrix` | The last core matrix: `verdict`, `d10_support`, `generated_at`, `fresh`. |
 | `patch` | The last patch made: `path`, `kind` (`local` / `issue` / `contribution`), `at`. |
-| `portfolio` | Set when the module is ported by `/drupilot-layers`: `dir` (the set) and `layer` (its porting layer), written by `state.sh record\|refresh --portfolio DIR --layer N`. |
+| `portfolio` | Set when the module is ported by `/drupilot-layers`: `dir` (the set) and `layer` (its porting layer), written by `state.sh record --portfolio DIR --layer N` (or `refresh`). |
 | `created`, `updated`, `drupilot_version` | Record timestamps and the drupilot that last wrote it. |
 
 ```bash

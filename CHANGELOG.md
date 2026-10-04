@@ -1643,7 +1643,7 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   longer uses the bash 4-only `${x,,}`.
 - **`/drupilot-setup` failed to load (Step 4).** Its load-time line ran
   `ensure-gitignore.sh --root "<drupal_root>"` verbatim (exit 1, "Root directory not
-  found: <drupal_root>"), and even a valid root would have written `.gitignore`
+  found: `<drupal_root>`"), and even a valid root would have written `.gitignore`
   before the Step 1 gate. It is now a fenced block the model runs with the resolved
   root. `ensure-gitignore.sh` rejects an unsubstituted `<placeholder>` with a clear
   error and gains `--subject DIR` (derives the enclosing Drupal root, or the

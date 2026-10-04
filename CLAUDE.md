@@ -56,7 +56,7 @@ bash scripts/env/detect-php.sh --json
 
 Most scripts support `-h/--help`, validate their args (clean English error + non-zero exit on misuse), and have a `--json` and/or `--dry-run` mode.
 
-To exercise the plugin end-to-end, install it locally: `/plugin marketplace add .` then `/plugin install drupilot@drupilot`, and start a new session (hooks load at SessionStart).
+To exercise the plugin end-to-end without touching an installed copy, start a session with `claude --plugin-dir <this checkout>` (its commands are then `/drupilot:<name>`; hooks load at SessionStart). Users install it through the marketplace (`/plugin marketplace add`, `/plugin install drupilot@drupilot`); never reinstall over a developer's own installed copy to test.
 
 ## Architecture — how the pieces compose
 

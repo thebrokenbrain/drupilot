@@ -115,8 +115,11 @@ while IFS="$(printf '\t')" read -r schema inst filter; do
     ( cd "$TMP" && env HOME="$TMP/home" CLAUDE_PLUGIN_ROOT="$REPO" "$SH" "$REPO/scripts/env/preflight.sh" --profile all --json ) \
       > "$TMP/pf.json" 2>/dev/null || true
     jq "$filter" "$TMP/pf.json" > "$out" 2>/dev/null || { result "$schema" "$inst" jq fail "preflight.sh --json gave no JSON"; continue; }
+    [[ "$(jq -s 'length' "$out" 2>/dev/null)" == "1" ]] || { result "$schema" "$inst" jq fail "preflight.sh --json gave no JSON value"; continue; }
   elif [[ -f "$REPO/$inst" ]]; then
     jq "$filter" "$REPO/$inst" > "$out" 2>/dev/null || { result "$schema" "$inst" jq fail "not JSON (or $filter fails)"; continue; }
+    # jq exits 0 on an empty file: an instance must be exactly one JSON value.
+    [[ "$(jq -s 'length' "$out" 2>/dev/null)" == "1" ]] || { result "$schema" "$inst" jq fail "not exactly one JSON value (empty?)"; continue; }
   else
     result "$schema" "$inst" jq fail "instance $inst is missing"; continue
   fi

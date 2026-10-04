@@ -52,4 +52,12 @@ assert_match "a README-section citation fails" "$(gate)" '^fail\|commands/drupil
 cp "$T_REPO/commands/drupilot-status.md" "$r/commands/drupilot-status.md"
 printf '\n# See docs/guides/nowhere.md.\n' >> "$r/scripts/env/state.sh"
 assert_eq "a citation of a missing docs page fails" "$(gate)" "fail|scripts/env/state.sh cites docs/guides/nowhere.md, which does not exist"
+
+# A change-record link is encoded the same on every jq (jq 1.6 leaves ( ) ! * '
+# unencoded, jq 1.7+ encodes them).
+jq '.deprecations += [{"pattern": "drupal_get_path\\(", "symbol": "drupal_get_path()", "why": "w", "fix": "f"}]' \
+  "$T_REPO/config/deprecations.json" > "$r/config/deprecations.json"
+"$T_SH" "$r/scripts/dev/gen-docs.sh" --out "$T_TMP/gen" > /dev/null 2>&1
+assert_match "a symbol with parentheses gets %28%29 on any jq" \
+  "$(grep -F 'drupal_get_path' "$T_TMP/gen/deprecations.md" | grep 'Change records')" 'keywords_description=drupal_get_path%28%29>$'
 t_done

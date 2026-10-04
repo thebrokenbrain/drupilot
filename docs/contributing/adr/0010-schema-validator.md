@@ -15,8 +15,9 @@ validator in CI, never at plugin runtime. The candidates were
 ## Decision
 
 `scripts/dev/schema-check.sh` uses `check-jsonschema` 0.38.2: from PATH in
-the CI legs that install it, or, locally, in `python:3.13-alpine` pinned by
-digest (`--mode docker`). A jq structural validator that reads the same
+the CI legs that install it, or in `python:3.13-alpine` pinned by digest
+(`--mode docker`), which is what the `schemas` gate uses under `--ci` on a
+host without it (with neither, `--ci` fails). A jq structural validator that reads the same
 schemas always runs, so the bash-only CI legs still check every instance. The
 schemas are therefore restricted to the keywords it understands: `type`,
 `required`, `properties`, `additionalProperties` (boolean), `items`, `enum`,

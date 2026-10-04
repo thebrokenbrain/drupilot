@@ -18,8 +18,11 @@ developer tools' own strings (`scripts/dev/`).
 The gate scans the non-comment lines of `scripts/*/*.sh` (but `scripts/dev/`)
 and `hooks/scripts/*.sh`, and all of `commands/`, `skills/` and `agents/`,
 for `DRUPILOT_` names not preceded by an identifier character. Names read by
-prefix are declared as patterns (`DRUPILOT_CHOICE_*`, `DRUPILOT_ISSUE_*`,
-`DRUPILOT_TPL_*`). Declaration findings warn until M11. A `_*_comment` longer
+prefix are declared as patterns (`DRUPILOT_CHOICE_*`, `DRUPILOT_TPL_*`); a
+bare prefix written in prose (`DRUPILOT_ISSUE_<FIELD>` reads as
+`DRUPILOT_ISSUE_`) counts as declared when a declared key starts with it, and
+a key with its own entry is judged by that entry, never by a pattern.
+Declaration findings warn until M11. A `_*_comment` longer
 than 1800 characters fails: the longest one, `_verify_cores_comment`, has
 1779.
 

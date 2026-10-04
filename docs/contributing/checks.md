@@ -11,7 +11,7 @@ bash scripts/dev/check.sh --only docs,unit --json   # a subset, machine-readable
 ```
 
 A gate passes, fails, is skipped (an optional tool such as `claude`,
-`shellcheck`, `xmllint` or `check-jsonschema` is missing, outside `--ci`) or
+`shellcheck` or `xmllint` is missing, outside `--ci`) or
 warns (a finding reported without failing, for a check that is not enforced
 yet). The gate is bash 3.2-compatible and read-only.
 
@@ -30,7 +30,7 @@ yet). The gate is bash 3.2-compatible and read-only.
 | `version` | `plugin.json` equals the top released CHANGELOG heading, a `v*` tag on HEAD matches it, `main` never carries a pre-release, and `config/migrations.json` is coherent. |
 | `config-keys` | Every `DRUPILOT_*` key read is declared in `config/config-reference.json` (warns until M11); no `defaults.json` comment grows past 1800 characters (fails). |
 | `docs` | The generated reference pages are current, every `docs/**/*.md` is in the `mkdocs.yml` nav and every nav entry exists, no plugin file cites a README section or a missing docs page, and every relative link between docs pages resolves. |
-| `schemas` | Every persisted 0.9 artifact validates against its schema in `schemas/` (jq always; `check-jsonschema` where installed). |
+| `schemas` | Every persisted 0.9 artifact validates against its schema in `schemas/`: with the jq validator always, and with `check-jsonschema` where it is installed; under `--ci` it needs `check-jsonschema` on PATH or a running Docker (its pinned image), and fails without both. The detail names the engines that ran. |
 | `unit` | The unit tests (`scripts/dev/unit.sh`): the assert library, `common.sh` helpers, the hooks' fail-safe contract and the invariants INV1..INV12 (`tests/INVARIANTS.md`). |
 | `contract` | The 0.9 public surface is unchanged, or the change is listed in `tests/contract/allowed-changes.json` (`scripts/dev/contract.sh`). |
 | `evals` | The router's tab sequence, mode words and mode-inference rules are unchanged (`scripts/dev/evals.sh`, static; `--live` runs the model, never in CI). |
