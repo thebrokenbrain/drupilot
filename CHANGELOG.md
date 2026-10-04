@@ -102,7 +102,8 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   page, and on a broken link between pages (a root `FLOW*.md` is only
   noted). `.github/workflows/docs.yml`
   builds the site on every pull request and deploys it to GitHub Pages only
-  on a `v*` tag or a manual run.
+  on a release tag (`vX.Y.Z`, never a pre-release such as `v1.0.0-alpha.1`)
+  or a manual run.
 - **Architecture decision records** in `docs/contributing/adr/`: the owner's
   answers to the 1.0 plan's open questions (0000) and the decisions taken
   while building M1 (0007–0013).
