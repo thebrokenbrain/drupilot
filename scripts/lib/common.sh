@@ -1914,6 +1914,13 @@ state_snapshot_json() {
   t="$(_json_from "$sd/last-test.json" '{status: (.status // null), preservation: (.preservation // null), executed: (.executed // null), tests_failed: ([.tests[]? | select(.status == "fail" or .status == "error")] | length), groups_passed: (.passed // null), groups_failed: (.failed // null), groups_skipped: (.skipped // null), recorded_at: (.recorded_at // .generated_at // null), digest: (.subject_digest // null)}')"
   m="$(_json_from "$sd/core-matrix.json" '{verdict: (.verdict // null), d10_support: (.d10_support // null), generated_at: (.generated_at // null), digest: (.subject_digest // null)}')"
   pm="$(_json_from "$sd/port-manifest.json" '{patch: (.patch | if type == "string" then . else null end), phase: ((.phase // "port") | if type == "string" then . else null end), at: (.generated_at // .recorded_at // null)}')"
+  # A relative manifest patch path is the subject's; when it is not there but
+  # the same path exists under the Drupal root (a manifest written with the
+  # root-relative path), use that one, so the patch is not reported missing.
+  local mp; mp="$(printf '%s' "$pm" | jq -r '.patch // empty' 2>/dev/null || true)"
+  if [[ -n "$mp" && "$mp" != /* && ! -e "$abs/$mp" && -n "$root" && -e "$root/$mp" ]]; then
+    pm="$(printf '%s' "$pm" | jq -c --arg p "$root/$mp" '.patch = $p' 2>/dev/null || printf '%s' "$pm")"
+  fi
   # No patch named in the manifest: the newest local preview next to the
   # subject (make-patch.sh --local writes <machine_name>-<description>.patch).
   if [[ -n "$mn" && "$(printf '%s' "$pm" | jq -r '.patch // empty' 2>/dev/null)" == "" ]]; then
@@ -2022,6 +2029,23 @@ core_matrix_fresh() {
   have="$(jq -r '.subject_digest // empty' "$f" 2>/dev/null || true)"
   want="$(subject_digest "$s")"
   [[ -n "$have" && "$have" == "$want" ]]
+}
+
+# core_matrix_summary <subject> -> the core-matrix lines /drupilot-status shows
+# at load: "core_matrix_fresh=yes|no" and the matrix (d10_support, verdict,
+# generated_at, legs) as one JSON line, or "core_matrix=none". A function, so
+# the command's load-time line carries no inline jq program (Claude Code
+# refuses such a `bash -c` script in -p mode and asks for approval otherwise).
+core_matrix_summary() {
+  local s="${1:-$PWD}" f
+  f="$(core_matrix_file "$s")"
+  if [[ -r "$f" ]]; then
+    printf 'core_matrix_fresh=%s\n' "$(core_matrix_fresh "$s" && echo yes || echo no)"
+    jq -c '{d10_support, verdict, generated_at, legs: [.legs[] | {core: (.version // .core), role, status, reason}]}' "$f"
+  else
+    echo "core_matrix=none"
+  fi
+  return 0
 }
 
 # ---------------------------------------------------------------------------
