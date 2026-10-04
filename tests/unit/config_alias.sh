@@ -74,6 +74,16 @@ assert_eq "a .drupilot.json alias: one warning too" "$n" "1"
 rm -f "$T_TMP/root/.drupilot.json"
 assert_eq "an alias not in use: no warning" "$("$T_SH" -c '. "$1"; a="$(config_get DRUPILOT_PHP_TARGET x)"' _ "$T_LIB" 2>&1 | grep -c 'deprecated' || true)" "0"
 
+# A malformed .drupilot.json never stops a `set -e` script that sources
+# common.sh (the pre-warning reads it), nor a directory in its place.
+printf '{"DRUPILOT_PHP_TARGET": "8.3",}\n' > "$T_TMP/root/.drupilot.json"
+assert_eq "a malformed .drupilot.json: a set -e script still runs" \
+  "$("$T_SH" -c 'set -euo pipefail; . "$1"; printf reached' _ "$T_LIB" 2>/dev/null)" "reached"
+rm -f "$T_TMP/root/.drupilot.json"; mkdir "$T_TMP/root/.drupilot.json"
+assert_eq "a directory named .drupilot.json: a set -e script still runs" \
+  "$("$T_SH" -c 'set -euo pipefail; . "$1"; printf reached' _ "$T_LIB" 2>/dev/null)" "reached"
+rmdir "$T_TMP/root/.drupilot.json"
+
 # The shipped file has no row: nothing is loaded and nothing changes.
 assert_eq "the shipped migrations.json has no alias row" \
   "$(env CLAUDE_PLUGIN_ROOT="$T_REPO" DRUPILOT_OLD_PHP=8.4 "$T_SH" -c '. "$1"; printf "%s|%s" "$_DRUPILOT_ALIAS_N" "$(config_get DRUPILOT_PHP_TARGET x)"' _ "$T_LIB" 2>&1)" "0|8.3"

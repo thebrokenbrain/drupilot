@@ -546,7 +546,9 @@ _config_alias_prewarn() {
   done
   pf="$(drupilot_prefs_file 2>/dev/null || true)"
   [[ -n "$pf" && -r "$pf" ]] && have_cmd jq || return 0
-  keys="|$(jq -r 'if type == "object" then keys[] else empty end' "$pf" 2>/dev/null | tr '\n' '|')"
+  # A malformed .drupilot.json must not stop a `set -e` script while common.sh
+  # is being sourced: no keys, no warning.
+  keys="|$(jq -r 'if type == "object" then keys[] else empty end' "$pf" 2>/dev/null | tr '\n' '|' || true)"
   i=0
   while [[ "$i" -lt "$_DRUPILOT_ALIAS_N" ]]; do
     case "$keys" in
