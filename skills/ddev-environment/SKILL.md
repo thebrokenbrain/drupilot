@@ -36,9 +36,10 @@ commands so behavior stays idempotent, gated and consistent.
 - **Read the generated YAML.** Do not assume hostnames, the PHP image, or the
   webdriver host. After DDEV writes `.ddev/config.yaml`, read it back for the real
   values (project name, `php_version`, webdriver service host).
-- **PHP target drives everything.** The DDEV `php_version`, the Rector PHP set,
-  the PHPStan level expectations and some PHPCS sniffs all derive from
-  `DRUPILOT_PHP_TARGET` (default `8.3`). Resolve it with `resolve_php_target`; see
+- **PHP target drives everything.** The DDEV `php_version`, the PHPStan level
+  expectations and some PHPCS sniffs all derive from `DRUPILOT_PHP_TARGET`
+  (default `8.3`); Rector's PHP level is the floor of the declared core range,
+  never above it (ADR 0002). Resolve it with `resolve_php_target`; see
   the `php-target-tuning` skill for the PHP 8.5 caveat (it needs Drupal 11.3 or
   later).
 

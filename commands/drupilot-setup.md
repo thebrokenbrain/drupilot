@@ -29,8 +29,8 @@ cwd), its type (module/theme), and the effective PHP target:
 !`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; printf "subject_dir=%s\n" "$SUBJ"; printf "machine_name=%s\n" "$(subject_machine_name "$SUBJ" 2>/dev/null || echo -)"; printf "subject_type=%s\n" "$(subject_type "$SUBJ" 2>/dev/null || echo -)"; printf "php_target=%s\n" "$(resolve_php_target)"; printf "php_unconfirmed=%s\n" "$(php_target_unconfirmed "$(resolve_php_target)" && echo yes || echo no)"; printf "drupal_target=%s\n" "$(resolve_drupal_target)"' _ "$1"`
 
 **Decision point — let the developer pick the PHP target (G4/G5).** The PHP
-version pins the whole toolchain (Rector PHP set, PHPStan, PHPCS, DDEV
-`php_version`), so make it an explicit choice with **AskUserQuestion** (header
+version pins the whole toolchain (PHPStan, PHPCS, DDEV `php_version`, and the
+ceiling of Rector's PHP floor), so make it an explicit choice with **AskUserQuestion** (header
 "PHP target", default = the recommended option) *unless* a `--php X.Y` flag is in
 `$ARGUMENTS`, or `DRUPILOT_PHP_TARGET` is already pinned (environment or
 `.drupilot.json`), or the run is autonomous. A pre-answer comes first (after
@@ -254,7 +254,10 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/render-templates.sh" --root "<drupal_roo
 
 It renders, validates and writes, at the Drupal root:
 
-- `templates/rector.php.tmpl` -> `rector.php` (checked with `php -l`)
+- `templates/rector.php.tmpl` -> `rector.php` (checked with `php -l`), at the PHP
+  floor of the core range `core-strategy.sh` recommends (`php_floor` in the JSON)
+- `templates/rector-compat.php.tmpl` -> `rector-compat.php` (checked with
+  `php -l`) when that floor is below PHP 8.4; otherwise its entry is `skipped`
 - `templates/phpstan.neon.tmpl` -> `phpstan.neon`
 - `templates/phpcs.xml.dist.tmpl` -> `phpcs.xml.dist` (checked with `xmllint --noout`,
   or `phpcs --standard=<file> -e` when xmllint is absent)
@@ -269,8 +272,9 @@ It renders, validates and writes, at the Drupal root:
   Selenium image then refuses every FunctionalJavascript session). An older generated
   copy is upgraded automatically; run `ddev restart` when `restart_needed` is true.
 
-Token values come from the resolved config: `{{PHP_TARGET}}` (`resolve_php_target`), `{{PHP_SET}}`
-(the Rector `->withPhpSets()` argument derived from it: `php83`/`php84`),
+Token values come from the resolved config: `{{PHP_TARGET}}` (`resolve_php_target`),
+`{{PHP_FLOOR}}`/`{{PHP_FLOOR_ID}}`/`{{PHP_FLOOR_SET}}` (the Rector PHP floor, e.g.
+`8.1`/`PHP_81`/`php81` for `^10 || ^11`), `{{PHP_SET}}` (no current template uses it),
 `{{DRUPAL_TARGET}}`, `{{PHPSTAN_LEVEL}}` (`DRUPILOT_PHPSTAN_LEVEL`) and `{{SUBJECT_PATH}}`
 (`{{WEBDRIVER_HOST}}` is still resolved and accepted by `--set`, but no current template
 uses it). Override one

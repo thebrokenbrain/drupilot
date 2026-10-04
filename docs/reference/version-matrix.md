@@ -280,7 +280,7 @@ As of 2026-10-04; rule classes read in rector-src 2.5.2. compat: a deprecation f
 | Id | Kind | Rector rule | Deprecated in | Removed in | Output needs PHP | Drupal-safe | Verified |
 |---|---|---|---|---|---|---|---|
 | `p84-implicit-nullable` | compat | `ExplicitNullableParamTypeRector` | 8.4 |  | 7.1 | true | yes |
-| `p81-null-to-internal` | compat | `NullToStrictStringFuncCallArgRector` | 8.1 |  |  | true | yes |
+| `p81-null-to-internal` | compat | `NullToStrictStringFuncCallArgRector` | 8.1 |  |  | false | yes |
 | `p82-interpolation` | compat | `VariableInStringInterpolationFixerRector` | 8.2 |  |  | true | yes |
 | `p82-utf8-encode` | compat | `Utf8DecodeEncodeToMbConvertEncodingRector` | 8.2 |  |  |  | yes |
 | `p83-get-class-no-args` | compat | `RemoveGetClassGetParentClassNoArgsRector` | 8.3 |  |  | true | yes |
@@ -313,7 +313,7 @@ As of 2026-10-04; rule classes read in rector-src 2.5.2. compat: a deprecation f
 Sources:
 
 - `p84-implicit-nullable`: https://www.php.net/manual/en/migration84.deprecated.php
-- `p81-null-to-internal`: https://www.php.net/manual/en/migration81.deprecated.php
+- `p81-null-to-internal`: https://www.php.net/manual/en/migration81.deprecated.php templates/rector.php.tmpl skips it (S4): it adds (string) casts that change semantics and fail stricter project PHPStan levels. The deprecation is reported, never fixed by this rule.
 - `p82-interpolation`: https://www.php.net/manual/en/migration82.deprecated.php
 - `p82-utf8-encode`: https://www.php.net/manual/en/migration82.deprecated.php The rewrite calls mb_convert_encoding(): Drupal-safe only where mbstring is guaranteed; unaudited (AR-11).
 - `p83-get-class-no-args`: https://www.php.net/manual/en/migration83.deprecated.php

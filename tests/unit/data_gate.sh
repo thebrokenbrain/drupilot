@@ -5,8 +5,10 @@
 # version), and so does a version value without its source (the two roadmap
 # "done when" faults), an unresolved $ref, a pattern matched only before a
 # trailing newline, an announced or unverified blocking catalog entry, a removed-no-rule rule that does not cite php.net, a broken forbidden
-# route, a minor of the wrong major and a missing core file. An unverified
-# advisory note (namespace_moves) is allowed.
+# route, a minor of the wrong major and a missing core file, and so does a
+# Rector template that disagrees with config/php/rules.json (a skipped rule
+# marked drupal_safe, a compat rule that is not a drupal_safe compat rule).
+# An unverified advisory note (namespace_moves) is allowed.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
 r="$T_TMP/tree"; mkdir -p "$r"
@@ -86,4 +88,20 @@ mv "$r/config/php/versions.json" "$T_TMP/versions.json"
 assert_match "a missing core data file fails" "$(dc)" '^1\|schema: missing'
 mv "$T_TMP/versions.json" "$r/config/php/versions.json"
 assert_eq "back to green" "$(dc)" "0|"
+
+# The Rector templates and config/php/rules.json agree (T-M2-13/14).
+cp -R "$T_REPO/templates" "$r/"
+assert_eq "with templates/: the shipped templates agree with the rules" "$(dc)" "0|"
+edit php/rules.json '(.rules[] | select(.id == "p81-null-to-internal") | .drupal_safe) = true'
+assert_match "a rule rector.php skips but marked drupal_safe fails" "$(dc)" \
+  '^1\|coherence: p81-null-to-internal: templates/rector\.php\.tmpl skips .*NullToStrictStringFuncCallArgRector, so drupal_safe must be false'
+undo php/rules.json
+edit php/rules.json '(.rules[] | select(.id == "p84-implicit-nullable") | .drupal_safe) = null'
+assert_match "a compat rule of rector-compat.php that is not drupal_safe fails" "$(dc)" \
+  '^1\|coherence: templates/rector-compat\.php\.tmpl runs .*ExplicitNullableParamTypeRector, which is not a drupal_safe compat rule'
+undo php/rules.json
+sed 's/ExplicitNullableParamTypeRector/SleepToSerializeRector/' "$T_REPO/templates/rector-compat.php.tmpl" > "$r/templates/rector-compat.php.tmpl"
+assert_match "a skipped rule in the compat list fails" "$(dc)" '^1\|coherence: .*SleepToSerializeRector'
+cp "$T_REPO/templates/rector-compat.php.tmpl" "$r/templates/"
+assert_eq "back to green with templates/" "$(dc)" "0|"
 t_done

@@ -47,7 +47,8 @@ All output you produce — the report, the chat summary, every label — is in *
 - **Drupal core**: 11.3.0 stable. Minimum PHP 8.3, recommended 8.4.
 - **drupal-rector**: `palantirnet/drupal-rector` 1.1.x (0.21.x on a project drupilot 0.9 locked). Covers D10.0 -> D11.4
   deprecations. drupilot applies `Drupal10SetList::DRUPAL_10` (not `DRUPAL_11`,
-  which targets a future D12 port) plus the target PHP set minus a few risky rules.
+  which targets a future D12 port) plus the PHP sets up to the floor of the
+  declared core range (never above the target) minus a few risky rules.
   Needs the Drupal core tree present (no DB). What it flags in dry-run is, broadly,
   the **auto-fixable** surface.
 - **drupal-digests** (`dbuytaert/drupal-digests`): complementary AI-generated Rector

@@ -1091,10 +1091,20 @@ drupilot — scripts/analysis/run-rector.sh
 Run drupal-rector against a module/theme to find and (optionally) fix
 Drupal 9/10 -> Drupal 11 deprecations.
 
-Two passes:
+Passes, in this order:
   Pass 1 (always): the official, stable `palantirnet/drupal-rector`. A
                    `rector.php` is ensured at the Drupal root (copied from
-                   vendor or the plugin template if missing).
+                   vendor or the plugin template if missing). It targets the
+                   PHP floor L (ADR 0002, rector_php_bounds: the lowest PHP
+                   the core range core-strategy.sh recommends and the
+                   effective require.php admit, never above the PHP target):
+                   ->withPhpVersion() and the level sets stop at L.
+  Compat pass (when the floor is below PHP 8.4 and the range runs on 8.4 or
+                   later, rector_compat_needed): `--config rector-compat.php`
+                   (templates/rector-compat.php.tmpl, ensured at the root
+                   like rector.php), only the PHP deprecation fixes whose
+                   output still runs on L (`Foo $x = NULL` -> `?Foo $x =
+                   NULL`). Errors and the dry-run record call it pass 3.
   Pass 2 (--digests): the COMPLEMENTARY, AI-generated `dbuytaert/drupal-digests`
                    rules, cloned at runtime into the plugin cache and run via
                    `--config <cache>/rector/all.php`.
@@ -1122,19 +1132,24 @@ Options:
                      (overrides the cloned digests all.php). Implies --digests.
   --json             Emit a JSON summary on STDOUT instead of the plain file
                      list: {status, ok, errors, changed_files, files,
-                     pass1_files, pass2_files, rules, digests_status,
-                     digests_sha} — pass1 = official, pass2 = digests. Used
-                     for the reproducible verdict and the per-pass digests
-                     review. status is "ok", "error" (the official pass
-                     crashed: no verdict) or "partial" (only the digests pass
-                     crashed: the official result stands, ok stays true);
-                     errors is [{pass, exit_code, message}]; digests_status is
-                     "off", "ok", "error" or "skipped". rules is the
-                     sorted list of Rector rule names Rector reported as
-                     applied (its "Applied rules:" sections, both passes);
+                     pass1_files, compat_files, pass2_files, rules,
+                     digests_status, digests_sha, compat_status, php_floor,
+                     php_ceiling} — pass1 = official, compat = the compat
+                     pass, pass2 = digests. Used for the reproducible verdict
+                     and the per-pass digests review. status is "ok",
+                     "error" (the official or the compat pass crashed: no
+                     verdict) or "partial" (only the digests pass crashed:
+                     the official result stands, ok stays true); errors is
+                     [{pass, exit_code, message}] (pass 1 official, 2
+                     digests, 3 compat); digests_status and compat_status
+                     are "off", "ok", "error" or "skipped". php_floor and
+                     php_ceiling are the L and U of the Rector configs. rules
+                     is the sorted list of Rector rule names Rector reported
+                     as applied (its "Applied rules:" sections, every pass);
                      rule_hits counts them per pass, {official: {Rule: n},
-                     digests: {Rule: n}} (n = files the rule changed; the
-                     digests key only when that pass changed something) —
+                     compat: {Rule: n}, digests: {Rule: n}} (n = files the
+                     rule changed; the compat and digests keys only when that
+                     pass changed something) —
                      copy it into the port manifest's rector_rules. An
                      --apply that changes files also keeps it in the
                      subject's state dir (rector-rules.json), the fallback
@@ -1156,8 +1171,10 @@ applied) or 2 (dry-run found changes) AND its closing "[OK] ..." line. A
 crash — e.g. "[ERROR] Could not detect twig set." from an incompatible
 rector/rector, a PHP fatal, or per-file processing errors — is reported as
 status "error" with the error text and exit 3, never as "0 files would
-change". The file lists of a failed pass are partial at best. After a crash
-of the official pass the digests pass is skipped. A crash of the digests pass
+change". The file lists of a failed pass are partial at best. The compat
+pass runs on the same toolchain, so its crash counts as the official one's.
+After a crash of the official or the compat pass the passes after it are
+skipped. A crash of the digests pass
 alone is a problem of that third-party ruleset (e.g. a broken upstream
 commit), not of the toolchain: status "partial", digests_status "error",
 exit 4, and the official result is still reported. A digests SHA is frozen
@@ -1168,21 +1185,27 @@ rector.php: written from templates/rector.php.tmpl when missing. An existing
 one is left untouched unless it uses the legacy API or was generated by an
 OLDER drupilot template (no current "drupilot-template-version" marker): then
 it is backed up to <root>/.drupilot/backups/ and regenerated, so the risky-rule
-skips (Form API callbacks -> closures, #[\Override], readonly, string casts)
-reach projects set up before them. A hand-written rector.php is never
+skips (Form API callbacks -> closures, #[\Override], readonly, string casts,
+__sleep/__wakeup) reach projects set up before them. The same happens when its
+PHP floor is not the current one (the core target changed after setup) and it
+is exactly a drupilot render (rector_config_pristine); an edited copy at
+another floor is kept, with a warning. A hand-written rector.php is never
 replaced; a warning is printed when it does not skip
-ArrayToFirstClassCallableRector.
+ArrayToFirstClassCallableRector or has no withPhpVersion(). rector-compat.php
+follows the same rules (written when missing, regenerated from an older
+marker) when the compat pass runs.
 
 Every pass runs with --clear-cache (Rector's cache is shared across configs,
 so a file another config cached as unchanged would otherwise be skipped). A
 dry-run records its per-pass counts (<state_dir>/rector-dryrun.json, with the
-subject digest and the rector.php checksum); an --apply on the same code and
-config that changes 0 files in a pass whose dry-run announced changes is an
-error (status "error" for the official pass, exit 3; "partial" for digests).
+subject digest and the rector.php / rector-compat.php checksum); an --apply on
+the same code and config that changes 0 files in a pass whose dry-run
+announced changes is an error (status "error" for the official and the compat
+pass, exit 3; "partial" for digests).
 
 Exit codes: 0 ok · 1 usage error · 2 gate (requirements, Drupal root,
-vendor/bin/rector or a source for rector.php missing) · 3 the official pass
-crashed or reported errors (toolchain/config broken; the diagnostic lists the
+vendor/bin/rector or a source for rector.php missing) · 3 the official or the
+compat pass crashed or reported errors (toolchain/config broken; the diagnostic lists the
 installed vs known-good versions from config/toolchain-reference.json) ·
 4 only the digests pass crashed (the official result stands; fix with
 --digests-ref <known-good commit> or DRUPILOT_USE_DIGESTS_RULES=false).
@@ -2505,14 +2528,22 @@ Exit codes:
 drupilot — scripts/env/render-templates.sh
 Render the toolchain config templates into the Drupal root, deterministically:
   rector   templates/rector.php.tmpl              -> <root>/rector.php
+  rector-compat
+           templates/rector-compat.php.tmpl       -> <root>/rector-compat.php
+                                                     (only when the compat
+                                                     pass has a rule to run)
   phpstan  templates/phpstan.neon.tmpl            -> <root>/phpstan.neon
   phpcs    templates/phpcs.xml.dist.tmpl          -> <root>/phpcs.xml.dist
   testing  templates/ddev-web-environment.yaml.tmpl
                                                   -> <root>/.ddev/config.testing.yaml
 Tokens: {{SUBJECT_PATH}} (in-root path of the module/theme), {{PHP_TARGET}}
-(resolve_php_target), {{PHP_SET}} (the Rector ->withPhpSets() argument for
-that target, rector_php_set_arg: 8.3 -> php83, 8.4 -> php84, an unconfirmed
-8.5 -> php84), {{DRUPAL_TARGET}} (resolve_drupal_target),
+(resolve_php_target), {{PHP_FLOOR}} / {{PHP_FLOOR_ID}} / {{PHP_FLOOR_SET}}
+(the PHP floor L of the Rector configs, rector_php_bounds: the lowest PHP the
+core range core-strategy.sh recommends and the effective require.php admit,
+never above the PHP target, e.g. 8.1 / PHP_81 / php81 for ^10 || ^11; a
+floor of 8.5 gets php84 sets, rector_floor_tokens), {{PHP_SET}} (the
+->withPhpSets() argument for the PHP target, rector_php_set_arg; no current
+template uses it), {{DRUPAL_TARGET}} (resolve_drupal_target),
 {{PHPSTAN_LEVEL}} (DRUPILOT_PHPSTAN_LEVEL, default 2) and {{WEBDRIVER_HOST}}
 (the Selenium service read from .ddev/docker-compose.selenium-chrome.yaml,
 default selenium-chrome:4444; no current template uses it — the testing
@@ -2534,8 +2565,16 @@ copy is backed up to <root>/.drupilot/backups/ first. Exception: a copy
 drupilot generated from an OLDER template (its "drupilot — <file>" header is
 there but the template's current "drupilot-template-version: N" marker is
 not) is upgraded without --force, after the same backup — e.g. the invalid
-0.8.x phpcs.xml.dist or a phpstan.neon with the deprecated drupal_root. A
-current-generation copy that differs counts as hand-edited.
+0.8.x phpcs.xml.dist or a phpstan.neon with the deprecated drupal_root. So is
+a rector.php that is exactly what the current template renders for its own
+floor and subject (rector_config_pristine): nobody edited it, and its floor
+moved (the core target changed) or it was rendered for another subject. Any
+other current-generation copy that differs counts as hand-edited.
+
+rector-compat.php is rendered only when the compat pass has a rule to run
+(rector_compat_needed: the floor is below PHP 8.4 and the core range runs on
+8.4 or later); otherwise its entry is "skipped" and an existing copy is left
+alone (run-rector.sh does not run it).
 
 Usage:
   render-templates.sh (--root DIR | --subject DIR) [--subject-path REL]
@@ -2549,18 +2588,26 @@ Options:
                       root). Its path relative to the root is {{SUBJECT_PATH}}.
   --subject-path REL  Give {{SUBJECT_PATH}} directly (e.g.
                       web/modules/custom/foo); wins over --subject.
-  --only LIST         Comma-separated subset of rector,phpstan,phpcs,testing
-                      (default: all; `testing` is skipped when the root has no
+  --only LIST         Comma-separated subset of
+                      rector,rector-compat,phpstan,phpcs,testing (default:
+                      all; `rector` implies `rector-compat`, the pair shares
+                      the floor; `testing` is skipped when the root has no
                       .ddev/ directory).
   --set KEY=VALUE     Override one token value (repeatable), e.g.
-                      --set WEBDRIVER_HOST=selenium-chrome:4444.
+                      --set WEBDRIVER_HOST=selenium-chrome:4444, or
+                      --set PHP_FLOOR=8.2 (also sets PHP_FLOOR_ID and
+                      PHP_FLOOR_SET).
   --force             Replace a file that differs (after backing it up).
   --dry-run           Render and validate, report what would happen; write
                       nothing.
   --json              Print a JSON summary on STDOUT:
                       {root, subject_path, dry_run, force, ok, restart_needed,
+                       php_floor, php_ceiling,
                        files:[{name, template, path, status, valid, validator,
                                backup}]}
+                      php_floor / php_ceiling: the floor L and the ceiling U
+                      of the Rector configs (null when no rector template is
+                      selected)
                       status: written | unchanged | differs | replaced |
                               upgraded | would-write | would-replace |
                               would-upgrade | invalid | skipped
@@ -3231,8 +3278,11 @@ skill or hook calls it; scripts/dev/check.sh runs it as its `data` gate):
               php/versions.json; a minor never lists a PHP as both supported
               and unsupported; versions.json ids and rector_level match the
               key; rules have unique ids and a verified removed-no-rule rule
-              cites php.net; graph edges are unique, named from-to, join
-              known eras, and every forbidden route chains from -> to
+              cites php.net; a rule templates/rector.php.tmpl skips is
+              drupal_safe false, and every rule templates/rector-compat.php.tmpl
+              runs is a drupal_safe compat rule (when the tree has templates/);
+              graph edges are unique, named from-to, join known eras, and
+              every forbidden route chains from -> to
 
 Usage:
   scripts/dev/data-check.sh [--root DIR] [--json] [-h|--help]

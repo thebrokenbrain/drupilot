@@ -777,6 +777,96 @@ rector_php_set_arg() {
   return 0
 }
 
+# The PHP floor of the Rector configs (ADR 0002). templates/rector.php.tmpl
+# runs the main pass at the floor L: ->withPhpVersion(PhpVersion::PHP_<L>) and
+# ->withPhpSets(php<L>: true), so no version-bound rule and no level set above
+# L applies. templates/rector-compat.php.tmpl is the narrow compat pass: the
+# PHP deprecation fixes whose output still runs on L (today only
+# ExplicitNullableParamTypeRector, deprecated in PHP 8.4), run right after the
+# official pass. M5 generates the compat list from config/php/rules.json.
+RECTOR_COMPAT_FROM_PHP="8.4"
+
+# rector_php_bounds <subject_dir> [php_target] -> "L U". L, the floor, is the
+# highest of the lowest PHP the declared core range supports
+# (php_bounds_for_range of core-strategy.sh's recommendation, which honors
+# DRUPILOT_CORE_TARGET_STRATEGY and DRUPILOT_REQUIRE_PHP_FLOOR) and the floor
+# of the effective require.php (core-strategy's require_php when it sets one,
+# else the subject's composer.json), never above the PHP target P. U, the
+# highest PHP the code must run on, is max(P, the range's PHP ceiling). When
+# the version data does not know the range, L is the require.php floor, else
+# P (what 0.9 targeted), and U is P.
+rector_php_bounds() {
+  local subj="${1:-}" p="${2:-}" cs="" req="" rphp="" b="" lo="" hi="" f=""
+  [[ -n "$p" ]] || p="$(resolve_php_target)"
+  if [[ -n "$subj" && -d "$subj" ]] && have_cmd jq; then
+    cs="$(DRUPILOT_PHP_TARGET="$p" bash "$(plugin_root)/scripts/analysis/core-strategy.sh" --subject "$subj" --json 2>/dev/null </dev/null || true)"
+    req="$(printf '%s' "$cs" | jq -r '.recommended_core_version_requirement // empty' 2>/dev/null || true)"
+    rphp="$(printf '%s' "$cs" | jq -r '.require_php // empty' 2>/dev/null || true)"
+    [[ -n "$rphp" ]] || rphp="$(jq -r '.require.php // empty' "$subj/composer.json" 2>/dev/null || true)"
+    b="$(php_bounds_for_range "$req")"
+    f="$(php_constraint_floor "$rphp")"
+  fi
+  if [[ -n "$b" ]]; then lo="${b%% *}"; hi="${b##* }"; fi
+  if [[ -n "$f" ]] && { [[ -z "$lo" ]] || ! version_ge "$lo" "$f"; }; then lo="$f"; fi
+  [[ -n "$lo" ]] || lo="$p"
+  [[ -n "$hi" ]] || hi="$p"
+  version_ge "$p" "$lo" || lo="$p"
+  version_ge "$hi" "$p" || hi="$p"
+  printf '%s %s' "$lo" "$hi"
+  return 0
+}
+
+# rector_compat_needed L U -> 0 when the compat pass has a rule to run: the
+# floor is below the PHP that deprecates it, and the window reaches that PHP
+# (from L >= 8.4 on, the php84 level set of the main pass holds the rule).
+rector_compat_needed() {
+  [[ -n "${1:-}" && -n "${2:-}" ]] || return 1
+  version_ge "$1" "$RECTOR_COMPAT_FROM_PHP" && return 1
+  version_ge "$2" "$RECTOR_COMPAT_FROM_PHP"
+}
+
+# rector_floor_tokens L -> the template tokens of a floor, one KEY=VALUE per
+# line: PHP_FLOOR=8.1, PHP_FLOOR_ID=PHP_81 (Rector's PhpVersion constant) and
+# PHP_FLOOR_SET=php81 (the ->withPhpSets() argument; an unconfirmed 8.5 floor
+# gets rector_php_set_arg's php84, since no php85 set is assumed). Returns 1
+# when L is not a PHP minor.
+rector_floor_tokens() {
+  local l="${1:-}" set
+  [[ "$l" =~ ^[0-9]\.[0-9]$ ]] || return 1
+  if php_target_unconfirmed "$l"; then set="$(rector_php_set_arg "$l" 2>/dev/null)"; else set="php${l//./}"; fi
+  printf 'PHP_FLOOR=%s\nPHP_FLOOR_ID=PHP_%s\nPHP_FLOOR_SET=%s\n' "$l" "${l//./}" "$set"
+  return 0
+}
+
+# rector_config_floor FILE -> the floor a rendered rector.php targets (8.1 from
+# its ->withPhpVersion(PhpVersion::PHP_81)); nothing when it has none.
+rector_config_floor() {
+  sed -n 's/.*->withPhpVersion(PhpVersion::PHP_\([0-9]\)\([0-9]\)).*/\1.\2/p' "${1:-}" 2>/dev/null | head -n 1
+  return 0
+}
+
+# rector_config_pristine TEMPLATE FILE -> 0 when FILE is exactly what TEMPLATE
+# renders for FILE's own floor and subject path: a drupilot render nobody
+# edited, which may be regenerated when the floor moves. A hand edit, another
+# template generation or a file of the developer's own -> 1.
+rector_config_pristine() {
+  local tpl="${1:-}" f="${2:-}" fl sp tmp rc=1
+  [[ -f "$tpl" && -f "$f" ]] || return 1
+  fl="$(rector_config_floor "$f")"
+  [[ -n "$fl" ]] || return 1
+  # shellcheck disable=SC2016  # awk program, not a shell expansion
+  sp="$(awk -v q="'" '/->withPaths\(\[/ { if ((getline l) > 0) { sub("^[[:space:]]*" q, "", l); sub(q ",[[:space:]]*$", "", l); print l }; exit }' "$f" 2>/dev/null || true)"
+  [[ -n "$sp" ]] || return 1
+  tmp="$(mktemp "${TMPDIR:-/tmp}/drupilot-rector.XXXXXX")" || return 1
+  # shellcheck disable=SC2046  # one KEY=VALUE word per line, no spaces in them
+  if render_template "$tpl" "$tmp" "SUBJECT_PATH=$sp" $(rector_floor_tokens "$fl") 2>/dev/null \
+     && cmp -s "$tmp" "$f"; then
+    rc=0
+  fi
+  rm -f "$tmp"
+  return "$rc"
+}
+
 # ---------------------------------------------------------------------------
 # Drupal subject detection (module / theme) and Drupal root
 # ---------------------------------------------------------------------------
