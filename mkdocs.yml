@@ -92,4 +92,5 @@ nav:
           - contributing/adr/0012-docs-site-in-m1.md
           - contributing/adr/0013-config-keys-scope.md
           - contributing/adr/0014-version-data-hard-gates.md
+          - contributing/adr/0015-toolchain-cells.md
   - Changelog: changelog.md

@@ -70,6 +70,7 @@ SPECS="$(printf '%s\t%s\t%s\n' \
   php-rules.schema.json config/php/rules.json . \
   paths.schema.json config/paths/eras.json . \
   paths.schema.json config/paths/graph.json . \
+  toolchain.schema.json config/toolchain-reference.json . \
   catalog.schema.json schemas/examples/catalog.example.json .)"
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-schema.XXXXXX")"

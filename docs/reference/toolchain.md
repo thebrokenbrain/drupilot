@@ -2,11 +2,86 @@
 
 # Toolchain
 
-The known-good development toolchain `scripts/env/install-toolchain.sh` installs when the project lock does not pin the whole set, from `config/toolchain-reference.json`. A version enters it only after it was installed and verified together in a DDEV test-bed.
+The known-good development toolchain matrix `scripts/env/install-toolchain.sh` installs from `config/toolchain-reference.json` when the project lock does not pin the whole set. A test-bed uses the cell its installed Drupal core major names (`toolchain_cell` in `config/targets/<major>.json`); only a verified cell is pinned, an unverified one resolves from the `.packages` ranges of `config/defaults.json`. A version enters a cell only after it was installed and verified together in a DDEV test-bed.
 
-Verified on 2026-10-02 with Drupal core 11.4.8, PHP 8.3, DDEV 1.25.4 and drupal/autologout 8.x-1.4.
+## Cell 11 (verified)
 
-## Packages
+Verified on 2026-10-04: Drupal core 11.4.8, PHP 8.3, 8.5, DDEV 1.25.4, with tests/fixtures/legacy_widgets and drupal/autologout 8.x-1.4 (2895b8c1c26d1b9604c87fbc01990866c588ba32).
+Source: docs/contributing/adr/0001-toolchain-pins.md (spike AR-38).
+
+| Package | Version |
+|---|---|
+| `palantirnet/drupal-rector` | `1.1.3` |
+| `rector/rector` | `2.6.1` |
+| `phpstan/phpstan` | `2.2.16` |
+| `phpstan/extension-installer` | `1.4.3` |
+| `mglaman/phpstan-drupal` | `2.2.2` |
+| `phpstan/phpstan-deprecation-rules` | `2.0.5` |
+| `drupal/coder` | `8.3.31` |
+| `drush/drush` | `13.8.0` |
+| `drupal/upgrade_status` | `4.3.10` |
+
+## Cell 12 (provisional)
+
+Verified on 2026-10-04: Drupal core 12.0.0-beta1, PHP 8.5, DDEV 1.25.4, with tests/fixtures/legacy_widgets and drupal/autologout 8.x-1.4 (2895b8c1c26d1b9604c87fbc01990866c588ba32).
+Source: docs/contributing/adr/0004-d12-bed.md (spike AR-42; re-verified on the current pre-release in M6).
+
+| Package | Version |
+|---|---|
+| `palantirnet/drupal-rector` | `1.1.3` |
+| `rector/rector` | `2.6.1` |
+| `phpstan/phpstan` | `2.2.16` |
+| `phpstan/extension-installer` | `1.4.3` |
+| `mglaman/phpstan-drupal` | `2.2.2` |
+| `phpstan/phpstan-deprecation-rules` | `2.0.5` |
+| `drupal/coder` | `9.0.1` |
+| `drush/drush` | not installed |
+| `drupal/upgrade_status` | `5.0.0-alpha3` |
+
+No drush release installs on 12.0.0-beta1 (drush 13 needs guzzle ^7); the site is installed with core's install_drupal() and extensions with vendor/bin/dr ex:install. Composer refuses coder 8.3.31 and phpstan 2.2.2 next to drupal/core-dev 12 (coder ^9.0, phpstan ^2.2.14).
+
+## Cell d7-pre (planned)
+
+Source: drupilot 1.0 architecture AR-09 (the Drupal 7 inventory track, M10).
+
+No set yet.
+
+Defined in M10.
+
+## PHPCompatibility (verified)
+
+Its own Composer tree, for the report-only PHP compatibility check. Source: docs/contributing/adr/0003-phpcompatibility.md (spike AR-41).
+
+| Package | Version |
+|---|---|
+| `phpcompatibility/php-compatibility` | `10.0.0-alpha2` |
+| `squizlabs/php_codesniffer` | `4.0.4` |
+| `phpcsstandards/phpcsutils` | `1.2.3` |
+| `dealerdirect/phpcodesniffer-composer-installer` | `v1.2.1` |
+| `phpcompatibility/phpcompatibility-symfony` | `2.0.0-alpha3` |
+| `phpcompatibility/phpcompatibility-paragonie` | `2.0.0-alpha2` |
+| `phpcompatibility/phpcompatibility-passwordcompat` | `2.0.0-alpha1` |
+
+Its own Composer tree under &lt;root&gt;/.drupilot/phpcompat (M5), never the test-bed's.
+
+## Remediation packages
+
+Reinstalled together when the toolchain smoke test fails: `palantirnet/drupal-rector`, `rector/rector`, `phpstan/phpstan`, `mglaman/phpstan-drupal`.
+
+## Known broken combinations
+
+- `palantirnet/drupal-rector` 0.21.2 with `rector/rector` &gt;=2.6.2: [ERROR] Could not detect twig set.
+  drupal-rector's drupal-10.0-deprecations.php needs TwigSetList::TWIG_24/TWIG_240, which rector 2.6.2 removed. Verified: 2.6.1 works; 2.6.2 and 2.6.7 crash.
+
+- `palantirnet/drupal-rector` 1.1.2 with `rector/rector` &gt;=2.6.2: [ERROR] Could not detect twig set.
+  Same as 0.21.2; drupal-rector 1.1.3 declares a conflict on rector &gt;=2.6.2 for this reason. Verified with rector 2.6.2.
+
+- `rector/rector` 2.5.2 with `phpstan/phpstan` &gt;=2.2.6: MissingPrivatePropertyException: Property "$container" was not found in "PHPStan\Parser\RichParser"
+  rector 2.5.2 reads a private PHPStan property that is gone from phpstan 2.2.6 on. Verified: phpstan 2.2.2 and 2.2.5 work; 2.2.6, 2.2.14, 2.2.15 and 2.2.16 crash.
+
+## The drupilot 0.9 set (legacy_v1)
+
+A project lock written by drupilot 0.9 keeps this set until it is refreshed with `install-toolchain.sh --source reference`. Verified on 2026-10-02 with Drupal core 11.4.8, PHP 8.3, DDEV 1.25.4 and drupal/autologout 8.x-1.4.
 
 | Package | Version |
 |---|---|
@@ -20,14 +95,3 @@ Verified on 2026-10-02 with Drupal core 11.4.8, PHP 8.3, DDEV 1.25.4 and drupal/
 | `drush/drush` | `13.8.0` |
 | `drupal/upgrade_status` | `4.3.10` |
 
-## Remediation packages
-
-Reinstalled together when the toolchain smoke test fails: `palantirnet/drupal-rector`, `rector/rector`, `phpstan/phpstan`, `mglaman/phpstan-drupal`.
-
-## Known broken combinations
-
-- `palantirnet/drupal-rector` 0.21.2 with `rector/rector` &gt;=2.6.2: [ERROR] Could not detect twig set.
-  drupal-rector's drupal-10.0-deprecations.php needs Rector\Symfony\Set\TwigSetList::TWIG_24, which the rector-symfony bundled in rector/rector 2.6.2 removed. Verified: 2.6.1 works, 2.6.2 and 2.6.7 crash.
-
-- `rector/rector` 2.5.2 with `phpstan/phpstan` 2.2.16: MissingPrivatePropertyException: Property "$container" was not found in "PHPStan\Parser\RichParser"
-  rector 2.5.x reads a private PHPStan property that later PHPStan 2.2.x releases removed; rector 2.5.2 needs phpstan 2.2.2.

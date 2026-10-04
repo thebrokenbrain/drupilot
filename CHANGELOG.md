@@ -170,7 +170,36 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   pinned to; `golden.sh --update` vendors the live data as a new, verified
   snapshot, repins, and (without `--only`) removes the unused ones.
 
+- **The toolchain matrix.** `config/toolchain-reference.json` (schema 2,
+  `schemas/toolchain.schema.json`) holds one cell per Drupal major family:
+  cell 11 (ADR 0001), the provisional cell 12 (ADR 0004, not pinned until it
+  is re-verified in M6), `d7-pre`, the PHPCompatibility set (ADR 0003), and
+  `legacy_v1`, the set drupilot 0.9 shipped. A test-bed uses the cell its
+  installed core major names; the lock records it (`toolchain_cell`), and
+  `install-toolchain.sh --json` reports it (`cell`). A lock drupilot 1.0
+  creates starts as `{"schema": 1}`, which is how a lock 0.9 created is told
+  apart. ADR 0015.
+
 ### Changed
+- **New test-beds get the cell 11 toolchain:** palantirnet/drupal-rector
+  1.1.3, rector/rector 2.6.1 and phpstan/phpstan 2.2.16 (were 0.21.2, 2.5.2
+  and 2.2.2); the other pins are unchanged. On `legacy_widgets` and
+  autologout 8.x-1.4, on PHP 8.3 and 8.5, every port patch is byte-identical
+  to 0.9's (spike AR-38). A project whose lock drupilot 0.9 wrote keeps 0.9's
+  set, with a notice, until `install-toolchain.sh --source reference`
+  refreshes it. A Drupal 12 test-bed resolves its toolchain from the ranges,
+  with a warning, while cell 12 is provisional. `known_broken` now names
+  rector 2.5.2 with any phpstan from 2.2.6 on, and drupal-rector 1.1.2 with
+  rector 2.6.2 or later. The `drupal_rector` range of `config/defaults.json`
+  is now `^1.1.3`, so a fallback to the ranges lands on the same set. With
+  1.1.3, `convert-attributes.sh` gives byte-identical results on the
+  fixtures, and it now converts a plugin annotation with a keyless value
+  (`@FormElement("x")`), which 0.21.2 emitted without its argument and the
+  script restored. Because 1.1.x matches an existing attribute by its short
+  name, `convert-attributes.sh` now reads every name of an attribute group
+  (`#[Cacheable, Block]`, also over several lines) when it decides which
+  files to skip, and restores a file whose annotation was removed with no
+  attribute added.
 - `php_supported_for` reads `config/targets` and `config/php/versions.json`
   instead of a table in `common.sh`. Its answers are unchanged (a unit test
   pins the whole grid). `DRUPILOT_VERSION_DATA_DIR` (internal) points it at
@@ -185,8 +214,21 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   follow), and `/drupilot-status` and `scripts/env/state.sh` cite
   `docs/reference/state.md` instead of a README section.
 - CI installs `check-jsonschema` 0.38.2 on the Ubuntu and macOS legs.
+- The `checks` CI job may run 35 minutes (was 20): on macOS it runs the
+  whole gate twice, and the second run hit the limit.
 
 ### Fixed
+- `install-toolchain.sh --json` failed with jq 1.6 (Debian 12, Ubuntu
+  22.04: "syntax error, unexpected and"), so the command printed no JSON
+  there; its `ok` value is now parenthesized. The `jq-compat` gate rejects
+  that construct (an object value joined with `and`/`or` outside
+  parentheses).
+- `run-rector.sh` no longer counts a rule Rector only names in a "[WARNING]
+  This skipped rule is never registered" notice as applied: `rules` and
+  `rule_hits` (and the port manifest built from them) list the rules of the
+  "Applied rules:" blocks only (`rector_applied_rules` in `common.sh`).
+  Rector 2.6.1 prints that notice for `NullToStrictStringFuncCallArgRector`,
+  which drupilot's template skips and its php81 set no longer lists.
 - `tests/fixtures/legacy_widgets.EXPECTED.md` no longer calls the fixture valid
   Drupal 10.3 code without qualification: `WidgetImportForm` redeclares
   `FormBase`'s `$loggerFactory` as `private readonly` and typed, a fatal error

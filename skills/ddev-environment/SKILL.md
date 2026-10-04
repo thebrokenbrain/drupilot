@@ -230,7 +230,7 @@ What it installs (`config/defaults.json` `.packages.*`):
 - `palantirnet/drupal-rector` (the `palantirnet/` namespace is current;
   `palantirnet/drupal8-rector` is obsolete) and its engine `rector/rector`
   (range `^2.0 <2.6.2`: drupal-rector 0.21.x throws `Could not detect twig set.`
-  with rector/rector >= 2.6.2)
+  with rector/rector >= 2.6.2, and 1.1.3 declares a conflict with it)
 - `phpstan/phpstan`, `phpstan/extension-installer`, `mglaman/phpstan-drupal`,
   `phpstan/phpstan-deprecation-rules`
 - `drupal/coder` at `DRUPILOT_CODER_CONSTRAINT` (default `^8.3` → PHPCS 3.x, the

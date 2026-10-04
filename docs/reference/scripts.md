@@ -162,8 +162,8 @@ ungated, no toolchain (bash + jq + awk).
 drupilot — scripts/analysis/convert-attributes.sh
 Optional, opt-in pass that converts plugin doc-block annotations (@Block(...),
 @QueueWorker(...), @Filter(...), ...) into PHP 8 attributes with the
-AnnotationToAttributeRector rule of palantirnet/drupal-rector (0.21.x ships
-the rule but configures it in no set). It is independent of run-rector.sh's
+AnnotationToAttributeRector rule of palantirnet/drupal-rector (0.21.x and
+1.1.x ship the rule but configure it in no set). It is independent of run-rector.sh's
 official and digests passes: it renders its own config,
 templates/rector-attributes.php.tmpl -> <drupal_root>/.drupilot/rector-attributes.php
 (reachable at the same relative path inside DDEV, gitignored), and runs only
@@ -192,10 +192,12 @@ Modes (DRUPILOT_ATTRIBUTES_MODE or --mode; default keep):
 
 The annotation is removed by the rule only when the test-bed core is >= the
 configured removeVersion: drupilot writes the type's `since` to strip and
-999.0.0 to keep. Names are printed fully qualified (no import), because the
-0.21.x rule detects an existing attribute by its FQCN: a file that already
-carries a short-named (imported) attribute of a converted type is skipped (it
-would get a duplicate). The rule copies every annotation key into a named
+999.0.0 to keep. Names are printed fully qualified (no import). A file that
+already carries a short-named (imported) #[X] attribute of a converted
+type's short name is skipped: the 1.1.x rule takes ANY attribute with that
+short name for the converted one (an unrelated class of the same name would
+suppress the Drupal attribute, and strip mode would then lose the plugin),
+and drupilot does not resolve the imports to tell the cases apart. The rule copies every annotation key into a named
 argument as is, so before the run each annotation's top-level keys are
 checked against the attribute constructor's parameters, read from the
 attribute class in the test-bed core and in every cached reference core at or
@@ -203,7 +205,8 @@ above the type's `since` (.drupilot/cores): a file with a key the constructor
 does not accept (e.g. `source_module` on @MigrateSource) is skipped and keeps
 its annotation, as Drupal core does for such plugins, because the attribute
 would fatal with "Unknown named parameter" when the plugin is discovered.
-After --apply, every changed file is checked: a duplicate attribute, a
+After --apply, every changed file is checked: a duplicate attribute, an
+annotation removed without its attribute, a
 `php -l` failure or a PHPStan (level 0) finding that names a converted
 attribute class restores the file from the backup taken just before the run. A class constant the annotation names by a
 qualified but not fully qualified name (`Drupal\filter\Plugin\FilterInterface::
@@ -2153,17 +2156,28 @@ mglaman/phpstan-drupal, phpstan/phpstan-deprecation-rules, drupal/coder
 via core_dev_requirement) and, with --with-upgrade-status, drupal/upgrade_status.
 Drush is NOT installed here (ddev-up.sh owns it, as a regular require).
 
+The known-good reference is a matrix (config/toolchain-reference.json): one
+cell per Drupal major family. The test-bed's cell is the one its lock records
+(toolchain_cell), else the one config/targets/<major>.json names for the
+installed core's major; a lock drupilot 0.9 wrote (it pins rector/rector and
+records no cell) is cell legacy_v1, 0.9's own set, until it is refreshed
+(--source reference), and a notice says so. A cell that is not verified yet
+(cell 12 while Drupal 12 is a pre-release) pins nothing: its packages resolve
+from the ranges, with a warning.
+
 Where each version comes from (--source, default DRUPILOT_TOOLCHAIN_SOURCE=auto):
   auto       Deterministic mode (DRUPILOT_DETERMINISTIC, default true):
                - the project lock, when it pins EVERY package of the
-                 known-good reference set (a complete, previously working set);
-               - otherwise the shipped reference config/toolchain-reference.json
-                 as a whole (a partial lock is never mixed with the reference:
-                 that combination was never tested);
+                 cell's known-good set (a complete, previously working set);
+               - otherwise the cell's set as a whole (a partial lock is never
+                 mixed with the reference: that combination was never
+                 tested);
                - packages the reference does not pin: lock, else the range.
              Non-deterministic mode: the .packages ranges (fresh resolve).
-  reference  The reference set, ignoring the lock (the repair path after a
-             broken resolve); the lock is then refreshed from what got installed.
+  reference  The set of the installed core's cell, ignoring the lock (the
+             repair path after a broken resolve, and the refresh of a 0.9
+             lock); the lock is then refreshed from what got installed and
+             records the cell.
   range      The .packages ranges only (fresh resolve).
 If Composer cannot resolve the pinned set against this project (e.g. a newer
 core needs a newer PHPStan), it retries once with the ranges and says so.
@@ -2188,8 +2202,8 @@ Options:
   --smoke-only           Do not install; only run the smoke test (+ diagnostics).
   --dry-run              Print the resolved package specs; run nothing.
   --json                 JSON summary on STDOUT:
-                         {ok, status, root, source, deterministic, packages:
-                          [{name, spec, source, installed}], composer_ran,
+                         {ok, status, root, source, deterministic, cell,
+                          packages: [{name, spec, source, installed}], composer_ran,
                           fallback_to_ranges, smoke:{ok, error}, lock_synced}
                          status: installed | unchanged | dry-run | smoke-only |
                                  smoke-failed | composer-failed
@@ -2453,7 +2467,8 @@ Usage:
     phpstan_config phpstan.neon does not set the deprecated drupal_root
     toolchain:*    one row per known-good package installed at the root
                    (composer.lock, read with jq: no PHP, no DDEV), compared
-                   with config/toolchain-reference.json; plus
+                   with the root's cell of config/toolchain-reference.json
+                   (legacy_v1 for a lock drupilot 0.9 wrote); plus
                    toolchain_combo, false when the installed set matches a
                    known-broken combination (e.g. "Could not detect twig set")
     disk_free      free space on the root's (else the current dir's)
@@ -3050,6 +3065,9 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
                 key (`{module, scope}`): jq 1.6 (Debian 12, Ubuntu 22.04 —
                 drupilot's jq_min) rejects each as a syntax error, jq 1.7
                 accepts it. `{label: .x}` and `.label` are fine everywhere.
+                It also rejects an object value joined with and/or outside
+                parentheses (`{ok: (a) and (b)}`, a jq 1.6 syntax error;
+                write `{ok: ((a) and (b))}`).
                 A line can opt out with a trailing `# jq-compat-ok` and a reason
   - bang-lint   no `!`...`` exec span in commands/*.md, skills/*/SKILL.md or
                 agents/*.md contains a <placeholder>: those spans run at command
@@ -3195,8 +3213,9 @@ skill or hook calls it; scripts/dev/check.sh runs it as its `data` gate):
               config/php/versions.json and rules.json, config/paths/eras.json
               and graph.json, and every config/catalog/*.json validate
               against their schema (the jq validator, scripts/dev/
-              jsonschema.jq); the seven core files (targets/10, 11 and 12,
-              php/versions and rules, paths/eras and graph) must exist
+              jsonschema.jq); the eight core files (targets/10, 11 and 12,
+              php/versions and rules, paths/eras and graph, and the toolchain
+              matrix toolchain-reference.json) must exist
   provenance  every object that carries `verified` names its source (src or
               url), every object holding a version value names one too (a
               PHP support list: php_src), and every `verified_as` object
@@ -3207,7 +3226,8 @@ skill or hook calls it; scripts/dev/check.sh runs it as its `data` gate):
               {"status": "detect"} minor holds no value)
   coherence   a target file's major matches its name and its minors; a
               target major (11 and up) has toolchain_cell, php_defaults and
-              default_ranges; every PHP version a target names is in
+              default_ranges, and its toolchain_cell is a cell of the
+              toolchain matrix; a verified cell says where and pins a set; every PHP version a target names is in
               php/versions.json; a minor never lists a PHP as both supported
               and unsupported; versions.json ids and rector_level match the
               key; rules have unique ids and a verified removed-no-rule rule

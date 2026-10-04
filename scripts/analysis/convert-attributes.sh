@@ -3,8 +3,8 @@
 # drupilot — scripts/analysis/convert-attributes.sh
 # Optional, opt-in pass that converts plugin doc-block annotations (@Block(...),
 # @QueueWorker(...), @Filter(...), ...) into PHP 8 attributes with the
-# AnnotationToAttributeRector rule of palantirnet/drupal-rector (0.21.x ships
-# the rule but configures it in no set). It is independent of run-rector.sh's
+# AnnotationToAttributeRector rule of palantirnet/drupal-rector (0.21.x and
+# 1.1.x ship the rule but configure it in no set). It is independent of run-rector.sh's
 # official and digests passes: it renders its own config,
 # templates/rector-attributes.php.tmpl -> <drupal_root>/.drupilot/rector-attributes.php
 # (reachable at the same relative path inside DDEV, gitignored), and runs only
@@ -33,10 +33,12 @@
 #
 # The annotation is removed by the rule only when the test-bed core is >= the
 # configured removeVersion: drupilot writes the type's `since` to strip and
-# 999.0.0 to keep. Names are printed fully qualified (no import), because the
-# 0.21.x rule detects an existing attribute by its FQCN: a file that already
-# carries a short-named (imported) attribute of a converted type is skipped (it
-# would get a duplicate). The rule copies every annotation key into a named
+# 999.0.0 to keep. Names are printed fully qualified (no import). A file that
+# already carries a short-named (imported) #[X] attribute of a converted
+# type's short name is skipped: the 1.1.x rule takes ANY attribute with that
+# short name for the converted one (an unrelated class of the same name would
+# suppress the Drupal attribute, and strip mode would then lose the plugin),
+# and drupilot does not resolve the imports to tell the cases apart. The rule copies every annotation key into a named
 # argument as is, so before the run each annotation's top-level keys are
 # checked against the attribute constructor's parameters, read from the
 # attribute class in the test-bed core and in every cached reference core at or
@@ -44,7 +46,8 @@
 # does not accept (e.g. `source_module` on @MigrateSource) is skipped and keeps
 # its annotation, as Drupal core does for such plugins, because the attribute
 # would fatal with "Unknown named parameter" when the plugin is discovered.
-# After --apply, every changed file is checked: a duplicate attribute, a
+# After --apply, every changed file is checked: a duplicate attribute, an
+# annotation removed without its attribute, a
 # `php -l` failure or a PHPStan (level 0) finding that names a converted
 # attribute class restores the file from the backup taken just before the run. A class constant the annotation names by a
 # qualified but not fully qualified name (`Drupal\filter\Plugin\FilterInterface::
@@ -168,7 +171,7 @@ export DRUPILOT_PROJECT_DIR="$DRUPAL_ROOT"
   || die "vendor/bin/rector is missing. Install the toolchain first (/drupilot-setup)." 2
 RULE_SRC="$DRUPAL_ROOT/vendor/palantirnet/drupal-rector/src/Drupal10/Rector/Deprecation/AnnotationToAttributeRector.php"
 [[ -f "$RULE_SRC" ]] \
-  || die "The installed palantirnet/drupal-rector has no AnnotationToAttributeRector (needs 0.20+; the known-good toolchain ships 0.21.x)." 2
+  || die "The installed palantirnet/drupal-rector has no AnnotationToAttributeRector (needs 0.20+; the known-good toolchain ships 1.1.x)." 2
 
 CORE_VER="$(drupal_core_version "$DRUPAL_ROOT")"
 CORE_MM="$(printf '%s' "$CORE_VER" | grep -oE '^[0-9]+\.[0-9]+' || true)"
@@ -227,16 +230,43 @@ fi
 
 # --- Scan the subject: annotation tags and existing attributes per file -----
 # TAG<TAB>file<TAB>Annotation   (a doc-block line ` * @Annotation(`)
-# ATTR<TAB>file<TAB>name        (an attribute as written: `#[\Drupal\...\Block(`)
+# ATTR<TAB>file<TAB>name        (each attribute as written, every name of a
+#                               group `#[A, B(...)]`, one-line or not)
 SCAN="$TMPD/scan.tsv"
 find "$SUBJECT_REL" -type f -name '*.php' ! -path '*/vendor/*' ! -path '*/node_modules/*' -exec awk '
+  FNR == 1 { ingrp = 0; depth = 0; expect = 0; q = "" }
   /^[ \t]*\*[ \t]*@[A-Za-z_][A-Za-z0-9_]*[ \t]*\(/ {
     s = $0; sub(/^[ \t]*\*[ \t]*@/, "", s); sub(/[ \t]*\(.*$/, "", s)
     print "TAG\t" FILENAME "\t" s
   }
-  /^[ \t]*#\[/ {
-    s = $0; sub(/^[ \t]*#\[[ \t]*/, "", s)
-    if (match(s, /^[A-Za-z0-9_\\]+/)) print "ATTR\t" FILENAME "\t" substr(s, RSTART, RLENGTH)
+  # An attribute group opens at a line-leading #[ and ends at its top-level ];
+  # a name follows the #[ and every top-level comma (strings are skipped).
+  ingrp || /^[ \t]*#\[/ {
+    line = $0; n = length(line); i = 1
+    if (!ingrp) { i = index(line, "#[") + 2; ingrp = 1; depth = 0; expect = 1; q = "" }
+    while (i <= n) {
+      ch = substr(line, i, 1)
+      if (q != "") { if (ch == q) q = ""; i++; continue }
+      if (ch == "\047" || ch == "\"") { q = ch; i++; continue }
+      if (expect && ch ~ /[A-Za-z0-9_\\]/) {
+        match(substr(line, i), /^[A-Za-z0-9_\\]+/)
+        print "ATTR\t" FILENAME "\t" substr(line, i, RLENGTH)
+        i += RLENGTH; expect = 0; continue
+      }
+      if (ch == "(" || ch == "[") depth++
+      else if (ch == ")") depth--
+      else if (ch == "]") {
+        if (depth > 0) depth--
+        else {
+          ingrp = 0
+          p = index(substr(line, i + 1), "#[")
+          if (p == 0) break
+          i += p + 2; ingrp = 1; depth = 0; expect = 1; continue
+        }
+      }
+      else if (ch == "," && depth == 0) expect = 1
+      i++
+    }
   }' {} + > "$SCAN" 2>/dev/null || true
 
 # custom_class_file <FQCN> -> a file under the Drupal root declaring it.
@@ -400,8 +430,9 @@ rejected_keys() {
   return 0
 }
 # Files carrying a converted annotation, and those to skip: a short-named
-# attribute of the same type already present (the 0.21.x rule would
-# duplicate), or an annotation key the attribute constructor rejects.
+# attribute with the type's short name already present (the rule matches on
+# the short name and could skip the real conversion), or an annotation key the
+# attribute constructor rejects.
 CAND="$TMPD/cand.txt"; : > "$CAND"
 SKIPPED_JSON="[]"; SKIP_LINES=""
 while IFS= read -r f; do
@@ -423,7 +454,7 @@ while IFS= read -r f; do
     if AWKV_fq="\\$attr" awk -F '\t' -v f="$f" -v s="$short" '
          $1 == "ATTR" && $2 == f { n = split($3, p, "\\"); if (p[n] == s && $3 != ENVIRON["AWKV_fq"]) bad = 1 }
          END { exit !bad }' "$SCAN"; then
-      skip_reason="already has a non fully-qualified #[$short] attribute (the 0.21.x rule would add a duplicate): finish it by hand"
+      skip_reason="already has a non fully-qualified #[$short] attribute (the rule could take it for the converted one): finish it by hand"
     fi
   done < "$ACTIVE"
   if [[ -n "$skip_reason" ]]; then
@@ -592,6 +623,16 @@ if [[ "$APPLY" == "1" && -n "$CHANGED" ]]; then
       if [[ "${c:-0}" -gt 1 ]]; then dup="$short"; break; fi
     done < "$ACTIVE"
     if [[ -n "$dup" ]]; then restore "$f" "duplicate #[$dup] attribute after the pass"; continue; fi
+    # 2b) No annotation removed without its attribute (the rule takes any
+    #     attribute with the type's short name for the converted one).
+    lost=""
+    while IFS=$'\t' read -r ann attr since action; do
+      grep -qE "^[[:space:]]*\*[[:space:]]*@${ann}[[:space:]]*\(" "$TMPD/backup/$f" 2>/dev/null || continue
+      grep -qE "^[[:space:]]*\*[[:space:]]*@${ann}[[:space:]]*\(" "$f" && continue
+      grep -qF "#[\\${attr}(" "$f" && continue
+      lost="$ann"; break
+    done < "$ACTIVE"
+    if [[ -n "$lost" ]]; then restore "$f" "the @$lost annotation was removed but no attribute was added"; continue; fi
     # 3) It must still parse. (stdin from /dev/null: `ddev exec` would eat the file list.)
     if ! "${RUN[@]+"${RUN[@]}"}" php -l "$f" </dev/null >/dev/null 2>&1; then
       restore "$f" "php -l failed after the pass"; continue

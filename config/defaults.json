@@ -101,7 +101,7 @@
 
   "_packages_comment": "Composer constraints for the dev toolchain (PROMPT 1.1), installed inside DDEV. These are the verified SUPPORTED RANGES; the EXACT patch versions resolved on first install are frozen per-project in drupilot-lock.json (see _deterministic_comment) and reused while DRUPILOT_DETERMINISTIC is on. extension-installer only autoconfigures phpstan-drupal and upgrade_status only corroborates findings — neither affects the port result, so they carry a broad range and are pinned exactly by the lock rather than here. core_dev (drupal/core-dev: PHPUnit + the Drupal test dependencies, required by run-phpunit.sh) carries NO constraint here on purpose: it must MATCH the installed drupal/core, so the requirement is derived at install time by core_dev_requirement (scripts/lib/common.sh), e.g. drupal/core-dev:~11.4.8. rector (rector/rector) is a transitive dependency of drupal-rector listed here so it is installed with an explicit range and recorded in the lock: palantirnet/drupal-rector 0.21.x (and 1.x up to 1.1.3) throws 'Could not detect twig set.' with rector/rector >= 2.6.2, whose bundled TwigSetList dropped TWIG_24 (verified in DDEV on 2026-10-02: 2.6.1 works, 2.6.2 and 2.6.7 crash). These ranges are only used for a fresh resolve; by default scripts/env/install-toolchain.sh pins the project lock or the shipped known-good set (config/toolchain-reference.json) instead — see _toolchain_comment.",
   "packages": {
-    "drupal_rector": "palantirnet/drupal-rector:^0.21",
+    "drupal_rector": "palantirnet/drupal-rector:^1.1.3",
     "rector": "rector/rector:^2.0 <2.6.2",
     "phpstan": "phpstan/phpstan:^2.1",
     "phpstan_extension_installer": "phpstan/extension-installer:^1.0",
@@ -113,7 +113,7 @@
     "core_dev": "drupal/core-dev"
   },
 
-  "_toolchain_comment": "Dev-toolchain installation (scripts/env/install-toolchain.sh). DRUPILOT_TOOLCHAIN_SOURCE picks where each version comes from: 'auto' (default) = in deterministic mode the project lock when it pins the whole known-good set, otherwise the shipped reference config/toolchain-reference.json (exact versions verified together end to end), and the .packages ranges in non-deterministic mode; 'reference' = always the reference set (the repair path after a broken upstream release; the lock is then refreshed); 'range' = the .packages ranges (fresh resolve). Every install ends with a smoke test (a Rector dry-run with the Drupal 10 set + phpstan --version) and exits 3 with the known-good versions when the installed set is broken.",
+  "_toolchain_comment": "Dev-toolchain installation (scripts/env/install-toolchain.sh). DRUPILOT_TOOLCHAIN_SOURCE picks where each version comes from: 'auto' (default) = in deterministic mode the project lock when it pins the whole known-good set, otherwise the shipped reference config/toolchain-reference.json (the cell of the installed core's major: exact versions verified together end to end; an unverified cell uses the ranges; a lock drupilot 0.9 wrote is read as cell legacy_v1 until refreshed), and the .packages ranges in non-deterministic mode; 'reference' = always the reference set (the repair path after a broken upstream release; the lock is then refreshed); 'range' = the .packages ranges (fresh resolve). Every install ends with a smoke test (a Rector dry-run with the Drupal 10 set + phpstan --version) and exits 3 with the known-good versions when the installed set is broken.",
   "DRUPILOT_TOOLCHAIN_SOURCE": "auto",
 
   "_contrib_comment": "URLs and endpoints for the Drupal.org contribution flow (PROMPT 3).",

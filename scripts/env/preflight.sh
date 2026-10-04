@@ -26,7 +26,8 @@
 #     phpstan_config phpstan.neon does not set the deprecated drupal_root
 #     toolchain:*    one row per known-good package installed at the root
 #                    (composer.lock, read with jq: no PHP, no DDEV), compared
-#                    with config/toolchain-reference.json; plus
+#                    with the root's cell of config/toolchain-reference.json
+#                    (legacy_v1 for a lock drupilot 0.9 wrote); plus
 #                    toolchain_combo, false when the installed set matches a
 #                    known-broken combination (e.g. "Could not detect twig set")
 #     disk_free      free space on the root's (else the current dir's)
@@ -376,19 +377,24 @@ if [[ "$EXTENDED" == "1" ]]; then
   # Toolchain at the root vs the known-good reference (composer.lock, jq only).
   REF_FILE="$(toolchain_reference_file)"
   if [[ -n "$HROOT" && -f "$HROOT/composer.lock" && -r "$REF_FILE" ]]; then
-    _installed="$(jq -c --slurpfile ref "$REF_FILE" '
+    # The known-good set of this root's toolchain cell (a 0.9 lock: legacy_v1).
+    _kg="$(toolchain_reference_set "$(toolchain_cell_for "$HROOT")")"
+    # Installed versions of the cell's packages, and of every package a
+    # known-broken rule or the remediation names (so a broken combination is
+    # still found when the cell pins nothing, e.g. Drupal 12's).
+    _watch="$(jq -c --argjson kg "$_kg" '[($kg | keys[]), (.known_broken[]?.packages | keys[]), (.remediation_packages // [])[]] | unique' "$REF_FILE" 2>/dev/null || printf '[]')"
+    _installed="$(jq -c --argjson w "$_watch" '
         ((.packages // []) + (."packages-dev" // [])) as $all
-        | [($ref[0].toolchain // {}) | keys[] as $k
+        | [$w[] as $k
            | ($all | map(select(.name == $k)) | .[0].version // empty) as $v
            | {key: $k, value: ($v | ltrimstr("v"))}] | from_entries' "$HROOT/composer.lock" 2>/dev/null || true)"
     [[ -n "$_installed" ]] || _installed='{}'
-    TOOLCHAIN_JSON="$(jq -c --argjson inst "$_installed" --arg root "$HROOT" '
-        (.toolchain // {}) as $kg
-        | ($kg | with_entries(select($inst[.key] != null))) as $kgi
+    TOOLCHAIN_JSON="$(jq -c --argjson inst "$_installed" --arg root "$HROOT" --argjson kg "$_kg" '
+        ($kg | with_entries(select($inst[.key] != null))) as $kgi
         | {root: $root, installed: $inst, known_good: $kgi,
-           differs: [$inst | to_entries[] | select($kg[.key] != .value) | .key],
+           differs: [$inst | to_entries[] | select(.key as $k | $kg | has($k)) | select($kg[.key] != .value) | .key],
            known_broken_rules: (.known_broken // [])}
-        | .match = ((.differs | length) == 0 and (.installed | length) > 0)' "$REF_FILE" 2>/dev/null || printf 'null')"
+        | .match = ((.differs | length) == 0 and ($kgi | length) > 0)' "$REF_FILE" 2>/dev/null || printf 'null')"
     [[ -n "$TOOLCHAIN_JSON" ]] || TOOLCHAIN_JSON="null"
     if [[ "$TOOLCHAIN_JSON" != "null" ]]; then
       _fix="bash \"\$CLAUDE_PLUGIN_ROOT/scripts/env/install-toolchain.sh\" --dir $HROOT --source reference"
@@ -397,7 +403,7 @@ if [[ "$EXTENDED" == "1" ]]; then
         _ok="true"; [[ "$_have" == "$_want" ]] || _ok="false"
         CHECKS+=("$(emit_check "toolchain:$_pkg" "$_pkg" "compared with the known-good reference" health "setup test" soft true "$_have" "$_want" "$_ok" \
           "$([[ "$_ok" == "true" ]] || printf 'Differs from the known-good reference; if Rector or PHPStan misbehaves, reinstall the reference set: %s' "$_fix")")")
-      done < <(printf '%s' "$TOOLCHAIN_JSON" | jq -r '.installed | to_entries[] | [.key, .value] | join("\u001f")' 2>/dev/null \
+      done < <(printf '%s' "$TOOLCHAIN_JSON" | jq -r '.known_good as $kg | .installed | to_entries[] | select(.key as $k | $kg | has($k)) | [.key, .value] | join("\u001f")' 2>/dev/null \
                 | while IFS=$'\037' read -r _p _v; do
                     printf '%s\037%s\037%s\n' "$_p" "$_v" "$(printf '%s' "$TOOLCHAIN_JSON" | jq -r --arg p "$_p" '.known_good[$p] // ""')"
                   done)
