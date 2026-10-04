@@ -73,7 +73,7 @@ Read these if they exist (do not recompute anything):
   (`stage`, the highest one: setup / assessed / ported / refactored / tested /
   contributed, and `stages`, each with the time it was recorded) and a snapshot
   of effort, branch/commit, toolchain, preservation, core matrix and the last
-  patch (schema in README "Per-module state"). `port-report.sh` records ported /
+  patch (schema in docs/reference/state.md). `port-report.sh` records ported /
   refactored, `run-phpunit.sh` records tested, the setup / assess / contribute
   commands record theirs through `state.sh record`. An older project may have no
   `state.json` (only the plain-text `<state_dir>/phase` marker, or nothing).

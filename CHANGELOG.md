@@ -89,6 +89,39 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   undeclared read or an inconsistent entry, and fails when a
   `config/defaults.json` comment grows past 1800 characters.
 
+- **The docs site (infrastructure).** `mkdocs.yml` and `docker-compose.yml`
+  build an English-only site from `docs/` with Zensical 0.0.67 in Docker
+  (`docker compose up docs`; `docker compose --profile build run --rm
+  docs-build` for the strict build; it also builds with Material for MkDocs
+  9). `scripts/dev/gen-docs.sh` generates its reference pages (commands,
+  configuration, choices, scripts, skills and agents, toolchain, Drupal
+  deprecations) from the sources, byte-identical on every platform;
+  `docs/reference/state.md` documents the per-module state record. The new
+  `docs` gate fails on drift, on a page missing from the nav or a nav entry
+  missing from `docs/`, on a plugin file citing a README section or a missing
+  page, and on a broken link between pages (a root `FLOW*.md` is only
+  noted). `.github/workflows/docs.yml`
+  builds the site on every pull request and deploys it to GitHub Pages only
+  on a release tag (`vX.Y.Z`, never a pre-release such as `v1.0.0-alpha.1`)
+  or a manual run.
+- **Architecture decision records** in `docs/contributing/adr/`: the owner's
+  answers to the 1.0 plan's open questions (0000) and the decisions taken
+  while building M1 (0007–0013).
+- **JSON Schemas for the persisted artifacts** (`schemas/`): the port
+  summary (v1), `assess.json`, `last-test.json`, `port-manifest.json`, the
+  lockfile and `preflight --json`, describing 0.9 as it is.
+  `scripts/dev/schema-check.sh` validates the 0.9 instances (the baseline
+  captures, lab samples in `tests/baseline/v0.9.0/samples/` and a live
+  preflight) with `check-jsonschema` 0.38.2 where installed (CI, or a pinned
+  Docker image) and always with a jq structural validator; the new `schemas`
+  gate runs it.
+
+### Changed
+- The logo moved from `assets/` to `docs/assets/` (the README image paths
+  follow), and `/drupilot-status` and `scripts/env/state.sh` cite
+  `docs/reference/state.md` instead of a README section.
+- CI installs `check-jsonschema` 0.38.2 on the Ubuntu and macOS legs.
+
 ### Fixed
 - `tests/fixtures/legacy_widgets.EXPECTED.md` no longer calls the fixture valid
   Drupal 10.3 code without qualification: `WidgetImportForm` redeclares
@@ -1611,7 +1644,7 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   longer uses the bash 4-only `${x,,}`.
 - **`/drupilot-setup` failed to load (Step 4).** Its load-time line ran
   `ensure-gitignore.sh --root "<drupal_root>"` verbatim (exit 1, "Root directory not
-  found: <drupal_root>"), and even a valid root would have written `.gitignore`
+  found: `<drupal_root>`"), and even a valid root would have written `.gitignore`
   before the Step 1 gate. It is now a fenced block the model runs with the resolved
   root. `ensure-gitignore.sh` rejects an unsubstituted `<placeholder>` with a clear
   error and gains `--subject DIR` (derives the enclosing Drupal root, or the

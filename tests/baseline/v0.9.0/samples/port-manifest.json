@@ -1,0 +1,701 @@
+{
+  "core_strategy": "keep-d10 (resolved from auto; autonomous run, no pre-answer)",
+  "core_version_requirement": "^10 || ^11",
+  "d10_support": "verified-static",
+  "deferred_to_phase2": [
+    "Soft deprecations (policy report, all work on every Drupal 11 core): user_load_by_mail() x3, user_load_by_name() x2 -> loadByProperties() + reset(); check_markup() x1 -> processed_text render array; text_summary() x2 -> TextSummary service (11.4+ only: needs a version guard while the floor is 10.0)",
+    "Plugin/entity annotations -> PHP 8 attributes (@ContentEntityType, @Block, @Condition, @Filter, @QueueWorker; deprecated at discovery in 11.4, removed in 13.0)",
+    "LegacyWidget::getOriginalWidget() reads ->original (silenced deprecation from 11.2, removed in 12.0): use core getOriginal() once the floor is ^11.2",
+    "new static() x7 (PHPStan unsafe usage), \\Drupal::entityTypeManager() in WidgetReindexWorker::processItem() -> injected service, @var hints for EntityInterface inference (WidgetReindexWorker:68-69, LegacyWidgetsKernelTest:45-46)",
+    "Optional hook_entity_operation() $cacheability parameter (must stay optional while the floor is below 11.3)",
+    "Test metadata: PHPUnit attributes (#[Group], #[CoversClass], #[DataProvider]) and #[RunTestsInSeparateProcesses] on the Kernel test (exception in Drupal 12)",
+    "Pre-existing hygiene: orphan service legacy_widgets.legacy_exporter, extra @logger.factory argument on legacy_widgets.counter, configure: route name, config/plugin schemas, undeclared legacy_widgets/node dependencies of legacy_widgets_extra"
+  ],
+  "deprecations_remaining": 0,
+  "digests": {
+    "applied": [],
+    "reason": "DRUPILOT_USE_DIGESTS_RULES=false",
+    "rejected": [],
+    "skipped": true
+  },
+  "files_changed": 8,
+  "learned_patterns": {
+    "recorded": [
+      "entity-get-original-collision",
+      "config-form-base-typed-config",
+      "form-logger-factory-redeclared",
+      "revision-cache-id-collision",
+      "service-class-case-mismatch"
+    ],
+    "scan": {
+      "by_pattern": [],
+      "catalog": ".drupilot/patterns.json",
+      "catalog_exists": false,
+      "hits": [],
+      "machine_name": "legacy_widgets",
+      "patterns": 0,
+      "skipped": [],
+      "subject": "web/modules/custom/legacy_widgets",
+      "tool": "patterns",
+      "total": 0
+    }
+  },
+  "machine_name": "legacy_widgets",
+  "manual_edits": [
+    {
+      "edit": "core_version_requirement ^10 -> ^10 || ^11 (legacy_widgets.info.yml) and ^8.8 || ^9 || ^10 -> ^10 || ^11 (submodule legacy_widgets_extra) via set-core-requirement.sh",
+      "why": "Neither info.yml admitted Drupal 11; keep-d10 strategy (no BC break, minor bump). composer.json already declares require.php >=8.1 (the helper value), left as is."
+    },
+    {
+      "change_record": "https://www.drupal.org/node/3295826",
+      "edit": "src/Entity/LegacyWidget.php: getOriginal() renamed to getOriginalWidget(); caller in modules/legacy_widgets_extra/legacy_widgets_extra.module updated",
+      "why": "Drupal 11.2+ EntityInterface::getOriginal(): ?static makes the untyped local method a class-declaration fatal at entity-type discovery (all 5 Kernel tests fataled in the baseline). A typed override would recurse through core __get(original); parent::getOriginal() does not exist on Drupal 10."
+    },
+    {
+      "edit": "src/Form/SettingsForm.php: inject TypedConfigManagerInterface (config.typed) and forward it to ConfigFormBase::__construct()",
+      "why": "ConfigFormBase::__construct() requires the typed config manager from Drupal 11.0 (ArgumentCountError otherwise); the extra argument is ignored by 10.0/10.1 (core matrix: runtime-tolerated)."
+    },
+    {
+      "edit": "src/Form/WidgetImportForm.php: stop redeclaring FormBase::$loggerFactory (setLoggerFactory() in the constructor); $entityTypeManager promoted as protected, non-readonly",
+      "why": "private readonly redeclaration of LoggerChannelTrait property is a class-load fatal on PHP 8.1+ and breaks DependencySerializationTrait (pre-existing on Drupal 10, same fatal on 11)."
+    },
+    {
+      "edit": "src/LegacyWidgetStorage.php: unused helper buildRevisionCacheId() renamed to buildWidgetRevisionCacheId()",
+      "why": "Drupal 11.3+ core declares and uses ContentEntityStorageBase::buildRevisionCacheId(): the helper would silently override core revision cache ids (scan-signature-changes warn)."
+    },
+    {
+      "edit": "legacy_widgets.services.yml: legacy_widgets.lookup class WidgetLookUp -> WidgetLookup",
+      "why": "check-port-safety.sh class-case error (pre-existing): fatal on case-sensitive filesystems; the gate must exit 0."
+    }
+  ],
+  "metadata_lint": {
+    "checks_run": [
+      "config-schema",
+      "plugin-schema",
+      "configure-route",
+      "services-class",
+      "services-arity",
+      "submodule-core-req",
+      "undeclared-deps"
+    ],
+    "findings": [
+      {
+        "check": "services-class",
+        "extension": "legacy_widgets",
+        "file": "legacy_widgets.services.yml",
+        "line": 12,
+        "message": "Service 'legacy_widgets.legacy_exporter' points at class Drupal\\legacy_widgets\\Export\\LegacyExporter, but src/Export/LegacyExporter.php does not exist (orphan service): fetching it is a fatal error.",
+        "severity": "error",
+        "suggestion": "Remove the service definition, or restore/rename the class."
+      },
+      {
+        "check": "config-schema",
+        "extension": "legacy_widgets",
+        "file": "config/install/legacy_widgets.settings.yml",
+        "line": 1,
+        "message": "Config 'legacy_widgets.settings' has no schema in config/schema/*.schema.yml: strict config schema checks (Kernel/Functional tests, config inspector) fail on it and its values are not typed or translatable.",
+        "severity": "warn",
+        "suggestion": "Add a 'legacy_widgets.settings:' entry (type: config_object for simple config) to config/schema/legacy_widgets.schema.yml."
+      },
+      {
+        "check": "configure-route",
+        "extension": "legacy_widgets",
+        "file": "legacy_widgets.info.yml",
+        "line": 6,
+        "message": "configure: 'legacy_widgets.settings' names a route that no *.routing.yml of the extension defines: core drops the Configure link from /admin/modules silently (unless a route subscriber or another module provides it).",
+        "severity": "warn",
+        "suggestion": "Point it at the real route ('legacy_widgets.settings_form'?)."
+      },
+      {
+        "check": "services-arity",
+        "extension": "legacy_widgets",
+        "file": "legacy_widgets.services.yml",
+        "line": 3,
+        "message": "Service 'legacy_widgets.counter' passes 3 argument(s) but Drupal\\legacy_widgets\\WidgetCounter::__construct() takes 2: PHP silently ignores the extra one(s) (a stale argument, or a constructor that lost a parameter).",
+        "severity": "warn",
+        "suggestion": "Drop the extra argument(s), or restore the constructor parameter they were meant for."
+      },
+      {
+        "check": "plugin-schema",
+        "extension": "legacy_widgets",
+        "file": "src/Plugin/Condition/WidgetsEnabledCondition.php",
+        "line": 1,
+        "message": "Condition plugin 'legacy_widgets_enabled' has its own settings but no 'condition.plugin.legacy_widgets_enabled' schema: only core's generic 'condition.plugin.*' covers it, so its extra settings fail strict config schema checks.",
+        "severity": "warn",
+        "suggestion": "Add 'condition.plugin.legacy_widgets_enabled:' to config/schema/legacy_widgets.schema.yml describing the plugin's settings."
+      },
+      {
+        "check": "plugin-schema",
+        "extension": "legacy_widgets",
+        "file": "src/Plugin/Filter/WidgetSummaryFilter.php",
+        "line": 1,
+        "message": "Filter plugin 'legacy_widgets_summary' has its own settings but no 'filter_settings.legacy_widgets_summary' schema: only core's generic 'filter_settings.*' covers it, so its extra settings fail strict config schema checks.",
+        "severity": "warn",
+        "suggestion": "Add 'filter_settings.legacy_widgets_summary:' to config/schema/legacy_widgets.schema.yml describing the plugin's settings."
+      },
+      {
+        "check": "undeclared-deps",
+        "extension": "legacy_widgets_extra",
+        "file": "modules/legacy_widgets_extra/legacy_widgets_extra.module",
+        "line": 8,
+        "message": "'legacy_widgets_extra' uses project module 'legacy_widgets' (class,service) without declaring it in legacy_widgets_extra.info.yml dependencies: installing 'legacy_widgets_extra' alone fails or breaks at runtime.",
+        "severity": "warn",
+        "suggestion": "Add '- legacy_widgets:legacy_widgets' to dependencies:."
+      },
+      {
+        "check": "undeclared-deps",
+        "extension": "legacy_widgets_extra",
+        "file": "modules/legacy_widgets_extra/legacy_widgets_extra.module",
+        "line": 9,
+        "message": "'legacy_widgets_extra' uses core module 'node' (class) without declaring it in legacy_widgets_extra.info.yml dependencies: installing 'legacy_widgets_extra' alone fails or breaks at runtime.",
+        "severity": "warn",
+        "suggestion": "Add '- drupal:node' to dependencies:."
+      }
+    ],
+    "generated_at": "2026-10-03T23:51:40Z",
+    "subject": "web/modules/custom/legacy_widgets",
+    "subject_digest": "9b65217f439f7ffddeb582d7ce1bd589e90312d0c46ce7f6f05306c791f863f9",
+    "tool": "lint-extension-metadata",
+    "totals": {
+      "error": 1,
+      "info": 0,
+      "warn": 7
+    }
+  },
+  "patch": "web/modules/custom/legacy_widgets/legacy_widgets-port-to-drupal-11.patch",
+  "phase": "port",
+  "php_target": "8.3",
+  "port_safety": {
+    "base": "HEAD",
+    "checks": [
+      "plugin-di",
+      "removed-use",
+      "static-factory",
+      "fapi-callable",
+      "serialization",
+      "override-attribute",
+      "class-case"
+    ],
+    "core_requirement": "^10 || ^11",
+    "diff_mode": true,
+    "drupal_root": "<LAB>/m1/dpl-m1-flow-d11",
+    "errors": 0,
+    "findings": [],
+    "ok": true,
+    "subject": "web/modules/custom/legacy_widgets",
+    "tool": "check-port-safety",
+    "warnings": 0
+  },
+  "rector_official_files": 1,
+  "rector_reversions": [],
+  "rector_rules": {
+    "official": {
+      "FunctionFirstClassCallableRector": 1
+    }
+  },
+  "require_php": ">=8.1",
+  "signature_changes": {
+    "core_floor": "10.0",
+    "core_requirement": "^10 || ^11",
+    "drupal_root": "<LAB>/m1/dpl-m1-flow-d11",
+    "errors": 0,
+    "findings": [
+      {
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=hook_entity_operation%20CacheableMetadata",
+        "class": null,
+        "d10_compat": "An optional second parameter works on every core; a required one breaks Drupal 10 and 11.0-11.2.",
+        "file": "legacy_widgets.module",
+        "fix": "Keep the one-parameter signature, or add the new parameter as optional: ?CacheableMetadata $cacheability = NULL.",
+        "id": "hook-entity-operation",
+        "kind": "hook-params",
+        "line": 24,
+        "member": "hook_entity_operation",
+        "message": "legacy_widgets_entity_operation() implements hook_entity_operation(), which core invokes with 2 argument(s) from Drupal 11.3; the current 1-parameter form works on every core. If you accept the new parameter, keep it optional while the floor (10.0) is below 11.3.",
+        "severity": "info",
+        "since": "11.3"
+      }
+    ],
+    "infos": 1,
+    "ok": true,
+    "subject": "web/modules/custom/legacy_widgets",
+    "tool": "scan-signature-changes",
+    "warnings": 0
+  },
+  "soft_deprecations": {
+    "blocking": 0,
+    "core_floor": "10.0",
+    "core_requirement": "^10 || ^11",
+    "counts": {
+      "hard": 0,
+      "other": 13,
+      "soft": 8,
+      "unknown": 0
+    },
+    "hard": [],
+    "phase": "port",
+    "policy": "report",
+    "soft": [
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=user_load_by_mail",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "S",
+        "file": "web/modules/custom/legacy_widgets/legacy_widgets.module",
+        "kind": "function",
+        "line": 58,
+        "message": "Call to deprecated function user_load_by_mail(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties() instead.",
+        "not_found": false,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "\\Drupal::entityTypeManager()->getStorage('user')->loadByProperties(['mail' => $mail]), then reset() (FALSE when empty) - exactly what core's deprecated body does",
+        "replacement_at_floor": true,
+        "replacement_since": "8.0",
+        "symbol": "user_load_by_mail"
+      },
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=user_load_by_name",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "S",
+        "file": "web/modules/custom/legacy_widgets/legacy_widgets.module",
+        "kind": "function",
+        "line": 60,
+        "message": "Call to deprecated function user_load_by_name(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties() instead.",
+        "not_found": false,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "\\Drupal::entityTypeManager()->getStorage('user')->loadByProperties(['name' => $name]), then reset() (FALSE when empty) - exactly what core's deprecated body does",
+        "replacement_at_floor": true,
+        "replacement_since": "8.0",
+        "symbol": "user_load_by_name"
+      },
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=text_summary",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "M",
+        "file": "web/modules/custom/legacy_widgets/legacy_widgets.module",
+        "kind": "function",
+        "line": 75,
+        "message": "Call to deprecated function text_summary(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::service(TextSummary::class)->generate() instead.",
+        "not_found": false,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "\\Drupal::service(\\Drupal\\text\\TextSummary::class)->generate($text, $format, $size) - $size must be an int (core's wrapper falls back to text.settings default_summary_length)",
+        "replacement_at_floor": false,
+        "replacement_since": "11.4",
+        "symbol": "text_summary"
+      },
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=check_markup",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "M",
+        "file": "web/modules/custom/legacy_widgets/src/Plugin/Block/WidgetSummaryBlock.php",
+        "kind": "function",
+        "line": 63,
+        "message": "Call to deprecated function check_markup(): in drupal:11.4.0 and is removed from drupal:13.0.0. There is no direct replacement. It's recommended to always return a renderable array without flattening as markup to pass the cacheability metadata.",
+        "not_found": false,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "a render array ['#type' => 'processed_text', '#text' => $text, '#format' => $format_id] (core's 'There is no direct replacement'): the call site changes from a string to a render array",
+        "replacement_at_floor": true,
+        "replacement_since": "8.0",
+        "symbol": "check_markup"
+      },
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=user_load_by_mail",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "S",
+        "file": "web/modules/custom/legacy_widgets/src/Plugin/Block/WidgetSummaryBlock.php",
+        "kind": "function",
+        "line": 64,
+        "message": "Call to deprecated function user_load_by_mail(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties() instead.",
+        "not_found": false,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "\\Drupal::entityTypeManager()->getStorage('user')->loadByProperties(['mail' => $mail]), then reset() (FALSE when empty) - exactly what core's deprecated body does",
+        "replacement_at_floor": true,
+        "replacement_since": "8.0",
+        "symbol": "user_load_by_mail"
+      },
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=text_summary",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "M",
+        "file": "web/modules/custom/legacy_widgets/src/Plugin/Filter/WidgetSummaryFilter.php",
+        "kind": "function",
+        "line": 59,
+        "message": "Call to deprecated function text_summary(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::service(TextSummary::class)->generate() instead.",
+        "not_found": false,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "\\Drupal::service(\\Drupal\\text\\TextSummary::class)->generate($text, $format, $size) - $size must be an int (core's wrapper falls back to text.settings default_summary_length)",
+        "replacement_at_floor": false,
+        "replacement_since": "11.4",
+        "symbol": "text_summary"
+      },
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=user_load_by_name",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "S",
+        "file": "web/modules/custom/legacy_widgets/src/Plugin/QueueWorker/WidgetReindexWorker.php",
+        "kind": "function",
+        "line": 67,
+        "message": "Call to deprecated function user_load_by_name(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties() instead.",
+        "not_found": false,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "\\Drupal::entityTypeManager()->getStorage('user')->loadByProperties(['name' => $name]), then reset() (FALSE when empty) - exactly what core's deprecated body does",
+        "replacement_at_floor": true,
+        "replacement_since": "8.0",
+        "symbol": "user_load_by_name"
+      },
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=user_load_by_mail",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "S",
+        "file": "web/modules/custom/legacy_widgets/src/WidgetLookup.php",
+        "kind": "function",
+        "line": 39,
+        "message": "Call to deprecated function user_load_by_mail(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties() instead.",
+        "not_found": false,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "\\Drupal::entityTypeManager()->getStorage('user')->loadByProperties(['mail' => $mail]), then reset() (FALSE when empty) - exactly what core's deprecated body does",
+        "replacement_at_floor": true,
+        "replacement_since": "8.0",
+        "symbol": "user_load_by_mail"
+      }
+    ],
+    "symbols": [
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=check_markup",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "M",
+        "locations": [
+          "web/modules/custom/legacy_widgets/src/Plugin/Block/WidgetSummaryBlock.php:63"
+        ],
+        "occurrences": 1,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "a render array ['#type' => 'processed_text', '#text' => $text, '#format' => $format_id] (core's 'There is no direct replacement'): the call site changes from a string to a render array",
+        "replacement_at_floor": true,
+        "replacement_since": "8.0",
+        "symbol": "check_markup"
+      },
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=text_summary",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "M",
+        "locations": [
+          "web/modules/custom/legacy_widgets/legacy_widgets.module:75",
+          "web/modules/custom/legacy_widgets/src/Plugin/Filter/WidgetSummaryFilter.php:59"
+        ],
+        "occurrences": 2,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "\\Drupal::service(\\Drupal\\text\\TextSummary::class)->generate($text, $format, $size) - $size must be an int (core's wrapper falls back to text.settings default_summary_length)",
+        "replacement_at_floor": false,
+        "replacement_since": "11.4",
+        "symbol": "text_summary"
+      },
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=user_load_by_mail",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "S",
+        "locations": [
+          "web/modules/custom/legacy_widgets/legacy_widgets.module:58",
+          "web/modules/custom/legacy_widgets/src/Plugin/Block/WidgetSummaryBlock.php:64",
+          "web/modules/custom/legacy_widgets/src/WidgetLookup.php:39"
+        ],
+        "occurrences": 3,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "\\Drupal::entityTypeManager()->getStorage('user')->loadByProperties(['mail' => $mail]), then reset() (FALSE when empty) - exactly what core's deprecated body does",
+        "replacement_at_floor": true,
+        "replacement_since": "8.0",
+        "symbol": "user_load_by_mail"
+      },
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=user_load_by_name",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "S",
+        "locations": [
+          "web/modules/custom/legacy_widgets/legacy_widgets.module:60",
+          "web/modules/custom/legacy_widgets/src/Plugin/QueueWorker/WidgetReindexWorker.php:67"
+        ],
+        "occurrences": 2,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "\\Drupal::entityTypeManager()->getStorage('user')->loadByProperties(['name' => $name]), then reset() (FALSE when empty) - exactly what core's deprecated body does",
+        "replacement_at_floor": true,
+        "replacement_since": "8.0",
+        "symbol": "user_load_by_name"
+      }
+    ],
+    "target_major": 11,
+    "tool": "classify-deprecations",
+    "unknown": []
+  },
+  "tooling_deviations": [
+    {
+      "what": "PHPCS ran with the Drupal,DrupalPractice fallback instead of the module phpcs.xml.dist",
+      "why": "The module ruleset references PHPCompatibility, which is not installed in the test-bed (run-phpcs.sh fallback). The >=8.1 PHP floor was checked by php -l on PHP 8.1 in the core matrix, not by PHPCompatibility."
+    },
+    {
+      "what": "Ran the PHPUnit suite (run-phpunit.sh --type all) inside /drupilot-port, after the validate loop",
+      "why": "Preservation evidence for the port report: 9/9 green, 0 regressions, 5 baseline failures fixed. /drupilot-test remains the next step for the full test-adaptation flow."
+    }
+  ],
+  "type": "module",
+  "validation": [
+    "PHPCS (Drupal,DrupalPractice fallback, testVersion 8.1-): 0 errors / 0 warnings; phpcbf limited to changed files made no change",
+    "PHPStan level 2 on Drupal 11.4.8: 30 -> 21 errors; 0 hard / 0 unknown deprecations (blocking 0), 8 soft (report); the rest are pre-existing new static() x7, one \\Drupal call, one hook_entity_operation advisory, 4 EntityInterface inference findings",
+    "check-port-safety.sh: exit 0 (clean) after fixing the pre-existing class-case error",
+    "scan-signature-changes.sh: exit 0 (1 info: hook_entity_operation one-parameter form works on every core)",
+    "verify-core-matrix.sh: pass, d10_support verified-static on Drupal 10.0.11 (declared floor) and 10.6.18 + php -l on PHP 8.1 and 8.3",
+    "PHPUnit (DDEV, PHP 8.3, core 11.4.8): Unit 4/4 + Kernel 5/5 green; vs pre-port baseline 0 regressions, 5 fixed"
+  ],
+  "verification": {
+    "commit_hooks": {
+      "bypassed": false,
+      "note": "no commit was made during the port (digests pass skipped, no checkpoint needed); the module repository has only sample hooks"
+    },
+    "core_matrix": {
+      "container_php": "8.3",
+      "core_version_requirement": "^10 || ^11",
+      "d10_checked": [
+        "10.0.11",
+        "10.6.18"
+      ],
+      "d10_floor": "10.0",
+      "d10_floor_checked": true,
+      "d10_support": "verified-static",
+      "drupal_root": "<LAB>/m1/dpl-m1-flow-d11",
+      "dry_run": false,
+      "generated_at": "2026-10-03T23:52:41Z",
+      "legs": [
+        {
+          "constraint": "~10.0.0",
+          "core": "10.0",
+          "lint": [
+            {
+              "errors": 0,
+              "files": [],
+              "php": "8.3",
+              "status": "pass",
+              "via": "ddev"
+            },
+            {
+              "errors": 0,
+              "files": [],
+              "php": "8.1",
+              "status": "pass",
+              "via": "docker php:8.1-cli"
+            }
+          ],
+          "php_floor": "8.1",
+          "phpstan": {
+            "advisory": 0,
+            "deprecations": 0,
+            "errors": 13,
+            "findings": [
+              {
+                "file": "src/Form/SettingsForm.php",
+                "identifier": "arguments.count",
+                "kind": "tolerated",
+                "line": 35,
+                "message": "Method Drupal\\Core\\Form\\ConfigFormBase::__construct() invoked with 2 parameters, 1 required."
+              }
+            ],
+            "incompatible": 0,
+            "leg_only": 1,
+            "sandbox_missing_dependency": 0,
+            "status": "findings",
+            "test_only": 0,
+            "tolerated": 1
+          },
+          "reason": null,
+          "role": "reference",
+          "source": "reference",
+          "status": "pass",
+          "version": "10.0.11"
+        },
+        {
+          "constraint": "^10",
+          "core": "10",
+          "lint": [
+            {
+              "errors": 0,
+              "files": [],
+              "php": "8.3",
+              "status": "pass",
+              "via": "ddev"
+            },
+            {
+              "errors": 0,
+              "files": [],
+              "php": "8.1",
+              "status": "pass",
+              "via": "docker php:8.1-cli"
+            }
+          ],
+          "php_floor": "8.1",
+          "phpstan": {
+            "advisory": 0,
+            "deprecations": 0,
+            "errors": 12,
+            "findings": [],
+            "incompatible": 0,
+            "leg_only": 0,
+            "sandbox_missing_dependency": 0,
+            "status": "findings",
+            "test_only": 0,
+            "tolerated": 0
+          },
+          "reason": null,
+          "role": "reference",
+          "source": "reference",
+          "status": "pass",
+          "version": "10.6.18"
+        },
+        {
+          "constraint": null,
+          "core": "11",
+          "lint": [
+            {
+              "errors": 0,
+              "files": [],
+              "php": "8.3",
+              "status": "pass",
+              "via": "ddev"
+            }
+          ],
+          "php_floor": "8.3",
+          "phpstan": {
+            "advisory": 1,
+            "deprecations": 8,
+            "errors": 21,
+            "findings": [
+              {
+                "file": "legacy_widgets.module",
+                "identifier": "drupal.proceduralHookEntityOperationMissingCacheabilityParameter",
+                "kind": "advisory",
+                "line": 24,
+                "message": "Function legacy_widgets_entity_operation() implements hook_entity_operation but is missing the CacheableMetadata parameter added in Drupal 11.3. Update the signature to: legacy_widgets_entity_operation(\\Drupal\\Core\\Entity\\EntityInterface $entity, \\Drupal\\Core\\Cache\\CacheableMetadata $cacheability)."
+              },
+              {
+                "file": "legacy_widgets.module",
+                "identifier": "function.deprecated",
+                "kind": "deprecation",
+                "line": 58,
+                "message": "Call to deprecated function user_load_by_mail():\nin drupal:11.4.0 and is removed from drupal:13.0.0.\n  Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties()\n  instead."
+              },
+              {
+                "file": "legacy_widgets.module",
+                "identifier": "function.deprecated",
+                "kind": "deprecation",
+                "line": 60,
+                "message": "Call to deprecated function user_load_by_name():\nin drupal:11.4.0 and is removed from drupal:13.0.0.\n  Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties()\n  instead."
+              },
+              {
+                "file": "legacy_widgets.module",
+                "identifier": "function.deprecated",
+                "kind": "deprecation",
+                "line": 75,
+                "message": "Call to deprecated function text_summary():\nin drupal:11.4.0 and is removed from drupal:13.0.0. Use\n  \\Drupal::service(TextSummary::class)->generate() instead."
+              },
+              {
+                "file": "src/Plugin/Block/WidgetSummaryBlock.php",
+                "identifier": "function.deprecated",
+                "kind": "deprecation",
+                "line": 63,
+                "message": "Call to deprecated function check_markup():\nin drupal:11.4.0 and is removed from drupal:13.0.0. There is no\n  direct replacement. It's recommended to always return a renderable array\n  without flattening as markup to pass the cacheability metadata."
+              },
+              {
+                "file": "src/Plugin/Block/WidgetSummaryBlock.php",
+                "identifier": "function.deprecated",
+                "kind": "deprecation",
+                "line": 64,
+                "message": "Call to deprecated function user_load_by_mail():\nin drupal:11.4.0 and is removed from drupal:13.0.0.\n  Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties()\n  instead."
+              },
+              {
+                "file": "src/Plugin/Filter/WidgetSummaryFilter.php",
+                "identifier": "function.deprecated",
+                "kind": "deprecation",
+                "line": 59,
+                "message": "Call to deprecated function text_summary():\nin drupal:11.4.0 and is removed from drupal:13.0.0. Use\n  \\Drupal::service(TextSummary::class)->generate() instead."
+              },
+              {
+                "file": "src/Plugin/QueueWorker/WidgetReindexWorker.php",
+                "identifier": "function.deprecated",
+                "kind": "deprecation",
+                "line": 67,
+                "message": "Call to deprecated function user_load_by_name():\nin drupal:11.4.0 and is removed from drupal:13.0.0.\n  Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties()\n  instead."
+              },
+              {
+                "file": "src/WidgetLookup.php",
+                "identifier": "function.deprecated",
+                "kind": "deprecation",
+                "line": 39,
+                "message": "Call to deprecated function user_load_by_mail():\nin drupal:11.4.0 and is removed from drupal:13.0.0.\n  Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties()\n  instead."
+              }
+            ],
+            "incompatible": 0,
+            "leg_only": 9,
+            "sandbox_missing_dependency": 0,
+            "status": "findings",
+            "test_only": 0,
+            "tolerated": 0
+          },
+          "reason": null,
+          "role": "baseline",
+          "source": "testbed",
+          "status": "pass",
+          "version": "11.4.8"
+        }
+      ],
+      "level": "2",
+      "machine_name": "legacy_widgets",
+      "notes": [],
+      "subject": "web/modules/custom/legacy_widgets",
+      "subject_digest": "9b65217f439f7ffddeb582d7ce1bd589e90312d0c46ce7f6f05306c791f863f9",
+      "tests_analysed": true,
+      "tool": "verify-core-matrix",
+      "verdict": "pass"
+    },
+    "phpcs_ruleset": {
+      "fallback_reason": "PHPCS cannot load it (exit 3): ERROR: Referenced sniff \"PHPCompatibility\" does not exist",
+      "location": "subject",
+      "mode": "auto",
+      "pass_extensions": true,
+      "ruleset": "web/modules/custom/legacy_widgets/phpcs.xml.dist",
+      "source": "fallback",
+      "standard": "Drupal,DrupalPractice",
+      "test_version": "8.1-",
+      "test_version_source": "ruleset-property"
+    }
+  },
+  "version_bump": "minor"
+}

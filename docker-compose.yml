@@ -1,0 +1,24 @@
+# Local preview/build of the drupilot docs site. Not used at plugin runtime.
+#   docker compose up docs                               -> http://localhost:8000 (live reload)
+#   docker compose --profile build run --rm docs-build   -> ./site (strict); then: rm -rf site .cache
+# Podman (rootless): remove the `user:` lines (container root == your user) or use userns_mode: keep-id.
+# Bump the pinned tag deliberately (Zensical releases every few days; see docs/contributing/index.md).
+services:
+  docs:
+    image: zensical/zensical:0.0.67
+    ports:
+      - "${DOCS_PORT:-8000}:8000"
+    volumes:
+      - ./:/docs:z
+    user: "${DOCS_UID:-1000}:${DOCS_GID:-1000}"
+    environment:
+      HOME: /tmp
+  docs-build:
+    image: zensical/zensical:0.0.67
+    profiles: ["build"]
+    command: ["build", "--clean", "--strict"]
+    volumes:
+      - ./:/docs:z
+    user: "${DOCS_UID:-1000}:${DOCS_GID:-1000}"
+    environment:
+      HOME: /tmp

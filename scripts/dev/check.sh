@@ -69,6 +69,20 @@
 #                 defaults.json longer than 1800 characters fails (AR-27: the
 #                 prose stays until M11 but must not grow). Comment lines of the
 #                 scripts and scripts/dev/ are not scanned
+#   - docs        the docs site (08-R6): scripts/dev/gen-docs.sh --check (no
+#                 drift of the generated docs/reference pages); every
+#                 docs/**/*.md is in the mkdocs.yml nav and every nav entry
+#                 exists; no plugin file (commands, skills, agents, scripts but
+#                 scripts/dev, hooks) cites a README section (`README "` /
+#                 `README.md (`) or a docs/*.md page that does not exist; every
+#                 relative .md link inside docs/ resolves. A docs/*_es.md or a
+#                 docs/es/ only warns (English-only site); a root FLOW*.md is
+#                 only noted in the detail (its content moves to the docs in
+#                 the content step, M11)
+#   - schemas     the persisted 0.9 artifacts validate against schemas/
+#                 (scripts/dev/schema-check.sh: jq always, check-jsonschema
+#                 where it is installed; with --ci, check-jsonschema from PATH
+#                 or the pinned Docker image, and a failure when neither)
 #   - unit        the unit tests (scripts/dev/unit.sh: tests/lib/selftest.sh and
 #                 tests/unit/*.sh, run with this same bash; a test skipped
 #                 until its milestone is not a failure)
@@ -112,7 +126,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export CLAUDE_PLUGIN_ROOT="$REPO"
 
-ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json version config-keys unit contract evals golden smoke"
+ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json version config-keys docs schemas unit contract evals golden smoke"
 # Gates that run only when asked for (--smoke, --ci, or named in --only).
 OPTIONAL_GATES="golden smoke"
 # Gates known to fail on the current tree, with a fix tracked for 0.9.0. Empty
@@ -540,6 +554,64 @@ gate_config_keys() {
   if [[ -s "$hard" ]]; then cat "$out" >> "$hard"; record config-keys fail "a defaults.json comment is too long, or the reference is invalid" "$hard"
   elif [[ -s "$out" ]]; then record config-keys warn "$(grep -c . "$out") undeclared or inconsistent key(s) (warn mode until M11)" "$out"
   else record config-keys pass "$(grep -c . "$read") DRUPILOT_* names read, all declared; comments within 1800 characters"; fi
+}
+
+gate_docs() {
+  local out="$TMP/docs.out" warn="$TMP/docs.warn" nav="$TMP/docs.nav" pages="$TMP/docs.pages" f t d
+  : > "$out"; : > "$warn"
+  if [[ ! -f "$REPO/mkdocs.yml" || ! -d "$REPO/docs" ]]; then record docs fail "mkdocs.yml or docs/ is missing"; return 0; fi
+  # 1. The generated reference pages are current.
+  "$BASH" "$REPO/scripts/dev/gen-docs.sh" --check > /dev/null 2> "$TMP/gendocs.err" \
+    || { echo "generated pages drift (run scripts/dev/gen-docs.sh and commit):"
+         { grep -E '^    [-+]' "$TMP/gendocs.err" | grep -vE '^    (---|[+][+][+]) ' | head -n 10; } || true; } >> "$out"
+  # 2. Nav completeness: every page is in the nav, every nav entry exists.
+  awk '/^nav:/ { f = 1; next } f && /^[^[:space:]#-]/ { exit } f && !/^[[:space:]]*#/' "$REPO/mkdocs.yml" \
+    | grep -oE '[A-Za-z0-9_./-]+\.md' | LC_ALL=C sort -u > "$nav" || true
+  ( cd "$REPO/docs" && find . -name '*.md' | sed 's#^\./##' | LC_ALL=C sort ) > "$pages"
+  while IFS= read -r f; do grep -qxF -- "$f" "$nav" || echo "docs/$f is not in the mkdocs.yml nav" >> "$out"; done < "$pages"
+  while IFS= read -r f; do [[ -f "$REPO/docs/$f" ]] || echo "mkdocs.yml nav entry $f does not exist under docs/" >> "$out"; done < "$nav"
+  # 3. Stale citations in the plugin files.
+  for f in "$REPO"/commands/*.md "$REPO"/skills/*/SKILL.md "$REPO"/agents/*.md "$REPO"/scripts/*/*.sh "$REPO"/hooks/scripts/*.sh; do
+    case "$f" in "$REPO"/scripts/dev/*) continue;; esac
+    grep -nF -e 'README "' -e 'README.md (' "$f" 2>/dev/null | sed "s#^#${f#"$REPO"/}:#; s#\$# (cite docs/<page>.md instead)#" >> "$out" || true
+    for t in $(grep -oE 'docs/[a-z0-9/_.-]+\.md' "$f" 2>/dev/null | LC_ALL=C sort -u); do
+      [[ -f "$REPO/$t" ]] || echo "${f#"$REPO"/} cites $t, which does not exist" >> "$out"
+    done
+  done
+  # 4. Relative links between docs pages resolve.
+  while IFS= read -r f; do
+    d="$(dirname "$REPO/docs/$f")"
+    for t in $(grep -oE '\]\([^)#[:space:]]+\.md(#[^)]*)?\)' "$REPO/docs/$f" 2>/dev/null | sed -E 's/^\]\(//; s/\)$//; s/#.*$//' | LC_ALL=C sort -u); do
+      case "$t" in http://*|https://*|/*) continue;; esac
+      [[ -f "$d/$t" ]] || echo "docs/$f links to $t, which does not exist" >> "$out"
+    done
+  done < "$pages"
+  # 5. English only (warn).
+  ( cd "$REPO/docs" && find . -name '*_es.md' -o -type d -name es ) | sed 's#^\./#docs/#; s#$# (the site is English only)#' >> "$warn"
+  local flow=""
+  for f in $( (cd "$REPO" && ls FLOW*.md 2>/dev/null || true) | LC_ALL=C sort); do flow="$flow $f"; done
+  [[ -z "$flow" ]] || flow="; to move into docs/concepts/how-it-works.md:$flow"
+  if [[ -s "$out" ]]; then record docs fail "the docs site is inconsistent" "$out"
+  elif [[ -s "$warn" ]]; then record docs warn "$(grep -c . "$pages") pages consistent; $(grep -c . "$warn") language note(s)" "$warn"
+  else record docs pass "$(grep -c . "$pages") pages: generated pages current, nav complete, citations and links resolve$flow"; fi
+}
+
+gate_schemas() {
+  local js="$TMP/schemas.json" err="$TMP/schemas.err" out="$TMP/schemas.out" mode="auto"
+  # --ci needs the second engine: check-jsonschema from PATH, else the pinned
+  # Docker image (ADR 0010); neither is a failure.
+  if [[ "$CI" == "1" ]]; then
+    if have_cmd check-jsonschema; then mode="validator"
+    elif have_cmd docker && docker info > /dev/null 2>&1; then mode="docker"
+    else record schemas fail "--ci needs check-jsonschema on PATH (pipx install check-jsonschema==0.38.2) or a running Docker"; return 0; fi
+  fi
+  if "$BASH" "$REPO/scripts/dev/schema-check.sh" --mode "$mode" --json > "$js" 2> "$err"; then
+    record schemas pass "$(jq -r '[.checks[] | select(.engine == "jq")] | length' "$js" 2>/dev/null || echo '?') artifact(s) match their schema ($(jq -r '.engines | join(" + ")' "$js" 2>/dev/null || echo jq))"
+  else
+    jq -r '.checks[] | select(.status != "pass") | "\(.engine): \(.schema) <- \(.instance): \(.detail)"' "$js" > "$out" 2>/dev/null || true
+    [[ -s "$out" ]] || tail -n 20 "$err" > "$out"
+    record schemas fail "an artifact does not match its schema" "$out"
+  fi
 }
 
 gate_unit() {

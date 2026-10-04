@@ -1,0 +1,119 @@
+{
+  "baseline": {
+    "file": "<LAB>/m1/home/state/_LAB_m1_dpl_m1_flow_d11_web_modules_custom_legacy_widgets/test-baseline.json",
+    "filter": null,
+    "fixed": [
+      "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testQueueWorkerProcessesItem",
+      "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testFilterProducesSummary",
+      "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testEntityOperationWithDrupal10Arguments",
+      "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testCounterService",
+      "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testFindAccount"
+    ],
+    "not_baselined": [],
+    "pre_existing": [],
+    "regressions": [],
+    "same_code": false,
+    "source": "run",
+    "taken_at": "2026-10-03T23:47:09Z",
+    "type": "all"
+  },
+  "blocked_reason": null,
+  "coverage": {
+    "html": null,
+    "percent": null,
+    "requested": false
+  },
+  "empty": 0,
+  "empty_groups": [],
+  "executed": 9,
+  "failed": 0,
+  "failed_groups": [],
+  "filter": null,
+  "git_head": "573f80def1b0b4cdea58b9e9609df24b43079c82",
+  "group_results": [
+    {
+      "executed": 4,
+      "group": "Unit",
+      "rc": 0,
+      "status": "passed"
+    },
+    {
+      "executed": 5,
+      "group": "Kernel",
+      "rc": 0,
+      "status": "passed"
+    }
+  ],
+  "groups_with_tests": [
+    "Unit",
+    "Kernel"
+  ],
+  "js_skipped_reason": null,
+  "negative_controls": null,
+  "passed": 2,
+  "preservation": "verified",
+  "ran": 2,
+  "recorded_at": "2026-10-04T00:01:42Z",
+  "skipped": 0,
+  "skipped_groups": [],
+  "status": "passed",
+  "subject_digest": "9b65217f439f7ffddeb582d7ce1bd589e90312d0c46ce7f6f05306c791f863f9",
+  "subject_has_tests": true,
+  "tests": [
+    {
+      "group": "Unit",
+      "id": "Drupal\\Tests\\legacy_widgets\\Unit\\WidgetCounterTest::testBucket with data set \"zero\"",
+      "message": null,
+      "status": "pass"
+    },
+    {
+      "group": "Unit",
+      "id": "Drupal\\Tests\\legacy_widgets\\Unit\\WidgetCounterTest::testBucket with data set \"below threshold\"",
+      "message": null,
+      "status": "pass"
+    },
+    {
+      "group": "Unit",
+      "id": "Drupal\\Tests\\legacy_widgets\\Unit\\WidgetCounterTest::testBucket with data set \"at threshold\"",
+      "message": null,
+      "status": "pass"
+    },
+    {
+      "group": "Unit",
+      "id": "Drupal\\Tests\\legacy_widgets\\Unit\\WidgetCounterTest::testBucket with data set \"above threshold\"",
+      "message": null,
+      "status": "pass"
+    },
+    {
+      "group": "Kernel",
+      "id": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testQueueWorkerProcessesItem",
+      "message": null,
+      "status": "pass"
+    },
+    {
+      "group": "Kernel",
+      "id": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testFilterProducesSummary",
+      "message": null,
+      "status": "pass"
+    },
+    {
+      "group": "Kernel",
+      "id": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testEntityOperationWithDrupal10Arguments",
+      "message": null,
+      "status": "pass"
+    },
+    {
+      "group": "Kernel",
+      "id": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testCounterService",
+      "message": null,
+      "status": "pass"
+    },
+    {
+      "group": "Kernel",
+      "id": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testFindAccount",
+      "message": null,
+      "status": "pass"
+    }
+  ],
+  "type": "all"
+}

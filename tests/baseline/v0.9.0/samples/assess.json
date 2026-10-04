@@ -1,0 +1,177 @@
+{
+  "above_threshold": false,
+  "auto_fixable": {
+    "automated_required_changes": 2,
+    "digests": "off",
+    "note": "Official Rector covers 0% of the D11-required changes; its single hit is PHP 8.1 style. The 40% counts the scripted info.yml bumps (main + submodule).",
+    "percent_automated": 40,
+    "percent_manual": 60,
+    "rector_drupal_deprecation_hits": 0,
+    "rector_official_files": 1,
+    "rector_official_rules": {
+      "FunctionFirstClassCallableRector": 1
+    },
+    "required_changes": 5
+  },
+  "contrib": false,
+  "core_target": {
+    "bc_break": false,
+    "composer_core_constraint": "^10 || ^11",
+    "d10_support": "declared-not-verified",
+    "php_floor_detected": "8.1",
+    "php_floor_target_compatible": true,
+    "recommended_core_version_requirement": "^10 || ^11",
+    "require_php": ">=8.1",
+    "strategy": "keep-d10",
+    "version_bump": "minor",
+    "warnings": [
+      "require.php was lowered to \">=8.1\" from a best-effort syntactic scan. CONFIRM with PHPCompatibility (testVersion 8.1-) before release: a missed newer construct would let a Drupal 10 + PHP<8.3 site install and then fatal at runtime. Set DRUPILOT_REQUIRE_PHP_FLOOR=target to keep the conservative \">=8.3\".",
+      "Drupal 10's own minimum is PHP 8.1, but this port's floor is 8.1. require.php \">=8.1\" blocks D10 sites below that floor at install time (composer) rather than fataling at runtime. If you do not need the D10 transition window, drop to '^11'.",
+      "Drupal 10 compatibility is DECLARED, not verified. drupal-rector's standard replacements are usually available across all of Drupal 10 (deprecation contract), but this was not checked here. If the port uses an API added in a later 10.x minor, set core_version_requirement to e.g. '^10.3 || ^11'; if it uses an API absent from Drupal 10, drop to '^11'."
+    ]
+  },
+  "current_core_version_requirement": "^10",
+  "dependencies": {
+    "blockers": 0,
+    "ready": 3,
+    "unknown": 0
+  },
+  "deprecations_hard": 0,
+  "deprecations_soft": 8,
+  "deprecations_unknown": 0,
+  "drupal_target": "^11",
+  "drupilot_version": "0.9.1",
+  "effort": "S",
+  "generated_at": "2026-10-03T23:42:27Z",
+  "hard_break_categories": {
+    "ckeditor5": [],
+    "jquery_ui": [],
+    "symfony7": [],
+    "twig3": []
+  },
+  "hard_breaks": [],
+  "hygiene": {
+    "error": 2,
+    "info": 0,
+    "warn": 8
+  },
+  "info_yml": {
+    "core_version_requirement_present": true,
+    "d11_compatible": false,
+    "submodules_d11_compatible": false
+  },
+  "machine_name": "legacy_widgets",
+  "manual_items": [
+    {
+      "file": "src/Entity/LegacyWidget.php",
+      "id": "M1",
+      "line": 57,
+      "pre_existing_d10": false,
+      "source": "scan-signature-changes:entity-get-original",
+      "what": "getOriginal() incompatible with core EntityBase::getOriginal(): ?static (11.2+); site-wide fatal at entity-type discovery"
+    },
+    {
+      "file": "src/Form/SettingsForm.php",
+      "id": "M2",
+      "line": 32,
+      "pre_existing_d10": false,
+      "source": "scan-signature-changes:config-form-base-ctor",
+      "what": "ConfigFormBase::__construct() needs TypedConfigManagerInterface from 11.0 (ArgumentCountError)"
+    },
+    {
+      "file": "src/Form/WidgetImportForm.php",
+      "id": "M3",
+      "line": 21,
+      "pre_existing_d10": true,
+      "source": "phpstan:property.readOnly/property.visibility/property.extraNativeType",
+      "what": "private readonly typed $loggerFactory redeclares FormBase protected $loggerFactory (class-declaration fatal)"
+    }
+  ],
+  "next_step": "/drupilot-port",
+  "php_target": "8.3",
+  "phpcs": {
+    "errors": 0,
+    "fallback_reason": "subject phpcs.xml.dist references PHPCompatibility (not installed)",
+    "source": "fallback",
+    "standard": "Drupal,DrupalPractice",
+    "warnings": 0
+  },
+  "phpstan": {
+    "deprecations": 8,
+    "file_errors": 30,
+    "level": 2,
+    "other": 22,
+    "status": "findings"
+  },
+  "ready": {
+    "analysis": true,
+    "contribution": false,
+    "drupal_installed": false,
+    "environment": true
+  },
+  "recommended_core_version_requirement": "^10 || ^11",
+  "reports": {
+    "port_plan": ".drupilot/port-plan.md",
+    "viability_report": ".drupilot/viability-report.md"
+  },
+  "require_php": ">=8.1",
+  "rubric": {
+    "blocking_deps": 0,
+    "hard_breaks": 0,
+    "manual": 3,
+    "rule": "S : otherwise (hard_breaks == 0 AND manual < 5 AND blocking_deps == 0)"
+  },
+  "sandbox_core": "11.4.8",
+  "signature_changes": {
+    "core_floor": "10.0",
+    "errors": 2,
+    "infos": 1,
+    "warnings": 2
+  },
+  "soft_deprecations": [
+    {
+      "action": "report",
+      "deprecated_in": "11.4.0",
+      "effort": "S",
+      "occurrences": 3,
+      "removed_in": "13.0.0",
+      "symbol": "user_load_by_mail"
+    },
+    {
+      "action": "report",
+      "deprecated_in": "11.4.0",
+      "effort": "S",
+      "occurrences": 2,
+      "removed_in": "13.0.0",
+      "symbol": "user_load_by_name"
+    },
+    {
+      "action": "report",
+      "deprecated_in": "11.4.0",
+      "effort": "M",
+      "occurrences": 2,
+      "removed_in": "13.0.0",
+      "symbol": "text_summary"
+    },
+    {
+      "action": "report",
+      "deprecated_in": "11.4.0",
+      "effort": "M",
+      "occurrences": 1,
+      "removed_in": "13.0.0",
+      "symbol": "check_markup"
+    }
+  ],
+  "soft_deprecations_policy": "report",
+  "subject": "web/modules/custom/legacy_widgets",
+  "timestamp": "2026-10-03T23:42:27Z",
+  "tool": "drupilot-assess",
+  "type": "module",
+  "upgrade_status": {
+    "reason": "Drupal not installed in the DDEV site",
+    "status": "skipped"
+  },
+  "verdict": "S",
+  "version_bump": "minor",
+  "viability_threshold": "medium"
+}

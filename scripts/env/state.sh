@@ -6,7 +6,7 @@
 # last patch), kept in the subject's HIDDEN state dir like assess.json and
 # last-test.json (machine state survives `git clean` and never leaks into a
 # patch). The schema is documented in common.sh ("Per-subject state") and in
-# README.md ("Per-module state").
+# docs/reference/state.md.
 #
 # Subcommands:
 #   record   mark a stage as reached now and refresh the snapshot. The flow's

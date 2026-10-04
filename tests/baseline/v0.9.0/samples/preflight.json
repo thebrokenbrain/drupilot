@@ -1,0 +1,226 @@
+{
+  "profile": "all",
+  "php_target": "8.3",
+  "ready": {
+    "analyze": true,
+    "setup": true,
+    "test": true,
+    "contribute": false
+  },
+  "checks": [
+    {
+      "id": "bash",
+      "label": "bash",
+      "detail": "runs the drupilot scripts and hooks",
+      "category": "analysis",
+      "profiles": [
+        "analyze"
+      ],
+      "kind": "soft",
+      "present": true,
+      "version": "5.3.9",
+      "required": "3.2",
+      "ok": true,
+      "hint": "Install bash >= 3.2 from your package manager"
+    },
+    {
+      "id": "git",
+      "label": "git",
+      "detail": "version control / patches / contribution",
+      "category": "analysis",
+      "profiles": [
+        "analyze",
+        "contribute"
+      ],
+      "kind": "hard",
+      "present": true,
+      "version": "2.55.0",
+      "required": "2.20.0",
+      "ok": true,
+      "hint": "sudo dnf install git"
+    },
+    {
+      "id": "jq",
+      "label": "jq",
+      "detail": "JSON parsing for hooks and preflight",
+      "category": "analysis",
+      "profiles": [
+        "analyze"
+      ],
+      "kind": "hard",
+      "present": true,
+      "version": "1.8.1",
+      "required": "1.6",
+      "ok": true,
+      "hint": "sudo dnf install jq"
+    },
+    {
+      "id": "php",
+      "label": "PHP",
+      "detail": "host PHP (static analysis target 8.3)",
+      "category": "analysis",
+      "profiles": [
+        "analyze"
+      ],
+      "kind": "soft",
+      "present": true,
+      "version": "8.5.11",
+      "required": "8.3",
+      "ok": true,
+      "hint": "sudo dnf install php-cli  (or just use DDEV, which bundles PHP)"
+    },
+    {
+      "id": "composer",
+      "label": "Composer",
+      "detail": "dependency management (or via DDEV)",
+      "category": "analysis",
+      "profiles": [
+        "analyze"
+      ],
+      "kind": "soft",
+      "present": true,
+      "version": "2.10.3",
+      "required": "2.2.0",
+      "ok": true,
+      "hint": "https://getcomposer.org/download/  (inside DDEV you can use 'ddev composer' instead)"
+    },
+    {
+      "id": "docker",
+      "label": "Docker",
+      "detail": "container engine for DDEV",
+      "category": "environment",
+      "profiles": [
+        "setup",
+        "test"
+      ],
+      "kind": "hard",
+      "present": true,
+      "version": "29.8.2",
+      "required": "20.10.0",
+      "ok": true,
+      "hint": "Docker Engine: https://docs.docker.com/engine/install/fedora/  — then 'sudo usermod -aG docker $USER' and re-login"
+    },
+    {
+      "id": "docker_daemon",
+      "label": "Docker daemon",
+      "detail": "the engine must be running, not just installed",
+      "category": "environment",
+      "profiles": [
+        "setup",
+        "test"
+      ],
+      "kind": "hard",
+      "present": true,
+      "version": "",
+      "required": "",
+      "ok": true,
+      "hint": "Start the Docker daemon (Linux: 'sudo systemctl start docker'; Desktop: launch the app)"
+    },
+    {
+      "id": "ddev",
+      "label": "DDEV",
+      "detail": "full Drupal 11 environment (web + DB + chromedriver)",
+      "category": "environment",
+      "profiles": [
+        "setup",
+        "test"
+      ],
+      "kind": "hard",
+      "present": true,
+      "version": "1.25.4",
+      "required": "1.23.0",
+      "ok": true,
+      "hint": "DDEV: https://ddev.readthedocs.io/en/stable/users/install/ddev-installation/  (Linux script installer recommended)"
+    },
+    {
+      "id": "selenium",
+      "label": "Selenium add-on",
+      "detail": "needed for FunctionalJavascript tests",
+      "category": "environment",
+      "profiles": [
+        "test"
+      ],
+      "kind": "soft",
+      "present": false,
+      "version": "",
+      "required": "",
+      "ok": false,
+      "hint": "ddev add-on get ddev/ddev-selenium-standalone-chrome  &&  ddev restart"
+    },
+    {
+      "id": "ssh_key",
+      "label": "SSH key",
+      "detail": "push access to git.drupal.org (recommended)",
+      "category": "contribution",
+      "profiles": [
+        "contribute"
+      ],
+      "kind": "soft",
+      "present": false,
+      "version": "",
+      "required": "",
+      "ok": false,
+      "hint": "ssh-keygen -t ed25519 -C \"you@example.com\", then upload the public key at https://git.drupalcode.org/-/user_settings/ssh_keys and test with 'ssh -T git@git.drupal.org'"
+    },
+    {
+      "id": "pat",
+      "label": "GitLab PAT",
+      "detail": "HTTPS push / API token (alternative to SSH)",
+      "category": "contribution",
+      "profiles": [
+        "contribute"
+      ],
+      "kind": "soft",
+      "present": false,
+      "version": "",
+      "required": "",
+      "ok": false,
+      "hint": "Create a token at https://git.drupalcode.org/-/user_settings/personal_access_tokens (scopes: read_repository, write_repository) and export DRUPILOT_GITLAB_PAT=..."
+    },
+    {
+      "id": "git_identity",
+      "label": "git identity",
+      "detail": "user.name + user.email for commits",
+      "category": "contribution",
+      "profiles": [
+        "contribute"
+      ],
+      "kind": "soft",
+      "present": false,
+      "version": "",
+      "required": "",
+      "ok": false,
+      "hint": "git config --global user.name \"Real Name\"  &&  git config --global user.email you@example.com (the email linked to your drupal.org account)"
+    },
+    {
+      "id": "drupalorg",
+      "label": "drupal.org account",
+      "detail": "confirmed account + accepted GitLab ToS",
+      "category": "contribution",
+      "profiles": [
+        "contribute"
+      ],
+      "kind": "manual",
+      "present": false,
+      "version": "",
+      "required": "",
+      "ok": false,
+      "hint": "Create/verify your account at https://www.drupal.org/user/register and accept the GitLab Terms of Service in your profile's 'DrupalCode access' tab"
+    },
+    {
+      "id": "api_helper",
+      "label": "glab/curl",
+      "detail": "open/manage MRs via the GitLab API (degradable)",
+      "category": "contribution",
+      "profiles": [
+        "contribute"
+      ],
+      "kind": "soft",
+      "present": true,
+      "version": "",
+      "required": "",
+      "ok": true,
+      "hint": "Optional GitLab CLI: https://gitlab.com/gitlab-org/cli  (curl is used as a fallback)"
+    }
+  ]
+}

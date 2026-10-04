@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thebrokenbrain.github.io/drupilot/schemas/last-test.schema.json",
+  "title": "drupilot last test run (last-test.json)",
+  "description": "The record of the last PHPUnit run, written by scripts/tests/run-phpunit.sh to last-test.json in the subject's hidden state dir (project_state_dir, under drupilot's data dir: DRUPILOT_HOME, else $XDG_DATA_HOME/drupilot; never in the project tree). The same record goes to --result-file FILE (also with --no-record), and --baseline / --baseline-from-last derive test-baseline.json from it. The object is one jq literal, so every key below is always present; scripts/tests/negative-control.sh later rewrites only negative_controls in place. run-phpunit.sh writes nothing without jq.",
+  "type": "object",
+  "required": [
+    "type", "status", "preservation", "ran", "passed", "failed", "skipped",
+    "failed_groups", "skipped_groups", "empty", "empty_groups", "executed",
+    "js_skipped_reason", "blocked_reason", "subject_has_tests", "groups_with_tests",
+    "coverage", "filter", "recorded_at", "subject_digest", "git_head", "baseline",
+    "negative_controls", "group_results", "tests"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "group": {
+      "description": "A PHPUnit test group: the tests/src/<group> directory of the subject.",
+      "enum": ["Unit", "Kernel", "Functional", "FunctionalJavascript"]
+    },
+    "baseline_item": {
+      "description": "One failure classified against the pre-port baseline. A test-level item has the test id; a group-level item (a failed or crashed group with no failing test result) has id null.",
+      "type": "object",
+      "required": ["id", "group", "basis"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": ["string", "null"]},
+        "group": {"type": "string"},
+        "basis": {
+          "description": "Why it got its class: not-in-baseline / passed-before (regressions), baseline-group-crashed / baseline-not-installable / group-failed-baseline-crashed / group-crashed-baseline-crashed (not baselined), test / group-failed / group-crashed (pre-existing, or a group-level regression).",
+          "enum": [
+            "not-in-baseline", "passed-before", "baseline-group-crashed", "baseline-not-installable",
+            "test", "group-failed", "group-crashed",
+            "group-failed-baseline-crashed", "group-crashed-baseline-crashed"
+          ]
+        },
+        "now": {
+          "description": "The failure message of this run (test-level items).",
+          "type": ["string", "null"]
+        },
+        "before": {
+          "description": "The baseline's failure message (pre-existing and baseline-not-installable items).",
+          "type": ["string", "null"]
+        },
+        "message_changed": {
+          "description": "True when the failure message differs from the baseline's (it may now fail for another reason).",
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "properties": {
+    "type": {
+      "description": "The --type of the run.",
+      "enum": ["unit", "kernel", "functional", "js", "all"]
+    },
+    "status": {
+      "description": "failed when a group failed; none-run when no group ran (and none failed); else passed.",
+      "enum": ["passed", "failed", "none-run"]
+    },
+    "preservation": {
+      "description": "The behavior-preservation verdict.",
+      "enum": [
+        "verified", "verified-partial", "regression", "not-verified-blocked",
+        "not-verified-no-tests", "pre-existing-failures", "not-verified-unbaselined"
+      ]
+    },
+    "ran": {
+      "description": "Groups that ran (an empty or blocked group is not counted).",
+      "type": "integer",
+      "minimum": 0
+    },
+    "passed": {"description": "Groups that passed.", "type": "integer", "minimum": 0},
+    "failed": {"description": "Groups that failed or crashed.", "type": "integer", "minimum": 0},
+    "skipped": {"description": "Groups skipped or blocked (an external blocker).", "type": "integer", "minimum": 0},
+    "failed_groups": {"type": "array", "items": {"$ref": "#/$defs/group"}},
+    "skipped_groups": {"type": "array", "items": {"$ref": "#/$defs/group"}},
+    "empty": {"description": "Groups whose PHPUnit executed no test (never counted as passed).", "type": "integer", "minimum": 0},
+    "empty_groups": {"type": "array", "items": {"$ref": "#/$defs/group"}},
+    "executed": {"description": "Tests executed, from the JUnit logs.", "type": "integer", "minimum": 0},
+    "js_skipped_reason": {
+      "description": "Set when the FunctionalJavascript group was skipped because Selenium is not reachable.",
+      "type": ["string", "null"]
+    },
+    "blocked_reason": {
+      "description": "Why tests could not run (PHPUnit missing or not executable, else the Selenium note).",
+      "type": ["string", "null"]
+    },
+    "subject_has_tests": {
+      "description": "Whether the subject ships any *Test.php under tests/src, whatever --type selected.",
+      "type": "boolean"
+    },
+    "groups_with_tests": {
+      "description": "The selected groups that contain at least one *Test.php.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/group"}
+    },
+    "coverage": {
+      "type": "object",
+      "required": ["requested", "html", "percent"],
+      "additionalProperties": false,
+      "properties": {
+        "requested": {"type": "boolean"},
+        "html": {
+          "description": "The coverage HTML directory when --coverage was given.",
+          "type": ["string", "null"]
+        },
+        "percent": {
+          "description": "Always null: no percentage is computed.",
+          "type": "null"
+        }
+      }
+    },
+    "filter": {"description": "The --filter expression.", "type": ["string", "null"]},
+    "recorded_at": {"description": "UTC timestamp of the run record.", "type": "string"},
+    "subject_digest": {
+      "description": "subject_digest of the sources the run tested (freshness checks compare it).",
+      "type": ["string", "null"]
+    },
+    "git_head": {"type": ["string", "null"]},
+    "baseline": {
+      "description": "The comparison with test-baseline.json; null when there is no usable baseline, with --no-baseline, or when the comparison failed.",
+      "type": ["object", "null"],
+      "required": ["file", "source", "taken_at", "type", "filter", "same_code", "regressions", "not_baselined", "pre_existing", "fixed"],
+      "additionalProperties": false,
+      "properties": {
+        "file": {"description": "Path of test-baseline.json.", "type": "string"},
+        "source": {
+          "description": "run (taken with --baseline) or last-test (promoted with --baseline-from-last).",
+          "enum": ["run", "last-test"]
+        },
+        "taken_at": {"type": ["string", "null"]},
+        "type": {"description": "The baseline run's --type.", "type": ["string", "null"]},
+        "filter": {"type": ["string", "null"]},
+        "same_code": {
+          "description": "True when the baseline was taken on the current sources (it cannot show what the port changed).",
+          "type": "boolean"
+        },
+        "regressions": {"type": "array", "items": {"$ref": "#/$defs/baseline_item"}},
+        "not_baselined": {"type": "array", "items": {"$ref": "#/$defs/baseline_item"}},
+        "pre_existing": {"type": "array", "items": {"$ref": "#/$defs/baseline_item"}},
+        "fixed": {
+          "description": "Ids of tests that failed in the baseline and pass now.",
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "negative_controls": {
+      "description": "Summary of negative-controls.json (scripts/tests/negative-control.sh records); null when there is none.",
+      "type": ["object", "null"],
+      "required": ["total", "effective", "ineffective", "error", "stale", "controls"],
+      "additionalProperties": false,
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "effective": {"type": "integer", "minimum": 0},
+        "ineffective": {"type": "integer", "minimum": 0},
+        "error": {"type": "integer", "minimum": 0},
+        "stale": {
+          "description": "Controls run on sources that changed since.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "controls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["test", "type", "label", "verdict", "at", "mutation", "stale"],
+            "additionalProperties": false,
+            "properties": {
+              "test": {"description": "The --filter of the guarded test.", "type": "string"},
+              "type": {"enum": ["unit", "kernel", "functional", "js", "all"]},
+              "label": {"type": ["string", "null"]},
+              "verdict": {"enum": ["effective", "ineffective", "error"]},
+              "at": {"type": "string"},
+              "mutation": {
+                "description": "How the guarded change was undone.",
+                "enum": ["revert-to", "patch", null]
+              },
+              "stale": {"type": "boolean"}
+            }
+          }
+        }
+      }
+    },
+    "group_results": {
+      "description": "One entry per selected group that has tests, in run order.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["group", "rc", "status", "executed"],
+        "additionalProperties": false,
+        "properties": {
+          "group": {"$ref": "#/$defs/group"},
+          "rc": {
+            "description": "PHPUnit's exit code; null for a group that was not run (skipped).",
+            "type": ["integer", "null"]
+          },
+          "status": {
+            "description": "empty: PHPUnit ran but executed no test; crashed: it failed without writing any test result; blocked: PHPUnit could not be executed (exit 126/127).",
+            "enum": ["passed", "failed", "crashed", "empty", "skipped", "blocked"]
+          },
+          "executed": {"type": "integer", "minimum": 0}
+        }
+      }
+    },
+    "tests": {
+      "description": "Every executed test, from PHPUnit's JUnit logs; empty when they could not be parsed.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["group", "id", "status", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "group": {"$ref": "#/$defs/group"},
+          "id": {
+            "description": "Class::method, with the data-set suffix when there is one.",
+            "type": "string"
+          },
+          "status": {"enum": ["pass", "fail", "error", "skipped"]},
+          "message": {
+            "description": "First meaningful line of a fail/error message (at most 240 characters); null otherwise.",
+            "type": ["string", "null"]
+          }
+        }
+      }
+    }
+  }
+}

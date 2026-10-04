@@ -1,0 +1,88 @@
+site_name: drupilot
+site_description: Claude Code plugin that ports Drupal modules and themes across major versions, deterministic tools first.
+site_url: https://thebrokenbrain.github.io/drupilot/
+repo_url: https://github.com/thebrokenbrain/drupilot
+repo_name: thebrokenbrain/drupilot
+edit_uri: edit/main/docs/
+docs_dir: docs
+site_dir: site
+copyright: MIT License
+
+theme:
+  name: material
+  variant: classic
+  language: en
+  logo: assets/drupilot.png
+  favicon: assets/drupilot.png
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: {icon: material/brightness-7, name: Switch to dark mode}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: {icon: material/brightness-4, name: Switch to light mode}
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+    - content.action.edit
+
+markdown_extensions:
+  - toc: {permalink: true}
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - pymdownx.details
+  - pymdownx.highlight: {anchor_linenums: true}
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed: {alternate_style: true}
+  - pymdownx.snippets:
+      base_path: ["."]   # Zensical 0.0.67 rejects !relative $config_dir; "." is the repo root in the container
+      check_paths: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+plugins:
+  - search
+
+# NEVER add: hooks, exclude_docs, not_in_nav, draft_docs, remote_branch, remote_name, gen-files, llmstxt.
+# No extra.version (mike) at 1.0.
+
+# The nav lists every docs/**/*.md (the docs gate of scripts/dev/check.sh checks it).
+# The Getting started, Guides and Concepts sections arrive with their pages (docs D4).
+nav:
+  - Home: index.md
+  - Reference:
+      - reference/commands.md
+      - reference/configuration.md
+      - reference/choices.md
+      - reference/scripts.md
+      - reference/skills-and-agents.md
+      - reference/toolchain.md
+      - reference/deprecations.md
+      - reference/state.md
+  - Contributing:
+      - contributing/index.md
+      - contributing/checks.md
+      - Decisions:
+          - contributing/adr/index.md
+          - contributing/adr/0000-owner-decisions.md
+          - contributing/adr/0007-golden-next-to-the-fixture.md
+          - contributing/adr/0008-live-router-evals-harness.md
+          - contributing/adr/0009-tab-sequence-counts-shown-tabs.md
+          - contributing/adr/0010-schema-validator.md
+          - contributing/adr/0011-release-validation-without-strict.md
+          - contributing/adr/0012-docs-site-in-m1.md
+          - contributing/adr/0013-config-keys-scope.md
+  - Changelog: changelog.md
