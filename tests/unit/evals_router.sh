@@ -23,10 +23,12 @@ mutate() {
   cp "$T_TMP/orig" "$f"
 }
 assert_eq "the copy passes" "$(static)" ""
-mutate "a port request mapped to auto fails" commands/drupilot.md \
-  's/^    \*\*`full`\*\* — or \*\*`auto`\*\* if the user/    **`auto`** — or **`auto`** if the user/' 'mode-inference: port this to Drupal 11'
-mutate "a bare /drupilot moved to the status rule fails" commands/drupilot.md \
-  's/^  - An \*\*exploratory\*\* request or a bare `\/drupilot` (/  - An **exploratory** request (/; s/^  - A \*\*status\*\* request (/  - A **status** request or a bare `\/drupilot` (/' 'mode-inference: a bare `/drupilot`'
+# Mutations that keep every mode word in the rule, so only the cue-to-mode
+# binding can see them (a "the rule names the mode somewhere" check cannot).
+mutate "full and auto swapped in the port rule fail" commands/drupilot.md \
+  's/^    \*\*`full`\*\* — or \*\*`auto`\*\* if the user/    **`auto`** — or **`full`** if the user/' 'mode-inference: port this to Drupal 11.*mode-inference: do everything yourself|mode-inference: do everything yourself.*mode-inference: port this to Drupal 11'
+mutate "a bare /drupilot bound to status in the next rule fails" commands/drupilot.md \
+  's/^  - An \*\*exploratory\*\* request or a bare `\/drupilot` ("what.s next", "where am I") →/  - An **exploratory** request ("what'"'"'s next", "where am I") → **`next`**; a bare `\/drupilot` →/; s/^    \*\*`next`\*\* (summarize/    **`status`** (summarize/' 'mode-inference: a bare `/drupilot`'
 mutate "two swapped tabs fail" commands/drupilot-port.md \
   's/--key CORE_TARGET/--key TMP_SWAP/; s/--key DIGESTS_RULES/--key CORE_TARGET/; s/--key TMP_SWAP/--key DIGESTS_RULES/' 'tab-sequence'
 mutate "a dropped auto rule fails" agents/drupal-port-orchestrator.md \
@@ -42,4 +44,5 @@ live() {  # live <stub body> -> "<ok>|<auto passed>|<total passed>"
 assert_eq "a logged-out claude passes nothing (auto included)" "$(live 'echo "Invalid API key · Please run /login"; exit 1')" "false|0|0"
 assert_eq "an empty answer passes nothing (auto included)" "$(live 'exit 0')" "false|0|0"
 assert_eq "an explicit NO_TABS passes the auto case" "$(live 'echo NO_TABS')" "false|1|1"
+assert_eq "valid answers from a failed run pass nothing" "$(live 'echo NO_TABS; echo DRUPILOT_MODE=full; exit 1')" "false|0|0"
 t_done

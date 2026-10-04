@@ -180,8 +180,10 @@ gen_enums() {
   local preservation stages inputs resolved d10 deps pstatus
   # run-phpunit.sh: every PRESERVATION="..." assignment.
   preservation="$(code scripts/tests/run-phpunit.sh | grep -oE 'PRESERVATION="[a-z-]+"' | sed 's/.*="//; s/"$//' | sorted)"
-  # common.sh stage_rank: its case labels.
-  stages="$(fn_body scripts/lib/common.sh stage_rank | grep -oE '[a-z]+\) printf [1-9]' | sed 's/).*//' | sorted)"
+  # common.sh stage_rank: its case labels, in the order of their rank (the
+  # ladder, CC-20), so swapping two ranks changes the snapshot too.
+  stages="$(fn_body scripts/lib/common.sh stage_rank | grep -oE '[a-z]+\) printf [1-9]' | sed 's/) printf / /' \
+    | LC_ALL=C sort -k2n | cut -d' ' -f1 | jq -R . | jq -s -c .)"
   # preflight.sh: the values config_enum accepts for the strategy.
   inputs="$(code scripts/env/preflight.sh | awk '$1 == "config_enum" && $2 == "DRUPILOT_CORE_TARGET_STRATEGY" { for (i = 4; i <= NF && $i !~ /^[>|]/; i++) printf "%s ", $i }' | sorted)"
   # common.sh: resolved="..." strategies that are not inputs.
@@ -195,8 +197,10 @@ gen_enums() {
             code scripts/analysis/verify-core-matrix.sh | grep -oE 'd10_support: \(if .* end\)' | grep -oE '"[a-z/-]+"'
             code scripts/lib/common.sh | grep -oE 'd10_support="[a-z/-]+"'; } \
           | grep -oE '"[a-z/-]+"' | tr -d '"' | sorted)"
-  # deps-status.sh d11_status: what it prints.
-  deps="$(fn_body scripts/analysis/deps-status.sh d11_status | grep -oE "printf '[a-z-]+'" | sed "s/printf '//; s/'$//" | sorted)"
+  # deps-status.sh: what d11_status prints, and the st="..." its main loop
+  # sets (core for a core module).
+  deps="$( { fn_body scripts/analysis/deps-status.sh d11_status | grep -oE "printf '[a-z-]+'" | sed "s/printf '//; s/'$//"
+             code scripts/analysis/deps-status.sh | grep -oE 'st="[a-z-]+"' | sed 's/st="//; s/"$//'; } | sorted)"
   # port-summary.sh: the literals of its status expression, plus the stages it passes through.
   pstatus="$(code scripts/analysis/port-summary.sh | grep -E '^[[:space:]]*status: \(if' | grep -oE '"[a-z-]+"' | tr -d '"' | sorted \
     | jq -c --argjson st "$stages" '. + $st | unique')"

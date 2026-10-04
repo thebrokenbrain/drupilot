@@ -65,13 +65,14 @@ result() {
 sha() { $HASHER < "$1" | cut -d' ' -f1; }
 IN_GIT=0
 git -C "$REPO" rev-parse --git-dir > /dev/null 2>&1 && IN_GIT=1
-# golden_files <dir> -> the files of a golden directory, but golden.json and
-# what git ignores (.DS_Store, editor swap files), sorted.
+# golden_files <dir> -> the files of a golden directory, sorted, but
+# golden.json and operating-system/editor litter (.DS_Store, Thumbs.db, *.swp,
+# *~). Anything else is listed even when git ignores it: --update pins it, and
+# --check then fails on it as "not tracked by git", so an ignored recording is
+# never dropped silently.
 golden_files() {
-  ( cd "$1" && find . -type f ! -name golden.json | sed 's#^\./##' | LC_ALL=C sort ) | while IFS= read -r f; do
-    if [[ "$IN_GIT" == "1" ]] && git -C "$1" check-ignore -q -- "$f" 2>/dev/null; then continue; fi
-    printf '%s\n' "$f"
-  done
+  ( cd "$1" && find . -type f ! -name golden.json ! -name .DS_Store ! -name Thumbs.db ! -name '*.swp' ! -name '*~' \
+      | sed 's#^\./##' | LC_ALL=C sort )
   return 0
 }
 

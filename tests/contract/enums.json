@@ -7,6 +7,7 @@
     "verified-static-above-floor"
   ],
   "deps_status": [
+    "core",
     "not-on-drupalorg",
     "not-ready",
     "ready",
@@ -39,12 +40,12 @@
     "deprecations"
   ],
   "stages": [
+    "setup",
     "assessed",
-    "contributed",
     "ported",
     "refactored",
-    "setup",
-    "tested"
+    "tested",
+    "contributed"
   ],
   "strategy_inputs": [
     "auto",

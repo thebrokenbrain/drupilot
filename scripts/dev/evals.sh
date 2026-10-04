@@ -11,8 +11,10 @@
 #       with no choice.sh call, such as PUSH). New tabs may only be inserted:
 #       the 0.9 sequence must stay a subsequence (CC-02);
 #     * the router's mode words, in its argument-hint;
-#     * the router's mode-inference rules: each cue sits in the rule that
-#       names its mode.
+#     * the router's mode-inference rules: each cue's mode is the first bold
+#       **`mode`** after it in its rule, else the last one before it;
+#     * the auto_rules of tab-sequence.json: the prompt rules that keep an
+#       `auto` run tab-free and push-free must still be stated.
 #   --live (opt-in, never in --ci: needs a logged-in `claude` CLI) — real
 #     `claude -p --plugin-dir` runs, told to report instead of acting:
 #     * mode inference: `/drupilot <subject> <args>` must report the expected
@@ -202,7 +204,8 @@ live_layer() {
   {
     jq -r --arg s "$subj" --arg ns "$ns" '.live_cases[] | "mode\t\(.name)\t/\($ns):drupilot \($s) \(.args)\t\(.mode)"' "$EVD/mode-inference.json"
     for f in commands/drupilot-setup.md commands/drupilot-assess.md commands/drupilot-port.md commands/drupilot-refactor.md commands/drupilot-contribute.md; do
-      printf 'tabs\t%s\t/%s:%s %s\t%s\n' "$(basename "$f" .md)" "$ns" "$(basename "$f" .md)" "$subj" "$(tabs_of "$PR/$f" | paste -sd, -)"
+      want="$(tabs_of "$PR/$f" | paste -sd, -)"
+      printf 'tabs\t%s\t/%s:%s %s\t%s\n' "$(basename "$f" .md)" "$ns" "$(basename "$f" .md)" "$subj" "${want:-NO_TABS}"
     done
     # The auto run: the tabs tests/evals/router/tab-sequence.json .auto lists,
     # or, for none, an explicit NO_TABS reply.
@@ -227,7 +230,7 @@ live_layer() {
     local ok=0 got obs=""
     for ((i = 1; i <= RUNS; i++)); do
       if [[ "$(cat "$TMP/runs/$n.$i.rc" 2>/dev/null)" != "0" || ! -s "$TMP/runs/$n.$i" ]]; then
-        got=""   # no answer (claude failed, timed out or printed nothing): never a pass
+        got="<no answer>"   # claude failed, timed out or printed nothing: never equals an expectation
       elif [[ "$kind" == "mode" ]]; then
         got="$(sed -n 's/.*DRUPILOT_MODE=\([a-z]*\).*/\1/p' "$TMP/runs/$n.$i" 2>/dev/null | head -n 1)"
       elif ! grep -q 'TAB=' "$TMP/runs/$n.$i" && grep -qx '[[:space:]]*NO_TABS[[:space:]]*' "$TMP/runs/$n.$i"; then
