@@ -16,6 +16,7 @@ assert_eq "^11.1 (no 8.5 below 11.3, but 11.3 is admitted)" "$(php_bounds_for_ra
 assert_eq "a single bar also splits" "$(php_bounds_for_range '^10.4 | ^11')" "8.1 8.5"
 assert_eq "an unsupported form gives nothing" "$(php_bounds_for_range '>=10.3')" ""
 assert_eq "a major without data gives nothing" "$(php_bounds_for_range '^9')" ""
+assert_eq "a range with one major without data gives nothing, not a guess" "$(php_bounds_for_range '^9 || ^10')" ""
 assert_eq "php_window 8.1 8.5" "$(php_window 8.1 8.5)" "8.1 8.2 8.3 8.4 8.5"
 assert_eq "php_window 8.3 8.3" "$(php_window 8.3 8.3)" "8.3"
 assert_eq "php_window floor above final" "$(php_window 8.5 8.3)" ""

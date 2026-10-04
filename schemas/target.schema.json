@@ -102,6 +102,7 @@
         "properties": {
           "name": {"type": "string", "pattern": "^[a-z0-9_]+/[a-z0-9_.-]+$"},
           "removed_in": {"$ref": "#/$defs/minor_key"},
+          "deprecated_in": {"description": "The version the library's own deprecated: message names, else null.", "type": ["string", "null"]},
           "src": {"$ref": "#/$defs/src"},
           "verified": {"type": "boolean"},
           "note": {"type": "string"}
@@ -119,6 +120,7 @@
           "name": {"type": "string"},
           "from_ns": {"type": "string"},
           "to_ns": {"type": "string"},
+          "classes": {"description": "The classes that move (their short names), when not the whole namespace does.", "type": "array", "items": {"type": "string"}},
           "introduced_in": {"$ref": "#/$defs/minor_key"},
           "rewrite": {"enum": ["residual"]},
           "src": {"$ref": "#/$defs/src"},
@@ -204,6 +206,7 @@
         "removed_in": {"$ref": "#/$defs/minor_key"},
         "state_at_removal": {"description": "absent (default): the extension is gone from the core tree; obsolete: still in the tree with lifecycle: obsolete, so it can no longer be installed.", "enum": ["absent", "obsolete"]},
         "introduced_in": {"description": "For an extension core added after the previous major's newest release: the minor that adds it (its presence is checked there once that minor has a tag).", "$ref": "#/$defs/minor_key"},
+        "info_path": {"description": "The extension's .info.yml path in the core tree when it is not core/modules/<name>/<name>.info.yml or core/themes/<name>/<name>.info.yml (a module nested under another).", "type": "string", "pattern": "^core/[a-z0-9_/]+\\.info\\.yml$"},
         "deprecated_in": {"type": ["string", "null"]},
         "replacement_project": {"description": "The drupal.org project that carries it on, or null when nothing does.", "type": ["string", "null"]},
         "replacement_available": {"description": "null: checked at runtime against updates.drupal.org/release-history/<project>/current.", "type": ["boolean", "null"]},

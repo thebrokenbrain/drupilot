@@ -237,9 +237,120 @@
       "verified": true,
       "verified_at": "11.0.0",
       "note": "Activity Tracker."
+    },
+    {
+      "name": "help_topics",
+      "kind": "module",
+      "removed_in": "11.0",
+      "deprecated_in": null,
+      "replacement_project": null,
+      "rewrite": "hard-break",
+      "src": "https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions) ; core tree: present at 10.6.18 (lifecycle: deprecated), absent at 11.0.0 (https://git.drupalcode.org/project/drupal/-/tree/11.0.0/core/modules)",
+      "verified": true,
+      "verified_at": "11.0.0",
+      "note": "Its functionality moved into the help module in 10.2.0; the page calls it an obsolete, empty stub since before 11.0.0. A dependency on it is dropped, not replaced."
     }
   ],
-  "removed_libraries": [],
+  "removed_libraries": [
+    {
+      "name": "core/css.escape",
+      "removed_in": "11.0",
+      "deprecated_in": "10.0.0",
+      "src": "core/core.libraries.yml: present at 10.6.18, absent at 11.0.13",
+      "verified": true
+    },
+    {
+      "name": "core/drupal.array.find",
+      "removed_in": "11.0",
+      "deprecated_in": "10.0.0",
+      "src": "core/core.libraries.yml: present at 10.6.18, absent at 11.0.13",
+      "verified": true
+    },
+    {
+      "name": "core/drupal.array.includes",
+      "removed_in": "11.0",
+      "deprecated_in": "10.0.0",
+      "src": "core/core.libraries.yml: present at 10.6.18, absent at 11.0.13",
+      "verified": true
+    },
+    {
+      "name": "core/drupal.customevent",
+      "removed_in": "11.0",
+      "deprecated_in": "10.0.0",
+      "src": "core/core.libraries.yml: present at 10.6.18, absent at 11.0.13",
+      "verified": true
+    },
+    {
+      "name": "core/drupal.element.closest",
+      "removed_in": "11.0",
+      "deprecated_in": "10.0.0",
+      "src": "core/core.libraries.yml: present at 10.6.18, absent at 11.0.13",
+      "verified": true
+    },
+    {
+      "name": "core/drupal.element.matches",
+      "removed_in": "11.0",
+      "deprecated_in": "10.0.0",
+      "src": "core/core.libraries.yml: present at 10.6.18, absent at 11.0.13",
+      "verified": true
+    },
+    {
+      "name": "core/drupal.nodelist.foreach",
+      "removed_in": "11.0",
+      "deprecated_in": "10.0.0",
+      "src": "core/core.libraries.yml: present at 10.6.18, absent at 11.0.13",
+      "verified": true
+    },
+    {
+      "name": "core/drupal.object.assign",
+      "removed_in": "11.0",
+      "deprecated_in": "10.0.0",
+      "src": "core/core.libraries.yml: present at 10.6.18, absent at 11.0.13",
+      "verified": true
+    },
+    {
+      "name": "core/drupal.string.includes",
+      "removed_in": "11.0",
+      "deprecated_in": "10.0.0",
+      "src": "core/core.libraries.yml: present at 10.6.18, absent at 11.0.13",
+      "verified": true
+    },
+    {
+      "name": "core/es6-promise",
+      "removed_in": "11.0",
+      "deprecated_in": "10.0.0",
+      "src": "core/core.libraries.yml: present at 10.6.18, absent at 11.0.13",
+      "verified": true
+    },
+    {
+      "name": "core/internal.shepherd",
+      "removed_in": "11.0",
+      "deprecated_in": "10.3.0",
+      "src": "core/core.libraries.yml: present at 10.6.18, absent at 11.0.13",
+      "verified": true
+    },
+    {
+      "name": "core/modernizr",
+      "removed_in": "11.0",
+      "deprecated_in": "10.1.0",
+      "src": "core/core.libraries.yml: present at 10.6.18, absent at 11.0.13",
+      "verified": true
+    },
+    {
+      "name": "core/picturefill",
+      "removed_in": "11.0",
+      "deprecated_in": "10.0.0",
+      "src": "core/core.libraries.yml: present at 10.6.18, absent at 11.0.13",
+      "verified": true
+    },
+    {
+      "name": "core/tabbable.jquery.shim",
+      "removed_in": "11.0",
+      "deprecated_in": "10.3.0",
+      "src": "core/core.libraries.yml: present at 10.6.18, absent at 11.0.13",
+      "verified": true
+    }
+  ],
   "namespace_moves": [
     {
       "name": "text_with_summary",
@@ -253,7 +364,12 @@
       "reverify_at": [
         "11.5.0"
       ],
-      "note": "11.5.0 is unreleased: the field type, widget and formatters move from the text module to a new core module text_with_summary."
+      "note": "11.5.0 is unreleased: the with-summary field type, its widget and its formatter move from the text module to a new core module text_with_summary (the 11.5.x branch). The other text plugins stay in the text module.",
+      "classes": [
+        "TextWithSummaryItem",
+        "TextSummaryOrTrimmedFormatter",
+        "TextareaWithSummaryWidget"
+      ]
     }
   ],
   "hard_break_detectors": [

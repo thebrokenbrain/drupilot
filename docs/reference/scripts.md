@@ -3191,14 +3191,16 @@ skill or hook calls it; scripts/dev/check.sh runs it as its `data` gate):
               config/php/versions.json and rules.json, config/paths/eras.json
               and graph.json, and every config/catalog/*.json validate
               against their schema (the jq validator, scripts/dev/
-              jsonschema.jq); the six core files must exist
+              jsonschema.jq); the seven core files (targets/10, 11 and 12,
+              php/versions and rules, paths/eras and graph) must exist
   provenance  every object that carries `verified` names its source (src or
               url), every object holding a version value names one too (a
               PHP support list: php_src), and every `verified_as` object
               lists when to re-verify it (reverify_at)
-  hard-gate   every node a schema marks x-drupilot-hard-gate (a catalog
-              entry: blocking: true) is verified:true and never verified_as
-              "announced" (a {"status": "detect"} minor holds no value)
+  hard-gate   every node a schema marks x-drupilot-hard-gate (next to a
+              $ref or inside an anyOf too; a catalog entry: blocking: true)
+              is verified:true and never verified_as "announced" (a
+              {"status": "detect"} minor holds no value)
   coherence   a target file's major matches its name and its minors; a
               target major (11 and up) has toolchain_cell, php_defaults and
               default_ranges; every PHP version a target names is in
@@ -3279,9 +3281,9 @@ comment and is never edited by hand:
   reference/choices.md            config/choices.json
   reference/toolchain.md          config/toolchain-reference.json
   reference/deprecations.md       config/deprecations.json (Drupal's deprecations)
-  reference/version-matrix.md     config/targets/*.json + config/php/versions.json
-                                  (every value with its as_of, source, verified
-                                  and verified_as)
+  reference/version-matrix.md     config/targets/*.json, config/php/*.json and
+                                  config/paths/*.json (every value with its
+                                  as_of, source, verified and verified_as)
 The output is byte-identical on every platform (bash 3.2, BSD/BusyBox,
 mawk, jq 1.6): sorted with LC_ALL=C, no timestamps, paths or tool versions.
 A "See" link is written only when its docs page exists.
@@ -3379,12 +3381,17 @@ defaults). A {"status": "detect"} minor is filled once a tag of it exists;
 its hand fields stay null until someone reads drupal.org's table. A minor
 whose values changed gets checked_at = --as-of, and its file as_of too.
 It also checks, without writing anything: that every removed extension is in
-the core tree at the previous major's newest tag and gone at the removal tag
-(an obsolete one: still there with lifecycle: obsolete), the same for every
-removed core library, and that the drupal.org pages in hand_sources did not
-change since they were read (api-d7 JSON, never HTML). Every fetched file is
-cached, and --offline reads only the cache: two offline runs on the same
-input give byte-identical files and output.
+the core tree at the previous major's newest tag (or at the minor that
+introduced it) and gone at the removal tag (an obsolete one: still there with
+lifecycle: obsolete), the same for every removed core library; that nothing
+else disappeared between those two tags (every core/modules and core/themes
+extension directory, read through git.drupalcode.org's repository-tree API,
+and every core.libraries.yml key gone at the major's .0 must be listed); and
+that the drupal.org pages in hand_sources did not change since they were read
+(api-d7 JSON, never HTML). Every fetched file is cached, and --offline reads
+only the cache: two offline runs on the same input give byte-identical files
+and output. Nothing is written until every fetch has succeeded, so a failed
+run leaves the data as it was.
 
 Usage:
   scripts/dev/refresh-data.sh [--dry-run] [--json] [--offline] [--cache DIR]

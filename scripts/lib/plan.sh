@@ -31,7 +31,10 @@
 #                                some verified minor of a caret core range
 #                                supports ('^10 || ^11' -> 8.1 8.5, '^11' ->
 #                                8.3 8.5, '^12' -> 8.5 8.5); nothing when the
-#                                range has another form or no minor is known
+#                                range has another form, names a major the
+#                                data does not hold ('^9 || ^10': Drupal 9's
+#                                PHP is not in the data, so no bound is
+#                                certain) or no minor is known
 #   core_version_cmp A B         compare two core versions: returns 0 when
 #                                A == B, 1 when A < B, 2 when A > B, 3 when one
 #                                is not a version. Pre-releases order dev <
@@ -148,7 +151,7 @@ php_bounds_for_range() {
     [[ -n "$alt" ]] || continue
     [[ "$alt" =~ $re ]] || return 0
     maj="${BASH_REMATCH[1]}"; min="${BASH_REMATCH[3]:-0}"
-    [[ -r "$dir/targets/$maj.json" ]] || continue
+    [[ -r "$dir/targets/$maj.json" ]] || return 0
     all="$all $(jq -r --argjson m "$min" '[.minors | to_entries[]
       | select((.key | split(".")[1] | tonumber) >= $m) | .value | select(.verified == true)
       | (.php_supported // [])[]] | join(" ")' "$dir/targets/$maj.json" 2> /dev/null || true)"

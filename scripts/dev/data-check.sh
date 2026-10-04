@@ -7,14 +7,16 @@
 #               config/php/versions.json and rules.json, config/paths/eras.json
 #               and graph.json, and every config/catalog/*.json validate
 #               against their schema (the jq validator, scripts/dev/
-#               jsonschema.jq); the six core files must exist
+#               jsonschema.jq); the seven core files (targets/10, 11 and 12,
+#               php/versions and rules, paths/eras and graph) must exist
 #   provenance  every object that carries `verified` names its source (src or
 #               url), every object holding a version value names one too (a
 #               PHP support list: php_src), and every `verified_as` object
 #               lists when to re-verify it (reverify_at)
-#   hard-gate   every node a schema marks x-drupilot-hard-gate (a catalog
-#               entry: blocking: true) is verified:true and never verified_as
-#               "announced" (a {"status": "detect"} minor holds no value)
+#   hard-gate   every node a schema marks x-drupilot-hard-gate (next to a
+#               $ref or inside an anyOf too; a catalog entry: blocking: true)
+#               is verified:true and never verified_as "announced" (a
+#               {"status": "detect"} minor holds no value)
 #   coherence   a target file's major matches its name and its minors; a
 #               target major (11 and up) has toolchain_cell, php_defaults and
 #               default_ranges; every PHP version a target names is in

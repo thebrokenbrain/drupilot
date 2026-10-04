@@ -3,8 +3,10 @@
 # refresh-data: two runs on the same input give byte-identical files and
 # output; the generated fields come from the cache while the hand fields stay;
 # a second run changes nothing; a supported major ignores pre-release tags;
-# --dry-run writes nothing; a removal the tree contradicts, a hand source that
-# changed and a file missing from the cache are reported.
+# --dry-run writes nothing; a hand-set verified:false is kept; a removal the
+# tree contradicts, an extension or library that disappears unlisted and a
+# hand source that changed are reported; a file missing from the cache, at
+# any point of the run, leaves the data untouched; a malformed file exits 1.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
 FX="$T_REPO/tests/fixtures/refresh-data"
@@ -57,9 +59,39 @@ assert_eq "a removal the tree contradicts: exit 3" "$(cat "$T_TMP/rc")" "3"
 assert_eq "it is a mismatch" "$(jq -r '.mismatches[0].detail' "$T_TMP/e.out")" "still in the core tree at 11.0.0"
 printf '404' > "$T_TMP/cache/git/11.0.0/core_modules_book_book.info.yml.status"
 
+fresh h
+jq '.minors["11.3"].verified = false' "$FX/data/targets/11.json" > "$T_TMP/h/targets/11.json"
+run "$T_TMP/h" > /dev/null
+assert_eq "a hand-set verified:false survives a refresh" "$(jq -c '.minors["11.3"] | [.verified, .latest]' "$T_TMP/h/targets/11.json")" '[false,"11.3.18"]'
+
+fresh i
+jq '.removed_extensions = []' "$FX/data/targets/11.json" > "$T_TMP/i/targets/11.json"
+run "$T_TMP/i" > "$T_TMP/i.out"
+assert_eq "an extension gone at the major's .0 but not listed: exit 3" "$(cat "$T_TMP/rc")" "3"
+assert_eq "it is reported" "$(jq -r '.mismatches[0].detail' "$T_TMP/i.out")" "core/modules/book is in the tree at 10.6.18 but not at 11.0.0, and is not listed"
+printf 'drupal:\n  version: VERSION\n' > "$T_TMP/cache/git/11.0.0/core_core.libraries.yml"
+fresh j
+run "$T_TMP/j" > "$T_TMP/j.out"
+assert_eq "a library gone at the major's .0 but not listed is reported" "$(jq -r '.mismatches[0].detail' "$T_TMP/j.out")" \
+  "core/once is in core.libraries.yml at 10.6.18 but not at 11.0.0, and is not listed"
+cp "$FX/cache/git/11.0.0/core_core.libraries.yml" "$T_TMP/cache/git/11.0.0/core_core.libraries.yml"
+
 fresh f
 rm "$T_TMP/cache/git/11.3.18/core_lib_Drupal.php"
 run "$T_TMP/f" > /dev/null
 assert_eq "--offline with a file missing from the cache: exit 1" "$(cat "$T_TMP/rc")" "1"
 assert_eq "and nothing written" "$(cmp "$T_TMP/f/targets/11.json" "$FX/data/targets/11.json" && echo same)" "same"
+cp "$FX/cache/git/11.3.18/core_lib_Drupal.php" "$T_TMP/cache/git/11.3.18/core_lib_Drupal.php"
+
+fresh g
+rm "$T_TMP/cache/git/11.0.0/core_modules_book_book.info.yml.status"
+run "$T_TMP/g" > "$T_TMP/g.out"
+assert_eq "a fetch failing after the values were computed: exit 1" "$(cat "$T_TMP/rc")" "1"
+assert_eq "and still nothing written (writes wait for every fetch)" "$(cmp "$T_TMP/g/targets/11.json" "$FX/data/targets/11.json" && echo same)" "same"
+assert_no_stdout "and no JSON claims a change" cat "$T_TMP/g.out"
+
+fresh k
+printf '{"major": 11, "minors": ' > "$T_TMP/k/targets/11.json"
+run "$T_TMP/k" > /dev/null
+assert_eq "a malformed target file: exit 1" "$(cat "$T_TMP/rc")" "1"
 t_done

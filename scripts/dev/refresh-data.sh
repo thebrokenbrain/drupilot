@@ -18,12 +18,17 @@
 # its hand fields stay null until someone reads drupal.org's table. A minor
 # whose values changed gets checked_at = --as-of, and its file as_of too.
 # It also checks, without writing anything: that every removed extension is in
-# the core tree at the previous major's newest tag and gone at the removal tag
-# (an obsolete one: still there with lifecycle: obsolete), the same for every
-# removed core library, and that the drupal.org pages in hand_sources did not
-# change since they were read (api-d7 JSON, never HTML). Every fetched file is
-# cached, and --offline reads only the cache: two offline runs on the same
-# input give byte-identical files and output.
+# the core tree at the previous major's newest tag (or at the minor that
+# introduced it) and gone at the removal tag (an obsolete one: still there with
+# lifecycle: obsolete), the same for every removed core library; that nothing
+# else disappeared between those two tags (every core/modules and core/themes
+# extension directory, read through git.drupalcode.org's repository-tree API,
+# and every core.libraries.yml key gone at the major's .0 must be listed); and
+# that the drupal.org pages in hand_sources did not change since they were read
+# (api-d7 JSON, never HTML). Every fetched file is cached, and --offline reads
+# only the cache: two offline runs on the same input give byte-identical files
+# and output. Nothing is written until every fetch has succeeded, so a failed
+# run leaves the data as it was.
 #
 # Usage:
 #   scripts/dev/refresh-data.sh [--dry-run] [--json] [--offline] [--cache DIR]
@@ -80,6 +85,7 @@ trap 'rm -rf "$TMP"' EXIT
 FETCHED=""; PROBED=""; GEN=""
 UA="drupilot-dev refresh-data (https://github.com/thebrokenbrain/drupilot)"
 RAW="https://git.drupalcode.org/project/drupal/-/raw"
+TREE="https://git.drupalcode.org/api/v4/projects/project%2Fdrupal/repository/tree"
 
 # The fetch helpers run in the main shell (never inside $(...), where a die
 # would only end a subshell) and hand back their result in a variable.
@@ -139,6 +145,10 @@ newest_of_major() {
 raw() { fetch "$RAW/$1/$2" "git/$1/$(printf '%s' "$2" | tr '/' '_')"; }
 # rawprobe TAG PATH -> PROBED: 200 or 404 for PATH at TAG.
 rawprobe() { probe "$RAW/$1/$2" "git/$1/$(printf '%s' "$2" | tr '/' '_')"; }
+# lstree TAG DIR -> FETCHED: the repository-tree listing (JSON) of DIR at TAG.
+lstree() { fetch "$TREE?path=$2&ref=$1&per_page=100" "api/tree-$1-$(printf '%s' "$2" | tr '/' '_').json"; }
+# libkeys FILE -> the top-level keys of a core.libraries.yml, sorted.
+libkeys() { sed -n 's/^\([A-Za-z0-9_.-][A-Za-z0-9_.-]*\):[[:space:]]*$/\1/p' "$1" | LC_ALL=C sort -u; }
 
 # generated MINOR TAG -> GEN: the generated fields of MINOR at TAG, as JSON.
 generated() {
@@ -168,9 +178,12 @@ generated() {
 }
 
 GEN_KEYS='["latest","released","php_min","php_recommended","symfony_major","twig_major","phpunit_constraint","coder_constraint","phpstan_constraint","phpstan_drupal_constraint","src"]'
+mkdir -p "$TMP/out"
 for file in "$DATA"/targets/*.json; do
   [[ -f "$file" ]] || continue
   rel="targets/$(basename "$file")"
+  jq -e 'type == "object" and (.major | type) == "number" and (.minors | type) == "object"' "$file" > /dev/null 2>&1 \
+    || die "cannot read $rel as a target file (invalid JSON, or no major/minors)" 1
   major="$(jq -r '.major' "$file")"
   pre="$(jq -r 'if .status == "pre-release" then "true" else "false" end' "$file")"
   cp "$file" "$TMP/work.json"
@@ -189,7 +202,7 @@ for file in "$DATA"/targets/*.json; do
        symfony_major: $g.symfony_major, twig_major: $g.twig_major, phpunit_constraint: $g.phpunit_constraint,
        coder_constraint: $g.coder_constraint, phpstan_constraint: $g.phpstan_constraint,
        phpstan_drupal_constraint: $g.phpstan_drupal_constraint, src: $g.src, php_src: ($o.php_src // null),
-       verified: ($o.verified // true), checked_at: ($o.checked_at // $asof)}')"
+       verified: (if $o | has("verified") then $o.verified else true end), checked_at: ($o.checked_at // $asof)}')"
     diffs="$(jq -n -c --argjson o "$old" --argjson n "$new" --argjson k "$GEN_KEYS" --arg f "$rel" --arg m "$minor" \
       '$k[] | select(($o[.] // null) != $n[.]) | {file: $f, path: ".minors[\"\($m)\"].\(.)", from: ($o[.] // null), to: $n[.]}')"
     [[ -n "$diffs" ]] || continue
@@ -201,11 +214,7 @@ for file in "$DATA"/targets/*.json; do
   if [[ "$touched" == "1" ]]; then
     jq --arg asof "$AS_OF" '.as_of = $asof' "$TMP/work.json" > "$TMP/work2.json"
     mv "$TMP/work2.json" "$TMP/work.json"
-    if [[ "$DRY" == "0" ]]; then
-      cp "$TMP/work.json" "$file"; log_ok "$rel: updated"
-    else
-      log_info "$rel: would be updated (--dry-run)"
-    fi
+    cp "$TMP/work.json" "$TMP/out/$(basename "$file")"
   fi
 
   # Removals: in the tree at the previous major's newest tag, gone (or obsolete) at the removal tag.
@@ -213,14 +222,14 @@ for file in "$DATA"/targets/*.json; do
   n="$(jq -r '.removed_extensions | length' "$file")"
   i=0
   while [[ "$i" -lt "$n" ]]; do
-    IFS="$(printf '\t')" read -r name kind rin state intro <<EOF
-$(jq -r --argjson i "$i" '.removed_extensions[$i] | [.name, .kind, .removed_in, (.state_at_removal // "absent"), (.introduced_in // "-")] | @tsv' "$file")
+    IFS="$(printf '\t')" read -r name kind rin state intro info <<EOF
+$(jq -r --argjson i "$i" '.removed_extensions[$i] | [.name, .kind, .removed_in, (.state_at_removal // "absent"), (.introduced_in // "-"), (.info_path // "-")] | @tsv' "$file")
 EOF
     i=$((i + 1))
     dir="modules"; [[ "$kind" == "theme" ]] && dir="themes"
     at="$(newest_tag "$rin" "$pre")"
     if [[ -z "$at" || -z "$prev" ]]; then mismatch "$rel" "removed_extensions.$name" "no tag to check $rin against"; continue; fi
-    info="core/$dir/$name/$name.info.yml"
+    [[ "$info" != "-" ]] || info="core/$dir/$name/$name.info.yml"
     # Present before the removal: at the previous major's newest tag, or at the
     # minor that introduced it (skipped while that minor has no stable tag).
     before="$prev"
@@ -249,6 +258,31 @@ EOF
     if grep -qF -x -- "$key:" "$FETCHED"; then mismatch "$rel" "removed_libraries.$name" "still in core.libraries.yml at $at"; fi
   done < <(jq -r '.removed_libraries[] | [.name, .removed_in] | @tsv' "$file")
 
+  # Completeness: nothing may disappear at the major's .0 without being listed.
+  at0="$(newest_tag "$major.0" "$pre")"
+  if [[ -n "$at0" && -n "$prev" ]]; then
+    raw "$prev" core/core.libraries.yml; libkeys "$FETCHED" > "$TMP/k-prev"
+    raw "$at0" core/core.libraries.yml; libkeys "$FETCHED" > "$TMP/k-at"
+    while IFS= read -r key; do
+      [[ -n "$key" ]] || continue
+      jq -e --arg n "core/$key" --arg r "$major.0" 'any(.removed_libraries[]; .name == $n and .removed_in == $r)' "$file" > /dev/null \
+        || mismatch "$rel" "removed_libraries" "core/$key is in core.libraries.yml at $prev but not at $at0, and is not listed"
+    done < <(LC_ALL=C comm -23 "$TMP/k-prev" "$TMP/k-at")
+    for dir in modules themes; do
+      lstree "$prev" "core/$dir"; jq -r '.[] | select(.type == "tree") | .name' "$FETCHED" | LC_ALL=C sort > "$TMP/d-prev"
+      [[ "$(jq 'length' "$FETCHED")" -lt 100 ]] || mismatch "$rel" "removed_extensions" "the core/$dir listing at $prev is truncated"
+      lstree "$at0" "core/$dir"; jq -r '.[] | select(.type == "tree") | .name' "$FETCHED" | LC_ALL=C sort > "$TMP/d-at"
+      while IFS= read -r name; do
+        [[ -n "$name" ]] || continue
+        # Only an extension directory counts (core/themes/engines holds none).
+        rawprobe "$prev" "core/$dir/$name/$name.info.yml"
+        [[ "$PROBED" == "200" ]] || continue
+        jq -e --arg n "$name" --arg r "$major.0" 'any(.removed_extensions[]; .name == $n and .removed_in == $r)' "$file" > /dev/null \
+          || mismatch "$rel" "removed_extensions" "core/$dir/$name is in the tree at $prev but not at $at0, and is not listed"
+      done < <(LC_ALL=C comm -23 "$TMP/d-prev" "$TMP/d-at")
+    done
+  fi
+
   # Hand sources: an api-d7 node whose `changed` moved since it was read.
   while IFS="$(printf '\t')" read -r id url recorded; do
     [[ -n "$id" ]] || continue
@@ -262,6 +296,16 @@ EOF
       log_warn "$rel: hand source $id changed on ${current:-?} (read on $recorded): re-check its fields by hand"
     fi
   done < <(jq -r '.hand_sources[] | [.id, .url, .changed] | @tsv' "$file")
+done
+
+# Every fetch succeeded: write the updated files now.
+for out in "$TMP"/out/*.json; do
+  [[ -f "$out" ]] || continue
+  if [[ "$DRY" == "0" ]]; then
+    cp "$out" "$DATA/targets/$(basename "$out")"; log_ok "targets/$(basename "$out"): updated"
+  else
+    log_info "targets/$(basename "$out"): would be updated (--dry-run)"
+  fi
 done
 
 nchanged="$(grep -c . "$TMP/changed.jsonl" || true)"

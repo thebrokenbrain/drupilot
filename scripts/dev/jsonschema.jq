@@ -10,15 +10,21 @@
 # chk($root; $sch; $p): every violation of $sch by the input, one string per
 # violation, prefixed with the instance path $p.
 # hard($root; $sch; $p): {path, node} for every instance node that a
-# subschema annotated "x-drupilot-hard-gate": true describes (data-check.sh
-# requires each of them to be verified and never "announced").
+# subschema annotated "x-drupilot-hard-gate": true describes, the annotation
+# read next to a $ref too and inside anyOf branches (data-check.sh requires
+# each of them to be verified and never "announced").
+# A $ref that does not resolve is a violation, never a silent pass. A pattern's
+# final $ matches only at the very end (jq's Oniguruma would also match before
+# a trailing newline; JSON Schema's ECMA-262 regexes do not).
 
 def tnames: if type == "number" then (if . == floor then ["number", "integer"] else ["number"] end) else [type] end;
 def deref($root): if type == "object" and has("$ref") then $root["$defs"][.["$ref"] | ltrimstr("#/$defs/")] else . end;
+def strict_end: if test("[^\\\\]\\$$") then sub("\\$$"; "\\z") else . end;
 def chk($root; $sch; $p):
   ($sch | deref($root)) as $s
   | . as $x
-  | (if ($s | type) != "object" then empty
+  | (if ($sch | type) == "object" and ($sch | has("$ref")) and ($s | type) != "object" then "\($p): unresolved $ref \($sch["$ref"])"
+     elif ($s | type) != "object" then empty
      else
        (if $s | has("type") then
           ($s.type | if type == "array" then . else [.] end) as $ts
@@ -29,7 +35,7 @@ def chk($root; $sch; $p):
        (if ($s | has("const")) and $x != $s.const then "\($p): \($x | tojson) is not \($s.const | tojson)" else empty end),
        (if ($s | has("minimum")) and ($x | type) == "number" and $x < $s.minimum then "\($p): \($x) is below \($s.minimum)" else empty end),
        (if ($s | has("minLength")) and ($x | type) == "string" and ($x | length) < $s.minLength then "\($p): shorter than \($s.minLength)" else empty end),
-       (if ($s | has("pattern")) and ($x | type) == "string" and ($x | test($s.pattern) | not) then "\($p): \($x | tojson) does not match \($s.pattern)" else empty end),
+       (if ($s | has("pattern")) and ($x | type) == "string" and ($x | test($s.pattern | strict_end) | not) then "\($p): \($x | tojson) does not match \($s.pattern)" else empty end),
        (if ($s | has("anyOf")) and (any($s.anyOf[]; . as $b | [$x | chk($root; $b; $p)] | length == 0) | not) then
           "\($p): matches no anyOf branch" else empty end),
        (if ($x | type) == "object" then
@@ -56,7 +62,9 @@ def hard($root; $sch; $p):
   | . as $x
   | if ($s | type) != "object" then empty
     else
-      (if $s["x-drupilot-hard-gate"] == true then {path: $p, node: $x} else empty end),
+      (if $s["x-drupilot-hard-gate"] == true or (($sch | type) == "object" and $sch["x-drupilot-hard-gate"] == true)
+       then {path: $p, node: $x} else empty end),
+      (($s.anyOf // [])[] as $b | $x | hard($root; $b | if type == "object" then del(.["x-drupilot-hard-gate"]) else . end; $p)),
       (if ($x | type) == "object" then
          (($s.properties // {}) | to_entries[] | select(.key as $k | $x | has($k)) | .key as $k | .value as $ps
            | $x[$k] | hard($root; $ps; "\($p).\($k)")),

@@ -86,8 +86,9 @@
       "docker_cli_image": "php:8.4-cli",
       "ddev_supported": true,
       "drupal_core_floor": null,
-      "src": "https://www.php.net/supported-versions.php ; https://www.php.net/eol.php ; https://www.php.net/releases/index.php?json&version=8.4.0 ; id and rector_level: https://raw.githubusercontent.com/rectorphp/rector-src/2.5.2/src/ValueObject/PhpVersion.php",
-      "verified": true
+      "src": "https://www.php.net/supported-versions.php ; https://www.php.net/eol.php ; https://www.php.net/releases/index.php?json&version=8.4.1 ; id and rector_level: https://raw.githubusercontent.com/rectorphp/rector-src/2.5.2/src/ValueObject/PhpVersion.php",
+      "verified": true,
+      "note": "PHP 8.4.0 was never published; 8.4.1 (2024-11-21) was the first release."
     },
     "8.5": {
       "released": "2025-11-20",

@@ -316,20 +316,176 @@
       "verified": true,
       "verified_at": "10.0.0",
       "note": "Core ships a Starterkit theme generator instead."
+    },
+    {
+      "name": "simpletest",
+      "kind": "module",
+      "removed_in": "10.0",
+      "deprecated_in": null,
+      "replacement_project": "simpletest",
+      "rewrite": "dependency",
+      "src": "https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions) ; core tree: an obsolete stub (lifecycle: obsolete, hidden) at 9.5.11, absent at 10.0.0 (https://git.drupalcode.org/project/drupal/-/tree/10.0.0/core)",
+      "verified": true,
+      "verified_at": "10.0.0",
+      "note": "SimpleTest itself left core in 9.0; 9.x kept an obsolete stub module. Its tests still run through the contributed SimpleTest module."
     }
   ],
   "removed_libraries": [
     {
       "name": "core/backbone",
       "removed_in": "10.0",
-      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.0 (core keeps internal.backbone)",
+      "deprecated_in": "9.4.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true,
+      "note": "Core keeps an internal.backbone library until 12.0."
+    },
+    {
+      "name": "core/ckeditor",
+      "removed_in": "10.0",
+      "deprecated_in": "9.5.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true
+    },
+    {
+      "name": "core/drupal.date",
+      "removed_in": "10.0",
+      "deprecated_in": "9.4.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true
+    },
+    {
+      "name": "core/jquery.cookie",
+      "removed_in": "10.0",
+      "deprecated_in": "9.0.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true
+    },
+    {
+      "name": "core/jquery.farbtastic",
+      "removed_in": "10.0",
+      "deprecated_in": "9.5.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true
+    },
+    {
+      "name": "core/jquery.form",
+      "removed_in": "10.0",
+      "deprecated_in": "9.4.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true
+    },
+    {
+      "name": "core/jquery.joyride",
+      "removed_in": "10.0",
+      "deprecated_in": "9.2.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true
+    },
+    {
+      "name": "core/jquery.once",
+      "removed_in": "10.0",
+      "deprecated_in": "9.3.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true
+    },
+    {
+      "name": "core/jquery.once.bc",
+      "removed_in": "10.0",
+      "deprecated_in": null,
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true
+    },
+    {
+      "name": "core/jquery.ui",
+      "removed_in": "10.0",
+      "deprecated_in": "9.2.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true
+    },
+    {
+      "name": "core/jquery.ui.autocomplete",
+      "removed_in": "10.0",
+      "deprecated_in": "9.2.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true
+    },
+    {
+      "name": "core/jquery.ui.button",
+      "removed_in": "10.0",
+      "deprecated_in": "9.2.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true
+    },
+    {
+      "name": "core/jquery.ui.dialog",
+      "removed_in": "10.0",
+      "deprecated_in": "9.2.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true
+    },
+    {
+      "name": "core/jquery.ui.draggable",
+      "removed_in": "10.0",
+      "deprecated_in": "9.2.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true
+    },
+    {
+      "name": "core/jquery.ui.menu",
+      "removed_in": "10.0",
+      "deprecated_in": "9.2.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true
+    },
+    {
+      "name": "core/jquery.ui.mouse",
+      "removed_in": "10.0",
+      "deprecated_in": "9.2.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true
+    },
+    {
+      "name": "core/jquery.ui.position",
+      "removed_in": "10.0",
+      "deprecated_in": "9.2.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true
+    },
+    {
+      "name": "core/jquery.ui.resizable",
+      "removed_in": "10.0",
+      "deprecated_in": "9.2.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true
+    },
+    {
+      "name": "core/jquery.ui.widget",
+      "removed_in": "10.0",
+      "deprecated_in": "9.2.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true
+    },
+    {
+      "name": "core/popperjs",
+      "removed_in": "10.0",
+      "deprecated_in": "9.5.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true
+    },
+    {
+      "name": "core/shepherd",
+      "removed_in": "10.0",
+      "deprecated_in": "9.5.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
       "verified": true
     },
     {
       "name": "core/underscore",
       "removed_in": "10.0",
-      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.0 (core keeps internal.underscore)",
-      "verified": true
+      "deprecated_in": "9.4.0",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.11",
+      "verified": true,
+      "note": "Core keeps an internal.underscore library until 12.0."
     }
   ],
   "hard_break_detectors": [

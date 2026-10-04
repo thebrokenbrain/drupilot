@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # scripts/dev/data-check.sh, the `data` gate (T-M2-01), on a scratch copy of
 # config/ and schemas/: the shipped data passes; an unverified node a hard
-# gate reads fails, and so does a version value without its source (the two
-# roadmap "done when" faults), an announced or unverified blocking catalog
-# entry, a removed-no-rule rule that does not cite php.net, a broken forbidden
+# gate reads fails (a minor, a removed extension behind a $ref, a PHP
+# version), and so does a version value without its source (the two roadmap
+# "done when" faults), an unresolved $ref, a pattern matched only before a
+# trailing newline, an announced or unverified blocking catalog entry, a removed-no-rule rule that does not cite php.net, a broken forbidden
 # route, a minor of the wrong major and a missing core file. An unverified
 # advisory note (namespace_moves) is allowed.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
@@ -39,7 +40,18 @@ edit targets/12.json '.upgrade_from_min.verified = false'
 assert_match "an unverified upgrade floor fails" "$(dc)" '^1\|hard-gate: \$\.upgrade_from_min'
 edit targets/12.json '.removed_libraries[0].verified = false'
 assert_match "an unverified removed library fails" "$(dc)" '^1\|hard-gate: \$\.removed_libraries\[0\]'
+edit targets/12.json '.removed_extensions[0].verified = false'
+assert_match "an unverified removed extension (a \$ref next to the annotation) fails" "$(dc)" '^1\|hard-gate: \$\.removed_extensions\[0\]'
+edit targets/12.json '.as_of = "2026-10-04\n"'
+assert_match "a value that matches a pattern only before a trailing newline fails" "$(dc)" '^1\|schema: \$\.as_of: .* does not match'
 undo targets/12.json
+edit php/versions.json '.versions["8.5"].verified = false'
+assert_match "an unverified PHP version (its core floor drives php_supported_for) fails" "$(dc)" '^1\|hard-gate: \$\.versions\.8\.5'
+undo php/versions.json
+cp "$r/schemas/target.schema.json" "$T_TMP/target.schema.json"
+jq '.properties.as_of = {"$ref": "#/$defs/no_such_def"}' "$T_TMP/target.schema.json" > "$r/schemas/target.schema.json"
+assert_match "a \$ref that does not resolve fails" "$(dc)" '^1\|schema: \$\.as_of: unresolved \$ref #/\$defs/no_such_def'
+cp "$T_TMP/target.schema.json" "$r/schemas/target.schema.json"
 
 edit php/rules.json '(.rules[] | select(.id == "removed-each") | .src) = "02-F9"'
 assert_match "a verified removed-no-rule rule must cite php.net" "$(dc)" '^1\|coherence: removed-each: a verified removed-no-rule rule must cite php\.net'

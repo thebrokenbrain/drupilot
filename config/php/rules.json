@@ -192,10 +192,10 @@
       "rule": "Rector\\CodingStyle\\Rector\\FuncCall\\ConsistentImplodeRector",
       "kind": "compat",
       "deprecated_in": "7.4",
-      "removed_in": null,
+      "removed_in": "8.0",
       "output_min_php": null,
       "drupal_safe": true,
-      "src": "https://www.php.net/manual/en/migration74.deprecated.php",
+      "src": "https://www.php.net/manual/en/migration74.deprecated.php ; https://www.php.net/manual/en/migration80.incompatible.php",
       "rule_src": "https://github.com/rectorphp/rector-src/tree/2.5.2/rules/CodingStyle/Rector/FuncCall/ConsistentImplodeRector.php",
       "verified": true,
       "construct": "implode() with its parameters in the historical order"
@@ -350,7 +350,8 @@
       "src": "https://www.php.net/manual/en/migration70.removed-exts-sapis.php",
       "verified": true,
       "construct": "the mysql extension (mysql_* functions)",
-      "detect": "ere:(^|[^A-Za-z0-9_>:$])mysql_[a-z_]+[[:space:]]*\\("
+      "detect": "ere:(^|[^A-Za-z0-9_>:$])mysql_[a-z_]+[[:space:]]*\\(",
+      "exclude": "ere:function[[:space:]]+&?mysql_[a-z_]+[[:space:]]*\\("
     },
     {
       "id": "removed-ereg-ext",
@@ -363,7 +364,8 @@
       "src": "https://www.php.net/manual/en/migration70.removed-exts-sapis.php",
       "verified": true,
       "construct": "the ereg extension (ereg(), eregi(), ereg_replace(), eregi_replace(), split(), spliti())",
-      "detect": "ere:(^|[^A-Za-z0-9_>:$])(eregi?|eregi?_replace|spliti?)[[:space:]]*\\("
+      "detect": "ere:(^|[^A-Za-z0-9_>:$])(eregi?|eregi?_replace|spliti?)[[:space:]]*\\(",
+      "exclude": "ere:function[[:space:]]+&?(eregi?|eregi?_replace|spliti?)[[:space:]]*\\("
     },
     {
       "id": "removed-each",
@@ -376,7 +378,8 @@
       "src": "https://www.php.net/manual/en/migration72.deprecated.php ; https://www.php.net/manual/en/migration80.incompatible.php",
       "verified": true,
       "construct": "each()",
-      "detect": "ere:(^|[^A-Za-z0-9_>:$])each[[:space:]]*\\("
+      "detect": "ere:(^|[^A-Za-z0-9_>:$])each[[:space:]]*\\(",
+      "exclude": "ere:function[[:space:]]+&?each[[:space:]]*\\("
     },
     {
       "id": "removed-create-function",
@@ -389,7 +392,8 @@
       "src": "https://www.php.net/manual/en/migration72.deprecated.php ; https://www.php.net/manual/en/migration80.incompatible.php",
       "verified": true,
       "construct": "create_function()",
-      "detect": "ere:(^|[^A-Za-z0-9_>:$])create_function[[:space:]]*\\("
+      "detect": "ere:(^|[^A-Za-z0-9_>:$])create_function[[:space:]]*\\(",
+      "exclude": "ere:function[[:space:]]+&?create_function[[:space:]]*\\("
     }
   ]
 }

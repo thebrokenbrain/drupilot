@@ -13,9 +13,9 @@
 #   reference/choices.md            config/choices.json
 #   reference/toolchain.md          config/toolchain-reference.json
 #   reference/deprecations.md       config/deprecations.json (Drupal's deprecations)
-#   reference/version-matrix.md     config/targets/*.json + config/php/versions.json
-#                                   (every value with its as_of, source, verified
-#                                   and verified_as)
+#   reference/version-matrix.md     config/targets/*.json, config/php/*.json and
+#                                   config/paths/*.json (every value with its
+#                                   as_of, source, verified and verified_as)
 # The output is byte-identical on every platform (bash 3.2, BSD/BusyBox,
 # mawk, jq 1.6): sorted with LC_ALL=C, no timestamps, paths or tool versions.
 # A "See" link is written only when its docs page exists.
@@ -236,12 +236,14 @@ gen_version_matrix() {
     jq -r "$JQ_ESC"'
       def cell: if . == null then "" elif type == "array" then join(", ") else tostring end | gsub("\\|"; "\\|");
       def yes: if . == true then "yes" else "no" end;
+      def nv: if .verified == true then "" else " (not verified)" end;
       "\n## Drupal \(.major)\n",
-      "- **Status:** \(.status) (checked \(.status_src.checked_at) in <\(.status_src.url)>\(if .status_src.note then ": \(.status_src.note | esc)" else "" end))",
+      "- **Status:** \(.status)\(.status_src | nv) (checked \(.status_src.checked_at) in <\(.status_src.url)>\(if .status_src.note then ": \(.status_src.note | esc)" else "" end))",
       "- **As of:** \(.as_of)",
-      "- **Released:** \(.released.actual // ("planned " + (.released.planned // "unknown"))) (\(.released.src | esc))",
-      "- **End of life:** \(.eol.date // .eol.text // "unknown" | esc) (\(.eol.src | esc))",
-      "- **Updates from:** \(.upgrade_from_min.value // "unknown") (\(.upgrade_from_min.src | esc))",
+      "- **Released:** \(.released.actual // ("planned " + (.released.planned // "unknown")))\(.released | nv) (\(.released.src | esc))",
+      "- **End of life:** \(.eol.date // .eol.text // "unknown" | esc)\(.eol | nv) (\(.eol.src | esc))",
+      "- **Updates from:** \(.upgrade_from_min.value // "unknown")\(.upgrade_from_min | nv) (\(.upgrade_from_min.src | esc))",
+      (if .rector_sets then "- **drupal-rector sets:** " + ([.rector_sets.own_major[], (.rector_sets.breaking // [])[] | "`\(.)`"] | join(", ")) + "\(.rector_sets | nv) (\(.rector_sets.src | esc))" else empty end),
       "- **DDEV project type:** `\(.ddev_type)`\(if .composer_stability_while_prerelease then "; Composer stability while a pre-release: `\(.composer_stability_while_prerelease)`" else "" end)",
       (if .toolchain_cell then "- **Toolchain cell:** `\(.toolchain_cell)`" else empty end),
       (if .php_defaults then "- **PHP defaults:** `DRUPILOT_PHP_TARGET` \(.php_defaults.env), PHP_TARGET tab \(.php_defaults.tab)" else empty end),
@@ -269,12 +271,12 @@ gen_version_matrix() {
        else empty end),
       (if (.removed_libraries | length) > 0 then
         "\n### Removed core libraries\n",
-        (.removed_libraries[] | "- `\(.name)`, removed in \(.removed_in)\(if .verified then "" else " (not verified)" end): \(.src | esc)")
+        (.removed_libraries[] | "- `\(.name)`, removed in \(.removed_in)\(if .deprecated_in then ", deprecated in \(.deprecated_in)" else "" end)\(nv): \(.src | esc)\(if .note then " \(.note | esc)" else "" end)")
        else empty end),
       (if ((.namespace_moves // []) | length) > 0 then
         "\n### Advisory notes\n",
         "Never a hard gate.\n",
-        (.namespace_moves[] | "- `\(.name)`: `\(.from_ns)` moves to `\(.to_ns)` in \(.introduced_in) (\(if .verified_as then "announced, re-verify at " + (.reverify_at | join(", ")) else "verified" end)). \(.note // "" | esc) Source: \(.src | esc)")
+        (.namespace_moves[] | "- `\(.name)`: \(if .classes then ([.classes[] | "`\(.)`"] | join(", ")) + " move from `\(.from_ns)` to `\(.to_ns)`" else "`\(.from_ns)` moves to `\(.to_ns)`" end) in \(.introduced_in) (\(if .verified_as then "announced, re-verify at " + (.reverify_at | join(", ")) else "verified" end)). \(.note // "" | esc) Source: \(.src | esc)")
        else empty end)
     ' "$REPO/config/targets/$f"
   done
@@ -290,6 +292,38 @@ gen_version_matrix() {
     "",
     (.versions | to_entries[] | "- \(.key): \(.value.src | esc)\(if .value.note then " \(.value.note | esc)" else "" end)")
   ' "$REPO/config/php/versions.json"
+  jq -r "$JQ_ESC"'
+    def cell: if . == null then "" else tostring end;
+    def short: if . == null then "" else split("\\") | last end;
+    "\n## PHP rules\n",
+    "As of \(.as_of); rule classes read in rector-src \(.rector_version). compat: a deprecation fix whose output runs on the PHP floor; deny: never applied, also inside a level set; report-only: reported, never rewritten; removed-no-rule: a removed construct no rule fixes.\n",
+    "| Id | Kind | Rector rule | Deprecated in | Removed in | Output needs PHP | Drupal-safe | Verified |",
+    "|---|---|---|---|---|---|---|---|",
+    (.rules[] | "| `\(.id)` | \(.kind) | \(if .rule then "`\(.rule | short)`" else "" end) | \(.deprecated_in | cell) | \(.removed_in | cell) | \(.output_min_php | cell) | \(.drupal_safe | cell) | \(if .verified then "yes" else "no" end) |"),
+    "",
+    "Sources:",
+    "",
+    (.rules[] | "- `\(.id)`: \(.src | esc)\(if .note then " \(.note | esc)" else "" end)\(if .reason then " \(.reason | esc)" else "" end)")
+  ' "$REPO/config/php/rules.json"
+  jq -r --slurpfile g "$REPO/config/paths/graph.json" "$JQ_ESC"'
+    "\n## Upgrade paths\n",
+    "As of \(.as_of). Each source era is recognised by its signals; the graph says what each hop runs (always in the target workspace). A source and target of the same major need no hop.\n",
+    "### Source eras\n",
+    "| Era | Track | Signal | Kind | Looks for | Removed in | Verified |",
+    "|---|---|---|---|---|---|---|",
+    (.eras | to_entries[] | .key as $e | .value.track as $t | .value.signals[] | "| \($e) | \($t) | `\(.id)` | \(.kind) | `\(.match | gsub("\\|"; "\\|"))` | \(.removed_in // "") | \(if .verified then "yes" else "no" end) |"),
+    "",
+    "### Hops\n",
+    "| Hop | Kind | Rule sets | Detectors | Test conversions | Notes |",
+    "|---|---|---|---|---|---|",
+    ($g[0].edges[] | "| \(.from) to \(.to) | \(.kind)\(if .experimental then " (experimental)" else "" end) | \(.set_family // "" )\(if .always_sets then ", always " + (.always_sets | join(", ")) else "" end) | \((.detectors // []) | join(", ")) | \((.test_conversions // []) | join(", ")) | \(if .stages then "stages: " + (.stages | join(", ")) else "" end)\(if .requires_reference_scan == "decided-by-spike" then "reference scan decided by spike AR-39" else "" end) |"),
+    "",
+    ($g[0].forbidden[]? | "Forbidden: \(.from) to \(.to) directly (\(.reason | esc)); the route is \(.route | join(", then "))."),
+    "",
+    "Sources:",
+    "",
+    (.eras | to_entries[] | .value.signals[] | "- `\(.id)`: \(.src | esc)\(if .note then " \(.note | esc)" else "" end)")
+  ' "$REPO/config/paths/eras.json"
 }
 
 generate() {  # <dir>
