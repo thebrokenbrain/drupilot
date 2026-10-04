@@ -8,12 +8,17 @@
 # `/bin/bash scripts/dev/unit.sh` on macOS tests stock bash 3.2 end to end.
 # A test exits 0 (pass), 77 (skipped: its invariant belongs to a later
 # milestone) or anything else (fail); it prints "ok - ..." / "not ok - ..."
-# lines (tests/lib/assert.sh).
+# lines and ends with t_done's "# <name>: N passed, M failed" (tests/lib/
+# assert.sh). Exit 0 counts as a pass only with that line, at least one
+# assertion and no "not ok" line, so a forgotten t_done or an early `exit 0`
+# fails. Each test runs with stdin from /dev/null, without a controlling
+# terminal where `setsid --wait` exists, and under a 300 s timeout where
+# `timeout` exists, so a test that would prompt fails instead of blocking.
 #
 # Usage:
 #   scripts/dev/unit.sh [--only T1,T2] [--json] [--list] [-h|--help]
 #     --only   run a subset (test names: the file names without .sh)
-#     --json   machine summary on STDOUT (the test output goes to STDERR):
+#     --json   machine summary on STDOUT (the test output still goes to STDERR):
 #              {ok, bash, tests:[{name, status: pass|fail|skip, detail,
 #                                 failures:[..]}]}
 #     --list   print the test names, one per line, and exit
@@ -64,13 +69,26 @@ RESULTS="$TMP/results.jsonl"
 : > "$RESULTS"
 FAILED=0
 
+# Detach each test from the controlling terminal when `setsid --wait` exists
+# (util-linux); BusyBox and macOS have no such flag and run it as is.
+DETACH=""
+if have_cmd setsid && setsid --wait true < /dev/null > /dev/null 2>&1; then DETACH="setsid --wait"; fi
+
 log_step "drupilot unit tests (bash ${BASH_VERSION:-?}, $(uname -s 2>/dev/null || echo ?))"
 while IFS="$(printf '\t')" read -r name path; do
   [[ -n "$name" ]] || continue
   if [[ -n "$ONLY" ]] && ! in_list "$name" "$ONLY"; then continue; fi
-  if "$SH" "$path" > "$TMP/$name.out" 2>&1 < /dev/null; then rc=0; else rc=$?; fi
+  # shellcheck disable=SC2086  # DETACH is empty or two words
+  if run_with_timeout 300 $DETACH "$SH" "$path" > "$TMP/$name.out" 2>&1 < /dev/null; then rc=0; else rc=$?; fi
+  n_ok="$(grep -c '^ok - ' "$TMP/$name.out" || true)"
+  if [[ "$rc" == "0" ]]; then
+    if grep -q '^not ok - ' "$TMP/$name.out"; then rc="0 with a not-ok line"
+    elif ! grep -qE "^# [^:]+: [0-9]+ passed, 0 failed\$" "$TMP/$name.out"; then rc="0 without t_done's summary line"
+    elif [[ "$n_ok" == "0" ]]; then rc="0 with no assertion"
+    fi
+  fi
   case "$rc" in
-    0)  status="pass"; detail="$(grep -c '^ok - ' "$TMP/$name.out" || true) assertion(s)"; log_ok "$name";;
+    0)  status="pass"; detail="$n_ok assertion(s)"; log_ok "$name";;
     77) status="skip"; detail="$(sed -n 's/^skip - //p' "$TMP/$name.out" | head -n 1)"; log_warn "$name: skipped — $detail";;
     *)  status="fail"; detail="exit $rc, $(grep -c '^not ok - ' "$TMP/$name.out" || true) failed assertion(s)"; FAILED=1
         log_err "$name: FAILED — $detail"
@@ -80,7 +98,7 @@ while IFS="$(printf '\t')" read -r name path; do
   failures="$( { grep '^not ok - ' "$TMP/$name.out" || true; } | jq -R . | jq -s -c .)"
   jq -n -c --arg n "$name" --arg s "$status" --arg d "$detail" --argjson f "$failures" \
     '{name:$n, status:$s, detail:$d, failures:$f}' >> "$RESULTS"
-  [[ "$AS_JSON" == "1" ]] || sed 's/^/  /' "$TMP/$name.out" >&2
+  sed 's/^/  /' "$TMP/$name.out" >&2
 done <<< "$TESTS"
 
 if [[ "$FAILED" == "1" ]]; then log_err "unit.sh: at least one test failed"

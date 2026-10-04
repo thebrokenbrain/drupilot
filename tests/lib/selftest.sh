@@ -42,6 +42,10 @@ assert_eq "assert_tree_unchanged: a changed file" "$(outcome 'assert_tree_unchan
 assert_eq "t_done: all passed" "$(exit_of 'assert_eq x a a; t_done')" "0"
 assert_eq "t_done: a failure" "$(exit_of 'assert_eq x a b; t_done')" "1"
 assert_eq "t_skip" "$(exit_of 't_skip later')" "77"
+assert_eq "t_run: an exit in the command ends only its subshell" "$(exit_of 'f() { exit 0; }; t_run f; assert_eq x a b; t_done')" "1"
+assert_eq "t_run: and its exit code is captured" "$(outcome 'f() { exit 3; }; t_run f; assert_eq x "$T_RC" 3')" "ok"
+assert_eq "t_run without t_isolate leaves no temp file behind" \
+  "$(d="$T_TMP/td"; mkdir -p "$d"; TMPDIR="$d" "$T_SH" -c '. "$1"; t_run true' _ "$T_REPO/tests/lib/assert.sh"; find "$d" -mindepth 1 | grep -c . || true)" "0"
 assert_eq "t_isolate: DRUPILOT_* unset, HOME inside the temp dir" \
   "$(env DRUPILOT_HOME=/x DRUPILOT_PHP_TARGET=8.5 "$T_SH" -c '. "$1"; t_isolate; printf "%s|%s|%s" "${DRUPILOT_HOME:-unset}" "${DRUPILOT_PHP_TARGET:-unset}" "$(case "$HOME" in ("$T_TMP"/*) echo inside;; (*) echo outside;; esac)"' _ "$T_REPO/tests/lib/assert.sh" 2>/dev/null)" \
   "unset|unset|inside"

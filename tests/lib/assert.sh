@@ -25,14 +25,20 @@
 #   assert_tree_unchanged <label> <dir> <cmd...>     (no path added, removed or
 #                                                     changed under <dir>)
 # Helpers:
-#   t_isolate   a temp dir ($T_TMP) as HOME and XDG dirs; every DRUPILOT_*,
+#   t_isolate   a temp dir ($T_TMP) as HOME, XDG dirs and working directory
+#               (so no caller's .drupilot.json is found); every DRUPILOT_*,
 #               CLAUDE_PLUGIN_DATA and CLAUDE_CONFIG_DIR unset;
 #               CLAUDE_PLUGIN_ROOT is the repo; removed on exit (T_KEEP=1 keeps it)
-#   t_run <cmd...>  runs cmd (stdin /dev/null): STDOUT in $T_OUT (a file),
-#               STDERR in $T_ERR, exit code in $T_RC
+#   t_run <cmd...>  runs cmd in a subshell (stdin /dev/null; an `exit` in a
+#               function under test ends only the subshell): STDOUT in $T_OUT
+#               (a file), STDERR in $T_ERR, exit code in $T_RC
 #   t_out, t_err   print the captured STDOUT / STDERR
-#   t_path_without <cmd>  print a directory holding a symlink to every command
-#               of $PATH but <cmd> (PATH="$(t_path_without jq)" hides jq)
+#   t_path_without <cmd...>  print a directory holding a symlink to every
+#               command of $PATH but the named ones
+#               (PATH="$(t_path_without jq)" hides jq)
+#   t_unwritable_home  print a HOME no process can write, root included (a
+#               read-only directory, or a path under a regular file for root,
+#               which ignores directory permissions)
 #   t_skip <reason>, t_done
 # Paths: $T_REPO (the repository), $T_LIB (scripts/lib/common.sh), $T_SH (the
 # bash running the test: the runner passes its own, so /bin/bash 3.2 on macOS
@@ -72,6 +78,19 @@ t_isolate() {
   mkdir -p "$HOME" "$T_TMP/out"
   T_OUT="$T_TMP/out/stdout"; T_ERR="$T_TMP/out/stderr"
   trap '_t_cleanup' EXIT
+  cd "$T_TMP" || exit 1
+  return 0
+}
+
+# _t_scratch -> a removed-on-exit $T_TMP for T_OUT/T_ERR when t_isolate did
+# not run (the self-test's child shells), so nothing is left in $TMPDIR.
+_t_scratch() {
+  [[ -n "$T_TMP" ]] || {
+    T_TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-unit.XXXXXX")" || { echo "t_run: mktemp failed" >&2; exit 1; }
+    trap '_t_cleanup' EXIT
+  }
+  mkdir -p "$T_TMP/out"
+  T_OUT="$T_TMP/out/stdout"; T_ERR="$T_TMP/out/stderr"
   return 0
 }
 
@@ -83,8 +102,8 @@ _t_cleanup() {
 }
 
 t_run() {
-  [[ -n "$T_OUT" ]] || { T_OUT="$(mktemp)"; T_ERR="$(mktemp)"; }
-  if "$@" > "$T_OUT" 2> "$T_ERR" < /dev/null; then T_RC=0; else T_RC=$?; fi
+  [[ -n "$T_OUT" ]] || _t_scratch
+  if ( "$@" ) > "$T_OUT" 2> "$T_ERR" < /dev/null; then T_RC=0; else T_RC=$?; fi
   return 0
 }
 t_out() { cat "$T_OUT" 2>/dev/null; return 0; }
@@ -148,7 +167,8 @@ assert_tree_unchanged() {
 }
 
 t_path_without() {
-  local dir="$T_TMP/path-without-$1" p
+  local dir p c
+  dir="$T_TMP/path-without-$(printf '%s-' "$@")"
   if [[ ! -d "$dir" ]]; then
     mkdir -p "$dir"
     local IFS=:
@@ -156,9 +176,21 @@ t_path_without() {
       [[ -d "$p" ]] || continue
       ln -s "$p"/* "$dir"/ 2>/dev/null || true
     done
-    rm -f "$dir/$1"
+    for c in "$@"; do rm -f "$dir/$c"; done
   fi
   printf '%s' "$dir"
+  return 0
+}
+
+t_unwritable_home() {
+  local h="$T_TMP/rohome"
+  if [[ "$(id -u 2>/dev/null || echo 1)" == "0" ]]; then
+    : > "$T_TMP/not-a-dir"
+    h="$T_TMP/not-a-dir/home"
+  else
+    mkdir -p "$h" && chmod a-w "$h"
+  fi
+  printf '%s' "$h"
   return 0
 }
 
