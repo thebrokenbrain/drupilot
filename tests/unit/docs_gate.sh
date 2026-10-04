@@ -3,7 +3,8 @@
 # scratch copy of what it reads: it passes (or only warns about the root
 # FLOW*.md) on HEAD, and fails on each injected fault: an ADR page with no nav
 # line, a nav entry with no page, a drifted generated page, a broken relative
-# link, a README-section citation and a citation of a missing docs page.
+# link, a README-section citation and a citation of a missing docs page. A
+# root FLOW*.md is only noted; a Spanish page under docs/ warns.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
 r="$T_TMP/tree"; mkdir -p "$r"
@@ -15,8 +16,13 @@ gate() {
 }
 assert_eq "HEAD passes (no FLOW*.md in the copy)" "$(gate | cut -d'|' -f1)" "pass"
 printf '# FLOW\n' > "$r/FLOW.md"
-assert_match "a root FLOW*.md only warns" "$(gate)" '^warn\|FLOW\.md at the repository root'
+assert_eq "a root FLOW*.md is only noted" "$(gate | cut -d'|' -f1)" "pass"
+assert_match "... in the detail" "$("$T_SH" "$r/scripts/dev/check.sh" --only docs --json 2>/dev/null | jq -r '.gates[0].detail')" 'to move into docs/concepts/how-it-works\.md: FLOW\.md$'
 rm "$r/FLOW.md"
+printf '# Hola\n' > "$r/docs/index_es.md"; cp "$r/mkdocs.yml" "$T_TMP/mk0.bak"
+sed 's#^  - Home: index.md#  - Home: index.md\n  - Inicio: index_es.md#' "$T_TMP/mk0.bak" > "$r/mkdocs.yml"
+assert_match "a Spanish page under docs/ warns" "$(gate)" '^warn\|docs/index_es\.md \(the site is English only\)'
+rm "$r/docs/index_es.md"; cp "$T_TMP/mk0.bak" "$r/mkdocs.yml"
 
 printf '# 9999 — An orphan\n' > "$r/docs/contributing/adr/9999-orphan.md"
 assert_eq "an ADR page with no nav line fails" "$(gate)" "fail|docs/contributing/adr/9999-orphan.md is not in the mkdocs.yml nav"

@@ -75,8 +75,10 @@
 #                 exists; no plugin file (commands, skills, agents, scripts but
 #                 scripts/dev, hooks) cites a README section (`README "` /
 #                 `README.md (`) or a docs/*.md page that does not exist; every
-#                 relative .md link inside docs/ resolves. A docs/*_es.md, a
-#                 docs/es/ or a root FLOW*.md only warns (English-only site)
+#                 relative .md link inside docs/ resolves. A docs/*_es.md or a
+#                 docs/es/ only warns (English-only site); a root FLOW*.md is
+#                 only noted in the detail (its content moves to the docs in
+#                 the content step, M11)
 #   - schemas     the persisted 0.9 artifacts validate against schemas/
 #                 (scripts/dev/schema-check.sh: jq always, check-jsonschema
 #                 where it is installed; a failure with --ci when it is not)
@@ -585,12 +587,12 @@ gate_docs() {
   done < "$pages"
   # 5. English only (warn).
   ( cd "$REPO/docs" && find . -name '*_es.md' -o -type d -name es ) | sed 's#^\./#docs/#; s#$# (the site is English only)#' >> "$warn"
-  for f in "$REPO"/FLOW*.md; do
-    [[ -f "$f" ]] && echo "${f#"$REPO"/} at the repository root (its content moves to docs/concepts/how-it-works.md)" >> "$warn"
-  done
+  local flow=""
+  for f in "$REPO"/FLOW*.md; do [[ -f "$f" ]] && flow="$flow ${f#"$REPO"/}"; done
+  [[ -z "$flow" ]] || flow="; to move into docs/concepts/how-it-works.md:$flow"
   if [[ -s "$out" ]]; then record docs fail "the docs site is inconsistent" "$out"
   elif [[ -s "$warn" ]]; then record docs warn "$(grep -c . "$pages") pages consistent; $(grep -c . "$warn") language note(s)" "$warn"
-  else record docs pass "$(grep -c . "$pages") pages: generated pages current, nav complete, citations and links resolve"; fi
+  else record docs pass "$(grep -c . "$pages") pages: generated pages current, nav complete, citations and links resolve$flow"; fi
 }
 
 gate_schemas() {

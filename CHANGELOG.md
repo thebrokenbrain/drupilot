@@ -99,7 +99,8 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `docs/reference/state.md` documents the per-module state record. The new
   `docs` gate fails on drift, on a page missing from the nav or a nav entry
   missing from `docs/`, on a plugin file citing a README section or a missing
-  page, and on a broken link between pages. `.github/workflows/docs.yml`
+  page, and on a broken link between pages (a root `FLOW*.md` is only
+  noted). `.github/workflows/docs.yml`
   builds the site on every pull request and deploys it to GitHub Pages only
   on a `v*` tag or a manual run.
 - **Architecture decision records** in `docs/contributing/adr/`: the owner's

@@ -3079,8 +3079,10 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
                 exists; no plugin file (commands, skills, agents, scripts but
                 scripts/dev, hooks) cites a README section (`README "` /
                 `README.md (`) or a docs/*.md page that does not exist; every
-                relative .md link inside docs/ resolves. A docs/*_es.md, a
-                docs/es/ or a root FLOW*.md only warns (English-only site)
+                relative .md link inside docs/ resolves. A docs/*_es.md or a
+                docs/es/ only warns (English-only site); a root FLOW*.md is
+                only noted in the detail (its content moves to the docs in
+                the content step, M11)
   - schemas     the persisted 0.9 artifacts validate against schemas/
                 (scripts/dev/schema-check.sh: jq always, check-jsonschema
                 where it is installed; a failure with --ci when it is not)
