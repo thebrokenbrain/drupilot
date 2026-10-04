@@ -106,7 +106,7 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   or a manual run.
 - **Architecture decision records** in `docs/contributing/adr/`: the owner's
   answers to the 1.0 plan's open questions (0000) and the decisions taken
-  while building M1 (0007–0013).
+  while building M1 and M2 (0007–0014).
 - **JSON Schemas for the persisted artifacts** (`schemas/`): the port
   summary (v1), `assess.json`, `last-test.json`, `port-manifest.json`, the
   lockfile and `preflight --json`, describing 0.9 as it is.
@@ -115,8 +115,61 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   preflight) with `check-jsonschema` 0.38.2 where installed (CI, or a pinned
   Docker image) and always with a jq structural validator; the new `schemas`
   gate runs it.
+- **Version data, with its sources.** `config/targets/{10,11,12}.json` (one
+  file per Drupal major: status, release and end-of-life dates, the oldest
+  core a site must run before it can update, every minor's newest tag, PHP
+  floor, recommended PHP, PHP support from drupal.org's requirements table,
+  Symfony/Twig majors and PHPUnit/Coder/PHPStan constraints, the core modules,
+  themes and libraries each major removed, the per-minor drupal-rector sets),
+  `config/php/versions.json` (each PHP minor's lifecycle and tool ids) and
+  `config/php/rules.json` (the PHP compat, deny, report-only and
+  removed-without-rule entries), `config/paths/eras.json` and `graph.json` (the
+  source-era fingerprints and the upgrade hop graph). Every value names its
+  source and whether it was verified; an unknown value is `null` or a minor
+  `{"status": "detect"}`. Schemas in `schemas/` (target, php-versions,
+  php-rules, paths, catalog). The removals follow the core tree at both
+  tags: every module (nested ones included, such as
+  `node_storage_body_field` and `search_node`), theme and
+  `core.libraries.yml` key that disappears at a major's .0 is listed (22
+  libraries in 10.0, 14 in 11.0, 3 in 12.0), and
+  Migrate Drupal and Migrate Drupal UI are recorded as still shipped in
+  12.0.0-beta1 with `lifecycle: obsolete`.
+- **`scripts/dev/refresh-data.sh`** (developer only, never run by a port)
+  regenerates the derived fields of `config/targets/*.json` from packagist and
+  git.drupalcode.org at each minor's newest tag, keeps the hand-maintained
+  fields, checks every removed extension and library against the core tree at
+  both tags, reports any extension (every `.info.yml` under `core/modules`
+  and `core/themes`, nested modules included, listed from a tree-only git
+  fetch of each tag) or library that disappears at a major's .0 without
+  being listed, and reports a drupal.org page (read
+  through api-d7) that changed since it was read. Every fetch is cached;
+  `--offline` runs are byte-identical, and nothing is written unless every
+  fetch succeeded.
+- **The `data` gate** (`scripts/dev/data-check.sh`): the version data and any
+  `config/catalog/*.json` match their schema, every value names its source,
+  every node a hard gate reads is verified and never "announced", and the
+  files agree with each other. The `schemas` gate validates the same files
+  with `check-jsonschema` too.
+- **`scripts/lib/plan.sh`**, sourced by `common.sh`: `target_get`,
+  `php_window`, `php_bounds_for_range` (the PHP window of a declared core
+  range: `^10 || ^11` gives 8.1 to 8.5; nothing when a major is not in the
+  data) and `core_version_cmp`, which orders
+  pre-releases (`12.0.0-beta1` < `12.0.0`) but reads a minor or a branch as
+  the whole branch (`12.0.0-beta1` == `12.0`).
+- **`docs/reference/version-matrix.md`**, generated from the version data by
+  `scripts/dev/gen-docs.sh`.
 
 ### Changed
+- `php_supported_for` reads `config/targets` and `config/php/versions.json`
+  instead of a table in `common.sh`. Its answers are unchanged (a unit test
+  pins the whole grid). `DRUPILOT_VERSION_DATA_DIR` (internal) points it at
+  another copy of the data.
+- The jq schema validator moved to `scripts/dev/jsonschema.jq` and learned
+  `anyOf`, `pattern`, `propertyNames`, `minItems`, `minLength` and a schema
+  as `additionalProperties`. Every `$ref` of every schema must resolve
+  (checked once per schema, whatever the instances reach), and a pattern's
+  final `$` no longer matches before a trailing newline (as in JSON
+  Schema).
 - The logo moved from `assets/` to `docs/assets/` (the README image paths
   follow), and `/drupilot-status` and `scripts/env/state.sh` cite
   `docs/reference/state.md` instead of a README section.

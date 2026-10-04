@@ -345,4 +345,4 @@ Pre-answers one tabbed choice, so it is not asked. See Pre-answering tabbed choi
 
 ## Internal
 
-Not user configuration (free to change within 1.x): `DRUPILOT_BASELINE_REF`, `DRUPILOT_COMMON_SH`, `DRUPILOT_DETECTED_PHP_FLOOR`, `DRUPILOT_PROJECT_DIR`, `DRUPILOT_TPL_*`.
+Not user configuration (free to change within 1.x): `DRUPILOT_BASELINE_REF`, `DRUPILOT_COMMON_SH`, `DRUPILOT_DETECTED_PHP_FLOOR`, `DRUPILOT_PROJECT_DIR`, `DRUPILOT_TPL_*`, `DRUPILOT_VERSION_DATA_DIR`.

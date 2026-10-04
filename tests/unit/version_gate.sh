@@ -14,7 +14,7 @@ unset GITHUB_BASE_REF GITHUB_REF_NAME GITHUB_REF_TYPE RELEASE_FROM
 r="$T_TMP/repo"
 mkdir -p "$r/scripts/dev" "$r/scripts/lib" "$r/config" "$r/.claude-plugin"
 cp "$T_REPO/scripts/dev/check.sh" "$r/scripts/dev/"
-cp "$T_REPO/scripts/lib/common.sh" "$r/scripts/lib/"
+cp "$T_REPO"/scripts/lib/*.sh "$r/scripts/lib/"
 cp "$T_REPO/config/defaults.json" "$T_REPO/config/migrations.json" "$T_REPO/config/config-reference.json" "$r/config/"
 # changelog <version...> -> a CHANGELOG.md with those released headings, in order.
 changelog() {

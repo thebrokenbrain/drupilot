@@ -748,27 +748,10 @@ php_target_unconfirmed() {
   [[ "$v" == "8.5" ]]
 }
 
-# php_supported_for <core-minor> <php> -> "yes", "no" or "unknown": whether
-# Drupal core <core-minor> (X.Y) supports PHP <php> (X.Y), per drupal.org's PHP
-# requirements page (api-d7 node 2891690, page of 2026-08-04, re-read
-# 2026-10-03): 10.4-10.6 run 8.1-8.4; 11.1-11.4 run 8.3 and 8.4, not 8.1/8.2;
-# 8.5 runs on 11.3, 11.4 and 12.0 only (never on 11.2 or earlier); 12.0 runs
-# nothing older than 8.5; 8.6 runs on none of 10.4-11.3 (11.4 and 12.0 point
-# at an open issue). Any other pair (an unlisted or future minor, 8.6 on 11.4
-# or 12.0) is "unknown": detect it at runtime, never assume it.
-php_supported_for() {
-  local minor php
-  minor="$(printf '%s' "${1:-}" | sed -n 's/^v\{0,1\}\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
-  php="$(printf '%s' "${2:-}" | sed -n 's/^\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
-  if [[ -z "$minor" || -z "$php" ]]; then printf 'unknown'; return 0; fi
-  case "$minor:$php" in
-    10.[456]:8.[1234]|11.[1234]:8.[34]|11.[34]:8.5|12.0:8.5) printf 'yes';;
-    10.[456]:8.[56]|11.[12]:8.[1256]|11.3:8.[126]|11.4:8.[12]|12.0:8.[1234]) printf 'no';;
-    *:8.5) if version_ge "$minor" "11.3"; then printf 'unknown'; else printf 'no'; fi;;
-    *) printf 'unknown';;
-  esac
-  return 0
-}
+# php_supported_for <core-minor> <php> -> "yes", "no" or "unknown", and the other
+# accessors of the version data (config/targets, config/php): scripts/lib/plan.sh.
+# shellcheck source=plan.sh
+. "$(dirname "${BASH_SOURCE[0]}")/plan.sh"
 
 # rector_php_set_arg [ver] -> the named argument of Rector's ->withPhpSets()
 # for a PHP target: 8.3 -> php83, 8.4 -> php84. A target flagged unconfirmed

@@ -3,14 +3,15 @@
 # drupilot — scripts/dev/schema-check.sh
 # Validate drupilot's persisted artifacts against schemas/*.schema.json (a
 # developer/CI tool: no command, skill or hook calls it; scripts/dev/check.sh
-# runs it as its `schemas` gate). Each schema is checked against the 0.9
-# instances listed below: the captures of tests/baseline/v0.9.0/, the lab
-# samples of tests/baseline/v0.9.0/samples/, and a live `preflight.sh --json`.
-# Two engines:
-#   jq         always available: a structural validator reading the same
-#              schemas (type, required, properties, additionalProperties,
-#              items, enum, const, minimum, $defs/$ref) — the keywords the
-#              schemas are restricted to, so the bash-only CI legs still check
+# runs it as its `schemas` gate). Each schema is checked against the
+# instances listed below: the 0.9 captures of tests/baseline/v0.9.0/, the lab
+# samples of tests/baseline/v0.9.0/samples/, a live `preflight.sh --json`, the
+# version data of config/targets|php|paths and an example catalog (the data
+# gate, scripts/dev/data-check.sh, also checks their provenance). Two engines:
+#   jq         always available: the structural validator of
+#              scripts/dev/jsonschema.jq, reading the same schemas (only the
+#              keywords that file lists, which the schemas are restricted
+#              to), so the bash-only CI legs still check
 #   validator  check-jsonschema (07-Q11), CI-only, never a plugin runtime
 #              dependency: the one on PATH, or (--mode docker) version
 #              0.38.2 in the pinned python:3.13-alpine image below
@@ -61,7 +62,15 @@ SPECS="$(printf '%s\t%s\t%s\n' \
   port-manifest.schema.json "$BL/samples/port-manifest.json" . \
   lock.schema.json "$BL/samples/drupilot-lock.json" . \
   preflight.schema.json "$BL/samples/preflight.json" . \
-  preflight.schema.json @preflight .)"
+  preflight.schema.json @preflight . \
+  target.schema.json config/targets/10.json . \
+  target.schema.json config/targets/11.json . \
+  target.schema.json config/targets/12.json . \
+  php-versions.schema.json config/php/versions.json . \
+  php-rules.schema.json config/php/rules.json . \
+  paths.schema.json config/paths/eras.json . \
+  paths.schema.json config/paths/graph.json . \
+  catalog.schema.json schemas/examples/catalog.example.json .)"
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-schema.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
@@ -74,35 +83,10 @@ result() {
   return 0
 }
 
-# The jq validator: every violation of <schema> by the input, one per line.
-JQV='
-def tnames: if type == "number" then (if . == floor then ["number", "integer"] else ["number"] end) else [type] end;
-def chk($root; $sch; $p):
-  (if ($sch | type) == "object" and ($sch | has("$ref")) then $root["$defs"][$sch["$ref"] | ltrimstr("#/$defs/")] else $sch end) as $s
-  | . as $x
-  | (if ($s | type) != "object" then empty
-     else
-       (if $s | has("type") then
-          ($s.type | if type == "array" then . else [.] end) as $ts
-          | if any($x | tnames[]; . as $t | $ts | index($t) != null) then empty
-            else "\($p): \($x | type) is not \($ts | join("|"))" end
-        else empty end),
-       (if ($s | has("enum")) and (any($s.enum[]; . == $x) | not) then "\($p): \($x | tojson) is not one of \($s.enum | tojson)" else empty end),
-       (if ($s | has("const")) and $x != $s.const then "\($p): \($x | tojson) is not \($s.const | tojson)" else empty end),
-       (if ($s | has("minimum")) and ($x | type) == "number" and $x < $s.minimum then "\($p): \($x) is below \($s.minimum)" else empty end),
-       (if ($x | type) == "object" then
-          (($s.required // [])[] | select(. as $k | $x | has($k) | not) | "\($p): missing required key \(.)"),
-          (($s.properties // {}) | to_entries[] | select(.key as $k | $x | has($k)) | .key as $k | .value as $ps
-            | $x[$k] | chk($root; $ps; "\($p).\($k)")),
-          (if $s.additionalProperties == false then
-             ($x | keys[] | select(. as $k | ($s.properties // {}) | has($k) | not) | "\($p): unexpected key \(.)")
-           else empty end)
-        else empty end),
-       (if ($x | type) == "array" and ($s | has("items")) then
-          ($x | to_entries[] | .key as $i | .value | chk($root; $s.items; "\($p)[\($i)]"))
-        else empty end)
-     end);
-. as $doc | $schema[0] as $root | $doc | chk($root; $root; "$")'
+# The jq validator (scripts/dev/jsonschema.jq): every violation of <schema> by
+# the input, one per line.
+JQV="$(cat "$REPO/scripts/dev/jsonschema.jq")
+. as \$doc | \$schema[0] as \$root | \$doc | chk(\$root; \$root; \"\$\")"
 
 # Extract every instance into $TMP/inst/<n>.json.
 n=0; INST=""
@@ -134,6 +118,12 @@ for f in "$REPO"/schemas/*.schema.json; do
 done
 
 log_step "drupilot schemas: jq$([[ "$MODE" != "jq" ]] && printf ' + check-jsonschema (%s)' "$MODE")"
+# Every $ref of every schema resolves, whatever the instances reach.
+for f in "$REPO"/schemas/*.schema.json; do
+  [[ -f "$f" ]] || continue
+  errs="$(jq -r "$(cat "$REPO/scripts/dev/jsonschema.jq") bad_refs" "$f" 2>&1 || true)"
+  [[ -z "$errs" ]] || result "$(basename "$f")" refs jq fail "$(printf '%s\n' "$errs" | head -n 5 | tr '\n' ';')"
+done
 # --- jq engine --------------------------------------------------------------------
 while IFS="$(printf '\t')" read -r schema inst out; do
   [[ -n "$schema" ]] || continue
