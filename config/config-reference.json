@@ -1,0 +1,505 @@
+{
+  "_comment": "Every DRUPILOT_* key any script, hook, command, skill or agent reads, with its tier (public | advanced | internal | runtime_only), type, enum, the file its default comes from (default_ref, a JSON pointer, null without a file default) and its docs page (see, under docs/). keys: the config/defaults.json keys; runtime_only: keys with no file default; patterns: key families read by prefix. The config-keys gate of scripts/dev/check.sh checks it against the code.",
+  "schema_version": 1,
+  "keys": {
+    "DRUPILOT_PHP_TARGET": {
+      "type": "string",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_PHP_TARGET",
+      "description": "Target PHP version (drives Rector / PHPStan / PHPCS / DDEV).",
+      "see": "concepts/php-and-core-target.md"
+    },
+    "DRUPILOT_DRUPAL_TARGET": {
+      "type": "string",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_DRUPAL_TARGET",
+      "description": "Target core range.",
+      "see": "concepts/php-and-core-target.md"
+    },
+    "DRUPILOT_CORE_TARGET_STRATEGY": {
+      "type": "enum",
+      "enum": [
+        "auto",
+        "d11-only",
+        "keep-d10"
+      ],
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_CORE_TARGET_STRATEGY",
+      "description": "Core compatibility decision: `auto` (keep `^10 || ^11` while backwards-compatible, switch to `^11` on a BC break / refactor), `d11-only`, or `keep-d10`. Keeping D10 also declares a composer `require.php` floor (see `DRUPILOT_REQUIRE_PHP_FLOOR`), and the choice yields a SemVer version-bump verdict.",
+      "see": "concepts/php-and-core-target.md"
+    },
+    "DRUPILOT_REQUIRE_PHP_FLOOR": {
+      "type": "enum",
+      "enum": [
+        "detect",
+        "target"
+      ],
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_REQUIRE_PHP_FLOOR",
+      "description": "When keeping `^10 || ^11`, how to set composer `require.php`: `detect` derives the real floor from a heuristic scan of the ported code (e.g. `>=8.1` when it uses no PHP 8.2/8.3 constructs, for genuine Drupal 10 support); `target` keeps the conservative `>=<php target>`. A lowered floor is best-effort — confirm with PHPCompatibility.",
+      "see": "concepts/php-and-core-target.md"
+    },
+    "DRUPILOT_CODER_CONSTRAINT": {
+      "type": "string",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_CODER_CONSTRAINT",
+      "description": "`drupal/coder` branch (PHPCS 3.x vs 4.x). Applies only to a fresh resolve (`DRUPILOT_TOOLCHAIN_SOURCE=range` or `DRUPILOT_DETERMINISTIC=false`); otherwise the locked version or the known-good reference version (`config/toolchain-reference.json`) is installed.",
+      "see": "concepts/determinism-lockfile.md"
+    },
+    "DRUPILOT_PHPSTAN_LEVEL": {
+      "type": "enum",
+      "enum": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "max"
+      ],
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_PHPSTAN_LEVEL",
+      "description": "Base PHPStan level (deprecation detection).",
+      "see": "guides/assess.md"
+    },
+    "DRUPILOT_PHPSTAN_LEVEL_REFACTOR": {
+      "type": "enum",
+      "enum": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "max"
+      ],
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_PHPSTAN_LEVEL_REFACTOR",
+      "description": "PHPStan level used in the refactor phase.",
+      "see": "guides/refactor.md"
+    },
+    "DRUPILOT_VIABILITY_THRESHOLD": {
+      "type": "enum",
+      "enum": [
+        "small",
+        "medium",
+        "large",
+        "xl"
+      ],
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_VIABILITY_THRESHOLD",
+      "description": "Threshold for the \"large refactor\" warning: `small`, `medium`, `large` or `xl` (≡ the S / M / L / XL verdict). The warning appears when the verdict is strictly above it (with `medium`: L or XL).",
+      "see": "guides/assess.md"
+    },
+    "DRUPILOT_CONTRIB_MODE": {
+      "type": "enum",
+      "enum": [
+        "semi",
+        "auto"
+      ],
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_CONTRIB_MODE",
+      "description": "`semi` (confirm outward actions) or `auto`.",
+      "see": "guides/contribute.md"
+    },
+    "DRUPILOT_ISSUE_TITLE": {
+      "type": "string",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_ISSUE_TITLE",
+      "description": "Default title for the generated Drupal.org issue.",
+      "see": "guides/contribute.md"
+    },
+    "DRUPILOT_ISSUE_CATEGORY": {
+      "type": "string",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_ISSUE_CATEGORY",
+      "description": "Default issue Category, as the Drupal.org form names it (`Bug report` / `Task` / `Feature request` / `Support request` / `Plan`). The value is copied as is into the generated issue fields.",
+      "see": "guides/contribute.md"
+    },
+    "DRUPILOT_ISSUE_PRIORITY": {
+      "type": "string",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_ISSUE_PRIORITY",
+      "description": "Default issue Priority, as the Drupal.org form names it (`Critical` / `Major` / `Normal` / `Minor`). The value is copied as is into the generated issue fields.",
+      "see": "guides/contribute.md"
+    },
+    "DRUPILOT_ISSUE_COMPONENT": {
+      "type": "string",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_ISSUE_COMPONENT",
+      "description": "Default issue Component. The list is **project-specific** — verify it against the project's own components.",
+      "see": "guides/contribute.md"
+    },
+    "DRUPILOT_ISSUE_ASSIGNEE": {
+      "type": "enum",
+      "enum": [
+        "self",
+        "unassigned"
+      ],
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_ISSUE_ASSIGNEE",
+      "description": "`self` (assign to the account opening the issue) or `unassigned`.",
+      "see": "guides/contribute.md"
+    },
+    "DRUPILOT_USE_DIGESTS_RULES": {
+      "type": "bool",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_USE_DIGESTS_RULES",
+      "description": "Use the complementary `drupal-digests` layer after official Rector.",
+      "see": "guides/port.md"
+    },
+    "DRUPILOT_DIGESTS_REF": {
+      "type": "string",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_DIGESTS_REF",
+      "description": "Commit/tag of the `drupal-digests` repo, for reproducibility.",
+      "see": "concepts/determinism-lockfile.md"
+    },
+    "DRUPILOT_GENERATE_RULES": {
+      "type": "enum",
+      "enum": [
+        "ask",
+        "auto",
+        "off"
+      ],
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_GENERATE_RULES",
+      "description": "Generate ad-hoc Rector rules for uncovered deprecations: `ask` / `auto` / `off`.",
+      "see": "guides/port.md"
+    },
+    "DRUPILOT_AUTONOMOUS": {
+      "type": "bool",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_AUTONOMOUS",
+      "description": "Hands-off mode (same as the `auto` mode word): unattended setup→assess→port→refactor→test, writes the local patch, **never** contributes. See Hands-off mode.",
+      "see": "guides/autonomous-and-ci.md"
+    },
+    "DRUPILOT_DETERMINISTIC": {
+      "type": "bool",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_DETERMINISTIC",
+      "description": "Reproducibility (default on): freeze the resolved Drupal core, dev toolchain, digests SHA and DDEV add-ons in a per-project `drupilot-lock.json` and reuse them on later runs. Set to `false` to resolve fresh every time and refresh the lock. See Determinism.",
+      "see": "concepts/determinism-lockfile.md"
+    },
+    "DRUPILOT_SOFT_DEPRECATIONS": {
+      "type": "enum",
+      "enum": [
+        "report",
+        "defer",
+        "fix"
+      ],
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_SOFT_DEPRECATIONS",
+      "description": "What Phase 1 does with *soft* deprecations — removed only in a later Drupal major, so they still work on every Drupal 11 core (e.g. `user_load_by_name()`, `text_summary()`, `check_markup()`: deprecated in 11.4.0, removed from 13.0.0): `report` (list them in the viability and port reports — symbol, deprecated in, removed in, effort — and leave the code alone), `defer` (list them under *deferred to Phase 2*) or `fix` (fix them when the replacement exists at the declared core floor, through `DeprecationHelper::backwardsCompatibleCall()` when it exists only on newer cores, else defer). *Hard* deprecations (removed in a major ≤ the target, e.g. `user_roles()`) are always fixed and only they count in the effort verdict; Phase 2 removes soft ones too.",
+      "see": "guides/port.md"
+    },
+    "DRUPILOT_ATTRIBUTES_MODE": {
+      "type": "enum",
+      "enum": [
+        "keep",
+        "strip"
+      ],
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_ATTRIBUTES_MODE",
+      "description": "Mode of the annotation → attribute pass (`convert-attributes.sh`): `keep` (add the attribute, keep the annotation: BC with older cores) or `strip` (remove the annotation, only for types the declared core floor supports unless `--raise-floor`). Phase 1 always uses `keep`; Phase 2 uses `strip` for a `^11` core target and `keep` while `^10 || ^11` is deliberately kept; this sets the script's default. See Plugin annotations to PHP 8 attributes.",
+      "see": "guides/port.md"
+    },
+    "DRUPILOT_ATTRIBUTE_PLUGIN_TYPES": {
+      "type": "string",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_ATTRIBUTE_PLUGIN_TYPES",
+      "description": "Project or contrib plugin types for the attribute pass, comma-separated: `Annotation=Fully\\Qualified\\AttributeClass[@MAJOR.MINOR]` (e.g. `ExtraFieldDisplay=Drupal\\extra_field\\Attribute\\ExtraFieldDisplay`). A type is converted only when its attribute class exists under the Drupal root, and its annotation is removed only when a plugin manager references the class.",
+      "see": "guides/port.md"
+    },
+    "DRUPILOT_VERIFY_CORES": {
+      "type": "string",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_VERIFY_CORES",
+      "description": "Which cores `verify-core-matrix.sh` checks statically (PHPStan + `php -l`): `auto` (the legs `core_version_requirement` declares, a lower major also on its floor — `^10 || ^11` → 10.0, the latest 10.x and 11, `^10.3 || ^11` → 10.3 and 11, `^11` → nothing extra), `off` (skip; the Drupal 10 half stays *declared-not-verified*), or an explicit list such as `10,11` or `10.3,11`. Reference cores are cached in `<drupal_root>/.drupilot/cores/` and their exact version is frozen in the lockfile. See Verifying the Drupal 10 half.",
+      "see": "concepts/php-and-core-target.md"
+    },
+    "DRUPILOT_STATE_FORCE": {
+      "type": "bool",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_STATE_FORCE",
+      "description": "The stage a port has reached (`state.json` in drupilot's state dir: setup < assessed < ported < refactored < tested < contributed, recorded by `port-report.sh`, a whole-suite `run-phpunit.sh` run whose preservation is `verified` or `verified-partial`, and `state.sh record`; see Per-module state) never goes down, so re-running `/drupilot-port` after a refactor does not undo it. `true` lets a new record lower it, e.g. to restart a port from scratch.",
+      "see": "concepts/state-and-artifacts.md"
+    },
+    "DRUPILOT_WANT_REFACTOR": {
+      "type": "bool",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_WANT_REFACTOR",
+      "description": "Whether you opted into the Phase 2 refactor for the next-step recommendation (`next-step.sh`, used by `/drupilot` and `/drupilot-status`): `true` recommends `/drupilot-refactor` right after the port, before the tests, until the module is refactored; `false` leaves the refactor opt-in and recommends the tests. It only changes the recommendation, never runs anything.",
+      "see": "guides/refactor.md"
+    },
+    "DRUPILOT_PLACEMENT": {
+      "type": "enum",
+      "enum": [
+        "move",
+        "symlink",
+        "copy"
+      ],
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_PLACEMENT",
+      "description": "How a loose checkout is placed into the sibling test-bed: `move` relocates it (non-lossy — it stays a git repo at the new path), `symlink` keeps your checkout where it is and links it in (a target outside the test-bed is not visible inside the DDEV container, so `ddev exec` tooling cannot see it — use it for host-side work), `copy` duplicates it without untracked local-environment residue (`.ddev/`, `vendor/`, `node_modules/`, …) or untracked symlinks escaping the checkout (anything git tracks is always copied). For a module that is a sub-directory of a repository (a monorepo), `move` becomes `copy` (moving it would delete it from the repository); `symlink` and `copy` are kept, and `symlink` then edits the module inside the repository.",
+      "see": "getting-started/loose-checkout.md"
+    },
+    "DRUPILOT_LAYERS_SANDBOX": {
+      "type": "enum",
+      "enum": [
+        "",
+        "per-module",
+        "shared"
+      ],
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_LAYERS_SANDBOX",
+      "description": "Applies to `/drupilot-layers` runs on a **loose** folder of modules (a set inside a Drupal 11 root is ported in place, in that one site; a project checkout without installed core always uses one shared test-bed next to the repository). `per-module` gives each module its own `<name>-d11` test-bed. `shared` uses one test-bed for the whole set, outside the repository (`shared_root` of `resolve-workspace.sh --json`), so a module and the modules it depends on are installed together. Empty means the command asks; autonomous runs use `per-module`. The answer is remembered in `.drupilot.json`.",
+      "see": "guides/monorepo-layers.md"
+    },
+    "DRUPILOT_WORKSPACE_DIR": {
+      "type": "path",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_WORKSPACE_DIR",
+      "description": "Explicit path for the Drupal test-bed root. Empty means a sibling `<parent>/<machine_name>-d11`, or, for a module inside a repository, a test-bed next to that repository (`<parent>/<project>-d11` for a Drupal project without installed core). Keep it outside your repository: `resolve-workspace.sh` warns when it is not.",
+      "see": "getting-started/loose-checkout.md"
+    },
+    "DRUPILOT_ARTIFACTS_DIR": {
+      "type": "path",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_ARTIFACTS_DIR",
+      "description": "Override for the visible `.drupilot/` outputs directory. Empty means `<root>/.drupilot`.",
+      "see": "concepts/state-and-artifacts.md"
+    },
+    "DRUPILOT_HOME": {
+      "type": "path",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_HOME",
+      "description": "drupilot's hidden data directory: the per-module machine state, the lockfiles and the caches. Empty means `$XDG_DATA_HOME/drupilot` (`~/.local/share/drupilot`). Read from the environment only; give an absolute path (a leading `~` is expanded; any other relative value is ignored). Since 0.9.1 the first command that passes its gate copies, once, any state drupilot 0.9.0 left in Claude Code's plugin data directory (the originals are kept).",
+      "see": "concepts/state-and-artifacts.md"
+    },
+    "DRUPILOT_PATTERNS_FILE": {
+      "type": "path",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_PATTERNS_FILE",
+      "description": "The learned-pattern catalog. Empty means `<root>/.drupilot/patterns.json` (without a Drupal root, `<repository>/.drupilot/patterns.json` at the git top level); a module ported by `/drupilot-layers` uses the set's catalog. A relative path is taken from the Drupal root, so a team can share a committed file.",
+      "see": "concepts/state-and-artifacts.md"
+    },
+    "DRUPILOT_DDEV_CREATE_TIMEOUT": {
+      "type": "int",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_DDEV_CREATE_TIMEOUT",
+      "description": "Seconds `/drupilot-setup` lets `ddev composer create-project` run (and `ddev composer install`, when `vendor/` is missing) before stopping it with a clear error (`0` = no limit). Needs `timeout` (or `gtimeout` on macOS); without it the step is unbounded.",
+      "see": "concepts/determinism-lockfile.md"
+    },
+    "DRUPILOT_CORE_CACHE": {
+      "type": "enum",
+      "enum": [
+        "auto",
+        "locked",
+        "off"
+      ],
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_CORE_CACHE",
+      "description": "The cached base core of `/drupilot-setup` (see Cached base core): `auto` reuses the tree for the core version the lockfile froze, or, when nothing is frozen yet, the newest tree built for the same `DRUPILOT_DRUPAL_TARGET` within `DRUPILOT_CORE_CACHE_MAX_AGE_DAYS` (the lock then freezes that version); `locked` only the frozen version; `off` never reuses or stores one. `DRUPILOT_DETERMINISTIC=false` never reuses a tree but still refreshes the cache.",
+      "see": "concepts/determinism-lockfile.md"
+    },
+    "DRUPILOT_CORE_CACHE_MAX_AGE_DAYS": {
+      "type": "int",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_CORE_CACHE_MAX_AGE_DAYS",
+      "description": "Oldest cached base core `auto` reuses when no core version is frozen yet (`0` = no limit).",
+      "see": "concepts/determinism-lockfile.md"
+    },
+    "DRUPILOT_CORE_CACHE_KEEP": {
+      "type": "int",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_CORE_CACHE_KEEP",
+      "description": "Cached base cores kept (newest first); `/drupilot-clean --core-cache` removes them all.",
+      "see": "concepts/determinism-lockfile.md"
+    },
+    "DRUPILOT_POST_EDIT_LINT": {
+      "type": "enum",
+      "enum": [
+        "autofix",
+        "report",
+        "off"
+      ],
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_POST_EDIT_LINT",
+      "description": "The PostToolUse incremental lint: `autofix` (run phpcbf + phpcs, and **say** when a file was modified), `report` (phpcs only, never edits files), or `off`. It is phase-aware — during Phase 1 it surfaces compatibility **errors** only, deferring style warnings to the refactor, and its phpcbf leaves unused `use` statements alone (a `use` added one edit before the code that needs it would otherwise be deleted; the validate loop cleans them up). It lints with the same ruleset `run-phpcs.sh` last resolved for the extension (see `DRUPILOT_PHPCS_RULESET`).",
+      "see": "concepts/safety.md"
+    },
+    "DRUPILOT_SESSION_CONTEXT": {
+      "type": "enum",
+      "enum": [
+        "on",
+        "off"
+      ],
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_SESSION_CONTEXT",
+      "description": "`on`/`off` toggle for the SessionStart environment summary.",
+      "see": "concepts/safety.md"
+    },
+    "DRUPILOT_PHPCS_RULESET": {
+      "type": "string",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_PHPCS_RULESET",
+      "description": "Which PHPCS ruleset `run-phpcs.sh` uses: `auto` (the subject's **own** `.phpcs.xml` / `phpcs.xml` / `.phpcs.xml.dist` / `phpcs.xml.dist`, looked up from the subject to the Drupal root, its git top level and the origin checkout of a copy placement — drupilot's generated `phpcs.xml.dist` never counts — else `Drupal,DrupalPractice`), `drupilot` (always `Drupal,DrupalPractice`, the behavior of drupilot 0.8.4 and earlier releases) or a ruleset file path. A project ruleset PHPCS cannot load (e.g. it references PHPCompatibility, not installed in the test-bed) falls back to `Drupal,DrupalPractice` with a warning; an explicit ruleset path that cannot load is an error (exit 2), never a silent fallback. `run-phpcs.sh --json` and `port-report.md` say which one was used.",
+      "see": "guides/assess.md"
+    },
+    "DRUPILOT_PHPCS_TEST_VERSION": {
+      "type": "string",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_PHPCS_TEST_VERSION",
+      "description": "PHPCompatibility `testVersion` passed on every `run-phpcs.sh` run with `--runtime-set` (e.g. `8.1-`). Empty = `<DRUPILOT_PHP_TARGET>-`, except that a ruleset's own `<config name=\"testVersion\">` is never overridden and a testVersion declared as a `<property>` inside a `<rule>` is passed through.",
+      "see": "guides/assess.md"
+    },
+    "DRUPILOT_HOOKS_GUARD": {
+      "type": "enum",
+      "enum": [
+        "ask",
+        "off"
+      ],
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_HOOKS_GUARD",
+      "description": "`ask`: the `guard-contrib` hook asks before a `git commit` that skips the repository's git hooks (`--no-verify`, `-n`, `git -c core.hooksPath=…`) where a pre-commit/commit-msg hook is really installed — in every contribution mode and in autonomous mode. `off` disables that check. It never denies and does not change the push/MR guard.",
+      "see": "concepts/safety.md"
+    },
+    "DRUPILOT_TOOLCHAIN_SOURCE": {
+      "type": "enum",
+      "enum": [
+        "auto",
+        "reference",
+        "range"
+      ],
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_TOOLCHAIN_SOURCE",
+      "description": "Where `install-toolchain.sh` takes the dev-toolchain versions from: `auto` (the project lock when it pins the whole known-good set, else the shipped known-good reference `config/toolchain-reference.json`; the `.packages` ranges when `DRUPILOT_DETERMINISTIC=false`), `reference` (always the known-good set — the repair path) or `range` (fresh resolve).",
+      "see": "concepts/determinism-lockfile.md"
+    }
+  },
+  "runtime_only": {
+    "DRUPILOT_NONINTERACTIVE": {
+      "type": "bool",
+      "enum": null,
+      "tier": "public",
+      "default_ref": null,
+      "description": "Environment only. `1`/`true`: never prompt — every script-side question takes its safe default, and the `guard-contrib` hook asks before any push or merge request (also when it prefixes the command). For wrappers and CI.",
+      "see": "guides/autonomous-and-ci.md"
+    },
+    "DRUPILOT_ASSUME_YES": {
+      "type": "bool",
+      "enum": null,
+      "tier": "public",
+      "default_ref": null,
+      "description": "Environment only. `1`: answer yes to the scripts' yes/no confirmations, with or without a terminal, and take the default of every script-side choice; the `/drupilot-clean` deletion still needs `--yes` or an interactive answer.",
+      "see": "guides/autonomous-and-ci.md"
+    },
+    "DRUPILOT_GITLAB_PAT": {
+      "type": "string",
+      "enum": null,
+      "tier": "public",
+      "default_ref": null,
+      "description": "Environment only. Your GitLab Personal Access Token for the Drupal.org contribution flow, read at runtime and never persisted (the variable name itself is `contrib.pat_env_var` in defaults.json).",
+      "see": "guides/contribute.md"
+    },
+    "DRUPILOT_KEEP_D10": {
+      "type": "bool",
+      "enum": null,
+      "tier": "public",
+      "default_ref": null,
+      "description": "Legacy boolean (`true` → keep D10, `false` → D11-only), honored only while `DRUPILOT_CORE_TARGET_STRATEGY` is `auto`; an explicit strategy wins. Prefer `DRUPILOT_CORE_TARGET_STRATEGY`.",
+      "see": "concepts/php-and-core-target.md"
+    },
+    "DRUPILOT_REFACTOR_SCOPE": {
+      "type": "string",
+      "enum": null,
+      "tier": "public",
+      "default_ref": null,
+      "description": "Persisted set of Phase 2 modernizations to apply, a comma-separated subset of `attributes`, `di`, `strict-types`, `final`, `deprecations`. Normally chosen via the `/drupilot-refactor` multi-select and remembered in `.drupilot.json`.",
+      "see": "guides/refactor.md"
+    },
+    "DRUPILOT_PROJECT_DIR": {
+      "type": "path",
+      "enum": null,
+      "tier": "internal",
+      "default_ref": null,
+      "description": "Internal: the Drupal root a caller already knows, so the per-project helpers (.drupilot.json, the lockfile) need not detect it from the working directory. The command plumbing `DRUPILOT_PROJECT_DIR=$ROOT drupilot_lock_file` (and its config_get equivalent) keeps working for all of 1.x.",
+      "see": null
+    },
+    "DRUPILOT_DETECTED_PHP_FLOOR": {
+      "type": "string",
+      "enum": null,
+      "tier": "internal",
+      "default_ref": null,
+      "description": "Internal: the PHP floor detect-php-floor.sh found, exported by core-strategy.sh so recommend_core_target does not rescan the code.",
+      "see": null
+    },
+    "DRUPILOT_BASELINE_REF": {
+      "type": "string",
+      "enum": null,
+      "tier": "internal",
+      "default_ref": null,
+      "description": "Internal constant of common.sh: the git ref (refs/drupilot/baseline) that marks the pre-port baseline of a placed copy.",
+      "see": null
+    },
+    "DRUPILOT_COMMON_SH": {
+      "type": "string",
+      "enum": null,
+      "tier": "internal",
+      "default_ref": null,
+      "description": "Internal: the include guard of scripts/lib/common.sh (a private shell variable, _DRUPILOT_COMMON_SH).",
+      "see": null
+    }
+  },
+  "patterns": {
+    "DRUPILOT_CHOICE_*": {
+      "type": "string",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "choices.json#/choices",
+      "description": "Pre-answers one tabbed choice, so it is not asked. See Pre-answering tabbed choices for the keys and their values. One variable per key of config/choices.json; a fork marked preanswer:false (PUSH) is never pre-answered.",
+      "see": "concepts/decisions.md"
+    },
+    "DRUPILOT_TPL_*": {
+      "type": "string",
+      "enum": null,
+      "tier": "internal",
+      "default_ref": null,
+      "description": "Internal: the per-call variables render_template passes to its awk program (private shell variables, _DRUPILOT_TPL_*).",
+      "see": null
+    }
+  }
+}

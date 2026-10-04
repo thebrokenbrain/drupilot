@@ -1,0 +1,7 @@
+{
+  "_comment": "Renamed public names of drupilot (alias layer, 1.x). env_aliases rows are {old, new, since, remove_in, note, when?}: old and new are variable names, or KEY=value to alias one value; when ({key, equals}) applies a row only while that key, resolved without aliases, equals the value (as text, case-insensitively). config_get resolves them (env, then .drupilot.json) and warns once per process. value_aliases and removed are read by their owners. The version gate checks every row (new and when keys declared in config-reference.json). Every alias stays for all of 1.x.",
+  "schema": 1,
+  "env_aliases": [],
+  "value_aliases": [],
+  "removed": []
+}

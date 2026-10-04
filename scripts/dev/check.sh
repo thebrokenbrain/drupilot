@@ -48,6 +48,27 @@
 #   - templates   render every templates/*.tmpl with dummy values; each XML output
 #                 must pass `xmllint --noout` (skipped when xmllint is absent)
 #   - json        `jq empty` on config/*.json, hooks/*.json, .claude-plugin/*.json
+#   - version     the release version (09-R4): .claude-plugin/plugin.json holds
+#                 a valid version equal to the top released CHANGELOG.md
+#                 heading; a v* tag on HEAD, if any, is v<version>; no
+#                 pre-release version on `main` (GITHUB_BASE_REF for a pull
+#                 request, else GITHUB_REF_NAME, else the checked-out branch);
+#                 and config/migrations.json is coherent (every aliased `new`
+#                 and `when` key is declared in config/config-reference.json,
+#                 names are valid variable names, every remove_in is a later
+#                 major than the version). The version is compared with the
+#                 released CHANGELOG heading of highest SemVer precedence
+#   - config-keys every DRUPILOT_* key a script, hook, command, skill or agent
+#                 reads is declared in config/config-reference.json (as a key,
+#                 a runtime_only key or a pattern such as DRUPILOT_CHOICE_*);
+#                 its defaults.json keys are exactly those of defaults.json;
+#                 every entry has a tier, a type and a description, a
+#                 default_ref that resolves and an enum holding the default;
+#                 every name the 0.9 README documents is public. These findings
+#                 WARN (status warn, not a failure) until M11; a _*_comment of
+#                 defaults.json longer than 1800 characters fails (AR-27: the
+#                 prose stays until M11 but must not grow). Comment lines of the
+#                 scripts and scripts/dev/ are not scanned
 #   - unit        the unit tests (scripts/dev/unit.sh: tests/lib/selftest.sh and
 #                 tests/unit/*.sh, run with this same bash; a test skipped
 #                 until its milestone is not a failure)
@@ -78,7 +99,7 @@
 #                    failure instead of a skip; implies --smoke
 #
 # Output (--json):
-#   {ok, gates:[{name, status: pass|fail|skip|allowed-fail, detail, findings:[..]}]}
+#   {ok, gates:[{name, status: pass|fail|skip|allowed-fail|warn, detail, findings:[..]}]}
 #
 # Exit codes: 0 all gates pass/skip/allowed-fail · 1 a gate failed or usage error.
 # Read-only: renders templates into a temp dir that is removed on exit.
@@ -91,7 +112,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export CLAUDE_PLUGIN_ROOT="$REPO"
 
-ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json unit contract evals golden smoke"
+ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json version config-keys unit contract evals golden smoke"
 # Gates that run only when asked for (--smoke, --ci, or named in --only).
 OPTIONAL_GATES="golden smoke"
 # Gates known to fail on the current tree, with a fix tracked for 0.9.0. Empty
@@ -146,6 +167,7 @@ record() {
   case "$status" in
     pass) log_ok "$gate: $detail";;
     skip) log_warn "$gate: skipped — $detail";;
+    warn) log_warn "$gate: WARNING — $detail";;
     allowed-fail) log_warn "$gate: FAILED (allowed) — $detail";;
     fail) log_err "$gate: FAILED — $detail"; FAILED=1;;
   esac
@@ -389,6 +411,135 @@ gate_json() {
   done
   if [[ -s "$out" ]]; then record json fail "invalid JSON" "$out"
   else record json pass "$n JSON files valid"; fi
+}
+
+gate_version() {
+  local out="$TMP/version.out" pj="$REPO/.claude-plugin/plugin.json" v top tags t branch mf major
+  : > "$out"
+  v="$(jq -r '.version // empty' "$pj" 2>/dev/null || true)"
+  if ! printf '%s\n' "$v" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
+    echo "plugin.json: '$v' is not a valid version (X.Y.Z or X.Y.Z-pre.N)" >> "$out"
+  fi
+  # The released heading of highest SemVer precedence (on the integration
+  # branch a 0.9.x section merged from main may be dated, so placed, above the
+  # latest 1.0 pre-release: 09-R5).
+  top=""
+  for t in $(awk '/^## \[/ { h = $2; gsub(/[][]/, "", h); if (h != "Unreleased") print h }' "$REPO/CHANGELOG.md" 2>/dev/null || true); do
+    if [[ -z "$top" ]] || semver_gt "$t" "$top"; then top="$t"; fi
+  done
+  [[ "$top" == "$v" ]] || echo "plugin.json version '$v' differs from the highest released CHANGELOG.md heading '[${top:-none}]'" >> "$out"
+  if git -C "$REPO" rev-parse --git-dir > /dev/null 2>&1; then
+    tags="$(git -C "$REPO" tag --points-at HEAD 2>/dev/null | grep '^v' || true)"
+    for t in $tags; do
+      # release.sh runs this gate before its commit, on a HEAD that may still
+      # carry the tag of the release it promotes (RELEASE_FROM, e.g. an rc).
+      [[ "$t" == "v$v" || ( -n "${RELEASE_FROM:-}" && "$t" == "v$RELEASE_FROM" ) ]] \
+        || echo "HEAD is tagged '$t', but plugin.json says '$v' (want 'v$v')" >> "$out"
+    done
+  fi
+  branch="${GITHUB_BASE_REF:-}"
+  if [[ -z "$branch" && "${GITHUB_REF_TYPE:-branch}" == "branch" ]]; then branch="${GITHUB_REF_NAME:-}"; fi
+  [[ -n "$branch" || -n "${GITHUB_REF_TYPE:-}" ]] || branch="$(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  if [[ "$branch" == "main" && "$v" == *-* ]]; then
+    echo "pre-release version '$v' on main (a pre-release lives on the integration branch only)" >> "$out"
+  fi
+  mf="$REPO/config/migrations.json"
+  if [[ -f "$mf" ]]; then
+    major="${v%%.*}"
+    jq -r --slurpfile ref "$REPO/config/config-reference.json" --arg major "$major" '
+      def maj: tostring | split(".")[0] | tonumber? // -1;
+      def name_ok: type == "string" and test("^[A-Za-z_][A-Za-z0-9_]*(=.*)?$");
+      def declared($n): ($ref[0] | ((.keys // {}) | has($n)) or ((.runtime_only // {}) | has($n))
+                          or ([(.patterns // {}) | keys[] | rtrimstr("*")] | any(. as $p | $n | startswith($p))));
+      if .schema != 1 then "migrations.json: schema must be 1" else empty end,
+      (["env_aliases", "value_aliases", "removed"][] as $a
+        | if (.[$a] | type) != "array" then "migrations.json: \($a) must be an array" else empty end),
+      ((.env_aliases // []) | to_entries[] | .key as $i | .value
+        | (if ([.old, .new, .since, .remove_in] | all(type == "string")) then empty
+           else "migrations.json: env_aliases[\($i)] needs string old, new, since and remove_in" end),
+          (if (.old | name_ok) and (.new | name_ok) then empty
+           else "migrations.json: env_aliases[\($i)] old and new must be variable names (KEY or KEY=value)" end),
+          ((.new // "" | tostring | split("=")[0]) as $k
+            | if declared($k) then empty else "migrations.json: env_aliases[\($i)] new key \($k) is not declared in config/config-reference.json" end),
+          (if .when == null then empty
+           elif (.when | type) != "object" or ((.when.key // null) | name_ok | not) or ((.when.equals | type) as $t | ["string", "number", "boolean"] | index($t) | not)
+           then "migrations.json: env_aliases[\($i)] when must be {key: a variable name, equals: a string, number or boolean}"
+           elif declared(.when.key) then empty
+           else "migrations.json: env_aliases[\($i)] when.key \(.when.key) is not declared in config/config-reference.json" end)),
+      ((.env_aliases // []) + (.value_aliases // []) + (.removed // []) | .[] | select(has("remove_in"))
+        | if (.remove_in | maj) > ($major | tonumber) then empty
+          else "migrations.json: \(.old // "?") has remove_in \(.remove_in), not a later major than \($major)" end)
+    ' "$mf" >> "$out" 2>/dev/null || echo "migrations.json: not valid JSON" >> "$out"
+  fi
+  if [[ -s "$out" ]]; then record version fail "the release version is inconsistent" "$out"
+  else record version pass "$v (CHANGELOG, tag, branch ${branch:-?}, migrations.json)"; fi
+}
+
+gate_config_keys() {
+  local out="$TMP/ck.out" hard="$TMP/ck.hard" ref="$REPO/config/config-reference.json" read="$TMP/ck.read" f
+  : > "$out"; : > "$hard"
+  # A _*_comment of defaults.json may not grow past 1800 characters (hard).
+  jq -r 'to_entries[] | select((.key | startswith("_")) and (.key | endswith("_comment")) and (.value | type) == "string" and (.value | length) > 1800)
+         | "defaults.json \(.key) is \(.value | length) characters (limit 1800; the prose moves to config-reference.json and the docs in M11)"' \
+    "$REPO/config/defaults.json" >> "$hard" 2>/dev/null || echo "defaults.json: not valid JSON" >> "$hard"
+  if [[ ! -f "$ref" ]]; then
+    echo "config/config-reference.json is missing" >> "$out"
+  elif ! jq empty "$ref" 2>/dev/null; then
+    echo "config/config-reference.json is not valid JSON" >> "$hard"
+  else
+    # Every DRUPILOT_* name read (not inside a word such as _DRUPILOT_X).
+    { for f in "$REPO"/scripts/*/*.sh "$REPO"/hooks/scripts/*.sh; do
+        case "$f" in "$REPO"/scripts/dev/*) continue;; esac
+        grep -vE '^[[:space:]]*#' "$f" 2>/dev/null || true
+      done
+      cat "$REPO"/commands/*.md "$REPO"/skills/*/SKILL.md "$REPO"/agents/*.md 2>/dev/null || true
+    } | grep -oE '(^|[^A-Za-z0-9_])DRUPILOT_[A-Z0-9_]+' | sed -E 's/^[^D]//' | LC_ALL=C sort -u > "$read"
+    jq -r --rawfile r "$read" --slurpfile d "$REPO/config/defaults.json" --slurpfile c "$REPO/config/choices.json" '
+      def entries: ((.keys // {}) + (.runtime_only // {}) + (.patterns // {}));
+      def resolves($p): ($p | split("#/")) as $q
+        | if $q[0] == "defaults.json" then ($d[0] | getpath($q[1] | split("/")) != null)
+          elif $q[0] == "choices.json" then ($c[0] | getpath($q[1] | split("/")) != null)
+          else false end;
+      . as $ref
+      | ($ref.patterns // {} | keys | map(rtrimstr("*"))) as $pre
+      | (entries | keys) as $declared
+      | ($r | split("\n") | map(select(length > 0))[]
+          | . as $n
+          # declared: an exact entry; a name of a pattern family; or a bare
+          # prefix mention (DRUPILOT_ISSUE_<FIELD> in prose reads as
+          # DRUPILOT_ISSUE_) that some declared key or pattern starts with.
+          | select(($declared | index($n)) == null
+                   and ([$pre[] | select(. as $p | $n | startswith($p))] | length) == 0
+                   and (($n | endswith("_")) and ([$declared[], $pre[] | select(startswith($n))] | length) > 0 | not))
+          | "\($n) is read but not declared in config/config-reference.json"),
+        (([$d[0] | keys[] | select(startswith("DRUPILOT_"))] | sort) as $dk
+          | ([$ref.keys // {} | to_entries[] | select((.value.default_ref // "") | startswith("defaults.json#/")) | .key] | sort) as $rk
+          | ($dk - $rk)[] | "\(.) is in defaults.json but not in config-reference.json keys"),
+        (entries | to_entries[] | .key as $k | .value as $v | .value
+          | (if (["public", "advanced", "internal", "runtime_only"] | index($v.tier // "")) == null then "\($k): tier must be public, advanced, internal or runtime_only" else empty end),
+            (if ((.type // "") | length) == 0 then "\($k): no type" else empty end),
+            (if ((.description // "") | length) == 0 then "\($k): no description" else empty end),
+            (if .default_ref != null and (resolves(.default_ref) | not) then "\($k): default_ref \(.default_ref) does not resolve" else empty end),
+            (if .enum != null and ((.default_ref // "") | startswith("defaults.json#/"))
+                and (($v.enum | index($d[0][$k] | tostring)) == null) then "\($k): its enum lacks the default" else empty end))
+    ' "$ref" >> "$out" 2>/dev/null || echo "config-keys: the check itself failed (jq)" >> "$out"
+    # CC-06: every name the 0.9 README documents stays public.
+    if [[ -f "$REPO/tests/baseline/v0.9.0/env-public-v0.9.json" ]]; then
+      jq -r --slurpfile ref "$ref" '
+        ($ref[0] | ((.keys // {}) + (.runtime_only // {}))) as $exact
+        | ($ref[0].patterns // {} | to_entries | map(select(.value.tier == "public") | .key | rtrimstr("*"))) as $pp
+        | (.stdout.public // .public // [])[]
+        | sub("<KEY>$"; "") as $n
+        # An exact entry decides; a pattern only covers names with no entry.
+        | select(if ($exact | has($n)) then $exact[$n].tier != "public"
+                 else ([$pp[] | select(. as $p | $n | startswith($p))] | length) == 0 end)
+        | "\($n) is documented by the 0.9 README but not public in config-reference.json"' \
+        "$REPO/tests/baseline/v0.9.0/env-public-v0.9.json" >> "$out" 2>/dev/null || true
+    fi
+  fi
+  if [[ -s "$hard" ]]; then cat "$out" >> "$hard"; record config-keys fail "a defaults.json comment is too long, or the reference is invalid" "$hard"
+  elif [[ -s "$out" ]]; then record config-keys warn "$(grep -c . "$out") undeclared or inconsistent key(s) (warn mode until M11)" "$out"
+  else record config-keys pass "$(grep -c . "$read") DRUPILOT_* names read, all declared; comments within 1800 characters"; fi
 }
 
 gate_unit() {
