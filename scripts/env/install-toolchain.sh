@@ -278,7 +278,7 @@ emit_json() {
         --argjson composer_ran "$COMPOSER_RAN" --argjson fallback "$FALLBACK" \
         --argjson smoke_ok "$SMOKE_OK" --arg smoke_err "$SMOKE_ERR" \
         --argjson lock_synced "$LOCK_SYNCED" --arg reference "$REF_FILE" --arg cell "$CELL" \
-    '{ok: ($status|IN("installed","unchanged","dry-run","smoke-only")) and ($smoke_ok != false),
+    '{ok: (($status|IN("installed","unchanged","dry-run","smoke-only")) and ($smoke_ok != false)),
       status:$status, root:$root, source:$source, requested_source:$requested,
       deterministic:$det, reference:$reference, cell:$cell, packages:$packages,
       composer_ran:$composer_ran, fallback_to_ranges:$fallback,

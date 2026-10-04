@@ -205,6 +205,11 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 - CI installs `check-jsonschema` 0.38.2 on the Ubuntu and macOS legs.
 
 ### Fixed
+- `install-toolchain.sh --json` failed with jq 1.6 (Debian 12, Ubuntu
+  22.04: "syntax error, unexpected and"), so the command printed no JSON
+  there; its `ok` value is now parenthesized. The `jq-compat` gate rejects
+  that construct (an object value joined with `and`/`or` outside
+  parentheses).
 - `run-rector.sh` no longer counts a rule Rector only names in a "[WARNING]
   This skipped rule is never registered" notice as applied: `rules` and
   `rule_hits` (and the port manifest built from them) list the rules of the

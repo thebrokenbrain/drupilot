@@ -41,6 +41,9 @@
 #                 key (`{module, scope}`): jq 1.6 (Debian 12, Ubuntu 22.04 —
 #                 drupilot's jq_min) rejects each as a syntax error, jq 1.7
 #                 accepts it. `{label: .x}` and `.label` are fine everywhere.
+#                 It also rejects an object value joined with and/or outside
+#                 parentheses (`{ok: (a) and (b)}`, a jq 1.6 syntax error;
+#                 write `{ok: ((a) and (b))}`).
 #                 A line can opt out with a trailing `# jq-compat-ok` and a reason
 #   - bang-lint   no `!`...`` exec span in commands/*.md, skills/*/SKILL.md or
 #                 agents/*.md contains a <placeholder>: those spans run at command
@@ -339,12 +342,13 @@ gate_jq_compat() {
         if (line ~ ("--(arg|argjson|slurpfile|rawfile)[[:space:]]+" e "[[:space:]]") ||
             line ~ ("as[[:space:]]+[$]" e "([^A-Za-z0-9_]|$)") ||
             line ~ ("(^|[^$])[{][[:space:]]*" e "[[:space:]]*[,}]") ||
-            line ~ ("(^|[^$])[{][^{}]*,[[:space:]]*" e "[[:space:]]*[,}]"))
+            line ~ ("(^|[^$])[{][^{}]*,[[:space:]]*" e "[[:space:]]*[,}]") ||
+            line ~ "(^|[^$])[{,][[:space:]]*[A-Za-z_]+:[[:space:]]*[(][^(].*[)][[:space:]]+(and|or)[[:space:]]")
           printf "%s:%d: %s\n", F, NR, substr($0, 1, 140)
       }' "$f") >> "$out"
   done
   if [[ -s "$out" ]]; then
-    record jq-compat fail "$(wc -l < "$out" | tr -d ' ') jq keyword(s) used as a variable or shorthand key (jq 1.6 syntax error; rename, e.g. \$lbl / {label: .label})" "$out"
+    record jq-compat fail "$(wc -l < "$out" | tr -d ' ') jq 1.6 syntax error(s): a keyword used as a variable or shorthand key (rename, e.g. \$lbl / {label: .label}), or an object value joined with and/or outside parentheses (write {ok: ((a) and (b))})" "$out"
   else
     record jq-compat pass "${#SCRIPTS[@]} scripts free of jq 1.7-only keyword names"
   fi
