@@ -35,6 +35,33 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 - **Hook latency baseline.** `scripts/dev/hook-latency.sh` measures each hook's
   p50/p95 on a fixed payload; the 0.9 numbers are recorded in
   `tests/baseline/v0.9.0/hook-latency.json`.
+- **Contract snapshots and the `contract` gate.** `scripts/dev/contract.sh`
+  freezes the 0.9 public surface in `tests/contract/*.json`: the commands (an
+  `argument-hint` token may only be added, in order), skills and agents,
+  `config/choices.json`, the key sets of `preflight --json`, the port-summary v1
+  and `core-strategy --json`, the generated branch/patch/test-bed names, the
+  enums (preservation, stages, `d10_support`, ...) and every script's documented
+  exit codes. An intended change is an entry in
+  `tests/contract/allowed-changes.json`, pinned by its `sha256`.
+- **Router evals and the `evals` gate.** `scripts/dev/evals.sh` checks the
+  router statically: the ordered tab sequence of a guided `full` run (an
+  `auto` run shows none), the mode words and the mode-inference rules
+  (`tests/evals/router/`). `--live` replays the inference cases through
+  `claude -p` (pass at 90% or more; opt-in, never in CI).
+- **Golden outputs and the optional `golden` gate.** `scripts/dev/golden.sh`
+  absorbs `baseline-0.9.sh --check` (the smoke test `baseline` is gone; the
+  gate runs with `--smoke`/`--ci`, so on every CI leg) and checks
+  `tests/fixtures/legacy_widgets.golden/`: the patch and raw Rector, PHPStan
+  and PHPCS JSON of the scripted `legacy_widgets` port recorded in the DDEV lab
+  (core 11.4.8, PHP 8.3, digests off), byte-identical with v0.9.0's, each file
+  pinned by `sha256` in `golden.json`. `tests/fixtures/autologout.pointer.json`
+  pins the autologout 8.x-1.4 corpus by commit and tarball hash.
+
+### Fixed
+- `tests/fixtures/legacy_widgets.EXPECTED.md` no longer calls the fixture valid
+  Drupal 10.3 code without qualification: `WidgetImportForm` redeclares
+  `FormBase`'s `$loggerFactory` as `private readonly` and typed, a fatal error
+  when the class loads. The fixture is unchanged (part of H12).
 
 ## [0.9.1] - 2026-10-03
 
