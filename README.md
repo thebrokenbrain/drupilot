@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/drupilot.png" alt="drupilot — Code. Fly. Conquer. A Claude Code plugin to port Drupal 9/10 to Drupal 11" width="100%">
+  <img src="docs/assets/drupilot.png" alt="drupilot — Code. Fly. Conquer. A Claude Code plugin to port Drupal 9/10 to Drupal 11" width="100%">
 </p>
 
 # drupilot
@@ -855,6 +855,8 @@ It validates the plugin manifest, syntax-checks and `shellcheck`s every script, 
 The optional `smoke` gate (`--smoke`, implied by `--ci`) runs `scripts/dev/smoke.sh`: smoke tests that need no Docker, DDEV or PHP and assert, among others, the scripts' `--help`, the requirements gate (`preflight`, `detect-php`), `next-step` and the status probe, the hooks, the analysis scripts (`check-port-safety`, `scan-signature-changes`, `lint-extension-metadata`, `layers`, `patterns`, `port-summary`, the core target and the attribute pass), the workspace resolution (project roots, shared and monorepo test-beds), the tabbed-choice registry (`choices`) and several `--dry-run`s on the fixtures in `tests/fixtures/` (`legacy_widgets` and a small `monorepo`; `tests/fixtures/*.EXPECTED.md` documents their planted hazards). It works on copies in a temp dir with its own `HOME`, so it never touches the tree or your drupilot state. Run `bash scripts/dev/smoke.sh --list` for the full list of test names and `--only` to pick some.
 
 GitHub Actions (`.github/workflows/ci.yml`) runs the same gate on Ubuntu and macOS, a second time on macOS under the stock `/bin/bash` 3.2, inside the `bash:3.2` container (BusyBox tools) and the `debian:12-slim` container (mawk, jq 1.6), and runs `claude plugin validate .` in its own job after installing the Claude Code CLI from npm.
+
+The gate also runs the unit tests (`tests/unit/`), the 0.9 contract snapshots (`tests/contract/`), the static router evals (`tests/evals/`), the schema checks of the persisted artifacts (`schemas/`) and the docs checks; `--smoke` adds the golden outputs (`scripts/dev/golden.sh`). The documentation site lives in `docs/` (English only): preview it with `docker compose up docs` (http://localhost:8000) and regenerate its reference pages with `bash scripts/dev/gen-docs.sh`. How each check works is in `docs/contributing/checks.md`.
 
 ---
 

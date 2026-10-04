@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/drupilot.png" alt="drupilot — Code. Fly. Conquer. Un plugin de Claude Code para portar de Drupal 9/10 a Drupal 11" width="100%">
+  <img src="docs/assets/drupilot.png" alt="drupilot — Code. Fly. Conquer. Un plugin de Claude Code para portar de Drupal 9/10 a Drupal 11" width="100%">
 </p>
 
 # drupilot
@@ -857,6 +857,8 @@ Valida el manifiesto del plugin, comprueba la sintaxis y pasa `shellcheck` por t
 El gate opcional `smoke` (`--smoke`, implícito con `--ci`) ejecuta `scripts/dev/smoke.sh`: pruebas de humo que no necesitan Docker, DDEV ni PHP y comprueban, entre otros, el `--help` de los scripts, el gate de requisitos (`preflight`, `detect-php`), `next-step` y la sonda de estado, los hooks, los scripts de análisis (`check-port-safety`, `scan-signature-changes`, `lint-extension-metadata`, `layers`, `patterns`, `port-summary`, el target de core y la pasada de atributos), la resolución del espacio de trabajo (raíces de proyecto, bancos de pruebas compartidos y de monorepo), el registro de elecciones en pestañas (`choices`) y varios `--dry-run` sobre los fixtures de `tests/fixtures/` (`legacy_widgets` y un `monorepo` pequeño; `tests/fixtures/*.EXPECTED.md` documenta los problemas que llevan plantados). Trabaja sobre copias en un directorio temporal con su propio `HOME`, así que nunca toca el árbol ni tu estado de drupilot. Ejecuta `bash scripts/dev/smoke.sh --list` para ver la lista completa de nombres de las pruebas y `--only` para elegir algunas.
 
 GitHub Actions (`.github/workflows/ci.yml`) ejecuta el mismo gate en Ubuntu y macOS, una segunda vez en macOS con el `/bin/bash` 3.2 de serie, dentro del contenedor `bash:3.2` (herramientas de BusyBox) y del contenedor `debian:12-slim` (mawk, jq 1.6), y ejecuta `claude plugin validate .` en un job propio tras instalar la CLI de Claude Code desde npm.
+
+El gate también ejecuta las pruebas unitarias (`tests/unit/`), las instantáneas del contrato 0.9 (`tests/contract/`), las evals estáticas del router (`tests/evals/`), la validación de esquemas de los artefactos persistidos (`schemas/`) y las comprobaciones de la documentación; `--smoke` añade las salidas golden (`scripts/dev/golden.sh`). El sitio de documentación vive en `docs/` (solo en inglés): previsualízalo con `docker compose up docs` (http://localhost:8000) y regenera sus páginas de referencia con `bash scripts/dev/gen-docs.sh`. Cómo funciona cada comprobación está en `docs/contributing/checks.md`.
 
 ---
 

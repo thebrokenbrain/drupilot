@@ -1,0 +1,59 @@
+# drupilot docs site: build on every pull request and on main (strict), deploy
+# to GitHub Pages only on a v* tag or a manual dispatch, so the published site
+# never describes unreleased behaviour. Kept apart from ci.yml, so a PyPI
+# outage never blocks the shell gates. The owner enables Pages once
+# (Settings > Pages > Source: GitHub Actions).
+name: Docs
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install jq
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq jq
+      - name: check.sh --only docs
+        run: bash scripts/dev/check.sh --only docs
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+      # The same pin as docker-compose.yml.
+      - name: Install Zensical
+        run: pip install "zensical==0.0.67"
+      - name: Build (strict)
+        run: zensical build --clean --strict
+      - if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        uses: actions/configure-pages@v6
+      - if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+  deploy:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v5
+        id: deployment

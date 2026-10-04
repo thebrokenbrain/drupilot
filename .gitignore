@@ -39,3 +39,6 @@ sites/simpletest/
 *.patch
 # ...but the recorded golden patches are committed (scripts/dev/golden.sh pins them).
 !tests/fixtures/*.golden/golden/*.patch
+
+# --- Docs site (scripts/dev/gen-docs.sh, docker compose) ---
+/site/
