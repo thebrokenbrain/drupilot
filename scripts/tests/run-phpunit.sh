@@ -282,11 +282,33 @@ selenium_ready() {
 }
 
 # ---------------------------------------------------------------------------
-# Coverage flags. Coverage needs a driver (Xdebug/PCOV) in the container; if it
-# is unavailable PHPUnit reports it — we surface that rather than hiding it.
+# Coverage flags. Coverage needs a driver (PCOV, or Xdebug in coverage mode) in
+# the PHP that runs PHPUnit. Without one, PHPUnit only warns, and a
+# failOnWarning configuration turns that warning into a failed group: a false
+# regression. So the driver is checked first, and without one the tests run
+# without coverage flags and the record says nothing was collected.
 # ---------------------------------------------------------------------------
-declare -a COVERAGE_ARGS=()
+declare -a COVERAGE_ARGS=() COVERAGE_ENV=()
+# coverage_driver -> pcov | xdebug | none, for the PHP that runs PHPUnit.
+coverage_driver() {
+  local mods
+  mods="$(${RUNNER[@]+"${RUNNER[@]}"} php -m < /dev/null 2>/dev/null || true)"
+  if printf '%s\n' "$mods" | grep -qix 'pcov'; then echo pcov
+  elif printf '%s\n' "$mods" | grep -qix 'xdebug'; then echo xdebug
+  else echo none; fi
+  return 0
+}
+COV_DRIVER=""
 if [[ "$COVERAGE" == "1" ]]; then
+  COV_DRIVER="$(coverage_driver)"
+  case "$COV_DRIVER" in
+    none)
+      log_warn "--coverage: no coverage driver (PCOV, or Xdebug) is loaded in the PHP that runs PHPUnit$([[ ${#RUNNER[@]} -gt 0 ]] && printf ' (the DDEV web container)'); the tests run without coverage. Enable one (e.g. \`ddev xdebug on\`, or PCOV in the container) to collect it."
+      ;;
+    xdebug) COVERAGE_ENV=(env XDEBUG_MODE=coverage);;
+  esac
+fi
+if [[ "$COVERAGE" == "1" && "$COV_DRIVER" != "none" ]]; then
   # Coverage HTML is a developer-facing output, so it goes to the single visible,
   # gitignored .drupilot/ artifacts dir at the Drupal root (project_artifacts_dir).
   # Because that dir is under the root (mounted at /var/www/html in DDEV), the same
@@ -429,7 +451,7 @@ run_group() {
   # not redirect or swallow its output. --log-junit only adds the per-test file.
   local junit="$JUNIT_REL/junit-$$-$group.xml"
   rm -f "$DRUPAL_ROOT/$junit" 2>/dev/null || true
-  local -a cmd=(${RUNNER[@]+"${RUNNER[@]}"} "${PHPUNIT[@]}" --log-junit "$junit" ${COVERAGE_ARGS[@]+"${COVERAGE_ARGS[@]}"} ${FILTER_ARGS[@]+"${FILTER_ARGS[@]}"} "$path")
+  local -a cmd=(${RUNNER[@]+"${RUNNER[@]}"} ${COVERAGE_ENV[@]+"${COVERAGE_ENV[@]}"} "${PHPUNIT[@]}" --log-junit "$junit" ${COVERAGE_ARGS[@]+"${COVERAGE_ARGS[@]}"} ${FILTER_ARGS[@]+"${FILTER_ARGS[@]}"} "$path")
 
   # Temporarily relax errexit around the test run so a failing group does not
   # abort the script before we summarise it. Through DDEV, `ddev exec`'s red
@@ -568,7 +590,9 @@ else
   COV_REQUESTED="false"; COV_HTML_PATH=""
   if [[ "$COVERAGE" == "1" ]]; then
     COV_REQUESTED="true"
-    if [[ ${#RUNNER[@]} -gt 0 ]]; then COV_HTML_PATH="$DRUPAL_ROOT/${COV_HTML_REL:-}"; else COV_HTML_PATH="${COV_HTML_DIR:-}"; fi
+    # No driver: nothing was collected, so no HTML path is recorded.
+    if [[ "$COV_DRIVER" == "none" ]]; then COV_HTML_PATH=""
+    elif [[ ${#RUNNER[@]} -gt 0 ]]; then COV_HTML_PATH="$DRUPAL_ROOT/${COV_HTML_REL:-}"; else COV_HTML_PATH="${COV_HTML_DIR:-}"; fi
   fi
 
   if ! jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t")

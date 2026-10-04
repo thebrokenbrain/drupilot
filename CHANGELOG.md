@@ -13,6 +13,24 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+### Fixed
+- `run-phpcs.sh` no longer exits 1 when PHPCS cannot load a project ruleset
+  and its message names no ERROR line: an explicit ruleset is refused (exit
+  2) and an auto-detected one falls back to Drupal,DrupalPractice, as
+  documented.
+- `run-phpunit.sh --coverage` checks for a coverage driver (PCOV, or Xdebug in
+  coverage mode) first; without one the tests run without coverage flags,
+  instead of a PHPUnit warning that a failOnWarning configuration turned into
+  a false `regression` verdict.
+- `ddev-up.sh` no longer leaves its saved docroot copy in the temp dir when it
+  stops early; if the cached core already replaced the docroot, the copy is
+  kept and its path reported.
+- `/drupilot-status` loads in `claude -p` and without an approval prompt: its
+  core-matrix line now calls `core_matrix_summary` instead of an inline jq
+  program, which Claude Code refused as an unverifiable `bash -c` script.
+- A port manifest whose patch path is relative to the Drupal root no longer
+  makes the patch look missing in `port-summary.sh` and `/drupilot-status`.
+
 ## [0.9.1] - 2026-10-03
 
 ### Added
