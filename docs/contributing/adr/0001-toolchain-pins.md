@@ -97,8 +97,8 @@ reasons decide for 2.6.1:
 - **PHPStan stays current.** With rector 2.5.2, PHPStan must stay at or
   below 2.2.5. With phpstan 2.2.2 (set B), Composer also holds core-dev's
   phpstan/phpstan-phpunit at 2.0.16, because 2.0.17 and later need phpstan
-  `^2.2.3`. A single `composer update phpstan/phpstan` then brings back the
-  known crash.
+  `^2.2.3`. Any resolve that lets phpstan move past 2.2.5 (a fallback to the
+  ranges, a manual require) then brings back the known crash.
 - **Cell 12 can share the Rector line.** drupal/core-dev 12.0.0-beta1
   requires phpstan `^2.2.14` (and drupal/coder `^9.0`), and rector 2.5.2
   crashes on every phpstan from 2.2.6 on. So only the 2.6.1 line can serve
@@ -304,7 +304,8 @@ started from the same root. The full log is in the lab's `notes.md`.
   rector 2.6.1. That set works (see Probes), but it is not the cell. The
   rector range (`^2.0 <2.6.2`) and the phpstan range (`^2.1`) already
   resolve to the cell's pins.
-- **The `run-rector.sh` parser fix lands with the switch.** Count only the
+- **The `run-rector.sh` parser fix lands with the switch (T-M2-10), before
+  the compat pass of ADR 0002 (T-M2-13) adds more such notices.** Count only the
   ` * …Rector` lines inside `Applied rules:` blocks, or read Rector's
   JSON `applied_rectors`. Add a unit case built from the captured Rector
   2.6.1 output (lab `logs/rector-2.6.1-skip-warning-sample.log`). Without
@@ -331,7 +332,8 @@ started from the same root. The full log is in the lab's `notes.md`.
     sets of PR #419; its `dev-pr-419-*` branches already require
     `rector/rector ^2.6` with no conflict);
   - the first 11.5 bed;
-  - any `refresh-data.sh` run that reports a newer rector 2.6.x or phpstan
-    2.2.x.
+  - a newer rector 2.6.x or phpstan 2.2.x on repo.packagist.org/p2 (a
+    manual check: `refresh-data.sh` reads drupal/core-dev's PHPStan
+    constraint, not the Rector or PHPStan releases themselves).
 
   Run the same matrix again before moving a pin.

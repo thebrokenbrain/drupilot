@@ -7,14 +7,16 @@
 ## Context
 
 Stage `php` (M5) must check that the module works on every PHP minor of the
-window W = [L..P]: L is the PHP floor of the declared core range, P is
-`DRUPILOT_PHP_TARGET`. The checks are PHPStan `phpVersion`, `php -l` on each
-minor of W, the `PHP_LOW` test leg and PHPCompatibility `testVersion L-P`
-(AR-01, AR-08). drupilot 0.9 has no PHP-target gate. `run-phpcs.sh` only
-passes `--runtime-set testVersion <target>-` for a project ruleset that
-happens to reference PHPCompatibility, and it never installs the standard.
-The static floor comes from `detect-php-floor.sh`: 11 ERE signals for
-8.2 to 8.4, floor only.
+window W: AR-01 defines it as [L..P], L the PHP floor of the declared core
+range and P `DRUPILOT_PHP_TARGET`; ADR 0002 widens its top to U, the higher
+of P and the highest PHP a core minor of the range supports, so W = [L..U].
+The checks are PHPStan `phpVersion`, `php -l` on each minor of W, the
+`PHP_LOW` test leg and PHPCompatibility `testVersion` (AR-01, AR-08).
+drupilot 0.9 has no PHP-target gate. `run-phpcs.sh` always passes
+`--runtime-set testVersion <target>-` (unless the ruleset sets its own), which
+only matters to a project ruleset that references PHPCompatibility; it never
+installs the standard. The static floor comes from `detect-php-floor.sh`: 10
+ERE signals for 8.2 to 8.4, floor only.
 
 X6 adopted PHPCompatibility, pinned `@alpha` and recorded in the lock, as a
 non-blocking stage. It degrades to `detect-php-floor.sh` on any install
@@ -75,9 +77,12 @@ blocks a port and never fails stage `php`.
    mount, and outside the bed's own `composer.json`. `run-phpcompat.sh`
    installs it on first use, idempotently: it skips when
    `vendor/bin/phpcs` exists and `composer.lock` lists exactly the pinned
-   versions. The tested sequence is:
+   versions. The sequence (its parts were tested in the spike's steps 10,
+   16 and 31: in the bed through `ddev exec composer`, and the pre-seeded
+   `composer.json` with the seven pins in `composer:2`) is:
 
    ```bash
+   mkdir -p <root>/.drupilot/phpcompat
    # composer.json written first: allow-plugins MUST be set before require
    printf '%s\n' '{"config":{"allow-plugins":{"dealerdirect/phpcodesniffer-composer-installer":true}}}' \
      > <root>/.drupilot/phpcompat/composer.json
@@ -120,9 +125,12 @@ blocks a port and never fails stage `php`.
      - it is never empty. `ddev exec` drops an empty argument, and PHPCS
        then takes the next flag as the testVersion.
    - **Standards.** Add one `PHPCompatibilitySymfonyPolyfillPHP<xy>` for
-     each `symfony/polyfill-php<xy>` in the T-M5-04 polyfill intersection,
-     the `require` of `core/composer.json` across every minor of C, when the
-     tree lists that standard (`phpcs -i`). `polyfill-php86` has no ruleset
+     each PHP 8.x version whose functions every minor of C can use: polyfilled
+     by `symfony/polyfill-php<xy>` in that minor's `core/composer.json`
+     `require`, or native at that minor's `php_min` (Drupal 12's
+     `core/composer.json` requires only `polyfill-php86` and
+     `polyfill-iconv`, with PHP 8.5 as its minimum, so 8.4 and 8.5 are
+     native there), when the tree lists that standard (`phpcs -i`). `polyfill-php86` has no ruleset
      in 2.0.0-alpha3, so it adds nothing; log that. Each polyfill ruleset
      is `PHPCompatibility` with excludes, so listing `PHPCompatibility`
      first changes nothing (verified).
@@ -141,8 +149,9 @@ blocks a port and never fails stage `php`.
    - `degraded`: anything else. Observed cases:
      - an install failure (offline exit 100; a missing allow-plugins exit 1
        with a half-installed vendor);
-     - exit 16 (standard not installed), 64, 124 (timeout), 127 (no tree)
-       or 255 (a PHP fatal);
+     - exit 16 (standard not installed), 127 (no tree) or 255 (a PHP fatal),
+       and also, though the spike never produced them, 64 (requirements not
+       met, from PHPCS's `ExitCode.php`) and 124 (the container's timeout);
      - unparsable stdout;
      - an `Internal.Exception` message (for example an invalid testVersion,
        which is reported in the JSON with exit 2, not as a crash).
@@ -387,7 +396,7 @@ php:8.X-cli php .drupilot/phpcompat*/vendor/bin/phpcs …`:
 
 | plan | P | testVersion | polyfill rulesets | errors | warnings | floor | removed | deprecated |
 |---|---|---|---|---|---|---|---|---|
-| `^10.3 \|\| ^11` | 8.4 | 8.1-8.4 | none, since core 10.3 has no polyfill | 28 | 36 | 16 | 12 | 36 |
+| `^10.3 \|\| ^11` | 8.4 | 8.1-8.4 (the [L..P] window, run before the ADR 0002 decision; Decision 4 now gives 8.1-8.5) | none, since core 10.3 has no polyfill | 28 | 36 | 16 | 12 | 36 |
 | `^11.3 \|\| ^12` | 8.5 | 8.3-8.5 | PolyfillPHP84 and PolyfillPHP85 | 17 | 52 | 5 | 12 | 52 |
 
 The 12 removed findings of the second plan include the 2 property-hooks

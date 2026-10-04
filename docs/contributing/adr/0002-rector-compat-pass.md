@@ -319,8 +319,14 @@ attribute rules), all `PHP_81`, so L >= 8.1 keeps them.
   unchanged. With the default P = 8.3 it admits
   `ExplicitNullableParamTypeRector` for `^10.3 || ^11`, which is what L-M2-3
   expects; T-M2-13 renders the compat config whenever the list is not empty.
-- **T-M2-14** adds the three skips. In the same change, `run-rector.sh`
-  (l.526-541) must stop reading the ` * <FQCN>` lines of Rector's
+  M5 follows the same bound U = max(P, ceiling): T-M5-02's
+  `php_rule_class` classifies against U (not P), and T-M5-03 audits the
+  Rector PHP sets up to U.
+- **T-M2-14** adds the three skips. The `run-rector.sh` parser fix lands
+  earlier, with the toolchain switch of T-M2-10 (ADR 0001), so that neither
+  the skips nor the compat pass (whose config carries the same skip list)
+  are misread: `run-rector.sh` (l.526-541) must stop reading the
+  ` * <FQCN>` lines of Rector's
   `[WARNING] These skipped rules are never registered` block as applied
   rules: on the bed it reported `ReadOnlyClassRector`,
   `SleepToSerializeRector`, `WakeupToUnserializeRector` and

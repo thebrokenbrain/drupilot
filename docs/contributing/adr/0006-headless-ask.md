@@ -27,8 +27,9 @@ Keep `ask` (OD-04 and INV7 unchanged). With Claude Code 2.1.289,
 including `bypassPermissions` and `--dangerously-skip-permissions`.
 It does not hang, and the exit code is 0.
 The model gets the hook's `permissionDecisionReason`, word for word, as an
-`is_error` tool result, and the call appears in the result event's
-`permission_denials`. So `ask` stops the push and fences the residual fixer
+`is_error` tool result, and the call appears in a result event's
+`permission_denials` (with a subagent, in an earlier result event than the
+last one: a check must gather `permission_denials` over every result event). So `ask` stops the push and fences the residual fixer
 in plain headless `auto`, and still lets a human answer in an interactive
 session. No fallback is needed. In detail:
 
@@ -145,8 +146,11 @@ was denied. It requires approval, and this session has no approval surface
 sees "PreToolUse:<Tool> hook error: <reason>".
 
 In plain `-p`, the `ask` runs took 5–13 s. None hung, every exit code was 0,
-and `result.subtype` was `success`. Each run made exactly one tool call: the
-model reported the reason and did not retry.
+and `result.subtype` was `success`. Each S1/S2 run made exactly one tool
+call: the model reported the reason and did not retry. Each S3 (subagent)
+run made two, the `Agent` call and the subagent's denied `Write`; in 5 of
+the 8 runs the denial sits in an earlier result event and the last one
+shows an empty `permission_denials`. The T-M8-05 live check covers S3 too.
 
 **Extras:**
 
