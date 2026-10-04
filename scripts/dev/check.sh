@@ -48,6 +48,14 @@
 #   - templates   render every templates/*.tmpl with dummy values; each XML output
 #                 must pass `xmllint --noout` (skipped when xmllint is absent)
 #   - json        `jq empty` on config/*.json, hooks/*.json, .claude-plugin/*.json
+#   - version     the release version (09-R4): .claude-plugin/plugin.json holds
+#                 a valid version equal to the top released CHANGELOG.md
+#                 heading; a v* tag on HEAD, if any, is v<version>; no
+#                 pre-release version on `main` (GITHUB_BASE_REF for a pull
+#                 request, else GITHUB_REF_NAME, else the checked-out branch);
+#                 and config/migrations.json is coherent (every aliased `new`
+#                 and `when` key exists in config/defaults.json, every
+#                 remove_in is a later major than the version)
 #   - unit        the unit tests (scripts/dev/unit.sh: tests/lib/selftest.sh and
 #                 tests/unit/*.sh, run with this same bash; a test skipped
 #                 until its milestone is not a failure)
@@ -91,7 +99,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export CLAUDE_PLUGIN_ROOT="$REPO"
 
-ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json unit contract evals golden smoke"
+ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json version unit contract evals golden smoke"
 # Gates that run only when asked for (--smoke, --ci, or named in --only).
 OPTIONAL_GATES="golden smoke"
 # Gates known to fail on the current tree, with a fix tracked for 0.9.0. Empty
@@ -389,6 +397,52 @@ gate_json() {
   done
   if [[ -s "$out" ]]; then record json fail "invalid JSON" "$out"
   else record json pass "$n JSON files valid"; fi
+}
+
+gate_version() {
+  local out="$TMP/version.out" pj="$REPO/.claude-plugin/plugin.json" v top tags t branch mf major
+  : > "$out"
+  v="$(jq -r '.version // empty' "$pj" 2>/dev/null || true)"
+  if ! printf '%s\n' "$v" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
+    echo "plugin.json: '$v' is not a valid version (X.Y.Z or X.Y.Z-pre.N)" >> "$out"
+  fi
+  top="$(awk '/^## \[/ { h = $2; gsub(/[][]/, "", h); if (h != "Unreleased") { print h; exit } }' "$REPO/CHANGELOG.md" 2>/dev/null || true)"
+  [[ "$top" == "$v" ]] || echo "plugin.json version '$v' differs from the top released CHANGELOG.md heading '[${top:-none}]'" >> "$out"
+  if git -C "$REPO" rev-parse --git-dir > /dev/null 2>&1; then
+    tags="$(git -C "$REPO" tag --points-at HEAD 2>/dev/null | grep '^v' || true)"
+    for t in $tags; do
+      [[ "$t" == "v$v" ]] || echo "HEAD is tagged '$t', but plugin.json says '$v' (want 'v$v')" >> "$out"
+    done
+  fi
+  branch="${GITHUB_BASE_REF:-}"
+  if [[ -z "$branch" && "${GITHUB_REF_TYPE:-branch}" == "branch" ]]; then branch="${GITHUB_REF_NAME:-}"; fi
+  [[ -n "$branch" || -n "${GITHUB_REF_TYPE:-}" ]] || branch="$(git -C "$REPO" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  if [[ "$branch" == "main" && "$v" == *-* ]]; then
+    echo "pre-release version '$v' on main (a pre-release lives on the integration branch only)" >> "$out"
+  fi
+  mf="$REPO/config/migrations.json"
+  if [[ -f "$mf" ]]; then
+    major="${v%%.*}"
+    jq -r --slurpfile d "$REPO/config/defaults.json" --arg major "$major" '
+      def maj: tostring | split(".")[0] | tonumber? // -1;
+      if .schema != 1 then "migrations.json: schema must be 1" else empty end,
+      (["env_aliases", "value_aliases", "removed"][] as $a
+        | if (.[$a] | type) != "array" then "migrations.json: \($a) must be an array" else empty end),
+      ((.env_aliases // []) | to_entries[] | .key as $i | .value
+        | (if ([.old, .new, .since, .remove_in] | all(type == "string")) then empty
+           else "migrations.json: env_aliases[\($i)] needs string old, new, since and remove_in" end),
+          ((.new // "" | tostring | split("=")[0]) as $k
+            | if ($d[0] | has($k)) then empty else "migrations.json: env_aliases[\($i)] new key \($k) is not in config/defaults.json" end),
+          (if .when == null then empty
+           elif ((.when.key // "") as $w | $d[0] | has($w)) then empty
+           else "migrations.json: env_aliases[\($i)] when.key \(.when.key // "" | tostring) is not in config/defaults.json" end)),
+      ((.env_aliases // []) + (.value_aliases // []) + (.removed // []) | .[] | select(has("remove_in"))
+        | if (.remove_in | maj) > ($major | tonumber) then empty
+          else "migrations.json: \(.old // "?") has remove_in \(.remove_in), not a later major than \($major)" end)
+    ' "$mf" >> "$out" 2>/dev/null || echo "migrations.json: not valid JSON" >> "$out"
+  fi
+  if [[ -s "$out" ]]; then record version fail "the release version is inconsistent" "$out"
+  else record version pass "$v (CHANGELOG, tag, branch ${branch:-?}, migrations.json)"; fi
 }
 
 gate_unit() {
