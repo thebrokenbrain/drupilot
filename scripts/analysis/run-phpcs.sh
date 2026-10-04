@@ -266,7 +266,12 @@ if [[ -n "$RS_FILE" && -z "$RS_REASON" ]]; then
   _prc=$?
   set -e
   if [[ "$_prc" -ne 0 ]]; then
-    RS_REASON="PHPCS cannot load it (exit $_prc): $(printf '%s\n' "$_probe" | grep -m 1 -E 'ERROR|does not exist|not installed' | cut -c1-200)"
+    # The first line naming the problem, else PHPCS's last line. No match is
+    # not an error: under pipefail a bare grep here would abort the script
+    # (exit 1) before the explicit-ruleset refusal (exit 2) or the fallback.
+    _why="$(printf '%s\n' "$_probe" | grep -m 1 -E 'ERROR|does not exist|not installed' || true)"
+    [[ -n "$_why" ]] || _why="$(printf '%s\n' "$_probe" | grep -v '^[[:space:]]*$' | tail -n 1 || true)"
+    RS_REASON="PHPCS cannot load it (exit $_prc): $(printf '%s' "$_why" | cut -c1-200)"
     RS_REASON="${RS_REASON%: }"; RS_REASON="${RS_REASON%.}"
   fi
 fi
