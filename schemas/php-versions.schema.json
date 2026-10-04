@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thebrokenbrain.github.io/drupilot/schemas/php-versions.schema.json",
+  "title": "drupilot PHP versions (config/php/versions.json)",
+  "description": "The lifecycle and the tooling ids of each PHP minor drupilot reasons about (hand-maintained from php.net; refresh-data.sh does not touch it). drupal_core_floor is the oldest Drupal core minor that supports the version, when drupal.org's PHP requirements table makes it certain (every older minor is No); php_supported_for in scripts/lib/plan.sh falls back to it for a minor the table does not list.",
+  "type": "object",
+  "required": ["schema_version", "as_of", "versions"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": 1},
+    "as_of": {"$ref": "#/$defs/date"},
+    "versions": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/php"},
+      "additionalProperties": {"x-drupilot-hard-gate": true, "$ref": "#/$defs/version"}
+    }
+  },
+  "$defs": {
+    "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "php": {"type": "string", "pattern": "^[5-9]\\.[0-9]+$"},
+    "date_or_null": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/date"}]},
+    "version": {
+      "type": "object",
+      "required": ["released", "planned", "active_until", "security_until", "id", "rector_level", "rector_set", "docker_cli_image", "ddev_supported", "drupal_core_floor", "src", "verified"],
+      "additionalProperties": false,
+      "properties": {
+        "released": {"description": "The x.y.0 release date, null while unreleased.", "$ref": "#/$defs/date_or_null"},
+        "planned": {"description": "The planned GA date of an unreleased version, else null.", "$ref": "#/$defs/date_or_null"},
+        "active_until": {"$ref": "#/$defs/date_or_null"},
+        "security_until": {"$ref": "#/$defs/date_or_null"},
+        "id": {"description": "PHP_VERSION_ID of x.y.0 (80300 for 8.3), as PHPStan phpVersion takes it.", "type": "integer", "minimum": 50000},
+        "rector_level": {"description": "The Rector PhpVersion constant (PhpVersion::PHP_83).", "type": "string", "pattern": "^PHP_[0-9]+$"},
+        "rector_set": {"description": "The ->withPhpSets() named argument (php83), or null where drupilot assumes none.", "type": ["string", "null"], "pattern": "^php[0-9]+$"},
+        "docker_cli_image": {"description": "The official php CLI image tag, null while none exists.", "type": ["string", "null"], "pattern": "^php:[0-9.]+-cli$"},
+        "ddev_supported": {"description": "Whether DDEV's php_version accepts it (null: unknown).", "type": ["boolean", "null"]},
+        "drupal_core_floor": {"description": "The oldest Drupal core minor that supports this PHP, when certain; null otherwise.", "type": ["string", "null"], "pattern": "^[0-9]+\\.[0-9]+$"},
+        "src": {"type": "string", "minLength": 1},
+        "verified": {"type": "boolean"},
+        "note": {"type": "string"}
+      }
+    }
+  }
+}

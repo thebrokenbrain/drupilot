@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thebrokenbrain.github.io/drupilot/schemas/php-rules.schema.json",
+  "title": "drupilot PHP rules (config/php/rules.json)",
+  "description": "The PHP-version rules drupilot reasons about: compat Rector rules (fix a deprecation without needing a PHP above the floor), deny rules (never applied, also inside level sets), report-only constructs and removed constructs no rule fixes. Seeded by hand, later audited against the pinned Rector. Every rule carries deprecated_in and/or removed_in (a deny rule may carry neither). Only a verified rule may be applied or block a port.",
+  "type": "object",
+  "required": ["schema_version", "as_of", "rector_version", "rules"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": 1},
+    "as_of": {"$ref": "#/$defs/date"},
+    "rector_version": {"description": "The rector/rector version whose source the rule class names were checked against.", "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "rules": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/rule"}}
+  },
+  "$defs": {
+    "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "php_or_null": {"type": ["string", "null"], "pattern": "^[5-9]\\.[0-9]+$"},
+    "rule": {
+      "type": "object",
+      "required": ["id", "rule", "kind", "deprecated_in", "removed_in", "output_min_php", "drupal_safe", "src", "verified"],
+      "additionalProperties": false,
+      "anyOf": [
+        {"properties": {"kind": {"const": "deny"}}},
+        {"properties": {"deprecated_in": {"type": "string"}}},
+        {"properties": {"removed_in": {"type": "string"}}}
+      ],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+        "rule": {"description": "The Rector rule class, or null for a construct no rule fixes.", "type": ["string", "null"], "pattern": "^Rector\\\\[A-Za-z0-9_\\\\]+Rector$"},
+        "kind": {"enum": ["compat", "deny", "report-only", "removed-no-rule"]},
+        "deprecated_in": {"$ref": "#/$defs/php_or_null"},
+        "removed_in": {"$ref": "#/$defs/php_or_null"},
+        "output_min_php": {"description": "The lowest PHP the fixed code runs on.", "$ref": "#/$defs/php_or_null"},
+        "drupal_safe": {"description": "Whether the rewrite keeps Drupal behaviour (false for __sleep/__wakeup, see DependencySerializationTrait).", "type": ["boolean", "null"]},
+        "detect": {"description": "For a construct no rule fixes: a POSIX ERE (prefixed ere:) that finds it.", "type": "string", "pattern": "^ere:"},
+        "construct": {"type": "string"},
+        "reason": {"type": "string"},
+        "src": {"description": "Where deprecated_in/removed_in come from (php.net migration guides).", "type": "string", "minLength": 1},
+        "rule_src": {"description": "Where the rule class was found (the rector-src tree at the tag).", "type": "string"},
+        "verified": {"type": "boolean"},
+        "note": {"type": "string"}
+      }
+    }
+  }
+}

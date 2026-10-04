@@ -482,6 +482,14 @@
       "default_ref": null,
       "description": "Internal: the include guard of scripts/lib/common.sh (a private shell variable, _DRUPILOT_COMMON_SH).",
       "see": null
+    },
+    "DRUPILOT_VERSION_DATA_DIR": {
+      "type": "path",
+      "enum": null,
+      "tier": "internal",
+      "default_ref": null,
+      "description": "Internal: the directory scripts/lib/plan.sh reads the version data from (targets/, php/), instead of the plugin's config/. Tests and goldens point it at a pinned data snapshot.",
+      "see": null
     }
   },
   "patterns": {

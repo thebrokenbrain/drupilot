@@ -16,6 +16,7 @@ behaviour.
 | [0011](0011-release-validation-without-strict.md) | release.sh validates the plugin without `--strict` |
 | [0012](0012-docs-site-in-m1.md) | The docs site starts with the pages that exist |
 | [0013](0013-config-keys-scope.md) | What the config-keys gate scans, and the comment limit |
+| [0014](0014-version-data-hard-gates.md) | The schemas mark what a hard gate reads, and the data follows the source |
 
 A new ADR takes the next free number, gets a line here and a nav line in
 `mkdocs.yml` in the same change (the `docs` gate rejects an orphan page).
