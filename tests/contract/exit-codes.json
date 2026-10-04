@@ -1,0 +1,240 @@
+[
+  {
+    "case": "no error finding",
+    "code": 0,
+    "observed": "0",
+    "ok": true,
+    "script": "check-port-safety.sh"
+  },
+  {
+    "case": "usage: no --subject",
+    "code": 1,
+    "observed": "1",
+    "ok": true,
+    "script": "check-port-safety.sh"
+  },
+  {
+    "case": "error findings (legacy_widgets)",
+    "code": 3,
+    "observed": "3",
+    "ok": true,
+    "script": "check-port-safety.sh"
+  },
+  {
+    "case": "no state",
+    "code": 0,
+    "observed": "0",
+    "ok": true,
+    "script": "port-summary.sh"
+  },
+  {
+    "case": "not a module",
+    "code": 1,
+    "observed": "1",
+    "ok": true,
+    "script": "port-summary.sh"
+  },
+  {
+    "case": "--strict, status blocked",
+    "code": 3,
+    "observed": "3",
+    "ok": true,
+    "script": "port-summary.sh"
+  },
+  {
+    "case": "analyze ready (stub php, composer)",
+    "code": 0,
+    "observed": "0",
+    "ok": true,
+    "script": "preflight.sh"
+  },
+  {
+    "case": "profile all",
+    "code": 0,
+    "observed": "0",
+    "ok": true,
+    "script": "preflight.sh"
+  },
+  {
+    "case": "analyze without git",
+    "code": 2,
+    "observed": "2",
+    "ok": true,
+    "script": "preflight.sh"
+  },
+  {
+    "case": "PHPCS exit 0 passed through",
+    "code": 0,
+    "observed": "0",
+    "ok": true,
+    "script": "run-phpcs.sh"
+  },
+  {
+    "case": "usage: a ruleset path that does not exist",
+    "code": 1,
+    "observed": "1",
+    "ok": true,
+    "script": "run-phpcs.sh"
+  },
+  {
+    "case": "usage: bad --fix-scope",
+    "code": 1,
+    "observed": "1",
+    "ok": true,
+    "script": "run-phpcs.sh"
+  },
+  {
+    "case": "an explicit ruleset PHPCS cannot load (stub)",
+    "code": 2,
+    "observed": "2",
+    "ok": true,
+    "script": "run-phpcs.sh"
+  },
+  {
+    "case": "PHPCS exit 3 passed through",
+    "code": 3,
+    "observed": "3",
+    "ok": true,
+    "script": "run-phpcs.sh"
+  },
+  {
+    "case": "no issues (stub phpstan)",
+    "code": 0,
+    "observed": "0",
+    "ok": true,
+    "script": "run-phpstan.sh"
+  },
+  {
+    "case": "findings (stub phpstan)",
+    "code": 1,
+    "observed": "1",
+    "ok": true,
+    "script": "run-phpstan.sh"
+  },
+  {
+    "case": "gate: analyze not ready (no git)",
+    "code": 2,
+    "observed": "2",
+    "ok": true,
+    "script": "run-phpstan.sh"
+  },
+  {
+    "case": "crashed, no verdict (stub phpstan)",
+    "code": 3,
+    "observed": "3",
+    "ok": true,
+    "script": "run-phpstan.sh"
+  },
+  {
+    "case": "suite green (needs DDEV + PHPUnit)",
+    "code": 0,
+    "observed": "lab",
+    "ok": true,
+    "script": "run-phpunit.sh"
+  },
+  {
+    "case": "usage: invalid --type",
+    "code": 1,
+    "observed": "1",
+    "ok": true,
+    "script": "run-phpunit.sh"
+  },
+  {
+    "case": "no vendor/bin/phpunit, or no Docker/DDEV",
+    "code": 2,
+    "observed": "2",
+    "ok": true,
+    "script": "run-phpunit.sh"
+  },
+  {
+    "case": "a group failed (needs DDEV + PHPUnit)",
+    "code": 3,
+    "observed": "lab",
+    "ok": true,
+    "script": "run-phpunit.sh"
+  },
+  {
+    "case": "ok (stub rector)",
+    "code": 0,
+    "observed": "0",
+    "ok": true,
+    "script": "run-rector.sh"
+  },
+  {
+    "case": "usage: no --subject",
+    "code": 1,
+    "observed": "1",
+    "ok": true,
+    "script": "run-rector.sh"
+  },
+  {
+    "case": "gate: analyze not ready (no git)",
+    "code": 2,
+    "observed": "2",
+    "ok": true,
+    "script": "run-rector.sh"
+  },
+  {
+    "case": "official pass crashed (stub rector)",
+    "code": 3,
+    "observed": "3",
+    "ok": true,
+    "script": "run-rector.sh"
+  },
+  {
+    "case": "only the digests pass crashed (needs the digests checkout)",
+    "code": 4,
+    "observed": "lab",
+    "ok": true,
+    "script": "run-rector.sh"
+  },
+  {
+    "case": "no error finding",
+    "code": 0,
+    "observed": "0",
+    "ok": true,
+    "script": "scan-signature-changes.sh"
+  },
+  {
+    "case": "usage: no --subject",
+    "code": 1,
+    "observed": "1",
+    "ok": true,
+    "script": "scan-signature-changes.sh"
+  },
+  {
+    "case": "error findings (legacy_widgets)",
+    "code": 3,
+    "observed": "3",
+    "ok": true,
+    "script": "scan-signature-changes.sh"
+  },
+  {
+    "case": "--dry-run",
+    "code": 0,
+    "observed": "0",
+    "ok": true,
+    "script": "verify-core-matrix.sh"
+  },
+  {
+    "case": "usage: unknown flag",
+    "code": 1,
+    "observed": "1",
+    "ok": true,
+    "script": "verify-core-matrix.sh"
+  },
+  {
+    "case": "requirements or no DDEV bed (needs Docker to tell apart)",
+    "code": 2,
+    "observed": "lab",
+    "ok": true,
+    "script": "verify-core-matrix.sh"
+  },
+  {
+    "case": "a leg failed (needs DDEV reference cores)",
+    "code": 3,
+    "observed": "lab",
+    "ok": true,
+    "script": "verify-core-matrix.sh"
+  }
+]

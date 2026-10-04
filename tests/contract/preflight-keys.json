@@ -1,0 +1,59 @@
+{
+  "extended": {
+    "check_keys": [
+      "category",
+      "detail",
+      "hint",
+      "id",
+      "kind",
+      "label",
+      "ok",
+      "present",
+      "profiles",
+      "required",
+      "version"
+    ],
+    "keys": [
+      "checks",
+      "extended",
+      "php_target",
+      "profile",
+      "ready",
+      "toolchain"
+    ],
+    "ready": [
+      "analyze",
+      "contribute",
+      "setup",
+      "test"
+    ],
+    "toolchain": null
+  },
+  "plain": {
+    "check_keys": [
+      "category",
+      "detail",
+      "hint",
+      "id",
+      "kind",
+      "label",
+      "ok",
+      "present",
+      "profiles",
+      "required",
+      "version"
+    ],
+    "keys": [
+      "checks",
+      "php_target",
+      "profile",
+      "ready"
+    ],
+    "ready": [
+      "analyze",
+      "contribute",
+      "setup",
+      "test"
+    ]
+  }
+}

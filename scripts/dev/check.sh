@@ -51,6 +51,12 @@
 #   - unit        the unit tests (scripts/dev/unit.sh: tests/lib/selftest.sh and
 #                 tests/unit/*.sh, run with this same bash; a test skipped
 #                 until its milestone is not a failure)
+#   - contract    the 0.9 public-surface contract (scripts/dev/contract.sh:
+#                 commands, choices, JSON key sets, name generators, enums and
+#                 the per-script exit codes, against tests/contract/*.json)
+#   - evals       the static router evals (scripts/dev/evals.sh: the ordered tab
+#                 sequence of a `full` run, the mode words and the mode-inference
+#                 rules, against tests/evals/router/*.json; no model)
 #   - smoke       OPTIONAL (only with --smoke, --ci or --only smoke): the
 #                 Docker-free smoke tests of scripts/dev/smoke.sh (expected
 #                 results on tests/fixtures/), run with this same bash
@@ -81,7 +87,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export CLAUDE_PLUGIN_ROOT="$REPO"
 
-ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json unit smoke"
+ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json unit contract evals smoke"
 # Gates that run only when asked for (--smoke, --ci, or named in --only).
 OPTIONAL_GATES="smoke"
 # Gates known to fail on the current tree, with a fix tracked for 0.9.0. Empty
@@ -391,6 +397,29 @@ gate_unit() {
     jq -r '.tests[] | select(.status == "fail") | .name as $n | (.failures[]? // .detail) | "\($n): \(.)"' "$js" > "$out" 2>/dev/null || true
     [[ -s "$out" ]] || tail -n 20 "$err" > "$out"
     record unit fail "scripts/dev/unit.sh reported failures (re-run it for the full log)" "$out"
+  fi
+}
+
+gate_contract() {
+  local js="$TMP/contract.json" err="$TMP/contract.err" out="$TMP/contract.out" n
+  if "$BASH" "$REPO/scripts/dev/contract.sh" --check --json > "$js" 2> "$err"; then
+    n="$(jq -r '.snapshots | length' "$js" 2>/dev/null || echo '?')"
+    record contract pass "$n snapshots keep the 0.9 contract (or an allowed change)"
+  else
+    jq -r '.snapshots[] | select(.status == "differs" or .status == "missing") | "\(.name): \(.detail)"' "$js" > "$out" 2>/dev/null || true
+    [[ -s "$out" ]] || tail -n 20 "$err" > "$out"
+    record contract fail "scripts/dev/contract.sh: the public surface differs from the 0.9 contract" "$out"
+  fi
+}
+
+gate_evals() {
+  local js="$TMP/evals.json" err="$TMP/evals.err" out="$TMP/evals.out"
+  if "$BASH" "$REPO/scripts/dev/evals.sh" --json > "$js" 2> "$err"; then
+    record evals pass "$(jq -r '.checks | length' "$js" 2>/dev/null || echo '?') static router checks passed"
+  else
+    jq -r '.checks[] | select(.status != "pass") | "\(.name): \(.detail)"' "$js" > "$out" 2>/dev/null || true
+    [[ -s "$out" ]] || tail -n 20 "$err" > "$out"
+    record evals fail "scripts/dev/evals.sh: the router evals failed" "$out"
   fi
 }
 

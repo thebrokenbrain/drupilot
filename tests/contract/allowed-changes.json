@@ -1,0 +1,4 @@
+{
+  "_comment": "Intended changes to the frozen 0.9 contract (tests/contract/*.json): {snapshot, sha256 of the new generated content, reason}. scripts/dev/contract.sh --check prints the line to add. Each change also needs a CHANGELOG entry.",
+  "changes": []
+}

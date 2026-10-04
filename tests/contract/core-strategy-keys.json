@@ -1,0 +1,23 @@
+{
+  "keys": [
+    "bc_break",
+    "composer_core_constraint",
+    "current_core_version_requirement",
+    "d10_support",
+    "has_composer_json",
+    "phase",
+    "php_floor_detected",
+    "php_floor_effective",
+    "php_floor_strategy",
+    "php_floor_target_compatible",
+    "php_target",
+    "rationale",
+    "recommended_core_version_requirement",
+    "require_php",
+    "strategy",
+    "suggested_remaining_tasks",
+    "verify_cores",
+    "version_bump",
+    "warnings"
+  ]
+}
