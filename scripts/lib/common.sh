@@ -360,9 +360,20 @@ drupilot_prefs_file() {
 
 # config_get <KEY> [default]
 config_get() {
-  local key="$1" def="${2:-}"
+  _config_resolve "$1" "${2:-}" 1
+}
+
+# _config_resolve <KEY> <default> <aliases 0|1> -> config_get's resolution:
+# env, then (aliases=1) an env alias of KEY, then .drupilot.json, then a
+# .drupilot.json alias of KEY, then config/defaults.json, then <default>. So
+# the environment still wins over every file tier, aliased or not.
+_config_resolve() {
+  local key="$1" def="${2:-}" aliases="${3:-1}"
   local envval="${!key:-}"
   if [[ -n "$envval" ]]; then printf '%s' "$envval"; return 0; fi
+  if [[ "$aliases" == "1" && "$_DRUPILOT_ALIAS_N" -gt 0 ]] && _config_alias env "$key"; then
+    printf '%s' "$_DRUPILOT_ALIAS_VALUE"; return 0
+  fi
   # Project preference tier (.drupilot.json at the Drupal root): remembered
   # tabbed-choice answers, read between the env override and defaults.json.
   # The jq filter keeps a JSON false/0 (jq's `//` would treat false as missing
@@ -373,6 +384,9 @@ config_get() {
     local pv; pv="$(jq -r --arg k "$key" "$jqf" "$pf" 2>/dev/null)"
     if [[ -n "$pv" && "$pv" != "null" ]]; then printf '%s' "$pv"; return 0; fi
   fi
+  if [[ "$aliases" == "1" && "$_DRUPILOT_ALIAS_N" -gt 0 ]] && _config_alias prefs "$key"; then
+    printf '%s' "$_DRUPILOT_ALIAS_VALUE"; return 0
+  fi
   local file; file="$(drupilot_config_file)"
   if [[ -r "$file" ]] && have_cmd jq; then
     local v; v="$(jq -r --arg k "$key" "$jqf" "$file" 2>/dev/null)"
@@ -380,6 +394,83 @@ config_get() {
   fi
   printf '%s' "$def"
 }
+
+# --- Alias layer (config/migrations.json) -------------------------------------
+# A renamed key keeps working for all of 1.x: config/migrations.json lists
+#   env_aliases: [{old, new, since, remove_in, note, when?}]
+# where `old`/`new` are key names, or KEY=value to alias one value only (an
+# `old` of DRUPILOT_X=true applies only while DRUPILOT_X is "true"; a `new` of
+# DRUPILOT_Y=v resolves DRUPILOT_Y to v). `when` ({key, equals}) applies the
+# row only while <key>, resolved WITHOUT aliases (env, .drupilot.json,
+# defaults), equals that value — e.g. a legacy boolean honored only while a
+# strategy is still at its default. Each row used warns once per shell
+# process (a command substitution is its own process). value_aliases and
+# removed are read by their owners and by the `version` gate, not here.
+_DRUPILOT_ALIAS_N=0
+_DRUPILOT_ALIAS_VALUE=""
+_DRUPILOT_ALIAS_WARNED="|"
+
+# _config_alias_load -> the env_aliases rows in parallel arrays (_DA_NEW,
+# _DA_NV, _DA_OLD, _DA_OV, _DA_WK, _DA_WE, _DA_SINCE, _DA_RIN) and their count
+# in _DRUPILOT_ALIAS_N. Runs once when this file is sourced; without a row (the
+# common case) it reads the file without forking jq.
+_config_alias_load() {
+  local f content="" a b c d e g h k z sep
+  _DRUPILOT_ALIAS_N=0
+  f="$(plugin_root)/config/migrations.json"
+  [[ -r "$f" ]] || return 0
+  IFS= read -r -d '' content < "$f" || true
+  [[ "$content" == *'"old"'* ]] || return 0
+  have_cmd jq || return 0
+  sep="$(printf '\037')"
+  # z takes the "." sentinel that keeps a trailing empty field from being dropped.
+  # shellcheck disable=SC2034  # z is only the sentinel
+  while IFS="$sep" read -r a b c d e g h k z; do
+    [[ -n "$a" && -n "$c" ]] || continue
+    _DA_NEW[_DRUPILOT_ALIAS_N]="$a"; _DA_NV[_DRUPILOT_ALIAS_N]="$b"
+    _DA_OLD[_DRUPILOT_ALIAS_N]="$c"; _DA_OV[_DRUPILOT_ALIAS_N]="$d"
+    _DA_WK[_DRUPILOT_ALIAS_N]="$e"; _DA_WE[_DRUPILOT_ALIAS_N]="$g"
+    _DA_SINCE[_DRUPILOT_ALIAS_N]="$h"; _DA_RIN[_DRUPILOT_ALIAS_N]="$k"
+    _DRUPILOT_ALIAS_N=$((_DRUPILOT_ALIAS_N + 1))
+  done < <(jq -r '.env_aliases[]? | select(type == "object" and (.old | type) == "string" and (.new | type) == "string")
+             | (.new | split("=")) as $n | (.old | split("=")) as $o
+             | [$n[0], ($n[1:] | join("=")), $o[0], ($o[1:] | join("=")),
+                (.when.key // ""), (.when.equals // "" | tostring), (.since // ""), (.remove_in // ""), "."]
+             | join("\u001f")' "$f" 2>/dev/null || true)
+  return 0
+}
+
+# _config_alias <env|prefs> <KEY> -> 0 and _DRUPILOT_ALIAS_VALUE when a row
+# aliasing KEY applies in that tier; 1 otherwise.
+_config_alias() {
+  local tier="$1" key="$2" i=0 ok ov got pf
+  while [[ "$i" -lt "$_DRUPILOT_ALIAS_N" ]]; do
+    if [[ "${_DA_NEW[i]}" == "$key" ]]; then
+      ok="${_DA_OLD[i]}"; ov="${_DA_OV[i]}"; got=""
+      if [[ "$tier" == "env" ]]; then
+        got="${!ok:-}"
+      else
+        pf="$(drupilot_prefs_file 2>/dev/null || true)"
+        if [[ -n "$pf" && -r "$pf" ]] && have_cmd jq; then
+          got="$(jq -r --arg k "$ok" 'if type == "object" and has($k) and .[$k] != null then .[$k] | tostring else empty end' "$pf" 2>/dev/null || true)"
+        fi
+      fi
+      if [[ -n "$got" ]] && { [[ -z "$ov" ]] || [[ "$(lc "$got")" == "$(lc "$ov")" ]]; } \
+         && { [[ -z "${_DA_WK[i]}" ]] || [[ "$(_config_resolve "${_DA_WK[i]}" "" 0)" == "${_DA_WE[i]}" ]]; }; then
+        _DRUPILOT_ALIAS_VALUE="${_DA_NV[i]:-$got}"
+        case "$_DRUPILOT_ALIAS_WARNED" in
+          *"|$i|"*) ;;
+          *) _DRUPILOT_ALIAS_WARNED="$_DRUPILOT_ALIAS_WARNED$i|"
+             log_warn "$ok${ov:+=$ov} is deprecated since ${_DA_SINCE[i]:-1.0.0} and will be removed in ${_DA_RIN[i]:-2.0.0}; use $key${_DA_NV[i]:+=${_DA_NV[i]}}";;
+        esac
+        return 0
+      fi
+    fi
+    i=$((i + 1))
+  done
+  return 1
+}
+_config_alias_load
 
 # prefs_set <KEY> <value> -> persist a preference into .drupilot.json at the
 # Drupal root (atomic temp-file + mv). Used to remember a tabbed-choice answer
