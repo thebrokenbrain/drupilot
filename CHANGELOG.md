@@ -214,6 +214,8 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   follow), and `/drupilot-status` and `scripts/env/state.sh` cite
   `docs/reference/state.md` instead of a README section.
 - CI installs `check-jsonschema` 0.38.2 on the Ubuntu and macOS legs.
+- The `checks` CI job may run 35 minutes (was 20): on macOS it runs the
+  whole gate twice, and the second run hit the limit.
 
 ### Fixed
 - `install-toolchain.sh --json` failed with jq 1.6 (Debian 12, Ubuntu

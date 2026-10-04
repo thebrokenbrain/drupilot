@@ -28,7 +28,8 @@ jobs:
   checks:
     name: checks (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    # macOS runs the whole gate twice (bash 5, then the stock /bin/bash 3.2).
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
