@@ -6,7 +6,8 @@
 #
 # Gates (in order; names are what --only/--skip/--allow-fail take):
 #   - validate    `claude plugin validate .` (skipped when `claude` is absent)
-#   - syntax      `bash -n` on scripts/*/*.sh and hooks/scripts/*.sh
+#   - syntax      `bash -n` on scripts/*/*.sh, hooks/scripts/*.sh and the test
+#                 scripts tests/lib/*.sh and tests/unit/*.sh
 #   - exec-bit    those scripts are executable (git mode 100755 when tracked,
 #                 the filesystem -x bit otherwise)
 #   - shellcheck  `shellcheck -S warning` on the same scripts (reads .shellcheckrc;
@@ -47,6 +48,9 @@
 #   - templates   render every templates/*.tmpl with dummy values; each XML output
 #                 must pass `xmllint --noout` (skipped when xmllint is absent)
 #   - json        `jq empty` on config/*.json, hooks/*.json, .claude-plugin/*.json
+#   - unit        the unit tests (scripts/dev/unit.sh: tests/lib/selftest.sh and
+#                 tests/unit/*.sh, run with this same bash; a test skipped
+#                 until its milestone is not a failure)
 #   - smoke       OPTIONAL (only with --smoke, --ci or --only smoke): the
 #                 Docker-free smoke tests of scripts/dev/smoke.sh (expected
 #                 results on tests/fixtures/), run with this same bash
@@ -55,7 +59,7 @@
 #   scripts/dev/check.sh [--json] [--only G1,G2] [--skip G1,G2]
 #                        [--allow-fail G1,G2] [--allow-known] [--smoke] [--ci]
 #     --json         machine summary on STDOUT (logs stay on STDERR)
-#     --only/--skip  run a subset of the gates
+#     --only/--skip  run a subset of the gates (--gate is an alias of --only)
 #     --allow-fail   report these gates' failures as "allowed-fail" (exit 0)
 #     --allow-known  shorthand for --allow-fail with the gates listed in
 #                    KNOWN_FAILING below (failures already tracked for a fix)
@@ -77,7 +81,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export CLAUDE_PLUGIN_ROOT="$REPO"
 
-ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json smoke"
+ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json unit smoke"
 # Gates that run only when asked for (--smoke, --ci, or named in --only).
 OPTIONAL_GATES="smoke"
 # Gates known to fail on the current tree, with a fix tracked for 0.9.0. Empty
@@ -91,8 +95,8 @@ usage() { awk 'NR>2 && /^# =+$/ {exit} NR>2 {sub(/^# ?/, ""); print}' "${BASH_SO
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --json) AS_JSON=1; shift;;
-    --only) ONLY="${2:-}"; shift 2 || die "--only needs a value" 1;;
-    --only=*) ONLY="${1#*=}"; shift;;
+    --only|--gate) ONLY="${2:-}"; shift 2 || die "$1 needs a value" 1;;
+    --only=*|--gate=*) ONLY="${1#*=}"; shift;;
     --skip) SKIP="${2:-}"; shift 2 || die "--skip needs a value" 1;;
     --skip=*) SKIP="${1#*=}"; shift;;
     --allow-fail) ALLOW="$ALLOW,${2:-}"; shift 2 || die "--allow-fail needs a value" 1;;
@@ -150,7 +154,7 @@ missing_tool() {
 # The plugin's shell scripts, sorted (portable: no mapfile, no find -printf).
 SCRIPTS=()
 while IFS= read -r _f; do SCRIPTS+=("$_f"); done < <(
-  cd "$REPO" && ls scripts/*/*.sh hooks/scripts/*.sh 2>/dev/null | LC_ALL=C sort)
+  cd "$REPO" && ls scripts/*/*.sh hooks/scripts/*.sh tests/lib/*.sh tests/unit/*.sh 2>/dev/null | LC_ALL=C sort)
 
 # ---------------------------------------------------------------------------
 gate_validate() {
@@ -375,6 +379,19 @@ gate_json() {
   done
   if [[ -s "$out" ]]; then record json fail "invalid JSON" "$out"
   else record json pass "$n JSON files valid"; fi
+}
+
+gate_unit() {
+  local js="$TMP/unit.json" err="$TMP/unit.err" out="$TMP/unit.out" n k
+  if "$BASH" "$REPO/scripts/dev/unit.sh" --json > "$js" 2> "$err"; then
+    n="$(jq -r '[.tests[] | select(.status == "pass")] | length' "$js" 2>/dev/null || echo '?')"
+    k="$(jq -r '[.tests[] | select(.status == "skip") | .name] | if length == 0 then "" else ", skipped until their milestone: " + join(",") end' "$js" 2>/dev/null || true)"
+    record unit pass "$n unit tests passed${k} (bash ${BASH_VERSION:-?})"
+  else
+    jq -r '.tests[] | select(.status == "fail") | .name as $n | (.failures[]? // .detail) | "\($n): \(.)"' "$js" > "$out" 2>/dev/null || true
+    [[ -s "$out" ]] || tail -n 20 "$err" > "$out"
+    record unit fail "scripts/dev/unit.sh reported failures (re-run it for the full log)" "$out"
+  fi
 }
 
 gate_smoke() {

@@ -1,0 +1,22 @@
+{
+  "measured_at": "2026-10-04T00:24:27Z",
+  "plugin_version": "0.9.0",
+  "bash": "5.3.9(1)-release",
+  "os": "Linux 7.2.8-200.fc44.x86_64",
+  "runs": 30,
+  "hooks": {
+    "session-detect-env": {
+      "p50_ms": 898.6,
+      "p95_ms": 935.2
+    },
+    "post-edit-lint": {
+      "p50_ms": 148.9,
+      "p95_ms": 151.9
+    },
+    "guard-contrib": {
+      "p50_ms": 97.1,
+      "p95_ms": 99.5
+    }
+  },
+  "note": "Measured on an idle developer machine against a v0.9.0 worktree (--plugin-root). Absolute times depend on the machine and its CPU state: the same idle machine gave p95 values about 20% apart in two sessions, and v0.9.0 and 0.9.1 matched within 1% when measured back to back. A latency budget (AR-45) therefore measures v0.9.0 and the checkout in the same run and compares those; this file records the reference shape and order of magnitude."
+}
