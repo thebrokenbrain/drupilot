@@ -347,6 +347,25 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   their hops are proven (T-M9-03).
 - The `sigpipe` gate also flags `| cmp`, which stops reading at the first
   difference.
+- **phpstan.neon is rendered from the upgrade plan** (T-M3-09, ADR 0020;
+  template 3):
+  - `phpVersion: {min, max}`: the plan's floor and PHP target, so PHPStan
+    checks the code against every PHP it must run on;
+  - `tmpDir: .phpstan-cache/<plan hash>`: one result cache per plan;
+  - a profile. `compat` (the plan's, Phase 1) turns off phpstan-drupal's four
+    opinion rules (dependency injection, entity storage injection, test class
+    suffix, `@internal` parents): a minimal port makes no change they ask
+    for, so Phase 1 PHPStan output loses those findings and nothing else
+    (checked in the lab). `refactor` keeps every rule as phpstan-drupal ships
+    it; `render-templates.sh --profile refactor` renders it, and
+    `/drupilot-refactor` does so before its PHPStan run.
+
+  `render-templates.sh --json` gains `phpstan_profile`. An untouched
+  `phpstan.neon` follows the plan: `run-phpstan.sh` re-renders it, after a
+  backup and with its profile, when the plan moved since (the port's final
+  freeze; a refactor refreezes the final plan for the range it applies). A
+  template-2 `phpstan.neon`, edited or not, is upgraded after a backup with its
+  diff printed; a hand-edited template-3 one is kept.
 - **Refactor: the core-target decision is a function of its own.**
   `strategy_decide` computes the decision for any target major (the ranges
   from `config/targets/<T>.json`, the older-major signals as the majors below

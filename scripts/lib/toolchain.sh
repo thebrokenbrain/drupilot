@@ -210,6 +210,55 @@ EOF
   return 0
 }
 
+# php_version_id X.Y -> PHP's PHP_VERSION_ID of a minor (8.1 -> 80100), as
+# PHPStan's phpVersion takes it; nothing (return 1) when X.Y is not a minor.
+php_version_id() {
+  local v="${1:-}"
+  [[ "$v" =~ ^([0-9])\.([0-9])$ ]] || return 1
+  printf '%s\n' "$((BASH_REMATCH[1] * 10000 + BASH_REMATCH[2] * 100))"
+}
+
+# phpstan_profile_block PROFILE -> phpstan.neon v3's {{PHPSTAN_PROFILE_BLOCK}}
+# (ADR 0020, 03-R8), lines under `parameters:`. compat (Phase 1): none of
+# phpstan-drupal's opinion rules, which ask for changes no Drupal version
+# requires (dependency injection, test class names, @internal parents).
+# refactor (Phase 2): every rule as phpstan-drupal ships it. The rule names
+# are those of phpstan-drupal 2.2's extension.neon. Its bleedingEdge
+# deprecated-hook flags stay off: in 2.2 they only load the *.api.php files,
+# no registered rule reads them (lab, ADR 0020).
+phpstan_profile_block() {
+  local p="${1:-compat}"
+  case "$p" in compat|refactor) ;; *) return 1;; esac
+  printf '\n  # Profile %s (ADR 0020).\n' "$p"
+  if [[ "$p" == "compat" ]]; then
+    printf '  # phpstan-drupal'"'"'s opinion rules are off: a minimal port makes no change\n'
+    printf '  # they ask for.\n'
+    printf '  drupal:\n    rules:\n'
+    printf '      globalDrupalDependencyInjectionRule: false\n'
+    printf '      entityStorageDirectInjectionRule: false\n'
+    printf '      testClassSuffixNameRule: false\n'
+    printf '      classExtendsInternalClassRule: false\n'
+  else
+    printf '  # Every phpstan-drupal rule as it ships.\n'
+  fi
+  return 0
+}
+
+# phpstan_cache_key PLAN [MIN MAX] -> the first 12 hex digits of the plan's
+# hash (upgrade_plan_hash's form: meta excluded), the directory of
+# phpstan.neon's result cache under .phpstan-cache/. A fallback plan carries no
+# PHP range, so MIN and MAX join its hash.
+phpstan_cache_key() {
+  local plan="${1:-}" h
+  [[ -n "$plan" ]] || return 1
+  h="$(printf '%s' "$plan" | jq -c --arg lo "${2:-}" --arg hi "${3:-}" \
+        'if .php.phpstan_phpversion then . else . + {phpstan_range: [$lo, $hi]} end' 2> /dev/null \
+        | canon_json_hashable | json_hash)"
+  h="${h#sha256:}"
+  [[ ${#h} -ge 12 ]] || return 1
+  printf '%s\n' "${h:0:12}"
+}
+
 # rector_config_floor FILE -> the floor a rendered rector.php targets (8.1 from
 # its ->withPhpVersion(PhpVersion::PHP_81)); nothing when it has none.
 rector_config_floor() {

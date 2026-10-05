@@ -1122,6 +1122,12 @@ that drupal-check fixes). The refactor phase raises it to 5-6
 (DRUPILOT_PHPSTAN_LEVEL_REFACTOR). PHPStan needs the Drupal core tree present
 but does NOT bootstrap a database.
 
+The config is the root's phpstan.neon (else phpstan.neon.dist). A drupilot
+render nobody edited (its sha256 is the one kept in the root's lock) follows
+the current upgrade plan: when the plan moved since it was rendered (the
+port's final freeze, a refactor), it is re-rendered first, after a backup,
+with its own profile (ADR 0020). A hand-edited one is used as it is.
+
 Usage:
   run-phpstan.sh --subject DIR [--level N] [--json]
 
@@ -2733,13 +2739,18 @@ template leaves MINK_DRIVER_ARGS_WEBDRIVER to the Selenium add-on — but
 --set WEBDRIVER_HOST=... is still accepted). Substitution is literal
 (render_template in common.sh), so no path character can break it.
 
-rector.php (template v5) is rendered from the upgrade plan (ADR 0019): the
-frozen plan of the subject (plan_for_subject), else a fresh draft from
-scripts/analysis/upgrade-path.sh; its tokens {{RECTOR_SETS}}, {{SKIP_RULES}},
-{{BC_BLOCK}}, {{PHP_VERSION_L}} / {{PHP_SETS_L}} (the plan's php.floor) and
-{{POLYFILLS}} come from rector_sets_block, rector_skip_block,
-rector_bc_block and rector_floor_tokens. The sha256 of every file written
-goes into the root's lock (.templates, render_sha_record), so a later render
+rector.php (template v5) and phpstan.neon (template v3) are rendered from the
+upgrade plan (ADR 0019, ADR 0020): the frozen plan of the subject
+(plan_for_subject), else a fresh draft from scripts/analysis/upgrade-path.sh.
+rector.php's tokens {{RECTOR_SETS}}, {{SKIP_RULES}}, {{BC_BLOCK}},
+{{PHP_VERSION_L}} / {{PHP_SETS_L}} (the plan's php.floor) and {{POLYFILLS}}
+come from rector_sets_block, rector_skip_block, rector_bc_block and
+rector_floor_tokens; phpstan.neon's {{PHPSTAN_PHP_MIN}} / {{PHPSTAN_PHP_MAX}}
+(the plan's php.phpstan_phpversion), {{PHPSTAN_PROFILE}} /
+{{PHPSTAN_PROFILE_BLOCK}} (the plan's phpstan.profile, or --profile;
+phpstan_profile_block) and {{PHPSTAN_CACHE_KEY}} (the first 12 hex digits of
+the plan's hash, phpstan_cache_key). The sha256 of every file written goes
+into the root's lock (.templates, render_sha_record), so a later render
 regenerates a copy nobody edited.
 
 Every rendered file is validated BEFORE it is written: no {{TOKEN}} may be
@@ -2774,8 +2785,8 @@ alone (run-rector.sh does not run it).
 
 Usage:
   render-templates.sh (--root DIR | --subject DIR) [--subject-path REL]
-                      [--only LIST] [--set KEY=VALUE]... [--force]
-                      [--dry-run] [--json]
+                      [--only LIST] [--set KEY=VALUE]... [--profile P]
+                      [--force] [--dry-run] [--json]
 
 Options:
   --root DIR          Drupal project root. Without it, the root is found by
@@ -2793,12 +2804,16 @@ Options:
                       --set WEBDRIVER_HOST=selenium-chrome:4444. The PHP
                       floor is not a token: it follows the core target and
                       DRUPILOT_REQUIRE_PHP_FLOOR.
+  --profile P         The PHPStan profile of phpstan.neon: compat (Phase 1:
+                      phpstan-drupal's rules without its four opinion rules)
+                      or refactor (Phase 2: every phpstan-drupal rule as it
+                      ships). Default: the plan's phpstan.profile (compat).
   --force             Replace a file that differs (after backing it up).
   --dry-run           Render and validate, report what would happen; write
                       nothing.
   --json              Print a JSON summary on STDOUT:
                       {root, subject_path, dry_run, force, ok, restart_needed,
-                       php_floor, php_ceiling,
+                       php_floor, php_ceiling, plan, phpstan_profile,
                        files:[{name, template, path, status, valid, validator,
                                backup}]}
                       php_floor / php_ceiling: the floor L and the ceiling U
@@ -2806,9 +2821,12 @@ Options:
                       selected)
                       plan: "plan" (the subject's frozen upgrade plan, else a
                       fresh draft, gave rector.php its sets, skips, BC block
-                      and floor), "fallback" (no plan resolves: the previous
-                      major's sets and the floor above) or null (no rector
-                      template selected)
+                      and floor, and phpstan.neon its PHP range), "fallback"
+                      (no plan resolves: the previous major's sets, the floor
+                      above and the PHP target) or null (no rector or
+                      phpstan template selected)
+                      phpstan_profile: compat | refactor, or null (no
+                      phpstan template selected)
                       status: written | unchanged | differs | replaced |
                               upgraded | would-write | would-replace |
                               would-upgrade | invalid | skipped

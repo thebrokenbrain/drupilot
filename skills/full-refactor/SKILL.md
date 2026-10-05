@@ -203,6 +203,18 @@ deliberately keep `^10 || ^11` (an explicit override), the helper returns a
 `>=8.1`; `target` → `>=<target>`) — add it to `composer.json`. State the
 version-bump implication (new major branch) in the summary.
 
+Then refreeze the final upgrade plan for the range you applied, so the PHP floor
+of `rector.php` and `phpstan.neon` follows it (ADR 0018, ADR 0020; `^11` raises
+the floor to the target's PHP):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "<path>" --phase final \
+  --range "<the core_version_requirement you applied>" --root "<drupal_root>" --freeze --json
+```
+
+Exit 2 (`final-changes-frozen`: another target, PHP target or test-bed) means the
+refactor would change what the setup planned: stop and say so.
+
 ## 2. Refactor loop
 
 Before the first change, freeze the post-port suite as the refactor's baseline,
@@ -232,6 +244,11 @@ relevant tests:
 ```bash
 # Coding standards: auto-fix then verify (must end clean):
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpcs.sh" --subject "<path>" --fix
+
+# phpstan.neon's refactor profile, once per refactor (every phpstan-drupal rule;
+# Phase 1's compat profile leaves its opinion rules off; exit 3 = a hand-edited
+# phpstan.neon, kept as it is):
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/render-templates.sh" --subject "<path>" --only phpstan --profile refactor
 
 # Static analysis at the refactor level (5-6):
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "<path>" \
