@@ -81,7 +81,7 @@ composer_project_docroot() {
     c="$(jq -r '.extra["drupal-scaffold"].locations["web-root"] // empty' "$f" 2>/dev/null || true)"
     [[ -n "$c" ]] && cands+=("$c")
     c="$(jq -r '(.extra["installer-paths"] // {}) | to_entries[]
-                | select((.value // []) | index("type:drupal-core")) | .key' "$f" 2>/dev/null | head -n1 || true)"
+                | select((.value // []) | index("type:drupal-core")) | .key' "$f" 2>/dev/null | sed -n '1p' || true)"
     [[ -n "$c" ]] && cands+=("${c%/core}")
   else
     grep -qE '"type"[[:space:]]*:[[:space:]]*"drupal-' "$f" 2>/dev/null && return 1
@@ -150,7 +150,7 @@ drupal_core_version() {
   if [[ -z "$v" ]]; then
     for f in "$r/web/core/lib/Drupal.php" "$r/core/lib/Drupal.php"; do
       [[ -f "$f" ]] || continue
-      v="$(sed -nE "s/^[[:space:]]*const VERSION = '([^']+)'.*/\1/p" "$f" 2>/dev/null | head -n1)"
+      v="$(sed -nE "s/^[[:space:]]*const VERSION = '([^']+)'.*/\1/p" "$f" 2>/dev/null | sed -n '1p')"
       [[ -n "$v" ]] && break
     done
   fi
@@ -170,7 +170,7 @@ subject_info_file() {
   # first in a STABLE (LC_ALL=C) order so the choice is deterministic regardless
   # of filesystem listing order.
   if [[ ${#matches[@]} -gt 1 ]]; then
-    printf '%s' "$(printf '%s\n' "${matches[@]}" | LC_ALL=C sort | head -n1)"
+    printf '%s' "$(printf '%s\n' "${matches[@]}" | LC_ALL=C sort | sed -n '1p')"
   else
     printf '%s' "${matches[0]}"
   fi
@@ -190,7 +190,7 @@ subject_machine_name() {
 subject_type() {
   local dir="${1:-$PWD}" f t
   f="$(subject_info_file "$dir")" || { printf ''; return 1; }
-  t="$(grep -E '^[[:space:]]*type:' "$f" 2>/dev/null | head -n1 | sed -E 's/^[[:space:]]*type:[[:space:]]*//; s/[[:space:]]*$//' | tr -d '"'"'"'')"
+  t="$(grep -E '^[[:space:]]*type:' "$f" 2>/dev/null | sed -n '1p' | sed -E 's/^[[:space:]]*type:[[:space:]]*//; s/[[:space:]]*$//' | tr -d '"'"'"'')"
   if [[ -n "$t" ]]; then printf '%s' "$t"; return 0; fi
   # Infer from artifacts / path
   local mn; mn="$(basename "$f" .info.yml)"
@@ -202,7 +202,7 @@ subject_type() {
 # subject_core_requirement <dir> -> value of core_version_requirement or empty
 subject_core_requirement() {
   local f; f="$(subject_info_file "${1:-$PWD}")" || return 1
-  grep -E '^[[:space:]]*core_version_requirement:' "$f" 2>/dev/null | head -n1 \
+  grep -E '^[[:space:]]*core_version_requirement:' "$f" 2>/dev/null | sed -n '1p' \
     | sed -E 's/^[[:space:]]*core_version_requirement:[[:space:]]*//; s/[[:space:]]*$//'
 }
 
@@ -343,7 +343,7 @@ subject_d7_info_file() {
   local dir="${1:-$PWD}" f first=""
   subject_info_file "$dir" > /dev/null 2>&1 && return 1
   if [[ -f "$dir/${dir##*/}.info" ]]; then printf '%s' "$dir/${dir##*/}.info"; return 0; fi
-  first="$(for f in "$dir"/*.info; do [[ -f "$f" ]] && printf '%s\n' "$f"; done | LC_ALL=C sort | head -n 1)"
+  first="$(for f in "$dir"/*.info; do [[ -f "$f" ]] && printf '%s\n' "$f"; done | LC_ALL=C sort | sed -n '1p')"
   [[ -n "$first" ]] || return 1
   printf '%s' "$first"
   return 0

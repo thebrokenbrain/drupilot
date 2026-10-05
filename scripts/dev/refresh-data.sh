@@ -175,7 +175,7 @@ generated() {
   raw "$tag" core/composer.json; core="$FETCHED"
   raw "$tag" composer/Metapackage/DevDependencies/composer.json; dev="$FETCHED"
   raw "$tag" core/lib/Drupal.php; drupal="$FETCHED"
-  rec="$(sed -n "s/^[[:space:]]*const RECOMMENDED_PHP = '\\([0-9][0-9]*\\.[0-9][0-9]*\\).*/\\1/p" "$drupal" | head -n 1)"
+  rec="$(sed -n "s/^[[:space:]]*const RECOMMENDED_PHP = '\\([0-9][0-9]*\\.[0-9][0-9]*\\).*/\\1/p" "$drupal" | sed -n '1p')"
   released="$(jq -r --arg v "$minor.0" '.[] | select(.version == $v) | .date' "$TMP/tags.json")"
   GEN="$(jq -n -c --slurpfile core "$core" --slurpfile dev "$dev" --arg latest "$tag" --arg released "$released" \
     --arg rec "$rec" --arg src "$RAW/$tag/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json" '

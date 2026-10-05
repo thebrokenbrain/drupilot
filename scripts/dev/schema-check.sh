@@ -115,7 +115,7 @@ done <<< "$SPECS"
 # Every schema has an instance.
 for f in "$REPO"/schemas/*.schema.json; do
   [[ -f "$f" ]] || continue
-  printf '%s\n' "$SPECS" | cut -f1 | grep -qxF -- "$(basename "$f")" \
+  printf '%s\n' "$SPECS" | cut -f1 | grep_q -xF -- "$(basename "$f")" \
     || result "$(basename "$f")" - jq fail "no instance validates this schema (add one to SPECS)"
 done
 
@@ -124,14 +124,14 @@ log_step "drupilot schemas: jq$([[ "$MODE" != "jq" ]] && printf ' + check-jsonsc
 for f in "$REPO"/schemas/*.schema.json; do
   [[ -f "$f" ]] || continue
   errs="$(jq -r "$(cat "$REPO/scripts/dev/jsonschema.jq") bad_refs" "$f" 2>&1 || true)"
-  [[ -z "$errs" ]] || result "$(basename "$f")" refs jq fail "$(printf '%s\n' "$errs" | head -n 5 | tr '\n' ';')"
+  [[ -z "$errs" ]] || result "$(basename "$f")" refs jq fail "$(printf '%s\n' "$errs" | sed -n '1,5p' | tr '\n' ';')"
 done
 # --- jq engine --------------------------------------------------------------------
 while IFS="$(printf '\t')" read -r schema inst out; do
   [[ -n "$schema" ]] || continue
   errs="$(jq -r --slurpfile schema "$REPO/schemas/$schema" "$JQV" "$out" 2>&1)" || errs="jq failed: $errs"
   if [[ -z "$errs" ]]; then result "$schema" "$inst" jq pass ""
-  else result "$schema" "$inst" jq fail "$(printf '%s\n' "$errs" | head -n 5 | tr '\n' ';')"; fi
+  else result "$schema" "$inst" jq fail "$(printf '%s\n' "$errs" | sed -n '1,5p' | tr '\n' ';')"; fi
 done <<< "$INST"
 
 # --- check-jsonschema engine ------------------------------------------------------
@@ -170,7 +170,7 @@ if [[ "$USE_CJS" == "1" ]]; then
     [[ -n "$schema" ]] || continue
     b="$(basename "$out" .json)"
     if [[ "$(cat "$TMP/inst/$b.rc" 2>/dev/null)" == "0" ]]; then result "$schema" "$inst" check-jsonschema pass ""
-    else result "$schema" "$inst" check-jsonschema fail "$(grep -v '^Schema validation errors' "$TMP/inst/$b.out" 2>/dev/null | head -n 5 | tr '\n' ';')"; fi
+    else result "$schema" "$inst" check-jsonschema fail "$(grep -v '^Schema validation errors' "$TMP/inst/$b.out" 2>/dev/null | sed -n '1,5p' | tr '\n' ';')"; fi
   done <<< "$INST"
 fi
 

@@ -14,6 +14,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 ## [Unreleased]
 
 ### Added
+- **`sigpipe` gate** in `scripts/dev/check.sh` and **`grep_q`** in
+  `scripts/lib/core.sh`: no pipeline in `scripts/` or `hooks/` may end in a
+  consumer that stops reading early (`| head`, `| grep -q` / `-m` / `-l`, an
+  `| awk` exit); `grep_q` answers like `grep -q` but reads its whole input.
 - **`DRUPILOT_TARGET_MAJOR`** (default `11` for all of 1.0.x) and
   **`DRUPILOT_ALLOW_PRERELEASE`** (default `false`), the target Drupal major and
   the opt-in for a major with no stable release yet (T-M3-06), with
@@ -350,6 +354,13 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   whole gate twice, and the second run hit the limit.
 
 ### Fixed
+- **Intermittent wrong results and exit 141 under load** (the baseline-0.9
+  flakes of PRs #11, #20 and #22): a pipeline ending in `head`, `grep -q` or
+  an awk `exit` stops reading early, and under `pipefail` a producer still
+  writing then dies of SIGPIPE, which fails the whole pipeline. That made
+  `core-strategy.sh` call a `^10.3` -> `^10.3 || ^11` port a MAJOR bump on
+  a busy Linux runner, and `lint-extension-metadata.sh` exit 141 with
+  BusyBox `ls`. Every such pipeline (about 160) now reads its whole input.
 - `install-toolchain.sh --json` failed with jq 1.6 (Debian 12, Ubuntu
   22.04: "syntax error, unexpected and"), so the command printed no JSON
   there; its `ok` value is now parenthesized. The `jq-compat` gate rejects

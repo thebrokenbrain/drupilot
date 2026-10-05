@@ -101,7 +101,7 @@ log_info "DDEV project: $PROJECT_DIR"
 # Docroot (used to locate <docroot>/modules/custom); read from the generated
 # config rather than assuming "web".
 DOCROOT="$(grep -E '^[[:space:]]*docroot:' "$PROJECT_DIR/.ddev/config.yaml" 2>/dev/null \
-  | head -n1 | sed -E 's/.*docroot:[[:space:]]*//; s/["'\'' ]//g')"
+  | sed -n '1p' | sed -E 's/.*docroot:[[:space:]]*//; s/["'\'' ]//g')"
 [[ -n "$DOCROOT" ]] || DOCROOT="web"
 
 # Ensure the project is running before touching add-ons.
@@ -122,7 +122,7 @@ INSTALLED_LIST="$(ddev_addons_installed "$PROJECT_DIR" | cut -f1)"
 
 addon_installed() {
   # addon_installed <org/name|name> -> 0 if the add-on is installed (exact name).
-  printf '%s\n' "$INSTALLED_LIST" | grep -Fxq "${1##*/}"
+  printf '%s\n' "$INSTALLED_LIST" | grep_q -Fx "${1##*/}"
 }
 
 # neutralize_contrib_symlink — in the recommended-project layout (Drupal at the

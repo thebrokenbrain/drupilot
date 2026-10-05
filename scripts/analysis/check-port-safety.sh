@@ -159,7 +159,7 @@ if [[ -z "$CORE_REQ" ]]; then CORE_REQ="$(subject_core_requirement "$SUBJECT_ABS
 CORE_REQ="$(printf '%s' "$CORE_REQ" | tr -d "\"'")"
 # The declared range reaches below Drupal 11 when it names an 8/9/10 major.
 SPANS_D10=0
-if printf '%s' "$CORE_REQ" | grep -qE '(^|[^0-9.])(8|9|10)(\.|[^0-9]|$)'; then SPANS_D10=1; fi
+if printf '%s' "$CORE_REQ" | grep_q -E '(^|[^0-9.])(8|9|10)(\.|[^0-9]|$)'; then SPANS_D10=1; fi
 CORE_FLOOR="$(core_floor_from_requirement "$CORE_REQ")"
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-portsafety.XXXXXX")"
@@ -198,7 +198,7 @@ if [[ "$NO_DIFF" != "1" ]] && have_cmd git; then
       BASE_REF="$(git_port_base_ref "$REPO" "")"
     fi
     if git -C "$REPO" rev-parse --verify --quiet "${BASE_REF}^{commit}" >/dev/null 2>&1 \
-       && [[ -n "$(git -C "$REPO" ls-tree -r --name-only "$BASE_REF" -- "$SUBJECT_ABS" 2>/dev/null | head -n1)" ]]; then
+       && [[ -n "$(git -C "$REPO" ls-tree -r --name-only "$BASE_REF" -- "$SUBJECT_ABS" 2>/dev/null | sed -n '1p')" ]]; then
       DIFF_MODE=1
     else
       log_warn "The subject is not in '$BASE_REF' of $REPO; findings cannot be attributed to the port (introduced: null)."
@@ -284,7 +284,7 @@ while IFS= read -r f; do
   if check_on plugin-di; then
     while IFS=$'\t' read -r _ _ cls mname np first second; do
       case "$(lc "$mname")" in create) ;; *) continue;; esac
-      printf '%s' "$first" | grep -qE 'ContainerInterface|\$container' || continue
+      printf '%s' "$first" | grep_q -E 'ContainerInterface|\$container' || continue
       kind="$(AWKV_q="$cls" awk -F'\t' 'BEGIN { q = ENVIRON["AWKV_q"] } $1 == "CLASS" && $4 == q { print $3; exit }' "$s")"
       [[ "$kind" == "class" ]] || continue
       # The factory kind follows the signature: create($container, array
@@ -292,11 +292,11 @@ while IFS= read -r f; do
       # create($container, $base_plugin_id) a deriver, and create($container)
       # (extra parameters all optional) a ClassResolver factory. Anything else
       # is not a container factory drupilot knows: skipped, never guessed.
-      if printf '%s' "$second" | grep -qE '\$configuration([^A-Za-z0-9_]|$)'; then
+      if printf '%s' "$second" | grep_q -E '\$configuration([^A-Za-z0-9_]|$)'; then
         target="$IF_PLUGIN"; short="ContainerFactoryPluginInterface"
-      elif printf '%s' "$second" | grep -qE '\$base_plugin_id([^A-Za-z0-9_]|$)'; then
+      elif printf '%s' "$second" | grep_q -E '\$base_plugin_id([^A-Za-z0-9_]|$)'; then
         target="$IF_DERIVER"; short="ContainerDeriverInterface"
-      elif (( np == 1 )) || printf '%s' "$second" | grep -q '='; then
+      elif (( np == 1 )) || printf '%s' "$second" | grep_q '='; then
         target="$IF_INJECT"; short="ContainerInjectionInterface"
       else
         continue
@@ -466,9 +466,9 @@ if check_on class-case; then
       case "$dir" in "$SUBJECT_ABS"|"$SUBJECT_ABS"/*) ;; *) continue;; esac
       relp="$(printf '%s' "$rest" | tr '\\' '/').php"
       [[ -d "$dir/src" ]] || continue
-      exact="$(find "$dir/src" -type f -path "$dir/src/$relp" 2>/dev/null | head -n1)"
+      exact="$(find "$dir/src" -type f -path "$dir/src/$relp" 2>/dev/null | sed -n '1p')"
       [[ -z "$exact" ]] || continue
-      real="$(find "$dir/src" -type f -ipath "$dir/src/$relp" 2>/dev/null | head -n1)"
+      real="$(find "$dir/src" -type f -ipath "$dir/src/$relp" 2>/dev/null | sed -n '1p')"
       [[ -n "$real" ]] || continue   # a missing class is metadata hygiene, not a case problem
       add_finding class-case "$y" "$line" "$(introduced "$y" "$line")" \
         "'${fq}' does not match the real file '$(rel "$real")' (case differs): works on a case-insensitive filesystem, fatals on Linux."

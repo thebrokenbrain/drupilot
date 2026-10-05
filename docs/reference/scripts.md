@@ -3176,6 +3176,16 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
                 bash ignores or overrides such assignments silently (a
                 `GROUPS=(Unit ...)` once made run-phpunit.sh run no test).
                 A line can opt out with a trailing `# special-var-ok` and a reason
+  - sigpipe     no pipeline in scripts/ or hooks/ (they run under pipefail)
+                ends in a consumer that stops reading early: `| head`,
+                `| grep -q` / `-l` / `-L` / `-m` / `--quiet`, an `| awk`
+                program that calls `exit` on the same line. The producer
+                then dies of SIGPIPE when it writes after the consumer left,
+                and pipefail turns that race into a failed pipeline: a wrong
+                `if`, or set -e aborting with exit 141 (seen under load and
+                with BusyBox tools). Use grep_q (common.sh), sed -n '1p' /
+                '1,Np', or an awk flag instead of exit. A line can opt out
+                with a trailing `# sigpipe-ok` and a reason
   - jq-compat   no jq program in those scripts uses a jq keyword (label,
                 module, if, then, else, end, as, def, reduce, foreach, try,
                 catch, and, or, not, import, include, __loc__) as a --arg /

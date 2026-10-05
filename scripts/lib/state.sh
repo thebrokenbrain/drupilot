@@ -340,7 +340,7 @@ state_snapshot_json() {
       br="$(git -C "$abs" symbolic-ref --short -q HEAD 2>/dev/null || true)"
       cm="$(git -C "$abs" rev-parse HEAD 2>/dev/null || true)"
       dirty=false
-      [[ -n "$(git -C "$abs" status --porcelain -- . 2>/dev/null | head -n1)" ]] && dirty=true
+      [[ -n "$(git -C "$abs" status --porcelain -- . 2>/dev/null | sed -n '1p')" ]] && dirty=true
       git_json="$(jq -nc --arg b "$br" --arg c "$cm" --argjson d "$dirty" \
         '{branch: (if $b == "" then "(detached)" else $b end), commit: (if $c == "" then null else $c end), dirty: $d}')"
     fi
@@ -350,7 +350,7 @@ state_snapshot_json() {
   fi
   if [[ -n "$root" ]]; then
     rsd="$(project_state_path "$root")"
-    [[ -f "$root/.ddev/config.yaml" ]] && ddev="$(sed -n 's/^name:[[:space:]]*//p' "$root/.ddev/config.yaml" 2>/dev/null | head -n1 | tr -d "\"' " || true)"
+    [[ -f "$root/.ddev/config.yaml" ]] && ddev="$(sed -n 's/^name:[[:space:]]*//p' "$root/.ddev/config.yaml" 2>/dev/null | sed -n '1p' | tr -d "\"' " || true)"
   fi
   a="$(_json_from "$sd/assess.json" '{effort: (.verdict // .effort // null), at: (.timestamp // .generated_at // null)}')"
   t="$(_json_from "$sd/last-test.json" '{status: (.status // null), preservation: (.preservation // null), executed: (.executed // null), tests_failed: ([.tests[]? | select(.status == "fail" or .status == "error")] | length), groups_passed: (.passed // null), groups_failed: (.failed // null), groups_skipped: (.skipped // null), recorded_at: (.recorded_at // .generated_at // null), digest: (.subject_digest // null)}')"
@@ -366,7 +366,7 @@ state_snapshot_json() {
   # No patch named in the manifest: the newest local preview next to the
   # subject (make-patch.sh --local writes <machine_name>-<description>.patch).
   if [[ -n "$mn" && "$(printf '%s' "$pm" | jq -r '.patch // empty' 2>/dev/null)" == "" ]]; then
-    local lp; lp="$(cd "$abs" 2>/dev/null && ls -1t -- "$mn"-*.patch 2>/dev/null | head -n1 || true)"
+    local lp; lp="$(cd "$abs" 2>/dev/null && ls -1t -- "$mn"-*.patch 2>/dev/null | sed -n '1p' || true)"
     [[ -n "$lp" ]] && pm="$(printf '%s' "$pm" | jq -c --arg p "$abs/$lp" '(if type == "object" then . else {} end) + {patch: $p}' 2>/dev/null || jq -nc --arg p "$abs/$lp" '{patch: $p}')"
   fi
   l="null"; o="null"

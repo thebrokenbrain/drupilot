@@ -357,9 +357,9 @@ validate() {
 # qualify, so their copies keep the hand-edited (differs) treatment.
 older_drupilot_copy() {
   local tpl="$1" dest="$2" marker header
-  marker="$(grep -oE 'drupilot-template-version: [0-9]+' "$tpl" 2>/dev/null | head -n1 || true)"
+  marker="$(grep -oE 'drupilot-template-version: [0-9]+' "$tpl" 2>/dev/null | sed -n '1p' || true)"
   [[ -n "$marker" ]] || return 1
-  header="$(grep -oE 'drupilot — [^ ]+' "$tpl" 2>/dev/null | head -n1 || true)"
+  header="$(grep -oE 'drupilot — [^ ]+' "$tpl" 2>/dev/null | sed -n '1p' || true)"
   [[ -n "$header" ]] || return 1
   grep -qF "$header" "$dest" 2>/dev/null || return 1
   grep -qF "$marker" "$dest" 2>/dev/null && return 1

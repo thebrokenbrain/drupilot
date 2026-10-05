@@ -359,8 +359,8 @@ strategy_decide() {
 
   # --- current support signals --------------------------------------------
   local had_pre11=0 current_has_11=0
-  if [[ -n "$current_req" ]] && printf '%s' "$current_req" | grep -qE "(^|[^0-9])($pre_re)([^0-9]|\$)"; then had_pre11=1; fi
-  if [[ -n "$current_req" ]] && printf '%s' "$current_req" | grep -qE "(^|[^0-9])$t([^0-9]|\$)"; then current_has_11=1; fi
+  if [[ -n "$current_req" ]] && printf '%s' "$current_req" | grep_q -E "(^|[^0-9])($pre_re)([^0-9]|\$)"; then had_pre11=1; fi
+  if [[ -n "$current_req" ]] && printf '%s' "$current_req" | grep_q -E "(^|[^0-9])$t([^0-9]|\$)"; then current_has_11=1; fi
 
   # --- BC-break detection (drives the SemVer major bump) ------------------
   local bc_break=0
@@ -398,7 +398,7 @@ strategy_decide() {
   # '^10.3 || ^11'), never below the target's default keep-previous floor, and
   # never below the minor shipping a plugin attribute class the code uses.
   local d10_decl_floor="" api_floor="" api_attr="" core_floor="$default_floor" _af d10_dropped=0
-  d10_decl_floor="$(core_verify_legs "$current_req" | awk -F. -v p="$prev" '$1 == p { print ($2 == "" ? p ".0" : $0); exit }')"
+  d10_decl_floor="$(core_verify_legs "$current_req" | awk -F. -v p="$prev" '!d && $1 == p { print ($2 == "" ? p ".0" : $0); d = 1 }')"
   if [[ -n "$d10_decl_floor" ]] && version_ge "$d10_decl_floor" "$default_floor"; then core_floor="$d10_decl_floor"; fi
   _af="$(subject_attribute_floor "$subject")"
   if [[ -n "$_af" ]]; then
@@ -431,7 +431,7 @@ strategy_decide() {
     if [[ -n "$api_floor" && -n "$kc_decl_floor" ]] && ! version_ge "$kc_decl_floor" "$api_floor"; then
       req="$(core_requirement_raise_floor "$current_req" "$api_floor")"; composer="$req"; kc_raised=1
     fi
-    if printf '%s' "$req" | grep -qE "(^|[^0-9])($pre_re)([^0-9]|\$)"; then req_pre11=1; fi
+    if printf '%s' "$req" | grep_q -E "(^|[^0-9])($pre_re)([^0-9]|\$)"; then req_pre11=1; fi
     if [[ "$had_pre11" == "1" && "$req_pre11" == "0" ]]; then resolved="d11-only"; kc_dropped=1; fi
     if [[ "$req_pre11" == "1" ]]; then
       require_php=">=$php_target"
@@ -443,7 +443,7 @@ strategy_decide() {
       fi
       d10_support="declared-not-verified"
     fi
-    if printf '%s' "$current_req" | grep -qE '(^|[^0-9])(8|9)([^0-9]|$)'; then current_has_eol=1; fi
+    if printf '%s' "$current_req" | grep_q -E '(^|[^0-9])(8|9)([^0-9]|$)'; then current_has_eol=1; fi
   elif [[ "$resolved" == "keep-d10" ]]; then
     branch="keep-d10"
     req="$kp_range"
@@ -590,7 +590,7 @@ recommend_core_target() {
     local _rec_majors _m
     _rec_majors="$(printf '%s' "$req" | grep -oE '[0-9]+(\.[0-9]+)*' | sed -E 's/\..*//' | sort -u)"
     for _m in $(printf '%s' "$current_req" | grep -oE '[0-9]+(\.[0-9]+)*' | sed -E 's/\..*//' | sort -u); do
-      printf '%s\n' "$_rec_majors" | grep -qx "$_m" || drops_major=1
+      printf '%s\n' "$_rec_majors" | grep_q -x "$_m" || drops_major=1
     done
   fi
   local version_bump

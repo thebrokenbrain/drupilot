@@ -361,7 +361,7 @@ if [[ "$CHECK" == "1" ]]; then
   for p in $PAGES; do
     if ! cmp -s "$TMP/out/$p.md" "$OUT/$p.md"; then
       DRIFT="$DRIFT $p"
-      diff -u "$OUT/$p.md" "$TMP/out/$p.md" 2>&1 | head -n 40 | sed 's/^/    /' >&2 || true
+      diff -u "$OUT/$p.md" "$TMP/out/$p.md" 2>&1 | sed -n '1,40p' | sed 's/^/    /' >&2 || true
     fi
   done
   if [[ -n "$DRIFT" ]]; then log_err "gen-docs.sh: generated pages drift:$DRIFT (run scripts/dev/gen-docs.sh and commit)"

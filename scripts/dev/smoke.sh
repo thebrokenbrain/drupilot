@@ -265,9 +265,9 @@ run() {
   local tag="$1" hit; shift
   if "$@" > "$TMP/out/$tag.out" 2> "$TMP/out/$tag.err" < /dev/null; then RC=0; else RC=$?; fi
   hit="$(grep -E 'syntax error|unbound variable|command not found|bad substitution|: invalid option|integer expression expected' \
-           "$TMP/out/$tag.err" 2>/dev/null | head -n 3 || true)"
+           "$TMP/out/$tag.err" 2>/dev/null | sed -n '1,3p' || true)"
   if [[ -n "$hit" ]]; then
-    printf '%s: shell error on stderr: %s\n' "$tag" "$(printf '%s' "$hit" | tr '\n' ' ' | head -c 300)" >> "$T_FAILS"
+    printf '%s: shell error on stderr: %s\n' "$tag" "$(printf '%s' "$hit" | tr '\n' ' ' | { head -c 300; cat > /dev/null; })" >> "$T_FAILS"
   fi
   return 0
 }
@@ -285,8 +285,8 @@ expect() {
 }
 # expect_match <label> <got> <ERE>
 expect_match() {
-  if ! printf '%s' "$2" | grep -Eq "$3"; then
-    printf '%s: [%s] does not match /%s/\n' "$1" "$(printf '%s' "$2" | head -c 200)" "$3" >> "$T_FAILS"
+  if ! printf '%s' "$2" | grep_q -E "$3"; then
+    printf '%s: [%s] does not match /%s/\n' "$1" "$(printf '%s' "$2" | { head -c 200; cat > /dev/null; })" "$3" >> "$T_FAILS"
   fi
   return 0
 }
@@ -568,7 +568,7 @@ test_status_probe() {
   # they were. The probe is a `bash -c '<script>' _ "$1"` line.
   local c="$FX/status/legacy_widgets" probe before after
   mkdir -p "$FX/status"; cp -R "$LW" "$c"
-  probe="$(sed -n "s/^.\`bash -c '\(.*\)' _ \"\$1\"\`\$/\1/p" "$REPO/commands/drupilot-status.md" | head -n 1)"
+  probe="$(sed -n "s/^.\`bash -c '\(.*\)' _ \"\$1\"\`\$/\1/p" "$REPO/commands/drupilot-status.md" | sed -n '1p')"
   expect "probe found" "$([[ -n "$probe" ]] && echo yes || echo no)" "yes"
   # Run them as a hook-style environment would (CLAUDE_PLUGIN_DATA exported):
   # neither the resolved data dir nor that old root may change.
@@ -1028,7 +1028,7 @@ test_monorepo_testbed() {
   expect "patch: exit and name" "$RC|$(basename "$mp")" "0|acme_core-port-to-drupal-11.patch"
   expect "patch: module-relative, only the port" "$(grep -E '^diff --git' "$mp" 2>/dev/null | tr '\n' ';')" \
     "diff --git a/acme_core.info.yml b/acme_core.info.yml;diff --git a/src/Added.php b/src/Added.php;"
-  expect "repo patch: relative to the repository root" "$(grep -E '^diff --git' "$rp" 2>/dev/null | head -n1)" \
+  expect "repo patch: relative to the repository root" "$(grep -E '^diff --git' "$rp" 2>/dev/null | sed -n '1p')" \
     "diff --git a/web/modules/custom/acme_core/acme_core.info.yml b/web/modules/custom/acme_core/acme_core.info.yml"
   expect "repo patch applies at the monorepo root" "$(git -C "$m" apply --check "$rp" >/dev/null 2>&1 && echo ok)" "ok"
   mkdir -p "$FX/pristine"; cp -R "$m/web/modules/custom/acme_core" "$FX/pristine/"
@@ -1233,7 +1233,7 @@ test_legacy_state() {
   (cd "$LW" && "${E[@]}" "$SH" "$REPO/hooks/scripts/session-detect-env.sh" < "$TMP/l0-session.json" > /dev/null 2>&1) || true
   "${E[@]}" "$SH" "$REPO/scripts/env/preflight.sh" --profile all --json --subject "$LW" > /dev/null 2>&1 < /dev/null || true
   "${E[@]}" "$SH" "$REPO/scripts/env/next-step.sh" --subject "$LW" --from-preflight > /dev/null 2>&1 < /dev/null || true
-  probe="$(sed -n "s/^.\`bash -c '\(.*\)' _ \"\$1\"\`\$/\1/p" "$REPO/commands/drupilot-status.md" | head -n 1)"
+  probe="$(sed -n "s/^.\`bash -c '\(.*\)' _ \"\$1\"\`\$/\1/p" "$REPO/commands/drupilot-status.md" | sed -n '1p')"
   [[ -n "$probe" ]] && { "${E[@]}" "$SH" -c "$probe" _ "$LW" > /dev/null 2>&1 < /dev/null || true; }
   expect "hooks, preflight, status probe, next-step: no copy" \
     "$([[ -e "$dh/legacy-state-copied" || -e "$dh/state/$key" ]] && echo copied || echo none)" "none"
@@ -1308,7 +1308,7 @@ STUB
   mkdir -p "$leg"; printf '{}\n' > "$leg/drupilot-lock.json"
   for c in setup assess; do
     line="$(sed -n 's/^!`\{0,1\}\(bash "${CLAUDE_PLUGIN_ROOT}\/scripts\/env\/preflight\.sh".*copy_legacy_state_once'"'"'\)`\{0,1\}$/\1/p' \
-              "$REPO/commands/drupilot-$c.md" | head -n 1)"
+              "$REPO/commands/drupilot-$c.md" | sed -n '1p')"
     expect "$c: preamble found" "$([[ -n "$line" ]] && echo yes || echo no)" "yes"
     before="$(tree_snapshot "$uh" "$dh")"
     run "lp$c" env PATH="$farm" HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c "$line"

@@ -34,6 +34,16 @@
 #                 bash ignores or overrides such assignments silently (a
 #                 `GROUPS=(Unit ...)` once made run-phpunit.sh run no test).
 #                 A line can opt out with a trailing `# special-var-ok` and a reason
+#   - sigpipe     no pipeline in scripts/ or hooks/ (they run under pipefail)
+#                 ends in a consumer that stops reading early: `| head`,
+#                 `| grep -q` / `-l` / `-L` / `-m` / `--quiet`, an `| awk`
+#                 program that calls `exit` on the same line. The producer
+#                 then dies of SIGPIPE when it writes after the consumer left,
+#                 and pipefail turns that race into a failed pipeline: a wrong
+#                 `if`, or set -e aborting with exit 141 (seen under load and
+#                 with BusyBox tools). Use grep_q (common.sh), sed -n '1p' /
+#                 '1,Np', or an awk flag instead of exit. A line can opt out
+#                 with a trailing `# sigpipe-ok` and a reason
 #   - jq-compat   no jq program in those scripts uses a jq keyword (label,
 #                 module, if, then, else, end, as, def, reduce, foreach, try,
 #                 catch, and, or, not, import, include, __loc__) as a --arg /
@@ -152,7 +162,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export CLAUDE_PLUGIN_ROOT="$REPO"
 
-ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat lib-defs bang-lint templates json version config-keys docs schemas data unit contract evals golden smoke"
+ALL_GATES="validate syntax exec-bit shellcheck portability special-vars sigpipe jq-compat lib-defs bang-lint templates json version config-keys docs schemas data unit contract evals golden smoke"
 # Gates that run only when asked for (--smoke, --ci, or named in --only).
 OPTIONAL_GATES="golden smoke"
 # Gates known to fail on the current tree, with a fix tracked for 0.9.0. Empty
@@ -255,7 +265,7 @@ gate_exec_bit() {
   local out="$TMP/exec.out" f mode
   : > "$out"
   for f in "${SCRIPTS[@]}"; do
-    mode="$(git -C "$REPO" ls-files -s -- "$f" 2>/dev/null | awk '{print $1; exit}' || true)"
+    mode="$(git -C "$REPO" ls-files -s -- "$f" 2>/dev/null | awk 'NR == 1 {print $1}' || true)"
     if [[ -n "$mode" ]]; then
       [[ "$mode" == "100755" ]] || echo "$f: git mode $mode (expected 100755; git update-index --chmod=+x)" >> "$out"
     else
@@ -401,7 +411,7 @@ gate_lib_defs() {
   # A hook's _DRUPILOT_LIBS covers the libs of every function it reaches.
   for b in "$REPO"/hooks/scripts/*.sh; do
     grep -q '_DRUPILOT_LIBS=' "$b" || continue
-    want="$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?_DRUPILOT_LIBS=["'"'"']?([a-z][a-z -]*)["'"'"']?[[:space:]]*$/\2/p' "$b" | head -n 1)"
+    want="$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?_DRUPILOT_LIBS=["'"'"']?([a-z][a-z -]*)["'"'"']?[[:space:]]*$/\2/p' "$b" | sed -n '1p')"
     [[ -n "$want" ]] || { printf '%s sets _DRUPILOT_LIBS in a form the gate cannot read (write _DRUPILOT_LIBS="core ...")\n' "hooks/scripts/${b##*/}" >> "$out"; continue; }
     for c in $(lib_reach "$TMP/lib-defs.domain" "$b"); do
       case " $want " in *" $c "*) ;; *) printf '%s calls a function of scripts/lib/%s.sh, missing from its _DRUPILOT_LIBS\n' "hooks/scripts/${b##*/}" "$c" >> "$out";; esac
@@ -449,6 +459,32 @@ gate_special_vars() {
     record special-vars fail "$(wc -l < "$out" | tr -d ' ') use(s) of a bash special variable as a plain variable (rename it)" "$out"
   else
     record special-vars pass "${#SCRIPTS[@]} scripts free of bash special-variable collisions"
+  fi
+}
+
+gate_sigpipe() {
+  local out="$TMP/sigpipe.out" f n=0
+  : > "$out"
+  for f in "${SCRIPTS[@]}"; do
+    # The tests run without pipefail (tests/lib/assert.sh is standalone).
+    case "$f" in scripts/dev/check.sh|tests/*) continue;; esac   # check.sh: its own patterns would self-match
+    n=$((n + 1))
+    (cd "$REPO" && awk -v F="$f" '
+      /# sigpipe-ok/ { next }
+      {
+        line = $0
+        if (line ~ /^[[:space:]]*#/) next
+        sub(/[[:space:]]#[[:space:]].*$/, "", line)
+        if (line ~ /\|[[:space:]]*head([[:space:]]|$)/ ||
+            line ~ /\|[[:space:]]*grep[[:space:]]+(-[A-Za-z]*[qlLm][A-Za-z]*|--(quiet|silent|max-count|files-with))/ ||
+            line ~ /\|[[:space:]]*awk[[:space:]].*[^A-Za-z_]exit([^A-Za-z_]|$)/)
+          printf "%s:%d: %s\n", F, NR, substr($0, 1, 140)
+      }' "$f") >> "$out"
+  done
+  if [[ -s "$out" ]]; then
+    record sigpipe fail "$(wc -l < "$out" | tr -d ' ') pipeline consumer(s) that stop reading early (under pipefail the producer's SIGPIPE fails the pipeline: use grep_q, sed -n '1p', an awk flag)" "$out"
+  else
+    record sigpipe pass "$n scripts free of early-exit pipeline consumers"
   fi
 }
 
@@ -543,7 +579,7 @@ gate_templates() {
     fi
     case "$name" in
       *.xml|*.xml.dist) ;;
-      *) head -c 5 "$dest" | grep -q '^<?xml' || continue;;
+      *) head -c 5 "$dest" | grep_q '^<?xml' || continue;;
     esac
     xml=$((xml + 1))
     if ! have_cmd xmllint; then continue; fi
@@ -572,7 +608,7 @@ gate_version() {
   local out="$TMP/version.out" pj="$REPO/.claude-plugin/plugin.json" v top tags t branch mf major
   : > "$out"
   v="$(jq -r '.version // empty' "$pj" 2>/dev/null || true)"
-  if ! printf '%s\n' "$v" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
+  if ! printf '%s\n' "$v" | grep_q -E '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'; then
     echo "plugin.json: '$v' is not a valid version (X.Y.Z or X.Y.Z-pre.N)" >> "$out"
   fi
   # The released heading of highest SemVer precedence (on the integration
@@ -704,7 +740,7 @@ gate_docs() {
   # 1. The generated reference pages are current.
   "$BASH" "$REPO/scripts/dev/gen-docs.sh" --check > /dev/null 2> "$TMP/gendocs.err" \
     || { echo "generated pages drift (run scripts/dev/gen-docs.sh and commit):"
-         { grep -E '^    [-+]' "$TMP/gendocs.err" | grep -vE '^    (---|[+][+][+]) ' | head -n 10; } || true; } >> "$out"
+         { grep -E '^    [-+]' "$TMP/gendocs.err" | grep -vE '^    (---|[+][+][+]) ' | sed -n '1,10p'; } || true; } >> "$out"
   # 2. Nav completeness: every page is in the nav, every nav entry exists.
   awk '/^nav:/ { f = 1; next } f && /^[^[:space:]#-]/ { exit } f && !/^[[:space:]]*#/' "$REPO/mkdocs.yml" \
     | grep -oE '[A-Za-z0-9_./-]+\.md' | LC_ALL=C sort -u > "$nav" || true

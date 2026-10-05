@@ -358,7 +358,7 @@ else
 fi
 
 # PHPCS: coder's installer plugin registers the standards; report if it did not.
-if ddev exec vendor/bin/phpcs -i 2>/dev/null | grep -q 'DrupalPractice'; then
+if ddev exec vendor/bin/phpcs -i 2>/dev/null | grep_q 'DrupalPractice'; then
   log_ok "PHPCS standards Drupal + DrupalPractice are registered."
 else
   log_warn "phpcs -i does not list Drupal/DrupalPractice yet (run-phpcs.sh registers installed_paths on its first run)."

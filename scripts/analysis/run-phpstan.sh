@@ -210,7 +210,7 @@ if [[ -n "$NOTICES" ]]; then
   while IFS= read -r n; do
     [[ -n "$n" ]] && log_warn "PHPStan notice: $n"
   done <<<"$NOTICES"
-  if printf '%s' "$NOTICES" | grep -q 'drupal_root parameter is deprecated'; then
+  if printf '%s' "$NOTICES" | grep_q 'drupal_root parameter is deprecated'; then
     log_info "Fix: remove the 'drupal: drupal_root:' block from $CONFIG (phpstan-drupal discovers the Drupal root itself); for a drupilot-generated config, regenerate it with scripts/env/render-templates.sh --only phpstan --force."
   fi
 fi

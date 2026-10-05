@@ -94,15 +94,15 @@ ddev_project_status() {
   local st=""
   if have_cmd jq; then
     st="$( (cd "$r" 2>/dev/null && ddev describe -j </dev/null 2>/dev/null) \
-      | jq -r 'select(.raw != null) | .raw.status // empty' 2>/dev/null | head -n1 || true)"
+      | jq -r 'select(.raw != null) | .raw.status // empty' 2>/dev/null | sed -n '1p' || true)"
   elif have_cmd docker; then
     local name
-    name="$(grep -E '^name:' "$r/.ddev/config.yaml" 2>/dev/null | head -n1 \
+    name="$(grep -E '^name:' "$r/.ddev/config.yaml" 2>/dev/null | sed -n '1p' \
       | sed -E 's/^name:[[:space:]]*//; s/[[:space:]]*(#.*)?$//' | tr -d '"'"'"'')"
     [[ -n "$name" ]] || name="$(basename "$r")"
     if docker ps --filter "label=com.ddev.site-name=$name" \
          --filter "label=com.docker.compose.service=web" --format '{{.ID}}' </dev/null 2>/dev/null \
-         | grep -q .; then
+         | grep_q .; then
       st="running"
     else
       st="stopped"
@@ -185,7 +185,7 @@ ddev_php_version() {
   local r="${1:-$(find_drupal_root 2>/dev/null || true)}"
   local cfg="$r/.ddev/config.yaml" v
   [[ -n "$r" && -f "$cfg" ]] || return 0
-  v="$(grep -E '^[[:space:]]*php_version:' "$cfg" 2>/dev/null | head -n1 \
+  v="$(grep -E '^[[:space:]]*php_version:' "$cfg" 2>/dev/null | sed -n '1p' \
         | sed -E 's/^[[:space:]]*php_version:[[:space:]]*//; s/[[:space:]]*(#.*)?$//')"
   v="${v//\"/}"; v="${v//\'/}"
   trim "$v"
@@ -214,8 +214,8 @@ ddev_addons_installed() {
   local m name ver
   for m in "$r"/.ddev/addon-metadata/*/manifest.yaml; do
     [[ -f "$m" ]] || continue
-    name="$(grep -E '^name:' "$m" 2>/dev/null | head -n1 | sed -E 's/^name:[[:space:]]*//; s/["'\'']//g')"
-    ver="$(grep -E '^version:' "$m" 2>/dev/null | head -n1 | sed -E 's/^version:[[:space:]]*//; s/["'\'']//g')"
+    name="$(grep -E '^name:' "$m" 2>/dev/null | sed -n '1p' | sed -E 's/^name:[[:space:]]*//; s/["'\'']//g')"
+    ver="$(grep -E '^version:' "$m" 2>/dev/null | sed -n '1p' | sed -E 's/^version:[[:space:]]*//; s/["'\'']//g')"
     [[ -n "$name" ]] || name="$(basename "$(dirname "$m")")"
     printf '%s\t%s\n' "$(trim "$name")" "$(trim "$ver")"
   done
