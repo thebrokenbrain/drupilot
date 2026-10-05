@@ -1119,7 +1119,10 @@ Options:
                   fallback, location: subject|drupal-root|origin|
                   outside-root|null,
                   fallback_reason, test_version, test_version_source:
-                  explicit|ruleset-config|ruleset-property|php-target}.
+                  explicit|ruleset-config|ruleset-property|php-target,
+                  runner: {runner: ddev|host, php_version, tool_version}};
+                  the report is sorted (files by path, their messages by
+                  line, column and source: DET-2).
   --ruleset R     auto (default, DRUPILOT_PHPCS_RULESET): the project ruleset
                   when found, else Drupal,DrupalPractice. drupilot: always
                   Drupal,DrupalPractice (the pre-0.9 behavior). PATH: that
@@ -1136,8 +1139,13 @@ and the post-edit-lint hook reuses it, so both lint with the same rules.
 
 Gate: `analyze` profile (git + jq + composer/php).
 Output: status/logging on STDERR; phpcs/phpcbf reports (or JSON) on STDOUT.
+Determinism (DET-1): with DRUPILOT_DETERMINISTIC on, PHPCS never falls back to
+the host for a root that has a DDEV project, nor runs a drupal/coder other
+than the version the lock pins: exit 3.
+
 Exit codes: PHPCS's own (0 clean, non-zero violations or a PHPCS error) ·
-1 usage · 2 requirements/toolchain missing.
+1 usage · 2 requirements/toolchain missing · 3 also a DET-1 violation (an
+unplanned host run, a coder version the lock does not pin).
 ```
 
 ### analysis/run-phpstan.sh
@@ -1169,7 +1177,10 @@ Options:
                   count the viability analyst can read instead of estimating.
                   drupilot adds one key, `drupilot`:
                   {status: clean|findings|crashed, exit_code, phpstan_exit_code,
-                   notices:[...], crash:[...]}. When PHPStan crashed (no
+                   notices:[...], crash:[...], runner:{runner: ddev|host,
+                   php_version, tool_version}}, and sorts the report (files
+                   by path, their messages by line, identifier and message,
+                   the general errors by text: DET-2). When PHPStan crashed (no
                   report produced) `totals` is null, `files` is {} and the
                   reason is in `drupilot.crash` — never a fake zero count.
   -h, --help      Show this help.
@@ -1181,9 +1192,16 @@ PHP/configuration deprecation notices (e.g. phpstan-drupal's deprecated
 `drupal_root` parameter) are surfaced as warnings, and a crash (invalid
 config, missing path, fatal error, internal error) is reported as such.
 
+Determinism (DET-1): with DRUPILOT_DETERMINISTIC on, PHPStan never falls back
+to the host for a root that has a DDEV project, nor runs a phpstan/phpstan,
+phpstan-drupal or deprecation-rules other than the version the lock pins:
+exit 3. Its cache lives in the explicit tmpDir of phpstan.neon, keyed by the
+upgrade plan (ADR 0020).
+
 Exit codes: 0 no issues · 1 PHPStan reported findings (or a usage error) ·
 2 requirements/toolchain missing · 3 PHPStan crashed or could not analyse, so
-there is NO verdict (do not read it as "found issues").
+there is NO verdict (do not read it as "found issues"), or a DET-1 violation
+(an unplanned host run, a tool version the lock does not pin).
 ```
 
 ### analysis/run-rector.sh
@@ -1236,7 +1254,8 @@ Options:
                      list: {status, ok, errors, changed_files, files,
                      pass1_files, compat_files, pass2_files, rules,
                      digests_status, digests_sha, compat_status, php_floor,
-                     php_ceiling} — pass1 = official, compat = the compat
+                     php_ceiling, runner, file_diffs} — pass1 = official,
+                     compat = the compat
                      pass, pass2 = digests. Used for the reproducible verdict
                      and the per-pass digests review. status is "ok",
                      "error" (the official or the compat pass crashed: no
@@ -1248,7 +1267,8 @@ Options:
                      are "off", "ok", "error" or "skipped". php_floor and
                      php_ceiling are the L and U of the Rector configs. rules
                      is the sorted list of Rector rule names Rector reported
-                     as applied (its "Applied rules:" sections, every pass);
+                     as applied (the short names of its JSON report's
+                     applied_rectors, every pass);
                      rule_hits counts them per pass, {official: {Rule: n},
                      compat: {Rule: n}, digests: {Rule: n}} (n = files the
                      rule changed; the compat and digests keys only when that
@@ -1271,10 +1291,16 @@ Gate: `analyze` profile (git + jq + composer/php).
 Output: status/logging on STDERR; a plain list of changed files (or, with
         --json, a JSON summary) on STDOUT.
 
-A Rector run only counts when it finished normally: exit 0 (no change /
-applied) or 2 (dry-run found changes) AND its closing "[OK] ..." line. A
-crash — e.g. "[ERROR] Could not detect twig set." from an incompatible
-rector/rector, a PHP fatal, or per-file processing errors — is reported as
+Every pass runs with Rector's JSON report (--output-format=json, no progress
+bar): its file_diffs, sorted by file, give the changed files and the applied
+rules, and the --json summary keeps them (file_diffs: [{pass, file,
+applied_rectors, diff}]) with the runner that produced them (runner:
+{runner: ddev|host, php_version, tool_version}). A person still reads each
+diff and its rules on STDERR. A Rector run only counts when it finished
+normally: exit 0 (no change / applied) or 2 (dry-run found changes) AND a
+JSON report with no error (rector_json_ok). A crash — a fatal error such as
+a config Rector cannot load, a PHP fatal, or per-file processing errors —
+is reported as
 status "error" with the error text and exit 3, never as "0 files would
 change". The file lists of a failed pass are partial at best. The compat
 pass runs on the same toolchain, so its crash counts as the official one's.
@@ -1311,11 +1337,19 @@ the same code and config that changes 0 files in a pass whose dry-run
 announced changes is an error (status "error" for the official and the compat
 pass, exit 3; "partial" for digests).
 
+Determinism (DET-1): with DRUPILOT_DETERMINISTIC on, Rector never falls back
+to the host for a root that has a DDEV project (DDEV not running: exit 3),
+and never runs a rector/rector or drupal-rector other than the version the
+lock pins (exit 3). The digests config, which lives in drupilot's cache on
+the host, is staged under <root>/.drupilot/digests/ so that pass runs in the
+bed too.
+
 Exit codes: 0 ok · 1 usage error · 2 gate (requirements, Drupal root,
 vendor/bin/rector or a source for rector.php missing) · 3 the official or the
 compat pass crashed or reported errors (toolchain/config broken, or a broken
 rector-compat.php; the diagnostic lists the
-installed vs known-good versions from config/toolchain-reference.json) ·
+installed vs known-good versions from config/toolchain-reference.json), or a
+DET-1 violation (an unplanned host run, a tool version the lock does not pin) ·
 4 only the digests pass crashed (the official result stands; fix with
 --digests-ref <known-good commit> or DRUPILOT_USE_DIGESTS_RULES=false).
 ```

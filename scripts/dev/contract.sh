@@ -239,7 +239,7 @@ setup_exit_env() {
   cp -R "$LW" "$CORE_MOD" "$r/web/modules/custom/"
   XROOT="$r"
   # The stub tools play the outcome named in $r/mode.
-  mk_bin "$r/vendor/bin/rector" 'm="$(cat "$(dirname "$0")/../../mode" 2>/dev/null)"; case "$m" in rector-crash) echo " [ERROR] Could not process: boom"; exit 1;; *) echo " [OK] Rector is done!"; exit 0;; esac'
+  mk_bin "$r/vendor/bin/rector" 'm="$(cat "$(dirname "$0")/../../mode" 2>/dev/null)"; case "$m" in rector-crash) echo "{\"fatal_errors\":[\"boom\"]}"; exit 1;; *) echo "{\"totals\":{\"changed_files\":0,\"errors\":0}}"; exit 0;; esac'
   mk_bin "$r/vendor/bin/phpstan" 'm="$(cat "$(dirname "$0")/../../mode" 2>/dev/null)"; case "$m" in
   phpstan-clean) echo "{\"totals\":{\"errors\":0,\"file_errors\":0},\"files\":{},\"errors\":[]}"; exit 0;;
   phpstan-findings) echo "{\"totals\":{\"errors\":0,\"file_errors\":1},\"files\":{\"a.php\":{\"errors\":1,\"messages\":[{\"message\":\"x\",\"line\":1}]}},\"errors\":[]}"; exit 1;;

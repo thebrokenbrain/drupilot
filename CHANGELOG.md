@@ -555,6 +555,23 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `last-test.json` no longer carries each control's `at`, which moves to
   `meta.negative_controls` (and stays in `negative-controls.json`). The
   `last-test.json` schema accepts both shapes.
+- **Deterministic tool invocation** (T-M4-03, 05-R2, DET-1, DET-2).
+  - `run-rector.sh` runs every pass with Rector's JSON report
+    (`--output-format=json --no-progress-bar`). The changed files and the rule
+    hits come from its `file_diffs` and `applied_rectors` instead of parsing
+    the console. A person still sees each diff and its rules on STDERR.
+  - Its `--json` gains `file_diffs` (`[{pass, file, applied_rectors, diff}]`)
+    and `runner`.
+  - `run-phpstan.sh` and `run-phpcs.sh` sort their reports (files by path,
+    messages by line) and add `drupilot.runner`. `runner` is `{runner:
+    ddev|host, php_version, tool_version}`. Every 0.9 key is kept.
+  - In deterministic mode, these cases exit 3 (`DRUPILOT_DETERMINISTIC=false`
+    accepts them):
+    - a tool whose installed version differs from the one the lock pins;
+    - a host run on a root that has a DDEV project.
+  - The digests config is copied under `<root>/.drupilot/digests/<sha>/`, so
+    that pass runs in the bed instead of on the host's PHP.
+  - Two lab runs give byte-identical canonical reports.
 
 ### Deprecated
 - **The 0.9 strategy vocabulary** (T-M3-07, CC-07), kept for all of 1.x and

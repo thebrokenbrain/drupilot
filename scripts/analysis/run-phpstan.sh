@@ -26,7 +26,10 @@
 #                   count the viability analyst can read instead of estimating.
 #                   drupilot adds one key, `drupilot`:
 #                   {status: clean|findings|crashed, exit_code, phpstan_exit_code,
-#                    notices:[...], crash:[...]}. When PHPStan crashed (no
+#                    notices:[...], crash:[...], runner:{runner: ddev|host,
+#                    php_version, tool_version}}, and sorts the report (files
+#                    by path, their messages by line, identifier and message,
+#                    the general errors by text: DET-2). When PHPStan crashed (no
 #                   report produced) `totals` is null, `files` is {} and the
 #                   reason is in `drupilot.crash` — never a fake zero count.
 #   -h, --help      Show this help.
@@ -38,9 +41,16 @@
 # `drupal_root` parameter) are surfaced as warnings, and a crash (invalid
 # config, missing path, fatal error, internal error) is reported as such.
 #
+# Determinism (DET-1): with DRUPILOT_DETERMINISTIC on, PHPStan never falls back
+# to the host for a root that has a DDEV project, nor runs a phpstan/phpstan,
+# phpstan-drupal or deprecation-rules other than the version the lock pins:
+# exit 3. Its cache lives in the explicit tmpDir of phpstan.neon, keyed by the
+# upgrade plan (ADR 0020).
+#
 # Exit codes: 0 no issues · 1 PHPStan reported findings (or a usage error) ·
 # 2 requirements/toolchain missing · 3 PHPStan crashed or could not analyse, so
-# there is NO verdict (do not read it as "found issues").
+# there is NO verdict (do not read it as "found issues"), or a DET-1 violation
+# (an unplanned host run, a tool version the lock does not pin).
 # =============================================================================
 set -euo pipefail
 
@@ -111,6 +121,14 @@ cd "$DRUPAL_ROOT"
 ddev_ensure_running_or_host "$DRUPAL_ROOT" phpstan \
   || die "Could not start the DDEV project at $DRUPAL_ROOT, and there is no host vendor/bin/phpstan to fall back to." 1
 RUNNER="$(drupal_runner "$DRUPAL_ROOT")"
+# DET-1: in deterministic mode PHPStan runs where the plan put it, at the
+# versions the lock pins.
+if det1_unplanned_host "$DRUPAL_ROOT" "$RUNNER"; then
+  die "DET-1: $DRUPAL_ROOT has a DDEV project but DDEV is not running, so PHPStan would run on the host: start it ('ddev start'), or set DRUPILOT_DETERMINISTIC=false to accept the host run." 3
+fi
+if ! _det1="$(det1_tool_mismatch "$DRUPAL_ROOT" phpstan/phpstan mglaman/phpstan-drupal phpstan/phpstan-deprecation-rules)"; then
+  die "DET-1: $_det1. Reinstall the pinned toolchain (bash \"$(plugin_root)/scripts/env/install-toolchain.sh\" --dir \"$DRUPAL_ROOT\"), or set DRUPILOT_DETERMINISTIC=false." 3
+fi
 PHP_TARGET="$(resolve_php_target)"
 
 log_info "Drupal root : $DRUPAL_ROOT"
@@ -250,9 +268,16 @@ if [[ "$AS_JSON" == "1" ]]; then
   [[ "$STATUS" == "crashed" ]] && CRASH_JSON="$(printf '%s\n' "$OTHER_ERR" | jq -R . | jq -sc 'map(select(length > 0))')"
   META="$(jq -nc --arg status "$STATUS" --argjson rc "$RC" --argjson prc "$PHPSTAN_RC" \
     --argjson notices "$NOTICES_JSON" --argjson crash "$CRASH_JSON" \
-    '{status: $status, exit_code: $rc, phpstan_exit_code: $prc, notices: $notices, crash: $crash}')"
+    --argjson prov "$(tool_provenance "$DRUPAL_ROOT" "$RUNNER" phpstan/phpstan)" \
+    '{status: $status, exit_code: $rc, phpstan_exit_code: $prc, notices: $notices, crash: $crash, runner: $prov}')"
   if [[ "$STATUS" != "crashed" ]] || printf '%s' "${JSON_OUT:-}" | jq -e 'has("totals")' >/dev/null 2>&1; then
-    printf '%s' "$JSON_OUT" | jq -c --argjson m "$META" '. + {drupilot: $m}'
+    # Sorted (DET-2): files by path, each file's messages by line, identifier
+    # and message, the general errors by text.
+    printf '%s' "$JSON_OUT" | jq -c --argjson m "$META" '. + {drupilot: $m}
+      | (if (.files | type) == "object" then .files |= (to_entries | sort_by(.key)
+          | map(if (.value.messages | type) == "array" then .value.messages |= sort_by([(.line // 0), (.identifier // ""), (.message // "")]) else . end)
+          | from_entries) else . end)
+      | (if (.errors | type) == "array" then .errors |= sort else . end)'
   else
     jq -nc --argjson m "$META" '{totals: null, files: {}, errors: $m.crash, drupilot: $m}'
   fi

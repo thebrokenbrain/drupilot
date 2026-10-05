@@ -52,7 +52,10 @@
 #                   fallback, location: subject|drupal-root|origin|
 #                   outside-root|null,
 #                   fallback_reason, test_version, test_version_source:
-#                   explicit|ruleset-config|ruleset-property|php-target}.
+#                   explicit|ruleset-config|ruleset-property|php-target,
+#                   runner: {runner: ddev|host, php_version, tool_version}};
+#                   the report is sorted (files by path, their messages by
+#                   line, column and source: DET-2).
 #   --ruleset R     auto (default, DRUPILOT_PHPCS_RULESET): the project ruleset
 #                   when found, else Drupal,DrupalPractice. drupilot: always
 #                   Drupal,DrupalPractice (the pre-0.9 behavior). PATH: that
@@ -69,8 +72,13 @@
 #
 # Gate: `analyze` profile (git + jq + composer/php).
 # Output: status/logging on STDERR; phpcs/phpcbf reports (or JSON) on STDOUT.
+# Determinism (DET-1): with DRUPILOT_DETERMINISTIC on, PHPCS never falls back to
+# the host for a root that has a DDEV project, nor runs a drupal/coder other
+# than the version the lock pins: exit 3.
+#
 # Exit codes: PHPCS's own (0 clean, non-zero violations or a PHPCS error) ·
-# 1 usage · 2 requirements/toolchain missing.
+# 1 usage · 2 requirements/toolchain missing · 3 also a DET-1 violation (an
+# unplanned host run, a coder version the lock does not pin).
 # =============================================================================
 set -euo pipefail
 
@@ -141,6 +149,14 @@ cd "$DRUPAL_ROOT"
 ddev_ensure_running_or_host "$DRUPAL_ROOT" phpcs \
   || die "Could not start the DDEV project at $DRUPAL_ROOT, and there is no host vendor/bin/phpcs to fall back to." 1
 RUNNER="$(drupal_runner "$DRUPAL_ROOT")"
+# DET-1: in deterministic mode PHPCS runs where the plan put it, at the coder
+# version the lock pins.
+if det1_unplanned_host "$DRUPAL_ROOT" "$RUNNER"; then
+  die "DET-1: $DRUPAL_ROOT has a DDEV project but DDEV is not running, so PHPCS would run on the host: start it ('ddev start'), or set DRUPILOT_DETERMINISTIC=false to accept the host run." 3
+fi
+if ! _det1="$(det1_tool_mismatch "$DRUPAL_ROOT" drupal/coder)"; then
+  die "DET-1: $_det1. Reinstall the pinned toolchain (bash \"$(plugin_root)/scripts/env/install-toolchain.sh\" --dir \"$DRUPAL_ROOT\"), or set DRUPILOT_DETERMINISTIC=false." 3
+fi
 
 log_info "Drupal root : $DRUPAL_ROOT"
 log_info "Subject     : $SUBJECT_REL"
@@ -403,10 +419,17 @@ if [[ "$AS_JSON" == "1" ]]; then
   OUT="$(run_tool phpcs --report=json 2>/dev/null)"
   RC=$?
   set -e
-  # Add the ruleset resolution as one extra top-level key (existing consumers
-  # read .totals/.files, untouched); non-JSON output is relayed as is.
-  if [[ -n "$OUT" && -n "$RS_INFO" ]] && printf '%s' "$OUT" | jq -e 'type == "object"' >/dev/null 2>&1; then
-    printf '%s' "$OUT" | jq -c --argjson d "$RS_INFO" '. + {drupilot: ($d | del(.cksum, .at))}'
+  # Add the ruleset resolution and the runner as one extra top-level key
+  # (existing consumers read .totals/.files, untouched) and sort the report
+  # (DET-2: files by path, their messages by line, column and source);
+  # non-JSON output is relayed as is.
+  if [[ -n "$OUT" ]] && printf '%s' "$OUT" | jq -e 'type == "object"' >/dev/null 2>&1; then
+    _rs="${RS_INFO:-}"; [[ -n "$_rs" ]] || _rs='{}'
+    printf '%s' "$OUT" | jq -c --argjson d "$_rs" --argjson prov "$(tool_provenance "$DRUPAL_ROOT" "$RUNNER" drupal/coder)" \
+      '. + {drupilot: (($d | del(.cksum, .at)) + {runner: $prov})}
+       | (if (.files | type) == "object" then .files |= (to_entries | sort_by(.key)
+           | map(if (.value.messages | type) == "array" then .value.messages |= sort_by([(.line // 0), (.column // 0), (.source // ""), (.message // "")]) else . end)
+           | from_entries) else . end)'
   elif [[ -n "$OUT" ]]; then
     printf '%s\n' "$OUT"
   fi
