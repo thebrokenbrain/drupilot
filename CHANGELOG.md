@@ -375,11 +375,16 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `<root>/drupilot-lock.json`. drupilot's managed ignore block leaves it out,
   so a team can commit it and share the frozen core, toolchain, digests SHA
   and upgrade plan.
-  - It applies only to a module already inside your own Drupal root. A
-    test-bed drupilot built for a loose module keeps the state dir, and
-    `lock-sync.sh` and `upgrade-path.sh --freeze` warn about it.
-  - The lock moves at its next write. Until then the state copy is read, and
-    `lock_clear` removes both.
+  - It applies only to your own Drupal root with an installed core. It does
+    not apply to a test-bed drupilot built or will build for a loose module
+    (the draft plan is frozen before the bed exists), a root holding placed
+    modules, or a module repo carrying its own core. Those keep the state dir,
+    and `lock-sync.sh` and `upgrade-path.sh --freeze` warn about it.
+  - The lock moves at its next write: it is linked into place atomically, and
+    the state copy is retired as `.moved-to-project`, never read again.
+    Until the move the state copy is read; `lock_clear` removes both.
+  - With `state`, a lock left at the root is reported, not read.
+    `make-patch.sh` never puts `drupilot-lock.json` in a patch.
   - Every reader goes through `lock_path` / `drupilot_lock_file`; the
     `hard-rules` gate's new `LOCK` rule fails on a lock path spelled anywhere
     else. `lock_get` and `lock_show` no longer create the state dir.

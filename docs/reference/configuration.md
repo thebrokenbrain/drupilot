@@ -178,7 +178,7 @@ Applies to `/drupilot-layers` runs on a **loose** folder of modules (a set insid
 
 ### `DRUPILOT_LOCK_LOCATION`
 
-Where the Drupal root's `drupilot-lock.json` lives: `state` (default) in drupilot's hidden state dir; `project` at `<root>/drupilot-lock.json`, committable (drupilot's managed ignore block leaves it out), so a team shares the frozen core, toolchain and upgrade plan. `project` applies only to a module already inside your own Drupal root; a test-bed drupilot built for a loose module keeps `state`, with a warning. The lock moves at the next write.
+Where the Drupal root's `drupilot-lock.json` lives: `state` (default) in drupilot's hidden state dir; `project` at `<root>/drupilot-lock.json`, committable (drupilot's managed ignore block leaves it out), so a team shares the frozen core, toolchain and upgrade plan. `project` applies only to your own Drupal root with an installed core; a test-bed drupilot built (or will build) for a loose module, or a module repo carrying its own core, keeps `state`, with a warning. The lock moves at the next write.
 
 - **Default:** `state`
 - **Type:** enum — one of `state`, `project`

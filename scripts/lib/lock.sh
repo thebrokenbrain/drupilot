@@ -22,30 +22,54 @@ deterministic_mode() { config_bool DRUPILOT_DETERMINISTIC 1; }
 # lock_location [project_dir] -> where the root's lock lives (AR-14, OD-06):
 # "project" (<root>/drupilot-lock.json, committable: drupilot's managed ignore
 # block leaves it out) when DRUPILOT_LOCK_LOCATION=project and the root is the
-# developer's own (testbed_kind none), else "state" (the hidden state dir, the
-# default). A test-bed drupilot built for a loose subject is a throwaway root,
-# so a lock committed there means nothing: it stays "state", and
-# lock_location_note says so. Silent and read-only; no jq fork while the key is
-# set nowhere (it is read on every lock access).
+# developer's own (_lock_project_root), else "state" (the hidden state dir,
+# the default). A test-bed for a loose subject is a throwaway root, so a lock
+# committed there means nothing: it stays "state", and lock_location_note says
+# so. Silent and read-only; no jq fork while the key is set nowhere (it is
+# read on every lock access).
 lock_location() {
   local base="${1:-${DRUPILOT_PROJECT_DIR:-$PWD}}" want
   if [[ -z "${DRUPILOT_LOCK_LOCATION:-}" ]] && ! grep -q DRUPILOT_LOCK_LOCATION "$base/.drupilot.json" 2> /dev/null; then
     printf 'state'; return 0
   fi
   want="$(export DRUPILOT_PROJECT_DIR="$base"; config_get DRUPILOT_LOCK_LOCATION state)"
-  if [[ "$want" == "project" && "$(testbed_kind "$base")" == "none" ]]; then printf 'project'; else printf 'state'; fi
+  if [[ "$want" == "project" ]] && _lock_project_root "$base"; then printf 'project'; else printf 'state'; fi
   return 0
 }
 
-# lock_location_note [project_dir] -> a warning on STDERR when
-# DRUPILOT_LOCK_LOCATION=project cannot apply to the root (a test-bed drupilot
-# built), nothing otherwise. The lock writers call it once, in their main shell
-# (lock-sync.sh, upgrade-path.sh --freeze).
+# _lock_project_root <root> -> 0 when ROOT is the developer's own Drupal
+# project, where a committed lock lasts: it exists with an installed core,
+# drupilot did not build it (testbed_kind none), it holds no module
+# place-subject.sh placed (.drupilot_testbed.subjects), and it is not itself an
+# extension (a module repo that carries its own core, ddev-drupal-contrib, whose
+# patch must never gain the lock). A root that does not exist yet is the
+# test-bed a loose subject will get: not the developer's own.
+_lock_project_root() {
+  local r="${1:-}"
+  [[ -d "$r" ]] && drupal_core_installed "$r" || return 1
+  [[ "$(testbed_kind "$r")" == "none" ]] || return 1
+  is_drupal_extension_dir "$r" && return 1
+  if [[ -r "$r/.drupilot.json" ]] && have_cmd jq \
+     && jq -e '((.drupilot_testbed // {}).subjects // {}) | length > 0' "$r/.drupilot.json" > /dev/null 2>&1; then
+    return 1
+  fi
+  return 0
+}
+
+# lock_location_note [project_dir] -> a warning on STDERR when the location
+# is not what the developer may expect, nothing otherwise: when
+# DRUPILOT_LOCK_LOCATION=project cannot apply to the root (_lock_project_root),
+# and when the setting is "state" but a project lock lies at the root (it is
+# not read). The lock writers call it once, in their main shell (lock-sync.sh,
+# upgrade-path.sh --freeze).
 lock_location_note() {
-  local base="${1:-${DRUPILOT_PROJECT_DIR:-$PWD}}" want
+  local base="${1:-${DRUPILOT_PROJECT_DIR:-$PWD}}" want loc
   want="$(export DRUPILOT_PROJECT_DIR="$base"; config_get DRUPILOT_LOCK_LOCATION state)"
-  if [[ "$want" == "project" && "$(lock_location "$base")" == "state" ]]; then
-    log_warn "DRUPILOT_LOCK_LOCATION=project applies to a module already inside your own Drupal root; $base is a test-bed drupilot built for a loose module, so its lock stays in drupilot's state dir: $(lock_path "$base")"
+  loc="$(lock_location "$base")"
+  if [[ "$want" == "project" && "$loc" == "state" ]]; then
+    log_warn "DRUPILOT_LOCK_LOCATION=project applies to a module already inside your own Drupal root; $base is not one (a test-bed for a loose module, or not built yet), so its lock stays in drupilot's state dir: $(lock_path "$base")"
+  elif [[ "$loc" == "state" && -f "$(_lock_files "$base" | sed -n '1p')" ]]; then
+    log_warn "$(_lock_files "$base" | sed -n '1p') is not read: DRUPILOT_LOCK_LOCATION is state (set it to project to use that lock)."
   fi
   return 0
 }
@@ -53,7 +77,8 @@ lock_location_note() {
 # _lock_files [project_dir] -> two lines: the root's lock (<root>/drupilot-lock.json)
 # and the state dir's (never created here). The only place the lock's file
 # name is spelled: every reader and writer goes through lock_path /
-# drupilot_lock_file (the hard-rules gate's LOCK rule).
+# drupilot_lock_file (the hard-rules gate's LOCK rule). A state lock moved to
+# the root is renamed <state lock>.moved-to-project, which nothing reads.
 _lock_files() {
   local base="${1:-${DRUPILOT_PROJECT_DIR:-$PWD}}" abs
   abs="$(cd "$base" 2> /dev/null && pwd || printf '%s' "$base")"
@@ -61,20 +86,37 @@ _lock_files() {
   return 0
 }
 
+# lock_write_path [project_dir] -> the file a writer writes, WITHOUT creating
+# or moving anything (a --dry-run names it): <root>/drupilot-lock.json when
+# lock_location is "project", else the state dir's lock.
+lock_write_path() {
+  local base="${1:-${DRUPILOT_PROJECT_DIR:-$PWD}}"
+  if [[ "$(lock_location "$base")" == "project" ]]; then _lock_files "$base" | sed -n '1p'
+  else _lock_files "$base" | sed -n '2p'; fi
+  return 0
+}
+
 # drupilot_lock_file [project_dir] -> path to this project's lockfile, for a
 # writer: in the hidden per-project state dir by default (like assess.json /
 # last-test.json, so it never touches the project tree; the dir is created),
-# or <root>/drupilot-lock.json when lock_location is "project" (a lock still
-# in the state dir is copied there first, so the frozen plan and pins move
-# with it). Scripts that already know the Drupal root can export
+# or <root>/drupilot-lock.json when lock_location is "project". A lock still in
+# the state dir moves there first, so the frozen plan and pins move with it:
+# copied whole to a temporary file, linked into place only while the root has
+# no lock (two writers never clobber each other), and the state copy renamed
+# .moved-to-project. Scripts that already know the Drupal root can export
 # DRUPILOT_PROJECT_DIR; otherwise $PWD is used (analysis scripts cd into the
 # Drupal root first, so $PWD is the project there).
 drupilot_lock_file() {
-  local base="${1:-${DRUPILOT_PROJECT_DIR:-$PWD}}" files p s
+  local base="${1:-${DRUPILOT_PROJECT_DIR:-$PWD}}" files p s tmp
   if [[ "$(lock_location "$base")" == "project" ]]; then
     files="$(_lock_files "$base")"; p="$(printf '%s\n' "$files" | sed -n '1p')"; s="$(printf '%s\n' "$files" | sed -n '2p')"
-    if [[ ! -f "$p" && -f "$s" ]] && cp "$s" "$p" 2> /dev/null; then
-      log_info "The lock moves to the project root (DRUPILOT_LOCK_LOCATION=project): $p"
+    if [[ ! -f "$p" && -f "$s" ]]; then
+      tmp="$(mktemp "$p.XXXXXX" 2> /dev/null || true)"
+      if [[ -n "$tmp" ]] && cp "$s" "$tmp" 2> /dev/null && ln "$tmp" "$p" 2> /dev/null; then
+        mv -f "$s" "$s.moved-to-project" 2> /dev/null || true
+        log_info "The lock moved to the project root (DRUPILOT_LOCK_LOCATION=project): $p"
+      fi
+      [[ -z "$tmp" ]] || rm -f "$tmp" 2> /dev/null || true
     fi
     printf '%s' "$p"; return 0
   fi
@@ -85,7 +127,8 @@ drupilot_lock_file() {
 # lock_path [project_dir] -> the lock a reader reads (lock_location's), WITHOUT
 # creating anything: for a reader that must leave nothing behind for a root it
 # only looked at (plan_get, upgrade-path.sh, lock_get). With "project", a lock
-# still in the state dir is read until the first write moves it.
+# still in the state dir is read until the first write moves it (never once
+# moved: the state copy is then renamed).
 lock_path() {
   local base="${1:-${DRUPILOT_PROJECT_DIR:-$PWD}}" files p s
   files="$(_lock_files "$base")"; p="$(printf '%s\n' "$files" | sed -n '1p')"; s="$(printf '%s\n' "$files" | sed -n '2p')"
