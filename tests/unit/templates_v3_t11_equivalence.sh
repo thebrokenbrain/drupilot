@@ -8,6 +8,12 @@
 # run in ADR 0019 shows identical Rector diffs). Compared statically on
 # legacy_widgets (the H10 subject): tests/fixtures/rector-render/legacy_widgets/
 # rector.v4.php (template 4, as M2 pinned it) vs rector.php (template 5).
+# phpstan.neon template 3 (ADR 0020) keeps template 2's level, paths and
+# excludes, adds the plan's phpVersion range and a per-plan tmpDir under
+# .phpstan-cache/, and its compat profile turns off exactly the four
+# phpstan-drupal opinion rules (the lab run in ADR 0020: the same findings but
+# globalDrupalDependencyInjection ones; the refactor profile gives v2's).
+# phpstan.v2.neon is template 2 rendered for legacy_widgets at level 2.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
 # shellcheck source=../../scripts/lib/common.sh
@@ -43,4 +49,23 @@ assert_eq "v5: drupal-rector's bootstrap file, as the aggregate registers it" \
   "$(grep -c "vendor/palantirnet/drupal-rector/config/drupal-phpunit-bootstrap-file.php" "$V5")|$(grep -c 'withBootstrapFiles' "$V5")" "1|1"
 assert_eq "v5: no BC block for ^10 || ^11 (drupal-rector's default, as in v4)" \
   "$(grep -c 'DrupalRectorSettings' "$V5" || true)|$(grep -c 'DrupalRectorSettings' "$V4" || true)" "0|0"
+
+# phpstan.neon: template 2 -> template 3 (compat profile).
+S2="$F/phpstan.v2.neon"; S3="$T_REPO/tests/golden/templates/legacy_widgets.t11-auto-p83/phpstan.neon"
+assert_eq "the v2 fixture is template 2, the v3 render template 3" \
+  "$(grep -c 'drupilot-template-version: 2' "$S2")|$(grep -c 'drupilot-template-version: 3' "$S3")" "1|1"
+# neon KEY FILE -> the indented list under `  KEY:`, or the scalar of `  KEY: v`.
+neon() { _K="$1" awk 'index($0, "  " ENVIRON["_K"] ":") == 1 { v = substr($0, length(ENVIRON["_K"]) + 5); if (v != "") { print v; exit }; on = 1; next }
+  on && /^    / { print; next } on { exit }' "$2"; }
+for k in level paths excludePaths; do
+  assert_eq "phpstan.neon: the same $k" "$(neon "$k" "$S3")" "$(neon "$k" "$S2")"
+done
+assert_eq "phpstan.neon: v3 adds the plan's phpVersion range (8.1 to 8.3)" "$(neon phpVersion "$S3" | tr -d ' \n')|$(neon phpVersion "$S2")" "min:80100max:80300|"
+assert_eq "phpstan.neon: tmpDir moves under .phpstan-cache/" "$(neon tmpDir "$S2")|$(neon tmpDir "$S3" | sed 's|/[0-9a-f]\{12\}$|/<plan>|')" ".phpstan-cache|.phpstan-cache/<plan>"
+assert_eq "phpstan.neon: compat turns off exactly the four opinion rules" \
+  "$(sed -n 's/^      \([A-Za-z]*\): false$/\1/p' "$S3" | tr '\n' ' ')" \
+  "globalDrupalDependencyInjectionRule entityStorageDirectInjectionRule testClassSuffixNameRule classExtendsInternalClassRule "
+assert_eq "phpstan.neon: refactor turns off nothing" "$(phpstan_profile_block refactor | grep -c 'false' || true)" "0"
+assert_eq "phpstan.neon: no other drupal parameter (no bleedingEdge, no drupal_root)" \
+  "$(grep -v '^[[:space:]]*#' "$S3" | grep -c 'bleedingEdge\|drupal_root:' || true)" "0"
 t_done

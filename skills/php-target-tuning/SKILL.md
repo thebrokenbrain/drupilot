@@ -155,12 +155,15 @@ To retarget, set the env var (it overrides `defaults.json`):
 export DRUPILOT_PHP_TARGET=8.4
 ```
 
-Then re-derive: re-run `detect-php.sh --json`, regenerate `rector.php`,
-`phpstan.neon` and `phpcs.xml.dist` from the templates for the new target
-(`export DRUPILOT_PHP_TARGET=8.4`, then `render-templates.sh --root <drupal_root>
---subject-path <path> --force`; the Rector floor follows the declared core range
-and never exceeds the target), and reconfigure DDEV (`ddev config --php-version=8.4` then
-`ddev restart`). Keep all four in lockstep — a mismatch between the Rector PHP
+Then re-derive: re-run `detect-php.sh --json`, re-plan for the new target
+(`upgrade-path.sh --subject <path> --phase draft --root <drupal_root> --freeze
+--json` with `DRUPILOT_PHP_TARGET=8.4` exported, or re-run `/drupilot-setup`: the
+templates follow the frozen plan's PHP range, and a final plan refuses another
+PHP target with `final-changes-frozen`), regenerate `rector.php`, `phpstan.neon`
+and `phpcs.xml.dist` from the templates (`render-templates.sh --root
+<drupal_root> --subject-path <path> --force`; the Rector floor follows the
+declared core range and never exceeds the target), and reconfigure DDEV (`ddev
+config --php-version=8.4` then `ddev restart`). Keep all four in lockstep — a mismatch between the Rector PHP
 set, PHPStan, PHPCS and the DDEV runtime produces confusing, inconsistent
 findings.
 
