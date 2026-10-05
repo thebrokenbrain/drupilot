@@ -1,0 +1,97 @@
+{
+  "automation_estimate": null,
+  "ci_flags": {
+    "OPT_IN_TEST_MAX_PHP": 0,
+    "OPT_IN_TEST_PREVIOUS_MAJOR": 1
+  },
+  "core_removals": null,
+  "data_hash": "sha256:b967dc04dc59646e99bca648bb267ff1a76ea65993d62d5af159d19ff50cbc5d",
+  "detectors": [],
+  "hard_breaks": null,
+  "hops": [
+    "7-11"
+  ],
+  "patch_name": "-port-to-drupal-11.patch",
+  "php": {
+    "final": "8.3",
+    "floor": "8.1",
+    "phpcompat_testversion": "8.1-8.3",
+    "phpstan_phpversion": {
+      "max": 80300,
+      "min": 80100
+    },
+    "require_php": ">=8.1",
+    "window": [
+      "8.1",
+      "8.2",
+      "8.3"
+    ]
+  },
+  "phpstan": {
+    "level": 2,
+    "profile": "compat"
+  },
+  "range": {
+    "constraint": "^10 || ^11",
+    "floor": "10.0",
+    "resolved_strategy": "keep-previous",
+    "spans_majors": true,
+    "strategy": "auto"
+  },
+  "rector": {
+    "bc": {
+      "enabled": false,
+      "min_core": null
+    },
+    "breaking_sets": [],
+    "compat_rules": null,
+    "drupal_sets": [],
+    "php_level": "PHP_81",
+    "polyfills": null,
+    "sets_skipped": [],
+    "skip": [
+      "Rector\\Php81\\Rector\\Array_\\ArrayToFirstClassCallableRector",
+      "Rector\\Php83\\Rector\\ClassMethod\\AddOverrideAttributeToOverriddenMethodsRector",
+      "Rector\\Php81\\Rector\\Property\\ReadOnlyPropertyRector",
+      "Rector\\Php82\\Rector\\Class_\\ReadOnlyClassRector",
+      "Rector\\Php81\\Rector\\FuncCall\\NullToStrictStringFuncCallArgRector",
+      "Rector\\Php85\\Rector\\Class_\\SleepToSerializeRector",
+      "Rector\\Php85\\Rector\\Class_\\WakeupToUnserializeRector",
+      "Rector\\Php85\\Rector\\Property\\AddOverrideAttributeToOverriddenPropertiesRector"
+    ],
+    "tests_pass": null
+  },
+  "schema_version": 1,
+  "source": {
+    "evidence_hash": "sha256:199c826c1ac4330f6fffdcbf3ce273d04972d8184919ee395f06b089a932873e",
+    "major": 7,
+    "track": "d7-assisted"
+  },
+  "subject": {
+    "machine_name": "",
+    "type": "module"
+  },
+  "target": {
+    "bed_core": "11.4.8",
+    "ddev_type": "drupal11",
+    "major": 11,
+    "preview": false,
+    "status": "supported"
+  },
+  "test_matrix": [
+    {
+      "core": "11.4.8",
+      "leg": "CURRENT",
+      "mode": "run",
+      "php": "8.3"
+    },
+    {
+      "core": "10.6",
+      "leg": "PREVIOUS_MAJOR",
+      "mode": "static",
+      "php": "8.1"
+    }
+  ],
+  "toolchain_cell": "11",
+  "workspace_suffix": "-d11"
+}
