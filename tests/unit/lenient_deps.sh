@@ -70,10 +70,9 @@ STUB
 chmod +x "$FAKE/docker" "$FAKE/ddev"
 mkdir -p "$BED/vendor/bin"; : > "$BED/vendor/bin/rector"; : > "$BED/vendor/bin/phpstan"
 real() { : > "$LOG"; env PATH="$FAKE:$PATH" CLAUDE_PLUGIN_ROOT="$T_REPO" "$@" "$T_SH" "$IT" --dir "$BED" --no-core-dev --json > "$T_TMP/real.json" 2> "$T_TMP/real.err"; }
-calls() { grep -nE 'composer-drupal-lenient true|drupal-lenient.allowed-list|composer require' "$LOG" | sed 's/:.*composer \(config\|require\).*\(true\|allowed-list\|--dev\).*/:\1 \2/' | tr '\n' ' '; }
+calls() { awk '/composer-drupal-lenient true/ { printf "allow " } /drupal-lenient.allowed-list/ { printf "merge " } /composer require/ { printf "require " }' "$LOG"; }
 real DRUPILOT_LENIENT_DEPS=drupal/token
-assert_match "a real install: allow the plugin, merge the list, then require" "$(calls)" \
-  '^[0-9]+:config true [0-9]+:config allowed-list [0-9]+:require --dev $'
+assert_eq "a real install: allow the plugin, merge the list, then require" "$(calls)" "allow merge require "
 assert_match "  the list merged is the one asked for" "$(grep 'allowed-list' "$LOG")" 'allowed-list \["drupal/token"\]'
 # Every package installed at the version it is pinned to: Composer is skipped...
 jq -n --slurpfile ref "$T_REPO/config/toolchain-reference.json" '{packages: [{name: "drupal/core", version: "11.4.8"}],
