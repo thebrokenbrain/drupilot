@@ -25,6 +25,15 @@ scripts under `${CLAUDE_PLUGIN_ROOT}/scripts/env/` and the templates under
 `${CLAUDE_PLUGIN_ROOT}/templates/`. Prefer those scripts over ad-hoc `ddev`
 commands so behavior stays idempotent, gated and consistent.
 
+**The upgrade plan.** Every version this procedure needs (target major, test-bed
+core, declared range, PHP floor and target, Rector sets, names) comes from it,
+never from the examples below (AR-26). The block is the working directory's: when it
+names no module, or a module other than the subject, run `plan show --subject <subject_dir>`:
+
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show 2>/dev/null || true`
+
+If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show
+
 ## 0. Golden rules
 
 - **Gate first.** Setup needs Docker (daemon up) + DDEV. Always run preflight for
@@ -110,8 +119,9 @@ the preflight report and the ddev/composer output go to stderr.
 
 What `ddev-up.sh` does (idempotently):
 
-- `ddev config --project-type=drupal11 --docroot=web --php-version=$(resolve_php_target)`
-  only if the project is not already configured.
+- `ddev config --project-type=<the target's DDEV type> --docroot=web --php-version=$(resolve_php_target)`
+  only if the project is not already configured (`target_ddev_type`: the
+  plan's `target.ddev_type`, from `config/targets/<T>.json`).
 - `ddev start`.
 - `ddev composer create-project drupal/recommended-project:^11` (`ddev composer create` on DDEV < 1.24.2) only when there is no
   `composer.json` yet (creating a project would overwrite an existing one).
@@ -276,7 +286,7 @@ resolve against the project, it retries once with the ranges. It allows the
 Composer plugins, runs one `ddev composer require --dev -W`, then:
 
 - a **smoke test** (`rector_smoke` in `common.sh`): a Rector dry-run of a trivial
-  file with `Drupal10SetList::DRUPAL_10` plus `phpstan --version`, through DDEV;
+  file with drupal-rector's sets loaded plus `phpstan --version`, through DDEV;
 - `lock-sync.sh --dir <root>`, so the exact toolchain (including `rector/rector`
   and `drupal/core-dev`) is frozen in the lock.
 
@@ -373,7 +383,7 @@ raw JSON value produces invalid compose YAML ("did not find expected key") and
 
 ## 8. Verify and report
 
-When done, confirm and report (in English): project name, `type: drupal11`,
+When done, confirm and report (in English): project name, the DDEV `type`,
 docroot `web`, effective `php_version`, add-ons installed, toolchain packages
 present, and which config files were written vs already present. If anything was
 already in place, say "already configured — skipped". Hand off to the

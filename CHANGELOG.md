@@ -14,6 +14,40 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 ## [Unreleased]
 
 ### Added
+- **`docs/concepts/upgrade-paths.md`**: the upgrade plan for users. It covers
+  the three axes (source, target, PHP), the hops, the core-range strategies,
+  the draft and final phases, refusals, `plan show` and the names.
+- **The `hard-rules` gate** (alias `no-version-literals`, T-M3-12) greps the
+  scripts, the PHP templates (comment lines skipped) and the prompts for the
+  hard rules:
+  - H2: `SleepToSerialize`/`WakeupToUnserialize` outside a skip list;
+  - H3: `withComposerBased(`;
+  - H5: a drupal.org docs or project releases URL (the HTML pages);
+  - H6: a hard-coded "Drupal 12 stable";
+  - H7: a three-major range literal in code;
+  - H9: a `drush migrate:import`;
+  - the forbidden `Drupal10SetList::DRUPAL_10` aggregate;
+  - a `drupalNN` DDEV-type literal outside `scripts/lib/plan.sh`;
+  - H4: exactly as many version-literal lines per script as recorded, a
+    ratchet that only goes down.
+
+  Reasoned exceptions live in `tests/contract/hard-rules-allow.txt`. The
+  prompts that still described the `DRUPAL_10` aggregate or a `drupal11` DDEV
+  type now describe the plan's per-minor sets and `target_ddev_type`.
+- **The `scripts` gate** (AR-22) checks every script but `scripts/dev/`. Each
+  sources `common.sh` at its depth, answers `--help` with exit 0 and a Usage
+  section, and refuses an unknown flag with exit 1. The probe is
+  `--drupilot-no-such-flag --help`, so no script body runs. The 28 scripts of
+  0.9 that skip an unknown flag keep their frozen CLI; every new one refuses
+  it. AR-22's `--json` check stays with the smoke tests.
+- **`scripts/drupilot.sh plan show`** (T-M3-13; the headless dispatcher of
+  AR-22, which answers only this verb until M10) prints the "drupilot plan"
+  block: the subject's frozen upgrade plan, else a draft.
+  - The commands with load-time spans, and the `minimal-port`,
+    `php-target-tuning`, `viability-assessment`, `full-refactor` and
+    `ddev-environment` skills, render it at load time.
+  - Every prompt with a `` !` `` span carries the fixed fallback line
+    (`prompt_bang_fallback.sh`).
 - **`DRUPILOT_TARGET_MAJOR` and `DRUPILOT_DRUPAL_TARGET` agree** (T-M3-06,
   X12 as ADR 0021 narrows it):
   - `DRUPILOT_DRUPAL_TARGET` is still the test-bed's core constraint, and the
@@ -338,6 +372,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `templates/rector-compat.php.tmpl` is a `drupal_safe` compat rule there.
 
 ### Changed
+- **The `config-keys` gate fails** on an undeclared or inconsistent
+  `DRUPILOT_*` key instead of warning (T-M3-14). `DRUPILOT_EXPERIMENTAL_D7`,
+  which the D7-AUTO message names, is declared (environment only until the
+  d7-assisted track lands).
 - **rector.php is rendered from the upgrade plan** (T-M3-09, ADR 0019;
   template 5):
   - the plan's per-minor Drupal sets, `defined()`-filtered, with

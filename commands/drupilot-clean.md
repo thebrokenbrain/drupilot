@@ -41,6 +41,14 @@ workspace can still be removed without it (`--no-ddev` skips `ddev delete`):
 
 !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile setup --json --quiet && bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; copy_legacy_state_once'`
 
+**The upgrade plan.** Every version this command needs (target major, test-bed
+core, declared range, PHP floor and target, Rector sets, names) comes from it,
+never from the examples in this text (AR-26):
+
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show --subject "$1" 2>/dev/null || true`
+
+If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show
+
 If `ready.setup` is false, say that `ddev delete` cannot run now, and offer only
 `--no-ddev` (the project's containers and volumes then stay until a later
 `ddev delete`).

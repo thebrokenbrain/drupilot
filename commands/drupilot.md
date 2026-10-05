@@ -85,6 +85,14 @@ anything:
 
 !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile all --json`
 
+**The upgrade plan.** Every version this command needs (target major, test-bed
+core, declared range, PHP floor and target, Rector sets, names) comes from it,
+never from the examples in this text (AR-26):
+
+!`bash -c 'S="${1:-}"; case "$S" in --subject) S="${2:-}";; --subject=*) S="${S#--subject=}";; esac; exec bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show --subject "$S"' _ "$1" "$2" 2>/dev/null || true`
+
+If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show
+
 From that object read `php_target` and `ready.{analyze,setup,test,contribute}`.
 
 ## Step 2 — Detect the subject and the Drupal/DDEV state

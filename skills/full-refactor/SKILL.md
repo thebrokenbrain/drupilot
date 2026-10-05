@@ -23,6 +23,15 @@ quality: modern Drupal 11 idioms, zero deprecations, PHPStan level 5–6, clean
 `Drupal` + `DrupalPractice`, and a green test suite. Coordinate closely with the
 `drupal-test-engineer` agent / `test-adaptation` skill — nothing breaks silently.
 
+**The upgrade plan.** Every version this procedure needs (target major, test-bed
+core, declared range, PHP floor and target, Rector sets, names) comes from it,
+never from the examples below (AR-26). The block is the working directory's: when it
+names no module, or a module other than the subject, run `plan show --subject <subject_dir>`:
+
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show 2>/dev/null || true`
+
+If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show
+
 ## 0. Golden rules
 
 - **Phase 1 must be complete first.** If the module still has blocking

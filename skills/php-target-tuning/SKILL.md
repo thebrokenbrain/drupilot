@@ -19,6 +19,15 @@ allowed-tools: Bash, Read, Edit
 setting. Resolve it once, then derive everything from it. **Default is `8.3`** —
 the absolute minimum across the entire Drupal 11 series, so it is always safe.
 
+**The upgrade plan.** Every version this procedure needs (target major, test-bed
+core, declared range, PHP floor and target, Rector sets, names) comes from it,
+never from the examples below (AR-26). The block is the working directory's: when it
+names no module, or a module other than the subject, run `plan show --subject <subject_dir>`:
+
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show 2>/dev/null || true`
+
+If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show
+
 ## 1. Resolve the target
 
 Use the shared helper (env var wins over `config/defaults.json`):
@@ -94,9 +103,7 @@ assumed). PHP deprecation fixes whose output still runs on L (`Foo $x = NULL` ->
 `rector-compat.php`, rendered and run only when L < 8.4 and the range reaches
 8.4 (`rector_compat_needed`).
 
-The Drupal set (`Drupal10SetList::DRUPAL_10`: APIs removed in D11) is independent
-of the PHP target; `Drupal11SetList::DRUPAL_11` (D11 deprecations, for a future
-D12 port) is deliberately not included. The PHP level set is applied minus the
+The Drupal sets (the plan's `rector.drupal_sets` and `rector.breaking_sets`: each hop's set family per minor up to the test-bed's minor, plus the edge's always and breaking sets (ADR 0019; for a port from Drupal 10 to 11, `DRUPAL_100` to `DRUPAL_103`): read them from the plan block) are independent of the PHP target. The PHP level set is applied minus the
 rules the template skips (`ArrayToFirstClassCallableRector`,
 `AddOverrideAttributeToOverriddenMethodsRector`, `ReadOnlyPropertyRector`,
 `ReadOnlyClassRector`, `NullToStrictStringFuncCallArgRector`,
@@ -140,7 +147,7 @@ runtime.
 ### DDEV — `php_version`
 
 ```bash
-ddev config --project-type=drupal11 --docroot=web --php-version="$(resolve_php_target)"
+ddev config --project-type="$(bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; target_ddev_type')" --docroot=web --php-version="$(resolve_php_target)"
 ```
 
 `ddev-up.sh` already passes `--php-version=$(resolve_php_target)`. With 8.5 it

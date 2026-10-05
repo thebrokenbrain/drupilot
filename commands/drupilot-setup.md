@@ -18,6 +18,14 @@ missing, the script prints an actionable report and exits non-zero — in that c
 
 !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile setup && bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; copy_legacy_state_once'`
 
+**The upgrade plan.** Every version this command needs (target major, test-bed
+core, declared range, PHP floor and target, Rector sets, names) comes from it,
+never from the examples in this text (AR-26):
+
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show --subject "$1" 2>/dev/null || true`
+
+If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show
+
 If that command exited non-zero (missing Docker/daemon/DDEV), do not proceed: show the
 report and recommend `/drupilot-doctor`.
 
@@ -229,7 +237,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-up.sh" --subject "<subject_dir>" --
 All logs, the preflight report and the ddev/composer output go to stderr; add `--json` for
 a `{project_dir, project_name, php_version, primary_url, drupal_target}` summary on stdout.
 
-This configures `--project-type=drupal11 --docroot=web --php-version=$(resolve_php_target)`,
+This configures the target's DDEV project type (`target_ddev_type`) with `--docroot=web --php-version=$(resolve_php_target)`,
 starts DDEV, runs `ddev composer create-project drupal/recommended-project:^11` (`create` on DDEV < 1.24.2) when there is no
 composer.json, ensures `drush:^13`, and reads the generated `.ddev/config.yaml` rather
 than assuming hostnames/images. It skips if the project is already configured/running.

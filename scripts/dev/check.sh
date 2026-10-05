@@ -6,7 +6,7 @@
 #
 # Gates (in order; names are what --only/--skip/--allow-fail take):
 #   - validate    `claude plugin validate .` (skipped when `claude` is absent)
-#   - syntax      `bash -n` on scripts/*/*.sh, hooks/scripts/*.sh and the test
+#   - syntax      `bash -n` on scripts/*.sh, scripts/*/*.sh, hooks/scripts/*.sh and the test
 #                 scripts tests/lib/*.sh and tests/unit/*.sh
 #   - exec-bit    those scripts are executable (git mode 100755 when tracked,
 #                 the filesystem -x bit otherwise)
@@ -45,6 +45,32 @@
 #                 with BusyBox tools). Use grep_q (common.sh), sed -n '1p' /
 #                 '1,Np', or an awk flag instead of exit. A line can opt out
 #                 with a trailing `# sigpipe-ok` and a reason
+#   - scripts     (AR-22) every script of scripts/*.sh and scripts/<group>/*.sh
+#                 but scripts/dev/ sources common.sh at its depth (a
+#                 non-comment line in the canonical form), answers --help with
+#                 exit 0 and a Usage section, and refuses an unknown flag with
+#                 exit 1 (probed as `--drupilot-no-such-flag --help`, so no
+#                 script body runs; a 0.9 script that skips an unknown flag
+#                 keeps its frozen CLI: rule AR22-FLAG of hard-rules-allow.txt);
+#                 run in an empty directory with HOME and XDG in a temp dir and
+#                 every DRUPILOT_* unset. AR-22's `--json` check stays with the
+#                 smoke tests, which run the scripts on fixtures
+#   - hard-rules  (T-M3-12, alias no-version-literals) the greppable hard
+#                 rules over scripts and PHP templates (comment lines skipped)
+#                 and the prompts: SleepToSerialize/WakeupToUnserialize outside
+#                 a skip list (H2), withComposerBased( (H3), a drupal.org docs
+#                 or project releases URL, the HTML pages H5 forbids, a
+#                 hard-coded "Drupal 12 stable" (H6), a three-major range
+#                 literal (H7), a drush migrate:import (H9), the forbidden
+#                 Drupal10SetList::DRUPAL_10 aggregate (AGG), a DDEV type
+#                 literal drupalNN outside scripts/lib/plan.sh (DDEV), and in
+#                 the scripts exactly as many version-literal lines per file as
+#                 tests/contract/hard-rules-allow.txt records (H4, a ratchet: a
+#                 new literal fails, and a removed one asks to lower the count;
+#                 read versions through plan_get / target_get). H1 is checked by
+#                 the rendered rector.php (rector_php_floor), H8 by the resolver.
+#                 The allow-list admits a rule for one path, each row with its
+#                 reason
 #   - jq-compat   no jq program in those scripts uses a jq keyword (label,
 #                 module, if, then, else, end, as, def, reduce, foreach, try,
 #                 catch, and, or, not, import, include, __loc__) as a --arg /
@@ -91,11 +117,11 @@
 #                 its defaults.json keys are exactly those of defaults.json;
 #                 every entry has a tier, a type and a description, a
 #                 default_ref that resolves and an enum holding the default;
-#                 every name the 0.9 README documents is public. These findings
-#                 WARN (status warn, not a failure) until M11; a _*_comment of
-#                 defaults.json longer than 1800 characters fails (AR-27: the
-#                 prose stays until M11 but must not grow). Comment lines of the
-#                 scripts and scripts/dev/ are not scanned
+#                 every name the 0.9 README documents is public. A finding
+#                 fails the gate (T-M3-14; it warned until M3), and so does a
+#                 _*_comment of defaults.json longer than 1800 characters
+#                 (AR-27: the prose stays until M11 but must not grow). Comment
+#                 lines of the scripts and scripts/dev/ are not scanned
 #   - docs        the docs site (08-R6): scripts/dev/gen-docs.sh --check (no
 #                 drift of the generated docs/reference pages); every
 #                 docs/**/*.md is in the mkdocs.yml nav and every nav entry
@@ -163,7 +189,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export CLAUDE_PLUGIN_ROOT="$REPO"
 
-ALL_GATES="validate syntax exec-bit shellcheck portability special-vars sigpipe jq-compat lib-defs bang-lint templates json version config-keys docs schemas data unit contract evals golden smoke"
+ALL_GATES="validate syntax exec-bit scripts shellcheck portability special-vars sigpipe jq-compat lib-defs bang-lint hard-rules templates json version config-keys docs schemas data unit contract evals golden smoke"
 # Gates that run only when asked for (--smoke, --ci, or named in --only).
 OPTIONAL_GATES="golden smoke"
 # Gates known to fail on the current tree, with a fix tracked for 0.9.0. Empty
@@ -196,6 +222,9 @@ done
 # in_list <word> <comma/space separated list>
 in_list() { case ",${2// /,}," in *",$1,"*) return 0;; esac; return 1; }
 
+# no-version-literals is the hard-rules gate under its AR-07 name.
+ONLY="${ONLY//no-version-literals/hard-rules}"; SKIP="${SKIP//no-version-literals/hard-rules}"
+ALLOW="${ALLOW//no-version-literals/hard-rules}"
 for _g in ${ONLY//,/ } ${SKIP//,/ } ${ALLOW//,/ }; do
   in_list "$_g" "$ALL_GATES" || die "Unknown gate: $_g (gates: $ALL_GATES)" 1
 done
@@ -239,7 +268,7 @@ missing_tool() {
 # The plugin's shell scripts, sorted (portable: no mapfile, no find -printf).
 SCRIPTS=()
 while IFS= read -r _f; do SCRIPTS+=("$_f"); done < <(
-  cd "$REPO" && ls scripts/*/*.sh hooks/scripts/*.sh tests/lib/*.sh tests/unit/*.sh 2>/dev/null | LC_ALL=C sort)
+  cd "$REPO" && ls scripts/*.sh scripts/*/*.sh hooks/scripts/*.sh tests/lib/*.sh tests/unit/*.sh 2>/dev/null | LC_ALL=C sort)
 
 # ---------------------------------------------------------------------------
 gate_validate() {
@@ -461,6 +490,99 @@ gate_special_vars() {
   else
     record special-vars pass "${#SCRIPTS[@]} scripts free of bash special-variable collisions"
   fi
+}
+
+gate_scripts() {
+  local out="$TMP/scripts.out" f n=0 rel depth home="$TMP/scripts-home" rc allow="$REPO/tests/contract/hard-rules-allow.txt"
+  local o="$TMP/scripts.o" e="$TMP/scripts.e"
+  : > "$out"; mkdir -p "$home/cwd"
+  for f in "$REPO"/scripts/*.sh "$REPO"/scripts/*/*.sh; do
+    [[ -f "$f" ]] || continue
+    rel="${f#"$REPO"/}"
+    case "$rel" in scripts/dev/*|scripts/lib/*) continue;; esac
+    n=$((n + 1))
+    case "$rel" in scripts/*/*) depth='\.\./lib/common\.sh';; *) depth='lib/common\.sh';; esac
+    # A non-comment source line in the canonical form, at the script's depth.
+    grep -qE '^[[:space:]]*(\.|source)[[:space:]]+"\$\(dirname "\$\{BASH_SOURCE\[0\]\}"\)/'"$depth"'"' "$f" \
+      || echo "$rel: does not source common.sh as \"\$(dirname \"\${BASH_SOURCE[0]}\")/${depth//\\/}\"" >> "$out"
+    rc=0
+    ( cd "$home/cwd" && env -i PATH="$PATH" HOME="$home" XDG_DATA_HOME="$home/d" XDG_CONFIG_HOME="$home/c" XDG_CACHE_HOME="$home/k" \
+        TMPDIR="${TMPDIR:-/tmp}" "$BASH" "$f" --help > "$o" 2> "$e" < /dev/null ) || rc=$?
+    if [[ "$rc" != "0" ]]; then echo "$rel --help: exit $rc, want 0" >> "$out"
+    elif ! grep -q 'Usage' "$o" "$e"; then echo "$rel --help: no Usage section" >> "$out"; fi
+    # A 0.9 script whose CLI ignores an unknown flag keeps doing so (CC-05);
+    # tests/contract/hard-rules-allow.txt lists each (rule AR22-FLAG).
+    if [[ -f "$allow" ]] && awk -v p="$rel" '!/^[[:space:]]*(#|$)/ && $1 == "AR22-FLAG" && $2 == p { f = 1 } END { exit !f }' "$allow"; then continue; fi
+    # The unknown flag first, then --help: a parser that refuses it exits 1
+    # there; one that skips it reaches --help and exits 0. No script body runs.
+    rc=0
+    ( cd "$home/cwd" && env -i PATH="$PATH" HOME="$home" XDG_DATA_HOME="$home/d" XDG_CONFIG_HOME="$home/c" XDG_CACHE_HOME="$home/k" \
+        TMPDIR="${TMPDIR:-/tmp}" "$BASH" "$f" --drupilot-no-such-flag --help > /dev/null 2>&1 < /dev/null ) || rc=$?
+    [[ "$rc" == "1" ]] || echo "$rel --drupilot-no-such-flag --help: exit $rc, want 1 (the unknown flag refused)" >> "$out"
+  done
+  if [[ -s "$out" ]]; then record scripts fail "$(grep -c . "$out") script(s) break the AR-22 contract" "$out"
+  else record scripts pass "$n scripts: common.sh at their depth, --help exit 0 with a Usage section, an unknown flag exit 1"; fi
+}
+
+gate_hard_rules() {
+  local out="$TMP/hard-rules.out" allow="$REPO/tests/contract/hard-rules-allow.txt" f rel n=0 id re hits want got
+  : > "$out"
+  # allowed RULE PATH -> 0 when the allow-list lets RULE match in PATH.
+  allowed() { [[ -f "$allow" ]] && awk -v r="$1" -v p="$2" '!/^[[:space:]]*(#|$)/ && $1 == r && $2 == p { f = 1 } END { exit !f }' "$allow"; }
+  # body FILE -> the lines a rule reads, each as "LINE:TEXT": a script's
+  # non-comment lines, a PHP template's non-comment lines (doc comments and
+  # // lines), a prompt whole.
+  body() {
+    case "$1" in
+      *.sh) grep -nvE '^[[:space:]]*#' "$1" 2>/dev/null || true;;
+      *.php.tmpl) grep -nvE '^[[:space:]]*(\*|//|/\*)' "$1" 2>/dev/null || true;;
+      *) grep -n '' "$1" 2>/dev/null || true;;
+    esac
+  }
+  local rules='H2	SleepToSerializeRector|WakeupToUnserializeRector
+H3	withComposerBased\(
+H5	https?://(www\.)?drupal\.org/(docs|project/[^ /]+/releases)
+H6	(Drupal|D) ?12 (is )?stable|12\.0\.0 (is )?(stable|released)
+AGG	Drupal10SetList::DRUPAL_10([^0-9_]|$)
+DDEV	drupal1[0-9]([^0-9]|$)
+H7	\^[0-9]+(\.[0-9]+)? \|\| \^[0-9]+(\.[0-9]+)? \|\| \^[0-9]+
+H9	(drush|vendor/bin/drush)[^|]* (migrate:import|migrate-import|mim)([^a-z-]|$)'
+  for f in "$REPO"/scripts/*.sh "$REPO"/scripts/*/*.sh "$REPO"/hooks/scripts/*.sh "$REPO"/templates/*.tmpl \
+           "$REPO"/commands/*.md "$REPO"/skills/*/SKILL.md "$REPO"/agents/*.md; do
+    [[ -f "$f" ]] || continue
+    rel="${f#"$REPO"/}"
+    case "$rel" in scripts/dev/*) continue;; esac
+    n=$((n + 1))
+    while IFS="$(printf '\t')" read -r id re; do
+      [[ "$id" == "DDEV" && "$rel" == "scripts/lib/plan.sh" ]] && continue
+      # H7 is about a default in code; a prompt may quote an old range.
+      case "$id:$rel" in H7:commands/*|H7:skills/*|H7:agents/*) continue;; esac
+      hits="$(body "$f" | grep -E -- "^[0-9]+:.*($re)" || true)"
+      [[ -n "$hits" ]] || continue
+      allowed "$id" "$rel" && continue
+      printf '%s\n' "$hits" | sed "s|^|$id $rel:|" | cut -c1-200 >> "$out"
+    done <<EOF
+$rules
+EOF
+    # H4: no more version literals than the allow-list records (default 0).
+    case "$rel" in
+      scripts/*|hooks/*)
+        # A substring offset (${x:0:12}) and a numeric test (-ge 11) are not versions.
+        got="$(body "$f" | sed -E 's/\$\{[^}]*:[0-9]+(:[0-9]+)?\}//g; s/-(eq|ne|ge|gt|le|lt) [0-9]+//g' \
+          | grep -cE '^[0-9]+:(.*[^0-9A-Za-z_.])?(\^?1[0-2](\.[0-9]+)?|8\.[0-5])([^0-9A-Za-z_]|$)' || true)"
+        want=0
+        if [[ -f "$allow" ]]; then
+          want="$(awk -v p="$rel" '!/^[[:space:]]*(#|$)/ && $1 == "H4" && $2 == p { print $3 + 0; exit }' "$allow" || true)"
+        fi
+        if [[ "${got:-0}" -gt "${want:-0}" ]]; then
+          echo "H4 $rel: $got version literal line(s), the allow-list records ${want:-0} (read versions through plan_get / target_get)" >> "$out"
+        elif [[ "${got:-0}" -lt "${want:-0}" ]]; then
+          echo "H4 $rel: $got version literal line(s), fewer than the ${want:-0} the allow-list records: lower its count (the ratchet only goes down)" >> "$out"
+        fi;;
+    esac
+  done
+  if [[ -s "$out" ]]; then record hard-rules fail "$(grep -c . "$out") hard-rule finding(s) (tests/contract/hard-rules-allow.txt allows a reasoned exception)" "$out"
+  else record hard-rules pass "$n files: no hard-rule hit outside the allow-list, no new version literal"; fi
 }
 
 gate_sigpipe() {
@@ -691,7 +813,7 @@ gate_config_keys() {
     echo "config/config-reference.json is not valid JSON" >> "$hard"
   else
     # Every DRUPILOT_* name read (not inside a word such as _DRUPILOT_X).
-    { for f in "$REPO"/scripts/*/*.sh "$REPO"/hooks/scripts/*.sh; do
+    { for f in "$REPO"/scripts/*.sh "$REPO"/scripts/*/*.sh "$REPO"/hooks/scripts/*.sh; do
         case "$f" in "$REPO"/scripts/dev/*) continue;; esac
         grep -vE '^[[:space:]]*#' "$f" 2>/dev/null || true
       done
@@ -741,7 +863,7 @@ gate_config_keys() {
     fi
   fi
   if [[ -s "$hard" ]]; then cat "$out" >> "$hard"; record config-keys fail "a defaults.json comment is too long, or the reference is invalid" "$hard"
-  elif [[ -s "$out" ]]; then record config-keys warn "$(grep -c . "$out") undeclared or inconsistent key(s) (warn mode until M11)" "$out"
+  elif [[ -s "$out" ]]; then record config-keys fail "$(grep -c . "$out") undeclared or inconsistent key(s)" "$out"
   else record config-keys pass "$(grep -c . "$read") DRUPILOT_* names read, all declared; comments within 1800 characters"; fi
 }
 
@@ -760,7 +882,7 @@ gate_docs() {
   while IFS= read -r f; do grep -qxF -- "$f" "$nav" || echo "docs/$f is not in the mkdocs.yml nav" >> "$out"; done < "$pages"
   while IFS= read -r f; do [[ -f "$REPO/docs/$f" ]] || echo "mkdocs.yml nav entry $f does not exist under docs/" >> "$out"; done < "$nav"
   # 3. Stale citations in the plugin files.
-  for f in "$REPO"/commands/*.md "$REPO"/skills/*/SKILL.md "$REPO"/agents/*.md "$REPO"/scripts/*/*.sh "$REPO"/hooks/scripts/*.sh; do
+  for f in "$REPO"/commands/*.md "$REPO"/skills/*/SKILL.md "$REPO"/agents/*.md "$REPO"/scripts/*.sh "$REPO"/scripts/*/*.sh "$REPO"/hooks/scripts/*.sh; do
     case "$f" in "$REPO"/scripts/dev/*) continue;; esac
     grep -nF -e 'README "' -e 'README.md (' "$f" 2>/dev/null | sed "s#^#${f#"$REPO"/}:#; s#\$# (cite docs/<page>.md instead)#" >> "$out" || true
     for t in $(grep -oE 'docs/[a-z0-9/_.-]+\.md' "$f" 2>/dev/null | LC_ALL=C sort -u); do

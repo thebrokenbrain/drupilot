@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # The config-keys gate of scripts/dev/check.sh (T-M1-13, AR-27, 08-R4), on a
-# scratch copy of the tree it reads: silent on HEAD; it WARNS (not fails) on
-# an undeclared DRUPILOT_* read, on a defaults.json key missing from the
-# reference and on a README-documented name that is no longer public; a
-# comment line is not a read; a defaults.json _*_comment over 1800
-# characters FAILS.
+# scratch copy of the tree it reads: silent on HEAD; it FAILS (T-M3-14; it
+# warned until M3) on an undeclared DRUPILOT_* read, on a defaults.json key
+# missing from the reference and on a README-documented name that is no
+# longer public; a comment line is not a read; a defaults.json _*_comment
+# over 1800 characters fails too.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
 r="$T_TMP/tree"
@@ -22,30 +22,30 @@ printf '\n# a comment that names DRUPILOT_IN_A_COMMENT\n' >> "$r/scripts/env/cle
 assert_eq "a comment line is not a read" "$(gate | cut -d'|' -f1)" "pass"
 cp "$r/scripts/env/clean.sh" "$T_TMP/clean.bak"
 printf '\nx="${DRUPILOT_X:-}"\n' >> "$r/scripts/env/clean.sh"
-assert_eq "an undeclared DRUPILOT_X read warns" "$(gate)" "warn|DRUPILOT_X is read but not declared in config/config-reference.json"
+assert_eq "an undeclared DRUPILOT_X read fails" "$(gate)" "fail|DRUPILOT_X is read but not declared in config/config-reference.json"
 cp "$T_TMP/clean.bak" "$r/scripts/env/clean.sh"
 printf 'Set `DRUPILOT_CHOICE_NEW_TAB` to pre-answer it.\n' >> "$r/commands/drupilot-port.md"
 assert_eq "a DRUPILOT_CHOICE_* name matches its pattern" "$(gate | cut -d'|' -f1)" "pass"
 
 cp "$r/config/config-reference.json" "$T_TMP/ref.bak"
 jq 'del(.keys.DRUPILOT_PLACEMENT)' "$T_TMP/ref.bak" > "$r/config/config-reference.json"
-assert_match "a defaults.json key missing from the reference warns" "$(gate)" \
-  "^warn\|.*DRUPILOT_PLACEMENT (is read but not declared|is in defaults.json but not in config-reference.json keys)"
+assert_match "a defaults.json key missing from the reference fails" "$(gate)" \
+  "^fail\|.*DRUPILOT_PLACEMENT (is read but not declared|is in defaults.json but not in config-reference.json keys)"
 jq '.runtime_only.DRUPILOT_NONINTERACTIVE.tier = "internal"' "$T_TMP/ref.bak" > "$r/config/config-reference.json"
-assert_eq "a README-documented name that is not public warns" "$(gate)" \
-  "warn|DRUPILOT_NONINTERACTIVE is documented by the 0.9 README but not public in config-reference.json"
+assert_eq "a README-documented name that is not public fails" "$(gate)" \
+  "fail|DRUPILOT_NONINTERACTIVE is documented by the 0.9 README but not public in config-reference.json"
 jq '.keys.DRUPILOT_CONTRIB_MODE.enum = ["auto"]' "$T_TMP/ref.bak" > "$r/config/config-reference.json"
-assert_eq "an enum without its default warns" "$(gate)" "warn|DRUPILOT_CONTRIB_MODE: its enum lacks the default"
+assert_eq "an enum without its default fails" "$(gate)" "fail|DRUPILOT_CONTRIB_MODE: its enum lacks the default"
 jq '.keys.DRUPILOT_CONTRIB_MODE.default_ref = "defaults.json#/DRUPILOT_NOPE"' "$T_TMP/ref.bak" > "$r/config/config-reference.json"
-assert_match "a default_ref that does not resolve warns" "$(gate)" "^warn\|.*default_ref defaults.json#/DRUPILOT_NOPE does not resolve"
+assert_match "a default_ref that does not resolve fails" "$(gate)" "^fail\|.*default_ref defaults.json#/DRUPILOT_NOPE does not resolve"
 jq '.keys.DRUPILOT_ISSUE_TITLE.tier = "internal"' "$T_TMP/ref.bak" > "$r/config/config-reference.json"
 assert_eq "a README-documented key with its own entry cannot be demoted" "$(gate)" \
-  "warn|DRUPILOT_ISSUE_TITLE is documented by the 0.9 README but not public in config-reference.json"
+  "fail|DRUPILOT_ISSUE_TITLE is documented by the 0.9 README but not public in config-reference.json"
 cp "$T_TMP/ref.bak" "$r/config/config-reference.json"
 cp "$r/scripts/env/clean.sh" "$T_TMP/clean2.bak"
 printf '\nv="$(config_get DRUPILOT_ISSUE_VERSION "")"\n' >> "$r/scripts/env/clean.sh"
-assert_eq "an undeclared key of a declared family's prefix warns" "$(gate)" \
-  "warn|DRUPILOT_ISSUE_VERSION is read but not declared in config/config-reference.json"
+assert_eq "an undeclared key of a declared family's prefix fails" "$(gate)" \
+  "fail|DRUPILOT_ISSUE_VERSION is read but not declared in config/config-reference.json"
 cp "$T_TMP/clean2.bak" "$r/scripts/env/clean.sh"
 cp "$T_TMP/ref.bak" "$r/config/config-reference.json"
 
