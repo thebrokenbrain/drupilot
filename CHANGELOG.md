@@ -60,7 +60,11 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `plan_get JQPATH [ROOT]` / `plan_frozen [ROOT]` (`scripts/lib/plan.sh`)
   and `lock_path` (`scripts/lib/lock.sh`), which create nothing;
   `lock_merge_json` merges several keys in one atomic write and never gives
-  a 0.9 lock a schema. `schemas/lock.schema.json` describes the new keys.
+  a 0.9 lock a schema (nor overwrites a lock that is not one JSON object).
+  A data refresh never makes the frozen plan stale (a default P, the bed core
+  and the toolchain cell stay the frozen ones), and a loose subject's draft
+  freezes under the test-bed root it will have (`--root` of a path that does
+  not exist yet). `schemas/lock.schema.json` describes the new keys.
 - The `jq-compat` gate also rejects a jq keyword used as a `def` parameter
   (jq 1.6 refuses `def c($label)`).
 - **`schemas/upgrade-plan.schema.json`** with an example plan

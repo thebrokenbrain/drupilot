@@ -54,20 +54,29 @@ readers get any version only through `plan_get`. It does not say:
 
    A change of the version data does **not** make a plan stale: the plan
    keeps naming the versions it was resolved with until the developer asks
-   for another one. A frozen final plan is reused for a later final request
-   too, its analyzer evidence included. Any other request resolves afresh.
-   `DRUPILOT_DETERMINISTIC=false` always resolves afresh and refreezes
-   (INV8).
+   for another one. A P that is only the target's data default is the frozen
+   P; a re-resolution keeps the frozen bed core while the lock records none,
+   and the frozen toolchain cell. A frozen final plan is reused for a later
+   final request too, its analyzer evidence included. A lock that records
+   another core minor for the test-bed than the frozen plan's (the setup
+   installed it) re-plans the draft. Any other request resolves afresh.
+   `DRUPILOT_DETERMINISTIC=false` always resolves afresh and refreezes,
+   without the final guard below (INV8).
 5. **What the final phase may change.** A final plan resolved over a frozen
-   draft may only:
+   draft (in deterministic mode) may only:
    - add hops (a lower S);
    - raise F.
 
    It must keep T, P and `toolchain_cell`, and `bed_core` at minor
-   granularity. Otherwise it is refused as `final-changes-frozen`, with the
-   choices to keep the frozen value or to re-ask the tab (`PHP_TARGET`,
-   `TARGET_MAJOR`).
-6. **Readers create nothing.** `lock_path` (`scripts/lib/lock.sh`) is the
+   granularity; over a frozen final plan only these four are kept (its hops
+   and F may move with the code). Otherwise it is refused as
+   `final-changes-frozen`, with the choices to keep the frozen value or to
+   re-ask the tab (`PHP_TARGET`, `TARGET_MAJOR`, `CORE_TARGET` for a lowered
+   F), or to re-run the setup.
+6. **A lock is never clobbered.** `lock_merge_json` starts a missing, empty
+   or blank lock as `{"schema": 1}`, refuses to touch one that is not a single
+   JSON object, and moves its temp file over the lock only when that file is
+   one. **Readers create nothing.** `lock_path` (`scripts/lib/lock.sh`) is the
    lock's path without the `mkdir` of `drupilot_lock_file`.
    - `plan_get JQPATH [ROOT]` prints one value: a string raw, `false` and
      numbers kept, null as nothing. It returns 1 when the lock holds no

@@ -1418,9 +1418,13 @@ default true) a plan frozen for the same subject is reused, printed as it
 was frozen and with nothing written, when its phase is at least the
 requested one and the requested T, P, strategy, explicit range and
 pre-release opt-in are its own; anything else resolves afresh (a change of
-the version data does not). A final plan over a frozen one may only add
-hops or raise F: changing T, P, the toolchain cell or the bed core's minor
-is refused as final-changes-frozen.
+the version data does not). A value nobody asked for again stays the
+frozen one: a P that is the data's default, the bed core while the lock
+records none, the toolchain cell; a lock that records another core for the
+test-bed re-plans. A final plan may only add hops or raise F over a frozen
+draft, and never change T, P, the toolchain cell or the bed core's minor
+of a frozen plan (final-changes-frozen); with DRUPILOT_DETERMINISTIC=false
+it re-resolves without that guard.
 
 Vocabulary (AR-01):
   S              source era: the oldest Drupal major whose APIs the code
@@ -1464,7 +1468,9 @@ Options:
                    .drupilot.json holds the persisted choices (default: the
                    subject's root, found from its logical path, as the lock
                    is keyed; for a loose subject, DRUPILOT_PROJECT_DIR or
-                   the subject itself, never the cwd's root).
+                   the subject itself, never the cwd's root). An absolute
+                   path that does not exist yet (a loose subject's future
+                   test-bed) is kept as given.
   --phpstan FILE   With --phase final: a PHPStan --error-format=json output
                    of the subject (detect-source.sh signal 4).
   --auto           An autonomous run (as DRUPILOT_AUTONOMOUS=true): a Drupal

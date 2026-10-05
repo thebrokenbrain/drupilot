@@ -4,8 +4,9 @@
 # write and keeps the rest of the lock; the hash ignores meta and key order;
 # plan_frozen prints the plan as upgrade-path.sh did; plan_get reads one
 # value (strings raw, false and numbers kept, null as nothing) and returns 1
-# without a plan; the readers create no directory (lock_path); a new lock
-# starts as {"schema": 1}; misuse returns 1 and writes nothing.
+# without a plan; the readers create no directory (lock_path); a new, empty
+# or blank lock starts as {"schema": 1}, one that is not a JSON object is
+# never overwritten; misuse returns 1 and writes nothing.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
 # shellcheck source=../../scripts/lib/common.sh
@@ -53,4 +54,17 @@ plan_freeze "$P3" draft "$ROOT"
 assert_eq "another plan, another hash" "$([[ "$(jq -r .upgrade_plan_hash "$L")" != "$H" ]] && echo differs)" "differs"
 assert_eq "  and the lock is still one JSON document" "$(jq -e . "$L" > /dev/null && echo json)" "json"
 assert_eq "  no temp file left" "$(find "$(dirname "$L")" -name 'drupilot-lock.json.*' | wc -l | tr -d ' ')" "0"
+
+# Locks that hold nothing, or garbage.
+R2="$T_TMP/root2"; mkdir -p "$R2"; L2="$(drupilot_lock_file "$R2")"
+: > "$L2"
+assert_exit "plan_get on an empty lock: no plan" 1 plan_get .php.final "$R2"
+printf '\n \n' > "$L2"
+assert_exit "plan_freeze over a blank lock" 0 plan_freeze "$PLAN" draft "$R2"
+assert_eq "  it starts anew, with the plan" "$(jq -c '[.schema, .upgrade_plan_phase]' "$L2")" '[1,"draft"]'
+printf '{"broken": ' > "$L2"; cp "$L2" "$T_TMP/broken"
+assert_exit "plan_freeze over a lock that is not JSON" 1 plan_freeze "$PLAN" draft "$R2"
+assert_file_eq "  which is left as it is" "$L2" "$T_TMP/broken"
+printf '[1, 2]\n' > "$L2"
+assert_exit "plan_freeze over a lock that is not an object" 1 plan_freeze "$PLAN" draft "$R2"
 t_done

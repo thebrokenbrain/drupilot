@@ -14,9 +14,13 @@
 # was frozen and with nothing written, when its phase is at least the
 # requested one and the requested T, P, strategy, explicit range and
 # pre-release opt-in are its own; anything else resolves afresh (a change of
-# the version data does not). A final plan over a frozen one may only add
-# hops or raise F: changing T, P, the toolchain cell or the bed core's minor
-# is refused as final-changes-frozen.
+# the version data does not). A value nobody asked for again stays the
+# frozen one: a P that is the data's default, the bed core while the lock
+# records none, the toolchain cell; a lock that records another core for the
+# test-bed re-plans. A final plan may only add hops or raise F over a frozen
+# draft, and never change T, P, the toolchain cell or the bed core's minor
+# of a frozen plan (final-changes-frozen); with DRUPILOT_DETERMINISTIC=false
+# it re-resolves without that guard.
 #
 # Vocabulary (AR-01):
 #   S              source era: the oldest Drupal major whose APIs the code
@@ -60,7 +64,9 @@
 #                    .drupilot.json holds the persisted choices (default: the
 #                    subject's root, found from its logical path, as the lock
 #                    is keyed; for a loose subject, DRUPILOT_PROJECT_DIR or
-#                    the subject itself, never the cwd's root).
+#                    the subject itself, never the cwd's root). An absolute
+#                    path that does not exist yet (a loose subject's future
+#                    test-bed) is kept as given.
 #   --phpstan FILE   With --phase final: a PHPStan --error-format=json output
 #                    of the subject (detect-source.sh signal 4).
 #   --auto           An autonomous run (as DRUPILOT_AUTONOMOUS=true): a Drupal
@@ -107,6 +113,26 @@ D7_AUTO_MESSAGE="D7 source detected: the d7-assisted track is experimental and n
 
 usage() { print_usage "$0"; }
 
+# future_path ABS -> the path ABS will have once it exists, as `cd && pwd`
+# will print it then: its deepest existing ancestor resolved, the rest
+# appended with `.`, `..`, empty and trailing components applied (a trailing
+# slash or a `..` in DRUPILOT_WORKSPACE_DIR keys the lock as the test-bed's).
+future_path() {
+  local head="$1" tail="" c out
+  while [[ -n "$head" && ! -d "$head" ]]; do tail="${head##*/}/$tail"; head="${head%/*}"; done
+  out="$(CDPATH='' cd -- "${head:-/}" 2> /dev/null && pwd)" || out="/"
+  local IFS=/
+  for c in $tail; do
+    case "$c" in
+      ''|.) : ;;
+      ..) out="${out%/*}"; [[ -n "$out" ]] || out="/";;
+      *) [[ "$out" == "/" ]] && out="/$c" || out="$out/$c";;
+    esac
+  done
+  printf '%s' "$out"
+  return 0
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --subject) SUBJECT="${2:-}"; shift 2 || die "--subject needs a directory" 1;;
@@ -145,8 +171,13 @@ SUBJECT_ABS="$(CDPATH='' cd -- "$SUBJECT" 2> /dev/null && pwd || true)"
 [[ -n "$SUBJECT_ABS" && -d "$SUBJECT_ABS" ]] || die "Subject directory not found: '$SUBJECT'." 1
 if [[ -z "$ROOT" ]]; then ROOT="$(find_drupal_root "$SUBJECT_ABS" 2> /dev/null || true)"; fi
 if [[ -n "$ROOT" ]]; then
-  ROOT="$(CDPATH='' cd -- "$ROOT" 2> /dev/null && pwd || true)"
-  [[ -n "$ROOT" ]] || die "Root directory not found." 1
+  # A loose subject's future root (resolve-workspace.sh) may not exist yet:
+  # an absolute path is kept as given, so the draft plan is frozen under the
+  # key the test-bed will have (ADR 0018).
+  if _r="$(CDPATH='' cd -- "$ROOT" 2> /dev/null && pwd)"; then ROOT="$_r"
+  elif [[ "$ROOT" == /* ]]; then ROOT="$(future_path "$ROOT")"
+  else die "Root directory not found: '$ROOT' (a root that does not exist yet must be an absolute path)." 1
+  fi
   export DRUPILOT_PROJECT_DIR="$ROOT"
 elif [[ -z "${DRUPILOT_PROJECT_DIR:-}" ]]; then
   # A loose subject: never the .drupilot.json of whatever root holds the cwd.
@@ -154,7 +185,13 @@ elif [[ -z "${DRUPILOT_PROJECT_DIR:-}" ]]; then
 fi
 [[ -n "$TARGET" ]] || TARGET="$(resolve_target_major)"
 [[ "$TARGET" =~ ^[1-9][0-9]*$ ]] || die "Invalid target major '$TARGET' (expected an integer such as 11)." 1
-[[ -n "$PHP" ]] || PHP="$(resolve_php_target_for "$TARGET")"
+# Whether P was asked for (--php or a DRUPILOT_PHP_TARGET setting), or is the
+# target's data default: a frozen plan keeps its own P over a data default.
+PHP_EXPLICIT=1
+if [[ -z "$PHP" ]]; then
+  PHP="$(config_get_explicit DRUPILOT_PHP_TARGET)"
+  if [[ -z "$PHP" ]]; then PHP_EXPLICIT=0; PHP="$(resolve_php_target_for "$TARGET")"; fi
+fi
 [[ "$PHP" =~ ^[0-9]+\.[0-9]+$ ]] || die "Invalid PHP target '$PHP' (expected X.Y such as 8.3)." 1
 if [[ -z "$STRATEGY" ]]; then
   if [[ -n "$RANGE" ]]; then STRATEGY="explicit"; else STRATEGY="$(config_get DRUPILOT_CORE_TARGET_STRATEGY auto)"; fi
@@ -233,6 +270,11 @@ refuse() {
         elif $i == "final-changes-frozen" and .field == "target.major" then
           c("keep-frozen-target"; "Keep the frozen target Drupal \(.frozen)"; null; {DRUPILOT_TARGET_MAJOR: (.frozen | tostring)}),
           c("re-setup-target"; "Choose the target major again (run the setup)"; "TARGET_MAJOR"; {})
+        elif $i == "final-changes-frozen" and .field == "range.floor" then
+          (if (.frozen_strategy // "") == "explicit" then empty
+           else c("keep-frozen-range"; "Keep the frozen core range strategy (\(.frozen_strategy))"; null;
+                  {DRUPILOT_CORE_TARGET_STRATEGY: ({"target-only": "d11-only", "keep-previous": "keep-d10", "widest": "keep-d10"}[.frozen_strategy] // .frozen_strategy)}) end),
+          c("core-target"; "Choose the core target again"; "CORE_TARGET"; {})
         elif $i == "final-changes-frozen" then
           c("re-setup"; "Run the setup again to re-plan"; null; {})
         elif $i == "three-majors" then
@@ -274,36 +316,61 @@ fi
 [[ "$MACHINE" =~ ^[a-z][a-z0-9_]*$ ]] || die "Cannot read a machine name for '$SUBJECT_ABS' (got '$MACHINE')." 1
 [[ -n "$STYPE" ]] || STYPE="module"
 # --- the frozen plan (ADR 0018) ---------------------------------------------------
+LOCK_CORE=""
+if [[ -n "$ROOT" ]]; then
+  LOCK_F="$(lock_path "$ROOT")"
+  [[ -r "$LOCK_F" ]] && LOCK_CORE="$(jq -r '.drupal.core // empty' "$LOCK_F" 2> /dev/null || true)"
+fi
 FROZEN=""
 [[ -z "$ROOT" ]] || FROZEN="$(plan_frozen "$ROOT")"
 if [[ -n "$FROZEN" ]] && [[ "$(printf '%s' "$FROZEN" | jq -r '.subject.machine_name // ""')" != "$MACHINE" ]]; then
   FROZEN=""   # another subject's plan: stale
 fi
-if [[ -n "$FROZEN" ]] && deterministic_mode; then
-  _preview=false
-  [[ "$ALLOW" == true && "$(target_get "$TARGET" '.status')" == "pre-release" ]] && _preview=true
+DET=0
+deterministic_mode && DET=1
+FROZEN_T=""
+if [[ -n "$FROZEN" && "$DET" == "1" ]]; then
+  FROZEN_T="$(printf '%s' "$FROZEN" | jq -r '.target.major')"
+  # The plan keeps naming the versions it was resolved with until the
+  # developer asks for another one: a P nobody asked for is the frozen P, not
+  # the data's current default.
+  if [[ "$PHP_EXPLICIT" == "0" && "$FROZEN_T" == "$TARGET" ]]; then
+    PHP="$(printf '%s' "$FROZEN" | jq -r '.php.final')"
+  fi
+  # Reused when its phase is high enough and the request is its own: the
+  # target, P, the strategy (and an explicit range), the pre-release opt-in
+  # a preview needs, and the core the lock records for the test-bed (a setup
+  # that installed another core re-plans).
   if printf '%s' "$FROZEN" | jq -e --argjson t "$TARGET" --arg p "$PHP" --arg st "$STRATEGY" --arg r "$RANGE" \
-       --argjson pv "$_preview" --arg ph "$PHASE" '
+       --arg allow "$ALLOW" --arg ph "$PHASE" --arg lc "${LOCK_CORE#v}" '
        def rank: if . == "final" then 2 elif . == "draft" then 1 else 0 end;
+       def minor: split("-")[0] | split(".") | .[0:2] | join(".");
        (.meta.phase | rank) >= ($ph | rank) and .target.major == $t and .php.final == $p
-       and .range.strategy == $st and (.target.preview // false) == $pv
-       and ($st != "explicit" or .range.constraint == $r)' > /dev/null 2>&1; then
+       and .range.strategy == $st and ($st != "explicit" or .range.constraint == $r)
+       and ((.target.preview // false) == false or $allow == "true")
+       and ($lc == "" or ($lc | split(".")[0]) != ($t | tostring) or ($lc | minor) == (.target.bed_core | minor))' \
+       > /dev/null 2>&1; then
     printf '%s\n' "$FROZEN"
     [[ "$JSON_ONLY" == "1" ]] || log_ok "Upgrade plan: the one frozen in the lock ($(printf '%s' "$FROZEN" | jq -r .meta.phase)), reused"
     exit 0
+  fi
+  # Re-resolved over it: the test-bed core the lock does not record yet stays
+  # the frozen one.
+  if [[ -z "$LOCK_CORE" && "$FROZEN_T" == "$TARGET" ]]; then
+    LOCK_CORE="$(printf '%s' "$FROZEN" | jq -r '.target.bed_core // empty')"
   fi
 fi
 EVIDENCE_HASH="$(printf '%s' "$SRC" | jq -S -c . | json_hash)"
 [[ -n "$EVIDENCE_HASH" ]] || die "upgrade-path.sh needs sha256sum or shasum." 1
 
 # --- target -------------------------------------------------------------------
-LOCK_CORE=""
-if [[ -n "$ROOT" ]]; then
-  LOCK_F="$(project_state_path "$ROOT")/drupilot-lock.json"
-  [[ -r "$LOCK_F" ]] && LOCK_CORE="$(jq -r '.drupal.core // empty' "$LOCK_F" 2> /dev/null || true)"
-fi
 TB_RC=0; TB="$(plan_target_block "$TARGET" "$ALLOW" "$LOCK_CORE")" || TB_RC=$?
 [[ "$TB_RC" == "0" ]] || refuse "[$TB]"
+# ... and so does the toolchain cell it was planned with (what the setup
+# installs), whatever the data now names for T.
+if [[ -n "$FROZEN_T" && "$FROZEN_T" == "$TARGET" ]]; then
+  TB="$(printf '%s' "$TB" | jq -c --arg c "$(printf '%s' "$FROZEN" | jq -r '.toolchain_cell // empty')" 'if $c == "" then . else .toolchain_cell = $c end')"
+fi
 BED="$(printf '%s' "$TB" | jq -r .bed_core)"
 
 # --- range ----------------------------------------------------------------------
@@ -393,7 +460,7 @@ PLAN="$(jq -n -S \
 
 # The final phase may only add hops or raise F over a frozen plan.
 GUARD=""
-[[ "$PHASE" != "final" ]] || GUARD="$FROZEN"
+[[ "$PHASE" != "final" || "$DET" != "1" ]] || GUARD="$FROZEN"
 V_RC=0; V="$(plan_assert "$PLAN" "$GUARD")" || V_RC=$?
 [[ "$V_RC" == "0" ]] || refuse "$V"
 if [[ "$FREEZE" == "1" ]]; then
