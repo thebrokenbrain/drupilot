@@ -25,7 +25,8 @@ assert_eq "T 12: code needing 8.4 is compatible with 8.5" \
   "$(DRUPILOT_DETECTED_PHP_FLOOR=8.4 sd "$T_TMP/m" 12)" '{"v1":"keep-previous","req":"^11.3 || ^12","php":"8.5","require_php":">=8.4","tc":true}'
 assert_eq "T 12: an explicit PHP target wins" "$(DRUPILOT_PHP_TARGET=8.4 sd "$T_TMP/m" 12 | jq -r .php)" "8.4"
 assert_eq "T 12: d11-only (target-only) is ^12" "$(DRUPILOT_CORE_TARGET_STRATEGY=d11-only sd "$T_TMP/m" 12 | jq -r .req)" "^12"
-assert_eq "the 1.0 names are not 0.9 inputs (auto, as in 0.9)" "$(DRUPILOT_CORE_TARGET_STRATEGY=target-only sd "$T_TMP/m" 12 | jq -r .req)" "^11.3 || ^12"
+assert_eq "the 1.0 names read as the 0.9 ones (CC-07): target-only is ^12" "$(DRUPILOT_CORE_TARGET_STRATEGY=target-only sd "$T_TMP/m" 12 | jq -r .req)" "^12"
+assert_eq "  an unknown name is auto, as in 0.9" "$(DRUPILOT_CORE_TARGET_STRATEGY=bogus sd "$T_TMP/m" 12 | jq -r .req)" "^11.3 || ^12"
 assert_eq "T 12: keep_current's ^10.3 || ^11 || ^12 is kept" "$(sd "$F/keep_current" 12 | jq -c '[.v1, .req]')" '["keep-current","^10.3 || ^11 || ^12"]'
 assert_eq "T abc: refused" "$(strategy_decide "$T_TMP/m" abc; echo "rc=$?")" "{}
 rc=1"

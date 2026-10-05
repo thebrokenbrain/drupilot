@@ -21,10 +21,10 @@ mutate() {
   assert_eq "$1" "$(enums)" "differs"
   cp "$T_TMP/orig" "$f"
 }
-assert_eq "the copy keeps the 0.9 enums (same)" "$(enums)" "same"
+assert_match "the copy keeps the 0.9 enums (or an allowed change)" "$(enums)" '^(same|allowed)$'
 mutate "preservation: a renamed verdict" scripts/tests/run-phpunit.sh 's/PRESERVATION="regression"/PRESERVATION="behavior-broken"/'
 mutate "stages: a renamed stage" scripts/lib/state.sh 's/tested) printf 5/verified) printf 5/'
-mutate "strategy inputs: a renamed strategy" scripts/env/preflight.sh 's/ keep-d10 >\/dev\/null/ keep-ten >\/dev\/null/'
+mutate "strategy inputs: a renamed strategy" scripts/env/preflight.sh '/config_enum DRUPILOT_CORE_TARGET_STRATEGY/s/ keep-d10 / keep-ten /'
 mutate "resolved strategy: keep-current renamed" scripts/lib/strategy.sh 's/resolved="keep-current"/resolved="keep-declared"/'
 mutate "d10_support: a renamed verdict" scripts/analysis/verify-core-matrix.sh 's/then "failed"/then "broken"/'
 mutate "deps status: a renamed verdict" scripts/analysis/deps-status.sh "s/printf 'not-ready'/printf 'blocked'/"
@@ -32,5 +32,5 @@ mutate "deps status: core renamed" scripts/analysis/deps-status.sh 's/st="core"/
 mutate "stages: two ranks swapped" scripts/lib/state.sh 's/setup) printf 1;; assessed) printf 2;;/setup) printf 2;; assessed) printf 1;;/'
 mutate "port-summary status: a renamed status" scripts/analysis/port-summary.sh 's/then "blocked"/then "stuck"/'
 mutate "refactor scope: a renamed option" config/choices.json 's/"final"/"sealed"/'
-assert_eq "restored: the same again" "$(enums)" "same"
+assert_match "restored: the same again" "$(enums)" '^(same|allowed)$'
 t_done

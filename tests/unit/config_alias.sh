@@ -84,7 +84,8 @@ assert_eq "a directory named .drupilot.json: a set -e script still runs" \
   "$("$T_SH" -c 'set -euo pipefail; . "$1"; printf reached' _ "$T_LIB" 2>/dev/null)" "reached"
 rmdir "$T_TMP/root/.drupilot.json"
 
-# The shipped file has no row: nothing is loaded and nothing changes.
-assert_eq "the shipped migrations.json has no alias row" \
-  "$(env CLAUDE_PLUGIN_ROOT="$T_REPO" DRUPILOT_OLD_PHP=8.4 "$T_SH" -c '. "$1"; printf "%s|%s" "$_DRUPILOT_ALIAS_N" "$(config_get DRUPILOT_PHP_TARGET x)"' _ "$T_LIB" 2>&1)" "0|8.3"
+# The shipped file holds the eight DRUPILOT_KEEP_D10 rows (T-M3-07, one per 0.9
+# boolean spelling); a key no row names is unchanged.
+assert_eq "the shipped migrations.json: eight KEEP_D10 rows, other keys unchanged" \
+  "$(env CLAUDE_PLUGIN_ROOT="$T_REPO" DRUPILOT_OLD_PHP=8.4 "$T_SH" -c '. "$1"; printf "%s|%s" "$_DRUPILOT_ALIAS_N" "$(config_get DRUPILOT_PHP_TARGET x)"' _ "$T_LIB" 2>&1)" "8|8.3"
 t_done
