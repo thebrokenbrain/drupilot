@@ -45,6 +45,25 @@ assert_eq "a ROOT with regex and awk metacharacters is literal" \
 assert_eq "no final newline stays without one" \
   "$(printf '/var/www/html/a' | relpath_strip_runner | od -An -c | tr -s ' ')" "$(printf 'a' | od -An -c | tr -s ' ')"
 
+# A root nested in its own physical path (macOS /tmp -> /private/tmp, Fedora
+# Atomic /home -> /var/home): the longer prefix is stripped whole.
+NEST="$T_TMP/n"; mkdir -p "$NEST/p$NEST/bed"; ln -s "$NEST/p$NEST/bed" "$NEST/bed"
+assert_eq "a root inside its own physical path: the physical one whole" \
+  "$(printf '%s/web/a.php %s/web/b.php\n' "$NEST/p$NEST/bed" "$NEST/bed" | relpath_strip_runner "$NEST/bed")" "web/a.php web/b.php"
+
+# A root PHP's json_encode escaped (\/, \u00e9): canon_json undoes the escapes first.
+UNI="$T_TMP/josé"; mkdir -p "$UNI"
+assert_eq "an escaped non-ASCII root" \
+  "$(printf '{"m":"in %s\\/web\\/a.php"}' "$(printf '%s' "$T_TMP" | sed 's#/#\\/#g')\\/jos\\u00e9" | canon_json "$UNI" | jq -r .m)" "in web/a.php"
+QR="$T_TMP/q\"b"; mkdir -p "$QR"
+assert_eq "a root with a quote, in its JSON form" \
+  "$(jq -n -c --arg p "$QR/web/a.php" '{m: $p}' | canon_json "$QR" | jq -r .m)" "web/a.php"
+
+# Keys sort as the relative paths they become (strip, then sort).
+assert_eq "keys sort after the strip" \
+  "$(printf '{"/var/www/html/web/z.php":1,"%s/web/a.php":2,"/opt/m.php":3}' "$ROOT" | canon_json "$ROOT" | jq -r 'keys_unsorted | join(" ")')" \
+  "/opt/m.php web/a.php web/z.php"
+
 # The same tree, run on the host and in the container: identical output.
 HOST="$(printf '{"files":{"%s/web/modules/custom/x/a.php":{"messages":[{"message":"in %s/web/modules/custom/x/a.php"}]}}}' "$ROOT" "$ROOT")"
 CONT='{"files":{"/var/www/html/web/modules/custom/x/a.php":{"messages":[{"message":"in /var/www/html/web/modules/custom/x/a.php"}]}}}'

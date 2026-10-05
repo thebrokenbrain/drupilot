@@ -31,6 +31,10 @@ assert_eq "the locale does not change the bytes" \
   "$(printf '%s' '{"é":1,"Z":2,"a":3,"_":4}' | LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 canon_json 2> /dev/null)"
 assert_eq "invalid JSON: nothing on stdout, still exit 0" \
   "$(printf '{"a":' | canon_json; echo "rc=$?")" "rc=0"
+assert_eq "a valid document, then a broken one: nothing" "$(printf '{"a":1} {"b":' | canon_json; echo "rc=$?")" "rc=0"
+assert_eq "a valid document, then a log line: nothing" "$(printf '{"a":1}\nDone.\n' | canon_json /tmp)" ""
+assert_eq "two valid documents: both" "$(printf '{"b":1}{"a":2}' | canon_json | tr -d ' \n')" '{"b":1}{"a":2}'
+assert_eq "canon_json_hashable of invalid JSON: nothing, exit 0" "$(printf '{"a":' | canon_json_hashable; echo "rc=$?")" "rc=0"
 
 # A pretty-printed raw golden is already canonical: canon_json leaves its bytes.
 for f in "$T_REPO"/tests/fixtures/legacy_widgets.golden/raw/*.json; do

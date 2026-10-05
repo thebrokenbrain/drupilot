@@ -16,6 +16,12 @@ assert_eq "CRLF and LF hash the same" "$(file_hash "$T_TMP/crlf")" "$(file_hash 
 assert_eq "no final newline is not a final newline" \
   "$([[ "$(file_hash "$T_TMP/nofinal")" != "$(file_hash "$T_TMP/lf")" ]] && echo differ)" "differ"
 assert_eq "CRLF without a final newline = LF without one" "$(file_hash "$T_TMP/crlf-nofinal")" "$(file_hash "$T_TMP/nofinal")"
+printf 'a\r' > "$T_TMP/lone-cr"; printf 'a' > "$T_TMP/plain-a"
+assert_eq "a lone CR at the end of the file is data" \
+  "$([[ "$(file_hash "$T_TMP/lone-cr")" != "$(file_hash "$T_TMP/plain-a")" ]] && echo differ)" "differ"
+assert_eq "  its raw bytes" "$(file_hash "$T_TMP/lone-cr")" "sha256:$(sha256_hex < "$T_TMP/lone-cr")"
+printf 'a\r\nb\r' > "$T_TMP/crlf-lone"; printf 'a\nb\r' > "$T_TMP/lf-lone"
+assert_eq "CRLF lines before a lone CR: only the CRLF made LF" "$(file_hash "$T_TMP/crlf-lone")" "$(file_hash "$T_TMP/lf-lone")"
 assert_eq "a CR inside a line is data" \
   "$([[ "$(file_hash "$T_TMP/inner-cr")" != "$(file_hash "$T_TMP/lf")" ]] && echo differ)" "differ"
 printf '\000\001\377x' > "$T_TMP/bin"
@@ -57,10 +63,34 @@ printf '{"items":' | worklist_set "$SUBJ"; rc=$?
 assert_eq "invalid JSON: exit 1, the worklist untouched" "$rc|$(sha256_hex < "$WL")" "1|$before"
 printf '[1,2]' | worklist_set "$SUBJ"; rc=$?
 assert_eq "a non-object: exit 1, untouched" "$rc|$(sha256_hex < "$WL")" "1|$before"
+printf '{"items":[9]} {"items":' | worklist_set "$SUBJ"; rc=$?
+assert_eq "a valid object, then a broken one: exit 1, untouched" "$rc|$(sha256_hex < "$WL")" "1|$before"
+printf '{"items":[]}\nDone.\n' | worklist_set "$SUBJ"; rc=$?
+assert_eq "a valid object, then a log line: exit 1, untouched" "$rc|$(sha256_hex < "$WL")" "1|$before"
+printf '{"a":1}{"b":2}' | worklist_set "$SUBJ"; rc=$?
+assert_eq "two objects: exit 1, untouched" "$rc|$(sha256_hex < "$WL")" "1|$before"
+# Atomic: a new file is moved into place (a reader never sees half a document).
+ino() { ls -i "$1" | awk '{ print $1 }'; }
+i1="$(ino "$WL")"; printf '{"items":[{"id":"W-3"}]}' | worklist_set "$SUBJ"
+assert_eq "set replaces the file (temp + mv), never rewrites it in place" "$([[ "$(ino "$WL")" != "$i1" ]] && echo replaced)" "replaced"
+if [[ "$(id -u)" != "0" ]]; then
+  before="$(sha256_hex < "$WL")"; chmod a-w "$(dirname "$WL")"
+  printf '{"items":[]}' | worklist_set "$SUBJ" 2> /dev/null; rc=$?
+  chmod u+w "$(dirname "$WL")"
+  assert_eq "a write that fails: exit 1, untouched" "$rc|$(sha256_hex < "$WL")" "1|$before"
+fi
 assert_eq "no temporary file is left" "$(find "$(dirname "$WL")" -name '*worklist*' ! -name worklist.json | grep -c . || true)" "0"
+# Concurrent writers of different sizes, a reader alongside: every read is
+# exactly one whole document.
 for i in 1 2 3 4 5 6; do
-  printf '{"items":[],"n":%s}' "$i" | worklist_set "$SUBJ" &
+  jq -n -c --argjson n "$i" '{items: [range(0; $n * 300) | {id: "W-\(.)"}], n: $n}' | worklist_set "$SUBJ" &
+done
+bad=0
+for _r in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+  jq -e -s 'length == 1' "$WL" > /dev/null 2>&1 || bad=$((bad + 1))
 done
 wait
-assert_eq "concurrent sets: one whole document wins" "$(jq -e '.items == [] and (.n | type) == "number"' "$WL")" "true"
+assert_eq "concurrent sets: no read saw a partial document" "$bad" "0"
+assert_eq "  one whole document wins" \
+  "$(jq -e -s 'length == 1 and (.[0].items | length) == (.[0].n * 300)' "$WL" > /dev/null 2>&1; echo $?)" "0"
 t_done

@@ -14,8 +14,8 @@ The record is written by the flow, not by memory: `port-report.sh` records `port
 | `effort`, `assessed_at` | The assessment's S/M/L/XL verdict and when it was made. |
 | `git` | `branch`, `commit` and `dirty` (uncommitted changes) of the subject's checkout. |
 | `toolchain` | From the lock: `drupal_core`, `php_target`, `core_strategy`, `packages` (Rector, drupal-rector, PHPStan, coder, Drush, core-dev versions). |
-| `tests` | The last recorded PHPUnit run: `status`, `preservation`, `executed`, `tests_failed`, group counts, `recorded_at`, and `fresh` (computed on the current sources). |
-| `core_matrix` | The last core matrix: `verdict`, `d10_support`, `generated_at`, `fresh`. |
+| `tests` | The last recorded PHPUnit run: `status`, `preservation`, `executed`, `tests_failed`, group counts, `recorded_at`, `fresh` (computed on the current sources) and `stale_reason` (`sources-changed`, or `digest-algorithm` for a record of an older drupilot; see [Freshness](#freshness)). |
+| `core_matrix` | The last core matrix: `verdict`, `d10_support`, `generated_at`, `fresh`, `stale_reason`. |
 | `patch` | The last patch made: `path`, `kind` (`local` / `issue` / `contribution`), `at`. |
 | `portfolio` | Set when the module is ported by `/drupilot-layers`: `dir` (the set) and `layer` (its porting layer), written by `state.sh record --portfolio DIR --layer N` (or `refresh`). |
 | `created`, `updated`, `drupilot_version` | Record timestamps and the drupilot that last wrote it. |
@@ -36,6 +36,6 @@ bash "$CLAUDE_PLUGIN_ROOT/scripts/env/state.sh" refresh --subject web/modules/cu
 
 A verdict is only shown as current while the module's sources are the ones it was computed on. Each record tied to a version of the sources — a test run (`last-test.json`) and the pre-port baseline (`test-baseline.json`), a negative control, a core matrix, the metadata lint, the Rector dry-run — keeps the `subject_digest` of those sources and `digest_algo`, the algorithm that computed it. The digest covers the PHP family (`*.php`, `*.module`, `*.inc`, `*.install`, `*.theme`, `*.profile`, `*.engine`), `*.yml`, `composer.json`, `*.twig`, `*.js` and `*.css`, skipping `.git/`, `vendor/` and `node_modules/`; a patch or issue text next to the module does not count. A verdict whose digest differs from the current one is reported stale (`fresh: false` above, "stale" in the port report); a baseline taken on the current code is noted as unable to show what the port changed.
 
-drupilot 1.0 computes algorithm 2, which added Twig, JS and CSS. Every digest recorded by drupilot 0.9 (algorithm 1, no `digest_algo`) differs from it, so after an upgrade those records show as stale once: re-run the step to refresh them.
+drupilot 1.0 computes algorithm 2, which added Twig, JS and CSS. Every digest recorded by drupilot 0.9 (algorithm 1, no `digest_algo`) differs from it, so after an upgrade those records show as stale once (`stale_reason: "digest-algorithm"`, next to `fresh: false`; a record on changed sources has `"sources-changed"`): re-run the step to refresh them. Until then the next step after a green 0.9 test run is `/drupilot-test`, and a failing 0.9 verdict (a regression, a failed core matrix) keeps blocking `port-summary --strict`, because drupilot cannot tell whether its sources changed; a verdict on sources that did change is reported but never blocks.
 
 Records that are compared or hashed between runs keep their timestamps under a top-level `meta` object, so two runs that compute the same result write the same bytes outside it: `rector-rules.json` keeps `meta.generated_at`, and `last-test.json` keeps when each negative control ran in `meta.negative_controls` (`recorded_at` stays where 0.9 put it).

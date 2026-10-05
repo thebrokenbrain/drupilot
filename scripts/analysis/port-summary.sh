@@ -64,7 +64,9 @@
 # sources, or of unknown freshness) is regression / not-verified-blocked /
 # not-verified-unbaselined; a fresh core matrix failed; the manifest's
 # port-safety or signature-change scan recorded errors. A result computed on
-# sources that changed since (fresh: false) is reported but never blocks.
+# sources that changed since (fresh: false) is reported but never blocks; one
+# recorded with another subject_digest algorithm (drupilot 0.9) is stale too,
+# but keeps blocking until it is re-run, since its sources may be the same.
 #
 # Read-only (apart from --write). Ungated: needs only jq.
 # Exit codes: 0 ok · 1 usage error / not a module or theme / jq missing ·
@@ -165,10 +167,12 @@ SUMMARY="$(jq -n \
   | (($cm != null) and ($cm.fresh == true) and (($cm.d10_support // null) != null)) as $cm_rules
   | (if $cm_rules then $cm.d10_support else ($m.d10_support // null) end) as $d10
   | (if $cm_rules then "core-matrix" elif ($m.d10_support // null) != null then "manifest" else null end) as $d10_src
-  | ([ (if $t != null and ($t.fresh != false)
+  # A record of another digest algorithm (stale_reason "digest-algorithm":
+  # drupilot 0.9) may still describe the current sources: it keeps blocking.
+  | ([ (if $t != null and (($t.fresh != false) or (($t.stale_reason // "") == "digest-algorithm"))
           and (($t.preservation // "") | IN("regression", "not-verified-blocked", "not-verified-unbaselined"))
         then {source: "tests", reason: ("preservation: " + $t.preservation)} else empty end),
-       (if $cm != null and $cm.fresh == true
+       (if $cm != null and (($cm.fresh == true) or (($cm.stale_reason // "") == "digest-algorithm"))
           and (($cm.verdict // "") == "fail" or ($cm.d10_support // "") == "failed")
         then {source: "core-matrix", reason: "a declared core leg failed (verdict: \($cm.verdict // "n/a"), d10_support: \($cm.d10_support // "n/a"))"} else empty end),
        (if (($m.port_safety.errors // 0) | num // 0) > 0

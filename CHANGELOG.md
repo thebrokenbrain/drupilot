@@ -534,8 +534,16 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 - **`subject_digest` uses algorithm 2** (AR-13, T-M4-02): it also hashes
   `*.twig`, `*.js` and `*.css`, after a header line, so **every existing
   digest changes once**. A test run, negative control, core matrix or
-  metadata lint recorded by drupilot 0.9 no longer counts as fresh:
-  `/drupilot-status` and the port report show it stale until it is re-run.
+  metadata lint recorded by drupilot 0.9 no longer counts as fresh, until it
+  is re-run:
+  - `/drupilot-status`, the port report and the layer report show it stale
+    (`stale_reason: "digest-algorithm"`);
+  - the next step after a green 0.9 run is `/drupilot-test` again;
+  - a failing 0.9 verdict (a regression, a failed core matrix) keeps blocking
+    `port-summary --strict`, since its sources may be unchanged. A result on
+    sources that changed since (`"sources-changed"`) still never blocks.
+
+  `digest_freshness` gives the verdict for one record.
   Every record that keeps a `subject_digest` now keeps `digest_algo: 2` next
   to it (`last-test.json`, `test-baseline.json`, `negative-controls.json`,
   `core-matrix.json`, the Rector dry-run record and

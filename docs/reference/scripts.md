@@ -533,7 +533,8 @@ Options:
                    rector_reversions, post_port_fixes, preexisting_bugs,
                    behavior_changes, tooling_deviations},
                   modules:[{machine, layer, in_cycle, subject, found, stage,
-                            effort, preservation, d10_support, patch,
+                            effort, preservation, d10_support, d10_fresh,
+                            patch,
                             drupal_root, port_report (the module's
                             port-report.md: <root>/.drupilot/modules/<machine>/
                             first, else <root>/.drupilot/),
@@ -1054,7 +1055,9 @@ subject is ported and one of these holds — the last test run (on the current
 sources, or of unknown freshness) is regression / not-verified-blocked /
 not-verified-unbaselined; a fresh core matrix failed; the manifest's
 port-safety or signature-change scan recorded errors. A result computed on
-sources that changed since (fresh: false) is reported but never blocks.
+sources that changed since (fresh: false) is reported but never blocks; one
+recorded with another subject_digest algorithm (drupilot 0.9) is stale too,
+but keeps blocking until it is re-run, since its sources may be the same.
 
 Read-only (apart from --write). Ungated: needs only jq.
 Exit codes: 0 ok · 1 usage error / not a module or theme / jq missing ·

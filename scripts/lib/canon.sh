@@ -18,18 +18,22 @@
 # canon_json [ROOT] -> STDIN's JSON in its canonical form: keys sorted (jq -S,
 # which sorts by code point whatever the locale), two-space indent, LF line
 # endings, a CRLF inside a string made LF; with ROOT, the runner paths are
-# stripped first (relpath_strip_runner ROOT), so the keys sort as the
+# stripped (relpath_strip_runner ROOT) after jq has undone the producer's
+# escapes (\/, \uXXXX) and before the keys are sorted, so they sort as the
 # relative paths they become. Array order is data and is kept: a producer
 # sorts its arrays on documented keys before it writes them. Several input
-# documents give several outputs; invalid JSON prints nothing.
+# documents give several outputs; input that is not valid JSON throughout (a
+# valid document followed by a broken one included) prints nothing.
 # shellcheck disable=SC2120  # ROOT is optional; tests and the findings stage pass it
 canon_json() {
-  local prog='walk(if type == "string" then split("\r\n") | join("\n") else . end)'
+  local prog='walk(if type == "string" then split("\r\n") | join("\n") else . end)' out
   if [[ -n "${1:-}" ]]; then
-    relpath_strip_runner "$1" | LC_ALL=C jq -S "$prog" 2> /dev/null || true
+    out="$(LC_ALL=C jq -c . 2> /dev/null)" || return 0
+    out="$(printf '%s\n' "$out" | relpath_strip_runner "$1" | LC_ALL=C jq -S "$prog" 2> /dev/null)" || return 0
   else
-    LC_ALL=C jq -S "$prog" 2> /dev/null || true
+    out="$(LC_ALL=C jq -S "$prog" 2> /dev/null)" || return 0
   fi
+  [[ -z "$out" ]] || printf '%s\n' "$out"
   return 0
 }
 
@@ -37,7 +41,8 @@ canon_json() {
 # sorted, compact, without the top-level "meta" (generated_at, versions: what
 # changes between two runs that resolve the same plan). One line, LF-ended.
 canon_json_hashable() {
-  jq -S -c 'if type == "object" then del(.meta) else . end'
+  jq -S -c 'if type == "object" then del(.meta) else . end' 2> /dev/null || true
+  return 0
 }
 
 # sha256_hex -> the bare SHA-256 hex of STDIN's bytes (sha256sum, else shasum
@@ -62,16 +67,18 @@ json_hash() {
 }
 
 # file_hash FILE -> "sha256:<hex>" of FILE's bytes with every CRLF made LF (a
-# CR inside a line is data; a last line without LF stays without one), so a
-# checkout with CRLF line endings hashes as the LF one. Nothing for a missing
-# file or without a hasher.
+# CR not followed by LF is data, at the end of the file too; a last line
+# without LF stays without one), so a checkout with CRLF line endings hashes
+# as the LF one. Nothing for a missing file or without a hasher.
 file_hash() {
   local f="${1:-}" h="" final=1
   [[ -f "$f" && -r "$f" ]] || return 0
   if LC_ALL=C grep -q "$(printf '\r')" "$f" 2> /dev/null; then
     [[ -z "$(tail -c 1 "$f" 2> /dev/null)" ]] || final=0
-    h="$(LC_ALL=C awk -v final="$final" '{ sub(/\r$/, ""); if (NR > 1) printf "\n"; printf "%s", $0 }
-      END { if (NR > 0 && final == 1) printf "\n" }' "$f" | sha256_hex)"
+    # A record is printed once the next one shows it ended with LF.
+    h="$(LC_ALL=C awk -v final="$final" 'NR > 1 { sub(/\r$/, "", prev); printf "%s\n", prev }
+      { prev = $0 }
+      END { if (NR > 0) { if (final == 1) { sub(/\r$/, "", prev); printf "%s\n", prev } else printf "%s", prev } }' "$f" | sha256_hex)"
   else
     h="$(sha256_hex < "$f")"
   fi
@@ -83,7 +90,8 @@ file_hash() {
 # root removed wherever they appear (JSON keys, values, inside messages): the
 # DDEV container's /var/www/html/ and, with ROOT, the host's ROOT/ (as given
 # and its physical path when ROOT is a symlink), each also in its JSON-escaped
-# form (\/). A bare root not followed by a path character becomes ".". So the
+# forms (\" and \\ escaped, and / as \/). A bare root not followed by a path
+# character becomes ".". So the
 # same tree gives the same root-relative paths on the host and in DDEV. The
 # match is literal (no regex), byte-wise (LC_ALL=C); a ROOT of / adds nothing.
 # STDIN is one record (a \001 byte in it is kept unless it ends the input),
@@ -100,6 +108,18 @@ relpath_strip_runner() {
       o = ""
       for (i = 1; i <= length(s); i++) { c = substr(s, i, 1); o = o (c == "/" ? "\\/" : c) }
       return o
+    }
+    function jesc(s,   o, i, c) {
+      o = ""
+      for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        if (c == "\\") o = o "\\\\"; else if (c == "\"") o = o "\\\""; else o = o c
+      }
+      return o
+    }
+    function add(p,   k) {
+      for (k = 1; k <= n; k++) if (B[k] == p) return
+      n++; P[n] = p (index(p, "\\/") ? "\\/" : "/"); B[n] = p
     }
     function strip(s, p,   o, i) {
       o = ""
@@ -121,8 +141,7 @@ relpath_strip_runner() {
       r[1] = ENVIRON["_CANON_R1"]; r[2] = ENVIRON["_CANON_R2"]; r[3] = "/var/www/html"
       for (k = 1; k <= 3; k++) {
         if (r[k] == "") continue
-        n++; P[n] = r[k] "/"; B[n] = r[k]
-        n++; P[n] = esc(r[k]) "\\/"; B[n] = esc(r[k])
+        add(r[k]); add(jesc(r[k])); add(esc(r[k])); add(esc(jesc(r[k])))
       }
       # Longest prefix first, so a root nested in another one is matched whole.
       for (i = 2; i <= n; i++) {
@@ -183,9 +202,11 @@ worklist_get() {
 # concurrent writers leave one whole document. Returns 1, the worklist
 # untouched, when STDIN is not one JSON object or the write fails.
 worklist_set() {
-  local d doc tmp
-  doc="$(canon_json)"
-  if [[ -z "$doc" ]] || ! printf '%s\n' "$doc" | jq -e -s 'length == 1 and (.[0] | type) == "object"' > /dev/null 2>&1; then
+  local d raw doc tmp
+  raw="$(cat)"
+  # The raw input itself must be one object: jq -s fails on any broken part.
+  if ! printf '%s\n' "$raw" | jq -e -s 'length == 1 and (.[0] | type) == "object"' > /dev/null 2>&1 \
+     || ! doc="$(printf '%s\n' "$raw" | canon_json)" || [[ -z "$doc" ]]; then
     log_err "worklist_set: STDIN is not one JSON object; the worklist is unchanged."
     return 1
   fi
