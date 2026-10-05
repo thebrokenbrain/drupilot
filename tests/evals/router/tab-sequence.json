@@ -1,5 +1,5 @@
 {
-  "_comment": "The ordered tab sequence of a guided `full` run, as drupilot 0.9.0 declares it (captured from the v0.9.0 tag): each command's `choice.sh --key KEY` calls in document order, plus the tabs declared only by an AskUserQuestion header (a key of config/choices.json with no choice.sh call, such as PUSH, which is never pre-answered) or, in a command, by a `\"<header>\" tab` it shows (drupilot-refactor.md reuses the port's Drupal 10 check tab, so D10_CHECK appears in both stages). Conditional tabs appear only when their condition fires. New tabs may only be inserted (CC-02); `auto` shows none: the --live layer asks for an explicit NO_TABS reply, and auto_rules are the prompt rules that keep an auto run tab-free and push-free, checked statically.",
+  "_comment": "The ordered tab sequence of a guided `full` run, as drupilot 0.9.0 declares it (captured from the v0.9.0 tag): each command's `choice.sh --key KEY` calls in document order, plus the tabs declared only by an AskUserQuestion header (a key of config/choices.json with no choice.sh call, such as PUSH, which is never pre-answered) or, in a command, by a `\"<header>\" tab` it shows (drupilot-refactor.md reuses the port's Drupal 10 check tab, so D10_CHECK appears in both stages). Conditional tabs appear only when their condition fires. New tabs may only be inserted (CC-02), and only as listed in allowed_insertions: each one right before the 0.9 tab it names (D32); `auto` shows none: the --live layer asks for an explicit NO_TABS reply, and auto_rules are the prompt rules that keep an auto run tab-free and push-free, checked statically.",
   "flow": [
     "commands/drupilot.md",
     "commands/drupilot-setup.md",
@@ -29,6 +29,9 @@
     "NEXT_STEP",
     "CONTRIB_MODE",
     "PUSH"
+  ],
+  "allowed_insertions": [
+    {"key": "TARGET_MAJOR", "before": "PHP_TARGET", "since": "1.0 (T-M3-15)"}
   ],
   "auto": [],
   "auto_rules": [

@@ -101,10 +101,36 @@ Persist the answer so later runs don't re-ask: write the chosen strategy with
 `prefs_set DRUPILOT_CORE_TARGET_STRATEGY <auto|keep-d10|d11-only>`, run with
 `DRUPILOT_PROJECT_DIR=<drupal_root>` so it lands in the test-bed root's
 `.drupilot.json` (env still wins). `run-rector.sh` reads it there to set Rector's
-PHP floor, so a choice that is not persisted ports to the floor of `auto`. Then apply the resolved `recommended_core_version_requirement` in Step 6.
-When it returns a `require.php` (for `^10 || ^11`, since Drupal 10 allows PHP 8.1
-while the port needs a higher floor), add `"require": { "php": "<require_php>" }`
-to `composer.json` using the **exact** `require_php` value the helper returns
+PHP floor, so a choice that is not persisted ports to the floor of `auto`.
+
+**Resolve and freeze the final upgrade plan (AR-06, ADR 0018).** The setup froze
+a draft plan in the root's lock; the port resolves the final one over it with
+the answered strategy (add `--auto` in an autonomous run):
+
+```bash
+DRUPILOT_CORE_TARGET_STRATEGY=<auto|keep-d10|d11-only> bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "$1" --phase final --root "<drupal_root>" --freeze --json
+```
+
+- **Exit 0**: the final plan is frozen; it may add hops or raise the core floor
+  over the draft, never change the target, the PHP target or the test-bed.
+- **Exit 2**: nothing was written. Show `.message` and `.choices`; a
+  `final-changes-frozen` refusal means the setup's choices no longer hold (for
+  example the PHP target changed since): send the developer to
+  `/drupilot-setup` to re-plan, and stop. A `d7-auto` refusal also stops.
+
+Then read the declared range and the `require.php` floor from the frozen plan,
+never from a script's own output (H4):
+
+```bash
+bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; plan_get .range.constraint "$1"; plan_get .php.require_php "$1"' _ "<drupal_root>"
+```
+
+The first line is the `core_version_requirement` to apply in Step 6; the second,
+when present, the `require.php` to declare (the plan omits it when the range keeps
+no previous major).
+When the plan holds a `require.php` (for `^10 || ^11`, since Drupal 10 allows PHP
+8.1 while the port needs a higher floor), add `"require": { "php": "<require_php>" }`
+to `composer.json` using the **exact** value `plan_get .php.require_php` returns
 (`DRUPILOT_REQUIRE_PHP_FLOOR=detect`, the default, derives the real floor such as
 `>=8.1`; `target` keeps `>=<target>`). Also relay `php_floor_target_compatible`
 (false → the code uses a construct newer than the target) and the
@@ -276,23 +302,22 @@ Keep ad-hoc rules minimal and mechanical; do not slip refactoring in here.
 
 Apply only the mechanical compatibility edits, preserving behavior:
 
-- **`info.yml` + `composer.json`**: set `core_version_requirement` to the target
-  decided in Step 1 (e.g. `^10 || ^11`) in the main `info.yml` **and every
+- **`info.yml` + `composer.json`**: set `core_version_requirement` to the frozen
+  plan's `range.constraint` (Step 1, e.g. `^10 || ^11`) in the main `info.yml` **and every
   submodule's** with the helper (a submodule left on `^8.8 || ^9 || ^10` cannot be
   installed on Drupal 11; it also removes an obsolete `core: 8.x` key and bumps a
   test module only when it does not admit Drupal 11). Dry-run first, show the
   changes, then apply (substitute the requirement):
 
   ```bash
-  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/set-core-requirement.sh" --subject "$1" --requirement '<recommended_core_version_requirement>' --dry-run --json
-  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/set-core-requirement.sh" --subject "$1" --requirement '<recommended_core_version_requirement>' --json
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/set-core-requirement.sh" --subject "$1" --requirement '<range.constraint>' --dry-run --json
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/set-core-requirement.sh" --subject "$1" --requirement '<range.constraint>' --json
   ```
 
-  A missing `core_version_requirement` is blocking — the helper adds it. When Step 1
-  reported a `require.php` (i.e. keeping Drupal 10), add
-  `"require": { "php": "<require_php>" }` to `composer.json` using the exact value
-  the helper returned, so a D10 + low-PHP site is blocked at install, not at
-  runtime.
+  A missing `core_version_requirement` is blocking — the helper adds it. When the
+  plan holds a `require.php` (`plan_get .php.require_php`, i.e. keeping Drupal 10),
+  add `"require": { "php": "<require_php>" }` to `composer.json` using that exact
+  value, so a D10 + low-PHP site is blocked at install, not at runtime.
 - **Twig 3**: replace removed filters/functions and `{% spaceless %}` with their
   mechanical equivalents (whitespace control `{%- -%}` / `{{- -}}` for
   `spaceless`, never the `spaceless` filter, deprecated since Twig 3.12; `~`

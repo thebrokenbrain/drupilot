@@ -60,7 +60,9 @@
 #                    .drupilot.json holds the persisted choices (default: the
 #                    subject's root, found from its logical path, as the lock
 #                    is keyed; for a loose subject, DRUPILOT_PROJECT_DIR or
-#                    the subject itself, never the cwd's root).
+#                    the subject itself, never the cwd's root). An absolute
+#                    path that does not exist yet (a loose subject's future
+#                    test-bed) is kept as given.
 #   --phpstan FILE   With --phase final: a PHPStan --error-format=json output
 #                    of the subject (detect-source.sh signal 4).
 #   --auto           An autonomous run (as DRUPILOT_AUTONOMOUS=true): a Drupal
@@ -145,8 +147,12 @@ SUBJECT_ABS="$(CDPATH='' cd -- "$SUBJECT" 2> /dev/null && pwd || true)"
 [[ -n "$SUBJECT_ABS" && -d "$SUBJECT_ABS" ]] || die "Subject directory not found: '$SUBJECT'." 1
 if [[ -z "$ROOT" ]]; then ROOT="$(find_drupal_root "$SUBJECT_ABS" 2> /dev/null || true)"; fi
 if [[ -n "$ROOT" ]]; then
-  ROOT="$(CDPATH='' cd -- "$ROOT" 2> /dev/null && pwd || true)"
-  [[ -n "$ROOT" ]] || die "Root directory not found." 1
+  # A loose subject's future root (resolve-workspace.sh) may not exist yet:
+  # an absolute path is kept as given, so the draft plan is frozen under the
+  # key the test-bed will have (ADR 0018).
+  if _r="$(CDPATH='' cd -- "$ROOT" 2> /dev/null && pwd)"; then ROOT="$_r"
+  elif [[ "$ROOT" != /* ]]; then die "Root directory not found: '$ROOT' (a root that does not exist yet must be an absolute path)." 1
+  fi
   export DRUPILOT_PROJECT_DIR="$ROOT"
 elif [[ -z "${DRUPILOT_PROJECT_DIR:-}" ]]; then
   # A loose subject: never the .drupilot.json of whatever root holds the cwd.

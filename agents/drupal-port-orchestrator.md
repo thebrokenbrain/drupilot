@@ -280,6 +280,12 @@ assisted installation.
 Goal: a Drupal 11 DDEV site with the toolchain and the subject in place. Use the
 `ddev-environment` skill and:
 - `scripts/env/detect-php.sh --json` to confirm the effective PHP target.
+- Freeze the draft upgrade plan before anything is created:
+  `scripts/analysis/upgrade-path.sh --subject <path> --phase draft --root <drupal_root> --freeze --json`
+  (`<drupal_root>` from `scripts/env/resolve-workspace.sh --json`), with `--auto`
+  in an autonomous run: a Drupal 7 source is then refused (`d7-auto`, exit 2) and
+  the run stops with its message, nothing written (rule D7-AUTO). Any other exit 2
+  stops the setup with the refusal's message and choices.
 - `scripts/env/ddev-up.sh` to create/start the D11 DDEV project at the target PHP.
 - `scripts/env/ddev-add-ons.sh --contrib [--selenium] --dir <drupal_root>` for the contrib add-on and
   (for JS tests) Selenium standalone Chrome v2.

@@ -1,6 +1,6 @@
 ---
 description: Provision a Drupal 11 DDEV environment for porting a module/theme - start DDEV, install the contrib (+ Selenium) add-ons, install the Composer dev toolchain (drupal-rector, PHPStan + extensions, coder, drush 13, drupal/core-dev for PHPUnit), and write rector.php / phpstan.neon / phpcs.xml.dist / testing web_environment from templates. Idempotent. Use for "/drupilot-setup", "set up the environment", "spin up DDEV for this module".
-argument-hint: "[subject-path] [--php X.Y]"
+argument-hint: "[subject-path] [--php X.Y] [--target N]"
 allowed-tools: Bash, Read, Skill, Task, AskUserQuestion
 ---
 
@@ -26,7 +26,33 @@ report and recommend `/drupilot-doctor`.
 Determine the subject directory (`$1` if it is a Drupal extension, else detect from the
 cwd), its type (module/theme), and the effective PHP target:
 
-!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; printf "subject_dir=%s\n" "$SUBJ"; printf "machine_name=%s\n" "$(subject_machine_name "$SUBJ" 2>/dev/null || echo -)"; printf "subject_type=%s\n" "$(subject_type "$SUBJ" 2>/dev/null || echo -)"; printf "php_target=%s\n" "$(resolve_php_target)"; printf "php_unconfirmed=%s\n" "$(php_target_unconfirmed "$(resolve_php_target)" && echo yes || echo no)"; printf "drupal_target=%s\n" "$(resolve_drupal_target)"' _ "$1"`
+!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; printf "subject_dir=%s\n" "$SUBJ"; printf "machine_name=%s\n" "$(subject_machine_name "$SUBJ" 2>/dev/null || echo -)"; printf "subject_type=%s\n" "$(subject_type "$SUBJ" 2>/dev/null || echo -)"; printf "target_major=%s\n" "$(resolve_target_major)"; printf "allow_prerelease=%s\n" "$(config_get DRUPILOT_ALLOW_PRERELEASE false)"; printf "php_target=%s\n" "$(resolve_php_target)"; printf "php_unconfirmed=%s\n" "$(php_target_unconfirmed "$(resolve_php_target)" && echo yes || echo no)"; printf "drupal_target=%s\n" "$(resolve_drupal_target)"' _ "$1"`
+
+**Decision point — the target major (T-M3-15).** The Drupal major the port
+targets (T) decides the test-bed, the toolchain cell and the PHP choices, so it
+comes first. A `--target N` flag in `$ARGUMENTS` wins; otherwise a pre-answer
+comes first, also in an autonomous run (no `--persist`: the answer is persisted
+only once the draft plan below resolves):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key TARGET_MAJOR --subject "<subject_dir>" --json
+```
+
+When its `value` is not null it is the answer (no tab; if `env_override` lists
+`DRUPILOT_TARGET_MAJOR`, the environment variable wins). When `DRUPILOT_TARGET_MAJOR`
+is already pinned (`target_major` above came from the environment or
+`.drupilot.json`), or the run is autonomous, use `target_major` with no tab.
+Otherwise ask with **AskUserQuestion** (header "Target major", default = the
+recommended option):
+
+- **Drupal 11 — recommended**: the current supported major; the default.
+- **Drupal 12 (preview)**: offer it only when `allow_prerelease` is `true`
+  (`DRUPILOT_ALLOW_PRERELEASE`): Drupal 12 has no stable release yet, so the port
+  is a preview on its pre-release core. Never offer it otherwise.
+
+Export `DRUPILOT_TARGET_MAJOR=<T>` for the following steps. The PHP target's
+default below is the target's own (`config/targets/<T>.json` `php_defaults.tab`;
+8.4 for Drupal 11).
 
 **Decision point — let the developer pick the PHP target (G4/G5).** The PHP
 version pins the whole toolchain (PHPStan, PHPCS, DDEV `php_version`, and the
@@ -58,8 +84,40 @@ pre-answered `8.5` still gets the Drupal 11.3 warning below. When `value` is nul
 
 A `--php X.Y` flag always wins over the tab. Apply the choice by exporting
 `DRUPILOT_PHP_TARGET` for the subsequent scripts **and** persisting it with
-`prefs_set DRUPILOT_PHP_TARGET <X.Y>` so the rest of the flow (assess/port/test)
-reuses it without re-asking. Never proceed on 8.5 without that note.
+`prefs_set DRUPILOT_PHP_TARGET <X.Y>` once the draft plan below resolves, so the
+rest of the flow (assess/port/test) reuses it without re-asking. Never proceed on
+8.5 without that note.
+
+**Resolve and freeze the draft upgrade plan (AR-06, ADR 0018).** Every later
+stage reads its versions from this plan. Find the Drupal root first with the
+read-only workspace resolver (Step 3 explains its fields; for a loose subject
+the root is the test-bed it will create):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/resolve-workspace.sh" --subject "<subject_dir>" --json
+```
+
+Then resolve the draft plan with the chosen target and PHP (add `--auto` in an
+autonomous run):
+
+```bash
+DRUPILOT_TARGET_MAJOR=<T> DRUPILOT_PHP_TARGET=<X.Y> bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "<subject_dir>" --phase draft --root "<drupal_root>" --freeze --json
+```
+
+- **Exit 0**: the plan is frozen in the root's lock. Persist the two answers now
+  (`prefs_set DRUPILOT_TARGET_MAJOR <T>` and `prefs_set DRUPILOT_PHP_TARGET <X.Y>`,
+  run with `DRUPILOT_PROJECT_DIR=<drupal_root>`), and report in one line the
+  target and its test-bed core (`target.bed_core`), the declared range
+  (`range.constraint`), the PHP window (`php.floor`..`php.final`) and the hops.
+  If `.target.major` is not 11, stop here: say that the draft plan is frozen and
+  that Drupal 12 test-beds arrive with a later drupilot release (T-M3-08); do not
+  run the setup scripts below.
+- **Exit 2 with `.code` `d7-auto`**: stop with its `.message`; nothing was written.
+- **Any other exit 2**: nothing was written or persisted. Show `.message` and
+  offer the refusal's `.choices` (each names the tab to re-ask in `.tab` or the
+  values to `set`), then ask the target and PHP tabs again. In an autonomous run,
+  stop with the message instead.
+- **Exit 1**: a usage error; show it and stop.
 
 ## Step 3 — State the plan, then do the work via the ddev-environment skill
 

@@ -1464,7 +1464,9 @@ Options:
                    .drupilot.json holds the persisted choices (default: the
                    subject's root, found from its logical path, as the lock
                    is keyed; for a loose subject, DRUPILOT_PROJECT_DIR or
-                   the subject itself, never the cwd's root).
+                   the subject itself, never the cwd's root). An absolute
+                   path that does not exist yet (a loose subject's future
+                   test-bed) is kept as given.
   --phpstan FILE   With --phase final: a PHPStan --error-format=json output
                    of the subject (detect-source.sh signal 4).
   --auto           An autonomous run (as DRUPILOT_AUTONOMOUS=true): a Drupal
@@ -3493,8 +3495,9 @@ two layers (G-EVALS):
     * the ordered tab sequence of a guided `full` run, extracted from the
       prompts in flow order: each command's `choice.sh --key KEY` calls, plus
       the tabs declared only by an AskUserQuestion header (a choices.json key
-      with no choice.sh call, such as PUSH). New tabs may only be inserted:
-      the 0.9 sequence must stay a subsequence (CC-02);
+      with no choice.sh call, such as PUSH). New tabs may only be inserted
+      (CC-02), each as tab-sequence.json's allowed_insertions lists it: right
+      before the 0.9 tab it names (D32); without them, the 0.9 sequence;
     * the router's mode words, in its argument-hint;
     * the router's mode-inference rules: each cue's mode is the first bold
       **`mode`** after it in its rule, else the last one before it;

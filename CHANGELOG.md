@@ -14,6 +14,20 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 ## [Unreleased]
 
 ### Added
+- **The commands plan before they act** (T-M3-15): `/drupilot-setup` asks
+  the new **Target major** tab (`TARGET_MAJOR`: Drupal 11 by default, 12 only as
+  a preview with `DRUPILOT_ALLOW_PRERELEASE=true`; `--target N` wins) before the
+  PHP target, then freezes the draft upgrade plan in the root's lock
+  (`upgrade-path.sh --phase draft --freeze`), persisting both answers only once
+  it resolves; a refusal re-asks the tabs, and a target other than 11 stops
+  after the plan until T-M3-08. `/drupilot-port` freezes the final plan with
+  the core-target answer and applies the plan's `range.constraint` and
+  `php.require_php` (`plan_get`), so core-strategy only shows each option's
+  consequences; the orchestrator freezes the draft in its setup stage (with
+  `--auto` in an autonomous run, so rule D7-AUTO holds there too). The router
+  eval allows a new tab only as `tab-sequence.json` `allowed_insertions` lists
+  it (TARGET_MAJOR right before PHP_TARGET). `upgrade-path.sh --root` accepts
+  the absolute path of a test-bed that does not exist yet.
 - **`sigpipe` gate** in `scripts/dev/check.sh` and **`grep_q`** in
   `scripts/lib/core.sh`: no pipeline in `scripts/` or `hooks/` may end in a
   consumer that stops reading early (`| head`, `| grep -q` / `-m` / `-l`, an

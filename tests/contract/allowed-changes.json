@@ -1,4 +1,10 @@
 {
   "_comment": "Intended changes to the frozen 0.9 contract (tests/contract/*.json): {snapshot, sha256 of the new generated content, reason}. scripts/dev/contract.sh --check prints the line to add. Each change also needs a CHANGELOG entry.",
-  "changes": []
+  "changes": [
+    {
+      "snapshot": "choices.json",
+      "sha256": "ed54d577757893d1f1d30631f1a5d396e24038cdd892a04d89df337f35f3fd81",
+      "reason": "T-M3-15: the TARGET_MAJOR tab (/drupilot-setup, options 11 and 12, default 11) is added before PHP_TARGET, and both carry stage plan-draft; every 0.9 choice keeps its header, options and default (CHANGELOG Unreleased Added)."
+    }
+  ]
 }

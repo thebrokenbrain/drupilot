@@ -75,6 +75,23 @@ assumed; `ddev-up.sh` warns when the core it creates may be older (the
 lock-pinned core, else the lowest minor the Drupal target admits) and when the
 installed core is older.
 
+### 2b. Target major and the draft upgrade plan
+
+`/drupilot-setup` asks the target major first (`choice.sh --key TARGET_MAJOR`;
+Drupal 11 by default, 12 only as a preview with `DRUPILOT_ALLOW_PRERELEASE=true`),
+then the PHP target, and freezes the draft upgrade plan in the Drupal root's lock
+before anything is created (ADR 0018):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "<path>" --phase draft --root "<drupal_root>" --freeze --json
+```
+
+`<drupal_root>` is `resolve-workspace.sh`'s answer (for a loose subject, the
+test-bed it will create). Exit 2 refuses with `.message` and `.choices` and writes
+nothing: re-ask the tabs (a `d7-auto` refusal stops). The answers are persisted
+only after exit 0. Until T-M3-08, a target other than 11 stops the setup after the
+plan is frozen.
+
 ## 3. Create / start the Drupal 11 DDEV project
 
 ```bash
