@@ -3,7 +3,9 @@
 # ids in AR-07's order; every when condition from the catalog's closed set and
 # every skip_reason naming one of the stage's conditions; every tab a key of
 # config/choices.json, and every choice that names a stage listed in that
-# stage's tabs; sub-step ids unique per stage; coarse stages the state.json
+# stage's tabs, and the router's INTENT plus every stage's tabs in order the
+# tab sequence of a full run (tests/evals/router/tab-sequence.json, with its
+# allowed insertions); sub-step ids unique per stage; coarse stages the state.json
 # ones, each recorded by one stage; every procedure anchor a step heading of
 # exactly one skill; and docs/reference/pipeline.md generated from it.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
@@ -24,6 +26,9 @@ assert_eq "every tab is a config/choices.json key" \
 assert_eq "every choice with a stage is a tab of that stage" \
   "$(jq -c --slurpfile p "$P" '[.choices | to_entries[] | select(.value.stage != null) | . as $e
      | select(([$p[0].stages[] | select(.id == $e.value.stage) | .tabs[]] | index($e.key)) == null) | .key]' "$C")" "[]"
+assert_eq "INTENT + the stages' tabs in order = a full run's tab sequence" \
+  "$(jq -c '["INTENT"] + [.stages[].tabs[]]' "$P")" \
+  "$(jq -c '.allowed_insertions as $ins | reduce $ins[] as $i (.full; (index($i.before)) as $at | .[0:$at] + [$i.key] + .[$at:])' "$T_REPO/tests/evals/router/tab-sequence.json")"
 assert_eq "sub-step ids are unique per stage" \
   "$(jq -c '[.stages[] | select((.subs | length) != (.subs | unique | length)) | .id]' "$P")" "[]"
 assert_eq "each coarse stage is recorded by one stage" \
@@ -31,15 +36,17 @@ assert_eq "each coarse stage is recorded by one stage" \
 assert_eq "the opt-in stages are refactor and contribute, contribute never in auto" \
   "$(jq -c '[.stages[] | select(.when | index("optin")) | .id], ([.stages[] | select(.when | index("not-auto")) | .id])' "$P" | tr '\n' ' ')" \
   '["refactor","contribute"] ["d7-rewrite","contribute"] '
-# Procedure anchors: the heading is a "## " step of exactly one skill.
+# Procedure anchors: the heading is a step heading (any level) of exactly one skill.
+# has_heading FILE TEXT -> 0 when FILE has a markdown heading (#, ##, ...) TEXT.
+has_heading() { awk -v h="$2" '/^#+ / { t = $0; sub(/^#+ /, "", t); if (t == h) f = 1 } END { exit !f }' "$1"; }
 bad=""
 while IFS="$(printf '\t')" read -r sk hd; do
   [[ -n "$sk" ]] || continue
   n=0
   for f in "$T_REPO"/skills/*/SKILL.md; do
-    grep -qxF "## $hd" "$f" && n=$((n + 1))
+    has_heading "$f" "$hd" && n=$((n + 1))
   done
-  [[ -f "$T_REPO/skills/$sk/SKILL.md" ]] && grep -qxF "## $hd" "$T_REPO/skills/$sk/SKILL.md" || bad="$bad $sk:$hd(missing)"
+  [[ -f "$T_REPO/skills/$sk/SKILL.md" ]] && has_heading "$T_REPO/skills/$sk/SKILL.md" "$hd" || bad="$bad $sk:$hd(missing)"
   [[ "$n" -le 1 ]] || bad="$bad $sk:$hd(in $n skills)"
 done <<EOF
 $(jq -r '.stages[].procedure_anchor | select(. != null) | "\(.skill)\t\(.heading)"' "$P")

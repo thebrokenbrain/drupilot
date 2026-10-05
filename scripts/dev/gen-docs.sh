@@ -212,7 +212,7 @@ gen_pipeline() {
       "\($s.label | esc).",
       "",
       "- **Kind:** \($s.kind)",
-      "- **Outputs:** \($s.outputs | map(esc) | join("; "))",
+      "- **Outputs:** \($s.outputs | map(if test("^[^ ]*[*/.][^ ]*$") then "`" + . + "`" elif test("^[^ ]+[*/.][^ ]* ") then (capture("^(?<p>[^ ]+) (?<r>.*)$") | "`\(.p)` \(.r | esc)") else esc end) | join("; "))",
       "- **Gate to leave it:** \($s.gate | esc)",
       (if $s.coarse_stage then "- **Records:** the `\($s.coarse_stage)` stage of `state.json`" else empty end),
       (if $s.procedure_anchor then "- **Procedure:** skill `\($s.procedure_anchor.skill)`, step \"\($s.procedure_anchor.heading | esc)\"" else empty end))

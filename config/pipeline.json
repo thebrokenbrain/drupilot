@@ -1,5 +1,5 @@
 {
-  "_comment": "The stage catalog (AR-07): one ordered list shared by the pipeline runner (scripts/ai/pipeline.sh), the progress model and the docs (docs/reference/pipeline.md, generated). The stage ids are public and stable from drupilot 1.0 on: never rename one; a new stage is added at its place. state.json keeps 0.9's coarse stages, derived from these through coarse_stage (CC-20). Fields: id; label; kind (det, det+tab, det+ai, ai, outward); weight (relative effort for the progress percent, provisional: the headline is 'stage k/N', never the percent); when (every condition must hold, from the closed set in conditions); skip_reason (the reason recorded when the named condition is false: the stage is then 'skipped', not absent); tabs (config/choices.json keys the stage asks); subs (sub-step ids); outputs; gate (what must hold to leave the stage); coarse_stage (the state.json stage it records, or null); procedure_anchor ({skill, heading}: the skill step that defines the procedure, or null while none does).",
+  "_comment": "The stage catalog (AR-07): one ordered list shared by the pipeline runner (scripts/ai/pipeline.sh), the progress model and the docs (docs/reference/pipeline.md, generated). The stage ids are public and stable from drupilot 1.0 on: never rename one; a new stage is added at its place. state.json keeps 0.9's coarse stages, derived from these through coarse_stage (CC-20). Fields: id; label; kind (det, det+tab, det+ai, ai, outward); weight (relative effort for the progress percent, provisional: the headline is 'stage k/N', never the percent); when (every condition must hold, from the closed set in conditions); skip_reason (the reason recorded when the named condition is false: the stage is then 'skipped', not absent); tabs (the config/choices.json keys the stage asks, in order: with the router's INTENT first they are the tab sequence of a full run, tests/evals/router/tab-sequence.json; /drupilot-doctor's own DOCTOR_INSTALL belongs to no stage); subs (sub-step ids); outputs; gate (what must hold to leave the stage); coarse_stage (the state.json stage it records, or null); procedure_anchor ({skill, heading}: the skill step, any heading level, that defines the procedure, or null while none does).",
   "schema": 1,
   "conditions": {
     "always": "every run",
@@ -19,7 +19,7 @@
       "kind": "det",
       "weight": 1,
       "when": ["always"],
-      "tabs": ["DOCTOR_INSTALL"],
+      "tabs": [],
       "subs": [],
       "outputs": ["preflight --json"],
       "gate": "preflight exits 0 for the next stage's profile (INV2)",
@@ -37,7 +37,7 @@
       "outputs": ["upgrade plan (draft), frozen in the lock"],
       "gate": "the target major and PHP target are confirmed (a tab, a pre-answer or the auto default); a Drupal 7 source in an auto run stops here (D7-AUTO)",
       "coarse_stage": null,
-      "procedure_anchor": {"skill": "php-target-tuning", "heading": "1. Resolve the target"}
+      "procedure_anchor": {"skill": "ddev-environment", "heading": "2b. Target major and the draft upgrade plan"}
     },
     {
       "id": "setup",
@@ -47,7 +47,7 @@
       "when": ["always"],
       "tabs": ["PLACEMENT", "CONFIG_CONFLICT"],
       "subs": [],
-      "outputs": ["DDEV test-bed", "toolchain", "rector.php, phpstan.neon, phpcs.xml.dist", "lock: core, toolchain, add-ons"],
+      "outputs": ["DDEV test-bed", "toolchain", "rector.php", "phpstan.neon", "phpcs.xml.dist", "lock: core, toolchain, add-ons"],
       "gate": "the toolchain smoke test passes; a hand-edited config is never overwritten (INV5)",
       "coarse_stage": "setup",
       "procedure_anchor": {"skill": "ddev-environment", "heading": "1. Gate the operation"}
@@ -126,7 +126,7 @@
       "when": ["worklist:ai"],
       "tabs": [],
       "subs": [],
-      "outputs": ["result.json per item", "decisions.jsonl"],
+      "outputs": ["result.json (one per item)", "decisions.jsonl"],
       "gate": "per-item and per-file gates; an unresolved item becomes needs-human",
       "coarse_stage": null,
       "procedure_anchor": {"skill": "minimal-port", "heading": "5. Minimal manual changes (what Rector cannot do)"}
@@ -163,7 +163,7 @@
       "kind": "det",
       "weight": 3,
       "when": ["always"],
-      "tabs": ["NEXT_STEP"],
+      "tabs": ["LEARN", "NEXT_STEP"],
       "subs": [],
       "outputs": ["port-manifest.json", "port-report.md", "port-summary.json", "local patch"],
       "gate": "port-summary --strict exits 3 on a blocking issue",
@@ -176,7 +176,7 @@
       "kind": "det+ai",
       "weight": 20,
       "when": ["optin"],
-      "tabs": ["REFACTOR_SCOPE", "PHPSTAN_LEVEL", "ATTRIBUTE_FLOOR"],
+      "tabs": ["REFACTOR_SCOPE", "PHPSTAN_LEVEL", "ATTRIBUTE_FLOOR", "D10_CHECK", "LEARN", "NEXT_STEP"],
       "subs": [],
       "outputs": ["refactored code", "port-report.md"],
       "gate": "the test suite stays green",

@@ -6,7 +6,7 @@ The stages of a port, in order, from `config/pipeline.json`. A stage id is publi
 
 | # | Stage | What | Kind | Runs when | Tabs | Sub-steps |
 |---|---|---|---|---|---|---|
-| 1 | `doctor` | Check the environment | det | `always` | `DOCTOR_INSTALL` | — |
+| 1 | `doctor` | Check the environment | det | `always` | — | — |
 | 2 | `plan-draft` | Draft the upgrade plan | det+tab | `always` | `TARGET_MAJOR`, `PHP_TARGET` | — |
 | 3 | `setup` | Set up the test-bed | det | `always` | `PLACEMENT`, `CONFIG_CONFLICT` | — |
 | 4 | `assess` | Assess viability | det | `always` | `EXISTING_WORK` | — |
@@ -17,8 +17,8 @@ The stages of a port, in order, from `config/pipeline.json`. A stage id is publi
 | 9 | `residual` | Fix what the tools cannot | ai | `worklist:ai` | — | — |
 | 10 | `validate` | Validate | det | `always` | `D10_CHECK` | `phpcbf`, `phpcs`, `phpstan`, `port-safety`, `signatures`, `deprecations`, `core-matrix`, `fixpoint` |
 | 11 | `test` | Test | det | `always` | — | `discover`, `baseline`, `adapt`, `run`, `coverage` |
-| 12 | `report` | Report and patch | det | `always` | `NEXT_STEP` | — |
-| 13 | `refactor` | Refactor (opt-in) | det+ai | `optin` | `REFACTOR_SCOPE`, `PHPSTAN_LEVEL`, `ATTRIBUTE_FLOOR` | — |
+| 12 | `report` | Report and patch | det | `always` | `LEARN`, `NEXT_STEP` | — |
+| 13 | `refactor` | Refactor (opt-in) | det+ai | `optin` | `REFACTOR_SCOPE`, `PHPSTAN_LEVEL`, `ATTRIBUTE_FLOOR`, `D10_CHECK`, `LEARN`, `NEXT_STEP` | — |
 | 14 | `contribute` | Contribute upstream | outward | `optin`, `user-only`, `not-auto` | `CONTRIB_MODE`, `PUSH` | — |
 
 ## Conditions
@@ -48,14 +48,14 @@ Draft the upgrade plan.
 - **Kind:** det+tab
 - **Outputs:** upgrade plan (draft), frozen in the lock
 - **Gate to leave it:** the target major and PHP target are confirmed (a tab, a pre-answer or the auto default); a Drupal 7 source in an auto run stops here (D7-AUTO)
-- **Procedure:** skill `php-target-tuning`, step "1. Resolve the target"
+- **Procedure:** skill `ddev-environment`, step "2b. Target major and the draft upgrade plan"
 
 ## setup
 
 Set up the test-bed.
 
 - **Kind:** det
-- **Outputs:** DDEV test-bed; toolchain; rector.php, phpstan.neon, phpcs.xml.dist; lock: core, toolchain, add-ons
+- **Outputs:** DDEV test-bed; toolchain; `rector.php`; `phpstan.neon`; `phpcs.xml.dist`; lock: core, toolchain, add-ons
 - **Gate to leave it:** the toolchain smoke test passes; a hand-edited config is never overwritten (INV5)
 - **Records:** the `setup` stage of `state.json`
 - **Procedure:** skill `ddev-environment`, step "1. Gate the operation"
@@ -65,7 +65,7 @@ Set up the test-bed.
 Assess viability.
 
 - **Kind:** det
-- **Outputs:** raw/*.json; findings.json; assess.json; viability-report.md
+- **Outputs:** `raw/*.json`; `findings.json`; `assess.json`; `viability-report.md`
 - **Gate to leave it:** none: it always emits a staged plan, even at XL
 - **Records:** the `assessed` stage of `state.json`
 - **Procedure:** skill `viability-assessment`, step "3. Run the static analyses (all non-destructive)"
@@ -83,7 +83,7 @@ Finalize the upgrade plan.
 Rewrite Drupal 7 code (experimental).
 
 - **Kind:** det+ai
-- **Outputs:** d7-manifest.json; scaffolds; worklist items
+- **Outputs:** `d7-manifest.json`; scaffolds; worklist items
 - **Gate to leave it:** DRUPILOT_EXPERIMENTAL_D7=on; never in an auto run
 
 ## upgrade
@@ -91,7 +91,7 @@ Rewrite Drupal 7 code (experimental).
 Upgrade the Drupal API.
 
 - **Kind:** det
-- **Outputs:** raw/*-upgrade-rector*.json
+- **Outputs:** `raw/*-upgrade-rector*.json`
 - **Gate to leave it:** Rector reaches a fixpoint within 3 iterations, else a warning
 - **Procedure:** skill `minimal-port`, step "2. Pass 1 — official Rector (palantirnet/drupal-rector)"
 
@@ -108,7 +108,7 @@ Adapt to the PHP target.
 Fix what the tools cannot.
 
 - **Kind:** ai
-- **Outputs:** result.json per item; decisions.jsonl
+- **Outputs:** `result.json` (one per item); `decisions.jsonl`
 - **Gate to leave it:** per-item and per-file gates; an unresolved item becomes needs-human
 - **Procedure:** skill `minimal-port`, step "5. Minimal manual changes (what Rector cannot do)"
 
@@ -117,7 +117,7 @@ Fix what the tools cannot.
 Validate.
 
 - **Kind:** det
-- **Outputs:** raw/*-validate-*.json
+- **Outputs:** `raw/*-validate-*.json`
 - **Gate to leave it:** with DRUPILOT_FIXPOINT=enforce, exit 3 when not converged; the info.yml check (INV11)
 - **Procedure:** skill `minimal-port`, step "6. The validate loop (after each batch of changes)"
 
@@ -126,7 +126,7 @@ Validate.
 Test.
 
 - **Kind:** det
-- **Outputs:** last-test.json
+- **Outputs:** `last-test.json`
 - **Gate to leave it:** the preservation verdict is computed, never fabricated (INV3)
 - **Records:** the `tested` stage of `state.json`
 - **Procedure:** skill `test-adaptation`, step "5. Run the suites and iterate to green"
@@ -136,7 +136,7 @@ Test.
 Report and patch.
 
 - **Kind:** det
-- **Outputs:** port-manifest.json; port-report.md; port-summary.json; local patch
+- **Outputs:** `port-manifest.json`; `port-report.md`; `port-summary.json`; local patch
 - **Gate to leave it:** port-summary --strict exits 3 on a blocking issue
 - **Records:** the `ported` stage of `state.json`
 - **Procedure:** skill `minimal-port`, step "8. Report and hand off"
@@ -146,7 +146,7 @@ Report and patch.
 Refactor (opt-in).
 
 - **Kind:** det+ai
-- **Outputs:** refactored code; port-report.md
+- **Outputs:** refactored code; `port-report.md`
 - **Gate to leave it:** the test suite stays green
 - **Records:** the `refactored` stage of `state.json`
 - **Procedure:** skill `full-refactor`, step "2. Refactor loop"
