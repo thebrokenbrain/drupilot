@@ -29,9 +29,9 @@
 #        repository when the project sits deeper in one);
 #      - repo-subdir (the module is a sub-directory of a git repository that is
 #        not a Drupal project, e.g. a folder of modules): '<parent of the
-#        repository>/<machine_name>-d11';
+#        repository>/<machine_name>-d11' (-d<T> for another target major);
 #      - standalone (the module is its own repository, or not in git): the
-#        sibling '<parent-of-subject>/<machine_name>-d11'.
+#        sibling '<parent-of-subject>/<machine_name>-d11' (-d<T>).
 # Placement mode comes from DRUPILOT_PLACEMENT (move|symlink|copy, default move).
 # A module that is a sub-directory of a repository (project-no-core,
 # repo-subdir) is never moved out of it: 'move' becomes 'copy' (moving it would
@@ -39,10 +39,15 @@
 # copy a git baseline (git_seed_baseline) so its local patch holds only the port.
 #
 # Usage:
-#   resolve-workspace.sh [--subject DIR] [--workspace DIR] [--json] [-h|--help]
+#   resolve-workspace.sh [--subject DIR] [--workspace DIR] [--target N] [--json]
+#                        [-h|--help]
 #     --subject DIR  Module/theme directory (default: current directory).
 #     --workspace DIR  The test-bed root for a loose subject; the same as
 #                    DRUPILOT_WORKSPACE_DIR (the flag wins over the variable).
+#     --target N     The target major the test-bed is named for (default:
+#                    DRUPILOT_TARGET_MAJOR, 11): '<name>-d<N>'. For any N an
+#                    existing '<name>-d11' bed drupilot 0.9 built is still found
+#                    where it looks for the moved subject.
 #     --json         Print only the JSON payload (suppress the human table).
 #
 # Output: a human table on STDERR; the recommendation JSON on STDOUT:
@@ -78,10 +83,13 @@ SUBJECT=""
 JSON_ONLY=0
 usage() { print_usage "$0"; }
 
+TARGET_OPT=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --subject) SUBJECT="${2:-}"; shift 2;;
     --subject=*) SUBJECT="${1#*=}"; shift;;
+    --target) TARGET_OPT="${2:-}"; shift 2;;
+    --target=*) TARGET_OPT="${1#*=}"; shift;;
     --json) JSON_ONLY=1; shift;;
     --workspace) [[ -n "${2:-}" ]] || die "--workspace needs a directory" 1; export DRUPILOT_WORKSPACE_DIR="$2"; shift 2;;
     --workspace=*) export DRUPILOT_WORKSPACE_DIR="${1#*=}"; shift;;
@@ -103,6 +111,9 @@ SUBJECT_ABS="$(cd "$SUBJECT" 2>/dev/null && pwd || true)"
 [[ -n "$SUBJECT_ABS" && -d "$SUBJECT_ABS" ]] || die "Subject directory not found: '$SUBJECT'." 1
 
 MACHINE="$(subject_machine_name "$SUBJECT_ABS" 2>/dev/null || basename "$SUBJECT_ABS")"
+# The test-bed suffix of the target major: -d11 for Drupal 11 (CC-17).
+[[ -z "$TARGET_OPT" || "$TARGET_OPT" =~ ^[1-9][0-9]*$ ]] || die "Invalid --target '$TARGET_OPT' (expected an integer such as 11)." 1
+SUFFIX="$(target_workspace_suffix "$TARGET_OPT")"
 TYPE="$(subject_type "$SUBJECT_ABS" 2>/dev/null || echo module)"
 case "$TYPE" in
   theme)   DEST_SUB="themes";;
@@ -203,12 +214,12 @@ else
     if [[ -n "$ORIGIN_REPO" ]]; then
       case "$_pp/" in "$ORIGIN_REPO"/*) _outer="$ORIGIN_REPO";; esac
     fi
-    _parent="$(dirname "$_outer")"; _name="$(basename "$_outer")-d11"
+    _parent="$(dirname "$_outer")"; _name="$(basename "$_outer")$SUFFIX"
   elif [[ -n "$ORIGIN_REPO" ]]; then
     LAYOUT="repo-subdir"
-    _parent="$(dirname "$ORIGIN_REPO")"; _name="${MACHINE}-d11"
+    _parent="$(dirname "$ORIGIN_REPO")"; _name="${MACHINE}$SUFFIX"
   else
-    _parent="$(dirname "$SUBJECT_ABS")"; _name="${MACHINE}-d11"
+    _parent="$(dirname "$SUBJECT_ABS")"; _name="${MACHINE}$SUFFIX"
   fi
   _default="$_parent/$_name"
   _n=2
@@ -218,8 +229,8 @@ else
   # The test-bed a SET of modules shares (/drupilot-layers), outside the repo.
   case "$LAYOUT" in
     project-no-core) SHARED_ROOT="$_default";;
-    repo-subdir)     SHARED_ROOT="$(dirname "$ORIGIN_REPO")/$(basename "$ORIGIN_REPO")-d11";;
-    *)               _sp="$(dirname "$SUBJECT_ABS")"; SHARED_ROOT="$(dirname "$_sp")/$(basename "$_sp")-d11";;
+    repo-subdir)     SHARED_ROOT="$(dirname "$ORIGIN_REPO")/$(basename "$ORIGIN_REPO")$SUFFIX";;
+    *)               _sp="$(dirname "$SUBJECT_ABS")"; SHARED_ROOT="$(dirname "$_sp")/$(basename "$_sp")$SUFFIX";;
   esac
   [[ -n "$ROOT" ]] || ROOT="$_default"
   DEST_REL="web/$DEST_SUB/custom/$MACHINE"

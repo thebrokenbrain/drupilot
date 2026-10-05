@@ -66,7 +66,8 @@
 #                  (their merge-base when not an ancestor — never a reverse diff
 #                  of unrelated upstream history); else HEAD (working tree).
 #                  Legacy default: the upstream tracking branch, then origin/HEAD.
-#   --description  short slug for the filename (default: 'port-to-drupal-11').
+#   --description  short slug for the filename (default: 'port-to-drupal-<T>',
+#                  T the target major: 'port-to-drupal-11' for Drupal 11).
 #   --output       directory to write the patch into. Default: the subject dir in
 #                  --local mode, else the current directory.
 #   --local        local/preview mode (no issue, no network, no rebase).
@@ -83,7 +84,7 @@ SUBJECT=""
 ISSUE=""
 COMMENT="1"
 BASE=""
-DESCRIPTION="port-to-drupal-11"
+DESCRIPTION=""
 OUTPUT=""
 LOCAL=0
 
@@ -129,7 +130,7 @@ keep_patch_untracked() {
   top="$(cd "$top" && pwd -P)"
   rel="$(cd "$d" && pwd -P)/$(basename "$p")"
   rel="${rel#"$top"/}"
-  git_local_exclude "$d" '*-port-to-drupal-11.patch' '*-port-to-drupal-11-*.patch'
+  git_local_exclude_patches "$d"
   git -C "$d" check-ignore -q -- "$p" 2>/dev/null || git_local_exclude "$d" "/$rel"
   if git -C "$d" check-ignore -q -- "$p" 2>/dev/null; then
     log_info "Ignored locally via $(git -C "$d" rev-parse --git-path info/exclude 2>/dev/null) (never committed, not in git status)."
@@ -175,6 +176,12 @@ have_cmd git || die "git is not installed." 1
 # patch naming convention; before 0.9.0 drupilot hyphenated it.
 MODULE_SLUG="$(patch_project_slug "$MODULE")"
 LEGACY_MODULE_SLUG="$(slugify "$MODULE")"
+# The default description names the target major (port-to-drupal-11 for T 11),
+# read from the subject's Drupal root.
+if [[ -z "$DESCRIPTION" ]]; then
+  _tr="$(find_drupal_root "${DETECT_DIR:-$PWD}" 2>/dev/null || true)"
+  DESCRIPTION="$(DRUPILOT_PROJECT_DIR="${DRUPILOT_PROJECT_DIR:-$_tr}" target_patch_desc)"
+fi
 DESC_SLUG="$(slugify "$DESCRIPTION")"
 [[ -n "$DESC_SLUG" ]] || DESC_SLUG="patch"
 
@@ -261,6 +268,7 @@ if [[ "$LOCAL" == "1" ]]; then
     ":(exclude)${RELPREFIX}.drupilot.json"
     ":(exclude)${RELPREFIX}*-port-to-drupal-11.patch"
     ":(exclude)${RELPREFIX}*-port-to-drupal-11-*.patch"
+    ":(exclude)${RELPREFIX}*-port-to-drupal-*.patch"
     # Untracked local-environment residue is never part of a port.
     ":(exclude)${RELPREFIX}.ddev"
     ":(exclude)${RELPREFIX}vendor"

@@ -774,3 +774,54 @@ plan_render_fallback() {
     '{target: {major: $t}, rector: {drupal_sets: $ds, breaking_sets: [], skip: $sk, bc: {enabled: false, min_core: null}}}'
   return 0
 }
+
+# --- Names derived from the target major (T-M3-08, CC-16, CC-17) -------------
+# For T=11 they are the 0.9 names, byte for byte: the patch description
+# port-to-drupal-11 (MODULE-port-to-drupal-11.patch, the issue-fork branch
+# ID-port-to-drupal-11), the test-bed suffix -d11, the DDEV type drupal11. T is
+# the target major of the plan frozen for the root DRUPILOT_PROJECT_DIR points
+# to (else $PWD), else resolve_target_major (DRUPILOT_TARGET_MAJOR, else
+# DRUPAL_TARGET's major, else 11); anything but an integer is 11.
+
+# target_names_major [T] -> T, validated (11 when it is not an integer).
+target_names_major() {
+  local t="${1:-}"
+  [[ -n "$t" ]] || t="$(plan_get .target.major "${DRUPILOT_PROJECT_DIR:-$PWD}" 2> /dev/null || true)"
+  [[ -n "$t" ]] || t="$(resolve_target_major)"
+  [[ "$t" =~ ^[1-9][0-9]*$ ]] || t=11
+  printf '%s\n' "$t"
+}
+
+# target_patch_desc [T] -> port-to-drupal-<T>, the default patch description.
+target_patch_desc() { printf 'port-to-drupal-%s\n' "$(target_names_major "${1:-}")"; }
+
+# target_workspace_suffix [T] -> -d<T>, the suffix of a loose subject's test-bed.
+target_workspace_suffix() { printf -- '-d%s\n' "$(target_names_major "${1:-}")"; }
+
+# target_workspace_suffixes [T] -> the suffixes an existing test-bed may carry,
+# one per line: -d<T>, then -d11 when T is not 11 (a bed drupilot 0.9 built is
+# still recognized, CC-17).
+target_workspace_suffixes() {
+  local t
+  t="$(target_names_major "${1:-}")"
+  printf -- '-d%s\n' "$t"
+  if [[ "$t" != "11" ]]; then printf -- '-d11\n'; fi
+  return 0
+}
+
+# target_ddev_type [T] -> the DDEV project type of the test-bed: the target's
+# .ddev_type (config/targets/<T>.json), else drupal<T>.
+target_ddev_type() {
+  local t d
+  t="$(target_names_major "${1:-}")"
+  d="$(target_get "$t" '.ddev_type')"
+  printf '%s\n' "${d:-drupal$t}"
+}
+
+# target_patch_globs -> the globs that match any drupilot patch, one per line:
+# the 0.9 names (*-port-to-drupal-11.patch, *-port-to-drupal-11-*.patch) and
+# every target's (*-port-to-drupal-*.patch), so an old patch never leaks into a
+# new one (09-R10).
+target_patch_globs() {
+  printf '%s\n' '*-port-to-drupal-11.patch' '*-port-to-drupal-11-*.patch' '*-port-to-drupal-*.patch'
+}

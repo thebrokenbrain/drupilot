@@ -1787,7 +1787,8 @@ Usage:
   --project   drupal.org project machine name (e.g. token, pathauto).
   --issue     numeric issue id (e.g. 3982435).
   --branch    branch to check out / create. Defaults to a new
-              'ID-port-to-drupal-11' branch when --base is not given.
+              'ID-port-to-drupal-<T>' branch (T the target major:
+              'ID-port-to-drupal-11' for Drupal 11) when --base is not given.
   --base      base version branch on the issue remote to track (e.g. 11.x,
               2.0.x). When given, checks out a tracking branch from it.
   --workdir   parent directory for the clone (default: current directory).
@@ -1835,7 +1836,8 @@ Usage:
                  field (4.0.x -> 4.0.x-dev) and the comment's apply target.
   --issue        numeric issue id (for the tracking URL and the patch name).
   --comment      patch comment number, for the derived patch name (default 1).
-  --description  patch description slug (default 'port-to-drupal-11').
+  --description  patch description slug (default 'port-to-drupal-<T>', T the
+                 target major: 'port-to-drupal-11' for Drupal 11).
   --patch-name   explicit patch filename to reference (overrides the derived).
   --kind         'mr' (default) or 'patch' — wording in the comment.
   --phase        'port' (default) or 'refactor' — drives the default Problem/
@@ -1936,7 +1938,8 @@ Usage:
                  (their merge-base when not an ancestor — never a reverse diff
                  of unrelated upstream history); else HEAD (working tree).
                  Legacy default: the upstream tracking branch, then origin/HEAD.
-  --description  short slug for the filename (default: 'port-to-drupal-11').
+  --description  short slug for the filename (default: 'port-to-drupal-<T>',
+                 T the target major: 'port-to-drupal-11' for Drupal 11).
   --output       directory to write the patch into. Default: the subject dir in
                  --local mode, else the current directory.
   --local        local/preview mode (no issue, no network, no rebase).
@@ -2545,7 +2548,7 @@ Report-only: it never deletes or edits anything in the origin.
               untracked entry as drupilot-attributable (.ddev/, .drupilot*,
               .phpstan-cache/, vendor/, node_modules/, rector.php,
               rector-compat.php, phpstan.neon, phpcs.xml.dist,
-              *-port-to-drupal-11*.patch,
+              *-port-to-drupal-*.patch (any target; 0.9's -11 names included),
               symlinks resolving outside the origin) or other. Tracked files
               the port modified are listed separately (expected for move /
               symlink / in-place; unexpected for copy).
@@ -2876,9 +2879,9 @@ Resolution of the Drupal ROOT (first match wins):
        repository when the project sits deeper in one);
      - repo-subdir (the module is a sub-directory of a git repository that is
        not a Drupal project, e.g. a folder of modules): '<parent of the
-       repository>/<machine_name>-d11';
+       repository>/<machine_name>-d11' (-d<T> for another target major);
      - standalone (the module is its own repository, or not in git): the
-       sibling '<parent-of-subject>/<machine_name>-d11'.
+       sibling '<parent-of-subject>/<machine_name>-d11' (-d<T>).
 Placement mode comes from DRUPILOT_PLACEMENT (move|symlink|copy, default move).
 A module that is a sub-directory of a repository (project-no-core,
 repo-subdir) is never moved out of it: 'move' becomes 'copy' (moving it would
@@ -2886,10 +2889,15 @@ leave a deletion in the user's repository), and place-subject.sh gives the
 copy a git baseline (git_seed_baseline) so its local patch holds only the port.
 
 Usage:
-  resolve-workspace.sh [--subject DIR] [--workspace DIR] [--json] [-h|--help]
+  resolve-workspace.sh [--subject DIR] [--workspace DIR] [--target N] [--json]
+                       [-h|--help]
     --subject DIR  Module/theme directory (default: current directory).
     --workspace DIR  The test-bed root for a loose subject; the same as
                    DRUPILOT_WORKSPACE_DIR (the flag wins over the variable).
+    --target N     The target major the test-bed is named for (default:
+                   DRUPILOT_TARGET_MAJOR, 11): '<name>-d<N>'. For any N an
+                   existing '<name>-d11' bed drupilot 0.9 built is still found
+                   where it looks for the moved subject.
     --json         Print only the JSON payload (suppress the human table).
 
 Output: a human table on STDERR; the recommendation JSON on STDOUT:

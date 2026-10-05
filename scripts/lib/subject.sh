@@ -306,7 +306,7 @@ subject_digest() {
 # subject; for a LOOSE checkout (copy/symlink origin, or not placed yet) the
 # test-bed resolve-workspace.sh targets; for a path that no longer exists (a
 # 'move' placement relocated it) the pinned DRUPILOT_WORKSPACE_DIR or the
-# '<name>-d11' sibling that now holds it. Prints nothing (still 0) when none is
+# '<name>-d<T>' (or 0.9's '<name>-d11') sibling that now holds it. Prints nothing (still 0) when none is
 # found. Read-only: it never creates the test-bed.
 subject_project_root() {
   local s="${1:-$PWD}" r="" base parent c
@@ -321,7 +321,7 @@ subject_project_root() {
     base="$(basename "$s")"
     parent="$(cd "$(dirname "$s")" 2>/dev/null && pwd || true)"
     if [[ -n "$parent" && -n "$base" ]]; then
-      for c in "$(config_get DRUPILOT_WORKSPACE_DIR "")" "$parent/${base}-d11"; do
+      for c in "$(config_get DRUPILOT_WORKSPACE_DIR "")" "$parent/${base}$(target_workspace_suffix)" "$parent/${base}-d11"; do
         [[ -n "$c" ]] || continue
         if [[ -d "$c/web/modules/custom/$base" || -d "$c/web/themes/custom/$base" \
               || -d "$c/web/profiles/custom/$base" ]]; then

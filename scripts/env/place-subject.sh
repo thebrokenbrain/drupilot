@@ -102,11 +102,13 @@ if [[ -z "$SUBJECT_ABS" || ! -d "$SUBJECT_ABS" ]]; then
   _parent="$(cd "$(dirname "$SUBJECT")" 2>/dev/null && pwd || true)"
   _ws="$(config_get DRUPILOT_WORKSPACE_DIR "")"
   if [[ -n "$_parent" && -n "$_base" ]]; then
+    _sibs=()
+    while IFS= read -r _sfx; do
+      _sibs+=("$_parent/${_base}$_sfx/web/modules/custom/$_base" "$_parent/${_base}$_sfx/web/themes/custom/$_base"
+              "$_parent/${_base}$_sfx/web/profiles/custom/$_base")
+    done < <(target_workspace_suffixes)
     for _cand in "${_ws:+$_ws/web/modules/custom/$_base}" "${_ws:+$_ws/web/themes/custom/$_base}" \
-                 "${_ws:+$_ws/web/profiles/custom/$_base}" \
-                 "$_parent/${_base}-d11/web/modules/custom/$_base" \
-                 "$_parent/${_base}-d11/web/themes/custom/$_base" \
-                 "$_parent/${_base}-d11/web/profiles/custom/$_base"; do
+                 "${_ws:+$_ws/web/profiles/custom/$_base}" ${_sibs[@]+"${_sibs[@]}"}; do
       [[ -n "$_cand" ]] || continue
       if [[ -d "$_cand" ]] && is_drupal_extension_dir "$_cand"; then
         log_ok "Subject already placed at: $_cand (idempotent — the original path was relocated)."

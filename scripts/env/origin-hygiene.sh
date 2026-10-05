@@ -17,7 +17,7 @@
 #               untracked entry as drupilot-attributable (.ddev/, .drupilot*,
 #               .phpstan-cache/, vendor/, node_modules/, rector.php,
 #               rector-compat.php, phpstan.neon, phpcs.xml.dist,
-#               *-port-to-drupal-11*.patch,
+#               *-port-to-drupal-*.patch (any target; 0.9's -11 names included),
 #               symlinks resolving outside the origin) or other. Tracked files
 #               the port modified are listed separately (expected for move /
 #               symlink / in-place; unexpected for copy).
@@ -142,7 +142,7 @@ if [[ "$MODE" == "check" && -z "$ROOT" && -z "$SUBJECT_ABS" ]]; then
   _parent="$(cd "$(dirname "$SUBJECT")" 2>/dev/null && pwd || true)"
   if [[ -n "$_parent" && -n "$_base" ]]; then
     _gone="$_parent/$_base"
-    for _c in "$(config_get DRUPILOT_WORKSPACE_DIR "")" "$_parent/${_base}-d11"; do
+    for _c in "$(config_get DRUPILOT_WORKSPACE_DIR "")" "$_parent/${_base}$(target_workspace_suffix)" "$_parent/${_base}-d11"; do
       [[ -n "$_c" && -d "$_c" ]] || continue
       _c="$(cd "$_c" && pwd)"
       while IFS= read -r _b; do
@@ -203,7 +203,7 @@ attributable() {
   name="${rel%/}"; name="${name##*/}"
   case "$name" in
     .ddev|.drupilot|.drupilot.json|.phpstan-cache|.drupilot-coverage|vendor|node_modules) return 0;;
-    rector.php|rector-compat.php|phpstan.neon|phpcs.xml.dist|*-port-to-drupal-11.patch|*-port-to-drupal-11-*.patch) return 0;;
+    rector.php|rector-compat.php|phpstan.neon|phpcs.xml.dist|*-port-to-drupal-*.patch) return 0;;
   esac
   symlink_escapes "$1" "$rel" && return 0
   return 1
