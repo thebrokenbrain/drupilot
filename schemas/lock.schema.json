@@ -111,6 +111,18 @@
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
     },
+    "templates": {
+      "description": "The configs drupilot rendered, keyed by their path under the root (rector.php, rector-compat.php, phpstan.neon, ...): the sha256 of the file as written and the template version (render_sha_record; ADR 0019). A file whose sha256 is the kept one is an untouched render, regenerated when the plan moves; any other content is hand-edited (INV5).",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["sha256"],
+        "properties": {
+          "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+          "template_version": {"type": ["integer", "null"]}
+        }
+      }
+    },
     "verify_cores": {
       "description": "Reference Drupal cores frozen by verify-core-matrix.sh, keyed by leg (e.g. \"10\", \"10.0\", \"10.3\"); each value is {constraint, version}, both strings (the composer constraint the leg resolved and the exact core it got).",
       "type": "object"

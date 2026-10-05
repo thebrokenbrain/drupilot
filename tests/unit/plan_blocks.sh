@@ -97,9 +97,12 @@ assert_json_eq "a bed root without drupal-rector falls back to the data" "$(rect
   "{\"drupal_sets\":[$D10],\"breaking_sets\":[],\"sets_skipped\":[]}"
 
 # --- plan_rector_skip / plan_rector_bc ----------------------------------------
-TPL_SKIPS="$(sed -n "/^\$drupilotRiskySkips = /,/^\], 'class_exists'/p" "$T_REPO/templates/rector.php.tmpl" \
+# The skip list, in the data's order, is what the pinned rector.php render
+# skips (tests/fixtures/rector-render/legacy_widgets/rector.php, template 5).
+TPL_SKIPS="$(sed -n "/^\$drupilotRiskySkips = /,/^\], 'class_exists'/p" "$T_REPO/tests/fixtures/rector-render/legacy_widgets/rector.php" \
   | sed -n "s/^[[:space:]]*'\(.*\)',\$/\1/p" | sed 's/\\\\/\\/g' | jq -R -s -c 'split("\n") | map(select(length > 0))')"
-assert_eq "the skip list is the template's, in its order" "$(plan_rector_skip)" "$TPL_SKIPS"
+assert_eq "the skip list is the pinned render's, in its order" "$(plan_rector_skip)" "$TPL_SKIPS"
+assert_eq "rector_skip_block renders it as the template expects" "$(rector_skip_block '{"rector":{"skip":["A\\B\\C"]}}')" "  'A\\\\B\\\\C',"
 assert_eq "the skip list has the 8 rules" "$(plan_rector_skip | jq length)" "8"
 assert_eq "bc ^10 || ^11 (F 10.0 < 10.1.3)" "$(plan_rector_bc '^10 || ^11' 10.0)" '{"enabled":false,"min_core":null}'
 assert_eq "bc ^10.1 (10.1.0 < 10.1.3)" "$(plan_rector_bc '^10.1' 10.1)" '{"enabled":false,"min_core":null}'

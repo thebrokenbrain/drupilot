@@ -35,7 +35,7 @@
  *
  * The complementary dbuytaert/drupal-digests AI rule layer is NOT wired in
  * here. It runs as a separate, optional pass referenced by its own config:
- *   vendor/bin/rector process web/modules/custom/legacy_widgets \
+ *   vendor/bin/rector process web/modules/custom/d9_module \
  *     --config "$DIGESTS_CACHE/rector/all.php" --dry-run
  * (Run the official palantirnet/drupal-rector pass first, then digests.)
  *
@@ -115,7 +115,7 @@ $drupilotConfig = RectorConfig::configure()
   // Process only the target extension. Other paths (e.g. core, contrib) are
   // left untouched.
   ->withPaths([
-    'web/modules/custom/legacy_widgets',
+    'web/modules/custom/d9_module',
   ])
   // Never rewrite third-party code or build/test artifacts, and never apply
   // the risky modernization rules listed above.

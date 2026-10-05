@@ -36,8 +36,9 @@
 #                 A line can opt out with a trailing `# special-var-ok` and a reason
 #   - sigpipe     no pipeline in scripts/ or hooks/ (they run under pipefail)
 #                 ends in a consumer that stops reading early: `| head`,
-#                 `| grep -q` / `-l` / `-L` / `-m` / `--quiet`, an `| awk`
-#                 program that calls `exit` on the same line. The producer
+#                 `| grep -q` / `-l` / `-L` / `-m` / `--quiet`, `| cmp`
+#                 (it stops at the first difference), an `| awk` program
+#                 that calls `exit` on the same line. The producer
 #                 then dies of SIGPIPE when it writes after the consumer left,
 #                 and pipefail turns that race into a failed pipeline: a wrong
 #                 `if`, or set -e aborting with exit 141 (seen under load and
@@ -477,12 +478,13 @@ gate_sigpipe() {
         sub(/[[:space:]]#[[:space:]].*$/, "", line)
         if (line ~ /\|[[:space:]]*head([[:space:]]|$)/ ||
             line ~ /\|[[:space:]]*grep[[:space:]]+(-[A-Za-z]*[qlLm][A-Za-z]*|--(quiet|silent|max-count|files-with))/ ||
+            line ~ /\|[[:space:]]*cmp([[:space:]]|$)/ ||
             line ~ /\|[[:space:]]*awk[[:space:]].*[^A-Za-z_]exit([^A-Za-z_]|$)/)
           printf "%s:%d: %s\n", F, NR, substr($0, 1, 140)
       }' "$f") >> "$out"
   done
   if [[ -s "$out" ]]; then
-    record sigpipe fail "$(wc -l < "$out" | tr -d ' ') pipeline consumer(s) that stop reading early (under pipefail the producer's SIGPIPE fails the pipeline: use grep_q, sed -n '1p', an awk flag)" "$out"
+    record sigpipe fail "$(wc -l < "$out" | tr -d ' ') pipeline consumer(s) that stop reading early (under pipefail the producer's SIGPIPE fails the pipeline: use grep_q, sed -n '1p', an awk flag, sha256_hex on both sides instead of cmp)" "$out"
   else
     record sigpipe pass "$n scripts free of early-exit pipeline consumers"
   fi

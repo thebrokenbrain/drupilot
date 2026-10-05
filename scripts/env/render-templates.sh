@@ -26,6 +26,15 @@
 # --set WEBDRIVER_HOST=... is still accepted). Substitution is literal
 # (render_template in common.sh), so no path character can break it.
 #
+# rector.php (template v5) is rendered from the upgrade plan (ADR 0019): the
+# frozen plan of the subject (plan_for_subject), else a fresh draft from
+# scripts/analysis/upgrade-path.sh; its tokens {{RECTOR_SETS}}, {{SKIP_RULES}},
+# {{BC_BLOCK}}, {{PHP_VERSION_L}} / {{PHP_SETS_L}} (the plan's php.floor) and
+# {{POLYFILLS}} come from rector_sets_block, rector_skip_block,
+# rector_bc_block and rector_floor_tokens. The sha256 of every file written
+# goes into the root's lock (.templates, render_sha_record), so a later render
+# regenerates a copy nobody edited.
+#
 # Every rendered file is validated BEFORE it is written: no {{TOKEN}} may be
 # left, phpcs.xml.dist must be well-formed XML (`xmllint --noout`; without
 # xmllint, `phpcs --standard=<file> -e` through the toolchain when available),
@@ -41,11 +50,15 @@
 # there but the template's current "drupilot-template-version: N" marker is
 # not) is upgraded without --force, after the same backup — e.g. the invalid
 # 0.8.x phpcs.xml.dist or a phpstan.neon with the deprecated drupal_root. So is
-# a rector.php or rector-compat.php that is exactly what the current template
-# renders for its own floor and subject (rector_config_pristine): nobody edited
-# it, and its floor moved (the core target changed) or it was rendered for
-# another subject of a shared test-bed (0.9 reported that as "differs"). Any
-# other current-generation copy that differs counts as hand-edited.
+# an untouched render: a file whose sha256 is the one kept in the root's lock
+# (ADR 0019), or a rector-compat.php (or template-4 rector.php) that is exactly
+# what its template renders for its own floor and subject
+# (rector_config_pristine): nobody edited it, and its plan or floor moved (the
+# core target changed) or it was rendered for another subject of a shared
+# test-bed (0.9 reported that as "differs"). Any other current-generation copy
+# that differs counts as hand-edited, a template-5 rector.php whose sha256 the
+# lock no longer keeps included (its sha256 is kept again when it is found up
+# to date).
 #
 # rector-compat.php is rendered only when the compat pass has a rule to run
 # (rector_compat_needed: the floor is below PHP 8.4 and the core range runs on
@@ -84,6 +97,11 @@
 #                       php_floor / php_ceiling: the floor L and the ceiling U
 #                       of the Rector configs (null when no rector template is
 #                       selected)
+#                       plan: "plan" (the subject's frozen upgrade plan, else a
+#                       fresh draft, gave rector.php its sets, skips, BC block
+#                       and floor), "fallback" (no plan resolves: the previous
+#                       major's sets and the floor above) or null (no rector
+#                       template selected)
 #                       status: written | unchanged | differs | replaced |
 #                               upgraded | would-write | would-replace |
 #                               would-upgrade | invalid | skipped
@@ -257,15 +275,31 @@ esac
 
 # The PHP floor L and ceiling U of the Rector configs (ADR 0002), from the
 # subject's declared core range and require.php, never above the PHP target.
-PHP_FLOOR=""; PHP_CEIL=""; COMPAT=0
+PHP_FLOOR=""; PHP_CEIL=""; COMPAT=0; PLAN=""; PLAN_SOURCE=""
 declare -a FLOOR_TOKENS=()
 if [[ "$needs_floor" == "1" ]]; then
   _b="$(rector_php_bounds "$ROOT/$SUBJECT_PATH" "$PHP_TARGET")"
   PHP_FLOOR="${_b%% *}"; PHP_CEIL="${_b##* }"
+  # The upgrade plan (H4, ADR 0019): the subject's frozen plan, else a fresh
+  # draft; its PHP floor wins. Without a plan (the resolver refuses), the
+  # floor above and the previous major's sets.
+  PLAN="$(plan_for_subject "$ROOT" "$ROOT/$SUBJECT_PATH" || true)"
+  if [[ -n "$PLAN" ]]; then
+    PLAN_SOURCE="plan"
+    _pf="$(printf '%s' "$PLAN" | jq -r '.php.floor // empty')"
+    [[ -z "$_pf" ]] || PHP_FLOOR="$_pf"
+  else
+    PLAN_SOURCE="fallback"
+    _tm="$(resolve_target_major)"
+    PLAN="$(plan_render_fallback "$_tm")" \
+      || die "No rector.php can be rendered for DRUPILOT_TARGET_MAJOR '$_tm' (expected an integer such as 11)." 1
+  fi
   _ft="$(rector_floor_tokens "$PHP_FLOOR" || true)"
   for _t in $_ft; do FLOOR_TOKENS+=("$_t"); done
-  [[ "${#FLOOR_TOKENS[@]}" -eq 3 ]] || die "Could not derive the Rector tokens of the PHP floor '$PHP_FLOOR'." 1
+  [[ "${#FLOOR_TOKENS[@]}" -eq 5 ]] || die "Could not derive the Rector tokens of the PHP floor '$PHP_FLOOR'." 1
   if rector_compat_needed "$PHP_FLOOR" "$PHP_CEIL"; then COMPAT=1; fi
+  FLOOR_TOKENS+=("RECTOR_SETS=$(rector_sets_block "$PLAN")" "SKIP_RULES=$(rector_skip_block "$PLAN")"
+                 "BC_BLOCK=$(rector_bc_block "$PLAN")" "POLYFILLS=")
 fi
 
 TOKENS=(
@@ -283,6 +317,7 @@ log_info "Drupal root  : $ROOT"
 log_info "PHP target   : $PHP_TARGET · PHPStan level: $PHPSTAN_LEVEL"
 if [[ "$needs_floor" == "1" ]]; then
   log_info "PHP floor    : $PHP_FLOOR (Rector withPhpVersion and level sets) · ceiling: $PHP_CEIL · compat pass: $([[ "$COMPAT" == "1" ]] && echo yes || echo no)"
+  [[ "$PLAN_SOURCE" == "plan" ]] || log_warn "No upgrade plan resolves for this subject: rector.php uses the previous major's sets and the floor above."
 fi
 [[ "$DRY" == "1" ]] && log_info "Dry run: nothing will be written."
 
@@ -414,6 +449,7 @@ for name in $SELECTED; do
         | sed -e "1s|^--- .*|--- $rel (current)|" -e "2s|^+++ .*|+++ $rel (rendered)|" >&2 || true
       older=0
       if older_drupilot_copy "$src" "$dest"; then older=1
+      elif render_sha_matches "$ROOT" "$rel" "$dest"; then older=2
       elif [[ "$name" == "rector" || "$name" == "rector-compat" ]] && rector_config_pristine "$src" "$dest"; then older=2; fi
       if [[ "$FORCE" != "1" && "$older" == "0" ]]; then
         status="differs"; RC=3
@@ -431,7 +467,7 @@ for name in $SELECTED; do
           log_ok "$rel: replaced (previous copy backed up to ${backup#"$ROOT"/})."
         elif [[ "$older" == "2" ]]; then
           status="upgraded"
-          log_ok "$rel: an untouched drupilot render for another PHP floor or subject; regenerated (previous copy backed up to ${backup#"$ROOT"/})."
+          log_ok "$rel: an untouched drupilot render for another plan, PHP floor or subject; regenerated (previous copy backed up to ${backup#"$ROOT"/})."
         else
           status="upgraded"
           log_ok "$rel: generated by an older drupilot template; upgraded (previous copy backed up to ${backup#"$ROOT"/})."
@@ -445,6 +481,12 @@ for name in $SELECTED; do
     fi
   fi
 
+  # Its sha256 goes into the root's lock (never on a dry run).
+  if [[ "$DRY" != "1" ]]; then
+    case "$status" in
+      written|unchanged|replaced|upgraded) render_sha_record "$ROOT" "$rel" "$dest" "$src";;
+    esac
+  fi
   entry="{\"name\":$(json_str "$name"),\"template\":$(json_str "templates/$tpl"),\"path\":$(json_str "$dest"),\"status\":$(json_str "$status"),\"valid\":$VALID,\"validator\":$(json_str "$VALIDATOR"),\"backup\":$(json_str "$backup")}"
   FILES_JSON="${FILES_JSON:+$FILES_JSON,}$entry"
 done
@@ -464,7 +506,8 @@ if [[ "$AS_JSON" == "1" ]]; then
   force=false; [[ "$FORCE" == "1" ]] && force=true
   fl=null; [[ -n "$PHP_FLOOR" ]] && fl="$(json_str "$PHP_FLOOR")"
   ce=null; [[ -n "$PHP_CEIL" ]] && ce="$(json_str "$PHP_CEIL")"
-  printf '{"root":%s,"subject_path":%s,"dry_run":%s,"force":%s,"ok":%s,"restart_needed":%s,"php_floor":%s,"php_ceiling":%s,"files":[%s]}\n' \
-    "$(json_str "$ROOT")" "$(json_str "$SUBJECT_PATH")" "$dry" "$force" "$ok" "$restart" "$fl" "$ce" "$FILES_JSON"
+  ps=null; [[ -n "$PLAN_SOURCE" ]] && ps="$(json_str "$PLAN_SOURCE")"
+  printf '{"root":%s,"subject_path":%s,"dry_run":%s,"force":%s,"ok":%s,"restart_needed":%s,"php_floor":%s,"php_ceiling":%s,"plan":%s,"files":[%s]}\n' \
+    "$(json_str "$ROOT")" "$(json_str "$SUBJECT_PATH")" "$dry" "$force" "$ok" "$restart" "$fl" "$ce" "$ps" "$FILES_JSON"
 fi
 exit "$RC"
