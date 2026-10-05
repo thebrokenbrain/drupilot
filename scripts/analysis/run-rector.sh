@@ -66,7 +66,9 @@
 #                      pass changed something) —
 #                      copy it into the port manifest's rector_rules. An
 #                      --apply that changes files also keeps it in the
-#                      subject's state dir (rector-rules.json), the fallback
+#                      subject's state dir (rector-rules.json: {tool,
+#                      changed_files, digests_sha, rule_hits, meta:
+#                      {generated_at, subject}}), the fallback
 #                      port-report.sh / layer-report.sh read.
 #   --attributes       Run ONLY the optional annotation -> PHP 8 attribute pass
 #                      instead of the official/digests passes: forwards every
@@ -643,8 +645,8 @@ if [[ "$APPLY" != "1" && "$PASS1_OK" == "1" && -n "$PRE_DIGEST" ]] && have_cmd j
   jq -n --arg d "$PRE_DIGEST" --arg r "$RECTOR_SUM" --argjson dg "$([[ "$USE_DIGESTS" == "1" ]] && echo true || echo false)" \
     --arg dc "${DIGESTS_SHA:-$DIGESTS_CONFIG}" --argjson p1 "$P1N" --argjson p2 "$P2N" --arg ds "$DIGESTS_STATUS" \
     --arg f2 "$PASS2_FILES" --arg cs "$COMPAT_STATUS" --argjson p3 "$P3N" --arg f3 "$PASS3_FILES" \
-    --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '{tool: "run-rector", generated_at: $at, subject_digest: $d, rector_php: $r, digests: $dg,
+    --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson da "$(subject_digest_algo)" \
+    '{tool: "run-rector", generated_at: $at, subject_digest: $d, digest_algo: $da, rector_php: $r, digests: $dg,
       digests_config: $dc, digests_status: $ds, pass1_files: $p1, pass2_files: $p2,
       pass2_list: ($f2 | split("\n") | map(select(length > 0))),
       compat_status: $cs, compat_files: $p3, compat_list: ($f3 | split("\n") | map(select(length > 0)))}' \
@@ -750,11 +752,13 @@ fi
 # rector_rules in port-report.sh / layer-report.sh — also when the compat pass
 # crashed after the official pass had written its changes. A later apply that
 # changes nothing (a re-run on ported code) keeps the record of the real port.
+# Its time and the host path of the subject are under meta (AR-13).
 if [[ "$APPLY" == "1" && "$PASS1_RAN_OK" == "1" && "$COUNT" != "0" ]] && have_cmd jq; then
   jq -n --arg s "$SUBJECT_ABS" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson h "$RULE_HITS" \
     --arg dsha "$DIGESTS_SHA" --argjson n "$COUNT" \
-    '{tool: "run-rector", subject: $s, generated_at: $at, changed_files: $n,
-      digests_sha: (if $dsha == "" then null else $dsha end), rule_hits: $h}' \
+    '{tool: "run-rector", changed_files: $n,
+      digests_sha: (if $dsha == "" then null else $dsha end), rule_hits: $h,
+      meta: {generated_at: $at, subject: $s}}' \
     > "$(project_state_dir "$SUBJECT_ABS")/rector-rules.json" 2>/dev/null \
     || log_warn "Could not record the applied Rector rules in $(rector_rules_file "$SUBJECT_ABS")."
 fi

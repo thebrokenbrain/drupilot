@@ -533,7 +533,8 @@ Options:
                    rector_reversions, post_port_fixes, preexisting_bugs,
                    behavior_changes, tooling_deviations},
                   modules:[{machine, layer, in_cycle, subject, found, stage,
-                            effort, preservation, d10_support, patch,
+                            effort, preservation, d10_support, d10_fresh,
+                            patch,
                             drupal_root, port_report (the module's
                             port-report.md: <root>/.drupilot/modules/<machine>/
                             first, else <root>/.drupilot/),
@@ -690,7 +691,7 @@ Options:
   -h, --help       Show this help.
 
 JSON (--json):
-  {tool, subject, generated_at, checks_run:[...], subject_digest,
+  {tool, subject, generated_at, checks_run:[...], subject_digest, digest_algo,
    findings:[{check, severity: error|warn|info, extension, file, line,
               message, suggestion}],
    totals:{error, warn, info}}
@@ -1054,7 +1055,9 @@ subject is ported and one of these holds — the last test run (on the current
 sources, or of unknown freshness) is regression / not-verified-blocked /
 not-verified-unbaselined; a fresh core matrix failed; the manifest's
 port-safety or signature-change scan recorded errors. A result computed on
-sources that changed since (fresh: false) is reported but never blocks.
+sources that changed since (fresh: false) is reported but never blocks; one
+recorded with another subject_digest algorithm (drupilot 0.9) is stale too,
+but keeps blocking until it is re-run, since its sources may be the same.
 
 Read-only (apart from --write). Ungated: needs only jq.
 Exit codes: 0 ok · 1 usage error / not a module or theme / jq missing ·
@@ -1252,7 +1255,9 @@ Options:
                      pass changed something) —
                      copy it into the port manifest's rector_rules. An
                      --apply that changes files also keeps it in the
-                     subject's state dir (rector-rules.json), the fallback
+                     subject's state dir (rector-rules.json: {tool,
+                     changed_files, digests_sha, rule_hits, meta:
+                     {generated_at, subject}}), the fallback
                      port-report.sh / layer-report.sh read.
   --attributes       Run ONLY the optional annotation -> PHP 8 attribute pass
                      instead of the official/digests passes: forwards every
@@ -1642,7 +1647,7 @@ Options:
 JSON (STDOUT; also persisted to <state_dir>/core-matrix.json unless --dry-run,
 and its verdict carried into the subject's state.json):
   {tool, subject, machine_name, drupal_root, core_version_requirement, level,
-   container_php, subject_digest, generated_at, dry_run,
+   container_php, subject_digest, digest_algo, generated_at, dry_run,
    legs:[{core, role: baseline|reference, source: testbed|reference,
           constraint, version, php_floor, status: pass|fail|skipped|error,
           reason, phpstan:{status, errors, leg_only, incompatible,
@@ -3116,10 +3121,11 @@ Usage:
 Output: with --json the record on STDOUT:
   {test, type, label, mutation:{kind, ref|patch, paths}, mutated_rc,
    restored_rc, red_tests, mutated_executed, restored_executed,
-   restored_identical, verdict, reason, logs:{red, green}, subject_digest, at}
+   restored_identical, verdict, reason, logs:{red, green}, subject_digest,
+   digest_algo, at}
 The record is also stored in negative-controls.json (state dir; one entry per
 test+type+label, the latest wins) and summarized into last-test.json's
-`negative_controls`. Logs on STDERR.
+`negative_controls` (its times under `meta.negative_controls`). Logs on STDERR.
 
 Verdicts / exit codes:
   0  effective   -> red with the change undone, green once restored, identical.

@@ -14,6 +14,19 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 ## [Unreleased]
 
 ### Added
+- **The canonical-artifact helpers** (`scripts/lib/canon.sh`, AR-13,
+  T-M4-02), the base of the deterministic pipeline:
+  - `canon_json [ROOT]`: keys sorted, two-space indent, LF line endings, a
+    CRLF inside a string made LF, the runner paths stripped;
+  - `relpath_strip_runner [ROOT]`: removes the container's `/var/www/html/`
+    and the host's root (as given and its physical path, also JSON-escaped),
+    so the same tree gives the same root-relative paths on the host and in
+    DDEV; it gives the M1 raw goldens back byte for byte;
+  - `file_hash` (LF-normalized), `finding_norm_message` and `canon_jq_defs`
+    (the message part of a finding id: runner paths, "on line N" and
+    whitespace noise dropped);
+  - `worklist_get` / `worklist_set`: `worklist.json` in the subject's state
+    dir, written atomically in its canonical form.
 - **`docs/concepts/upgrade-paths.md`**: the upgrade plan for users. It covers
   the three axes (source, target, PHP), the hops, the core-range strategies,
   the draft and final phases, refusals, `plan show` and the names.
@@ -518,6 +531,30 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   pass 15 minutes.
 - The `checks` CI job may run 35 minutes (was 20): on macOS it runs the
   whole gate twice, and the second run hit the limit.
+- **`subject_digest` uses algorithm 2** (AR-13, T-M4-02): it also hashes
+  `*.twig`, `*.js` and `*.css`, after a header line, so **every existing
+  digest changes once**. A test run, negative control, core matrix or
+  metadata lint recorded by drupilot 0.9 no longer counts as fresh, until it
+  is re-run:
+  - `/drupilot-status`, the port report and the layer report show it stale
+    (`stale_reason: "digest-algorithm"`);
+  - the next step after a green 0.9 run is `/drupilot-test` again;
+  - a failing 0.9 verdict (a regression, a failed core matrix) keeps blocking
+    `port-summary --strict`, since its sources may be unchanged. A result on
+    sources that changed since (`"sources-changed"`) still never blocks.
+
+  `digest_freshness` gives the verdict for one record.
+  Every record that keeps a `subject_digest` now keeps `digest_algo: 2` next
+  to it (`last-test.json`, `test-baseline.json`, `negative-controls.json`,
+  `core-matrix.json`, the Rector dry-run record and
+  `lint-extension-metadata.sh --json`, whose v0.9.0 baseline captures list
+  the change).
+- **No timestamp outside `meta`** in the records drupilot compares or hashes
+  (AR-13, DET-2): `rector-rules.json` keeps `generated_at` and the host path
+  of the subject under `meta`; the `negative_controls` summary of
+  `last-test.json` no longer carries each control's `at`, which moves to
+  `meta.negative_controls` (and stays in `negative-controls.json`). The
+  `last-test.json` schema accepts both shapes.
 
 ### Deprecated
 - **The 0.9 strategy vocabulary** (T-M3-07, CC-07), kept for all of 1.x and
