@@ -11,7 +11,7 @@
  * rector.php is missing) from the upgrade plan (scripts/analysis/upgrade-path.sh,
  * ADR 0017/0019), which fills in the extension path, the Drupal sets of the
  * plan's hops, the backwards-compatibility settings, the PHP floor
- * 8.1 and the rules skipped. Its sha256 is kept in the lock: an
+ * 8.3 and the rules skipped. Its sha256 is kept in the lock: an
  * untouched copy is regenerated when the plan moves; a hand-edited one is never
  * replaced without --force.
  *
@@ -126,11 +126,11 @@ $drupilotConfig = RectorConfig::configure()
   // The Drupal deprecation sets of the plan's hops.
   ->withSets($drupilotSets)
   ->withBootstrapFiles($drupilotBootstrap)
-  // The PHP floor 8.1 (the plan's php.floor). Rector drops every
+  // The PHP floor 8.3 (the plan's php.floor). Rector drops every
   // version-bound rule above it, and the level sets stop at it. Compat fixes
   // for newer PHP run in rector-compat.php.
-  ->withPhpVersion(PhpVersion::PHP_81)
-  ->withPhpSets(php81: true)
+  ->withPhpVersion(PhpVersion::PHP_83)
+  ->withPhpSets(php83: true)
   // Drupal extensions Rector should treat as PHP so hooks and *.module files
   // are processed too.
   ->withFileExtensions([
@@ -143,4 +143,14 @@ $drupilotConfig = RectorConfig::configure()
     'engine',
   ]);
 
+// Backwards-compatible rewrites (DeprecationHelper) for every core the declared
+// range keeps, from 11.0 on (the plan's rector.bc).
+$drupilotConfig = static function (RectorConfig $rectorConfig) use ($drupilotConfig): void {
+  $drupilotConfig($rectorConfig);
+  if (class_exists(\DrupalRector\Services\DrupalRectorSettings::class)) {
+    $rectorConfig->singleton(\DrupalRector\Services\DrupalRectorSettings::class, static fn () => (new \DrupalRector\Services\DrupalRectorSettings())
+      ->enableBackwardCompatibility()
+      ->setMinimumCoreVersionSupported('11.0.0'));
+  }
+};
 return $drupilotConfig;

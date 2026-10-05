@@ -120,12 +120,16 @@ assert_eq "compat needed: 8.1 8.5" "$(cn 8.1 8.5)" "yes"
 assert_eq "compat needed: 8.3 8.4" "$(cn 8.3 8.4)" "yes"
 assert_eq "compat not needed: 8.4 8.5 (the php84 set holds the rule)" "$(cn 8.4 8.5)" "no"
 assert_eq "compat not needed: 8.3 8.3 (no PHP of the window deprecates it)" "$(cn 8.3 8.3)" "no"
-assert_eq "floor tokens 8.1" "$(rector_floor_tokens 8.1 | tr '\n' ' ')" "PHP_FLOOR=8.1 PHP_FLOOR_ID=PHP_81 PHP_FLOOR_SET=php81 "
-assert_eq "floor tokens 7.4" "$(rector_floor_tokens 7.4 | tr '\n' ' ')" "PHP_FLOOR=7.4 PHP_FLOOR_ID=PHP_74 PHP_FLOOR_SET=php74 "
+assert_eq "floor tokens 8.1" "$(rector_floor_tokens 8.1 | tr '\n' ' ')" "PHP_FLOOR=8.1 PHP_FLOOR_ID=PHP_81 PHP_FLOOR_SET=php81 PHP_VERSION_L=PHP_81 PHP_SETS_L=php81 "
+assert_eq "floor tokens 7.4" "$(rector_floor_tokens 7.4 | tr '\n' ' ')" "PHP_FLOOR=7.4 PHP_FLOOR_ID=PHP_74 PHP_FLOOR_SET=php74 PHP_VERSION_L=PHP_74 PHP_SETS_L=php74 "
 assert_eq "floor tokens 8.5: no php85 set is assumed" "$(rector_floor_tokens 8.5 2> /dev/null | tr '\n' ' ')" \
-  "PHP_FLOOR=8.5 PHP_FLOOR_ID=PHP_85 PHP_FLOOR_SET=php84 "
+  "PHP_FLOOR=8.5 PHP_FLOOR_ID=PHP_85 PHP_FLOOR_SET=php84 PHP_VERSION_L=PHP_85 PHP_SETS_L=php84 "
 
 # --- render-templates.sh --------------------------------------------------------
+# rector.php (template 5) renders from the upgrade plan, which needs the whole
+# version data: the snapshot the plan goldens pin, not the small copy above.
+DRUPILOT_VERSION_DATA_DIR="$T_REPO/tests/fixtures/data-snapshots/$(jq -r .data_hash "$T_REPO/tests/golden/plans/golden.json")"
+export DRUPILOT_VERSION_DATA_DIR
 mkroot() {  # mkroot ROOT MODULE_DIR [NAME]
   mkdir -p "$1/web/core/lib" "$1/web/modules/custom"
   printf '{"name":"x/root"}\n' > "$1/composer.json"
@@ -145,7 +149,11 @@ assert_file_eq "rector-compat.php matches the golden render" "$r/rector-compat.p
 has() { if grep -qF -- "$2" "$1"; then echo yes; else echo no; fi; }
 assert_eq "rector.php: withPhpVersion at the floor" "$(has "$r/rector.php" '->withPhpVersion(PhpVersion::PHP_81)')" "yes"
 assert_eq "rector.php: level sets stop at the floor" "$(has "$r/rector.php" '->withPhpSets(php81: true)')" "yes"
-assert_eq "rector.php: template marker 4" "$(has "$r/rector.php" 'drupilot-template-version: 4')" "yes"
+assert_eq "rector.php: template marker 5" "$(has "$r/rector.php" 'drupilot-template-version: 5')" "yes"
+assert_eq "rector.php: the plan's per-minor Drupal 10 sets" "$(has "$r/rector.php" "'DrupalRector\\\\Set\\\\Drupal10SetList::DRUPAL_103',")" "yes"
+assert_eq "... rendered from the plan" "$(jq -r .plan "$T_OUT")" "plan"
+assert_eq "... its sha256 kept in the lock" \
+  "$(DRUPILOT_PROJECT_DIR="$r" lock_get '.templates["rector.php"].sha256')" "sha256:$(sha256_hex < "$r/rector.php")"
 for _rule in 'Php85\\Rector\\Class_\\SleepToSerializeRector' 'Php85\\Rector\\Class_\\WakeupToUnserializeRector' \
   'Php85\\Rector\\Property\\AddOverrideAttributeToOverriddenPropertiesRector' 'Php81\\Rector\\Array_\\ArrayToFirstClassCallableRector'; do
   assert_eq "both configs skip ${_rule##*\\\\}" "$(has "$r/rector.php" "$_rule")$(has "$r/rector-compat.php" "$_rule")" "yesyes"

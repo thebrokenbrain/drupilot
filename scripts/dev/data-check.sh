@@ -26,7 +26,8 @@
 #               php/versions.json; a minor never lists a PHP as both supported
 #               and unsupported; versions.json ids and rector_level match the
 #               key; rules have unique ids and a verified removed-no-rule rule
-#               cites php.net; a rule templates/rector.php.tmpl skips is
+#               cites php.net; a rule templates/rector.php.tmpl skips (the
+#               deny rows it renders through {{SKIP_RULES}}) is
 #               drupal_safe false, and every rule templates/rector-compat.php.tmpl
 #               runs is a drupal_safe compat rule (when the tree has templates/);
 #               graph edges are unique, named from-to, join known eras, and
@@ -193,10 +194,18 @@ tpl_rules() {
 }
 TPL_MAIN="$ROOT/templates/rector.php.tmpl"; TPL_COMPAT="$ROOT/templates/rector-compat.php.tmpl"
 if [[ -f "$RULES" && -f "$TPL_MAIN" && -f "$TPL_COMPAT" ]]; then
-  SKIPS="$(tpl_rules "$TPL_MAIN" '$drupilotRiskySkips')"
+  # rector.php (template 5) renders its skip list from the rules: the deny
+  # rows plus every compat row that is not drupal_safe ({{SKIP_RULES}},
+  # plan_rector_skip); a template that still lists its own skips is read as
+  # before.
+  if grep -qF '{{SKIP_RULES}}' "$TPL_MAIN" 2> /dev/null; then
+    SKIPS="$(jq -r '.rules[] | select(.kind == "deny" or (.kind == "compat" and .drupal_safe == false)) | .rule // empty' "$RULES" 2> /dev/null || true)"
+  else
+    SKIPS="$(tpl_rules "$TPL_MAIN" '$drupilotRiskySkips')"
+  fi
   CRULES="$(tpl_rules "$TPL_COMPAT" '$drupilotCompatRules')"
   if [[ -z "$SKIPS" || -z "$CRULES" ]]; then
-    errs="could not read the skip list of templates/rector.php.tmpl or the rules of templates/rector-compat.php.tmpl"
+    errs="could not read the skip list of templates/rector.php.tmpl (or config/php/rules.json holds no deny row) or the rules of templates/rector-compat.php.tmpl"
   else
     errs="$(jq -r --arg sk "$SKIPS" --arg cr "$CRULES" 'def norm: split("\\") | map(select(. != "")) | join("\\");
       .rules as $rules

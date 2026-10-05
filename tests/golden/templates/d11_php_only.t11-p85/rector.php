@@ -11,7 +11,7 @@
  * rector.php is missing) from the upgrade plan (scripts/analysis/upgrade-path.sh,
  * ADR 0017/0019), which fills in the extension path, the Drupal sets of the
  * plan's hops, the backwards-compatibility settings, the PHP floor
- * 8.1 and the rules skipped. Its sha256 is kept in the lock: an
+ * 8.3 and the rules skipped. Its sha256 is kept in the lock: an
  * untouched copy is regenerated when the plan moves; a hand-edited one is never
  * replaced without --force.
  *
@@ -35,7 +35,7 @@
  *
  * The complementary dbuytaert/drupal-digests AI rule layer is NOT wired in
  * here. It runs as a separate, optional pass referenced by its own config:
- *   vendor/bin/rector process web/modules/custom/legacy_widgets \
+ *   vendor/bin/rector process web/modules/custom/d11_php_only \
  *     --config "$DIGESTS_CACHE/rector/all.php" --dry-run
  * (Run the official palantirnet/drupal-rector pass first, then digests.)
  *
@@ -82,10 +82,7 @@ use Rector\ValueObject\PhpVersion;
 // drupal-rector is missing or cannot be autoloaded: stop, rather than run a
 // pass that applies no Drupal rule and reports nothing to change.
 $drupilotSetNames = [
-  'DrupalRector\\Set\\Drupal10SetList::DRUPAL_100',
-  'DrupalRector\\Set\\Drupal10SetList::DRUPAL_101',
-  'DrupalRector\\Set\\Drupal10SetList::DRUPAL_102',
-  'DrupalRector\\Set\\Drupal10SetList::DRUPAL_103',
+
 ];
 $drupilotSets = array_map('constant', array_values(array_filter($drupilotSetNames, 'defined')));
 if ($drupilotSetNames !== [] && $drupilotSets === []) {
@@ -115,7 +112,7 @@ $drupilotConfig = RectorConfig::configure()
   // Process only the target extension. Other paths (e.g. core, contrib) are
   // left untouched.
   ->withPaths([
-    'web/modules/custom/legacy_widgets',
+    'web/modules/custom/d11_php_only',
   ])
   // Never rewrite third-party code or build/test artifacts, and never apply
   // the risky modernization rules listed above.
@@ -126,11 +123,11 @@ $drupilotConfig = RectorConfig::configure()
   // The Drupal deprecation sets of the plan's hops.
   ->withSets($drupilotSets)
   ->withBootstrapFiles($drupilotBootstrap)
-  // The PHP floor 8.1 (the plan's php.floor). Rector drops every
+  // The PHP floor 8.3 (the plan's php.floor). Rector drops every
   // version-bound rule above it, and the level sets stop at it. Compat fixes
   // for newer PHP run in rector-compat.php.
-  ->withPhpVersion(PhpVersion::PHP_81)
-  ->withPhpSets(php81: true)
+  ->withPhpVersion(PhpVersion::PHP_83)
+  ->withPhpSets(php83: true)
   // Drupal extensions Rector should treat as PHP so hooks and *.module files
   // are processed too.
   ->withFileExtensions([
@@ -143,4 +140,14 @@ $drupilotConfig = RectorConfig::configure()
     'engine',
   ]);
 
+// Backwards-compatible rewrites (DeprecationHelper) for every core the declared
+// range keeps, from 11.0 on (the plan's rector.bc).
+$drupilotConfig = static function (RectorConfig $rectorConfig) use ($drupilotConfig): void {
+  $drupilotConfig($rectorConfig);
+  if (class_exists(\DrupalRector\Services\DrupalRectorSettings::class)) {
+    $rectorConfig->singleton(\DrupalRector\Services\DrupalRectorSettings::class, static fn () => (new \DrupalRector\Services\DrupalRectorSettings())
+      ->enableBackwardCompatibility()
+      ->setMinimumCoreVersionSupported('11.0.0'));
+  }
+};
 return $drupilotConfig;

@@ -151,13 +151,62 @@ rector_compat_needed() {
 # rector_floor_tokens L -> the template tokens of a floor, one KEY=VALUE per
 # line: PHP_FLOOR=8.1, PHP_FLOOR_ID=PHP_81 (Rector's PhpVersion constant) and
 # PHP_FLOOR_SET=php81 (the ->withPhpSets() argument; an unconfirmed 8.5 floor
-# gets rector_php_set_arg's php84, since no php85 set is assumed). Returns 1
+# gets rector_php_set_arg's php84, since no php85 set is assumed), and the same
+# two under rector.php v5's names, PHP_VERSION_L and PHP_SETS_L. Returns 1
 # when L is not a PHP minor.
 rector_floor_tokens() {
   local l="${1:-}" set
   [[ "$l" =~ ^[0-9]\.[0-9]$ ]] || return 1
   if php_target_unconfirmed "$l"; then set="$(rector_php_set_arg "$l" 2>/dev/null)"; else set="php${l//./}"; fi
-  printf 'PHP_FLOOR=%s\nPHP_FLOOR_ID=PHP_%s\nPHP_FLOOR_SET=%s\n' "$l" "${l//./}" "$set"
+  printf 'PHP_FLOOR=%s\nPHP_FLOOR_ID=PHP_%s\nPHP_FLOOR_SET=%s\nPHP_VERSION_L=PHP_%s\nPHP_SETS_L=%s\n' \
+    "$l" "${l//./}" "$set" "${l//./}" "$set"
+  return 0
+}
+
+# rector_sets_block PLAN -> rector.php v5's {{RECTOR_SETS}}: one quoted,
+# comma-ended constant name per line (  'DrupalRector\\Set\\Drupal10SetList::DRUPAL_100',)
+# for the plan's rector.drupal_sets then rector.breaking_sets, in order. The
+# Drupal 8 and 9 families stay out until the D8/D9 hops are proven (T-M9-03,
+# ADR 0019): 0.9 never ran them.
+rector_sets_block() {
+  printf '%s' "${1:-}" | jq -r '[(.rector.drupal_sets // [])[], (.rector.breaking_sets // [])[]]
+    | map(select(test("^Drupal[0-9]+SetList::DRUPAL_[0-9]+(_BREAKING)?$")
+                 and ((capture("^Drupal(?<n>[0-9]+)SetList").n | tonumber) >= 10)))
+    | .[] | "  \u0027DrupalRector\\\\Set\\\\" + . + "\u0027,"' 2> /dev/null || true
+  return 0
+}
+
+# rector_skip_block PLAN -> rector.php v5's {{SKIP_RULES}}: the plan's
+# rector.skip FQCNs, one quoted, comma-ended PHP string per line, backslashes
+# doubled (  'Rector\\Php81\\Rector\\Array_\\ArrayToFirstClassCallableRector',).
+rector_skip_block() {
+  printf '%s' "${1:-}" | jq -r '(.rector.skip // [])[] | select(type == "string" and test("^[A-Za-z0-9_\\\\]+$"))
+    | "  \u0027" + (split("\\") | join("\\\\")) + "\u0027,"' 2> /dev/null || true
+  return 0
+}
+
+# rector_bc_block PLAN -> rector.php v5's {{BC_BLOCK}}: with the plan's
+# rector.bc enabled, a wrapper that registers drupal-rector's settings with
+# backwards-compatible rewrites (DeprecationHelper) for every core from
+# rector.bc.min_core on (ADR 0017 item 2); nothing otherwise, so drupal-rector
+# keeps its own default, as in 0.9.
+rector_bc_block() {
+  local min
+  min="$(printf '%s' "${1:-}" | jq -r 'select(.rector.bc.enabled == true) | .rector.bc.min_core // empty' 2> /dev/null || true)"
+  [[ "$min" =~ ^[0-9]+\.[0-9]+$ ]] || return 0
+  cat <<EOF
+
+// Backwards-compatible rewrites (DeprecationHelper) for every core the declared
+// range keeps, from $min on (the plan's rector.bc).
+\$drupilotConfig = static function (RectorConfig \$rectorConfig) use (\$drupilotConfig): void {
+  \$drupilotConfig(\$rectorConfig);
+  if (class_exists(\\DrupalRector\\Services\\DrupalRectorSettings::class)) {
+    \$rectorConfig->singleton(\\DrupalRector\\Services\\DrupalRectorSettings::class, static fn () => (new \\DrupalRector\\Services\\DrupalRectorSettings())
+      ->enableBackwardCompatibility()
+      ->setMinimumCoreVersionSupported('$min.0'));
+  }
+};
+EOF
   return 0
 }
 
@@ -173,6 +222,8 @@ rector_config_floor() {
 # rector-compat.php, whose withPhpVersion is the rules' own): a drupilot
 # render nobody edited, which may be regenerated when its inputs change. A
 # hand edit, another template generation or a file of the developer's own -> 1.
+# A template-5 rector.php never matches (its sets, skips and BC block come from
+# the plan): the sha256 kept in the lock recognizes it (render_sha_matches).
 rector_config_pristine() {
   local tpl="${1:-}" f="${2:-}" fl sp rc=1
   [[ -f "$tpl" && -f "$f" ]] || return 1
@@ -185,7 +236,7 @@ rector_config_pristine() {
   # TMPDIR holds (pipefail makes a failed render a mismatch).
   # shellcheck disable=SC2046  # one KEY=VALUE word per line, no spaces in them
   if ( set -o pipefail; render_template "$tpl" - "SUBJECT_PATH=$sp" $(rector_floor_tokens "$fl") 2>/dev/null \
-       | cmp -s - "$f" ); then
+       | cmp -s - "$f" ); then  # sigpipe-ok: any failure is a mismatch, the render's stderr is discarded
     rc=0
   fi
   return "$rc"

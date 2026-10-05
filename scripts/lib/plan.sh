@@ -61,7 +61,8 @@
 # assembles the plan from them; they never write and never refuse on their
 # own (plan_assert lists, the resolver refuses). The frozen plan (ADR 0018):
 # plan_freeze writes it to the root's lock (upgrade-path.sh --freeze only),
-# plan_frozen and plan_get read it back without creating anything.
+# plan_frozen and plan_get read it back without creating anything;
+# plan_for_subject / plan_render_fallback give the configs their plan.
 # =============================================================================
 
 version_data_dir() {
@@ -738,4 +739,38 @@ plan_freeze() {
   obj="$(printf '%s' "$plan" | jq -c --arg h "$h" --arg ph "$phase" \
     '{upgrade_plan: ., upgrade_plan_hash: $h, upgrade_plan_phase: $ph, data_hash: .data_hash}')" || return 1
   lock_merge_json "$obj" "$root"
+}
+
+# plan_for_subject ROOT SUBJECT -> the upgrade plan a stage renders its
+# configs from (H4): the plan frozen in ROOT's lock when it is SUBJECT's, else
+# a fresh draft from scripts/analysis/upgrade-path.sh (nothing written).
+# Nothing, and return 1, when neither resolves (the resolver refuses, or the
+# version data cannot plan).
+plan_for_subject() {
+  local root="${1:-}" subj="${2:-}" fz mn out
+  [[ -n "$subj" && -d "$subj" ]] && have_cmd jq || return 1
+  mn="$(subject_machine_name "$subj" 2> /dev/null || true)"
+  if [[ -n "$root" && -n "$mn" ]]; then
+    fz="$(plan_frozen "$root")"
+    if [[ -n "$fz" && "$(printf '%s' "$fz" | jq -r '.subject.machine_name // ""' 2> /dev/null)" == "$mn" ]]; then
+      printf '%s\n' "$fz"; return 0
+    fi
+  fi
+  out="$("$BASH" "$(plugin_root)/scripts/analysis/upgrade-path.sh" --subject "$subj" ${root:+--root "$root"} \
+    --phase draft --json 2> /dev/null < /dev/null)" || return 1
+  [[ -n "$out" ]] || return 1
+  printf '%s\n' "$out"
+}
+
+# plan_render_fallback T -> a plan-shaped object for rendering when no plan
+# resolves: the verified per-minor sets of Drupal T-1 (config/targets/<T-1>.json
+# rector_sets.own_major), the skip list, backwards-compatible rewrites left to
+# drupal-rector's default (as in 0.9).
+plan_render_fallback() {
+  local t="${1:-11}" ds=""
+  [[ "$t" =~ ^[0-9]+$ ]] && have_cmd jq || return 1
+  ds="$(target_get "$((t - 1))" 'select(.rector_sets.verified == true) | .rector_sets.own_major' | jq -c '. // []' 2> /dev/null || true)"
+  jq -n -c --argjson t "$t" --argjson ds "${ds:-[]}" --argjson sk "$(plan_rector_skip)" \
+    '{target: {major: $t}, rector: {drupal_sets: $ds, breaking_sets: [], skip: $sk, bc: {enabled: false, min_core: null}}}'
+  return 0
 }
