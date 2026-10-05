@@ -62,13 +62,17 @@ assembles them.
    is never a violation. A "no" may come from a PHP's verified
    `drupal_core_floor` (PHP 8.5 needs 11.3), so a W of {8.5} on
    `^10.3 || ^11` lists 10.3 to 11.2, not only the minors with a table row.
-7. **The plan's L is not clamped.** L is the highest of the kept minor's
-   `php_min`, the detected PHP floor and the subject's `require.php` floor
+7. **The plan's L is not clamped.** L is the highest of F's `php_min` (the
+   newest verified minor below F's when F has none in the data yet: `^11.5`
+   reads 11.4's 8.3), the detected PHP floor and the subject's `require.php` floor
    (L = P with `DRUPILOT_REQUIRE_PHP_FLOOR=target`). L above P is the
    `floor-above-final` refusal; core-strategy, a view, keeps its 0.9 clamp
    and warning.
 8. **Assertions are listed in a fixed order and never fixed silently:**
-   `source-above-target`, `prerelease-not-opted-in`, `floor-above-final`,
+   `source-above-target`, `prerelease-not-opted-in`, `range-excludes-bed`
+   (the range does not admit the bed core's minor, so the module could not
+   be installed on the test-bed: a kept `^11.5` on 11.4.8, an explicit
+   `^10.3` for Drupal 11), `floor-above-final`,
    `php-not-supported` (P against M, the newest released minor, or the
    pre-release minor in preview), `minor-php-disjoint`, `three-majors` (the
    range reaches three majors while it is neither explicit nor a kept
@@ -76,7 +80,11 @@ assembles them.
    already raises in M3; M6 extends it. A refusal exits 2 with
    `{schema_version, status: "refused", phase, code, message, violations[],
    choices[{id, label, tab, set}]}` on stdout; `code` is the first
-   violation.
+   violation, a `minor-php-disjoint` violation names its `minor`, and a
+   choice is offered only where applying it can resolve the violation
+   (target-only only when no disjoint minor is T's own). A choice that sets
+   the strategy uses the 0.9 values (`d11-only`, `keep-d10`), the ones every
+   0.9 surface accepts until the aliases land.
 9. **Deferred fields are null.** Every key of the plan is always present:
    null means a later milestone computes it (`rector.compat_rules`,
    `polyfills`, `tests_pass`, `core_removals`, `hard_breaks`,
@@ -90,7 +98,10 @@ assembles them.
     M: they differ when the lock pins an older bed.
 11. **The bed core** is the lock's core when it is a version of T (a leading
     `v` dropped), else the data's latest release of M.
-12. **The 7 → 12 route is allowed.** `paths/graph.json` lists it as
+12. **Only a Drupal 7 source takes the rewrite edge.** A standard-track
+    subject whose analyzer output names a removal in Drupal 8 has S = 7, but
+    its hops start at 8: the `7-11` edge is the d7-assisted rewrite.
+    **The 7 → 12 route is allowed.** `paths/graph.json` lists it as
     forbidden as a direct edge only; `plan_hops` walks `7-11` then `11-12`,
     the route the file names, and the pre-release opt-in still applies.
 13. **auto keeps the previous major only while it is supported.** When

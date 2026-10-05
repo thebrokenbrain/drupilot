@@ -1,0 +1,31 @@
+{
+  "choices": [
+    {
+      "id": "allow-prerelease",
+      "label": "Port to Drupal 12 as a preview",
+      "set": {
+        "DRUPILOT_ALLOW_PRERELEASE": "true"
+      },
+      "tab": null
+    },
+    {
+      "id": "target-11",
+      "label": "Port to Drupal 11",
+      "set": {
+        "DRUPILOT_TARGET_MAJOR": "11"
+      },
+      "tab": "TARGET_MAJOR"
+    }
+  ],
+  "code": "prerelease-not-opted-in",
+  "message": "The upgrade plan cannot be resolved: Drupal 12 is a pre-release: set DRUPILOT_ALLOW_PRERELEASE=true to port to it as a preview.",
+  "phase": "draft",
+  "schema_version": 1,
+  "status": "refused",
+  "violations": [
+    {
+      "detail": "Drupal 12 is a pre-release: set DRUPILOT_ALLOW_PRERELEASE=true to port to it as a preview",
+      "id": "prerelease-not-opted-in"
+    }
+  ]
+}

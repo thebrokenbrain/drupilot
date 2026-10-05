@@ -1401,6 +1401,82 @@ Without --json, STDOUT lists the changed files (one relative path per line).
 Exit codes: 0 ok · 1 usage error or a file could not be written.
 ```
 
+### analysis/upgrade-path.sh
+
+```text
+drupilot — scripts/analysis/upgrade-path.sh
+Resolve the UPGRADE PLAN of a module/theme: every version a stage uses, from
+the subject, the target major, the PHP target, the strategy and the version
+data (AR-06, ADR 0017; schemas/upgrade-plan.schema.json). Pure: it reads the
+subject, the version data (config/, or DRUPILOT_VERSION_DATA_DIR) and the
+root's lock, and writes nothing. No stage derives a version on its own.
+
+Vocabulary (AR-01):
+  S              source era: the oldest Drupal major whose APIs the code
+                 still uses (scripts/analysis/detect-source.sh, ADR 0016)
+  T              target major (11 or 12; data-driven). S = T is a PHP-only
+                 move
+  C = [F, T.x]   declared range: core_version_requirement; F is the lowest
+                 core minor kept
+  strategy       auto | target-only | keep-previous | widest | explicit (the
+                 0.9 names d11-only and keep-d10 are aliases); keep-current
+                 is a resolved output only, never an input
+  L              PHP floor: max(php_min(F), the code's floor
+                 (detect-php-floor.sh), the subject's require.php); L = P
+                 with DRUPILOT_REQUIRE_PHP_FLOOR=target
+  P              PHP final: DRUPILOT_PHP_TARGET, else targets/T.json
+                 .php_defaults.env; it must be a PHP M supports, M the
+                 newest released minor of T or its pre-release minor in
+                 preview
+  W = [L..P]     PHP window: PHPStan phpVersion, PHPCompatibility testVersion
+  bed core       the exact core of the test-bed: the lock's when it is a T
+                 version, else the newest release of M
+  hop            one edge of config/paths/graph.json
+  track          standard (S 8..12) or d7-assisted (S = 7)
+
+Usage:
+  upgrade-path.sh [--subject DIR] [--phase draft|final] [--target N]
+                  [--php X.Y] [--strategy S] [--range C] [--root DIR]
+                  [--phpstan FILE] [--auto] [--json] [-h|--help]
+
+Options:
+  --subject DIR    The module/theme directory (default: the current one).
+  --phase P        draft (default: static signals, before a test-bed) or
+                   final (also the analyzer signal: --phpstan).
+  --target N       T (default DRUPILOT_TARGET_MAJOR, 11).
+  --php X.Y        P (default as above).
+  --strategy S     The compat strategy (default
+                   DRUPILOT_CORE_TARGET_STRATEGY, auto).
+  --range C        An explicit declared range (implies --strategy explicit).
+  --root DIR       The Drupal root whose lock names the bed core, whose
+                   drupal-rector names the Rector sets and whose
+                   .drupilot.json holds the persisted choices (default: the
+                   subject's root, found from its logical path, as the lock
+                   is keyed; for a loose subject, DRUPILOT_PROJECT_DIR or
+                   the subject itself, never the cwd's root).
+  --phpstan FILE   With --phase final: a PHPStan --error-format=json output
+                   of the subject (detect-source.sh signal 4).
+  --auto           An autonomous run (as DRUPILOT_AUTONOMOUS=true): a Drupal
+                   7 source is refused.
+  --json           Print only the JSON on STDOUT (no summary on STDERR).
+  -h, --help       Show this help.
+
+Output (STDOUT, keys sorted): the plan, or on a refusal
+  {schema_version, status: "refused", phase, code, message,
+   violations: [{id, detail}], choices: [{id, label, tab, set}]}
+  (tab: the config/choices.json key to re-ask, or null; set: the config
+  values that resolve it). A Drupal 7 source in an autonomous run is code
+  d7-auto, its message also printed alone on STDERR.
+
+Exit codes: 0 the plan · 1 usage error (a bad --phase/--target/--php/
+--strategy, no subject or no machine name, --strategy explicit without
+--range, an empty --range or one with no lower bound, an invalid
+DRUPILOT_PHPSTAN_LEVEL) · 2 refused (an assertion of AR-06 failed: the
+codes of plan_assert in scripts/lib/plan.sh, invalid-target,
+php-not-supported for a PHP the data does not know, d7-auto). A
+standard-track S below 8 starts the hops at 8.
+```
+
 ### analysis/verify-core-matrix.sh
 
 ```text
@@ -3190,7 +3266,7 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
                 module, if, then, else, end, as, def, reduce, foreach, try,
                 catch, and, or, not, import, include, __loc__) as a --arg /
                 --argjson name, an `as $name` binding or a shorthand object
-                key (`{module, scope}`): jq 1.6 (Debian 12, Ubuntu 22.04 —
+                key (`{module, scope}`) or a `def f($label)` parameter: jq 1.6 (Debian 12, Ubuntu 22.04 —
                 drupilot's jq_min) rejects each as a syntax error, jq 1.7
                 accepts it. `{label: .x}` and `.label` are fine everywhere.
                 It also rejects an object value joined with and/or outside

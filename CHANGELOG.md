@@ -40,6 +40,19 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `core_version_requirement` admits, read as composer/semver reads it and
   checked against its answers). The resolver CLI that assembles them comes
   next.
+- **`scripts/analysis/upgrade-path.sh`**, the upgrade-plan resolver (T-M3-01,
+  T-M3-03, AR-06, ADR 0017): from the subject (`detect-source.sh`, static in
+  the draft phase, with the analyzer signal in the final one), the target
+  major, the PHP target, the strategy (the 0.9 names as aliases) or an
+  explicit `--range`, the version data and the root's lock, it prints the
+  plan (`--json`) or refuses with exit 2 and the choices that resolve it; a
+  Drupal 7 source in an autonomous run is refused before anything is written
+  (`d7-auto`). It writes nothing. Its goldens are `tests/golden/plans/`.
+  The root's `.drupilot.json` and lock are found from the subject's logical
+  path (a symlink placement included), never from the cwd; `plan_assert`
+  gains `range-excludes-bed` (a range that does not admit the bed core).
+- The `jq-compat` gate also rejects a jq keyword used as a `def` parameter
+  (jq 1.6 refuses `def c($label)`).
 - **`schemas/upgrade-plan.schema.json`** with an example plan
   (`schemas/examples/upgrade-plan.example.json`), checked by the `schemas`
   gate; the target major and bed core, the PHP floor and final, the range,

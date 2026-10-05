@@ -1,0 +1,60 @@
+{
+  "choices": [
+    {
+      "id": "php-target",
+      "label": "Choose another PHP target",
+      "set": {},
+      "tab": "PHP_TARGET"
+    },
+    {
+      "id": "floor-detect",
+      "label": "Detect the PHP floor from the code",
+      "set": {
+        "DRUPILOT_REQUIRE_PHP_FLOOR": "detect"
+      },
+      "tab": null
+    }
+  ],
+  "code": "minor-php-disjoint",
+  "message": "The upgrade plan cannot be resolved: Drupal 10.3 supports none of PHP 8.5 (^10.3 || ^11).",
+  "phase": "draft",
+  "schema_version": 1,
+  "status": "refused",
+  "violations": [
+    {
+      "detail": "Drupal 10.3 supports none of PHP 8.5 (^10.3 || ^11)",
+      "id": "minor-php-disjoint",
+      "minor": "10.3"
+    },
+    {
+      "detail": "Drupal 10.4 supports none of PHP 8.5 (^10.3 || ^11)",
+      "id": "minor-php-disjoint",
+      "minor": "10.4"
+    },
+    {
+      "detail": "Drupal 10.5 supports none of PHP 8.5 (^10.3 || ^11)",
+      "id": "minor-php-disjoint",
+      "minor": "10.5"
+    },
+    {
+      "detail": "Drupal 10.6 supports none of PHP 8.5 (^10.3 || ^11)",
+      "id": "minor-php-disjoint",
+      "minor": "10.6"
+    },
+    {
+      "detail": "Drupal 11.0 supports none of PHP 8.5 (^10.3 || ^11)",
+      "id": "minor-php-disjoint",
+      "minor": "11.0"
+    },
+    {
+      "detail": "Drupal 11.1 supports none of PHP 8.5 (^10.3 || ^11)",
+      "id": "minor-php-disjoint",
+      "minor": "11.1"
+    },
+    {
+      "detail": "Drupal 11.2 supports none of PHP 8.5 (^10.3 || ^11)",
+      "id": "minor-php-disjoint",
+      "minor": "11.2"
+    }
+  ]
+}

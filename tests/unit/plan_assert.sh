@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # plan_assert (T-M3-03, AR-06, ADR 0017): the plan's assertions, listed in a
 # fixed order and never fixed silently — source-above-target,
-# prerelease-not-opted-in, floor-above-final, php-not-supported,
+# prerelease-not-opted-in, range-excludes-bed (the bed core outside the
+# range), floor-above-final, php-not-supported,
 # minor-php-disjoint (only a minor whose every answer is "no"),
 # three-majors. Exit 0 with [] when the plan holds, 2 with the violations,
 # 1 when the plan is not an object. The data is the snapshot the T=11
@@ -49,6 +50,13 @@ r="$(plan_assert "$(plan 10 11 supported false 8.5 8.5 '^10.3 || ^11' keep-previ
 assert_eq "minor-php-disjoint: ^10.3 || ^11 with W = {8.5}" "$(printf '%s' "$r" | jq -r 'map(.detail | split(" ")[1]) | join(" ")')" \
   "10.3 10.4 10.5 10.6 11.0 11.1 11.2"
 assert_eq "  its detail" "$(printf '%s' "$r" | jq -r '.[1].detail')" "Drupal 10.4 supports none of PHP 8.5 (^10.3 || ^11)"
+assert_eq "  each names its minor" "$(printf '%s' "$r" | jq -r 'map(.minor) | join(" ")')" "10.3 10.4 10.5 10.6 11.0 11.1 11.2"
+bed() { plan_assert "$(plan 10 11 supported false 8.3 8.3 "$1" explicit explicit | jq -c --arg b "$2" '.target.bed_core = $b')" | jq -r 'map(.id) | join(" ")'; }
+assert_eq "range-excludes-bed: ^11.5 on an 11.4.8 bed" "$(bed '^11.5' 11.4.8)" "range-excludes-bed"
+assert_eq "range-excludes-bed: ^10.3 (no Drupal 11) on an 11.4.8 bed" "$(bed '^10.3' 11.4.8)" "range-excludes-bed"
+assert_eq "range-excludes-bed: ~11.2.0 on an 11.4.8 bed" "$(bed '~11.2.0' 11.4.8)" "range-excludes-bed"
+assert_eq "a range admitting the bed holds" "$(bed '^11' 11.4.8)" ""
+assert_eq "  a pre-release bed counts as its minor" "$(plan_assert "$(plan 10 12 pre-release true 8.5 8.5 '^12' auto target-only | jq -c '.target.bed_core = "12.0.0-beta1"')")" "[]"
 assert_eq "an unknown answer is no violation (10.0's PHP list is unknown)" \
   "$(pa 10 11 supported false 8.3 8.3 '^10.0 || ^11' keep-previous keep-previous)" "0|"
 assert_eq "three-majors: keep-previous may not reach 3 majors" \

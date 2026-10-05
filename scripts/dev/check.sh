@@ -48,7 +48,7 @@
 #                 module, if, then, else, end, as, def, reduce, foreach, try,
 #                 catch, and, or, not, import, include, __loc__) as a --arg /
 #                 --argjson name, an `as $name` binding or a shorthand object
-#                 key (`{module, scope}`): jq 1.6 (Debian 12, Ubuntu 22.04 —
+#                 key (`{module, scope}`) or a `def f($label)` parameter: jq 1.6 (Debian 12, Ubuntu 22.04 —
 #                 drupilot's jq_min) rejects each as a syntax error, jq 1.7
 #                 accepts it. `{label: .x}` and `.label` are fine everywhere.
 #                 It also rejects an object value joined with and/or outside
@@ -505,6 +505,7 @@ gate_jq_compat() {
         sub(/[[:space:]]#[[:space:]].*$/, "", line)
         if (line ~ ("--(arg|argjson|slurpfile|rawfile)[[:space:]]+" e "[[:space:]]") ||
             line ~ ("as[[:space:]]+[$]" e "([^A-Za-z0-9_]|$)") ||
+            line ~ ("def[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*[(][^)]*[$]" e "[[:space:]]*[;)]") ||
             line ~ ("(^|[^$])[{][[:space:]]*" e "[[:space:]]*[,}]") ||
             line ~ ("(^|[^$])[{][^{}]*,[[:space:]]*" e "[[:space:]]*[,}]") ||
             line ~ "(^|[^$])[{,][[:space:]]*[A-Za-z_]+:[[:space:]]*[(][^(].*[)][[:space:]]+(and|or)[[:space:]]")
