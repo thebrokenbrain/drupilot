@@ -18,9 +18,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   S of a module or theme, the oldest Drupal major whose APIs it still uses,
   with its track (`d7-assisted` for Drupal 7), a confidence and the evidence:
   a Drupal 7 `.info`, a `core: 8.x` `.info.yml`, the declared constraint, the
-  SimpleTest and Drupal 7 test APIs (the `config/paths/eras.json` signals)
-  and, with `--full --phpstan FILE`, PHPStan's "removed from drupal:X". S is
-  the minimum of the code signals and the declared floor (ADR 0016).
+  SimpleTest and Drupal 7 test APIs (the `config/paths/eras.json` signals,
+  which gain JavascriptTestBase) and, with `--full --phpstan FILE`,
+  PHPStan's "removed from drupal:X", which only lowers S. S is the minimum
+  of the code signals and the declared floor (ADR 0016).
   `subject_d7_info_file` / `info_value_d7` read a Drupal 7 `.info` without
   changing anything for `.info.yml` subjects. Goldens in
   `tests/golden/detect-source/`, and the source-era fixtures `d7_minimal`,

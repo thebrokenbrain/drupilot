@@ -11,7 +11,7 @@
     {
       "detail": "Call to deprecated function user_load_by_mail():",
       "era": 12,
-      "file": "web/modules/custom/legacy_widgets/legacy_widgets.module",
+      "file": "legacy_widgets.module",
       "id": "phpstan-removed",
       "line": 58,
       "signal": 4
@@ -19,7 +19,7 @@
     {
       "detail": "Call to deprecated function user_load_by_name():",
       "era": 12,
-      "file": "web/modules/custom/legacy_widgets/legacy_widgets.module",
+      "file": "legacy_widgets.module",
       "id": "phpstan-removed",
       "line": 60,
       "signal": 4
@@ -27,7 +27,7 @@
     {
       "detail": "Call to deprecated function text_summary():",
       "era": 12,
-      "file": "web/modules/custom/legacy_widgets/legacy_widgets.module",
+      "file": "legacy_widgets.module",
       "id": "phpstan-removed",
       "line": 75,
       "signal": 4
@@ -35,7 +35,7 @@
     {
       "detail": "Call to deprecated function check_markup():",
       "era": 12,
-      "file": "web/modules/custom/legacy_widgets/src/Plugin/Block/WidgetSummaryBlock.php",
+      "file": "src/Plugin/Block/WidgetSummaryBlock.php",
       "id": "phpstan-removed",
       "line": 63,
       "signal": 4
@@ -43,7 +43,7 @@
     {
       "detail": "Call to deprecated function user_load_by_mail():",
       "era": 12,
-      "file": "web/modules/custom/legacy_widgets/src/Plugin/Block/WidgetSummaryBlock.php",
+      "file": "src/Plugin/Block/WidgetSummaryBlock.php",
       "id": "phpstan-removed",
       "line": 64,
       "signal": 4
@@ -51,7 +51,7 @@
     {
       "detail": "Call to deprecated function text_summary():",
       "era": 12,
-      "file": "web/modules/custom/legacy_widgets/src/Plugin/Filter/WidgetSummaryFilter.php",
+      "file": "src/Plugin/Filter/WidgetSummaryFilter.php",
       "id": "phpstan-removed",
       "line": 59,
       "signal": 4
@@ -59,7 +59,7 @@
     {
       "detail": "Call to deprecated function user_load_by_name():",
       "era": 12,
-      "file": "web/modules/custom/legacy_widgets/src/Plugin/QueueWorker/WidgetReindexWorker.php",
+      "file": "src/Plugin/QueueWorker/WidgetReindexWorker.php",
       "id": "phpstan-removed",
       "line": 67,
       "signal": 4
@@ -67,7 +67,7 @@
     {
       "detail": "Call to deprecated function user_load_by_mail():",
       "era": 12,
-      "file": "web/modules/custom/legacy_widgets/src/WidgetLookup.php",
+      "file": "src/WidgetLookup.php",
       "id": "phpstan-removed",
       "line": 39,
       "signal": 4

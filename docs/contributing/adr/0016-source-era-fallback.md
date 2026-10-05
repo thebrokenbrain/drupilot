@@ -36,19 +36,30 @@ rule, a plain Drupal 10 module would have no S at all.
    for the code scans (their files are part of the port) but not for
    signal 3.
 4. **Signal 4 in 1.0 reads a recorded PHPStan JSON given with `--phpstan`**
-   (`detect-source.sh --full`), and it can only lower S:
+   (`detect-source.sh --full`):
    - every "removed from drupal:X" message;
    - every unknown function or class that the `config/deprecations.json`
      lifecycle catalog dates with a `removed_in`.
 
+   It only caps the static S from above (S = min(static S, X - 1)): a
+   removal in drupal:13 on an undeclared module leaves S at the default 8.
    Nothing writes that file yet; M9 makes the bed produce it. The evidence
-   keeps the hits of the oldest era only (at most 20).
+   keeps the hits of the oldest era only (at most 20), with paths from the
+   subject's directory on.
 5. **The signals come from the data.** Signals 5 and 6 are the `test-api`
-   EREs of `config/paths/eras.json` (WebTestBase for era 8, the Drupal 7
-   test cases for era 7). Signals 1 and 2 are the two `info` signals there.
-   A signal 04-R8 lists that `eras.json` does not hold yet (`*.test`
-   files, `prophesize(`, `@expectedException`) is added to the data,
-   verified, before the script uses it.
+   EREs of `config/paths/eras.json`: WebTestBase and JavascriptTestBase
+   (deprecated in 8.6.0, removed from 9.0.0, verified on
+   git.drupalcode.org) for era 8, and the Drupal 7 test cases for era 7.
+   Signals 1 and 2 are the two `info` signals there. A signal 04-R8 lists
+   that `eras.json` does not hold yet (`src/Tests/` as such, `*.test` files
+   in a D8+ module, `prophesize(`, `@expectedException`) is added to the
+   data, verified, before the script uses it.
+6. **The Drupal 7 track needs a Drupal 7 `.info`.** The era-7 test cases are
+   read for a `.info` subject only: an `.info.yml` module never loads such a
+   class, so a leftover `.test` or a mention in a comment is dead code, not
+   an API the code uses. The track is `d7-assisted` exactly when signal 1
+   fired. The subject is scanned through its physical path, so a symlinked
+   placement is read as well.
 
 ## Consequences
 

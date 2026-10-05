@@ -41,6 +41,15 @@
           "src": "drupilot 1.0 architecture AR-05 (source detection signals), signal 5 ; WebTestBase deprecated in 8.8.0, removed in 9.0.0 (04-F-64)",
           "verified": true,
           "note": "Tests under src/Tests/ that extend SimpleTest."
+        },
+        {
+          "id": "simpletest-javascripttestbase",
+          "kind": "test-api",
+          "match": "ere:(Drupal\\\\FunctionalJavascriptTests\\\\JavascriptTestBase|extends[[:space:]]+JavascriptTestBase)",
+          "removed_in": "9.0",
+          "src": "https://git.drupalcode.org/project/drupal/-/raw/8.9.x/core/tests/Drupal/FunctionalJavascriptTests/JavascriptTestBase.php (@deprecated in drupal:8.6.0 and is removed from drupal:9.0.0; the file is absent on 9.0.x), read 2026-10-05",
+          "verified": true,
+          "note": "FunctionalJavascript tests of the Drupal 8 era (WebDriverTestBase replaced it)."
         }
       ]
     },
