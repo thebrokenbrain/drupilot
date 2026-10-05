@@ -33,6 +33,17 @@ assert_eq "  a helper the plugin no longer ships is removed" "$([[ -e "$R/$RT/go
 assert_eq "  no temporary file is left" "$(find "$R/$RT" -name '.*' -type f | grep -c . || true)" "0"
 assert_eq "  .drupilot/ is in drupilot's managed ignore block" "$(grep -cx '\.drupilot/' "$T_REPO/templates/gitignore.tmpl")" "1"
 assert_eq "a missing root: exit 1" "$(stage_runtime "$T_TMP/nope" > /dev/null; echo $?)" "1"
+if command -v git > /dev/null 2>&1; then
+  git -C "$R" init -q
+  assert_eq "  git ignores the staged runtime in the root's repository (.drupilot/.gitignore)" \
+    "$(git -C "$R" check-ignore -q "$RT/anchor.php" && echo ignored)|$(git -C "$R" status --porcelain -- .drupilot | grep -c . || true)" "ignored|0"
+fi
+NH="$T_TMP/nohash"; mkdir -p "$NH"
+NOHASH="$(t_path_without sha256sum shasum)"
+PATH="$NOHASH" stage_runtime "$NH" > /dev/null
+printf '<?php // tampered\n' >> "$NH/$RT/anchor.php"
+assert_eq "without a sha256 tool, a tampered copy is still staged again (cmp)" \
+  "$(PATH="$NOHASH" stage_runtime "$NH" > /dev/null; echo $?)|$(cmp -s "$NH/$RT/anchor.php" "$T_REPO/scripts/php/anchor.php" && echo same)" "0|same"
 
 # anchor.php on the fixtures.
 FX="$T_REPO/tests/fixtures/anchor"
@@ -45,6 +56,8 @@ if command -v php > /dev/null 2>&1; then
     "$(printf '%s' "$out" | jq -c '[.[] | [.file, .line]]')" "$(jq -c '[.[] | [.file, .line]]' "$FX/requests.json")"
   assert_eq "  STDIN that is not a JSON array: exit 1" "$(printf '{}' | php "$R/$RT/anchor.php" > /dev/null 2>&1; echo $?)" "1"
   assert_eq "  an empty array" "$(printf '[]' | php "$R/$RT/anchor.php")" "[]"
+  assert_eq "  other fields come back unchanged ({} stays {})" \
+    "$(cd "$FX" && printf '[{"file":"Edge.php","line":10,"meta":{},"tags":{"0":"x"}}]' | php "$R/$RT/anchor.php" | jq -c '.[0] | [.meta, .tags]')" '[{},{"0":"x"}]'
 else
   printf '# no php on PATH: the anchor fixtures run in the lab bed only\n'
   assert_eq "the anchor fixtures are well-formed" "$(jq -e 'type == "array" and length > 0 and all(.[]; has("file") and has("line") and has("anchor"))' "$FX/requests.json")" "true"
