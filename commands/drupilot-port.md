@@ -78,8 +78,9 @@ pinned. A pre-answer comes first, also in an autonomous run:
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key CORE_TARGET --subject "$1" --persist --json
 ```
 
-When its `value` is not null (`auto` / `keep-d10` / `d11-only`), it is the
-answer: no tab, the script already persisted it as
+When its `value` is not null (`auto` / `keep-d10` / `d11-only` / `widest`: for
+Drupal 11 a 1.0 pre-answer, `keep-previous` or `target-only`, comes back under
+its 0.9 name), it is the answer: no tab, the script already persisted it as
 `DRUPILOT_CORE_TARGET_STRATEGY`; re-run `core-strategy.sh` above with
 `DRUPILOT_CORE_TARGET_STRATEGY=<value>` to get its consequences and say so in one
 line (if `env_override` lists the strategy, the environment variable wins). When

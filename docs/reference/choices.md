@@ -53,7 +53,7 @@ What to do with a hand-edited rector.php / phpstan.neon / phpcs.xml.dist that di
 
 - **Tab:** Core target
 - **Command:** `/drupilot-port`
-- **Options:** `auto`, `keep-d10`, `d11-only`
+- **Options:** `auto`, `keep-previous`, `target-only`, `widest`
 - **Default:** `auto`
 - **Pre-answer:** `DRUPILOT_CHOICE_CORE_TARGET`
 - **Remembered as:** `DRUPILOT_CORE_TARGET_STRATEGY`

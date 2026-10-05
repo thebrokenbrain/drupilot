@@ -658,6 +658,15 @@ gate_version() {
            then "migrations.json: env_aliases[\($i)] when must be {key: a variable name, equals: a string, number or boolean}"
            elif declared(.when.key) then empty
            else "migrations.json: env_aliases[\($i)] when.key \(.when.key) is not declared in config/config-reference.json" end)),
+      ((.value_aliases // []) | to_entries[] | .key as $i | .value
+        | (if ([.kind, .scope, .old, .new, .since, .remove_in] | all(type == "string")) then empty
+           else "migrations.json: value_aliases[\($i)] needs string kind, scope, old, new, since and remove_in" end),
+          (if (.kind as $kd | ["value", "field", "flag"] | any(. == $kd)) then empty
+           else "migrations.json: value_aliases[\($i)] kind must be value, field or flag" end),
+          (if .kind != "value" or declared(.scope // "") then empty
+           else "migrations.json: value_aliases[\($i)] scope \(.scope) is not declared in config/config-reference.json" end),
+          (if .kind != "flag" or ((.old // "") | startswith("--")) and ((.new // "") | startswith("--")) then empty
+           else "migrations.json: value_aliases[\($i)] a flag row names two --flags" end)),
       ((.env_aliases // []) + (.value_aliases // []) + (.removed // []) | .[] | select(has("remove_in"))
         | if (.remove_in | maj) > ($major | tonumber) then empty
           else "migrations.json: \(.old // "?") has remove_in \(.remove_in), not a later major than \($major)" end)

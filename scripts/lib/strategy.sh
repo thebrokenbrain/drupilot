@@ -345,9 +345,18 @@ strategy_decide() {
 
   # --- strategy resolution (auto default; KEEP_D10 legacy override) --------
   local strat keep_override legacy_note=""
-  # The 0.9 names: upgrade-path.sh maps the 1.0 ones (target-only,
-  # keep-previous) onto them; any other value is auto, as in 0.9.
-  strat="$(config_get DRUPILOT_CORE_TARGET_STRATEGY auto)"; strat="$(lc "$strat")"
+  # The 0.9 names stay the vocabulary here, as emitted and persisted for T=11
+  # (CC-07): the 1.0 names are read as them (target-only = d11-only,
+  # keep-previous = keep-d10; widest = keep-d10 while the two ranges are the
+  # same, as for T=11), any other value is auto, as in 0.9. Read without the
+  # alias layer, so the KEEP_D10 boolean takes its own 0.9 path below (its
+  # migrations.json rows give every other reader the same answer).
+  strat="$(config_get_noalias DRUPILOT_CORE_TARGET_STRATEGY auto)"; strat="$(lc "$strat")"
+  case "$strat" in
+    target-only) strat="d11-only";;
+    keep-previous) strat="keep-d10";;
+    widest) if [[ "$(target_get "$t" '.default_ranges.widest')" == "$kp_range" ]]; then strat="keep-d10"; fi;;
+  esac
   case "$strat" in d11-only|keep-d10|auto) : ;; *) strat="auto";; esac
   keep_override="$(config_get DRUPILOT_KEEP_D10 "")"
   if [[ "$strat" == "auto" && -n "$keep_override" ]]; then
@@ -488,6 +497,18 @@ strategy_decide() {
       req: $req, composer: $composer, require_php: $require_php, effective_floor: $effective_floor,
       d10_support: $d10_support, kc_raised: ($kc_raised == 1), kc_decl_floor: $kc_decl_floor,
       req_prev: ($req_prev == 1), kc_dropped: ($kc_dropped == 1), current_has_eol: ($eol == 1)}'
+}
+
+# strategy_persist_name VALUE [T] -> the name to write for a configured
+# strategy (CC-07): for T=11 (default: resolve_target_major) the 0.9 name of
+# a renamed value (keep-previous -> keep-d10, target-only -> d11-only,
+# config/migrations.json value_aliases); any other value, or another T, as it
+# is.
+strategy_persist_name() {
+  local v="${1:-}" t="${2:-}"
+  [[ -n "$t" ]] || t="$(resolve_target_major)"
+  if [[ "$t" == "11" ]]; then value_alias_legacy DRUPILOT_CORE_TARGET_STRATEGY "$v"; else printf '%s\n' "$v"; fi
+  return 0
 }
 
 # recommend_core_target <subject> [phase] [bc_override] -> recommendation JSON:

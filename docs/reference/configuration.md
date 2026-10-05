@@ -80,10 +80,10 @@ Oldest cached base core `auto` reuses when no core version is frozen yet (`0` = 
 
 ### `DRUPILOT_CORE_TARGET_STRATEGY`
 
-Core compatibility decision: `auto` (keep `^10 || ^11` while backwards-compatible, switch to `^11` on a BC break / refactor), `d11-only`, or `keep-d10`. Keeping D10 also declares a composer `require.php` floor (see `DRUPILOT_REQUIRE_PHP_FLOOR`), and the choice yields a SemVer version-bump verdict.
+Core compatibility decision: `auto` (keep `^10 || ^11` while backwards-compatible, switch to `^11` on a BC break / refactor), `d11-only`, or `keep-d10`. The 1.0 names `target-only` and `keep-previous` are accepted as `d11-only` and `keep-d10` (config/migrations.json value_aliases), and `widest` as `keep-d10` for Drupal 11; drupilot itself still writes the 0.9 names for Drupal 11 (CC-07). Keeping D10 also declares a composer `require.php` floor (see `DRUPILOT_REQUIRE_PHP_FLOOR`), and the choice yields a SemVer version-bump verdict.
 
 - **Default:** `auto`
-- **Type:** enum — one of `auto`, `d11-only`, `keep-d10`
+- **Type:** enum — one of `auto`, `d11-only`, `keep-d10`, `target-only`, `keep-previous`, `widest`
 
 ### `DRUPILOT_DDEV_CREATE_TIMEOUT`
 

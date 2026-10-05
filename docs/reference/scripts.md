@@ -1458,11 +1458,15 @@ Options:
   --subject DIR    The module/theme directory (default: the current one).
   --phase P        draft (default: static signals, before a test-bed) or
                    final (also the analyzer signal: --phpstan).
-  --target N       T (default DRUPILOT_TARGET_MAJOR, 11).
+  --target N       T (default DRUPILOT_TARGET_MAJOR, else the major an
+                   explicit DRUPILOT_DRUPAL_TARGET names, else 11; X12).
   --php X.Y        P (default as above).
   --strategy S     The compat strategy (default
                    DRUPILOT_CORE_TARGET_STRATEGY, auto).
   --range C        An explicit declared range (implies --strategy explicit).
+                   Without --range or --strategy, an explicit
+                   DRUPILOT_DRUPAL_TARGET other than a bare ^N is one too,
+                   unless DRUPILOT_CORE_TARGET_STRATEGY is set (X12).
   --root DIR       The Drupal root whose lock names the bed core, whose
                    drupal-rector names the Rector sets and whose
                    .drupilot.json holds the persisted choices (default: the
@@ -1810,7 +1814,7 @@ Usage:
                 [--patch-name FILE] [--kind mr|patch]
                 [--title T] [--summary T]
                 [--problem T] [--resolution T] [--remaining T]
-                [--d10-unverified] [--core-matrix FILE]
+                [--prev-major-unverified] [--core-matrix FILE]
                 [--output DIR] [--json]
 
   --project      drupal.org project machine name. Auto-detected from --subject.
@@ -1830,7 +1834,9 @@ Usage:
   --problem      Problem/Motivation prose (default: a generic port rationale).
   --resolution   Proposed resolution prose (default: the minimal-port steps).
   --remaining    Remaining tasks prose (default: review/test/merge/credit).
-  --d10-unverified  append a "verify Drupal 10 compatibility" item to Remaining
+  --prev-major-unverified (alias --d10-unverified, the 0.9 name, kept for
+                 all of 1.x: config/migrations.json value_aliases)
+                 append a "verify Drupal 10 compatibility" item to Remaining
                  tasks (use when keeping '^10 || ^11' without verifying it).
                  When a FRESH core-matrix result (verify-core-matrix.sh, same
                  subject sources) says Drupal 10 is verified-static, the item
@@ -1995,13 +2001,16 @@ answer exactly as if the developer had picked it.
 The value is read through config_get (environment > the Drupal root's
 .drupilot.json > defaults), so the environment variable is the usual way to
 set it. It is validated against the registry's option set (a comma-separated
-subset for a multi-select). An invalid value, or a value for a fork that must
+subset for a multi-select); an old value of the setting the choice persists
+(config/migrations.json value_aliases, e.g. CORE_TARGET=keep-d10) is accepted
+as its new name, with a warning. An invalid value, or a value for a fork that must
 stay a human decision ('preanswer': false), is ignored with a warning on
 STDERR and the command asks as usual.
 
 With --persist, a valid answer is also written to .drupilot.json through
 prefs_set, as the tab's answer would be (e.g. CORE_TARGET ->
-DRUPILOT_CORE_TARGET_STRATEGY). An environment variable of that setting still
+DRUPILOT_CORE_TARGET_STRATEGY; for T=11 under its 0.9 name, keep-d10 or
+d11-only, CC-07). An environment variable of that setting still
 wins over the persisted value: the JSON lists it under env_override.
 
 Usage:
@@ -2020,7 +2029,8 @@ Output (--key --json): one object on STDOUT:
    set, raw, value, valid, persist: [{key, value}], persisted,
    env_override: [{key, value}], note}
   value is the validated answer (normalized: a multi-select keeps the
-  registry's order) or null when the tab must be asked.
+  registry's order; a CORE_TARGET answer under its 0.9 name for T=11,
+  keep-d10 or d11-only, CC-07) or null when the tab must be asked.
 
 Exit code: 0 (also when the value is unset or invalid: the command then asks);
            1 usage error (unknown key, missing argument).

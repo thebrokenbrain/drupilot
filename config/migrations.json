@@ -1,7 +1,133 @@
 {
-  "_comment": "Renamed public names of drupilot (alias layer, 1.x). env_aliases rows are {old, new, since, remove_in, note, when?}: old and new are variable names, or KEY=value to alias one value; when ({key, equals}) applies a row only while that key, resolved without aliases, equals the value (as text, case-insensitively). config_get resolves them (env, then .drupilot.json) and warns once per process. value_aliases and removed are read by their owners. The version gate checks every row (new and when keys declared in config-reference.json). Every alias stays for all of 1.x.",
+  "_comment": "Renamed public names of drupilot (alias layer, 1.x). env_aliases rows are {old, new, since, remove_in, note, when?}: old and new are variable names, or KEY=value to alias one value; when ({key, equals}) applies a row only while that key, resolved without aliases, equals the value (as text, case-insensitively). config_get resolves them (env, then .drupilot.json) and warns once per process. value_aliases rows are {kind, scope, old, new, since, remove_in, note}: kind value (an old value of the setting or choice named by scope, normalized on read by value_alias_normalize: choice.sh, choose_one, the strategy readers), field (a JSON field of the artifact named by scope, emitted beside the new one) or flag (a command-line flag of the script named by scope, accepted beside the new one). For T=11 every emitted or persisted value stays in the 0.9 vocabulary (CC-07). removed is read by its owners. The version gate checks every row. Every alias stays for all of 1.x.",
   "schema": 1,
-  "env_aliases": [],
-  "value_aliases": [],
+  "env_aliases": [
+    {
+      "old": "DRUPILOT_KEEP_D10=true",
+      "new": "DRUPILOT_CORE_TARGET_STRATEGY=keep-previous",
+      "since": "1.0.0",
+      "remove_in": "2.0.0",
+      "note": "DRUPILOT_KEEP_D10=true (the 0.9 boolean) keeps the previous major; honored only while the strategy is auto, an explicit strategy wins, as in 0.9 (T-M3-07).",
+      "when": {
+        "key": "DRUPILOT_CORE_TARGET_STRATEGY",
+        "equals": "auto"
+      }
+    },
+    {
+      "old": "DRUPILOT_KEEP_D10=1",
+      "new": "DRUPILOT_CORE_TARGET_STRATEGY=keep-previous",
+      "since": "1.0.0",
+      "remove_in": "2.0.0",
+      "note": "DRUPILOT_KEEP_D10=true (the 0.9 boolean) keeps the previous major; honored only while the strategy is auto, an explicit strategy wins, as in 0.9 (T-M3-07).",
+      "when": {
+        "key": "DRUPILOT_CORE_TARGET_STRATEGY",
+        "equals": "auto"
+      }
+    },
+    {
+      "old": "DRUPILOT_KEEP_D10=yes",
+      "new": "DRUPILOT_CORE_TARGET_STRATEGY=keep-previous",
+      "since": "1.0.0",
+      "remove_in": "2.0.0",
+      "note": "DRUPILOT_KEEP_D10=true (the 0.9 boolean) keeps the previous major; honored only while the strategy is auto, an explicit strategy wins, as in 0.9 (T-M3-07).",
+      "when": {
+        "key": "DRUPILOT_CORE_TARGET_STRATEGY",
+        "equals": "auto"
+      }
+    },
+    {
+      "old": "DRUPILOT_KEEP_D10=on",
+      "new": "DRUPILOT_CORE_TARGET_STRATEGY=keep-previous",
+      "since": "1.0.0",
+      "remove_in": "2.0.0",
+      "note": "DRUPILOT_KEEP_D10=true (the 0.9 boolean) keeps the previous major; honored only while the strategy is auto, an explicit strategy wins, as in 0.9 (T-M3-07).",
+      "when": {
+        "key": "DRUPILOT_CORE_TARGET_STRATEGY",
+        "equals": "auto"
+      }
+    },
+    {
+      "old": "DRUPILOT_KEEP_D10=false",
+      "new": "DRUPILOT_CORE_TARGET_STRATEGY=target-only",
+      "since": "1.0.0",
+      "remove_in": "2.0.0",
+      "note": "DRUPILOT_KEEP_D10=false (the 0.9 boolean) declares the target major only; honored only while the strategy is auto, an explicit strategy wins, as in 0.9 (T-M3-07).",
+      "when": {
+        "key": "DRUPILOT_CORE_TARGET_STRATEGY",
+        "equals": "auto"
+      }
+    },
+    {
+      "old": "DRUPILOT_KEEP_D10=0",
+      "new": "DRUPILOT_CORE_TARGET_STRATEGY=target-only",
+      "since": "1.0.0",
+      "remove_in": "2.0.0",
+      "note": "DRUPILOT_KEEP_D10=false (the 0.9 boolean) declares the target major only; honored only while the strategy is auto, an explicit strategy wins, as in 0.9 (T-M3-07).",
+      "when": {
+        "key": "DRUPILOT_CORE_TARGET_STRATEGY",
+        "equals": "auto"
+      }
+    },
+    {
+      "old": "DRUPILOT_KEEP_D10=no",
+      "new": "DRUPILOT_CORE_TARGET_STRATEGY=target-only",
+      "since": "1.0.0",
+      "remove_in": "2.0.0",
+      "note": "DRUPILOT_KEEP_D10=false (the 0.9 boolean) declares the target major only; honored only while the strategy is auto, an explicit strategy wins, as in 0.9 (T-M3-07).",
+      "when": {
+        "key": "DRUPILOT_CORE_TARGET_STRATEGY",
+        "equals": "auto"
+      }
+    },
+    {
+      "old": "DRUPILOT_KEEP_D10=off",
+      "new": "DRUPILOT_CORE_TARGET_STRATEGY=target-only",
+      "since": "1.0.0",
+      "remove_in": "2.0.0",
+      "note": "DRUPILOT_KEEP_D10=false (the 0.9 boolean) declares the target major only; honored only while the strategy is auto, an explicit strategy wins, as in 0.9 (T-M3-07).",
+      "when": {
+        "key": "DRUPILOT_CORE_TARGET_STRATEGY",
+        "equals": "auto"
+      }
+    }
+  ],
+  "value_aliases": [
+    {
+      "kind": "value",
+      "scope": "DRUPILOT_CORE_TARGET_STRATEGY",
+      "old": "d11-only",
+      "new": "target-only",
+      "since": "1.0.0",
+      "remove_in": "2.0.0",
+      "note": "The strategy that declares the target major only. For T=11 it is still what drupilot emits and persists (CC-07)."
+    },
+    {
+      "kind": "value",
+      "scope": "DRUPILOT_CORE_TARGET_STRATEGY",
+      "old": "keep-d10",
+      "new": "keep-previous",
+      "since": "1.0.0",
+      "remove_in": "2.0.0",
+      "note": "The strategy that keeps the previous major. For T=11 it is still what drupilot emits and persists (CC-07)."
+    },
+    {
+      "kind": "field",
+      "scope": "port-summary --json",
+      "old": "d10_support",
+      "new": "prev_major_support",
+      "since": "1.0.0",
+      "remove_in": "2.0.0",
+      "note": "Emitted beside d10_support by port-summary v2 (AR-28, M9); v1 (--schema 1) keeps its exact shape."
+    },
+    {
+      "kind": "flag",
+      "scope": "scripts/contrib/make-issue.sh",
+      "old": "--d10-unverified",
+      "new": "--prev-major-unverified",
+      "since": "1.0.0",
+      "remove_in": "2.0.0",
+      "note": "Both flags append the same 'verify the previous major' item (CC-11)."
+    }
+  ],
   "removed": []
 }

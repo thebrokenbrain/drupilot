@@ -28,7 +28,7 @@
 #                 [--patch-name FILE] [--kind mr|patch]
 #                 [--title T] [--summary T]
 #                 [--problem T] [--resolution T] [--remaining T]
-#                 [--d10-unverified] [--core-matrix FILE]
+#                 [--prev-major-unverified] [--core-matrix FILE]
 #                 [--output DIR] [--json]
 #
 #   --project      drupal.org project machine name. Auto-detected from --subject.
@@ -48,7 +48,9 @@
 #   --problem      Problem/Motivation prose (default: a generic port rationale).
 #   --resolution   Proposed resolution prose (default: the minimal-port steps).
 #   --remaining    Remaining tasks prose (default: review/test/merge/credit).
-#   --d10-unverified  append a "verify Drupal 10 compatibility" item to Remaining
+#   --prev-major-unverified (alias --d10-unverified, the 0.9 name, kept for
+#                  all of 1.x: config/migrations.json value_aliases)
+#                  append a "verify Drupal 10 compatibility" item to Remaining
 #                  tasks (use when keeping '^10 || ^11' without verifying it).
 #                  When a FRESH core-matrix result (verify-core-matrix.sh, same
 #                  subject sources) says Drupal 10 is verified-static, the item
@@ -128,7 +130,7 @@ while [[ $# -gt 0 ]]; do
     --resolution=*) RESOLUTION="${1#*=}"; shift;;
     --remaining) REMAINING="${2:-}"; shift 2;;
     --remaining=*) REMAINING="${1#*=}"; shift;;
-    --d10-unverified) D10_UNVERIFIED=1; shift;;
+    --prev-major-unverified|--d10-unverified) D10_UNVERIFIED=1; shift;;
     --core-matrix) CORE_MATRIX="${2:-}"; shift 2;;
     --core-matrix=*) CORE_MATRIX="${1#*=}"; shift;;
     --output) OUTPUT="${2:-}"; shift 2;;

@@ -71,6 +71,7 @@ nav:
       - reference/skills-and-agents.md
       - reference/toolchain.md
       - reference/deprecations.md
+      - reference/deprecations-of-drupilot.md
       - reference/version-matrix.md
       - reference/state.md
   - Contributing:

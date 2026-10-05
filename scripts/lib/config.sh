@@ -255,7 +255,110 @@ req_version() { config_json ".requirements.${1}" "${2:-}"; }
 # PHP / Drupal target resolution
 # ---------------------------------------------------------------------------
 resolve_php_target()    { config_get DRUPILOT_PHP_TARGET "8.3"; }
-resolve_drupal_target() { config_get DRUPILOT_DRUPAL_TARGET "^11"; }
+# resolve_drupal_target -> the core constraint of the test-bed's Drupal
+# (DRUPILOT_DRUPAL_TARGET, default ^11). Without one set, an explicit
+# DRUPILOT_TARGET_MAJOR gives ^T (X12).
+resolve_drupal_target() {
+  local v t
+  v="$(config_get_explicit DRUPILOT_DRUPAL_TARGET)"
+  if [[ -z "$v" ]]; then
+    t="$(config_get_explicit DRUPILOT_TARGET_MAJOR)"
+    if [[ "$t" =~ ^[1-9][0-9]*$ ]]; then v="^$t"; else v="$(config_get DRUPILOT_DRUPAL_TARGET "^11")"; fi
+  fi
+  printf '%s' "$v"
+}
+
+# drupal_target_major CONSTRAINT -> N when CONSTRAINT is a bare ^N (X12: it
+# names the target major); nothing otherwise (another constraint is an
+# explicit declared range).
+drupal_target_major() {
+  local c re='^\^([1-9][0-9]*)$'
+  c="$(printf '%s' "${1:-}" | tr -d " \"'")"
+  if [[ "$c" =~ $re ]]; then printf '%s' "${BASH_REMATCH[1]}"; fi
+  return 0
+}
+
+# drupal_target_range -> an explicit DRUPILOT_DRUPAL_TARGET that is not a bare
+# ^N (e.g. "^10.3 || ^11"): the declared range it overrides (strategy
+# explicit, X12); nothing otherwise.
+drupal_target_range() {
+  local v
+  v="$(config_get_explicit DRUPILOT_DRUPAL_TARGET)"
+  if [[ -n "$v" && -z "$(drupal_target_major "$v")" ]]; then printf '%s' "$v"; fi
+  return 0
+}
+
+# config_get_noalias KEY [default] -> config_get without the alias layer: env,
+# .drupilot.json, config/defaults.json, default. For a reader that keeps a 0.9
+# legacy path of its own (the KEEP_D10 boolean in strategy_decide) and must
+# tell it from the new name.
+config_get_noalias() { _config_resolve "$1" "${2:-}" 0; }
+
+# value_alias_normalize SCOPE VALUE -> _DRUPILOT_VALUE_ALIAS: VALUE, or the new
+# value a migrations.json value_aliases row (kind value, scope SCOPE: a
+# setting such as DRUPILOT_CORE_TARGET_STRATEGY) gives an old one (compared
+# case-insensitively), warning once per process. Called in the main shell (no
+# command substitution), so the warning mark is kept. Always returns 0.
+value_alias_normalize() {
+  local scope="${1:-}" v="${2:-}" i=0
+  _DRUPILOT_VALUE_ALIAS="$v"
+  [[ -n "$v" ]] || return 0
+  _value_alias_load
+  while [[ "$i" -lt "$_DRUPILOT_VALUE_ALIAS_N" ]]; do
+    if [[ "${_DV_SCOPE[i]}" == "$scope" && "$(lc "${_DV_OLD[i]}")" == "$(lc "$v")" ]]; then
+      _DRUPILOT_VALUE_ALIAS="${_DV_NEW[i]}"
+      case "$_DRUPILOT_ALIAS_WARNED" in
+        *"|v$i|"*) ;;
+        *) _DRUPILOT_ALIAS_WARNED="${_DRUPILOT_ALIAS_WARNED}v$i|"
+           log_warn "$scope=${_DV_OLD[i]} is deprecated since ${_DV_SINCE[i]:-1.0.0} and will be removed in ${_DV_RIN[i]:-2.0.0}; use $scope=${_DV_NEW[i]}";;
+      esac
+      return 0
+    fi
+    i=$((i + 1))
+  done
+  return 0
+}
+
+# value_alias_legacy SCOPE VALUE -> the old value a value_aliases row of SCOPE
+# renamed to VALUE (VALUE itself when none did): the 0.9 vocabulary drupilot
+# still emits and persists for T=11 (CC-07). Prints it; never warns.
+value_alias_legacy() {
+  local scope="${1:-}" v="${2:-}" i=0
+  _value_alias_load
+  while [[ "$i" -lt "$_DRUPILOT_VALUE_ALIAS_N" ]]; do
+    if [[ "${_DV_SCOPE[i]}" == "$scope" && "$(lc "${_DV_NEW[i]}")" == "$(lc "$v")" ]]; then
+      printf '%s\n' "${_DV_OLD[i]}"; return 0
+    fi
+    i=$((i + 1))
+  done
+  printf '%s\n' "$v"
+  return 0
+}
+
+# _value_alias_load -> the kind-value rows of migrations.json value_aliases in
+# parallel arrays (_DV_SCOPE, _DV_OLD, _DV_NEW, _DV_SINCE, _DV_RIN), once per
+# process (-1 = not loaded yet).
+_DRUPILOT_VALUE_ALIAS_N=-1
+_DRUPILOT_VALUE_ALIAS=""
+_value_alias_load() {
+  local f a b c d e z sep
+  [[ "$_DRUPILOT_VALUE_ALIAS_N" -lt 0 ]] || return 0
+  _DRUPILOT_VALUE_ALIAS_N=0
+  f="$(plugin_root)/config/migrations.json"
+  [[ -r "$f" ]] && have_cmd jq || return 0
+  sep="$(printf '\037')"
+  # shellcheck disable=SC2034  # z is only the sentinel
+  while IFS="$sep" read -r a b c d e z; do
+    [[ -n "$a" && -n "$b" && -n "$c" ]] || continue
+    _DV_SCOPE[_DRUPILOT_VALUE_ALIAS_N]="$a"; _DV_OLD[_DRUPILOT_VALUE_ALIAS_N]="$b"
+    _DV_NEW[_DRUPILOT_VALUE_ALIAS_N]="$c"; _DV_SINCE[_DRUPILOT_VALUE_ALIAS_N]="$d"
+    _DV_RIN[_DRUPILOT_VALUE_ALIAS_N]="$e"
+    _DRUPILOT_VALUE_ALIAS_N=$((_DRUPILOT_VALUE_ALIAS_N + 1))
+  done < <(jq -r '.value_aliases[]? | select(type == "object" and .kind == "value")
+             | [(.scope // "" | tostring), (.old // "" | tostring), (.new // "" | tostring),
+                (.since // "" | tostring), (.remove_in // "" | tostring), "."] | join("\u001f")' "$f" 2>/dev/null || true)
+  return 0
+}
 
 # config_get_explicit KEY -> the value a developer set: the env tier, the
 # .drupilot.json tier and their aliases, never config/defaults.json (so a
@@ -264,8 +367,23 @@ resolve_drupal_target() { config_get DRUPILOT_DRUPAL_TARGET "^11"; }
 config_get_explicit() { _config_resolve "$1" "" 1 1; }
 
 # resolve_target_major -> T, the target Drupal major (DRUPILOT_TARGET_MAJOR,
-# default 11 for all of 1.0.x, OD-10).
-resolve_target_major() { config_get DRUPILOT_TARGET_MAJOR "11"; }
+# default 11 for all of 1.0.x, OD-10). Without it set, an explicit
+# DRUPILOT_DRUPAL_TARGET names it: ^N -> N, another constraint -> its highest
+# major (X12).
+resolve_target_major() {
+  local t c
+  t="$(config_get_explicit DRUPILOT_TARGET_MAJOR)"
+  if [[ -z "$t" ]]; then
+    # X12: a bare ^N in DRUPILOT_DRUPAL_TARGET names the target major; the
+    # highest major of any other explicit constraint does.
+    c="$(config_get_explicit DRUPILOT_DRUPAL_TARGET)"
+    if [[ -n "$c" ]]; then
+      t="$(drupal_target_major "$c")"
+      [[ -n "$t" ]] || t="$(printf '%s\n' "$c" | tr -c '0-9.\n' ' ' | tr ' ' '\n' | sed -n 's/^\([1-9][0-9]*\).*/\1/p' | sort -n | sed -n '$p')"
+    fi
+  fi
+  printf '%s' "${t:-$(config_get DRUPILOT_TARGET_MAJOR "11")}"
+}
 
 # resolve_php_target_for T -> P for target major T: an explicit
 # DRUPILOT_PHP_TARGET (env or .drupilot.json), else the target's

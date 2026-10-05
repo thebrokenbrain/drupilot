@@ -5,6 +5,11 @@
       "snapshot": "choices.json",
       "sha256": "ed54d577757893d1f1d30631f1a5d396e24038cdd892a04d89df337f35f3fd81",
       "reason": "T-M3-15: the TARGET_MAJOR tab (/drupilot-setup, options 11 and 12, default 11) is added before PHP_TARGET, and both carry stage plan-draft; every 0.9 choice keeps its header, options and default (CHANGELOG Unreleased Added)."
+    },
+    {
+      "snapshot": "enums.json",
+      "sha256": "059e40ef59d65db7aa930e7752310f15c8c9be650c4057128130c085663b6426",
+      "reason": "T-M3-07 (CC-07): preflight.sh's strategy check also accepts the 1.0 names target-only, keep-previous and widest (read as d11-only, keep-d10 and, for Drupal 11, keep-d10); every 0.9 input value is still accepted, and the resolved and emitted values are unchanged (CHANGELOG Unreleased Deprecated)."
     }
   ]
 }

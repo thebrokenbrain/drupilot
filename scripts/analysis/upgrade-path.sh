@@ -54,11 +54,15 @@
 #   --subject DIR    The module/theme directory (default: the current one).
 #   --phase P        draft (default: static signals, before a test-bed) or
 #                    final (also the analyzer signal: --phpstan).
-#   --target N       T (default DRUPILOT_TARGET_MAJOR, 11).
+#   --target N       T (default DRUPILOT_TARGET_MAJOR, else the major an
+#                    explicit DRUPILOT_DRUPAL_TARGET names, else 11; X12).
 #   --php X.Y        P (default as above).
 #   --strategy S     The compat strategy (default
 #                    DRUPILOT_CORE_TARGET_STRATEGY, auto).
 #   --range C        An explicit declared range (implies --strategy explicit).
+#                    Without --range or --strategy, an explicit
+#                    DRUPILOT_DRUPAL_TARGET other than a bare ^N is one too,
+#                    unless DRUPILOT_CORE_TARGET_STRATEGY is set (X12).
 #   --root DIR       The Drupal root whose lock names the bed core, whose
 #                    drupal-rector names the Rector sets and whose
 #                    .drupilot.json holds the persisted choices (default: the
@@ -193,6 +197,18 @@ if [[ -z "$PHP" ]]; then
   if [[ -z "$PHP" ]]; then PHP_EXPLICIT=0; PHP="$(resolve_php_target_for "$TARGET")"; fi
 fi
 [[ "$PHP" =~ ^[0-9]+\.[0-9]+$ ]] || die "Invalid PHP target '$PHP' (expected X.Y such as 8.3)." 1
+if [[ -z "$STRATEGY" && -z "$RANGE" ]]; then
+  # X12: an explicit DRUPILOT_DRUPAL_TARGET other than a bare ^N is a declared
+  # range override, unless a strategy is set explicitly too (it wins).
+  _dtr="$(drupal_target_range)"
+  if [[ -n "$_dtr" ]]; then
+    if [[ -n "$(config_get_explicit DRUPILOT_CORE_TARGET_STRATEGY)" ]]; then
+      log_warn "DRUPILOT_DRUPAL_TARGET='$_dtr' is not used as the declared range: DRUPILOT_CORE_TARGET_STRATEGY is set."
+    else
+      RANGE="$_dtr"; RANGE_SET=1
+    fi
+  fi
+fi
 if [[ -z "$STRATEGY" ]]; then
   if [[ -n "$RANGE" ]]; then STRATEGY="explicit"; else STRATEGY="$(config_get DRUPILOT_CORE_TARGET_STRATEGY auto)"; fi
 fi
