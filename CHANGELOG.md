@@ -24,6 +24,19 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     `^<major>`.
 
   With neither set, 0.9's `11` and `^11`.
+- **The target major names drupilot's outputs** (T-M3-08, CC-16, CC-17,
+  09-R10). For Drupal 11 every name is the 0.9 one, byte for byte:
+  - the patch description `port-to-drupal-<T>` (`<module>-port-to-drupal-<T>.patch`
+    and its issue-comment and `-repo.patch` forms);
+  - the issue-fork branch `<issue>-port-to-drupal-<T>`;
+  - a loose subject's test-bed `<name>-d<T>`;
+  - the DDEV project type (`config/targets/<T>.json` `.ddev_type`).
+
+  `resolve-workspace.sh --target N` names the test-bed for another major, and
+  a bed drupilot 0.9 named `-d11` is still found. The exclusion globs
+  (`make-patch.sh`, `git_local_exclude`, `origin-hygiene.sh`, the managed
+  `.gitignore` block) cover every target's patches as well as the 0.9 ones,
+  so an old patch left in a tree never leaks into a new one.
 - **`docs/reference/deprecations-of-drupilot.md`** lists every renamed setting,
   value, field and flag of drupilot (every `config/migrations.json` row; a unit
   test keeps the two in step). The `version` gate also checks the

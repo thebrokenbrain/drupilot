@@ -157,6 +157,11 @@ gen_names() {
   "${G[@]}" -C "$r" init -q && "${G[@]}" -C "$r" add -A && "${G[@]}" -C "$r" commit -qm base
   ws2="$("$SH" "$S/env/resolve-workspace.sh" --subject "$r/web/modules/custom/acme_core" --json 2>/dev/null < /dev/null | jq -r '.drupal_root // empty')"
   br="$(sed -n 's/.*NEW_BRANCH="\${BRANCH:-\$ISSUE-\([^"]*\)}".*/<issue>-\1/p' "$S/contrib/issue-fork.sh" | sed -n '1p')"
+  # A name derived from the target major (T-M3-08): its value for the default T.
+  case "$br" in
+    *'$(target_patch_desc)'*)
+      br="${br%%\$(target_patch_desc)*}$("$SH" -c '. "$1/scripts/lib/common.sh"; target_patch_desc' _ "$PR" 2>/dev/null < /dev/null)${br#*\$(target_patch_desc)}";;
+  esac
   jq -n --arg p1 "$(basename "$p1")" --arg p2 "$(basename "$p2")" --arg w1 "$(basename "$ws1")" \
         --arg w2 "$(basename "$ws2")" --arg br "$br" '
     {local_patch: ($p1 | sub("^legacy_widgets"; "<module>")),

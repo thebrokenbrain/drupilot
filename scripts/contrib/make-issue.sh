@@ -37,7 +37,8 @@
 #                  field (4.0.x -> 4.0.x-dev) and the comment's apply target.
 #   --issue        numeric issue id (for the tracking URL and the patch name).
 #   --comment      patch comment number, for the derived patch name (default 1).
-#   --description  patch description slug (default 'port-to-drupal-11').
+#   --description  patch description slug (default 'port-to-drupal-<T>', T the
+#                  target major: 'port-to-drupal-11' for Drupal 11).
 #   --patch-name   explicit patch filename to reference (overrides the derived).
 #   --kind         'mr' (default) or 'patch' — wording in the comment.
 #   --phase        'port' (default) or 'refactor' — drives the default Problem/
@@ -78,7 +79,7 @@ SUBJECT=""
 BASE=""
 ISSUE=""
 COMMENT="1"
-DESCRIPTION="port-to-drupal-11"
+DESCRIPTION=""
 PATCH_NAME=""
 KIND="mr"
 PHASE="port"
@@ -140,6 +141,12 @@ while [[ $# -gt 0 ]]; do
     *) log_warn "Unknown argument: $1"; shift;;
   esac
 done
+
+# The default description names the target major (port-to-drupal-11 for T 11).
+if [[ -z "$DESCRIPTION" ]]; then
+  _tr="$(find_drupal_root "${SUBJECT:-$PWD}" 2>/dev/null || true)"
+  DESCRIPTION="$(DRUPILOT_PROJECT_DIR="${DRUPILOT_PROJECT_DIR:-$_tr}" target_patch_desc)"
+fi
 
 # Resolve the project machine name from the subject dir when not given.
 DETECT_DIR="${SUBJECT:-$PWD}"

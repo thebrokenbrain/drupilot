@@ -160,7 +160,7 @@ fi
 
 if [[ -z "$CHECKED_OUT" ]]; then
   # New feature branch: ISSUEID-description (PROMPT 3.2 naming convention).
-  NEW_BRANCH="${BRANCH:-$ISSUE-port-to-drupal-11}"
+  NEW_BRANCH="${BRANCH:-$ISSUE-$(target_patch_desc)}"
   if local_branch_exists "$NEW_BRANCH"; then
     git checkout "$NEW_BRANCH" >&2
     log_ok "Switched to existing branch '$NEW_BRANCH'."
