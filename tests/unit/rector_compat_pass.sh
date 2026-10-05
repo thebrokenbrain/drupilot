@@ -6,7 +6,8 @@
 # official-pass crash (but keeps the record of what the official pass
 # applied), holds its --apply to its dry-run, and keeps rector.php at the floor
 # of the declared range. Docker-free: stub php/composer and a stub
-# vendor/bin/rector that logs its arguments; synthetic version data.
+# vendor/bin/rector that logs its arguments; synthetic version data. The
+# rule record keeps its time and subject under "meta" (AR-13).
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
 # shellcheck source=../../scripts/lib/common.sh
@@ -115,6 +116,10 @@ rm -f "$RULES_REC"
 ra 'official-changes compat-crash' --apply
 assert_eq "a compat crash on --apply keeps the official pass's rule record" \
   "$T_RC|$(jq -c '.rule_hits.official' "$RULES_REC" 2> /dev/null)" '3|{"FunctionFirstClassCallableRector":1}'
+assert_eq "... its time and subject only under meta (AR-13)" \
+  "$(jq -c '[(del(.meta) | [.. | strings | select(test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T"))] | length), has("generated_at"), has("subject"),
+     (.meta.generated_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T")), (.meta.subject | type)]' "$RULES_REC" 2> /dev/null)" \
+  '[0,false,false,true,"string"]'
 
 # Pass 1 announced a change its --apply did not make: nothing was ported, so
 # no rule record is written, whatever the compat pass changed.

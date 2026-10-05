@@ -199,10 +199,13 @@ PORTED="false"; phase_reached "$SUBJECT" ported && PORTED="true"
 REFACTORED="false"; phase_reached "$SUBJECT" refactored && REFACTORED="true"
 
 # Test outcome / preservation verdict from the persisted record.
-TESTS="unknown"; PRESERVATION="unknown"
+TESTS="unknown"; PRESERVATION="unknown"; TESTS_FRESH="unknown"
 if [[ -f "$STATE_DIR/last-test.json" ]] && have_cmd jq; then
   TESTS="$(jq -r '.status // "unknown"' "$STATE_DIR/last-test.json" 2>/dev/null || echo unknown)"
   PRESERVATION="$(jq -r '.preservation // "unknown"' "$STATE_DIR/last-test.json" 2>/dev/null || echo unknown)"
+  # A green run recorded on other sources (or by drupilot 0.9, whose digest is
+  # of another algorithm) is no current proof: the suite runs again.
+  TESTS_FRESH="$(digest_freshness "$SUBJECT" "$STATE_DIR/last-test.json")"
 fi
 
 # Did the developer opt into the Phase 2 refactor? (pref / env, default false.)
@@ -244,6 +247,13 @@ elif [[ "$TESTS" == "failed" ]]; then
 elif [[ "$TESTS" == "unknown" ]]; then
   NEXT="test"; CMD="/drupilot-test"
   REASON="Ported but the suite has not been run on Drupal 11 yet — run it to confirm behavior is preserved."
+elif [[ "$TESTS_FRESH" == "false "* ]]; then
+  NEXT="test"; CMD="/drupilot-test"
+  if [[ "$TESTS_FRESH" == "false digest-algorithm" ]]; then
+    REASON="The last test run was recorded by an older drupilot, which cannot tell whether the code changed since — run the suite again to confirm behavior is preserved."
+  else
+    REASON="The code changed since the last test run — run the suite again to confirm behavior is preserved."
+  fi
 else
   # Tests ran (passed / none-run). Be honest about the preservation verdict: a
   # 'none-run' (no tests) or 'blocked' result is NOT green, so never call it that.

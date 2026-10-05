@@ -346,6 +346,17 @@
       "description": "`off` (default), or a comma-separated list of `drupal/<project>` packages whose `drupal/core` constraint does not admit the test-bed's core yet: `install-toolchain.sh` installs `mglaman/composer-drupal-lenient` and adds them to the bed's `extra.drupal-lenient.allowed-list`, on a test-bed drupilot built only. The list in effect is kept in the lock (`.lenient_packages`), in `last-test.json` (`lenient`) and in the port report; it never changes the preservation verdict.",
       "see": "concepts/determinism-lockfile.md"
     },
+    "DRUPILOT_LOCK_LOCATION": {
+      "type": "enum",
+      "enum": [
+        "state",
+        "project"
+      ],
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_LOCK_LOCATION",
+      "description": "Where the Drupal root's `drupilot-lock.json` lives: `state` (default) in drupilot's hidden state dir; `project` at `<root>/drupilot-lock.json`, committable (drupilot's managed ignore block leaves it out), so a team shares the frozen core, toolchain and upgrade plan. `project` applies only to your own Drupal root with an installed core; a test-bed drupilot built (or will build) for a loose module, or a module repo carrying its own core, keeps `state`, with a warning. The lock moves at the next write.",
+      "see": "concepts/determinism-lockfile.md"
+    },
     "DRUPILOT_CORE_CACHE": {
       "type": "enum",
       "enum": [

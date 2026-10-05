@@ -410,7 +410,7 @@ toolchain_cell_for() {
     [[ -n "$major" ]] && core_cell="$(target_get "$major" .toolchain_cell)"
   fi
   if [[ -n "$r" && -z "${2:-}" ]] && have_cmd jq; then
-    lf="$(project_state_path "$r")/drupilot-lock.json"
+    lf="$(lock_path "$r")"
     if [[ -r "$lf" ]]; then
       c="$(jq -r 'if (.toolchain_cell // "") != "" then .toolchain_cell
                   elif (.schema // 0) == 0 and ((.toolchain // {})["rector/rector"] // "") != "" then "legacy_v1"
