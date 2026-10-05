@@ -1418,9 +1418,13 @@ default true) a plan frozen for the same subject is reused, printed as it
 was frozen and with nothing written, when its phase is at least the
 requested one and the requested T, P, strategy, explicit range and
 pre-release opt-in are its own; anything else resolves afresh (a change of
-the version data does not). A final plan over a frozen one may only add
-hops or raise F: changing T, P, the toolchain cell or the bed core's minor
-is refused as final-changes-frozen.
+the version data does not). A value nobody asked for again stays the
+frozen one: a P that is the data's default, the bed core while the lock
+records none, the toolchain cell; a lock that records another core for the
+test-bed re-plans. A final plan may only add hops or raise F over a frozen
+draft, and never change T, P, the toolchain cell or the bed core's minor
+of a frozen plan (final-changes-frozen); with DRUPILOT_DETERMINISTIC=false
+it re-resolves without that guard.
 
 Vocabulary (AR-01):
   S              source era: the oldest Drupal major whose APIs the code

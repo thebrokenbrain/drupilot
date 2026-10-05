@@ -563,9 +563,10 @@ plan_ci_flags() {
 # more majors while its strategy is not explicit and it does not keep the
 # current declaration), and, with a FROZEN plan (a final plan over the one
 # frozen in the lock, ADR 0018), final-changes-frozen for each frozen value
-# it changes: T, P, the toolchain cell, the bed core's minor, a hop dropped,
-# or F lowered (the final plan may only add hops and raise F); each names
-# its `field`. Returns 2 when any is violated, 1 when PLAN is not an object.
+# it changes: T, P, the toolchain cell, the bed core's minor, and over a
+# frozen draft only, a hop dropped or F lowered (the final plan may only add
+# hops and raise F; a lowered F also names the `frozen_strategy`); each
+# names its `field`. Returns 2 when any is violated, 1 when PLAN is not an object.
 # Nothing is fixed: the caller refuses (upgrade-path.sh exits 2).
 plan_assert() {
   local plan="${1:-}" frozen="${2:-}" t="" s="" l="" p="" st="" pv="" b="" c="" strat="" rs="" m x w n ans all bm
@@ -644,15 +645,20 @@ _plan_frozen_changes() {
     (if $p.php.final != $f.php.final then ch("php.final"; $f.php.final; $p.php.final; "PHP target") else empty end),
     (if $p.toolchain_cell != $f.toolchain_cell then ch("toolchain_cell"; $f.toolchain_cell; $p.toolchain_cell; "toolchain cell") else empty end),
     (if ($p.target.bed_core | minor) != ($f.target.bed_core | minor) then ch("target.bed_core"; $f.target.bed_core; $p.target.bed_core; "test-bed core") else empty end),
-    (($f.hops // []) - ($p.hops // [])) as $lost
-      | (if ($lost | length) > 0 then ch("hops"; ($f.hops | join(" ")); ($p.hops | join(" ")); "hops (\($lost | join(", ")) dropped)") else empty end)' \
+    if $f.meta.phase != "draft" then empty
+    else (($f.hops // []) - ($p.hops // [])) as $lost
+      | (if ($lost | length) > 0 then ch("hops"; ($f.hops | join(" ")); ($p.hops | join(" ")); "hops (\($lost | join(", ")) dropped)") else empty end) end' \
     2> /dev/null || true
+  # Hops and F are bounded by the setup's draft only; a final plan may
+  # re-resolve over another final one.
+  [[ "$(printf '%s' "$frozen" | jq -r '.meta.phase // ""' 2> /dev/null || true)" == "draft" ]] || return 0
   f0="$(printf '%s' "$frozen" | jq -r '.range.floor // empty' 2> /dev/null || true)"
   f1="$(printf '%s' "$plan" | jq -r '.range.floor // empty' 2> /dev/null || true)"
   if [[ -n "$f0" && -n "$f1" ]]; then
     core_version_cmp "$f1" "$f0" || rc=$?
     [[ "$rc" != "1" ]] || jq -n -c --arg o "$f0" --arg n "$f1" \
-      '{id: "final-changes-frozen", field: "range.floor", frozen: $o, value: $n,
+      --arg st "$(printf '%s' "$frozen" | jq -r '.range.strategy // ""' 2> /dev/null || true)" \
+      '{id: "final-changes-frozen", field: "range.floor", frozen: $o, value: $n, frozen_strategy: $st,
         detail: "the final plan lowers the frozen core floor (\($o) -> \($n)): F may only rise"}'
   fi
   return 0
@@ -698,7 +704,8 @@ plan_get() {
   [[ -n "$p" ]] && have_cmd jq || return 1
   f="$(lock_path "${2:-${DRUPILOT_PROJECT_DIR:-$PWD}}")"
   [[ -r "$f" ]] || return 1
-  jq -e '.upgrade_plan | type == "object"' "$f" > /dev/null 2>&1 || return 1
+  # -s: an empty lock is no plan (jq 1.6's -e exits 0 on no input at all).
+  jq -e -s 'length == 1 and (.[0].upgrade_plan | type == "object")' "$f" > /dev/null 2>&1 || return 1
   jq -r ".upgrade_plan | ($p) | select(. != null) | if type == \"string\" then . else tojson end" "$f" 2> /dev/null || return 1
   return 0
 }
