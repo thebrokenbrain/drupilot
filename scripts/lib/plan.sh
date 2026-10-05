@@ -51,6 +51,15 @@
 #                                11.x) stands for the whole branch, so
 #                                12.0.0-beta1 == 12.0. Never version_ge, which
 #                                drops the suffix of both sides.
+#
+# The upgrade-plan building blocks (AR-04/AR-06), each documented where it is
+# defined: target_minors, target_released_minor, target_prerelease_minor,
+# core_range_minors, range_majors, plan_target_block, plan_hops,
+# plan_detectors, rector_sets_for_plan, plan_rector_skip, plan_rector_bc,
+# php_rector_level, plan_php_block, plan_test_matrix, plan_ci_flags,
+# plan_assert and version_data_hash. scripts/analysis/upgrade-path.sh
+# assembles the plan from them; they never write and never refuse on their
+# own (plan_assert lists, the resolver refuses).
 # =============================================================================
 
 version_data_dir() {
@@ -200,5 +209,419 @@ EOF
   printf '%s' "$all" | jq -R -r 'def k: split(".") | map(tonumber);
     split(" ") | map(select(length > 0)) | unique_by(k) | sort_by(k)
     | if length == 0 then empty else "\(.[0]) \(.[-1])" end' 2> /dev/null || true
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# Upgrade-plan building blocks (AR-04/AR-06; read by
+# scripts/analysis/upgrade-path.sh). Pure: data in, JSON or words out.
+# ---------------------------------------------------------------------------
+
+# The lowest core a drupal-rector backwards-compatible rewrite can run on:
+# Drupal\Component\Utility\DeprecationHelper is absent at tag 10.1.0 and
+# present at 10.1.3 (git.drupalcode.org core source by tag, 03-F-D6).
+PLAN_BC_MIN_CORE="10.1.3"
+
+# target_minors MAJOR [all|released|prerelease] -> the verified minors of
+# targets/MAJOR.json, ascending, one per line: all of them, those with a
+# release date, or those without one (a pre-release: 12.0 while 12.0.0 is not
+# out).
+target_minors() {
+  local sel='.value.verified == true'
+  case "${2:-all}" in
+    released) sel="$sel and .value.released != null";;
+    prerelease) sel="$sel and .value.released == null";;
+  esac
+  [[ "${1:-}" =~ ^[0-9]+$ ]] || return 0
+  target_get "$1" "[(.minors // {}) | to_entries[] | select($sel) | .key] | sort_by(split(\".\") | map(tonumber)) | .[]"
+  return 0
+}
+
+# target_released_minor MAJOR -> the newest released verified minor (11 ->
+# 11.4); target_prerelease_minor MAJOR -> the newest verified minor with no
+# release yet (12 -> 12.0). Nothing when there is none.
+target_released_minor() { target_minors "${1:-}" released | tail -n 1; return 0; }
+target_prerelease_minor() { target_minors "${1:-}" prerelease | tail -n 1; return 0; }
+
+# core_range_minors CONSTRAINT MAXMAJOR [all|released] -> the verified minors
+# of every targets/<N>.json with N <= MAXMAJOR that CONSTRAINT admits,
+# ascending (core_requirement_minors). A major with no data file is unknown,
+# so none of its minors is listed.
+core_range_minors() {
+  local c="${1:-}" max="${2:-}" dir f n majors=""
+  [[ -n "$c" && "$max" =~ ^[0-9]+$ ]] || return 0
+  dir="$(version_data_dir)/targets"
+  for f in "$dir"/*.json; do
+    [[ -r "$f" ]] || continue
+    n="${f##*/}"; n="${n%.json}"
+    [[ "$n" =~ ^[0-9]+$ ]] && (( n <= max )) && majors="$majors $n"
+  done
+  for n in $(printf '%s\n' $majors | LC_ALL=C sort -n); do
+    target_minors "$n" "${3:-all}"
+  done | core_requirement_minors "$c"
+  return 0
+}
+
+# range_majors CONSTRAINT -> the majors CONSTRAINT reaches, ascending,
+# space-separated: those its alternatives start at plus those of the data
+# minors it admits ('>=10.2 <11.1.2' -> "10 11"; '>=10' -> "10 11 12" with
+# the data for 10, 11 and 12).
+range_majors() {
+  local c="${1:-}"
+  [[ -n "$c" ]] || return 0
+  { core_requirement_majors "$c" | tr ' ' '\n'; core_range_minors "$c" 999 | cut -d. -f1; } \
+    | awk 'NF { seen[$1 + 0] = 1 } END { out = ""; for (m = 0; m <= 999; m++) if (m in seen) out = out (out == "" ? "" : " ") m; printf "%s", out }'
+  return 0
+}
+
+# _plan_issue ID DETAIL -> {"id": ID, "detail": DETAIL} as one JSON line: a
+# refusal of plan_target_block or a violation of plan_assert.
+_plan_issue() { jq -n -c --arg i "$1" --arg d "$2" '{id: $i, detail: $d}'; return 0; }
+
+# plan_target_block T ALLOW_PRERELEASE [LOCK_CORE] -> the plan's target, one
+# JSON line: {major, status, preview, bed_core, ddev_type, m, toolchain_cell}.
+# M is the newest released minor of T, or the pre-release minor when T is a
+# pre-release (then ALLOW_PRERELEASE must be true: preview). bed_core is
+# LOCK_CORE (a leading "v" dropped) when it is a version of T, else the data's
+# .minors[M].latest. Returns 2 with the refusal on stdout when T is no
+# port target (no targets/T.json, no toolchain cell, no verified minor:
+# id "invalid-target") or a pre-release T is not opted in
+# ("prerelease-not-opted-in"); the refusal is {id, detail}.
+plan_target_block() {
+  local t="${1:-}" allow="${2:-false}" lock="${3:-}" f status cell ddev m bed preview=false
+  have_cmd jq || return 1
+  if ! [[ "$t" =~ ^[0-9]+$ ]]; then
+    _plan_issue invalid-target "'$t' is not a Drupal major version"; return 2
+  fi
+  f="$(version_data_dir)/targets/$t.json"
+  cell="$(target_get "$t" '.toolchain_cell')"
+  if [[ ! -r "$f" || -z "$cell" ]]; then
+    _plan_issue invalid-target "Drupal $t is not a port target drupilot has data for (no toolchain cell in targets/$t.json)"; return 2
+  fi
+  status="$(target_get "$t" '.status')"
+  ddev="$(target_get "$t" '.ddev_type')"
+  if [[ "$status" == "pre-release" ]]; then
+    if [[ "$allow" != "true" ]]; then
+      _plan_issue prerelease-not-opted-in "Drupal $t is a pre-release: set DRUPILOT_ALLOW_PRERELEASE=true to port to it as a preview"; return 2
+    fi
+    preview=true; m="$(target_prerelease_minor "$t")"
+  else
+    m="$(target_released_minor "$t")"
+  fi
+  if [[ -z "$m" ]]; then
+    _plan_issue invalid-target "targets/$t.json holds no verified minor to build a test-bed on"; return 2
+  fi
+  lock="${lock#v}"
+  if [[ "$lock" =~ ^([0-9]+)\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ && "${BASH_REMATCH[1]}" == "$t" ]]; then
+    bed="$lock"
+  else
+    bed="$(target_get "$t" ".minors[\"$m\"].latest")"
+  fi
+  if [[ -z "$bed" ]]; then
+    _plan_issue invalid-target "targets/$t.json has no latest release for Drupal $m"; return 2
+  fi
+  jq -n -c --argjson t "$t" --arg s "$status" --argjson p "$preview" --arg b "$bed" --arg d "$ddev" \
+    --arg m "$m" --arg c "$cell" \
+    '{major: $t, status: $s, preview: $p, bed_core: $b, ddev_type: (if $d == "" then null else $d end), m: $m, toolchain_cell: $c}'
+  return 0
+}
+
+# plan_hops S T -> the upgrade-path edge ids (paths/graph.json) from source
+# major S to target major T, space-separated: from each major the edge that
+# reaches farthest without passing T (7 -> 12: "7-11 11-12"; 9 -> 11:
+# "9-10 10-11"). Nothing when S = T. Returns 2 when S > T or no edge chain
+# ends at T, 1 when S or T is not a major.
+plan_hops() {
+  local s="${1:-}" t="${2:-}" f r
+  [[ "$s" =~ ^[0-9]+$ && "$t" =~ ^[0-9]+$ ]] && have_cmd jq || return 1
+  (( s <= t )) || return 2
+  f="$(version_data_dir)/paths/graph.json"
+  [[ -r "$f" ]] || return 2
+  r="$(jq -r --argjson s "$s" --argjson t "$t" '
+    def route($c):
+      if $c == $t then []
+      else ([.edges[] | select(.from == $c and .to <= $t)] | max_by(.to)) as $e
+        | if $e == null then null
+          else route($e.to) as $r | if $r == null then null else [$e.id] + $r end end
+      end;
+    route($s) | if . == null then "-" else join(" ") end' "$f" 2> /dev/null || true)"
+  [[ -n "$r" && "$r" != "-" ]] || { [[ "$r" == "" && "$s" == "$t" ]] && return 0; return 2; }
+  printf '%s' "$r"
+  return 0
+}
+
+# plan_detectors HOP... -> the hard-break detectors of the hops' edges, one
+# JSON array in hop order without repeats ([] for no hop, or a hop with none).
+plan_detectors() {
+  local f
+  f="$(version_data_dir)/paths/graph.json"
+  [[ -r "$f" ]] && have_cmd jq || { printf '[]'; return 0; }
+  jq -c --arg h "$*" '($h | split(" ") | map(select(length > 0))) as $hs
+    | [$hs[] as $id | .edges[] | select(.id == $id) | (.detectors // [])[]]
+    | reduce .[] as $d ([]; if any(.[]; . == $d) then . else . + [$d] end)' "$f" 2> /dev/null || printf '[]'
+  return 0
+}
+
+# _plan_set_consts FAMILY [BED_ROOT] -> {source, consts}: the DRUPAL_* constant
+# names a drupal-rector set list declares. With BED_ROOT holding drupal-rector,
+# read from its src/Set/FAMILY.php (source "bed"; [] when the file is absent);
+# else from targets/<N>.json .rector_sets (N from DrupalNSetList, verified
+# only: source "data"); else {source: null, consts: []}.
+_plan_set_consts() {
+  local fam="${1:-}" root="${2:-}" f maj
+  if [[ -n "$root" && -d "$root/vendor/palantirnet/drupal-rector/src/Set" ]]; then
+    f="$root/vendor/palantirnet/drupal-rector/src/Set/$fam.php"
+    if [[ -r "$f" ]]; then
+      LC_ALL=C sed -n 's/^[[:space:]]*\(public[[:space:]][[:space:]]*\)\{0,1\}const[[:space:]][[:space:]]*\(DRUPAL_[0-9][0-9A-Z_]*\)[[:space:]]*=.*/\2/p' "$f" \
+        | jq -R -s -c '{source: "bed", consts: (split("\n") | map(select(length > 0)))}'
+    else
+      printf '{"source":"bed","consts":[]}'
+    fi
+    return 0
+  fi
+  maj="$(printf '%s' "$fam" | sed -n 's/^Drupal\([0-9][0-9]*\)SetList$/\1/p')"
+  f="$(version_data_dir)/targets/$maj.json"
+  if [[ -n "$maj" && -r "$f" ]] && jq -e '.rector_sets.verified == true' "$f" > /dev/null 2>&1; then
+    jq -c --arg fam "$fam" '{source: "data", consts: [((.rector_sets.own_major // []) + (.rector_sets.breaking // []))[]
+      | select(startswith($fam + "::")) | ltrimstr($fam + "::")]}' "$f"
+    return 0
+  fi
+  printf '{"source":null,"consts":[]}'
+  return 0
+}
+
+# rector_sets_for_plan HOPS F BED [BED_ROOT] -> the drupal-rector sets of the
+# plan's hops, one JSON line {drupal_sets, breaking_sets, sets_skipped}. HOPS
+# is plan_hops' list, F the floor of the declared range (MAJOR.MINOR), BED
+# the test-bed core. Each rector hop contributes its edge's set_family, per
+# minor only (DRUPAL_100, never the DRUPAL_10 aggregate), every minor up to
+# BED's (12.0.0-beta1 counts as 12.0); its DRUPAL_<N><m>_BREAKING sets only
+# when the edge declares breaking_sets, for m <= F's minor when F's major is
+# N and all of them when F's major is above N; its always_sets whatever BED.
+# Constants come from _plan_set_consts. sets_skipped lists {hop, family, set,
+# reason} for a family with no source (no-fallback-data: Drupal8/9SetList
+# without a bed), a family the installed drupal-rector lacks (missing-family)
+# and an always_set it does not declare (missing-constant).
+rector_sets_for_plan() {
+  local hops="${1:-}" floor="${2:-}" bed="${3:-}" root="${4:-}" graph edges fam fams="{}" c
+  [[ -n "$bed" ]] && have_cmd jq || return 1
+  graph="$(version_data_dir)/paths/graph.json"
+  [[ -r "$graph" ]] || return 1
+  edges="$(jq -c --arg h "$hops" '($h | split(" ") | map(select(length > 0))) as $hs
+    | [$hs[] as $id | .edges[] | select(.id == $id)
+       | {hop: .id, family: (.set_family // null), breaking: has("breaking_sets"), always: (.always_sets // [])}]' "$graph")" || return 1
+  for fam in $(printf '%s' "$edges" | jq -r '[.[] | (.family // empty), (.always[] | split("::")[0])] | unique | .[]'); do
+    c="$(_plan_set_consts "$fam" "$root")"
+    fams="$(jq -n -c --argjson a "$fams" --arg k "$fam" --argjson v "$c" '$a + {($k): $v}')"
+  done
+  jq -n -c --argjson edges "$edges" --argjson fams "$fams" --arg f "$floor" --arg bed "$bed" '
+    def ver: sub("^v"; "") | split("-")[0] | split(".") | map(tonumber? // 0) | . + [0, 0] | .[0:2];
+    def le($a; $b): $a[0] < $b[0] or ($a[0] == $b[0] and $a[1] <= $b[1]);
+    def minor($n): ltrimstr("DRUPAL_") as $r | ($r | endswith("_BREAKING")) as $br
+      | ($r | rtrimstr("_BREAKING")) as $d | ($n | tostring) as $ns
+      | if ($d | test("^[0-9]+$")) and ($d | startswith($ns)) and (($d | length) > ($ns | length))
+        then {name: ., minor: ($d | ltrimstr($ns) | tonumber), breaking: $br} else empty end;
+    ($bed | ver) as $b
+    | (if $f == "" then null else ($f | ver) end) as $fl
+    | reduce $edges[] as $e ({drupal_sets: [], breaking_sets: [], sets_skipped: []};
+        (if $e.family == null then .
+         else ($fams[$e.family]) as $src
+           | ($e.family | ltrimstr("Drupal") | rtrimstr("SetList") | tonumber) as $n
+           | if $src.source == null then .sets_skipped += [{hop: $e.hop, family: $e.family, set: null, reason: "no-fallback-data"}]
+             elif ($src.consts | length) == 0 then .sets_skipped += [{hop: $e.hop, family: $e.family, set: null, reason: "missing-family"}]
+             else ([$src.consts[] | minor($n) | select(le([$n, .minor]; $b))] | sort_by(.minor)) as $ms
+               | .drupal_sets += [$ms[] | select(.breaking | not) | "\($e.family)::\(.name)"]
+               | .breaking_sets += (if $e.breaking and $fl != null
+                   then [$ms[] | select(.breaking and ($fl[0] > $n or ($fl[0] == $n and .minor <= $fl[1]))) | "\($e.family)::\(.name)"]
+                   else [] end)
+             end
+         end)
+        | reduce $e.always[] as $a (.;
+            ($a | split("::")) as $p | ($fams[$p[0]]) as $src
+            | if $src.source == null then .sets_skipped += [{hop: $e.hop, family: $p[0], set: $a, reason: "no-fallback-data"}]
+              elif any($src.consts[]; . == $p[1]) then (if any(.drupal_sets[]; . == $a) then . else .drupal_sets += [$a] end)
+              else .sets_skipped += [{hop: $e.hop, family: $p[0], set: $a, reason: "missing-constant"}] end))'
+  return 0
+}
+
+# plan_rector_skip -> the Rector rules every drupilot config skips, one JSON
+# array of FQCNs in php/rules.json order (= templates/rector.php.tmpl's
+# $drupilotRiskySkips): the deny rows, plus any compat row not drupal_safe.
+plan_rector_skip() {
+  local f
+  f="$(version_data_dir)/php/rules.json"
+  [[ -r "$f" ]] && have_cmd jq || { printf '[]'; return 0; }
+  jq -c '[.rules[] | select(.kind == "deny" or (.kind == "compat" and .drupal_safe == false)) | .rule]' "$f" 2> /dev/null || printf '[]'
+  return 0
+}
+
+# plan_rector_bc CONSTRAINT F -> {enabled, min_core}: drupal-rector's
+# backwards-compatible rewrites (DeprecationHelper) are on when CONSTRAINT
+# admits more than one minor (F's minor plus the next one, or the next major)
+# and F is at least PLAN_BC_MIN_CORE; min_core is then F, else null.
+plan_rector_bc() {
+  local c="${1:-}" f="${2:-}" on=false rc=0 nxt
+  if [[ -n "$c" && "$f" =~ ^([0-9]+)\.([0-9]+)$ ]]; then
+    nxt="$(printf '%s\n%s\n' "${BASH_REMATCH[1]}.$((BASH_REMATCH[2] + 1))" "$((BASH_REMATCH[1] + 1)).0" | core_requirement_minors "$c")"
+    core_version_cmp "$f.0" "$PLAN_BC_MIN_CORE" || rc=$?
+    [[ -n "$nxt" && ( "$rc" == 0 || "$rc" == 2 ) ]] && on=true
+  fi
+  jq -n -c --argjson on "$on" --arg f "$f" '{enabled: $on, min_core: (if $on then $f else null end)}'
+  return 0
+}
+
+# php_rector_level X -> php/versions.json .versions[X].rector_level (8.1 ->
+# PHP_81); nothing when X is not a PHP minor of the data.
+php_rector_level() {
+  local f
+  f="$(version_data_dir)/php/versions.json"
+  [[ -r "$f" && -n "${1:-}" ]] && have_cmd jq || return 0
+  jq -r --arg p "$1" '.versions[$p].rector_level // empty' "$f" 2> /dev/null || true
+  return 0
+}
+
+# plan_php_block L P SPANS -> the plan's php block, one JSON line: {floor: L,
+# final: P, window: php_window L P, require_php: ">=L" when SPANS is true
+# (the range keeps a previous major, whose sites may run an older PHP) else
+# null, phpstan_phpversion: {min, max} (the PHP_VERSION_ID of L and P),
+# phpcompat_testversion: "L-P"}. Returns 1 when L or P is not a PHP minor of
+# php/versions.json. An L above P gives an empty window (plan_assert reports
+# it).
+plan_php_block() {
+  local lo="${1:-}" hi="${2:-}" spans=false f
+  [[ "${3:-}" == "true" ]] && spans=true
+  f="$(version_data_dir)/php/versions.json"
+  [[ -r "$f" ]] && have_cmd jq || return 1
+  jq -e -c --arg lo "$lo" --arg hi "$hi" --arg w "$(php_window "$lo" "$hi")" --argjson sp "$spans" '
+    select(.versions[$lo].id != null and .versions[$hi].id != null)
+    | {floor: $lo, final: $hi, window: ($w | split(" ") | map(select(length > 0))),
+       require_php: (if $sp then ">=" + $lo else null end),
+       phpstan_phpversion: {min: .versions[$lo].id, max: .versions[$hi].id},
+       phpcompat_testversion: "\($lo)-\($hi)"}' "$f" 2> /dev/null || return 1
+  return 0
+}
+
+# plan_test_matrix BED P L CONSTRAINT T -> the plan's test legs, one JSON
+# array (AR-06, in this order): CURRENT {BED, P, run}; PHP_LOW {BED, the
+# lowest PHP of L..P the bed core supports, run} when that PHP is below P;
+# PREVIOUS_MAJOR {the newest released verified minor of T-1 CONSTRAINT
+# admits, the higher of L and that minor's php_min, static} when there is
+# one. Every leg is {leg, core, php, mode}.
+plan_test_matrix() {
+  local bed="${1:-}" p="${2:-}" l="${3:-}" c="${4:-}" t="${5:-}" low="" x prev="" pphp=""
+  have_cmd jq || return 1
+  for x in $(php_window "$l" "$p"); do
+    [[ "$(php_supported_for "$bed" "$x")" == "yes" ]] && { low="$x"; break; }
+  done
+  if [[ "$t" =~ ^[0-9]+$ && -n "$c" ]]; then
+    prev="$(target_minors "$((t - 1))" released | core_requirement_minors "$c" | tail -n 1)"
+  fi
+  if [[ -n "$prev" ]]; then
+    pphp="$(target_get "$((t - 1))" ".minors[\"$prev\"].php_min")"
+    if [[ -z "$pphp" ]] || { [[ -n "$l" ]] && version_ge "$l" "$pphp"; }; then pphp="$l"; fi
+  fi
+  jq -n -c --arg bed "$bed" --arg p "$p" --arg low "$low" --arg pc "$prev" --arg pp "$pphp" '
+    [{leg: "CURRENT", core: $bed, php: $p, mode: "run"}]
+    + (if $low != "" and $low != $p then [{leg: "PHP_LOW", core: $bed, php: $low, mode: "run"}] else [] end)
+    + (if $pc != "" then [{leg: "PREVIOUS_MAJOR", core: $pc, php: (if $pp == "" then null else $pp end), mode: "static"}] else [] end)'
+  return 0
+}
+
+# plan_ci_flags MATRIX P M -> the drupal.org GitLab CI opt-ins the test legs
+# map to, one JSON line: OPT_IN_TEST_PREVIOUS_MAJOR = 1 with a PREVIOUS_MAJOR
+# leg; OPT_IN_TEST_MAX_PHP = 1 with a PHP_LOW leg when P is the highest PHP
+# minor M supports (CURRENT then is the max-PHP run). 0 otherwise.
+plan_ci_flags() {
+  local mx="${1:-[]}" p="${2:-}" m="${3:-}" max=""
+  have_cmd jq || return 1
+  [[ "$m" =~ ^[0-9]+\.[0-9]+$ ]] && \
+    max="$(target_get "${m%%.*}" "(.minors[\"$m\"].php_supported // []) | sort_by(split(\".\") | map(tonumber)) | last")"
+  jq -n -c --argjson mx "$mx" --arg p "$p" --arg max "$max" '
+    {OPT_IN_TEST_PREVIOUS_MAJOR: (if any($mx[]; .leg == "PREVIOUS_MAJOR") then 1 else 0 end),
+     OPT_IN_TEST_MAX_PHP: (if any($mx[]; .leg == "PHP_LOW") and $max != "" and $p == $max then 1 else 0 end)}'
+  return 0
+}
+
+# plan_assert PLAN -> the plan's violated assertions (AR-06), one JSON array
+# of {id, detail}, in this order: source-above-target (S > T),
+# prerelease-not-opted-in (a pre-release T without preview),
+# floor-above-final (L > P), php-not-supported (P is not a PHP M supports, M
+# the newest released minor of T or its pre-release minor in preview),
+# minor-php-disjoint (a verified minor of a major <= T that the range admits
+# supports none of the PHP minors L..P: every answer "no"; an "unknown" one
+# is not a violation), three-majors (the range reaches 3 or more majors while
+# its strategy is not explicit and it does not keep the current
+# declaration). Returns 2 when any is violated, 1 when PLAN is not an object.
+# Nothing is fixed: the caller refuses (upgrade-path.sh exits 2).
+plan_assert() {
+  local plan="${1:-}" t="" s="" l="" p="" st="" pv="" c="" strat="" rs="" m x w n ans all
+  local out=""
+  have_cmd jq || return 1
+  printf '%s' "$plan" | jq -e 'type == "object"' > /dev/null 2>&1 || return 1
+  eval "$(printf '%s' "$plan" | jq -r '@sh "t=\(.target.major // "" | tostring) s=\(.source.major // "" | tostring) l=\(.php.floor // "") p=\(.php.final // "") st=\(.target.status // "") pv=\(.target.preview // false | tostring) c=\(.range.constraint // "") strat=\(.range.strategy // "") rs=\(.range.resolved_strategy // "")"')"
+  if [[ "$s" =~ ^[0-9]+$ && "$t" =~ ^[0-9]+$ ]] && (( s > t )); then
+    out="$out$(_plan_issue source-above-target "the code is already Drupal $s, above the target Drupal $t")"$'\n'
+  fi
+  if [[ "$st" == "pre-release" && "$pv" != "true" ]]; then
+    out="$out$(_plan_issue prerelease-not-opted-in "Drupal $t is a pre-release and the plan is not a preview")"$'\n'
+  fi
+  if [[ -n "$l" && -n "$p" ]] && ! version_ge "$p" "$l"; then
+    out="$out$(_plan_issue floor-above-final "the code needs PHP $l, above the PHP target $p")"$'\n'
+  fi
+  if [[ "$t" =~ ^[0-9]+$ && -n "$p" ]]; then
+    if [[ "$pv" == "true" ]]; then m="$(target_prerelease_minor "$t")"; else m="$(target_released_minor "$t")"; fi
+    # A pre-release T without preview has no released minor: check the
+    # pre-release one (prerelease-not-opted-in already says the rest).
+    [[ -n "$m" ]] || m="$(target_prerelease_minor "$t")"
+    ans="$(php_supported_for "$m" "$p")"
+    if [[ -z "$m" ]]; then
+      out="$out$(_plan_issue php-not-supported "the data holds no verified Drupal $t minor to check PHP $p against")"$'\n'
+    elif [[ "$ans" == "no" ]]; then
+      out="$out$(_plan_issue php-not-supported "Drupal $m does not support PHP $p")"$'\n'
+    elif [[ "$ans" != "yes" ]]; then
+      out="$out$(_plan_issue php-not-supported "whether Drupal $m supports PHP $p is unknown")"$'\n'
+    fi
+  fi
+  w="$(php_window "$l" "$p")"
+  if [[ -n "$w" && -n "$c" && "$t" =~ ^[0-9]+$ ]]; then
+    for n in $(core_range_minors "$c" "$t"); do
+      all="no"
+      for x in $w; do
+        ans="$(php_supported_for "$n" "$x")"
+        [[ "$ans" == "no" ]] || { all="$ans"; break; }
+      done
+      [[ "$all" != "no" ]] || out="$out$(_plan_issue minor-php-disjoint "Drupal $n supports none of PHP $(printf '%s' "$w" | tr ' ' ',') ($c)")"$'\n'
+    done
+  fi
+  n="$(range_majors "$c" | wc -w | tr -d ' ')"
+  if (( n >= 3 )) && [[ "$strat" != "explicit" && "$rs" != "keep-current" ]]; then
+    out="$out$(_plan_issue three-majors "'$c' reaches $n majors: only an explicit range or a kept declaration may")"$'\n'
+  fi
+  printf '%s' "$out" | jq -s -c '.'
+  [[ -z "$out" ]] || return 2
+  return 0
+}
+
+# version_data_hash [DIR] -> the bare SHA-256 identity of a version-data
+# directory (default version_data_dir): the hash of "<path> <sha256>" lines,
+# one per JSON file under targets/, php/ and paths/, sorted (LC_ALL=C) — the
+# name of its tests/fixtures/data-snapshots/ copy and of a golden.json
+# data_hash (scripts/dev/golden.sh computes the same). Nothing when DIR holds
+# none or no hasher exists.
+version_data_hash() {
+  local d="${1:-}" f h lines=""
+  [[ -n "$d" ]] || d="$(version_data_dir)"
+  [[ -d "$d" ]] || return 0
+  while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+    h="$(sha256_hex < "$d/$f")"
+    [[ -n "$h" ]] || return 0
+    lines="$lines$f $h
+"
+  done <<EOF
+$(CDPATH='' cd "$d" && find targets php paths -type f -name '*.json' 2> /dev/null | LC_ALL=C sort)
+EOF
+  [[ -n "$lines" ]] || return 0
+  printf '%s' "$lines" | sha256_hex
   return 0
 }

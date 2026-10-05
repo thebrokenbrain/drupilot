@@ -94,4 +94,5 @@ nav:
           - contributing/adr/0014-version-data-hard-gates.md
           - contributing/adr/0015-toolchain-cells.md
           - contributing/adr/0016-source-era-fallback.md
+          - contributing/adr/0017-upgrade-plan-resolver.md
   - Changelog: changelog.md

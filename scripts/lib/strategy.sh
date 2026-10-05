@@ -34,6 +34,96 @@ core_requirement_admits() {
     END { exit ok ? 0 : 1 }'
 }
 
+# core_requirement_minors <constraint> -> the core minors (MAJOR.MINOR, one per
+# line on STDIN) the Composer-style constraint admits some release of, in
+# input order ('^10.3 || ^11' admits 10.3..10.x and 11.x; '~11.2.0' only 11.2;
+# '>=10.2 <11.1.2' 10.2..11.1). Each `||` alternative is the AND of its
+# bounds: ^X.Y and ~X.Y run to the next major, ~X.Y.Z to the next minor,
+# X.Y.* / X.Y.Z / X.Y one minor, A - B to B, >= / > from, < / <= up to.
+# An alternative with an unreadable token admits nothing, and != is ignored.
+core_requirement_minors() {
+  AWKV_c="$(printf '%s' "${1:-}" | tr -d "\"'")" awk '
+    function key(maj, mn) { return maj * 1000 + mn }
+    # parse(t): VM, VN = major, minor; VP = 1 when a patch is given; VW = 1
+    # for a wildcard minor (X.* / X.x); returns 0 when t is no version.
+    function parse(t,   v, n) {
+      sub(/^v/, "", t); sub(/@.*$/, "", t); sub(/-.*$/, "", t)
+      if (t !~ /^[0-9]+(\.([0-9]+|\*|x|X))*$/) return 0
+      n = split(t, v, ".")
+      VM = v[1] + 0; VN = 0; VP = 0; VW = 0; VG = (n >= 2)
+      if (n >= 2) { if (v[2] ~ /^[0-9]+$/) VN = v[2] + 0; else VW = 1 }
+      if (n >= 3) { if (v[3] ~ /^[0-9]+$/) VP = (v[3] + 0 > 0) ? 2 : 1; else VP = -1 }
+      return 1
+    }
+    function alt(a,   n, p, i, t, op, lo, hi, x) {
+      gsub(/,/, " ", a)
+      while (match(a, /(>=|<=|!=|==|>|<|\^|~|=)[[:space:]]+/)) {
+        op = substr(a, RSTART, RLENGTH); sub(/[[:space:]]+$/, "", op)
+        a = substr(a, 1, RSTART - 1) op substr(a, RSTART + RLENGTH)
+      }
+      n = split(a, p, /[[:space:]]+/); lo = -1; hi = 1e9; x = 0
+      for (i = 1; i <= n; i++) {
+        t = p[i]
+        if (t == "") continue
+        if (t == "*") { x = 1; continue }
+        if (t == "-" && i < n && parse(p[i + 1])) {
+          hi = (VG && !VW) ? key(VM, VN + 1) : key(VM + 1, 0); i++; continue
+        }
+        if (t ~ /^!=/) continue
+        op = ""; if (match(t, /^(>=|<=|==|>|<|\^|~|=)/)) { op = substr(t, 1, RLENGTH); t = substr(t, RLENGTH + 1) }
+        # "A - B": A is only the lower bound.
+        if (op == "" && i < n && p[i + 1] == "-") op = ">="
+        if (!parse(t)) return 0
+        x = 1
+        if (op == "^") { if (key(VM, VN) > lo) lo = key(VM, VN); if (key(VM + 1, 0) < hi) hi = key(VM + 1, 0) }
+        else if (op == "~") {
+          if (key(VM, VN) > lo) lo = key(VM, VN)
+          t = (VP != 0) ? key(VM, VN + 1) : key(VM + 1, 0); if (t < hi) hi = t
+        }
+        else if (op == ">=" || op == ">") { if (key(VM, VN) > lo) lo = key(VM, VN) }
+        else if (op == "<") { t = (VP == 2) ? key(VM, VN + 1) : key(VM, VN); if (t < hi) hi = t }
+        else if (op == "<=") { if (key(VM, VN + 1) < hi) hi = key(VM, VN + 1) }
+        else {
+          if (key(VM, VN) > lo) lo = key(VM, VN)
+          t = (VG && !VW) ? key(VM, VN + 1) : key(VM + 1, 0); if (t < hi) hi = t
+        }
+      }
+      if (!x) return 0
+      LO[NA] = lo; HI[NA] = hi; NA++
+      return 1
+    }
+    BEGIN {
+      NA = 0; c = ENVIRON["AWKV_c"]; gsub(/\|\|/, "|", c)
+      na = split(c, alts, "|")
+      for (j = 1; j <= na; j++) alt(alts[j])
+    }
+    /^[0-9]+\.[0-9]+$/ {
+      split($0, m, "."); k = key(m[1] + 0, m[2] + 0)
+      for (j = 0; j < NA; j++) if (LO[j] <= k && k < HI[j]) { print; next }
+    }'
+  return 0
+}
+
+# core_requirement_majors <constraint> -> the distinct majors the constraint's
+# `||` alternatives start at, ascending, space-separated ('^10.3 || ^11 ||
+# ^12' -> "10 11 12"; '>=10.2' -> "10"). Nothing when none can be read.
+core_requirement_majors() {
+  printf '%s' "${1:-}" | tr -d "\"'" | tr '|' '\n' | awk '
+    {
+      n = split($0, parts, /[[:space:],]+/)
+      for (i = 1; i <= n; i++) {
+        p = parts[i]
+        if (p == "" || p ~ /^(<|!=)/) continue
+        sub(/^(\^|~|>=|>|==|=|v)+/, "", p)
+        if (p !~ /^[0-9]+/) continue
+        split(p, v, "."); seen[v[1] + 0] = 1
+        break
+      }
+    }
+    END { out = ""; for (m = 0; m <= 99; m++) if (m in seen) out = out (out == "" ? "" : " ") m; printf "%s", out }'
+  return 0
+}
+
 # core_floor_from_requirement <constraint> -> the lowest core MAJOR.MINOR the
 # Composer-style constraint admits ('^10 || ^11' -> 10.0, '^10.3 || ^11' ->
 # 10.3, '^9.2 || ^10' -> 9.2, '>=10.2' -> 10.2, '^11' -> 11.0). Upper bounds

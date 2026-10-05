@@ -20,8 +20,26 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `resolve_target_major`, `resolve_php_target_for` (P from the target's data
   default unless one is set) and `config_get_explicit`. The upgrade plan
   reads them.
-- **`scripts/lib/canon.sh`**: `canon_json_hashable` and `json_hash`, the
-  canonical form an upgrade plan is hashed in (AR-13).
+- **`scripts/lib/canon.sh`**: `canon_json_hashable`, `json_hash` and
+  `sha256_hex`, the canonical form an upgrade plan is hashed in (AR-13).
+- **The upgrade-plan building blocks** in `scripts/lib/plan.sh` (T-M3-03,
+  AR-04/AR-06, ADR 0017): `plan_target_block` (the target, its bed core and
+  the pre-release opt-in), `plan_hops` / `plan_detectors` over
+  `paths/graph.json`, `rector_sets_for_plan` (per-minor sets up to the bed,
+  breaking sets by the floor, `always_sets`, reflection from a bed's
+  drupal-rector, skipped sets recorded with a reason), `plan_rector_skip`,
+  `plan_rector_bc`, `plan_php_block`, `plan_test_matrix`, `plan_ci_flags`,
+  `plan_assert` (the plan's assertions, never fixed silently) and
+  `version_data_hash`; in `scripts/lib/strategy.sh`,
+  `core_requirement_minors` / `core_requirement_majors` (which core minors
+  and majors a `core_version_requirement` admits). The resolver CLI that
+  assembles them comes next.
+- **`schemas/upgrade-plan.schema.json`** with an example plan
+  (`schemas/examples/upgrade-plan.example.json`), checked by the `schemas`
+  gate; the target major and bed core, the PHP floor and final, the range,
+  the hops and the toolchain cell are marked as what the hard gates read.
+- **ADR 0017**: what the upgrade-plan resolver decides where AR-04/AR-06 are
+  silent.
 - **Unit goldens pinned to a data snapshot**: `golden.sh` also checks every
   `tests/golden/<name>/` holding a `golden.json`, and the unit tests
   regenerate them against the snapshot it pins (`detect-source`, and the
