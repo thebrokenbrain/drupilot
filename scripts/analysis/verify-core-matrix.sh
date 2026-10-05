@@ -100,7 +100,7 @@
 # JSON (STDOUT; also persisted to <state_dir>/core-matrix.json unless --dry-run,
 # and its verdict carried into the subject's state.json):
 #   {tool, subject, machine_name, drupal_root, core_version_requirement, level,
-#    container_php, subject_digest, generated_at, dry_run,
+#    container_php, subject_digest, digest_algo, generated_at, dry_run,
 #    legs:[{core, role: baseline|reference, source: testbed|reference,
 #           constraint, version, php_floor, status: pass|fail|skipped|error,
 #           reason, phpstan:{status, errors, leg_only, incompatible,
@@ -920,14 +920,14 @@ VERDICT="$(printf '%s' "$LEGS_JSON" | jq -r '
 DIGEST="$(subject_digest "$SUBJECT_ABS")"
 
 OUT="$(jq -n --arg s "$SUBJECT_ABS" --arg n "$NAME" --arg r "$ROOT" --arg req "$CORE_REQ" \
-  --arg lvl "$LEVEL" --arg php "$CONTAINER_PHP" --arg dg "$DIGEST" \
+  --arg lvl "$LEVEL" --arg php "$CONTAINER_PHP" --arg dg "$DIGEST" --argjson da "$(subject_digest_algo)" \
   --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson legs "$LEGS_JSON" \
   --arg d10 "$D10_SUPPORT" --arg v "$VERDICT" --argjson notes "$NOTES_JSON" \
   --arg d10f "$D10_FLOOR" --argjson d10c "$D10_CHECKED" --argjson d10fc "$D10_FLOOR_CHECKED" \
   --argjson tests "$([[ "$EXCLUDE_TESTS" == 1 ]] && echo false || echo true)" \
   '{tool: "verify-core-matrix", subject: $s, machine_name: $n, drupal_root: $r,
     core_version_requirement: ($req | select(. != "") // null), level: $lvl,
-    container_php: $php, subject_digest: $dg, generated_at: $at, dry_run: false,
+    container_php: $php, subject_digest: $dg, digest_algo: $da, generated_at: $at, dry_run: false,
     legs: $legs, d10_support: $d10,
     d10_floor: ($d10f | select(. != "") // null), d10_checked: $d10c, d10_floor_checked: $d10fc,
     verdict: $v, tests_analysed: $tests, notes: $notes}')"

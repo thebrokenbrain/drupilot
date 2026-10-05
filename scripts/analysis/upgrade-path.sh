@@ -487,6 +487,7 @@ GUARD=""
 V_RC=0; V="$(plan_assert "$PLAN" "$GUARD")" || V_RC=$?
 [[ "$V_RC" == "0" ]] || refuse "$V"
 if [[ "$FREEZE" == "1" ]]; then
+  lock_location_note "$ROOT"
   plan_freeze "$PLAN" "$PHASE" "$ROOT" || die "Could not freeze the plan in the lock of '$ROOT'." 1
   [[ "$JSON_ONLY" == "1" ]] || log_ok "Frozen in the lock of $ROOT ($PHASE)."
 fi

@@ -210,6 +210,18 @@ case "$PRESERVATION" in
     esac;;
   *)                     PRES_LINE="• preservation: not run yet (run /drupilot-test).";;
 esac
+# A verdict recorded on other sources (or by drupilot 0.9, whose digests are
+# of another algorithm) is not current proof: say so next to it.
+TEST_STALE=""
+if [[ -r "$STATE_DIR/last-test.json" && "$PRESERVATION" != "unknown" ]]; then
+  case "$(digest_freshness "$SUBJECT" "$STATE_DIR/last-test.json")" in
+    "false sources-changed") TEST_STALE="the sources changed since the last test run";;
+    "false digest-algorithm") TEST_STALE="the last test run was recorded by an older drupilot, which cannot tell whether the sources changed since";;
+  esac
+fi
+if [[ -n "$TEST_STALE" ]]; then
+  PRES_LINE="$PRES_LINE _(stale: ${TEST_STALE}; re-run /drupilot-test.)_"
+fi
 
 VERDICT="$(printf '%s' "$ASSESS" | jq -r '.verdict // .effort // empty' 2>/dev/null || true)"
 
@@ -304,7 +316,7 @@ printf '%s' "$PREC" | jq -e 'type == "object"' >/dev/null 2>&1 || PREC=""
   printf '| composer `require.php` | `%s` |\n' "$REQ_PHP"
   printf '| PHP target | %s |\n' "$PHP_TARGET"
   printf '| Version bump | %s |\n' "$BUMP"
-  printf '| Preservation | %s |\n' "$PRESERVATION"
+  printf '| Preservation | %s%s |\n' "$PRESERVATION" "${TEST_STALE:+ (stale)}"
   printf '\n'
 
   printf '## Preservation gate\n\n%s\n\n' "$PRES_LINE"

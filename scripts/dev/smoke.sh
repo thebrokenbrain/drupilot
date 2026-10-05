@@ -917,8 +917,8 @@ test_port_summary() {
   sd="$(project_state_dir "$c")"
   dg="$(subject_digest "$c")"
   printf '{"machine_name":"acme_core","phase":"port","d10_support":"verified-static-above-floor","digests":{"applied":false,"rejected":[],"skipped":false}}\n' > "$sd/port-manifest.json"
-  printf '{"verdict":"fail","d10_support":"failed","subject_digest":"%s"}\n' "$dg" > "$sd/core-matrix.json"
-  printf '{"status":"passed","preservation":"verified","subject_digest":"stale"}\n' > "$sd/last-test.json"
+  printf '{"verdict":"fail","d10_support":"failed","subject_digest":"%s","digest_algo":%s}\n' "$dg" "$(subject_digest_algo)" > "$sd/core-matrix.json"
+  printf '{"status":"passed","preservation":"verified","subject_digest":"stale","digest_algo":%s}\n' "$(subject_digest_algo)" > "$sd/last-test.json"
   run psr "$SH" "$REPO/scripts/env/state.sh" record --subject "$c" --stage ported --json
   run ps "$SH" "$REPO/scripts/analysis/port-summary.sh" --subject "$c" --json
   expect "port-summary: exit" "$RC" "0"

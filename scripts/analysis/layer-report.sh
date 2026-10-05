@@ -46,7 +46,8 @@
 #                    rector_reversions, post_port_fixes, preexisting_bugs,
 #                    behavior_changes, tooling_deviations},
 #                   modules:[{machine, layer, in_cycle, subject, found, stage,
-#                             effort, preservation, d10_support, patch,
+#                             effort, preservation, d10_support, d10_fresh,
+#                             patch,
 #                             drupal_root, port_report (the module's
 #                             port-report.md: <root>/.drupilot/modules/<machine>/
 #                             first, else <root>/.drupilot/),
@@ -190,9 +191,10 @@ REPORT="$(jq -n --argjson L "$LAYERS" --argjson R "$REG" --argjson H "$HYG" --ar
       | {machine, layer, in_cycle, subject: ($r.subject // $orig), found: ($r != null),
          stage: ($r.stage // null), effort: ($r.effort // null),
          preservation: ($r.tests.preservation // null),
-         tests_fresh: ($r.tests.fresh // null),
+         tests_fresh: (if ($r.tests // null) == null then null else $r.tests.fresh end),
          tests_executed: ($r.tests.executed // null),
          d10_support: ($r.core_matrix.d10_support // null),
+         d10_fresh: (if ($r.core_matrix // null) == null then null else $r.core_matrix.fresh end),
          patch: ($r.patch.path // null),
          drupal_root: ($r.drupal_root // null), port_report: null,
          hygiene: ($H[$r.subject // $orig] // $H[$orig] // null),
@@ -248,7 +250,7 @@ REPORT="$(printf '%s' "$REPORT" | jq -c '
       test_adaptations: tagged(.test_adaptations)}
   | .totals = {modules: ($mods | length),
                ported: ([$mods[] | select((.stage // "") | IN("ported", "refactored", "tested", "contributed"))] | length),
-               preservation_verified: ([$mods[] | select(.preservation == "verified")] | length),
+               preservation_verified: ([$mods[] | select(.preservation == "verified" and .tests_fresh != false)] | length),
                regressions: ([$mods[] | select(.preservation == "regression")] | length),
                hygiene_errors: ([$mods[] | .hygiene.error // 0] | add // 0),
                undeclared: ([$mods[] | .undeclared // [] | length] | add // 0),
@@ -282,7 +284,7 @@ render_md() {
   section MODULE_RESULTS '
     "| Layer | Module | Stage | Effort | Preservation | Drupal 10 | Hygiene (e/w/i) | Undeclared deps | Rector files | Reverted | Post-port fixes | Patch | Report |",
     "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
-    (.modules[] | "| \(.layer | v) | `\(.machine)`\(if .in_cycle then " (cycle)" else "" end)\(if .found then "" else " (no record)" end) | \(.stage | v) | \(.effort | v) | \(.preservation | v)\(if .tests_fresh == false then " (stale)" else "" end) | \(.d10_support | v) | \(if .hygiene then "\(.hygiene.error)/\(.hygiene.warn)/\(.hygiene.info)" else "n/a" end) | \(if .undeclared == null then "n/a" elif (.undeclared | length) > 0 then (.undeclared | map("`" + . + "`") | join(", ")) else "none" end) | \(.port.rector_files | v) | \(if .port then (.port.rector_reversions | length) else "n/a" end) | \(if .port then (.port.post_port_fixes | length) else "n/a" end) | \(if .patch then "`" + (.patch | split("/") | last) + "`" else "n/a" end) | \(if .port_report then "[port-report](" + .port_report + ")" else "n/a" end) |"),
+    (.modules[] | "| \(.layer | v) | `\(.machine)`\(if .in_cycle then " (cycle)" else "" end)\(if .found then "" else " (no record)" end) | \(.stage | v) | \(.effort | v) | \(.preservation | v)\(if .tests_fresh == false then " (stale)" else "" end) | \(.d10_support | v)\(if .d10_fresh == false then " (stale)" else "" end) | \(if .hygiene then "\(.hygiene.error)/\(.hygiene.warn)/\(.hygiene.info)" else "n/a" end) | \(if .undeclared == null then "n/a" elif (.undeclared | length) > 0 then (.undeclared | map("`" + . + "`") | join(", ")) else "none" end) | \(.port.rector_files | v) | \(if .port then (.port.rector_reversions | length) else "n/a" end) | \(if .port then (.port.post_port_fixes | length) else "n/a" end) | \(if .patch then "`" + (.patch | split("/") | last) + "`" else "n/a" end) | \(if .port_report then "[port-report](" + .port_report + ")" else "n/a" end) |"),
     "",
     "Per-module detail: `port-report.md` in each workspace'"'"'s `.drupilot/`, `decisions.md` beside it, and `state.sh show --subject <dir>`."'
   section RECTOR_RULES '
@@ -322,7 +324,7 @@ render_md() {
     end'
   section VALIDATION '
     (.modules[] | . as $m
-      | "- `\(.machine)` — preservation **\(.preservation | v)**\(if .tests_executed != null then " (\(.tests_executed) test(s) executed)" else "" end)\(if .tests_fresh == false then ", stale" else "" end); Drupal 10: \(.d10_support | v)"
+      | "- `\(.machine)` — preservation **\(.preservation | v)**\(if .tests_executed != null then " (\(.tests_executed) test(s) executed)" else "" end)\(if .tests_fresh == false then ", stale" else "" end); Drupal 10: \(.d10_support | v)\(if .d10_fresh == false then " (stale)" else "" end)"
         + (if .port == null then "; no port record" else "" end),
         ((.port.validation // [])[] | "    - \(.)"),
         (if ((.port.test_adaptations // []) | length) > 0 then "    - test adaptations (form only): " + ([.port.test_adaptations[] | .what] | join("; ")) else empty end))'
