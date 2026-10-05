@@ -195,8 +195,7 @@ git_seed_baseline() {
           [[ -n "$l" ]] && printf '/%s\n' "${l#"$prefix"}"
         done >> "$dest/.git/info/exclude" 2>/dev/null || true
   fi
-  # shellcheck disable=SC2046  # one glob per line, no spaces in them
-  git_local_exclude "$dest" '.drupilot/' '.drupilot.json' $(target_patch_globs)
+  git_local_exclude_patches "$dest" '.drupilot/' '.drupilot.json'
   if ! { git -C "$base" --git-dir="$dest/.git" --work-tree="$base" add -A . >/dev/null 2>&1 \
          && "${G[@]}" -C "$base" --git-dir="$dest/.git" --work-tree="$base" commit -q --allow-empty --no-verify \
               -m "drupilot baseline: the module before the port${commit:+ ($repo at ${commit:0:12})}" >/dev/null 2>&1; }; then
@@ -215,6 +214,16 @@ git_seed_baseline() {
     git -C "$dest" config drupilot.originCommit "$commit"
   fi
   return 0
+}
+
+# git_local_exclude_patches DIR [MORE...] -> git_local_exclude DIR with MORE
+# and every drupilot patch glob (target_patch_globs), passed as literal
+# patterns: never expanded against the caller's working directory.
+git_local_exclude_patches() {
+  local dir="$1" g; shift || true
+  local -a pats=("$@")
+  while IFS= read -r g; do [[ -n "$g" ]] && pats+=("$g"); done < <(target_patch_globs)
+  git_local_exclude "$dir" ${pats[@]+"${pats[@]}"}
 }
 
 # git_local_exclude <dir> <pattern...> -> idempotently append each pattern to the

@@ -1813,7 +1813,8 @@ Usage:
   --project   drupal.org project machine name (e.g. token, pathauto).
   --issue     numeric issue id (e.g. 3982435).
   --branch    branch to check out / create. Defaults to a new
-              'ID-port-to-drupal-11' branch when --base is not given.
+              'ID-port-to-drupal-<T>' branch (T the target major:
+              'ID-port-to-drupal-11' for Drupal 11) when --base is not given.
   --base      base version branch on the issue remote to track (e.g. 11.x,
               2.0.x). When given, checks out a tracking branch from it.
   --workdir   parent directory for the clone (default: current directory).
@@ -2573,7 +2574,7 @@ Report-only: it never deletes or edits anything in the origin.
               untracked entry as drupilot-attributable (.ddev/, .drupilot*,
               .phpstan-cache/, vendor/, node_modules/, rector.php,
               rector-compat.php, phpstan.neon, phpcs.xml.dist,
-              *-port-to-drupal-11*.patch,
+              *-port-to-drupal-*.patch (any target; 0.9's -11 names included),
               symlinks resolving outside the origin) or other. Tracked files
               the port modified are listed separately (expected for move /
               symlink / in-place; unexpected for copy).

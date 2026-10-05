@@ -779,12 +779,14 @@ plan_render_fallback() {
 # For T=11 they are the 0.9 names, byte for byte: the patch description
 # port-to-drupal-11 (MODULE-port-to-drupal-11.patch, the issue-fork branch
 # ID-port-to-drupal-11), the test-bed suffix -d11, the DDEV type drupal11. T is
-# resolve_target_major (DRUPILOT_TARGET_MAJOR, else DRUPAL_TARGET's major, else
-# 11), read where DRUPILOT_PROJECT_DIR points; anything but an integer is 11.
+# the target major of the plan frozen for the root DRUPILOT_PROJECT_DIR points
+# to (else $PWD), else resolve_target_major (DRUPILOT_TARGET_MAJOR, else
+# DRUPAL_TARGET's major, else 11); anything but an integer is 11.
 
 # target_names_major [T] -> T, validated (11 when it is not an integer).
 target_names_major() {
   local t="${1:-}"
+  [[ -n "$t" ]] || t="$(plan_get .target.major "${DRUPILOT_PROJECT_DIR:-$PWD}" 2> /dev/null || true)"
   [[ -n "$t" ]] || t="$(resolve_target_major)"
   [[ "$t" =~ ^[1-9][0-9]*$ ]] || t=11
   printf '%s\n' "$t"

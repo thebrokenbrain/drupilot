@@ -229,10 +229,10 @@ if [[ -f "$DDEV_CONFIG" ]]; then
     ( cd "$PROJECT_DIR" && ddev config --php-version="$PHP_TARGET" >&2 )
   fi
 else
-  log_step "Configuring DDEV (Drupal $(target_names_major), PHP $PHP_TARGET)"
+  log_step "Configuring DDEV (Drupal $(DRUPILOT_PROJECT_DIR="$PROJECT_DIR" target_names_major), PHP $PHP_TARGET)"
   ( cd "$PROJECT_DIR" && ddev config \
       --project-name="$PROJECT_NAME" \
-      --project-type="$(target_ddev_type)" \
+      --project-type="$(DRUPILOT_PROJECT_DIR="$PROJECT_DIR" target_ddev_type)" \
       --docroot="$DOCROOT" \
       --php-version="$PHP_TARGET" >&2 ) \
     || die "'ddev config' failed. If PHP $PHP_TARGET is unsupported by this DDEV version, retry with --php 8.3." 1

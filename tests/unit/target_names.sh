@@ -45,7 +45,24 @@ if command -v git > /dev/null 2>&1; then
   assert_eq "  every drupilot patch hidden from git status" "$(git -C "$m" status --porcelain -- '*.patch' | grep -c . || true)" "0"
   t_run "$T_SH" "$T_REPO/scripts/contrib/make-patch.sh" --local --subject "$m"
   assert_eq "make-patch --local for T 11: the 0.9 name" "$T_RC|$(basename "$(t_out)")" "0|legacy_widgets-port-to-drupal-11.patch"
+  # Run from the module (where the patches lie): the globs reach info/exclude
+  # as patterns, never as the file names they match there.
+  ( cd "$m" && "$T_SH" "$T_REPO/scripts/contrib/make-patch.sh" --local --subject "$m" > /dev/null 2>&1 )
+  assert_eq "info/exclude: the 0.9 and the any-target globs, literally" \
+    "$(grep -cxF -e '*-port-to-drupal-11.patch' -e '*-port-to-drupal-11-*.patch' -e '*-port-to-drupal-*.patch' "$m/.git/info/exclude")" "3"
+  assert_eq "  no patch file name in it" "$(grep -c '^legacy_widgets-port' "$m/.git/info/exclude" || true)" "0"
 fi
+
+# A frozen T=12 plan names the outputs without any T setting.
+b="$T_TMP/bed"; mkdir -p "$b/web/core/lib" "$b/web/modules/custom"; printf '{"name":"x/root"}\n' > "$b/composer.json"
+printf "<?php\nclass Drupal {\n  const VERSION = '11.4.8';\n}\n" > "$b/web/core/lib/Drupal.php"
+cp -R "$T_REPO/tests/fixtures/legacy_widgets" "$b/web/modules/custom/legacy_widgets"
+t_run env DRUPILOT_TARGET_MAJOR=12 DRUPILOT_ALLOW_PRERELEASE=true "$T_SH" "$T_REPO/scripts/analysis/upgrade-path.sh" \
+  --subject "$b/web/modules/custom/legacy_widgets" --root "$b" --phase draft --freeze --json
+assert_eq "a T 12 draft frozen in the bed" "$T_RC|$(plan_get .target.major "$b")" "0|12"
+assert_eq "  its names follow it with no T setting" \
+  "$(DRUPILOT_PROJECT_DIR="$b" target_patch_desc)|$(DRUPILOT_PROJECT_DIR="$b" target_ddev_type)|$(cd "$b" && target_workspace_suffix)" \
+  "port-to-drupal-12|drupal12|-d12"
 
 # The managed .gitignore block, idempotent.
 r="$T_TMP/root"; mkdir -p "$r/web/core/lib"; printf '{"name":"x/root"}\n' > "$r/composer.json"
