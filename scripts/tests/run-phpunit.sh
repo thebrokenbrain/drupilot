@@ -147,7 +147,7 @@ if [[ "$BASELINE_MODE" == "from-last" ]]; then
     || die "last-test.json has no per-test results (recorded by an older drupilot): re-run with --baseline instead." 1
   jq --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     '{source:"last-test", taken_at:$at, recorded_at:(.recorded_at // null),
-      subject_digest:(.subject_digest // null), git_head:(.git_head // null),
+      subject_digest:(.subject_digest // null), digest_algo:(.digest_algo // null), git_head:(.git_head // null),
       type, filter:(.filter // null), status, ran, passed, failed, skipped,
       executed:(.executed // null), group_results:(.group_results // []), tests}' \
     "$STATE_DIR/last-test.json" > "$BASELINE_FILE.tmp" && mv "$BASELINE_FILE.tmp" "$BASELINE_FILE"
@@ -566,7 +566,9 @@ fi
 # tests lists every executed test ({group, id, status, message}); group_results
 # the per-group outcome (passed/failed/crashed/empty/skipped/blocked).
 # negative_controls carries the summary of negative-control.sh's records (or
-# null): the proof that new tests can fail, kept next to the verdict.
+# null): the proof that new tests can fail, kept next to the verdict; when each
+# control ran is under meta.negative_controls (AR-13: no timestamp in it).
+# digest_algo names the subject_digest algorithm (subject_digest_algo).
 # coverage records only what was actually collected (requested + the HTML path);
 # a percentage is NOT computed in Phase 1, so the field stays honest about that.
 if ! have_cmd jq; then
@@ -693,6 +695,7 @@ else
     --argjson group_results "$GROUPRES_JSON" --slurpfile testsf "$TESTS_JSON_FILE" \
     --slurpfile baselinef "$BASELINE_JSON_FILE" \
     --argjson negative_controls "$(negative_controls_summary "$SUBJECT")" \
+    --argjson nc_times "$(negative_controls_times "$SUBJECT")" --argjson da "$(subject_digest_algo)" \
     '{type:$type, status:$status, preservation:$preservation,
       ran:$ran, passed:$passed, failed:$failed,
       skipped:$skipped, failed_groups:$failed_groups, skipped_groups:$skipped_groups,
@@ -702,9 +705,11 @@ else
       subject_has_tests:$subject_has_tests, groups_with_tests:$groups_with_tests,
       coverage: {requested:$cov_requested, html: ($cov_html | select(. != "") // null), percent: null},
       filter: ($filter | select(. != "") // null), recorded_at:$at,
-      subject_digest: ($digest | select(. != "") // null), git_head: ($head | select(. != "") // null),
+      subject_digest: ($digest | select(. != "") // null), digest_algo:$da,
+      git_head: ($head | select(. != "") // null),
       baseline: ($baselinef[0] // null), negative_controls:$negative_controls,
-      group_results:$group_results, tests: ($testsf[0] // [])}' 2>/dev/null || true)"
+      group_results:$group_results, tests: ($testsf[0] // []),
+      meta: {negative_controls:$nc_times}}' 2>/dev/null || true)"
   if [[ -z "$RECORD_JSON" ]]; then
     # Never fall through silently: an empty record would leave last-test.json
     # stale and write an empty baseline / result file.
@@ -723,7 +728,7 @@ else
       [[ "$ENV_BLOCKED" == "1" ]] && exit 2
       exit 1
     fi
-    printf '%s' "$RECORD_JSON" | jq '{source:"run", taken_at:.recorded_at, recorded_at, subject_digest, git_head,
+    printf '%s' "$RECORD_JSON" | jq '{source:"run", taken_at:.recorded_at, recorded_at, subject_digest, digest_algo, git_head,
         type, filter, status, ran, passed, failed, skipped, executed, group_results, tests}' \
       > "$BASELINE_FILE.tmp" && mv "$BASELINE_FILE.tmp" "$BASELINE_FILE"
     log_ok "Baseline recorded: $BASELINE_FILE ($EXECUTED test(s); $(printf '%s' "$RECORD_JSON" | jq '[.tests[] | select(.status == "fail" or .status == "error")] | length') failing before the port)."

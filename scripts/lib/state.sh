@@ -20,9 +20,11 @@ negative_controls_file() { printf '%s/negative-controls.json' "$(project_state_d
 
 # negative_controls_summary <subject> -> compact JSON summary of the recorded
 # negative controls ({total, effective, ineffective, error, stale, controls:
-# [{test, type, label, verdict, at, stale}]}), or "null" when none was recorded.
-# A control is "stale" when the subject's sources changed after it ran (its
-# subject_digest differs), so a report never presents it as current proof.
+# [{test, type, label, verdict, mutation, stale}]}), or "null" when none was
+# recorded. A control is "stale" when the subject's sources changed after it
+# ran (its subject_digest differs), so a report never presents it as current
+# proof. It carries no time (AR-13: a hashed artifact keeps its timestamps
+# under its top-level meta): negative_controls_times gives them.
 negative_controls_summary() {
   local s="${1:-$PWD}" f digest
   f="$(negative_controls_file "$s")"
@@ -30,7 +32,7 @@ negative_controls_summary() {
   digest="$(subject_digest "$s")"
   jq -c --arg d "$digest" '
     if (type == "array") and (length > 0) then
-      [ .[] | {test, type, label: .label, verdict, at, mutation: (.mutation.kind // null),
+      [ .[] | {test, type, label: .label, verdict, mutation: (.mutation.kind // null),
                stale: ((.subject_digest // "") != "" and $d != "" and .subject_digest != $d)} ] as $c
       | {total: ($c | length),
          effective: ([ $c[] | select(.verdict == "effective") ] | length),
@@ -39,6 +41,19 @@ negative_controls_summary() {
          stale: ([ $c[] | select(.stale) ] | length),
          controls: $c}
     else null end' "$f" 2>/dev/null || printf 'null'
+  return 0
+}
+
+# negative_controls_times <subject> -> when each recorded negative control ran,
+# in the order of negative_controls_summary's controls ([{test, type, label,
+# at}], compact), or "null" when none was recorded: what last-test.json keeps
+# under meta.negative_controls.
+negative_controls_times() {
+  local f
+  f="$(negative_controls_file "${1:-$PWD}")"
+  if [[ ! -r "$f" ]] || ! have_cmd jq; then printf 'null'; return 0; fi
+  jq -c 'if (type == "array") and (length > 0) then [ .[] | {test, type, label: .label, at: (.at // null)} ] else null end' \
+    "$f" 2>/dev/null || printf 'null'
   return 0
 }
 
@@ -75,14 +90,17 @@ negative_controls_summary() {
 #    toolchain: {drupal_core, php_target, core_strategy, packages: {name: ver},
 #                lock_drupilot_version},
 #    tests: {status, preservation, executed, tests_failed, groups_passed,
-#            groups_failed, groups_skipped, recorded_at, fresh}  (last-test.json),
-#    core_matrix: {verdict, d10_support, generated_at, fresh},
+#            groups_failed, groups_skipped, recorded_at, fresh, stale_reason}
+#           (last-test.json),
+#    core_matrix: {verdict, d10_support, generated_at, fresh, stale_reason},
 #    patch: {path, kind: local|issue|contribution, at},
 #    portfolio: {dir: ABS_PATH, layer} (state.sh record --portfolio, from
 #               /drupilot-layers: the set and porting layer the subject is in),
 #    drupilot_version}
 # `fresh` is true when the result was computed on the subject's current
-# sources (subject_digest). `stage` is the highest-ranked stage reached and never
+# sources (subject_digest), false when not (stale_reason "sources-changed", or
+# "digest-algorithm" for a record of another digest algorithm, e.g. one
+# drupilot 0.9 wrote: digest_freshness), null when it cannot be told. `stage` is the highest-ranked stage reached and never
 # goes down (re-running /drupilot-port after a refactor does not undo it;
 # DRUPILOT_STATE_FORCE=1 lets a record lower it). The legacy plain-text
 # `<state_dir>/phase` marker is kept in sync with `stage` for older readers.
@@ -353,8 +371,8 @@ state_snapshot_json() {
     [[ -f "$root/.ddev/config.yaml" ]] && ddev="$(sed -n 's/^name:[[:space:]]*//p' "$root/.ddev/config.yaml" 2>/dev/null | sed -n '1p' | tr -d "\"' " || true)"
   fi
   a="$(_json_from "$sd/assess.json" '{effort: (.verdict // .effort // null), at: (.timestamp // .generated_at // null)}')"
-  t="$(_json_from "$sd/last-test.json" '{status: (.status // null), preservation: (.preservation // null), executed: (.executed // null), tests_failed: ([.tests[]? | select(.status == "fail" or .status == "error")] | length), groups_passed: (.passed // null), groups_failed: (.failed // null), groups_skipped: (.skipped // null), recorded_at: (.recorded_at // .generated_at // null), digest: (.subject_digest // null)}')"
-  m="$(_json_from "$sd/core-matrix.json" '{verdict: (.verdict // null), d10_support: (.d10_support // null), generated_at: (.generated_at // null), digest: (.subject_digest // null)}')"
+  t="$(_json_from "$sd/last-test.json" '{status: (.status // null), preservation: (.preservation // null), executed: (.executed // null), tests_failed: ([.tests[]? | select(.status == "fail" or .status == "error")] | length), groups_passed: (.passed // null), groups_failed: (.failed // null), groups_skipped: (.skipped // null), recorded_at: (.recorded_at // .generated_at // null), digest: (.subject_digest // null), digest_algo: (.digest_algo // null)}')"
+  m="$(_json_from "$sd/core-matrix.json" '{verdict: (.verdict // null), d10_support: (.d10_support // null), generated_at: (.generated_at // null), digest: (.subject_digest // null), digest_algo: (.digest_algo // null)}')"
   pm="$(_json_from "$sd/port-manifest.json" '{patch: (.patch | if type == "string" then . else null end), phase: ((.phase // "port") | if type == "string" then . else null end), at: (.generated_at // .recorded_at // null)}')"
   # A relative manifest patch path is the subject's; when it is not there but
   # the same path exists under the Drupal root (a manifest written with the
@@ -371,7 +389,7 @@ state_snapshot_json() {
   fi
   l="null"; o="null"
   if [[ -n "$rsd" ]]; then
-    l="$(_json_from "$rsd/drupilot-lock.json" '{drupal_core: (.drupal.core // null), php_target: (.php_target // null), core_strategy: (.core_strategy // null), packages: (.toolchain // null), lock_drupilot_version: (.drupilot_version // null)}')"
+    l="$(_json_from "$(lock_path "$root")" '{drupal_core: (.drupal.core // null), php_target: (.php_target // null), core_strategy: (.core_strategy // null), packages: (.toolchain // null), lock_drupilot_version: (.drupilot_version // null)}')"
     local ob; ob="$(origin_baseline_find "$root" "$mn")"
     [[ -n "$ob" ]] && o="$(_json_from "$ob" '{source: (.source // null), placement: (.placement // null)}')"
     # No baseline (an in-place subject, or one placed before baselines were
@@ -384,17 +402,24 @@ state_snapshot_json() {
     fi
   fi
   jq -nc --arg subject "$abs" --arg mn "$mn" --arg typ "$typ" --arg root "$root" --arg ddev "$ddev" \
-    --arg digest "$digest" --argjson git "$git_json" --argjson a "$a" --argjson t "$t" \
+    --arg digest "$digest" --argjson algo "$(subject_digest_algo)" --argjson git "$git_json" --argjson a "$a" --argjson t "$t" \
     --argjson m "$m" --argjson pm "$pm" --argjson l "$l" --argjson o "$o" '
     def nz: if . == "" then null else . end;
-    def fresh($d): if ($d // "") == "" or $digest == "" then null else ($d == $digest) end;
+    # A record of another digest algorithm (drupilot 0.9 wrote none) is stale
+    # with stale_reason "digest-algorithm": drupilot cannot tell whether its
+    # sources changed, so port-summary keeps its failing verdict blocking.
+    def fresh($r): if ($r.digest // "") == "" or $digest == "" then null
+      elif ($r.digest_algo // 1) != $algo then false else ($r.digest == $digest) end;
+    def stale_reason($r): if fresh($r) != false then null
+      elif ($r.digest_algo // 1) != $algo then "digest-algorithm" else "sources-changed" end;
+    def freshen: (. | del(.digest, .digest_algo)) + {fresh: fresh(.), stale_reason: stale_reason(.)};
     {subject: $subject, machine_name: ($mn | nz), type: ($typ | nz),
      drupal_root: ($root | nz), ddev_project: ($ddev | nz),
      origin: ($o.source // null), placement: ($o.placement // null),
      effort: ($a.effort // null), assessed_at: ($a.at // null),
      git: $git, toolchain: $l,
-     tests: (if $t == null then null else ($t | del(.digest)) + {fresh: fresh($t.digest)} end),
-     core_matrix: (if $m == null then null else ($m | del(.digest)) + {fresh: fresh($m.digest)} end),
+     tests: (if $t == null then null else ($t | freshen) end),
+     core_matrix: (if $m == null then null else ($m | freshen) end),
      port_stage: (($pm.phase // "") | ascii_downcase | if . == "port" or . == "ported" then "ported" elif . == "refactor" or . == "refactored" then "refactored" else null end),
      port_at: ($pm.at // null),
      patch: (if ($pm.patch // "") == "" then null
@@ -458,6 +483,24 @@ state_view_json() {
     v="$(printf '%s' "$v" | jq -c --argjson e "$pe" '.patch.exists = $e' 2>/dev/null || printf '%s' "$v")"
   fi
   printf '%s\n' "$v"
+  return 0
+}
+
+# digest_freshness <subject> <record-file> -> "true", "false sources-changed",
+# "false digest-algorithm" or "unknown": whether the record (last-test.json,
+# core-matrix.json, ...) was computed on the subject's current sources. A
+# record without digest_algo, or of another algorithm, is stale whatever its
+# digest says (AR-13); one without a subject_digest is unknown.
+digest_freshness() {
+  local s="${1:-$PWD}" f="${2:-}" have algo want
+  if [[ ! -r "$f" ]] || ! have_cmd jq; then printf 'unknown'; return 0; fi
+  have="$(jq -r '.subject_digest // empty' "$f" 2>/dev/null || true)"
+  algo="$(jq -r '.digest_algo // 1' "$f" 2>/dev/null || true)"
+  want="$(subject_digest "$s")"
+  if [[ -z "$have" || -z "$want" ]]; then printf 'unknown'
+  elif [[ "$algo" != "$(subject_digest_algo)" ]]; then printf 'false digest-algorithm'
+  elif [[ "$have" == "$want" ]]; then printf 'true'
+  else printf 'false sources-changed'; fi
   return 0
 }
 

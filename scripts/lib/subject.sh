@@ -285,19 +285,33 @@ subject_attribute_floor() {
   return 0
 }
 
-# subject_digest <dir> -> SHA-256 over the subject's analysable sources (PHP
-# family files, *.yml, composer.json; .git/vendor/node_modules skipped), in a
-# stable order. Generated artifacts next to the module (a local .patch, the
-# issue markdown) do not change it. Prints nothing when no hasher is available.
+# subject_digest <dir> -> SHA-256 over the subject's sources (PHP family
+# files, *.yml, composer.json, and since algorithm 2 *.twig, *.js and *.css;
+# .git/vendor/node_modules skipped), in a stable order, after a line naming
+# the algorithm. Generated artifacts next to the module (a local .patch, the
+# issue markdown) do not change it. Prints nothing when no hasher is
+# available. An artifact records it with digest_algo (subject_digest_algo):
+# the header line makes every algorithm-1 digest (drupilot 0.9) differ, so a
+# freshness check that compares digests takes such an artifact as stale.
 subject_digest() {
   local d="${1:-$PWD}" hasher=""
   if have_cmd sha256sum; then hasher="sha256sum"; elif have_cmd shasum; then hasher="shasum -a 256"; else return 0; fi
   ( cd -P "$d" 2>/dev/null || exit 0
+    printf 'drupilot-subject-digest %s\n' "$(subject_digest_algo)"
     find . \( -name .git -o -name vendor -o -name node_modules \) -prune -o -type f \
       \( -name '*.php' -o -name '*.module' -o -name '*.inc' -o -name '*.install' -o -name '*.theme' \
-         -o -name '*.profile' -o -name '*.engine' -o -name '*.yml' -o -name composer.json \) -print 2>/dev/null \
+         -o -name '*.profile' -o -name '*.engine' -o -name '*.yml' -o -name composer.json \
+         -o -name '*.twig' -o -name '*.js' -o -name '*.css' \) -print 2>/dev/null \
       | LC_ALL=C sort | while IFS= read -r f; do printf '%s\n' "$f"; cat "$f"; done ) \
     | $hasher | cut -d' ' -f1
+  return 0
+}
+
+# subject_digest_algo -> the algorithm subject_digest computes (2: the Twig,
+# JS and CSS sources and the header line; 1 was drupilot 0.9's). Writers keep
+# it as digest_algo next to subject_digest.
+subject_digest_algo() {
+  printf '2'
   return 0
 }
 

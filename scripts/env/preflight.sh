@@ -106,6 +106,7 @@ config_enum DRUPILOT_SOFT_DEPRECATIONS    report report defer fix        >/dev/n
 config_enum DRUPILOT_ATTRIBUTES_MODE      keep   keep strip             >/dev/null || true
 config_enum DRUPILOT_HOOKS_GUARD          ask    ask off                >/dev/null || true
 config_enum DRUPILOT_CORE_CACHE           auto   auto locked off        >/dev/null || true
+config_enum DRUPILOT_LOCK_LOCATION        state  state project          >/dev/null || true
 [[ -z "$(config_get DRUPILOT_LAYERS_SANDBOX "")" ]] || config_enum DRUPILOT_LAYERS_SANDBOX "" per-module shared >/dev/null || true
 # DRUPILOT_VERIFY_CORES is auto | off | a comma list of MAJOR[.MINOR] legs.
 _vc="$(config_get DRUPILOT_VERIFY_CORES auto)"

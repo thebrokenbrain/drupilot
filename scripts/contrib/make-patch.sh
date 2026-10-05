@@ -266,6 +266,7 @@ if [[ "$LOCAL" == "1" ]]; then
     ":(exclude)${RELPREFIX}${REPO_PATCH_NAME}"
     ":(exclude)${RELPREFIX}.drupilot"
     ":(exclude)${RELPREFIX}.drupilot.json"
+    ":(exclude)${RELPREFIX}drupilot-lock.json"
     ":(exclude)${RELPREFIX}*-port-to-drupal-11.patch"
     ":(exclude)${RELPREFIX}*-port-to-drupal-11-*.patch"
     ":(exclude)${RELPREFIX}*-port-to-drupal-*.patch"
