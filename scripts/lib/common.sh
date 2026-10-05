@@ -53,7 +53,8 @@ for _drupilot_lib in $_drupilot_libs; do
 done
 unset _drupilot_lib _drupilot_libs _drupilot_want _drupilot_lib_dir
 
-# The alias rows (config/migrations.json), and a warning for each row already
+# The alias rows (config/migrations.json): their key names now, without a
+# fork; the rows themselves when needed, with a warning for each row already
 # in use, once, in the main shell (see the alias layer in config.sh).
-_config_alias_load
+_config_alias_scan
 _config_alias_prewarn

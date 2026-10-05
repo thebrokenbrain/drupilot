@@ -41,6 +41,8 @@ _config_resolve() {
   local key="$1" def="${2:-}" aliases="${3:-1}" explicit="${4:-0}"
   local envval="${!key:-}"
   if [[ -n "$envval" ]]; then printf '%s' "$envval"; return 0; fi
+  # The rows are read (one jq) only for a key some row renames.
+  if [[ "$aliases" == "1" && "$_DRUPILOT_ALIAS_NEW" == *"|$key|"* ]]; then _config_alias_rows; fi
   if [[ "$aliases" == "1" && "$_DRUPILOT_ALIAS_N" -gt 0 ]] && _config_alias env "$key"; then
     printf '%s' "$_DRUPILOT_ALIAS_VALUE"; return 0
   fi
@@ -76,14 +78,61 @@ _config_resolve() {
 # `equals: false` matches a JSON false) — e.g. a legacy boolean honored only
 # while a strategy is still at its default. value_aliases and removed are read
 # by their owners and by the `version` gate, not here.
-# Warnings: a row in use is reported once per process. The rows are loaded,
-# and the ones already in use (environment, or the .drupilot.json found from
-# the working directory) are warned about, when this file is sourced, in the
-# main shell, so the many `$(config_get ...)` subshells inherit the mark; a row
-# first met later (another project root) is warned about where it is met.
+# Warnings: a row in use is reported once per process. When this file is
+# sourced, a fork-free scan records the old and new key names of the rows
+# (_config_alias_scan); the rows themselves are read with jq only when a key
+# some row renames is looked up, or when an old name is in use (environment,
+# or the .drupilot.json found from the working directory): those are warned
+# about then, in the main shell, so the many `$(config_get ...)` subshells
+# inherit the mark; a row first met later (another project root) is warned
+# about where it is met. A hook, which looks up no renamed key, never forks.
 _DRUPILOT_ALIAS_N=0
 _DRUPILOT_ALIAS_VALUE=""
 _DRUPILOT_ALIAS_WARNED="|"
+_DRUPILOT_ALIAS_PENDING=0
+_DRUPILOT_ALIAS_OLD="|"
+_DRUPILOT_ALIAS_NEW="|"
+
+# _config_alias_scan -> without forking, the key names on the old and new side
+# of the env_aliases rows (|KEY|... in _DRUPILOT_ALIAS_OLD and
+# _DRUPILOT_ALIAS_NEW), and _DRUPILOT_ALIAS_PENDING=1 when there are rows to
+# read. Only the part of the file before value_aliases is scanned.
+_config_alias_scan() {
+  local f line side pat rest k in=0
+  local -a lines=()
+  f="$(plugin_root)/config/migrations.json"
+  [[ -r "$f" ]] || return 0
+  # One read into an array of lines, then short per-line matches: a pattern
+  # removal over the whole file would cost milliseconds.
+  IFS=$'\n' read -r -d '' -a lines < "$f" || true
+  for line in ${lines[@]+"${lines[@]}"}; do
+    case "$line" in *'"env_aliases"'*) in=1;; esac
+    [[ "$in" == "1" ]] || continue
+    case "$line" in *'"old"'*|*'"new"'*) ;; *'"value_aliases"'*|*'"removed"'*) break;; *) continue;; esac
+    for side in old new; do
+      for pat in "\"$side\": \"" "\"$side\":\""; do
+        rest="$line"
+        while [[ "$rest" == *"$pat"* ]]; do
+          rest="${rest#*"$pat"}"
+          k="${rest%%[\"=]*}"
+          case "$k" in ""|[!A-Za-z_]*|*[!A-Za-z0-9_]*) continue;; esac
+          if [[ "$side" == "old" ]]; then _DRUPILOT_ALIAS_OLD="${_DRUPILOT_ALIAS_OLD}${k}|"
+          else _DRUPILOT_ALIAS_NEW="${_DRUPILOT_ALIAS_NEW}${k}|"; fi
+        done
+      done
+    done
+    case "$line" in *'"value_aliases"'*|*'"removed"'*) break;; esac
+  done
+  if [[ "$_DRUPILOT_ALIAS_NEW" != "|" ]]; then _DRUPILOT_ALIAS_PENDING=1; fi
+  return 0
+}
+
+# _config_alias_rows -> the rows read (_config_alias_load), once per process.
+_config_alias_rows() {
+  [[ "$_DRUPILOT_ALIAS_PENDING" == "1" ]] || return 0
+  _DRUPILOT_ALIAS_PENDING=0
+  _config_alias_load
+}
 
 # _config_alias_load -> the env_aliases rows in parallel arrays (_DA_NEW,
 # _DA_NV, _DA_OLD, _DA_OV, _DA_WK, _DA_WE, _DA_SINCE, _DA_RIN) and their count
@@ -172,9 +221,28 @@ _config_alias() {
 # for the rows that hit. Skipped in a hook, which discards its STDERR (and is
 # latency-bound): a lookup there still resolves the alias, silently.
 _config_alias_prewarn() {
-  local i=0 pf keys
-  [[ "$_DRUPILOT_ALIAS_N" -gt 0 ]] || return 0
+  local i=0 pf keys k rest hit=0 pcontent=""
+  [[ "$_DRUPILOT_ALIAS_OLD" != "|" ]] || return 0
   case "${0:-}" in */hooks/scripts/*) return 0;; esac
+  # Fork-free first: is an old name set in the environment, else written in
+  # the .drupilot.json? Only then are the rows read.
+  rest="${_DRUPILOT_ALIAS_OLD#|}"
+  while [[ -n "$rest" ]]; do
+    k="${rest%%|*}"; rest="${rest#*|}"
+    if [[ -n "${!k:-}" ]]; then hit=1; fi
+  done
+  if [[ "$hit" == "0" ]]; then
+    pf="$(drupilot_prefs_file 2>/dev/null || true)"
+    if [[ -n "$pf" && -r "$pf" ]]; then IFS= read -r -d '' pcontent < "$pf" || true; fi
+    rest="${_DRUPILOT_ALIAS_OLD#|}"
+    while [[ -n "$pcontent" && -n "$rest" ]]; do
+      k="${rest%%|*}"; rest="${rest#*|}"
+      if [[ "$pcontent" == *"\"$k\""* ]]; then hit=1; fi
+    done
+  fi
+  [[ "$hit" == "1" ]] || return 0
+  _config_alias_rows
+  [[ "$_DRUPILOT_ALIAS_N" -gt 0 ]] || return 0
   while [[ "$i" -lt "$_DRUPILOT_ALIAS_N" ]]; do
     if _config_alias_applies "$i" env; then _config_alias_warn "$i"; fi
     i=$((i + 1))
