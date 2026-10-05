@@ -23,6 +23,15 @@ with APIs Drupal 11 now provides natively. Anything bigger is deferred to Phase 
 (`full-refactor`). Everything is driven through the leaf scripts under
 `${CLAUDE_PLUGIN_ROOT}/scripts/analysis/`.
 
+**The upgrade plan.** Every version this procedure needs (target major, test-bed
+core, declared range, PHP floor and target, Rector sets, names) comes from it,
+never from the examples below (AR-26). Pass `--subject <path>` when the block
+names no module:
+
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show 2>/dev/null || true`
+
+If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show
+
 ## 0. Golden rules
 
 - **Gate `analyze` first.** Static port needs git + jq + (composer OR php ≥
@@ -202,8 +211,9 @@ when the toolchain already matches the known-good set), and re-run.
 `run-rector.sh` `cd`s to the Drupal root, uses `RUNNER=$(drupal_runner)`
 (`ddev exec` when the env is up), and ensures a `rector.php` exists at the root
 (rendered from the plugin's `rector.php.tmpl`; the vendor example is only a
-legacy fallback). The config uses `Drupal10SetList::DRUPAL_10` (D9/D10 APIs
-removed in D11; `DRUPAL_11` is deliberately not included) and the PHP floor L
+legacy fallback). The config uses the upgrade plan's per-minor Drupal sets
+(`rector.drupal_sets`, ADR 0019: the previous major's, `DRUPAL_100` to `DRUPAL_103`
+for a port to Drupal 11; the target's own sets are deliberately not included) and the PHP floor L
 of the declared core range and `require.php` (`->withPhpVersion()` and the level
 sets stop at L: 8.1 for `^10 || ^11`), minus the risky modernization rules
 listed in §0. When L is below 8.4, a narrow compat pass (`rector-compat.php`)

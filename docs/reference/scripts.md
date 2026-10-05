@@ -4,6 +4,32 @@
 
 Every script of `scripts/`, by group, with the usage its header documents (`-h` / `--help` prints the same text). A script never prints anything else on STDOUT than its payload; logs go to STDERR.
 
+## drupilot.sh
+
+```text
+drupilot — scripts/drupilot.sh
+The headless dispatcher (AR-22, X9). Until it gains its other verbs (M10), it
+answers one: `plan show`, the "drupilot plan" block a skill or command
+renders with a load-time !`...` span, and the fallback such a prompt points
+to when the span did not run (AR-26).
+
+`plan show` prints the upgrade plan of the subject: the plan frozen in its
+Drupal root's lock when it is the subject's (plan_for_subject), else a fresh
+draft from scripts/analysis/upgrade-path.sh (nothing is written). Without a
+subject or a plan (the resolver refuses), it says so in one line. Read-only.
+
+Usage:
+  drupilot.sh plan show [--subject DIR] [--root DIR] [--json]
+    --subject DIR  the module/theme (default, or when DIR is not a directory:
+                   the current directory)
+    --root DIR     its Drupal root (default: the one the subject runs in)
+    --json         the plan itself on STDOUT (the upgrade-plan JSON; {} when
+                   none resolves) instead of the block
+
+Output: the block (or the JSON) on STDOUT; logs on STDERR.
+Exit codes: 0 ok, also when no plan resolves · 1 usage error.
+```
+
 ## analysis
 
 ### analysis/check-port-safety.sh
@@ -3303,7 +3329,7 @@ runtime: no command, skill or hook calls it). Run it before every commit.
 
 Gates (in order; names are what --only/--skip/--allow-fail take):
   - validate    `claude plugin validate .` (skipped when `claude` is absent)
-  - syntax      `bash -n` on scripts/*/*.sh, hooks/scripts/*.sh and the test
+  - syntax      `bash -n` on scripts/*.sh, scripts/*/*.sh, hooks/scripts/*.sh and the test
                 scripts tests/lib/*.sh and tests/unit/*.sh
   - exec-bit    those scripts are executable (git mode 100755 when tracked,
                 the filesystem -x bit otherwise)
@@ -3342,6 +3368,25 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
                 with BusyBox tools). Use grep_q (common.sh), sed -n '1p' /
                 '1,Np', or an awk flag instead of exit. A line can opt out
                 with a trailing `# sigpipe-ok` and a reason
+  - scripts     (AR-22) every script of scripts/*.sh and scripts/<group>/*.sh
+                but scripts/dev/ sources common.sh at its depth, answers -h /
+                --help with exit 0 and a Usage section, and refuses an
+                unknown flag with exit 1 (a 0.9 script that ignores one keeps
+                its frozen CLI: rule AR22-FLAG of hard-rules-allow.txt); run
+                with HOME and XDG in a temp dir and every DRUPILOT_* unset
+  - hard-rules  (T-M3-12, alias no-version-literals) the hard rules H1-H9 as
+                greps over scripts (comment lines skipped), templates and the
+                prompts: SleepToSerialize/WakeupToUnserialize outside a skip
+                list (H2), withComposerBased( (H3), an HTML fetch of
+                drupal.org/docs or a project's releases page (H5), a
+                hard-coded "Drupal 12 stable" (H6), the forbidden
+                Drupal10SetList::DRUPAL_10 aggregate (AGG), a DDEV type
+                literal drupalNN outside scripts/lib/plan.sh (DDEV), and in
+                the scripts no more version literals per file than
+                tests/contract/hard-rules-allow.txt records (H4, a ratchet:
+                a new literal fails; read versions through plan_get /
+                target_get). That file allows a rule for one path, each row
+                with its reason
   - jq-compat   no jq program in those scripts uses a jq keyword (label,
                 module, if, then, else, end, as, def, reduce, foreach, try,
                 catch, and, or, not, import, include, __loc__) as a --arg /
@@ -3388,11 +3433,11 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
                 its defaults.json keys are exactly those of defaults.json;
                 every entry has a tier, a type and a description, a
                 default_ref that resolves and an enum holding the default;
-                every name the 0.9 README documents is public. These findings
-                WARN (status warn, not a failure) until M11; a _*_comment of
-                defaults.json longer than 1800 characters fails (AR-27: the
-                prose stays until M11 but must not grow). Comment lines of the
-                scripts and scripts/dev/ are not scanned
+                every name the 0.9 README documents is public. A finding
+                fails the gate (T-M3-14; it warned until M3), and so does a
+                _*_comment of defaults.json longer than 1800 characters
+                (AR-27: the prose stays until M11 but must not grow). Comment
+                lines of the scripts and scripts/dev/ are not scanned
   - docs        the docs site (08-R6): scripts/dev/gen-docs.sh --check (no
                 drift of the generated docs/reference pages); every
                 docs/**/*.md is in the mkdocs.yml nav and every nav entry

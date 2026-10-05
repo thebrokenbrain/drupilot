@@ -103,8 +103,9 @@ All output you produce — messages, summaries, plans — is in **English**.
   8.3, check the core minor (`php_supported_for`), never assume a Rector `php85` set.
 - **drupal-rector**: `palantirnet/drupal-rector` **1.1.x** (toolchain cell 11; a project locked by drupilot 0.9 keeps 0.21.x until refreshed; community-maintained;
   the `palantirnet/` namespace is kept, `palantirnet/drupal8-rector` is obsolete).
-  Covers D10.0 -> D11.4 deprecations. drupilot's `rector.php` uses
-  `Drupal10SetList::DRUPAL_10` (APIs removed in D11) plus the PHP sets up to the
+  Covers D10.0 -> D11.4 deprecations. drupilot's `rector.php` (template 5,
+  ADR 0019) uses the upgrade plan's per-minor Drupal sets (`rector.drupal_sets`,
+  e.g. `DRUPAL_100` to `DRUPAL_103` for a port to Drupal 11) plus the PHP sets up to the
   floor of the declared core range (`->withPhpVersion()`; 8.1 for
   `^10 || ^11`, a compat pass fixes implicit nullables when it is below 8.4)
   minus the risky rules it skips (`ArrayToFirstClassCallableRector`,

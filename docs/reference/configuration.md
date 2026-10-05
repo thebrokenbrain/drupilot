@@ -320,6 +320,13 @@ Environment only. `1`: answer yes to the scripts' yes/no confirmations, with or 
 - **Default:** none
 - **Type:** bool
 
+### `DRUPILOT_EXPERIMENTAL_D7`
+
+Environment only until the d7-assisted track lands (M10, then in defaults.json as `off`). `on` opts a Drupal 7 source into the experimental d7-assisted track, which never runs in `auto`; without it the upgrade plan refuses a Drupal 7 source in an autonomous run (D7-AUTO) and points here.
+
+- **Default:** none
+- **Type:** string — one of `on`, `off`
+
 ### `DRUPILOT_GITLAB_PAT`
 
 Environment only. Your GitLab Personal Access Token for the Drupal.org contribution flow, read at runtime and never persisted (the variable name itself is `contrib.pat_env_var` in defaults.json).

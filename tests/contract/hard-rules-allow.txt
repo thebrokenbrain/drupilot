@@ -1,0 +1,75 @@
+# The reasoned exceptions of the hard-rules and scripts gates of
+# scripts/dev/check.sh (T-M3-12, AR-22). One row: RULE PATH [COUNT]  # reason.
+# A row never covers more than its rule and its path; a new exception needs a
+# reason the review accepts.
+#
+# Hard rules (10-architecture-1.0.md, "Hard rules carried from 04 §3").
+H2 templates/rector.php.tmpl  # the header comment that explains why the skip list holds these rules
+H2 templates/rector-compat.php.tmpl  # its own skip list (withSkip), the only place they are named in a config
+H2 skills/php-target-tuning/SKILL.md  # the prose that lists the rules the templates skip
+AGG scripts/lib/toolchain.sh  # rector_smoke loads drupal-rector's aggregate on a throwaway file to prove the package autoloads; it never runs on a subject
+DDEV templates/ddev-config.yaml.tmpl  # a reference file ddev-up.sh never renders (ddev-up.sh configures the type from target_ddev_type)
+#
+# H4 (no-version-literals): the number of lines with a version literal each
+# script had when the gate was added (M3), a ratchet: a new literal fails.
+# Most are 0.9 defaults, messages and the PHP construct table of
+# detect-php-floor.sh; they go down as their readers move to plan_get /
+# target_get (M5, M8). Lower a count when a change removes literals.
+H4 hooks/scripts/session-detect-env.sh 2
+H4 scripts/analysis/check-port-safety.sh 4
+H4 scripts/analysis/classify-deprecations.sh 6
+H4 scripts/analysis/convert-attributes.sh 3
+H4 scripts/analysis/core-strategy.sh 1
+H4 scripts/analysis/deps-status.sh 3
+H4 scripts/analysis/detect-php-floor.sh 19
+H4 scripts/analysis/layer-report.sh 2
+H4 scripts/analysis/lint-extension-metadata.sh 2
+H4 scripts/analysis/port-report.sh 12
+H4 scripts/analysis/port-summary.sh 1
+H4 scripts/analysis/run-phpcs.sh 1
+H4 scripts/analysis/run-rector.sh 4
+H4 scripts/analysis/scan-signature-changes.sh 3
+H4 scripts/analysis/set-core-requirement.sh 5
+H4 scripts/analysis/upgrade-path.sh 3
+H4 scripts/analysis/verify-core-matrix.sh 12
+H4 scripts/contrib/find-upstream-issue.sh 7
+H4 scripts/contrib/make-issue.sh 16
+H4 scripts/contrib/make-patch.sh 5
+H4 scripts/contrib/open-mr.sh 2
+H4 scripts/env/ddev-up.sh 5
+H4 scripts/env/detect-php.sh 3
+H4 scripts/env/install-toolchain.sh 2
+H4 scripts/env/next-step.sh 4
+H4 scripts/env/place-subject.sh 1
+H4 scripts/env/preflight.sh 3
+H4 scripts/env/render-templates.sh 1
+H4 scripts/env/resolve-workspace.sh 4
+H4 scripts/env/state.sh 3
+H4 scripts/lib/config.sh 6
+H4 scripts/lib/core.sh 1
+H4 scripts/lib/ddev.sh 1
+H4 scripts/lib/git.sh 4
+H4 scripts/lib/php-scan.sh 1
+H4 scripts/lib/plan.sh 5
+H4 scripts/lib/strategy.sh 29
+H4 scripts/lib/toolchain.sh 11
+H4 scripts/tests/run-phpunit.sh 1
+#
+# AR22-FLAG: 0.9 scripts whose frozen CLI (CC-05) ignores an unknown flag or
+# checks its requirements first (exit 2); every other script, and every new
+# one, refuses an unknown flag with exit 1.
+AR22-FLAG scripts/analysis/core-strategy.sh
+AR22-FLAG scripts/analysis/deps-status.sh
+AR22-FLAG scripts/analysis/detect-php-floor.sh
+AR22-FLAG scripts/analysis/explain-deprecations.sh
+AR22-FLAG scripts/analysis/port-report.sh
+AR22-FLAG scripts/contrib/check-prereqs.sh
+AR22-FLAG scripts/contrib/setup-git.sh
+AR22-FLAG scripts/env/ddev-add-ons.sh
+AR22-FLAG scripts/env/detect-php.sh
+AR22-FLAG scripts/env/install-deps.sh
+AR22-FLAG scripts/env/lock-sync.sh
+AR22-FLAG scripts/env/next-step.sh
+AR22-FLAG scripts/env/place-subject.sh
+AR22-FLAG scripts/env/preflight.sh
+AR22-FLAG scripts/env/resolve-workspace.sh

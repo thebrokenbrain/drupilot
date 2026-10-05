@@ -325,7 +325,7 @@ finish() {
 # --- Tests ----------------------------------------------------------------------
 test_help() {
   local f n=0
-  for f in "$REPO"/scripts/analysis/*.sh "$REPO"/scripts/contrib/*.sh "$REPO"/scripts/env/*.sh \
+  for f in "$REPO"/scripts/*.sh "$REPO"/scripts/analysis/*.sh "$REPO"/scripts/contrib/*.sh "$REPO"/scripts/env/*.sh \
            "$REPO"/scripts/tests/*.sh "$REPO"/scripts/dev/*.sh; do
     [[ -f "$f" ]] || continue
     n=$((n + 1))

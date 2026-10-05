@@ -91,6 +91,11 @@ gen_scripts() {
   local g f
   printf '%s\n\n# Scripts\n\n' "$GEN"
   printf 'Every script of `scripts/`, by group, with the usage its header documents (`-h` / `--help` prints the same text). A script never prints anything else on STDOUT than its payload; logs go to STDERR.\n'
+  for f in $(cd "$REPO/scripts" && ls ./*.sh 2>/dev/null | sed 's#^\./##' | sort); do
+    printf '\n## %s\n\n```text\n' "$f"
+    print_usage "$REPO/scripts/$f" | sed -e 's/[[:space:]]*$//'
+    printf '```\n'
+  done
   for g in analysis contrib env tests dev; do
     printf '\n## %s\n' "$g"
     for f in $(cd "$REPO/scripts/$g" && ls ./*.sh 2>/dev/null | sed 's#^\./##' | sort); do

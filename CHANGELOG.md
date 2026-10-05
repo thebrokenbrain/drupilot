@@ -14,6 +14,32 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 ## [Unreleased]
 
 ### Added
+- **The `hard-rules` gate** (alias `no-version-literals`, T-M3-12) greps for
+  the hard rules:
+  - H2: `SleepToSerialize`/`WakeupToUnserialize` outside a skip list;
+  - H3: `withComposerBased(`;
+  - H5: an HTML fetch of drupal.org docs or releases;
+  - H6: a hard-coded "Drupal 12 stable";
+  - the forbidden `Drupal10SetList::DRUPAL_10` aggregate;
+  - a `drupalNN` DDEV-type literal outside `scripts/lib/plan.sh`;
+  - H4: no new version literal in a script. It is a ratchet over today's
+    count per file.
+
+  Reasoned exceptions live in `tests/contract/hard-rules-allow.txt`. The
+  prompts that still described the `DRUPAL_10` aggregate or a `drupal11` DDEV
+  type now describe the plan's per-minor sets and `target_ddev_type`.
+- **The `scripts` gate** (AR-22) checks every script but `scripts/dev/`. Each
+  sources `common.sh` at its depth, answers `--help` with exit 0 and a Usage
+  section, and refuses an unknown flag with exit 1. The 0.9 scripts that ignore
+  one keep their frozen CLI.
+- **`scripts/drupilot.sh plan show`** (T-M3-13; the headless dispatcher of
+  AR-22, which answers only this verb until M10) prints the "drupilot plan"
+  block: the subject's frozen upgrade plan, else a draft.
+  - The commands with load-time spans, and the `minimal-port`,
+    `php-target-tuning`, `viability-assessment`, `full-refactor` and
+    `ddev-environment` skills, render it at load time.
+  - Every prompt with a `` !` `` span carries the fixed fallback line
+    (`prompt_bang_fallback.sh`).
 - **`DRUPILOT_TARGET_MAJOR` and `DRUPILOT_DRUPAL_TARGET` agree** (T-M3-06,
   X12 as ADR 0021 narrows it):
   - `DRUPILOT_DRUPAL_TARGET` is still the test-bed's core constraint, and the
@@ -338,6 +364,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `templates/rector-compat.php.tmpl` is a `drupal_safe` compat rule there.
 
 ### Changed
+- **The `config-keys` gate fails** on an undeclared or inconsistent
+  `DRUPILOT_*` key instead of warning (T-M3-14). `DRUPILOT_EXPERIMENTAL_D7`,
+  which the D7-AUTO message names, is declared (environment only until the
+  d7-assisted track lands).
 - **rector.php is rendered from the upgrade plan** (T-M3-09, ADR 0019;
   template 5):
   - the plan's per-minor Drupal sets, `defined()`-filtered, with

@@ -20,6 +20,14 @@ never edits an `info.yml` on its own and never does anything outward-facing.
 
 !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile analyze --json && bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; copy_legacy_state_once'`
 
+**The upgrade plan.** Every version this command needs (target major, test-bed
+core, declared range, PHP floor and target, Rector sets, names) comes from it,
+never from the examples in this text (AR-26):
+
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show --subject "$1" 2>/dev/null || true`
+
+If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show
+
 If `ready.analyze` is false, print the actionable report and stop (no side effects).
 Read the autonomy flag:
 

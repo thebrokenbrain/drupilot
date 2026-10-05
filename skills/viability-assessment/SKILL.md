@@ -23,6 +23,15 @@ to Drupal 11 and delivers two artifacts: a human-readable `viability-report.md`
 and a staged `port-plan.md`. It is **read-only**: every analysis runs in
 dry-run / report mode and nothing in the subject is modified.
 
+**The upgrade plan.** Every version this procedure needs (target major, test-bed
+core, declared range, PHP floor and target, Rector sets, names) comes from it,
+never from the examples below (AR-26). Pass `--subject <path>` when the block
+names no module:
+
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show 2>/dev/null || true`
+
+If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show
+
 The gate decision (PROMPT 0.2) is: drupilot **never refuses**. If the effort is
 above `DRUPILOT_VIABILITY_THRESHOLD` it says so loudly, but it still produces a
 phased plan that preserves the original functionality without colliding with
