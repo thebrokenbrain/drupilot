@@ -480,7 +480,9 @@ lenient_packages() {
   if [[ -r "$r/composer.json" ]] && have_cmd jq; then
     v="$(jq -c '((.extra // {})["drupal-lenient"] // {}) as $l
       | if ($l | type) != "object" then []
-        elif ($l["allow-all"] // false) == true then ["*"]
+        # composer-drupal-lenient tests allow-all by PHP truthiness ("true" too).
+        elif ($l["allow-all"] // false) as $a | ($a != false and $a != null and $a != 0 and $a != ""
+              and $a != "0" and $a != [] and $a != {}) then ["*"]
         else [($l["allowed-list"] // [])[]? | strings] | unique end' "$r/composer.json" 2> /dev/null || true)"
   fi
   [[ -n "$v" ]] || v='[]'

@@ -362,6 +362,16 @@ fi
 
 cd "$ROOT"
 
+# --- Lenient dependencies: before the install, and also when the toolchain is
+# already in place (a list changed after the first install still applies) ----
+if [[ ${#LENIENT[@]} -gt 0 ]]; then
+  ddev composer config --no-plugins allow-plugins.mglaman/composer-drupal-lenient true >/dev/null 2>&1 < /dev/null \
+    || log_warn "Could not allow the Composer plugin mglaman/composer-drupal-lenient."
+  log_warn "Lenient dependencies on this test-bed only (DRUPILOT_LENIENT_DEPS): $LENIENT_JSON — their drupal/core constraint is ignored here; tests passing with them do not show they support this core."
+  ddev composer config --json --merge extra.drupal-lenient.allowed-list "$LENIENT_JSON" >/dev/null 2>&1 < /dev/null \
+    || log_warn "Could not add $LENIENT_JSON to extra.drupal-lenient.allowed-list."
+fi
+
 # --- Install ----------------------------------------------------------------------
 if all_exact_installed; then
   log_ok "Every package is already installed at its pinned version — Composer not run."
@@ -369,17 +379,10 @@ if all_exact_installed; then
 else
   # Composer plugins the toolchain relies on must be allowed explicitly, or a
   # non-interactive require refuses to run them.
-  _plugins="phpstan/extension-installer dealerdirect/phpcodesniffer-composer-installer"
-  [[ ${#LENIENT[@]} -gt 0 ]] && _plugins="$_plugins mglaman/composer-drupal-lenient"
-  for plugin in $_plugins; do
+  for plugin in phpstan/extension-installer dealerdirect/phpcodesniffer-composer-installer; do
     ddev composer config --no-plugins "allow-plugins.$plugin" true >/dev/null 2>&1 < /dev/null \
       || log_warn "Could not allow the Composer plugin $plugin."
   done
-  if [[ ${#LENIENT[@]} -gt 0 ]]; then
-    log_warn "Lenient dependencies on this test-bed only (DRUPILOT_LENIENT_DEPS): $LENIENT_JSON — their drupal/core constraint is ignored here; tests passing with them do not show they support this core."
-    ddev composer config --json --merge extra.drupal-lenient.allowed-list "$LENIENT_JSON" >/dev/null 2>&1 < /dev/null \
-      || log_warn "Could not add $LENIENT_JSON to extra.drupal-lenient.allowed-list."
-  fi
   log_step "ddev composer require --dev -W --no-interaction ${SPECS[*]}"
   COMPOSER_RAN=true
   if ddev composer require --dev -W --no-interaction "${SPECS[@]}" >&2; then

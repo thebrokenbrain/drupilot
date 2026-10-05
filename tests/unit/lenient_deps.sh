@@ -51,6 +51,40 @@ assert_eq "not a drupal/<project> package: usage error" "$(cat "$T_TMP/rc")" "1"
 dry "$BED" DRUPILOT_LENIENT_DEPS='drupal/token;rm' > /dev/null
 assert_eq "  nor anything else in it" "$(cat "$T_TMP/rc")" "1"
 
+# The real install path, with a ddev stub that logs its calls: the plugin is
+# allowed and the list merged before Composer installs; a list extended on a
+# bed whose toolchain is already in place still applies.
+LOG="$T_TMP/ddev.log"
+FAKE="$T_TMP/fake"; mkdir -p "$FAKE"
+printf '#!/bin/sh\ncase "$1" in --version|version) echo "Docker version 29.0.0, build x";; esac\nexit 0\n' > "$FAKE/docker"
+cat > "$FAKE/ddev" <<STUB
+#!/bin/sh
+echo "\$*" >> "$LOG"
+case "\$1" in
+  --version|version) echo "ddev version v1.25.4";;
+  describe) echo '{"raw":{"status":"running"}}';;
+  exec) case "\$*" in *rector*) echo " [OK] Rector is done!";; *phpstan*) echo "PHPStan - PHP Static Analysis Tool 2.2.16";; *phpcs*) echo "Drupal DrupalPractice";; esac;;
+esac
+exit 0
+STUB
+chmod +x "$FAKE/docker" "$FAKE/ddev"
+mkdir -p "$BED/vendor/bin"; : > "$BED/vendor/bin/rector"; : > "$BED/vendor/bin/phpstan"
+real() { : > "$LOG"; env PATH="$FAKE:$PATH" CLAUDE_PLUGIN_ROOT="$T_REPO" "$@" "$T_SH" "$IT" --dir "$BED" --no-core-dev --json > "$T_TMP/real.json" 2> "$T_TMP/real.err"; }
+calls() { grep -nE 'composer-drupal-lenient true|drupal-lenient.allowed-list|composer require' "$LOG" | sed 's/:.*composer \(config\|require\).*\(true\|allowed-list\|--dev\).*/:\1 \2/' | tr '\n' ' '; }
+real DRUPILOT_LENIENT_DEPS=drupal/token
+assert_match "a real install: allow the plugin, merge the list, then require" "$(calls)" \
+  '^[0-9]+:config true [0-9]+:config allowed-list [0-9]+:require --dev $'
+assert_match "  the list merged is the one asked for" "$(grep 'allowed-list' "$LOG")" 'allowed-list \["drupal/token"\]'
+# Every package installed at the version it is pinned to: Composer is skipped...
+jq -n --slurpfile ref "$T_REPO/config/toolchain-reference.json" '{packages: [{name: "drupal/core", version: "11.4.8"}],
+  "packages-dev": ([$ref[0].cells["11"].toolchain | to_entries[] | {name: .key, version: .value}] + [{name: "mglaman/composer-drupal-lenient", version: "2.0.0"}])}' > "$BED/composer.lock"
+mkdir -p "$(project_state_dir "$BED")"
+jq -n --slurpfile ref "$T_REPO/config/toolchain-reference.json" '{schema: 1, toolchain_cell: "11",
+  toolchain: ($ref[0].cells["11"].toolchain + {"mglaman/composer-drupal-lenient": "2.0.0"})}' > "$(drupilot_lock_file "$BED")"
+real DRUPILOT_LENIENT_DEPS=drupal/token,drupal/ctools
+assert_eq "  an exact-installed toolchain: Composer is not run" "$(grep -c 'composer require' "$LOG" || true)" "0"
+assert_match "  ...but the extended list still applies" "$(grep 'allowed-list' "$LOG")" 'allowed-list \["drupal/ctools","drupal/token"\]'
+
 # lenient_packages: what the bed's composer.json has in effect.
 L="$T_TMP/l"; mkdir -p "$L"
 assert_eq "lenient_packages: no composer.json" "$(lenient_packages "$L")" "[]"
@@ -58,6 +92,10 @@ printf '{"extra":{"drupal-lenient":{"allowed-list":["drupal/token","drupal/ctool
 assert_eq "  the allowed list, sorted and unique" "$(lenient_packages "$L")" '["drupal/ctools","drupal/token"]'
 printf '{"extra":{"drupal-lenient":{"allow-all":true}}}\n' > "$L/composer.json"
 assert_eq "  allow-all" "$(lenient_packages "$L")" '["*"]'
+printf '{"extra":{"drupal-lenient":{"allow-all":"true","allowed-list":["drupal/x"]}}}\n' > "$L/composer.json"
+assert_eq "  allow-all as the string \"true\" (PHP truthiness)" "$(lenient_packages "$L")" '["*"]'
+printf '{"extra":{"drupal-lenient":{"allow-all":"0","allowed-list":["drupal/x"]}}}\n' > "$L/composer.json"
+assert_eq "  allow-all \"0\" is off" "$(lenient_packages "$L")" '["drupal/x"]'
 printf '{"extra":{"drupal-lenient":"x"}}\n' > "$L/composer.json"
 assert_eq "  a malformed entry" "$(lenient_packages "$L")" "[]"
 
