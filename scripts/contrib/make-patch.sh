@@ -130,8 +130,7 @@ keep_patch_untracked() {
   top="$(cd "$top" && pwd -P)"
   rel="$(cd "$d" && pwd -P)/$(basename "$p")"
   rel="${rel#"$top"/}"
-  # shellcheck disable=SC2046  # one glob per line, no spaces in them
-  git_local_exclude "$d" $(target_patch_globs)
+  git_local_exclude_patches "$d"
   git -C "$d" check-ignore -q -- "$p" 2>/dev/null || git_local_exclude "$d" "/$rel"
   if git -C "$d" check-ignore -q -- "$p" 2>/dev/null; then
     log_info "Ignored locally via $(git -C "$d" rev-parse --git-path info/exclude 2>/dev/null) (never committed, not in git status)."

@@ -23,7 +23,8 @@
 #   --project   drupal.org project machine name (e.g. token, pathauto).
 #   --issue     numeric issue id (e.g. 3982435).
 #   --branch    branch to check out / create. Defaults to a new
-#               'ID-port-to-drupal-11' branch when --base is not given.
+#               'ID-port-to-drupal-<T>' branch (T the target major:
+#               'ID-port-to-drupal-11' for Drupal 11) when --base is not given.
 #   --base      base version branch on the issue remote to track (e.g. 11.x,
 #               2.0.x). When given, checks out a tracking branch from it.
 #   --workdir   parent directory for the clone (default: current directory).
@@ -104,6 +105,10 @@ else
   log_ok "Cloned into $CLONE_DIR"
 fi
 
+# The branch names the target major of the port it was invoked for (the root
+# DRUPILOT_PROJECT_DIR points to, else the working directory), not of the clone.
+PATCH_DESC="$(target_patch_desc)"
+
 cd "$CLONE_DIR"
 
 # ---------------------------------------------------------------------------
@@ -160,7 +165,7 @@ fi
 
 if [[ -z "$CHECKED_OUT" ]]; then
   # New feature branch: ISSUEID-description (PROMPT 3.2 naming convention).
-  NEW_BRANCH="${BRANCH:-$ISSUE-$(target_patch_desc)}"
+  NEW_BRANCH="${BRANCH:-$ISSUE-$PATCH_DESC}"
   if local_branch_exists "$NEW_BRANCH"; then
     git checkout "$NEW_BRANCH" >&2
     log_ok "Switched to existing branch '$NEW_BRANCH'."

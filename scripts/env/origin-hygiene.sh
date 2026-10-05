@@ -17,7 +17,7 @@
 #               untracked entry as drupilot-attributable (.ddev/, .drupilot*,
 #               .phpstan-cache/, vendor/, node_modules/, rector.php,
 #               rector-compat.php, phpstan.neon, phpcs.xml.dist,
-#               *-port-to-drupal-11*.patch,
+#               *-port-to-drupal-*.patch (any target; 0.9's -11 names included),
 #               symlinks resolving outside the origin) or other. Tracked files
 #               the port modified are listed separately (expected for move /
 #               symlink / in-place; unexpected for copy).
