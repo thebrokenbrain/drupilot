@@ -434,7 +434,7 @@ Defaults live in `config/defaults.json`. **Every `DRUPILOT_*` key can be overrid
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `DRUPILOT_PHP_TARGET` | `8.3` | Target PHP version (drives PHPStan / PHPCS / DDEV, and caps Rector's PHP floor). |
-| `DRUPILOT_DRUPAL_TARGET` | `^11` | Target core range of the test-bed. A bare `^N` also names the target major; any other constraint (e.g. `^10.3 \|\| ^11`) is the declared core range to use, unless `DRUPILOT_CORE_TARGET_STRATEGY` is set. |
+| `DRUPILOT_DRUPAL_TARGET` | `^11` | Target core range of the test-bed; the highest major it admits names the target major. A constraint admitting two or more majors (e.g. `^10.3 \|\| ^11`) is also the declared core range to use, unless `DRUPILOT_CORE_TARGET_STRATEGY` is set. |
 | `DRUPILOT_TARGET_MAJOR` | `11` | The Drupal major the port targets (11 for all of 1.0.x). A pre-release major also needs `DRUPILOT_ALLOW_PRERELEASE`. |
 | `DRUPILOT_ALLOW_PRERELEASE` | `false` | Allow a target major that has no stable release yet (Drupal 12 before 12.0.0): the plan then targets its newest pre-release (preview). |
 | `DRUPILOT_CORE_TARGET_STRATEGY` | `auto` | Core compatibility decision: `auto` (keep `^10 \|\| ^11` while backwards-compatible, switch to `^11` on a BC break / refactor), `d11-only`, or `keep-d10` (1.0 also reads `target-only`, `keep-previous` and `widest`; see [Deprecations of drupilot](docs/reference/deprecations-of-drupilot.md)). Keeping D10 also declares a composer `require.php` floor (see `DRUPILOT_REQUIRE_PHP_FLOOR`), and the choice yields a SemVer version-bump verdict. |

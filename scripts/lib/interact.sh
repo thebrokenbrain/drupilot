@@ -85,7 +85,7 @@ choose_one() {
       pk="$(jq -r --arg k "$key" '.choices[$k].persist_key // empty' "$reg" 2>/dev/null || true)"
     fi
     if [[ -n "$pk" ]]; then
-      value_alias_normalize "$pk" "$override"
+      value_alias_normalize "$pk" "$override" "DRUPILOT_CHOICE_${key}"
       for v in "${values[@]}"; do
         [[ "$v" == "$_DRUPILOT_VALUE_ALIAS" ]] && { printf '%s' "$v"; return 0; }
       done

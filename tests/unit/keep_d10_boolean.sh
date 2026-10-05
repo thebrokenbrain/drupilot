@@ -42,6 +42,15 @@ assert_eq "true with an explicit d11-only (0.9 name): ignored" \
   "$(strat DRUPILOT_KEEP_D10=true DRUPILOT_CORE_TARGET_STRATEGY=d11-only)" "d11-only|d11-only"
 assert_eq "keep-previous and widest read as keep-d10" \
   "$(strat DRUPILOT_CORE_TARGET_STRATEGY=keep-previous | cut -d'|' -f2)|$(strat DRUPILOT_CORE_TARGET_STRATEGY=widest | cut -d'|' -f2)" "keep-d10|keep-d10"
+# The row's `when` reads the strategy across tiers: an env KEEP_D10 beside a
+# .drupilot.json strategy is ignored, as in 0.9.
+printf '{"DRUPILOT_CORE_TARGET_STRATEGY": "d11-only"}\n' > "$r/.drupilot.json"
+assert_eq "env KEEP_D10=true, .drupilot.json d11-only: the strategy wins" "$(strat DRUPILOT_KEEP_D10=true)" "d11-only|d11-only"
+printf '{"DRUPILOT_CORE_TARGET_STRATEGY": "target-only"}\n' > "$r/.drupilot.json"
+assert_eq "env KEEP_D10=true, .drupilot.json target-only: the strategy wins" "$(strat DRUPILOT_KEEP_D10=true)" "target-only|d11-only"
+t_run env DRUPILOT_KEEP_D10=true "$T_SH" "$T_REPO/scripts/analysis/upgrade-path.sh" --subject "$KC" --root "$r" --json
+assert_eq "  upgrade-path too: ^11 (the deprecation is still said, once at most)" \
+  "$T_RC|$(jq -r .range.constraint "$T_OUT")|$([[ "$(t_err | grep -c 'KEEP_D10' || true)" -le 1 ]] && echo once)" "0|^11|once"
 printf '{"DRUPILOT_KEEP_D10": true}\n' > "$r/.drupilot.json"
 assert_eq "a .drupilot.json KEEP_D10 (a JSON true) is aliased too" "$(strat X=1)" "keep-previous|keep-d10"
 printf '{"DRUPILOT_KEEP_D10": true, "DRUPILOT_CORE_TARGET_STRATEGY": "d11-only"}\n' > "$r/.drupilot.json"
@@ -59,7 +68,8 @@ assert_eq "one warning per alias per process" \
 CH="$T_REPO/scripts/env/choice.sh"
 t_run env DRUPILOT_CHOICE_CORE_TARGET=keep-d10 "$T_SH" "$CH" --key CORE_TARGET --subject "$KC" --persist --json
 assert_eq "CHOICE_CORE_TARGET=keep-d10: accepted, not re-asked, emitted as keep-d10 (CC-07)" "$T_RC|$(jq -c '[.value, .valid]' "$T_OUT")" '0|["keep-d10",true]'
-assert_eq "  one warning" "$(t_err | grep -c 'deprecated')" "1"
+assert_eq "  one warning, naming the variable that was set" \
+  "$(t_err | grep -c 'deprecated')|$(t_err | grep -c 'DRUPILOT_CHOICE_CORE_TARGET=keep-d10 is deprecated.*use DRUPILOT_CHOICE_CORE_TARGET=keep-previous')" "1|1"
 assert_eq "  persisted as keep-d10 (CC-07)" "$(jq -r .DRUPILOT_CORE_TARGET_STRATEGY "$r/.drupilot.json")" "keep-d10"
 t_run env DRUPILOT_CHOICE_CORE_TARGET=d11-only "$T_SH" "$CH" --key CORE_TARGET --subject "$KC" --persist --json
 assert_eq "CHOICE_CORE_TARGET=d11-only: accepted, emitted and persisted as d11-only" \
@@ -96,6 +106,10 @@ assert_eq "lock: keep-previous is written as keep-d10" "$(ls_strat DRUPILOT_CORE
 assert_eq "lock: target-only is written as d11-only" "$(ls_strat DRUPILOT_CORE_TARGET_STRATEGY=target-only)" "d11-only"
 assert_eq "lock: KEEP_D10 leaves auto, as in 0.9" "$(ls_strat DRUPILOT_KEEP_D10=true)" "auto"
 assert_eq "lock: T 12 keeps the new name" "$(ls_strat DRUPILOT_CORE_TARGET_STRATEGY=keep-previous DRUPILOT_TARGET_MAJOR=12)" "keep-previous"
+
+assert_eq "strategy_persist_name: T 11 the 0.9 names, T 12 the new ones" \
+  "$(strategy_persist_name keep-previous 11) $(strategy_persist_name keep-d10 12) $(strategy_persist_name d11-only 12) $(strategy_persist_name widest 11) $(strategy_persist_name auto 12)" \
+  "keep-d10 keep-previous target-only widest auto"
 
 # The flag alias of make-issue.sh.
 mi() { "$T_SH" "$T_REPO/scripts/contrib/make-issue.sh" --project legacy_widgets --base 1.x --output "$T_TMP/mi$1" "$2" --json 2> /dev/null; }

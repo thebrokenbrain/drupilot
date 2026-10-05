@@ -97,8 +97,7 @@ stay byte-identical. AR-24 leaves open:
 8. **Deferred.** The tests-only sibling `rector-tests.php.tmpl` waits for the
    plan's `rector.tests_pass` (M6, T-M6-05), and `{{POLYFILLS}}` stays empty
    until `rector.polyfills` (M5, T-M5-04). `phpstan.neon` template 3
-   (`phpVersion {min, max}`, the profile, the cache directory) is the next
-   change.
+   (`phpVersion {min, max}`, the profile, the cache directory) is ADR 0020.
 
 ## Consequences
 

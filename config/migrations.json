@@ -1,5 +1,5 @@
 {
-  "_comment": "Renamed public names of drupilot (alias layer, 1.x). env_aliases rows are {old, new, since, remove_in, note, when?}: old and new are variable names, or KEY=value to alias one value; when ({key, equals}) applies a row only while that key, resolved without aliases, equals the value (as text, case-insensitively). config_get resolves them (env, then .drupilot.json) and warns once per process. value_aliases rows are {kind, scope, old, new, since, remove_in, note}: kind value (an old value of the setting or choice named by scope, normalized on read by value_alias_normalize: choice.sh, choose_one, the strategy readers), field (a JSON field of the artifact named by scope, emitted beside the new one) or flag (a command-line flag of the script named by scope, accepted beside the new one). For T=11 every emitted or persisted value stays in the 0.9 vocabulary (CC-07). removed is read by its owners. The version gate checks every row. Every alias stays for all of 1.x.",
+  "_comment": "Renamed public names of drupilot (alias layer, 1.x). env_aliases rows are {old, new, since, remove_in, note, when?}: old and new are variable names, or KEY=value to alias one value; when ({key, equals}) applies a row only while that key, resolved without aliases, equals the value (as text, case-insensitively). config_get resolves them (env, then .drupilot.json) and warns once per process. value_aliases rows are {kind, scope, old, new, since, remove_in, note}: kind value (an old value of the setting named by scope, accepted on read: choice.sh and choose_one normalize a DRUPILOT_CHOICE_* pre-answer with a warning, the strategy readers accept the old value silently because drupilot still writes it for Drupal 11), field (a JSON field of the artifact named by scope, emitted beside the new one) or flag (a command-line flag of the script named by scope, accepted beside the new one). For T=11 every emitted or persisted value stays in the 0.9 vocabulary (CC-07). removed is read by its owners. The version gate checks every row. Every alias stays for all of 1.x.",
   "schema": 1,
   "env_aliases": [
     {
@@ -117,7 +117,7 @@
       "new": "prev_major_support",
       "since": "1.0.0",
       "remove_in": "2.0.0",
-      "note": "Emitted beside d10_support by port-summary v2 (AR-28, M9); v1 (--schema 1) keeps its exact shape."
+      "note": "Planned: port-summary v2 (a later 1.x release) emits prev_major_support beside d10_support; v1 keeps its shape (AR-28)."
     },
     {
       "kind": "flag",

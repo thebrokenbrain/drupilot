@@ -8,6 +8,12 @@
 # (DRUPILOT_PHPSTAN_LEVEL_REFACTOR). PHPStan needs the Drupal core tree present
 # but does NOT bootstrap a database.
 #
+# The config is the root's phpstan.neon (else phpstan.neon.dist). A drupilot
+# render nobody edited (its sha256 is the one kept in the root's lock) follows
+# the current upgrade plan: when the plan moved since it was rendered (the
+# port's final freeze, a refactor), it is re-rendered first, after a backup,
+# with its own profile (ADR 0020). A hand-edited one is used as it is.
+#
 # Usage:
 #   run-phpstan.sh --subject DIR [--level N] [--json]
 #
@@ -120,6 +126,23 @@ fi
 # --- Verify the PHPStan binary is present ---------------------------------
 if [[ ! -f "$DRUPAL_ROOT/vendor/bin/phpstan" ]]; then
   die "vendor/bin/phpstan is missing. Install the toolchain first (e.g. via /drupilot-setup: 'composer require --dev phpstan/phpstan phpstan/extension-installer mglaman/phpstan-drupal phpstan/phpstan-deprecation-rules')." 2
+fi
+
+# --- Keep an untouched drupilot phpstan.neon on the current plan -----------
+# Its phpVersion range and cache directory come from the upgrade plan (ADR
+# 0020), which the port's final freeze or a refactor may have moved since the
+# setup rendered it. An untouched render (its sha256 is the one kept in the
+# root's lock) is re-rendered for the current plan, after a backup, keeping its
+# profile; a hand-edited one, or one whose sha256 the lock no longer keeps, is
+# used as it is.
+if [[ -f "$DRUPAL_ROOT/phpstan.neon" ]] && grep -q '^# drupilot — phpstan.neon' "$DRUPAL_ROOT/phpstan.neon" 2>/dev/null \
+   && render_sha_matches "$DRUPAL_ROOT" phpstan.neon "$DRUPAL_ROOT/phpstan.neon"; then
+  _prof="$(sed -n 's/^# drupilot-phpstan-profile: \([a-z]*\)$/\1/p' "$DRUPAL_ROOT/phpstan.neon" 2>/dev/null | sed -n '1p')"
+  _rj="$("$BASH" "$(plugin_root)/scripts/env/render-templates.sh" --root "$DRUPAL_ROOT" --subject-path "$SUBJECT_REL" \
+          --only phpstan ${_prof:+--profile "$_prof"} --json 2> /dev/null < /dev/null || true)"
+  if [[ "$(printf '%s' "$_rj" | jq -r '.files[0].status // empty' 2> /dev/null || true)" == "upgraded" ]]; then
+    log_ok "phpstan.neon was an untouched drupilot render for another plan; regenerated for the current one (previous copy in .drupilot/backups/)."
+  fi
 fi
 
 # --- Build the command ----------------------------------------------------

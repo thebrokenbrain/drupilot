@@ -58,6 +58,16 @@ It recommends `^11` (drop Drupal 10) and a **major** version bump — plan a new
 `N+1.0.x` branch, not a minor. Apply its `core_version_requirement`; `^11` needs
 no `require.php`. Surface the major-bump implication in the final summary.
 
+Then refreeze the final upgrade plan for the range you applied, so the PHP floor
+of `rector.php` and `phpstan.neon` follows it (ADR 0018, ADR 0020):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "$1" --phase final --range "<the core_version_requirement you applied>" --root "<drupal_root>" --freeze --json
+```
+
+Exit 2 (`final-changes-frozen`: another target, PHP target or test-bed) means the
+refactor would change what the setup planned: stop and say so.
+
 ## Step 2 — Load the procedure and choose the scope
 
 Invoke the **full-refactor** skill for the modernization checklist and the exact
@@ -193,6 +203,10 @@ Push static analysis to the refactor level and require clean coding standards:
 ```bash
 # Coding standards: autofix, then the result must be clean for Drupal + DrupalPractice:
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpcs.sh" --subject "$1" --fix
+# phpstan.neon's refactor profile (every phpstan-drupal rule; Phase 1's compat
+# profile leaves its opinion rules off). Exit 3 means the developer edited
+# phpstan.neon: it is kept, and PHPStan runs with it.
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/render-templates.sh" --subject "$1" --only phpstan --profile refactor
 # Static analysis at the higher refactor level:
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "$1" --level "$(bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; config_get DRUPILOT_PHPSTAN_LEVEL_REFACTOR 6')"
 ```

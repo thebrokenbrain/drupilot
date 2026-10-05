@@ -1,6 +1,6 @@
 # drupilot — phpstan.neon
 # drupilot-template-version: 3
-# drupilot-phpstan-profile: {{PHPSTAN_PROFILE}}
+# drupilot-phpstan-profile: compat
 #
 # PHPStan configuration for analyzing a Drupal module/theme on the way to a
 # newer Drupal major. Rendered from the upgrade plan by
@@ -21,18 +21,18 @@
 parameters:
   # Level 2 detects deprecations (the level drupal-check pins). Raise to 5-6
   # for quality/bug analysis during the refactor.
-  level: {{PHPSTAN_LEVEL}}
+  level: 2
 
   # The PHP versions the code must run on (PHP_VERSION_ID): the plan's floor
   # (the lowest PHP the declared core range and require.php admit) and its PHP
   # target. PHPStan checks the code against every version in between.
   phpVersion:
-    min: {{PHPSTAN_PHP_MIN}}
-    max: {{PHPSTAN_PHP_MAX}}
+    min: 80100
+    max: 80400
 
   # Analyze only the target extension.
   paths:
-    - {{SUBJECT_PATH}}
+    - web/modules/custom/legacy_widgets
 
   # Ignore the usual generated/contrib noise.
   excludePaths:
@@ -42,8 +42,17 @@ parameters:
   # Deterministic, project-local result cache, one directory per upgrade plan
   # (the first 12 hex digits of its hash): a run never reuses results cached for
   # another PHP range or plan. Safe to delete; .phpstan-cache/ is gitignored.
-  tmpDir: .phpstan-cache/{{PHPSTAN_CACHE_KEY}}
-{{PHPSTAN_PROFILE_BLOCK}}
+  tmpDir: .phpstan-cache/62133a0c613b
+
+  # Profile compat (ADR 0020).
+  # phpstan-drupal's opinion rules are off: a minimal port makes no change
+  # they ask for.
+  drupal:
+    rules:
+      globalDrupalDependencyInjectionRule: false
+      entityStorageDirectInjectionRule: false
+      testClassSuffixNameRule: false
+      classExtendsInternalClassRule: false
 
 # Fallback when phpstan/extension-installer is not installed. With the
 # extension installer present these are wired in automatically — leave commented.

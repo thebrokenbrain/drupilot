@@ -168,27 +168,60 @@ _config_alias_load() {
   return 0
 }
 
-# _config_alias_applies <row> <env|prefs> -> 0 and _DRUPILOT_ALIAS_VALUE when
-# the row's old name is set in that tier (with its value, if the row names
-# one) and its `when` holds; 1 otherwise. Never warns.
+# _config_alias_applies <row> <env|prefs> [VALUE] -> 0 and _DRUPILOT_ALIAS_VALUE
+# when the row's old name is set in that tier (VALUE: its value there, when
+# the caller already read it) with the row's value, if it names one, and the
+# row's `when` holds; 1 otherwise. Never warns. The comparisons fork nothing
+# (_ci_eq), and `when` is resolved once per lookup (_config_alias_when).
 _config_alias_applies() {
-  local i="$1" tier="$2" ok ov got="" pf
+  local i="$1" tier="$2" ok ov got="${3-}"
   ok="${_DA_OLD[i]}"; ov="${_DA_OV[i]}"
-  if [[ "$tier" == "env" ]]; then
-    got="${!ok:-}"
-  else
-    pf="$(drupilot_prefs_file 2>/dev/null || true)"
-    if [[ -n "$pf" && -r "$pf" ]] && have_cmd jq; then
-      got="$(jq -r --arg k "$ok" 'if type == "object" and has($k) and .[$k] != null then .[$k] | tostring else empty end' "$pf" 2>/dev/null || true)"
-    fi
-  fi
+  [[ "$#" -ge 3 ]] || got="$(_config_alias_tier_value "$tier" "$ok")"
   [[ -n "$got" ]] || return 1
-  [[ -z "$ov" || "$(lc "$got")" == "$(lc "$ov")" ]] || return 1
-  if [[ -n "${_DA_WK[i]}" ]]; then
-    [[ "$(lc "$(_config_resolve "${_DA_WK[i]}" "" 0)")" == "$(lc "${_DA_WE[i]}")" ]] || return 1
-  fi
+  if [[ -n "$ov" ]] && ! _ci_eq "$got" "$ov"; then return 1; fi
+  if [[ -n "${_DA_WK[i]}" ]] && ! _config_alias_when "$i"; then return 1; fi
   _DRUPILOT_ALIAS_VALUE="${_DA_NV[i]:-$got}"
   return 0
+}
+
+# _config_alias_tier_value <env|prefs> KEY -> KEY's value in that tier: the
+# environment, or the .drupilot.json found from DRUPILOT_PROJECT_DIR / $PWD.
+_config_alias_tier_value() {
+  local pf
+  if [[ "$1" == "env" ]]; then printf '%s' "${!2:-}"; return 0; fi
+  pf="$(drupilot_prefs_file 2>/dev/null || true)"
+  [[ -n "$pf" && -r "$pf" ]] && have_cmd jq || return 0
+  jq -r --arg k "$2" 'if type == "object" and has($k) and .[$k] != null then .[$k] | tostring else empty end' "$pf" 2>/dev/null || true
+  return 0
+}
+
+# _config_alias_when <row> -> 0 when the row's `when` key, resolved without
+# aliases, equals its value (case-insensitively). The last key's value is
+# kept for the rest of the lookup (_DA_WHEN_K / _DA_WHEN_V; _config_alias and
+# the prewarn reset it), so the eight KEEP_D10 rows resolve it once.
+_DA_WHEN_K=""
+_DA_WHEN_V=""
+_config_alias_when() {
+  local i="$1"
+  if [[ "$_DA_WHEN_K" != "${_DA_WK[i]}" ]]; then
+    _DA_WHEN_K="${_DA_WK[i]}"
+    _DA_WHEN_V="$(_config_resolve "${_DA_WK[i]}" "" 0)"
+  fi
+  _ci_eq "$_DA_WHEN_V" "${_DA_WE[i]}"
+}
+
+# _ci_eq A B -> 0 when A and B are equal, ignoring case, without a fork
+# (nocasematch, bash >= 3.1; restored as it was).
+_ci_eq() {
+  local r=1
+  if shopt -q nocasematch; then
+    [[ "$1" == "$2" ]] && r=0
+  else
+    shopt -s nocasematch
+    [[ "$1" == "$2" ]] && r=0
+    shopt -u nocasematch
+  fi
+  return "$r"
 }
 
 # _config_alias_warn <row> -> the deprecation warning, once per process.
@@ -203,11 +236,18 @@ _config_alias_warn() {
 # _config_alias <env|prefs> <KEY> -> 0 and _DRUPILOT_ALIAS_VALUE when a row
 # aliasing KEY applies in that tier (warning about it once); 1 otherwise.
 _config_alias() {
-  local tier="$1" key="$2" i=0
+  local tier="$1" key="$2" i=0 lastk="" got=""
+  _DA_WHEN_K=""
   while [[ "$i" -lt "$_DRUPILOT_ALIAS_N" ]]; do
-    if [[ "${_DA_NEW[i]}" == "$key" ]] && _config_alias_applies "$i" "$tier"; then
-      _config_alias_warn "$i"
-      return 0
+    if [[ "${_DA_NEW[i]}" == "$key" ]]; then
+      # Each old name is read once per lookup, whatever its number of rows.
+      if [[ "${_DA_OLD[i]}" != "$lastk" ]]; then
+        lastk="${_DA_OLD[i]}"; got="$(_config_alias_tier_value "$tier" "$lastk")"
+      fi
+      if _config_alias_applies "$i" "$tier" "$got"; then
+        _config_alias_warn "$i"
+        return 0
+      fi
     fi
     i=$((i + 1))
   done
@@ -243,8 +283,10 @@ _config_alias_prewarn() {
   [[ "$hit" == "1" ]] || return 0
   _config_alias_rows
   [[ "$_DRUPILOT_ALIAS_N" -gt 0 ]] || return 0
+  _DA_WHEN_K=""
   while [[ "$i" -lt "$_DRUPILOT_ALIAS_N" ]]; do
-    if _config_alias_applies "$i" env; then _config_alias_warn "$i"; fi
+    k="${_DA_OLD[i]}"
+    if _config_alias_applies "$i" env "${!k:-}"; then _config_alias_warn "$i"; fi
     i=$((i + 1))
   done
   pf="$(drupilot_prefs_file 2>/dev/null || true)"
@@ -253,9 +295,12 @@ _config_alias_prewarn() {
   # is being sourced: no keys, no warning.
   keys="|$(jq -r 'if type == "object" then keys[] else empty end' "$pf" 2>/dev/null | tr '\n' '|' || true)"
   i=0
+  rest=""
   while [[ "$i" -lt "$_DRUPILOT_ALIAS_N" ]]; do
     case "$keys" in
-      *"|${_DA_OLD[i]}|"*) if _config_alias_applies "$i" prefs; then _config_alias_warn "$i"; fi;;
+      *"|${_DA_OLD[i]}|"*)
+        if [[ "${_DA_OLD[i]}" != "$rest" ]]; then rest="${_DA_OLD[i]}"; pcontent="$(_config_alias_tier_value prefs "$rest")"; fi
+        if _config_alias_applies "$i" prefs "$pcontent"; then _config_alias_warn "$i"; fi;;
     esac
     i=$((i + 1))
   done
@@ -346,13 +391,56 @@ drupal_target_major() {
   return 0
 }
 
-# drupal_target_range -> an explicit DRUPILOT_DRUPAL_TARGET that is not a bare
-# ^N (e.g. "^10.3 || ^11"): the declared range it overrides (strategy
-# explicit, X12); nothing otherwise.
+# constraint_top_major CONSTRAINT -> the highest Drupal major a core
+# constraint admits (constraint_majors), nothing when none: '^12' is 12,
+# '>=11 <12' is 11, '>=10.3 <12' is 11, '^10.3 || ^11' is 11.
+constraint_top_major() {
+  constraint_majors "${1:-}" | sort -n | sed -n '$p'
+}
+
+# constraint_majors CONSTRAINT -> every Drupal major a core constraint admits,
+# one per line, per `||` alternative: from the major of its first lower bound
+# (`^`, `~`, `>=`, `>`, `=`, a bare version) up to the one its upper bound
+# leaves (`<12` and `<12.0` stop at 11, `<11.3` and `<=11` at 11); without an
+# upper bound, the lower bound's major only. `!=` operands are skipped.
+constraint_majors() {
+  printf '%s\n' "${1:-}" | tr -d "\"'" | tr '|' '\n' | awk '
+    { n = split($0, parts, /[[:space:],]+/); lo = -1; hi = -1
+      for (i = 1; i <= n; i++) {
+        p = parts[i]
+        if (p == "" || p ~ /^!=/) continue
+        if (p ~ /^</) {
+          inc = (p ~ /^<=/); sub(/^<=?/, "", p)
+          if (p !~ /^[0-9]+/) continue
+          k = split(p, u, "."); m = u[1] + 0
+          if (!inc && (k < 2 || u[2] + 0 == 0) && (k < 3 || u[3] + 0 == 0)) m = m - 1
+          if (hi < 0 || m < hi) hi = m
+          continue
+        }
+        if (lo >= 0) continue
+        sub(/^(\^|~|>=|>|==|=|v)+/, "", p)
+        if (p !~ /^[0-9]+/) continue
+        split(p, v, "."); lo = v[1] + 0
+      }
+      if (lo < 0) next
+      top = (hi >= lo) ? hi : lo
+      for (j = lo; j <= top; j++) print j }'
+  return 0
+}
+
+# drupal_target_range -> an explicit DRUPILOT_DRUPAL_TARGET that admits two or
+# more majors (e.g. "^10.3 || ^11"): the declared range it overrides
+# (strategy explicit, X12 as ADR 0021 narrows it). A bare ^N, any other
+# one-major constraint ("^11.2", "~11.2.0") and a dev or wildcard form
+# ("11.x-dev") keep their 0.9 meaning, the test-bed's core constraint:
+# nothing is printed.
 drupal_target_range() {
-  local v
+  local v n
   v="$(config_get_explicit DRUPILOT_DRUPAL_TARGET)"
-  if [[ -n "$v" && -z "$(drupal_target_major "$v")" ]]; then printf '%s' "$v"; fi
+  [[ -n "$v" && -z "$(drupal_target_major "$v")" ]] || return 0
+  case "$v" in *@*|*-dev*|*dev-*|*.x*|*'*'*) return 0;; esac
+  n="$(constraint_majors "$v" | sort -u | grep -c . || true)"
+  if [[ "${n:-0}" -ge 2 ]]; then printf '%s' "$v"; fi
   return 0
 }
 
@@ -362,13 +450,15 @@ drupal_target_range() {
 # tell it from the new name.
 config_get_noalias() { _config_resolve "$1" "${2:-}" 0; }
 
-# value_alias_normalize SCOPE VALUE -> _DRUPILOT_VALUE_ALIAS: VALUE, or the new
+# value_alias_normalize SCOPE VALUE [NAME] -> _DRUPILOT_VALUE_ALIAS: VALUE, or the new
 # value a migrations.json value_aliases row (kind value, scope SCOPE: a
 # setting such as DRUPILOT_CORE_TARGET_STRATEGY) gives an old one (compared
-# case-insensitively), warning once per process. Called in the main shell (no
-# command substitution), so the warning mark is kept. Always returns 0.
+# case-insensitively), warning once per process about NAME (default SCOPE:
+# the variable the developer set, e.g. DRUPILOT_CHOICE_CORE_TARGET). Called in
+# the main shell (no command substitution), so the warning mark is kept.
+# Always returns 0.
 value_alias_normalize() {
-  local scope="${1:-}" v="${2:-}" i=0
+  local scope="${1:-}" v="${2:-}" name="${3:-${1:-}}" i=0
   _DRUPILOT_VALUE_ALIAS="$v"
   [[ -n "$v" ]] || return 0
   _value_alias_load
@@ -378,7 +468,7 @@ value_alias_normalize() {
       case "$_DRUPILOT_ALIAS_WARNED" in
         *"|v$i|"*) ;;
         *) _DRUPILOT_ALIAS_WARNED="${_DRUPILOT_ALIAS_WARNED}v$i|"
-           log_warn "$scope=${_DV_OLD[i]} is deprecated since ${_DV_SINCE[i]:-1.0.0} and will be removed in ${_DV_RIN[i]:-2.0.0}; use $scope=${_DV_NEW[i]}";;
+           log_warn "$name=${_DV_OLD[i]} is deprecated since ${_DV_SINCE[i]:-1.0.0} and will be removed in ${_DV_RIN[i]:-2.0.0}; use $name=${_DV_NEW[i]}";;
       esac
       return 0
     fi
@@ -396,6 +486,21 @@ value_alias_legacy() {
   while [[ "$i" -lt "$_DRUPILOT_VALUE_ALIAS_N" ]]; do
     if [[ "${_DV_SCOPE[i]}" == "$scope" && "$(lc "${_DV_NEW[i]}")" == "$(lc "$v")" ]]; then
       printf '%s\n' "${_DV_OLD[i]}"; return 0
+    fi
+    i=$((i + 1))
+  done
+  printf '%s\n' "$v"
+  return 0
+}
+
+# value_alias_new SCOPE VALUE -> the new value a value_aliases row of SCOPE
+# gives an old one (VALUE itself when none does). Prints it; never warns.
+value_alias_new() {
+  local scope="${1:-}" v="${2:-}" i=0
+  _value_alias_load
+  while [[ "$i" -lt "$_DRUPILOT_VALUE_ALIAS_N" ]]; do
+    if [[ "${_DV_SCOPE[i]}" == "$scope" && "$(lc "${_DV_OLD[i]}")" == "$(lc "$v")" ]]; then
+      printf '%s\n' "${_DV_NEW[i]}"; return 0
     fi
     i=$((i + 1))
   done
@@ -434,10 +539,15 @@ _value_alias_load() {
 # none is set.
 config_get_explicit() { _config_resolve "$1" "" 1 1; }
 
+# config_get_explicit_noalias KEY -> config_get_explicit without the alias
+# layer: what a developer set under that very name (a DRUPILOT_KEEP_D10
+# boolean is not a strategy someone set, AR-27).
+config_get_explicit_noalias() { _config_resolve "$1" "" 0 1; }
+
 # resolve_target_major -> T, the target Drupal major (DRUPILOT_TARGET_MAJOR,
 # default 11 for all of 1.0.x, OD-10). Without it set, an explicit
-# DRUPILOT_DRUPAL_TARGET names it: ^N -> N, another constraint -> its highest
-# major (X12).
+# DRUPILOT_DRUPAL_TARGET names it: ^N -> N, another constraint -> the highest
+# major it admits (constraint_top_major; X12).
 resolve_target_major() {
   local t c
   t="$(config_get_explicit DRUPILOT_TARGET_MAJOR)"
@@ -447,7 +557,7 @@ resolve_target_major() {
     c="$(config_get_explicit DRUPILOT_DRUPAL_TARGET)"
     if [[ -n "$c" ]]; then
       t="$(drupal_target_major "$c")"
-      [[ -n "$t" ]] || t="$(printf '%s\n' "$c" | tr -c '0-9.\n' ' ' | tr ' ' '\n' | sed -n 's/^\([1-9][0-9]*\).*/\1/p' | sort -n | sed -n '$p')"
+      [[ -n "$t" ]] || t="$(constraint_top_major "$c")"
     fi
   fi
   printf '%s' "${t:-$(config_get DRUPILOT_TARGET_MAJOR "11")}"

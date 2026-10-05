@@ -15,11 +15,16 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ### Added
 - **`DRUPILOT_TARGET_MAJOR` and `DRUPILOT_DRUPAL_TARGET` agree** (T-M3-06,
-  X12):
-  - a bare `^N` in `DRUPILOT_DRUPAL_TARGET` names the target major;
-  - any other explicit constraint (e.g. `^10.3 || ^11`) is the declared core
-    range `upgrade-path.sh` uses (strategy `explicit`), unless
-    `DRUPILOT_CORE_TARGET_STRATEGY` is set too;
+  X12 as ADR 0021 narrows it):
+  - `DRUPILOT_DRUPAL_TARGET` is still the test-bed's core constraint, and the
+    highest major it admits names the target major (`^12` → 12,
+    `>=11 <12` → 11);
+  - a constraint that admits two or more majors (e.g. `^10.3 || ^11`) is also
+    the declared core range `upgrade-path.sh` uses (strategy `explicit`),
+    unless `DRUPILOT_CORE_TARGET_STRATEGY` is set too. `/drupilot-port` then
+    asks no core-target question and keeps that range in the final plan;
+  - a one-major value (`^11.2`, `~11.2.0`, `11.x-dev`) only pins the test-bed,
+    as in 0.9;
   - with only `DRUPILOT_TARGET_MAJOR` set, the test-bed's core constraint is
     `^<major>`.
 
@@ -355,6 +360,25 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   their hops are proven (T-M9-03).
 - The `sigpipe` gate also flags `| cmp`, which stops reading at the first
   difference.
+- **phpstan.neon is rendered from the upgrade plan** (T-M3-09, ADR 0020;
+  template 3):
+  - `phpVersion: {min, max}`: the plan's floor and PHP target, so PHPStan
+    checks the code against every PHP it must run on;
+  - `tmpDir: .phpstan-cache/<plan hash>`: one result cache per plan;
+  - a profile. `compat` (the plan's, Phase 1) turns off phpstan-drupal's four
+    opinion rules (dependency injection, entity storage injection, test class
+    suffix, `@internal` parents): a minimal port makes no change they ask
+    for, so Phase 1 PHPStan output loses those findings and nothing else
+    (checked in the lab). `refactor` keeps every rule as phpstan-drupal ships
+    it; `render-templates.sh --profile refactor` renders it, and
+    `/drupilot-refactor` does so before its PHPStan run.
+
+  `render-templates.sh --json` gains `phpstan_profile`. An untouched
+  `phpstan.neon` follows the plan: `run-phpstan.sh` re-renders it, after a
+  backup and with its profile, when the plan moved since (the port's final
+  freeze; a refactor refreezes the final plan for the range it applies). A
+  template-2 `phpstan.neon`, edited or not, is upgraded after a backup with its
+  diff printed; a hand-edited template-3 one is kept.
 - **Refactor: the core-target decision is a function of its own.**
   `strategy_decide` computes the decision for any target major (the ranges
   from `config/targets/<T>.json`, the older-major signals as the majors below
@@ -459,7 +483,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ### Deprecated
 - **The 0.9 strategy vocabulary** (T-M3-07, CC-07), kept for all of 1.x and
-  removed in 2.0.0. A value in use warns once per run.
+  removed in 2.0.0. The `DRUPILOT_KEEP_D10` boolean and an old value in a
+  `DRUPILOT_CHOICE_CORE_TARGET` pre-answer warn once per run. The setting's own
+  old values are accepted silently, since drupilot still writes them for
+  Drupal 11.
   - `DRUPILOT_KEEP_D10` (any 0.9 spelling of the boolean): use
     `DRUPILOT_CORE_TARGET_STRATEGY` (`keep-previous` / `target-only`). It is
     still honored only while the strategy is `auto`.
@@ -474,8 +501,8 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     persists it under its 0.9 name. The "Drupal 10 check" tab keeps its own
     `d11-only` option.
   - `make-issue.sh --d10-unverified`: use `--prev-major-unverified`.
-  - The `d10_support` field gets its `prev_major_support` twin in
-    port-summary v2.
+  - The `d10_support` field is to get its `prev_major_support` twin in
+    port-summary v2 (a later 1.x release).
   - `preflight.sh`'s strategy check accepts both vocabularies.
 
 ### Fixed
