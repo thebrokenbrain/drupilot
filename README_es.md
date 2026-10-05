@@ -437,6 +437,8 @@ Los valores por defecto están en `config/defaults.json`. **Cada clave `DRUPILOT
 | --- | --- | --- |
 | `DRUPILOT_PHP_TARGET` | `8.3` | Versión de PHP destino (controla PHPStan / PHPCS / DDEV, y limita por arriba el suelo de PHP de Rector). |
 | `DRUPILOT_DRUPAL_TARGET` | `^11` | Rango de core destino. |
+| `DRUPILOT_TARGET_MAJOR` | `11` | La versión mayor de Drupal a la que apunta el port (11 en toda la 1.0.x). Una mayor aún en pre-release necesita además `DRUPILOT_ALLOW_PRERELEASE`. |
+| `DRUPILOT_ALLOW_PRERELEASE` | `false` | Permite una mayor sin versión estable todavía (Drupal 12 antes de 12.0.0): el plan apunta entonces a su pre-release más reciente (preview). |
 | `DRUPILOT_CORE_TARGET_STRATEGY` | `auto` | Decisión de compatibilidad de core: `auto` (mantiene `^10 \|\| ^11` mientras sea retrocompatible, pasa a `^11` ante una ruptura BC / refactor), `d11-only` o `keep-d10`. Mantener D10 declara además un suelo composer `require.php` (ver `DRUPILOT_REQUIRE_PHP_FLOOR`), y la elección produce un veredicto SemVer de subida de versión. |
 | `DRUPILOT_KEEP_D10` | _(legacy)_ | Booleano legacy (`true` → mantener D10, `false` → solo D11); solo se respeta mientras `DRUPILOT_CORE_TARGET_STRATEGY` sea `auto`, y una estrategia explícita prevalece. Prefiere `DRUPILOT_CORE_TARGET_STRATEGY`. |
 | `DRUPILOT_REQUIRE_PHP_FLOOR` | `detect` | Al mantener `^10 \|\| ^11`, cómo fijar el `require.php` de composer: `detect` deriva el suelo real de un escaneo heurístico del código portado (p. ej. `>=8.1` si no usa construcciones de PHP 8.2/8.3, para soporte real de Drupal 10); `target` mantiene el conservador `>=<target de php>`. Bajar el suelo es best-effort — confírmalo con PHPCompatibility. |

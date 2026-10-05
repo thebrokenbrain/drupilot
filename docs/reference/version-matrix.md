@@ -280,7 +280,6 @@ As of 2026-10-04; rule classes read in rector-src 2.5.2. compat: a deprecation f
 | Id | Kind | Rector rule | Deprecated in | Removed in | Output needs PHP | Drupal-safe | Verified |
 |---|---|---|---|---|---|---|---|
 | `p84-implicit-nullable` | compat | `ExplicitNullableParamTypeRector` | 8.4 |  | 7.1 | true | yes |
-| `p81-null-to-internal` | compat | `NullToStrictStringFuncCallArgRector` | 8.1 |  |  | false | yes |
 | `p82-interpolation` | compat | `VariableInStringInterpolationFixerRector` | 8.2 |  |  | true | yes |
 | `p82-utf8-encode` | compat | `Utf8DecodeEncodeToMbConvertEncodingRector` | 8.2 |  |  |  | yes |
 | `p83-get-class-no-args` | compat | `RemoveGetClassGetParentClassNoArgsRector` | 8.3 |  |  | true | yes |
@@ -294,6 +293,11 @@ As of 2026-10-04; rule classes read in rector-src 2.5.2. compat: a deprecation f
 | `p85-ord-single-byte` | compat | `OrdSingleByteRector` | 8.5 |  |  | true | yes |
 | `p80-optional-before-required` | compat | `OptionalParametersAfterRequiredRector` | 8.0 |  |  |  | yes |
 | `p74-implode-order` | compat | `ConsistentImplodeRector` | 7.4 | 8.0 |  | true | yes |
+| `deny-array-first-class-callable` | deny | `ArrayToFirstClassCallableRector` |  |  | 8.1 | false | yes |
+| `deny-override-on-methods` | deny | `AddOverrideAttributeToOverriddenMethodsRector` |  |  | 8.3 | false | yes |
+| `deny-readonly-property` | deny | `ReadOnlyPropertyRector` |  |  | 8.1 | false | yes |
+| `deny-readonly-class` | deny | `ReadOnlyClassRector` |  |  | 8.2 | false | yes |
+| `p81-null-to-internal` | deny | `NullToStrictStringFuncCallArgRector` | 8.1 |  |  | false | yes |
 | `deny-sleep-to-serialize` | deny | `SleepToSerializeRector` | 8.5 |  | 7.4 | false | yes |
 | `deny-wakeup-to-unserialize` | deny | `WakeupToUnserializeRector` | 8.5 |  | 7.4 | false | yes |
 | `deny-override-on-properties` | deny | `AddOverrideAttributeToOverriddenPropertiesRector` |  |  | 8.5 | false | yes |
@@ -313,7 +317,6 @@ As of 2026-10-04; rule classes read in rector-src 2.5.2. compat: a deprecation f
 Sources:
 
 - `p84-implicit-nullable`: https://www.php.net/manual/en/migration84.deprecated.php
-- `p81-null-to-internal`: https://www.php.net/manual/en/migration81.deprecated.php templates/rector.php.tmpl skips it (S4): it adds (string) casts that change semantics and fail stricter project PHPStan levels. The deprecation is reported, never fixed by this rule.
 - `p82-interpolation`: https://www.php.net/manual/en/migration82.deprecated.php
 - `p82-utf8-encode`: https://www.php.net/manual/en/migration82.deprecated.php The rewrite calls mb_convert_encoding(): Drupal-safe only where mbstring is guaranteed; unaudited (AR-11).
 - `p83-get-class-no-args`: https://www.php.net/manual/en/migration83.deprecated.php
@@ -327,6 +330,11 @@ Sources:
 - `p85-ord-single-byte`: https://www.php.net/manual/en/migration85.deprecated.php
 - `p80-optional-before-required`: https://www.php.net/manual/en/migration80.deprecated.php May change a public signature; unaudited (AR-11).
 - `p74-implode-order`: https://www.php.net/manual/en/migration74.deprecated.php ; https://www.php.net/manual/en/migration80.incompatible.php
+- `deny-array-first-class-callable`: https://www.php.net/manual/en/functions.first_class_callable_syntax.php Turns Form/Render API callbacks such as '#submit' =&gt; [[$this, 'submitX']] into $this-&gt;submitX(...): a closure is not serializable, so a cached form (#ajax, form state cache) fatals. templates/rector.php.tmpl skips it (S4); check-port-safety.sh flags such a closure.
+- `deny-override-on-methods`: https://www.php.net/manual/en/class.override.php Adds #[\Override] by looking at the test-bed core only: a method that exists in the parent only on newer cores then fatals on PHP 8.3+ with every older core the module declares. templates/rector.php.tmpl skips it (S4); check-port-safety.sh flags #[\Override] while the range spans Drupal 10.
+- `deny-readonly-property`: https://www.php.net/manual/en/language.oop5.properties.php#language.oop5.properties.readonly-properties A readonly property cannot be re-initialized by DependencySerializationTrait::__wakeup() (forms, plugins, controllers that get serialized). templates/rector.php.tmpl skips it (S4).
+- `deny-readonly-class`: https://www.php.net/manual/en/language.oop5.basic.php#language.oop5.basic.class.readonly Makes every property readonly, with the same DependencySerializationTrait::__wakeup() breakage as ReadOnlyPropertyRector. templates/rector.php.tmpl skips it (S4).
+- `p81-null-to-internal`: https://www.php.net/manual/en/migration81.deprecated.php templates/rector.php.tmpl skips it (S4): it adds (string) casts that change semantics and fail stricter project PHPStan levels. The deprecation is reported, never fixed by this rule.
 - `deny-sleep-to-serialize`: https://www.php.net/manual/en/migration85.deprecated.php DependencySerializationTrait implements __sleep()/__wakeup(): the rewrite breaks the service re-injection drupilot code relies on (03-F-D7). PHP 8.5 only soft-deprecates them (no E_DEPRECATED).
 - `deny-wakeup-to-unserialize`: https://www.php.net/manual/en/migration85.deprecated.php See deny-sleep-to-serialize.
 - `deny-override-on-properties`: https://github.com/rectorphp/rector-src/blob/2.5.2/config/set/php85.php (in the php85 level set) Adds #[\Override] to properties, valid only on PHP 8.5; it collides with the override-attribute port-safety check while the core range spans an older PHP.

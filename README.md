@@ -435,6 +435,8 @@ Defaults live in `config/defaults.json`. **Every `DRUPILOT_*` key can be overrid
 | --- | --- | --- |
 | `DRUPILOT_PHP_TARGET` | `8.3` | Target PHP version (drives PHPStan / PHPCS / DDEV, and caps Rector's PHP floor). |
 | `DRUPILOT_DRUPAL_TARGET` | `^11` | Target core range. |
+| `DRUPILOT_TARGET_MAJOR` | `11` | The Drupal major the port targets (11 for all of 1.0.x). A pre-release major also needs `DRUPILOT_ALLOW_PRERELEASE`. |
+| `DRUPILOT_ALLOW_PRERELEASE` | `false` | Allow a target major that has no stable release yet (Drupal 12 before 12.0.0): the plan then targets its newest pre-release (preview). |
 | `DRUPILOT_CORE_TARGET_STRATEGY` | `auto` | Core compatibility decision: `auto` (keep `^10 \|\| ^11` while backwards-compatible, switch to `^11` on a BC break / refactor), `d11-only`, or `keep-d10`. Keeping D10 also declares a composer `require.php` floor (see `DRUPILOT_REQUIRE_PHP_FLOOR`), and the choice yields a SemVer version-bump verdict. |
 | `DRUPILOT_KEEP_D10` | _(legacy)_ | Legacy boolean (`true` → keep D10, `false` → D11-only), honored only while `DRUPILOT_CORE_TARGET_STRATEGY` is `auto`; an explicit strategy wins. Prefer `DRUPILOT_CORE_TARGET_STRATEGY`. |
 | `DRUPILOT_REQUIRE_PHP_FLOOR` | `detect` | When keeping `^10 \|\| ^11`, how to set composer `require.php`: `detect` derives the real floor from a heuristic scan of the ported code (e.g. `>=8.1` when it uses no PHP 8.2/8.3 constructs, for genuine Drupal 10 support); `target` keeps the conservative `>=<php target>`. A lowered floor is best-effort — confirm with PHPCompatibility. |

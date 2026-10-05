@@ -152,33 +152,40 @@ core_matrix_legs() {
 # otherwise a D10 + PHP<target site installs the module and then fatals at
 # runtime. `^11` alone needs no require.php (core enforces its own minimum).
 #
-# recommend_core_target <subject> [phase] [bc_override] -> recommendation JSON:
-#   { strategy, phase, current_core_version_requirement,
-#     recommended_core_version_requirement, composer_core_constraint,
-#     require_php (string|null), version_bump (major|minor|patch),
-#     bc_break (bool), php_target, d10_support, verify_cores:[...],
-#     rationale:[...], warnings:[...] }
-#   verify_cores: the core legs scripts/analysis/verify-core-matrix.sh checks for
-#   the recommended requirement (core_matrix_legs), e.g. ["10.0","10","11"].
-#   The recommended requirement never lowers a declared Drupal 10 minor floor
-#   ('^10.3' -> '^10.3 || ^11') and never goes below the floor of a plugin
-#   attribute class the code uses (subject_attribute_floor; one that exists only
-#   in Drupal 11 turns keep-d10 into d11-only, e.g. '^11.1').
-#   phase: port | refactor (default port). bc_override: auto | yes | no.
-recommend_core_target() {
-  local subject="${1:-$PWD}" phase="${2:-port}" bc_override="${3:-auto}"
+# strategy_decide <subject> [target_major] [phase] [bc_override] -> the core
+# target DECISION for a port to Drupal T (default 11), as one JSON record:
+#   {target, php_target, current, floor_strategy, detected_floor,
+#    has_composer, strategy_input, legacy_note, had_prev, current_has_target,
+#    bc_break, branch (keep-current|keep-d10|d11-only, the 0.9 names),
+#    resolved (the 0.9 name), resolved_v1 (keep-current|keep-previous|
+#    target-only), prev_decl_floor, api_floor, api_attr, core_floor,
+#    d10_dropped, target_compatible (true|false|null), req, composer,
+#    require_php, effective_floor, d10_support, kc_raised, kc_decl_floor,
+#    req_prev, kc_dropped, current_has_eol}
+# recommend_core_target renders core-strategy.sh's 0.9 JSON from it (T = 11,
+# byte for byte), and scripts/analysis/upgrade-path.sh builds the plan's range
+# from it (any T). For T the ranges come from config/targets/<T>.json
+# .default_ranges (keep-previous / target-only: '^10 || ^11' / '^11' for 11),
+# the "older major" signals are the majors 8..T-1, and the PHP floor never goes
+# below the php_min of the kept previous-major minor (8.1 for every 10.x). It
+# never asserts anything: upgrade-path.sh checks the plan.
+strategy_decide() {
+  local subject="${1:-$PWD}" t="${2:-11}" phase="${3:-port}" bc_override="${4:-auto}"
   have_cmd jq || { printf '{}\n'; return 1; }
+  local prev=$((t - 1)) pre_re kp_range to_range default_floor prev_php_min
+  pre_re="$(seq 8 "$prev" | tr '\n' '|' | sed 's/|$//')"
+  kp_range="$(target_get "$t" '.default_ranges["keep-previous"]')"
+  to_range="$(target_get "$t" '.default_ranges["target-only"]')"
+  [[ -n "$kp_range" ]] || kp_range="^$prev || ^$t"
+  [[ -n "$to_range" ]] || to_range="^$t"
+  default_floor="$(core_floor_from_requirement "$kp_range")"
+  [[ -n "$default_floor" ]] || default_floor="$prev.0"
 
   local php_target current_req
   php_target="$(resolve_php_target)"
   current_req="$(subject_core_requirement "$subject" 2>/dev/null || true)"
   current_req="$(trim "$current_req")"
 
-  # PHP floor strategy: 'detect' (default) derives a narrower require.php from the
-  # detected floor (DRUPILOT_DETECTED_PHP_FLOOR, set by detect-php-floor.sh);
-  # 'target' keeps the conservative ">=target". The module's own composer.json is
-  # the ONLY place an info.yml-declared '^10 || ^11' module can enforce a PHP
-  # floor, so we also note whether it exists.
   local floor_strategy detected_floor has_composer="false"
   floor_strategy="$(config_get DRUPILOT_REQUIRE_PHP_FLOOR detect)"; floor_strategy="$(lc "$floor_strategy")"
   case "$floor_strategy" in target|detect) : ;; *) floor_strategy="detect";; esac
@@ -188,6 +195,10 @@ recommend_core_target() {
   # --- strategy resolution (auto default; KEEP_D10 legacy override) --------
   local strat keep_override legacy_note=""
   strat="$(config_get DRUPILOT_CORE_TARGET_STRATEGY auto)"; strat="$(lc "$strat")"
+  case "$strat" in
+    target-only) strat="d11-only";;
+    keep-previous) strat="keep-d10";;
+  esac
   case "$strat" in d11-only|keep-d10|auto) : ;; *) strat="auto";; esac
   keep_override="$(config_get DRUPILOT_KEEP_D10 "")"
   if [[ "$strat" == "auto" && -n "$keep_override" ]]; then
@@ -199,8 +210,8 @@ recommend_core_target() {
 
   # --- current support signals --------------------------------------------
   local had_pre11=0 current_has_11=0
-  if [[ -n "$current_req" ]] && printf '%s' "$current_req" | grep -qE '(^|[^0-9])(8|9|10)([^0-9]|$)'; then had_pre11=1; fi
-  if [[ -n "$current_req" ]] && printf '%s' "$current_req" | grep -qE '(^|[^0-9])11([^0-9]|$)'; then current_has_11=1; fi
+  if [[ -n "$current_req" ]] && printf '%s' "$current_req" | grep -qE "(^|[^0-9])($pre_re)([^0-9]|\$)"; then had_pre11=1; fi
+  if [[ -n "$current_req" ]] && printf '%s' "$current_req" | grep -qE "(^|[^0-9])$t([^0-9]|\$)"; then current_has_11=1; fi
 
   # --- BC-break detection (drives the SemVer major bump) ------------------
   local bc_break=0
@@ -218,97 +229,168 @@ recommend_core_target() {
     elif [[ "$had_pre11" == "1" || -z "$current_req" ]]; then
       resolved="keep-d10"           # widest BC-preserving set
     else
-      resolved="d11-only"           # already 11-only; nothing older to keep
+      resolved="d11-only"           # already T-only; nothing older to keep
     fi
   else
     resolved="$strat"
   fi
-
-  # Already Drupal 11-compatible with no BC break, and the strategy was left on
-  # 'auto' (not explicitly forced): KEEP the existing declaration verbatim instead
-  # of regressing a precise one (e.g. '^11.2' or '^10.3 || ^11 || ^12') to a
-  # generic range — that would drop a higher minor floor or a future major the
-  # module already supports. The developer can still narrow it via the tab.
+  # Already T-compatible with no BC break, and the strategy left on 'auto':
+  # keep the existing declaration verbatim (keep-current, CC-36).
   local keep_current=0
   if [[ "$strat" == "auto" && "$current_has_11" == "1" && "$bc_break" == "0" && -n "$current_req" ]]; then
     keep_current=1; resolved="keep-current"
   fi
 
   # --- core minor floor ----------------------------------------------------
-  # Never lower a declared Drupal 10 minor floor ('^10.3' stays '^10.3 || ^11',
-  # not '^10 || ^11'), and never declare a floor below what the code needs: a
-  # plugin attribute class the code uses exists only from its core minor on
-  # (config/plugin-attributes.json), e.g. the Block attribute from 10.2.
-  local d10_decl_floor="" api_floor="" api_attr="" core_floor="10.0" _af d10_dropped_note=""
-  d10_decl_floor="$(core_verify_legs "$current_req" | awk -F. '$1 == "10" { print ($2 == "" ? "10.0" : $0); exit }')"
-  [[ -n "$d10_decl_floor" ]] && core_floor="$d10_decl_floor"
+  # Never lower a declared previous-major minor floor ('^10.3' stays
+  # '^10.3 || ^11'), never below the target's default keep-previous floor, and
+  # never below the minor shipping a plugin attribute class the code uses.
+  local d10_decl_floor="" api_floor="" api_attr="" core_floor="$default_floor" _af d10_dropped=0
+  d10_decl_floor="$(core_verify_legs "$current_req" | awk -F. -v p="$prev" '$1 == p { print ($2 == "" ? p ".0" : $0); exit }')"
+  if [[ -n "$d10_decl_floor" ]] && version_ge "$d10_decl_floor" "$default_floor"; then core_floor="$d10_decl_floor"; fi
   _af="$(subject_attribute_floor "$subject")"
   if [[ -n "$_af" ]]; then
     api_floor="${_af%%$'\t'*}"; api_attr="${_af#*$'\t'}"
     version_ge "$core_floor" "$api_floor" || core_floor="$api_floor"
   fi
-  if [[ "$keep_current" == "0" && "$resolved" == "keep-d10" && "${core_floor%%.*}" -ge 11 ]]; then
+  if [[ "$keep_current" == "0" && "$resolved" == "keep-d10" && "${core_floor%%.*}" -ge "$t" ]]; then
     resolved="d11-only"
     legacy_note="the code uses $api_attr, which exists only from core $api_floor"
-    d10_dropped_note="Drupal 10 cannot be kept: the code uses $api_attr, which exists only from core $api_floor (PHPStan reports the unknown class on Drupal 10). Keep the annotation instead of the attribute to stay on '^10 || ^11'."
+    d10_dropped=1
   fi
+  # The previous major's own PHP minimum (8.1 for every Drupal 10 minor).
+  prev_php_min="$(target_get "$prev" ".minors[\"${core_floor}\"].php_min")"
+  [[ -n "$prev_php_min" ]] || prev_php_min="$(target_get "$prev" ".minors[\"$prev.0\"].php_min")"
+  [[ -n "$prev_php_min" ]] || prev_php_min="8.1"
 
-  # --- requirement + composer constraint + require.php + D10 honesty ---------
-  local req composer require_php="" effective_floor="" d10_support="n/a"
-  local -a rationale=() warnings=() suggested=()
-
-  # Target compatibility (strategy-independent): code that uses constructs newer
-  # than the target fatals even on the target PHP, so flag it regardless of the
-  # core strategy.
-  local target_compat_json="null"
+  # --- target compatibility of the detected floor -------------------------
+  local target_compat="null"
   if [[ -n "$detected_floor" ]]; then
-    if version_ge "$php_target" "$detected_floor"; then
-      target_compat_json="true"
-    else
-      target_compat_json="false"
-      warnings+=("The code uses PHP $detected_floor-only constructs but DRUPILOT_PHP_TARGET is $php_target — it will fatal on a Drupal 11 site running PHP $php_target. Raise DRUPILOT_PHP_TARGET to $detected_floor (confirm it is supported on the target Drupal 11 branch) or remove the construct.")
-    fi
+    if version_ge "$php_target" "$detected_floor"; then target_compat="true"; else target_compat="false"; fi
   fi
 
+  # --- requirement + composer constraint + require.php ----------------------
+  local branch req composer require_php="" effective_floor="" d10_support="n/a"
+  local kc_raised=0 kc_decl_floor="" req_pre11=0 kc_dropped=0 current_has_eol=0 f
   if [[ "$keep_current" == "1" ]]; then
-    # Keep the module's existing, already-D11-compatible requirement unchanged.
+    branch="keep-current"
     req="$current_req"; composer="$current_req"
-    rationale+=("The module already declares a Drupal 11-compatible requirement ('$current_req'); keeping it unchanged (minimal change). Use the core-target choice to narrow it if you want.")
-    local _decl_floor
-    _decl_floor="$(core_floor_from_requirement "$current_req")"
-    if [[ -n "$api_floor" && -n "$_decl_floor" ]] && ! version_ge "$_decl_floor" "$api_floor"; then
-      req="$(core_requirement_raise_floor "$current_req" "$api_floor")"; composer="$req"
-      rationale+=("The code uses $api_attr, which exists only from core $api_floor: the declared floor $_decl_floor is raised ('$current_req' -> '$req').")
+    kc_decl_floor="$(core_floor_from_requirement "$current_req")"
+    if [[ -n "$api_floor" && -n "$kc_decl_floor" ]] && ! version_ge "$kc_decl_floor" "$api_floor"; then
+      req="$(core_requirement_raise_floor "$current_req" "$api_floor")"; composer="$req"; kc_raised=1
     fi
-    # The raised floor may leave Drupal 10 behind ('^10 || ^11' + an 11.1
-    # attribute -> '^11.1'): the Drupal 10 logic follows the requirement now
-    # declared, not the one read from the module.
-    local req_pre11=0
-    if printf '%s' "$req" | grep -qE '(^|[^0-9])(8|9|10)([^0-9]|$)'; then req_pre11=1; fi
-    if [[ "$had_pre11" == "1" && "$req_pre11" == "0" ]]; then
-      resolved="d11-only"
-      warnings+=("Drupal 10 cannot be kept: the code uses $api_attr, which exists only from core $api_floor (PHPStan reports the unknown class on Drupal 10). Keep the annotation instead of the attribute to stay on '$current_req'.")
-    fi
+    if printf '%s' "$req" | grep -qE "(^|[^0-9])($pre_re)([^0-9]|\$)"; then req_pre11=1; fi
+    if [[ "$had_pre11" == "1" && "$req_pre11" == "0" ]]; then resolved="d11-only"; kc_dropped=1; fi
     if [[ "$req_pre11" == "1" ]]; then
-      # The kept requirement still allows Drupal 10, so declare the PHP floor.
       require_php=">=$php_target"
       if [[ "$floor_strategy" == "detect" && -n "$detected_floor" ]]; then
-        local f="$detected_floor"
-        version_ge "$f" "8.1" || f="8.1"
+        f="$detected_floor"
+        version_ge "$f" "$prev_php_min" || f="$prev_php_min"
         version_ge "$php_target" "$f" || f="$php_target"
         effective_floor="$f"; require_php=">=$f"
       fi
       d10_support="declared-not-verified"
+    fi
+    if printf '%s' "$current_req" | grep -qE '(^|[^0-9])(8|9)([^0-9]|$)'; then current_has_eol=1; fi
+  elif [[ "$resolved" == "keep-d10" ]]; then
+    branch="keep-d10"
+    req="$kp_range"
+    [[ "$core_floor" != "$default_floor" ]] && req="^$core_floor || ^$t"
+    composer="$req"
+    require_php=">=$php_target"
+    if [[ "$floor_strategy" == "detect" && -n "$detected_floor" ]]; then
+      f="$detected_floor"
+      version_ge "$f" "$prev_php_min" || f="$prev_php_min"
+      version_ge "$php_target" "$f" || f="$php_target"
+      effective_floor="$f"
+      require_php=">=$f"
+    fi
+    d10_support="declared-not-verified"
+  else
+    branch="d11-only"
+    req="$to_range"
+    if [[ "${core_floor%%.*}" == "$t" && "$core_floor" != "$t.0" ]]; then req="^$core_floor"; fi
+    composer="$req"
+  fi
+
+  local v1
+  case "$resolved" in keep-current) v1="keep-current";; keep-d10) v1="keep-previous";; *) v1="target-only";; esac
+  jq -n -c \
+    --argjson t "$t" --arg php_target "$php_target" --arg current "$current_req" \
+    --arg floor_strategy "$floor_strategy" --arg detected_floor "$detected_floor" \
+    --argjson has_composer "$has_composer" --arg strat "$strat" --arg legacy_note "$legacy_note" \
+    --argjson had_prev "$had_pre11" --argjson has_t "$current_has_11" --argjson bc_break "$bc_break" \
+    --arg branch "$branch" --arg resolved "$resolved" --arg v1 "$v1" \
+    --arg prev_decl_floor "$d10_decl_floor" --arg api_floor "$api_floor" --arg api_attr "$api_attr" \
+    --arg core_floor "$core_floor" --argjson d10_dropped "$d10_dropped" \
+    --argjson target_compat "$target_compat" --arg req "$req" --arg composer "$composer" \
+    --arg require_php "$require_php" --arg effective_floor "$effective_floor" --arg d10_support "$d10_support" \
+    --argjson kc_raised "$kc_raised" --arg kc_decl_floor "$kc_decl_floor" --argjson req_prev "$req_pre11" \
+    --argjson kc_dropped "$kc_dropped" --argjson eol "$current_has_eol" \
+    '{target: $t, php_target: $php_target, current: $current, floor_strategy: $floor_strategy,
+      detected_floor: $detected_floor, has_composer: $has_composer, strategy_input: $strat,
+      legacy_note: $legacy_note, had_prev: ($had_prev == 1), current_has_target: ($has_t == 1),
+      bc_break: ($bc_break == 1), branch: $branch, resolved: $resolved, resolved_v1: $v1,
+      prev_decl_floor: $prev_decl_floor, api_floor: $api_floor, api_attr: $api_attr,
+      core_floor: $core_floor, d10_dropped: ($d10_dropped == 1), target_compatible: $target_compat,
+      req: $req, composer: $composer, require_php: $require_php, effective_floor: $effective_floor,
+      d10_support: $d10_support, kc_raised: ($kc_raised == 1), kc_decl_floor: $kc_decl_floor,
+      req_prev: ($req_prev == 1), kc_dropped: ($kc_dropped == 1), current_has_eol: ($eol == 1)}'
+}
+
+# recommend_core_target <subject> [phase] [bc_override] -> recommendation JSON:
+#   { strategy, phase, current_core_version_requirement,
+#     recommended_core_version_requirement, composer_core_constraint,
+#     require_php (string|null), version_bump (major|minor|patch),
+#     bc_break (bool), php_target, d10_support, verify_cores:[...],
+#     rationale:[...], warnings:[...] }
+#   verify_cores: the core legs scripts/analysis/verify-core-matrix.sh checks for
+#   the recommended requirement (core_matrix_legs), e.g. ["10.0","10","11"].
+#   The recommended requirement never lowers a declared Drupal 10 minor floor
+#   ('^10.3' -> '^10.3 || ^11') and never goes below the floor of a plugin
+#   attribute class the code uses (subject_attribute_floor; one that exists only
+#   in Drupal 11 turns keep-d10 into d11-only, e.g. '^11.1').
+#   phase: port | refactor (default port). bc_override: auto | yes | no.
+recommend_core_target() {
+  local subject="${1:-$PWD}" phase="${2:-port}" bc_override="${3:-auto}"
+  have_cmd jq || { printf '{}\n'; return 1; }
+  local rec
+  rec="$(strategy_decide "$subject" 11 "$phase" "$bc_override")" || { printf '{}\n'; return 1; }
+  # The decision, field by field (one jq call; @sh keeps every value literal).
+  local php_target current_req floor_strategy detected_floor has_composer legacy_note
+  local branch resolved d10_decl_floor api_floor api_attr core_floor d10_dropped target_compat
+  local req composer require_php effective_floor d10_support kc_raised kc_decl_floor
+  local req_pre11 kc_dropped current_has_eol current_has_11 bc_break
+  eval "$(printf '%s' "$rec" | jq -r '@sh "php_target=\(.php_target) current_req=\(.current)
+    floor_strategy=\(.floor_strategy) detected_floor=\(.detected_floor) has_composer=\(.has_composer)
+    legacy_note=\(.legacy_note) branch=\(.branch) resolved=\(.resolved)
+    d10_decl_floor=\(.prev_decl_floor) api_floor=\(.api_floor) api_attr=\(.api_attr)
+    core_floor=\(.core_floor) d10_dropped=\(.d10_dropped) target_compat=\(.target_compatible)
+    req=\(.req) composer=\(.composer) require_php=\(.require_php)
+    effective_floor=\(.effective_floor) d10_support=\(.d10_support) kc_raised=\(.kc_raised)
+    kc_decl_floor=\(.kc_decl_floor) req_pre11=\(.req_prev) kc_dropped=\(.kc_dropped)
+    current_has_eol=\(.current_has_eol) current_has_11=\(.current_has_target) bc_break=\(.bc_break)"')"
+  local -a rationale=() warnings=() suggested=()
+
+  if [[ "$target_compat" == "false" ]]; then
+    warnings+=("The code uses PHP $detected_floor-only constructs but DRUPILOT_PHP_TARGET is $php_target — it will fatal on a Drupal 11 site running PHP $php_target. Raise DRUPILOT_PHP_TARGET to $detected_floor (confirm it is supported on the target Drupal 11 branch) or remove the construct.")
+  fi
+
+  if [[ "$branch" == "keep-current" ]]; then
+    rationale+=("The module already declares a Drupal 11-compatible requirement ('$current_req'); keeping it unchanged (minimal change). Use the core-target choice to narrow it if you want.")
+    if [[ "$kc_raised" == "true" ]]; then
+      rationale+=("The code uses $api_attr, which exists only from core $api_floor: the declared floor $kc_decl_floor is raised ('$current_req' -> '$req').")
+    fi
+    if [[ "$kc_dropped" == "true" ]]; then
+      warnings+=("Drupal 10 cannot be kept: the code uses $api_attr, which exists only from core $api_floor (PHPStan reports the unknown class on Drupal 10). Keep the annotation instead of the attribute to stay on '$current_req'.")
+    fi
+    if [[ "$req_pre11" == "true" ]]; then
       warnings+=("The kept requirement still allows Drupal 10 ('$req'); its Drupal 10 compatibility is DECLARED, not verified — run verify-core-matrix.sh (static check on a Drupal 10 core) and install/test on Drupal 10 before relying on it.")
     fi
-    if printf '%s' "$current_req" | grep -qE '(^|[^0-9])(8|9)([^0-9]|$)'; then
+    if [[ "$current_has_eol" == "true" ]]; then
       suggested+=("The requirement still lists EOL Drupal 8/9 ('$current_req'); narrow it (e.g. to '^10 || ^11' or '^11') via the core-target choice if you no longer support them.")
     fi
-  elif [[ "$resolved" == "keep-d10" ]]; then
-    req="^10 || ^11"
-    [[ "$core_floor" != "10.0" ]] && req="^$core_floor || ^11"
-    composer="$req"
-    require_php=">=$php_target"      # safe default (policy floor = target)
+  elif [[ "$branch" == "keep-d10" ]]; then
     rationale+=("Strategy: keep-d10 ('$req')${legacy_note:+ ($legacy_note)}.")
     if [[ "$core_floor" != "10.0" ]]; then
       if [[ -n "$api_floor" && "$core_floor" == "$api_floor" && "$api_floor" != "$d10_decl_floor" ]]; then
@@ -317,34 +399,21 @@ recommend_core_target() {
         rationale+=("Drupal 10 floor $core_floor: the declared minor floor ('$current_req') is kept, never lowered.")
       fi
     fi
-
-    # Optionally widen the floor to the detected one (bounded to [8.1, target]).
     if [[ "$floor_strategy" == "detect" && -n "$detected_floor" ]]; then
-      local f="$detected_floor"
-      version_ge "$f" "8.1" || f="8.1"            # never below Drupal 10's own minimum
-      version_ge "$php_target" "$f" || f="$php_target"   # never above the target
-      effective_floor="$f"
-      require_php=">=$f"
-      if [[ "$f" != "$php_target" ]]; then
-        rationale+=("Detected PHP floor is $f (heuristic scan), below the target $php_target — require.php is widened to \">=$f\" for genuine Drupal 10 (PHP $f) support.")
-        warnings+=("require.php was lowered to \">=$f\" from a best-effort syntactic scan. CONFIRM with PHPCompatibility (testVersion $f-) before release: a missed newer construct would let a Drupal 10 + PHP<$php_target site install and then fatal at runtime. Set DRUPILOT_REQUIRE_PHP_FLOOR=target to keep the conservative \">=$php_target\".")
+      if [[ "$effective_floor" != "$php_target" ]]; then
+        rationale+=("Detected PHP floor is $effective_floor (heuristic scan), below the target $php_target — require.php is widened to \">=$effective_floor\" for genuine Drupal 10 (PHP $effective_floor) support.")
+        warnings+=("require.php was lowered to \">=$effective_floor\" from a best-effort syntactic scan. CONFIRM with PHPCompatibility (testVersion $effective_floor-) before release: a missed newer construct would let a Drupal 10 + PHP<$php_target site install and then fatal at runtime. Set DRUPILOT_REQUIRE_PHP_FLOOR=target to keep the conservative \">=$php_target\".")
       else
         rationale+=("PHP floor is the target ($php_target): the scan found PHP 8.2/8.3-only constructs (or the detected floor equals the target).")
       fi
     else
       rationale+=("PHP floor is the target ($php_target); keeping Drupal 10 declares composer require.php \">=$php_target\". (Set DRUPILOT_REQUIRE_PHP_FLOOR=detect to derive a narrower, code-based floor.)")
     fi
-
     warnings+=("Drupal 10's own minimum is PHP 8.1, but this port's floor is ${effective_floor:-$php_target}. require.php \"$require_php\" blocks D10 sites below that floor at install time (composer) rather than fataling at runtime. If you do not need the D10 transition window, drop to '^11'.")
-
-    # The floor is only enforceable if the module ships a composer.json.
     if [[ "$has_composer" != "true" ]]; then
       warnings+=("This module has no composer.json, so require.php cannot be declared anywhere — an info.yml-only '^10 || ^11' module has NO way to enforce the PHP floor, and a D10 + low-PHP site would install and fatal. Either add a composer.json with \"require\": { \"php\": \"$require_php\" }, or declare '^11' only.")
       suggested+=("Add a composer.json declaring \"require\": { \"php\": \"$require_php\" } (or drop to '^11'), so the PHP floor of the '^10 || ^11' declaration is actually enforced.")
     fi
-
-    # D10 support is DECLARED here, not verified (cheap-scope honesty).
-    d10_support="declared-not-verified"
     local digests_note=""
     if config_bool DRUPILOT_USE_DIGESTS_RULES 1; then
       digests_note=" The AI digests / ad-hoc Rector layer may introduce replacements newer than Drupal 10.0, so a raised minor (e.g. '^10.3 || ^11') is more likely — check it."
@@ -352,20 +421,18 @@ recommend_core_target() {
     warnings+=("Drupal 10 compatibility is DECLARED, not verified. drupal-rector's standard replacements are usually available across all of Drupal 10 (deprecation contract), but this was not checked here. If the port uses an API added in a later 10.x minor, set core_version_requirement to e.g. '^10.3 || ^11'; if it uses an API absent from Drupal 10, drop to '^11'.$digests_note")
     suggested+=("Verify Drupal 10 compatibility before relying on the '^10 || ^11' declaration: verify-core-matrix.sh runs PHPStan + php -l against a Drupal 10 core (static); install on a Drupal 10 site or run the test suite against Drupal 10 for runtime proof.")
   else
-    req="^11"
-    if [[ "${core_floor%%.*}" == "11" && "$core_floor" != "11.0" ]]; then req="^$core_floor"; fi
-    composer="$req"
     rationale+=("Strategy: d11-only ('$req')${legacy_note:+ ($legacy_note)}.")
-    [[ -n "$d10_dropped_note" ]] && warnings+=("$d10_dropped_note")
+    if [[ "$d10_dropped" == "true" ]]; then
+      warnings+=("Drupal 10 cannot be kept: the code uses $api_attr, which exists only from core $api_floor (PHPStan reports the unknown class on Drupal 10). Keep the annotation instead of the attribute to stay on '^10 || ^11'.")
+    fi
     rationale+=("Drupal 11 enforces PHP $php_target itself, so no composer require.php is needed.")
   fi
 
   # --- version bump (SemVer for Drupal contrib) ---------------------------
   # drops_major: the recommended requirement no longer supports a core major the
-  # current one did (e.g. '^8 || ^9' -> '^10 || ^11' drops 8 AND 9, '^9 || ^10' ->
-  # '^10 || ^11' drops 9). Dropping a previously-supported core major is
-  # backwards-incompatible for those sites -> MAJOR, regardless of the strategy
-  # (the old check only caught the d11-only path and under-reported keep-d10).
+  # current one did (e.g. '^8 || ^9' -> '^10 || ^11' drops 8 AND 9). Dropping a
+  # previously-supported core major is backwards-incompatible -> MAJOR,
+  # regardless of the strategy.
   local drops_major=0
   if [[ -n "$current_req" ]]; then
     local _rec_majors _m
@@ -375,11 +442,11 @@ recommend_core_target() {
     done
   fi
   local version_bump
-  if [[ "$bc_break" == "1" || "$drops_major" == "1" ]]; then
+  if [[ "$bc_break" == "true" || "$drops_major" == "1" ]]; then
     version_bump="major"
     [[ "$drops_major" == "1" ]] && rationale+=("Dropping a previously-supported Drupal core major (current '${current_req:-none}' -> '$req') is backwards-incompatible -> MAJOR (cut a new N+1.0.x branch).")
-    [[ "$bc_break" == "1" ]] && rationale+=("Phase 2 refactor / asserted public-API BC break -> MAJOR.")
-  elif [[ "$current_has_11" == "0" ]]; then
+    [[ "$bc_break" == "true" ]] && rationale+=("Phase 2 refactor / asserted public-API BC break -> MAJOR.")
+  elif [[ "$current_has_11" == "false" ]]; then
     version_bump="minor"
     rationale+=("Adding Drupal 11 support without dropping a supported core major -> MINOR.")
   else
@@ -405,11 +472,11 @@ recommend_core_target() {
     --arg php_floor_strategy "$floor_strategy" \
     --arg php_floor_detected "$detected_floor" \
     --arg php_floor_effective "$effective_floor" \
-    --argjson php_floor_target_compatible "$target_compat_json" \
+    --argjson php_floor_target_compatible "$target_compat" \
     --arg d10_support "$d10_support" \
     --argjson verify_cores "$verify_cores_json" \
     --argjson has_composer_json "$has_composer" \
-    --argjson bc_break "$([[ "$bc_break" == "1" ]] && echo true || echo false)" \
+    --argjson bc_break "$bc_break" \
     --argjson rationale "$(arr_to_json ${rationale[@]+"${rationale[@]}"})" \
     --argjson warnings "$(arr_to_json ${warnings[@]+"${warnings[@]}"})" \
     --argjson suggested "$(arr_to_json ${suggested[@]+"${suggested[@]}"})" \

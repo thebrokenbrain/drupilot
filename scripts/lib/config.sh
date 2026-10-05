@@ -32,12 +32,13 @@ config_get() {
   _config_resolve "$1" "${2:-}" 1
 }
 
-# _config_resolve <KEY> <default> <aliases 0|1> -> config_get's resolution:
-# env, then (aliases=1) an env alias of KEY, then .drupilot.json, then a
-# .drupilot.json alias of KEY, then config/defaults.json, then <default>. So
-# the environment still wins over every file tier, aliased or not.
+# _config_resolve <KEY> <default> <aliases 0|1> [explicit 0|1] -> config_get's
+# resolution: env, then (aliases=1) an env alias of KEY, then .drupilot.json,
+# then a .drupilot.json alias of KEY, then config/defaults.json (skipped with
+# explicit=1), then <default>. So the environment still wins over every file
+# tier, aliased or not.
 _config_resolve() {
-  local key="$1" def="${2:-}" aliases="${3:-1}"
+  local key="$1" def="${2:-}" aliases="${3:-1}" explicit="${4:-0}"
   local envval="${!key:-}"
   if [[ -n "$envval" ]]; then printf '%s' "$envval"; return 0; fi
   if [[ "$aliases" == "1" && "$_DRUPILOT_ALIAS_N" -gt 0 ]] && _config_alias env "$key"; then
@@ -57,7 +58,7 @@ _config_resolve() {
     printf '%s' "$_DRUPILOT_ALIAS_VALUE"; return 0
   fi
   local file; file="$(drupilot_config_file)"
-  if [[ -r "$file" ]] && have_cmd jq; then
+  if [[ "$explicit" != "1" && -r "$file" ]] && have_cmd jq; then
     local v; v="$(jq -r --arg k "$key" "$jqf" "$file" 2>/dev/null)"
     if [[ -n "$v" && "$v" != "null" ]]; then printf '%s' "$v"; return 0; fi
   fi
@@ -255,6 +256,28 @@ req_version() { config_json ".requirements.${1}" "${2:-}"; }
 # ---------------------------------------------------------------------------
 resolve_php_target()    { config_get DRUPILOT_PHP_TARGET "8.3"; }
 resolve_drupal_target() { config_get DRUPILOT_DRUPAL_TARGET "^11"; }
+
+# config_get_explicit KEY -> the value a developer set: the env tier, the
+# .drupilot.json tier and their aliases, never config/defaults.json (so a
+# caller can tell an explicit choice from the shipped default). Nothing when
+# none is set.
+config_get_explicit() { _config_resolve "$1" "" 1 1; }
+
+# resolve_target_major -> T, the target Drupal major (DRUPILOT_TARGET_MAJOR,
+# default 11 for all of 1.0.x, OD-10).
+resolve_target_major() { config_get DRUPILOT_TARGET_MAJOR "11"; }
+
+# resolve_php_target_for T -> P for target major T: an explicit
+# DRUPILOT_PHP_TARGET (env or .drupilot.json), else the target's
+# php_defaults.env (config/targets/T.json), else the config default. For T=11
+# the data default equals config/defaults.json's 8.3, so 0.9 is unchanged.
+resolve_php_target_for() {
+  local p d
+  p="$(config_get_explicit DRUPILOT_PHP_TARGET)"
+  if [[ -z "$p" ]]; then d="$(target_get "${1:-11}" '.php_defaults.env')"; p="${d:-$(resolve_php_target)}"; fi
+  printf '%s' "$p"
+  return 0
+}
 
 # php_target_supported <ver> -> 0 if the version is in php_support.supported
 php_target_supported() {

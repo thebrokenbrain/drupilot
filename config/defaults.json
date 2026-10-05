@@ -4,6 +4,8 @@
   "_php_target_comment": "DRUPILOT_PHP_TARGET is the CONSERVATIVE default port floor (8.3, supported on every Drupal 11 branch). It is intentionally distinct from php_support.recommended (8.4), which is the version the /drupilot-setup PHP picker highlights as recommended. Both are valid targets; the default stays at the safe floor while the picker lets the developer move up to 8.4. 8.5 needs Drupal 11.3 or later and has no assumed Rector set (see _php_support_comment).",
   "DRUPILOT_PHP_TARGET": "8.3",
   "DRUPILOT_DRUPAL_TARGET": "^11",
+  "DRUPILOT_TARGET_MAJOR": "11",
+  "DRUPILOT_ALLOW_PRERELEASE": false,
   "DRUPILOT_CORE_TARGET_STRATEGY": "auto",
   "DRUPILOT_REQUIRE_PHP_FLOOR": "detect",
   "DRUPILOT_CODER_CONSTRAINT": "^8.3",

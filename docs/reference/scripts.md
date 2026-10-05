@@ -3477,6 +3477,10 @@ snapshot and repins the goldens to it.
   baseline-0.9   tests/baseline/v0.9.0/: the Docker-free outputs of v0.9.0,
                  checked by rerunning them (scripts/dev/baseline-0.9.sh
                  --check, which this absorbs)
+  <name>         tests/golden/<name>/ holding a golden.json: Docker-free
+                 outputs a unit test regenerates against the pinned data
+                 snapshot (DRUPILOT_VERSION_DATA_DIR), e.g. detect-source;
+                 pinned and checked like a lab recording
   <fixture>      tests/fixtures/<fixture>.golden/: outputs recorded in the lab
                  (DDEV), such as a fixture's port patch and its raw tool
                  outputs; every file is pinned by its sha256 in golden.json,

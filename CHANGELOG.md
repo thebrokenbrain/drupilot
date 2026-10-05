@@ -14,6 +14,18 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 ## [Unreleased]
 
 ### Added
+- **`DRUPILOT_TARGET_MAJOR`** (default `11` for all of 1.0.x) and
+  **`DRUPILOT_ALLOW_PRERELEASE`** (default `false`), the target Drupal major and
+  the opt-in for a major with no stable release yet (T-M3-06), with
+  `resolve_target_major`, `resolve_php_target_for` (P from the target's data
+  default unless one is set) and `config_get_explicit`. The upgrade plan
+  reads them.
+- **`scripts/lib/canon.sh`**: `canon_json_hashable` and `json_hash`, the
+  canonical form an upgrade plan is hashed in (AR-13).
+- **Unit goldens pinned to a data snapshot**: `golden.sh` also checks every
+  `tests/golden/<name>/` holding a `golden.json`, and the unit tests
+  regenerate them against the snapshot it pins (`detect-source`, and the
+  168-case `core-strategy` matrix).
 - **`scripts/analysis/detect-source.sh`** (T-M3-02, AR-05): the source era
   S of a module or theme, the oldest Drupal major whose APIs it still uses,
   with its track (`d7-assisted` for Drupal 7), a confidence and the evidence:
@@ -218,6 +230,20 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `templates/rector-compat.php.tmpl` is a `drupal_safe` compat rule there.
 
 ### Changed
+- **Refactor: the core-target decision is a function of its own.**
+  `strategy_decide` computes the decision for any target major (the ranges
+  from `config/targets/<T>.json`, the older-major signals as the majors below
+  T, the PHP floor never below the kept previous minor's `php_min`), and
+  `recommend_core_target` renders `core-strategy.sh`'s JSON from it. For T=11
+  every output is byte-identical: a 168-case matrix of subjects and scenarios
+  (`tests/unit/core_strategy_matrix.sh`) pins the raw stdout captured before
+  the change. `DRUPILOT_CORE_TARGET_STRATEGY` also accepts the 1.0 names
+  `target-only` and `keep-previous`.
+- `config/php/rules.json`: the four Rector rules `templates/rector.php.tmpl`
+  skips for Drupal reasons (first-class callables, `#[\Override]` on
+  methods, readonly properties and classes) are `deny` rows, and
+  `p81-null-to-internal` moves from `compat` with `drupal_safe: false` to
+  `deny`, so the data lists the whole skip list in the template's order.
 - **Refactor: `scripts/lib/common.sh` is split into domain libs** (T-M3-10):
   `core`, `paths`, `config`, `lock`, `cache`, `subject`, `ddev`, `state`,
   `strategy`, `toolchain`, `git`, `interact` and `phpcs`, sourced in a fixed

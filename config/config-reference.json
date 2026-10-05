@@ -18,6 +18,22 @@
       "description": "Target core range.",
       "see": "concepts/php-and-core-target.md"
     },
+    "DRUPILOT_TARGET_MAJOR": {
+      "type": "string",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_TARGET_MAJOR",
+      "description": "The Drupal major the port targets (T): 11 for all of 1.0.x. The upgrade plan (scripts/analysis/upgrade-path.sh) reads it; a pre-release major also needs DRUPILOT_ALLOW_PRERELEASE.",
+      "see": "concepts/php-and-core-target.md"
+    },
+    "DRUPILOT_ALLOW_PRERELEASE": {
+      "type": "bool",
+      "enum": null,
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_ALLOW_PRERELEASE",
+      "description": "Allow a target major that has no stable release yet (Drupal 12 before its 12.0.0): the plan then targets its newest pre-release (preview). Without it the plan refuses such a target and offers this key as a choice.",
+      "see": "concepts/php-and-core-target.md"
+    },
     "DRUPILOT_CORE_TARGET_STRATEGY": {
       "type": "enum",
       "enum": [

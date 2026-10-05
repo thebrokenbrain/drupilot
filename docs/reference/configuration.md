@@ -8,6 +8,13 @@ A setting resolves as **environment variable > the project's `.drupilot.json` (a
 
 ## Settings
 
+### `DRUPILOT_ALLOW_PRERELEASE`
+
+Allow a target major that has no stable release yet (Drupal 12 before its 12.0.0): the plan then targets its newest pre-release (preview). Without it the plan refuses such a target and offers this key as a choice.
+
+- **Default:** `false`
+- **Type:** bool
+
 ### `DRUPILOT_ARTIFACTS_DIR`
 
 Override for the visible `.drupilot/` outputs directory. Empty means `<root>/.drupilot`.
@@ -252,6 +259,13 @@ The stage a port has reached (`state.json` in drupilot's state dir: setup &lt; a
 
 - **Default:** `false`
 - **Type:** bool
+
+### `DRUPILOT_TARGET_MAJOR`
+
+The Drupal major the port targets (T): 11 for all of 1.0.x. The upgrade plan (scripts/analysis/upgrade-path.sh) reads it; a pre-release major also needs DRUPILOT_ALLOW_PRERELEASE.
+
+- **Default:** `11`
+- **Type:** string
 
 ### `DRUPILOT_TOOLCHAIN_SOURCE`
 
