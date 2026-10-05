@@ -14,8 +14,10 @@ t_isolate
 
 # A producer that writes after the consumer has seen its match.
 two() { printf 'match\n'; sleep 1; printf 'more\n'; }
-assert_eq "the hazard: grep -q under pipefail fails the pipeline (141)" \
-  "$(set -o pipefail; two | grep -q match; echo $?)" "141"
+# 141 when the producer dies of SIGPIPE, 1 when SIGPIPE is ignored (as on
+# GitHub's runners) and its write fails with EPIPE: a failure either way.
+rc="$(set -o pipefail; two | grep -q match; echo $?)"
+assert_eq "the hazard: grep -q under pipefail fails the pipeline (rc $rc)" "$([[ "$rc" != "0" ]] && echo fails)" "fails"
 assert_eq "grep_q reads it all: 0" "$(set -o pipefail; two | grep_q match; echo $?)" "0"
 assert_eq "grep_q: no match is 1" "$(set -o pipefail; printf 'a\nb\n' | grep_q zzz; echo $?)" "1"
 assert_eq "grep_q -x" "$(printf '10\n11\n' | grep_q -x 1 && echo y || echo n)$(printf '10\n11\n' | grep_q -x 11 && echo y || echo n)" "ny"
