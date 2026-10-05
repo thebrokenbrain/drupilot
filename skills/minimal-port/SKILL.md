@@ -321,8 +321,10 @@ Apply only the mechanical, behavior-preserving fixes:
   ```
 
   `/drupilot-port` then freezes the final upgrade plan with the answered strategy
-  (`upgrade-path.sh --phase final --root "<drupal_root>" --freeze --json`; exit 2:
-  back to `/drupilot-setup`), and the value to apply is the plan's, read with
+  (`upgrade-path.sh --phase final --root "<drupal_root>" --freeze --json`, or
+  `--range '<the draft's .range.constraint>'` and no tab when the draft's range is
+  `explicit`, ADR 0021; exit 2: back to `/drupilot-setup`), and the value to apply
+  is the plan's, read with
   `plan_get .range.constraint "<drupal_root>"` (and `plan_get .php.require_php`
   for composer's `require.php`): core-strategy shows each option's consequences,
   the plan decides. That range is core-strategy's

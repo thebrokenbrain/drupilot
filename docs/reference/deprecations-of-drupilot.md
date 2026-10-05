@@ -5,8 +5,16 @@ the Drupal APIs drupilot fixes, see [Deprecations](deprecations.md).
 
 A name drupilot 1.0 renamed keeps working for all of 1.x. It is removed in
 2.0.0, which warns when a removed name is still set. Every row below comes from
-`config/migrations.json`, which drupilot reads at runtime. When you use an old
-name, drupilot warns once per run and tells you the new one.
+`config/migrations.json`, which drupilot reads at runtime.
+
+What warns:
+- the `DRUPILOT_KEEP_D10` boolean warns once per run and names the new setting;
+- an old value in a `DRUPILOT_CHOICE_CORE_TARGET` pre-answer warns once per run
+  and names the new value.
+
+The setting `DRUPILOT_CORE_TARGET_STRATEGY` accepts its 0.9 values `keep-d10`
+and `d11-only` without a warning, because drupilot itself still writes them for
+Drupal 11 (below).
 
 **Drupal 11 keeps the 0.9 words.** For a Drupal 11 target, drupilot still writes
 and prints the 0.9 strategy values, `keep-d10` and `d11-only`:
@@ -42,7 +50,7 @@ unchanged (`DRUPILOT_CHOICE_D10_CHECK=d11-only`). It is not a renamed value.
 
 | Output | Old | New | Since | Removed in | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `port-summary --json` | `d10_support` | `prev_major_support` | 1.0.0 | 2.0.0 | The new field is added beside the old one by port-summary v2. `--schema 1` keeps the exact v1 shape for all of 1.x. |
+| `port-summary --json` | `d10_support` | `prev_major_support` | 1.0.0 | 2.0.0 | Planned: port-summary v2, in a later 1.x release, adds the new field beside the old one. The v1 shape stays as it is. |
 
 ## Flags
 
@@ -54,9 +62,14 @@ unchanged (`DRUPILOT_CHOICE_D10_CHECK=d11-only`). It is not a renamed value.
 
 - `DRUPILOT_PHP_TARGET` keeps its name and meaning: the PHP the port runs on.
 - `DRUPILOT_DRUPAL_TARGET` keeps working beside the 1.0 setting
-  `DRUPILOT_TARGET_MAJOR`:
-  - A bare `^N` names the target major.
-  - Any other constraint, such as `^10.3 || ^11`, is the declared core range
-    to use, unless `DRUPILOT_CORE_TARGET_STRATEGY` is set too.
+  `DRUPILOT_TARGET_MAJOR` (ADR 0021):
+  - It is still the test-bed's core constraint, and the highest major it
+    admits names the target major (`^12` → 12, `>=11 <12` → 11).
+  - A constraint that admits two or more majors, such as `^10.3 || ^11`, is
+    also the declared core range to use, unless
+    `DRUPILOT_CORE_TARGET_STRATEGY` is set too. `/drupilot-port` then asks no
+    core-target question.
+  - A one-major value (`^11.2`, `~11.2.0`, `11.x-dev`) only pins the test-bed's
+    core, as in 0.9.
   - With only `DRUPILOT_TARGET_MAJOR` set, the test-bed's core constraint is
     `^<major>`.

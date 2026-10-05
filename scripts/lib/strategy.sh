@@ -502,12 +502,13 @@ strategy_decide() {
 # strategy_persist_name VALUE [T] -> the name to write for a configured
 # strategy (CC-07): for T=11 (default: resolve_target_major) the 0.9 name of
 # a renamed value (keep-previous -> keep-d10, target-only -> d11-only,
-# config/migrations.json value_aliases); any other value, or another T, as it
-# is.
+# config/migrations.json value_aliases); for another T the new name
+# (keep-d10 -> keep-previous). auto and widest are written as they are.
 strategy_persist_name() {
   local v="${1:-}" t="${2:-}"
   [[ -n "$t" ]] || t="$(resolve_target_major)"
-  if [[ "$t" == "11" ]]; then value_alias_legacy DRUPILOT_CORE_TARGET_STRATEGY "$v"; else printf '%s\n' "$v"; fi
+  if [[ "$t" == "11" ]]; then value_alias_legacy DRUPILOT_CORE_TARGET_STRATEGY "$v"
+  else value_alias_new DRUPILOT_CORE_TARGET_STRATEGY "$v"; fi
   return 0
 }
 

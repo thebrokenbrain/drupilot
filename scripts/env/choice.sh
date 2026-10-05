@@ -108,7 +108,7 @@ PKEY="$(jq -r '.persist_key // empty' <<<"$ENTRY")"
 if [[ -n "$RAW" && -n "$PKEY" && "$MULTI" != "true" ]]; then
   case " $OPTIONS " in
     *" $RAW "*) ;;
-    *) value_alias_normalize "$PKEY" "$RAW"; RAW_NORM="$_DRUPILOT_VALUE_ALIAS";;
+    *) value_alias_normalize "$PKEY" "$RAW" "$VAR"; RAW_NORM="$_DRUPILOT_VALUE_ALIAS";;
   esac
 fi
 

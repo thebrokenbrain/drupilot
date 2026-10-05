@@ -1468,8 +1468,11 @@ Options:
                    DRUPILOT_CORE_TARGET_STRATEGY, auto).
   --range C        An explicit declared range (implies --strategy explicit).
                    Without --range or --strategy, an explicit
-                   DRUPILOT_DRUPAL_TARGET other than a bare ^N is one too,
-                   unless DRUPILOT_CORE_TARGET_STRATEGY is set (X12).
+                   DRUPILOT_DRUPAL_TARGET that admits two or more majors
+                   (e.g. '^10.3 || ^11') is one too, unless
+                   DRUPILOT_CORE_TARGET_STRATEGY is set (X12, ADR 0021);
+                   a one-major value ('^11.2', '~11.2.0', '11.x-dev') only
+                   pins the test-bed's core, as in 0.9.
   --root DIR       The Drupal root whose lock names the bed core, whose
                    drupal-rector names the Rector sets and whose
                    .drupilot.json holds the persisted choices (default: the

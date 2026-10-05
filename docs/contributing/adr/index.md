@@ -27,6 +27,7 @@ behaviour.
 | [0017](0017-upgrade-plan-resolver.md) | What the upgrade-plan resolver decides where AR-04/AR-06 are silent |
 | [0018](0018-freezing-the-upgrade-plan.md) | Freezing the upgrade plan in the lock |
 | [0019](0019-rector-template-from-the-plan.md) | rector.php is rendered from the upgrade plan |
+| [0021](0021-drupal-target-and-target-major.md) | DRUPILOT_DRUPAL_TARGET beside the target major |
 
 A new ADR takes the next free number, gets a line here and a nav line in
 `mkdocs.yml` in the same change (the `docs` gate rejects an orphan page).
