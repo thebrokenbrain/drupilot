@@ -103,9 +103,8 @@ All output you produce — messages, summaries, plans — is in **English**.
   8.3, check the core minor (`php_supported_for`), never assume a Rector `php85` set.
 - **drupal-rector**: `palantirnet/drupal-rector` **1.1.x** (toolchain cell 11; a project locked by drupilot 0.9 keeps 0.21.x until refreshed; community-maintained;
   the `palantirnet/` namespace is kept, `palantirnet/drupal8-rector` is obsolete).
-  Covers D10.0 -> D11.4 deprecations. drupilot's `rector.php` (template 5,
-  ADR 0019) uses the upgrade plan's per-minor Drupal sets (`rector.drupal_sets`,
-  e.g. `DRUPAL_100` to `DRUPAL_103` for a port to Drupal 11) plus the PHP sets up to the
+  Covers D10.0 -> D11.4 deprecations. drupilot's `rector.php` (template 5)
+  uses the upgrade plan's Drupal sets (each hop's set family per minor up to the test-bed's minor, plus the edge's always and breaking sets (ADR 0019; for a port from Drupal 10 to 11, `DRUPAL_100` to `DRUPAL_103`): read them from the plan block) plus the PHP sets up to the
   floor of the declared core range (`->withPhpVersion()`; 8.1 for
   `^10 || ^11`, a compat pass fixes implicit nullables when it is below 8.4)
   minus the risky rules it skips (`ArrayToFirstClassCallableRector`,
@@ -335,8 +334,9 @@ the untouched subject against the project's learned-pattern catalog
 hit — a pitfall an earlier port of the project hit, with the fix that worked —
 is a must-check item to prevent while porting. Three passes
 (PROMPT §5.4):
-1. **Official Rector** — `palantirnet/drupal-rector` with `DRUPAL_10` and the PHP
-   set for the target (minus the risky rules the template skips).
+1. **Official Rector** — `palantirnet/drupal-rector` with the upgrade plan's Drupal
+   sets (each hop's set family per minor up to the test-bed's minor, plus the edge's always and breaking sets (ADR 0019; for a port from Drupal 10 to 11, `DRUPAL_100` to `DRUPAL_103`): read them from the plan block) and the PHP sets up to the floor (minus the risky rules
+   the template skips).
 2. **Complementary digests rules (optional)** — only if
    `DRUPILOT_USE_DIGESTS_RULES=true`. Clone/update the digests cache,
    **filter out** rules whose target API does not exist in the supported core range

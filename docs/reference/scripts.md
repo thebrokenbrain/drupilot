@@ -3369,24 +3369,31 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
                 '1,Np', or an awk flag instead of exit. A line can opt out
                 with a trailing `# sigpipe-ok` and a reason
   - scripts     (AR-22) every script of scripts/*.sh and scripts/<group>/*.sh
-                but scripts/dev/ sources common.sh at its depth, answers -h /
-                --help with exit 0 and a Usage section, and refuses an
-                unknown flag with exit 1 (a 0.9 script that ignores one keeps
-                its frozen CLI: rule AR22-FLAG of hard-rules-allow.txt); run
-                with HOME and XDG in a temp dir and every DRUPILOT_* unset
-  - hard-rules  (T-M3-12, alias no-version-literals) the hard rules H1-H9 as
-                greps over scripts (comment lines skipped), templates and the
-                prompts: SleepToSerialize/WakeupToUnserialize outside a skip
-                list (H2), withComposerBased( (H3), an HTML fetch of
-                drupal.org/docs or a project's releases page (H5), a
-                hard-coded "Drupal 12 stable" (H6), the forbidden
+                but scripts/dev/ sources common.sh at its depth (a
+                non-comment line in the canonical form), answers --help with
+                exit 0 and a Usage section, and refuses an unknown flag with
+                exit 1 (probed as `--drupilot-no-such-flag --help`, so no
+                script body runs; a 0.9 script that skips an unknown flag
+                keeps its frozen CLI: rule AR22-FLAG of hard-rules-allow.txt);
+                run in an empty directory with HOME and XDG in a temp dir and
+                every DRUPILOT_* unset. AR-22's `--json` check stays with the
+                smoke tests, which run the scripts on fixtures
+  - hard-rules  (T-M3-12, alias no-version-literals) the greppable hard
+                rules over scripts and PHP templates (comment lines skipped)
+                and the prompts: SleepToSerialize/WakeupToUnserialize outside
+                a skip list (H2), withComposerBased( (H3), a drupal.org docs
+                or project releases URL, the HTML pages H5 forbids, a
+                hard-coded "Drupal 12 stable" (H6), a three-major range
+                literal (H7), a drush migrate:import (H9), the forbidden
                 Drupal10SetList::DRUPAL_10 aggregate (AGG), a DDEV type
                 literal drupalNN outside scripts/lib/plan.sh (DDEV), and in
-                the scripts no more version literals per file than
-                tests/contract/hard-rules-allow.txt records (H4, a ratchet:
-                a new literal fails; read versions through plan_get /
-                target_get). That file allows a rule for one path, each row
-                with its reason
+                the scripts exactly as many version-literal lines per file as
+                tests/contract/hard-rules-allow.txt records (H4, a ratchet: a
+                new literal fails, and a removed one asks to lower the count;
+                read versions through plan_get / target_get). H1 is checked by
+                the rendered rector.php (rector_php_floor), H8 by the resolver.
+                The allow-list admits a rule for one path, each row with its
+                reason
   - jq-compat   no jq program in those scripts uses a jq keyword (label,
                 module, if, then, else, end, as, def, reduce, foreach, try,
                 catch, and, or, not, import, include, __loc__) as a --arg /

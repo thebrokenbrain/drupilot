@@ -46,24 +46,31 @@
 #                 '1,Np', or an awk flag instead of exit. A line can opt out
 #                 with a trailing `# sigpipe-ok` and a reason
 #   - scripts     (AR-22) every script of scripts/*.sh and scripts/<group>/*.sh
-#                 but scripts/dev/ sources common.sh at its depth, answers -h /
-#                 --help with exit 0 and a Usage section, and refuses an
-#                 unknown flag with exit 1 (a 0.9 script that ignores one keeps
-#                 its frozen CLI: rule AR22-FLAG of hard-rules-allow.txt); run
-#                 with HOME and XDG in a temp dir and every DRUPILOT_* unset
-#   - hard-rules  (T-M3-12, alias no-version-literals) the hard rules H1-H9 as
-#                 greps over scripts (comment lines skipped), templates and the
-#                 prompts: SleepToSerialize/WakeupToUnserialize outside a skip
-#                 list (H2), withComposerBased( (H3), an HTML fetch of
-#                 drupal.org/docs or a project's releases page (H5), a
-#                 hard-coded "Drupal 12 stable" (H6), the forbidden
+#                 but scripts/dev/ sources common.sh at its depth (a
+#                 non-comment line in the canonical form), answers --help with
+#                 exit 0 and a Usage section, and refuses an unknown flag with
+#                 exit 1 (probed as `--drupilot-no-such-flag --help`, so no
+#                 script body runs; a 0.9 script that skips an unknown flag
+#                 keeps its frozen CLI: rule AR22-FLAG of hard-rules-allow.txt);
+#                 run in an empty directory with HOME and XDG in a temp dir and
+#                 every DRUPILOT_* unset. AR-22's `--json` check stays with the
+#                 smoke tests, which run the scripts on fixtures
+#   - hard-rules  (T-M3-12, alias no-version-literals) the greppable hard
+#                 rules over scripts and PHP templates (comment lines skipped)
+#                 and the prompts: SleepToSerialize/WakeupToUnserialize outside
+#                 a skip list (H2), withComposerBased( (H3), a drupal.org docs
+#                 or project releases URL, the HTML pages H5 forbids, a
+#                 hard-coded "Drupal 12 stable" (H6), a three-major range
+#                 literal (H7), a drush migrate:import (H9), the forbidden
 #                 Drupal10SetList::DRUPAL_10 aggregate (AGG), a DDEV type
 #                 literal drupalNN outside scripts/lib/plan.sh (DDEV), and in
-#                 the scripts no more version literals per file than
-#                 tests/contract/hard-rules-allow.txt records (H4, a ratchet:
-#                 a new literal fails; read versions through plan_get /
-#                 target_get). That file allows a rule for one path, each row
-#                 with its reason
+#                 the scripts exactly as many version-literal lines per file as
+#                 tests/contract/hard-rules-allow.txt records (H4, a ratchet: a
+#                 new literal fails, and a removed one asks to lower the count;
+#                 read versions through plan_get / target_get). H1 is checked by
+#                 the rendered rector.php (rector_php_floor), H8 by the resolver.
+#                 The allow-list admits a rule for one path, each row with its
+#                 reason
 #   - jq-compat   no jq program in those scripts uses a jq keyword (label,
 #                 module, if, then, else, end, as, def, reduce, foreach, try,
 #                 catch, and, or, not, import, include, __loc__) as a --arg /
@@ -487,26 +494,31 @@ gate_special_vars() {
 
 gate_scripts() {
   local out="$TMP/scripts.out" f n=0 rel depth home="$TMP/scripts-home" rc allow="$REPO/tests/contract/hard-rules-allow.txt"
-  : > "$out"; mkdir -p "$home"
+  local o="$TMP/scripts.o" e="$TMP/scripts.e"
+  : > "$out"; mkdir -p "$home/cwd"
   for f in "$REPO"/scripts/*.sh "$REPO"/scripts/*/*.sh; do
     [[ -f "$f" ]] || continue
     rel="${f#"$REPO"/}"
     case "$rel" in scripts/dev/*|scripts/lib/*) continue;; esac
     n=$((n + 1))
-    case "$rel" in scripts/*/*) depth='../lib/common.sh';; *) depth='lib/common.sh';; esac
-    grep -qF "/$depth\"" "$f" || echo "$rel: does not source common.sh as \"\$(dirname \"\${BASH_SOURCE[0]}\")/$depth\"" >> "$out"
+    case "$rel" in scripts/*/*) depth='\.\./lib/common\.sh';; *) depth='lib/common\.sh';; esac
+    # A non-comment source line in the canonical form, at the script's depth.
+    grep -qE '^[[:space:]]*(\.|source)[[:space:]]+"\$\(dirname "\$\{BASH_SOURCE\[0\]\}"\)/'"$depth"'"' "$f" \
+      || echo "$rel: does not source common.sh as \"\$(dirname \"\${BASH_SOURCE[0]}\")/${depth//\\/}\"" >> "$out"
     rc=0
-    ( cd "$home" && env -i PATH="$PATH" HOME="$home" XDG_DATA_HOME="$home/d" XDG_CONFIG_HOME="$home/c" XDG_CACHE_HOME="$home/k" \
-        TMPDIR="${TMPDIR:-/tmp}" "$BASH" "$f" --help > "$home/out" 2> "$home/err" < /dev/null ) || rc=$?
+    ( cd "$home/cwd" && env -i PATH="$PATH" HOME="$home" XDG_DATA_HOME="$home/d" XDG_CONFIG_HOME="$home/c" XDG_CACHE_HOME="$home/k" \
+        TMPDIR="${TMPDIR:-/tmp}" "$BASH" "$f" --help > "$o" 2> "$e" < /dev/null ) || rc=$?
     if [[ "$rc" != "0" ]]; then echo "$rel --help: exit $rc, want 0" >> "$out"
-    elif ! grep -q 'Usage' "$home/out" "$home/err"; then echo "$rel --help: no Usage section" >> "$out"; fi
+    elif ! grep -q 'Usage' "$o" "$e"; then echo "$rel --help: no Usage section" >> "$out"; fi
     # A 0.9 script whose CLI ignores an unknown flag keeps doing so (CC-05);
     # tests/contract/hard-rules-allow.txt lists each (rule AR22-FLAG).
     if [[ -f "$allow" ]] && awk -v p="$rel" '!/^[[:space:]]*(#|$)/ && $1 == "AR22-FLAG" && $2 == p { f = 1 } END { exit !f }' "$allow"; then continue; fi
+    # The unknown flag first, then --help: a parser that refuses it exits 1
+    # there; one that skips it reaches --help and exits 0. No script body runs.
     rc=0
-    ( cd "$home" && env -i PATH="$PATH" HOME="$home" XDG_DATA_HOME="$home/d" XDG_CONFIG_HOME="$home/c" XDG_CACHE_HOME="$home/k" \
-        TMPDIR="${TMPDIR:-/tmp}" "$BASH" "$f" --drupilot-no-such-flag > /dev/null 2>&1 < /dev/null ) || rc=$?
-    [[ "$rc" == "1" ]] || echo "$rel --drupilot-no-such-flag: exit $rc, want 1" >> "$out"
+    ( cd "$home/cwd" && env -i PATH="$PATH" HOME="$home" XDG_DATA_HOME="$home/d" XDG_CONFIG_HOME="$home/c" XDG_CACHE_HOME="$home/k" \
+        TMPDIR="${TMPDIR:-/tmp}" "$BASH" "$f" --drupilot-no-such-flag --help > /dev/null 2>&1 < /dev/null ) || rc=$?
+    [[ "$rc" == "1" ]] || echo "$rel --drupilot-no-such-flag --help: exit $rc, want 1 (the unknown flag refused)" >> "$out"
   done
   if [[ -s "$out" ]]; then record scripts fail "$(grep -c . "$out") script(s) break the AR-22 contract" "$out"
   else record scripts pass "$n scripts: common.sh at their depth, --help exit 0 with a Usage section, an unknown flag exit 1"; fi
@@ -517,15 +529,24 @@ gate_hard_rules() {
   : > "$out"
   # allowed RULE PATH -> 0 when the allow-list lets RULE match in PATH.
   allowed() { [[ -f "$allow" ]] && awk -v r="$1" -v p="$2" '!/^[[:space:]]*(#|$)/ && $1 == r && $2 == p { f = 1 } END { exit !f }' "$allow"; }
-  # body FILE -> the lines a rule reads: a script's non-comment lines, any
-  # other file whole; each as "LINE:TEXT".
-  body() { case "$1" in *.sh) grep -nvE '^[[:space:]]*#' "$1" 2>/dev/null || true;; *) grep -n '' "$1" 2>/dev/null || true;; esac; }
+  # body FILE -> the lines a rule reads, each as "LINE:TEXT": a script's
+  # non-comment lines, a PHP template's non-comment lines (doc comments and
+  # // lines), a prompt whole.
+  body() {
+    case "$1" in
+      *.sh) grep -nvE '^[[:space:]]*#' "$1" 2>/dev/null || true;;
+      *.php.tmpl) grep -nvE '^[[:space:]]*(\*|//|/\*)' "$1" 2>/dev/null || true;;
+      *) grep -n '' "$1" 2>/dev/null || true;;
+    esac
+  }
   local rules='H2	SleepToSerializeRector|WakeupToUnserializeRector
 H3	withComposerBased\(
-H5	(curl|wget|WebFetch)[^|]*drupal\.org/(docs|project/[^ /]+/releases)
+H5	https?://(www\.)?drupal\.org/(docs|project/[^ /]+/releases)
 H6	(Drupal|D) ?12 (is )?stable|12\.0\.0 (is )?(stable|released)
 AGG	Drupal10SetList::DRUPAL_10([^0-9_]|$)
-DDEV	drupal1[0-9]([^0-9]|$)'
+DDEV	drupal1[0-9]([^0-9]|$)
+H7	\^[0-9]+(\.[0-9]+)? \|\| \^[0-9]+(\.[0-9]+)? \|\| \^[0-9]+
+H9	(drush|vendor/bin/drush)[^|]* (migrate:import|migrate-import|mim)([^a-z-]|$)'
   for f in "$REPO"/scripts/*.sh "$REPO"/scripts/*/*.sh "$REPO"/hooks/scripts/*.sh "$REPO"/templates/*.tmpl \
            "$REPO"/commands/*.md "$REPO"/skills/*/SKILL.md "$REPO"/agents/*.md; do
     [[ -f "$f" ]] || continue
@@ -534,6 +555,8 @@ DDEV	drupal1[0-9]([^0-9]|$)'
     n=$((n + 1))
     while IFS="$(printf '\t')" read -r id re; do
       [[ "$id" == "DDEV" && "$rel" == "scripts/lib/plan.sh" ]] && continue
+      # H7 is about a default in code; a prompt may quote an old range.
+      case "$id:$rel" in H7:commands/*|H7:skills/*|H7:agents/*) continue;; esac
       hits="$(body "$f" | grep -E -- "^[0-9]+:.*($re)" || true)"
       [[ -n "$hits" ]] || continue
       allowed "$id" "$rel" && continue
@@ -544,13 +567,17 @@ EOF
     # H4: no more version literals than the allow-list records (default 0).
     case "$rel" in
       scripts/*|hooks/*)
-        got="$(body "$f" | grep -cE '^[0-9]+:(.*[^0-9A-Za-z_.])?(\^?1[0-2](\.[0-9]+)?|8\.[0-5])([^0-9A-Za-z_]|$)' || true)"
+        # A substring offset (${x:0:12}) and a numeric test (-ge 11) are not versions.
+        got="$(body "$f" | sed -E 's/\$\{[^}]*:[0-9]+(:[0-9]+)?\}//g; s/-(eq|ne|ge|gt|le|lt) [0-9]+//g' \
+          | grep -cE '^[0-9]+:(.*[^0-9A-Za-z_.])?(\^?1[0-2](\.[0-9]+)?|8\.[0-5])([^0-9A-Za-z_]|$)' || true)"
         want=0
         if [[ -f "$allow" ]]; then
           want="$(awk -v p="$rel" '!/^[[:space:]]*(#|$)/ && $1 == "H4" && $2 == p { print $3 + 0; exit }' "$allow" || true)"
         fi
         if [[ "${got:-0}" -gt "${want:-0}" ]]; then
           echo "H4 $rel: $got version literal line(s), the allow-list records ${want:-0} (read versions through plan_get / target_get)" >> "$out"
+        elif [[ "${got:-0}" -lt "${want:-0}" ]]; then
+          echo "H4 $rel: $got version literal line(s), fewer than the ${want:-0} the allow-list records: lower its count (the ratchet only goes down)" >> "$out"
         fi;;
     esac
   done

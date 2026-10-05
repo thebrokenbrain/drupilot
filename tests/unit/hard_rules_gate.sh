@@ -3,8 +3,10 @@
 # scripts/dev/check.sh (T-M3-12, AR-22), on a scratch copy of the tree they
 # read: green on HEAD, red on each injected fault (a hard-rule hit in a
 # script, a template or a prompt; a new version literal in a script; a new
-# script that ignores an unknown flag, has no help or sources common.sh at the
-# wrong depth); a script's comment line is not a hit, and an allow-list row
+# script that skips an unknown flag, even one that later needs an argument,
+# has no help or sources common.sh at the wrong depth or in a comment); a
+# script's or a PHP template's comment line is not a hit, a prompt may quote an
+# old three-major range, the H4 ratchet goes down only, and an allow-list row
 # admits its rule for its path only.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
@@ -30,10 +32,22 @@ fault() {
 }
 fault scripts/env/clean.sh '$rectorConfig->rule(SleepToSerializeRector::class);' H2
 fault scripts/lib/toolchain.sh 'cfg="withComposerBased(drupal: true)"' H3
-fault skills/minimal-port/SKILL.md 'curl -s https://www.drupal.org/project/foo/releases | grep tar' H5
+fault skills/minimal-port/SKILL.md 'Fetch https://www.drupal.org/project/foo/releases with WebFetch.' H5
+fault scripts/analysis/deps-status.sh 'url="https://www.drupal.org/docs/upgrading-drupal"' H5
 fault agents/drupal-viability-analyst.md 'Drupal 12 is stable, so target it.' H6
 fault templates/rector.php.tmpl '  ->withSets([Drupal10SetList::DRUPAL_10])' AGG
 fault scripts/env/ddev-up.sh 'ddev config --project-type=drupal12' DDEV
+fault templates/rector.php.tmpl '  ->withRules([\\Rector\\Php85\\Rector\\Class_\\SleepToSerializeRector::class])' H2
+fault templates/ddev-web-environment.yaml.tmpl 'DRUPILOT_RANGE: "^10 || ^11 || ^12"' H7
+fault commands/drupilot-port.md 'Then run ddev drush migrate:import --all.' H9
+cp "$r/templates/rector.php.tmpl" "$T_TMP/orig"
+printf ' * SleepToSerializeRector is skipped (a doc comment).\n// WakeupToUnserializeRector too.\n' >> "$r/templates/rector.php.tmpl"
+assert_match "a PHP template's comment lines are not hits" "$(gate hard-rules)" '^pass\|0\|'
+cp "$T_TMP/orig" "$r/templates/rector.php.tmpl"
+cp "$r/commands/drupilot-port.md" "$T_TMP/orig"
+printf 'A submodule left on `^8.8 || ^9 || ^10` is raised too.\n' >> "$r/commands/drupilot-port.md"
+assert_match "H7: a prompt may quote an old three-major range" "$(gate hard-rules)" '^pass\|0\|'
+cp "$T_TMP/orig" "$r/commands/drupilot-port.md"
 
 cp "$r/scripts/env/clean.sh" "$T_TMP/orig"
 printf '\n# a comment that names SleepToSerializeRector and drupal12\n' >> "$r/scripts/env/clean.sh"
@@ -43,6 +57,11 @@ assert_match "H4: a new version literal in a script fails" "$(gate hard-rules)" 
 printf 'H4 scripts/env/clean.sh 1  # test\n' >> "$r/tests/contract/hard-rules-allow.txt"
 assert_match "  its allow-list count admits it" "$(gate hard-rules)" '^pass\|0\|'
 cp "$T_TMP/orig" "$r/scripts/env/clean.sh"
+assert_match "  removing it asks to lower the count (the ratchet only goes down)" "$(gate hard-rules)" '^fail\|1\|H4 scripts/env/clean.sh: 0 .*lower its count'
+printf 'x="${h:0:12}"; [[ "$n" -ge 11 ]]\n' >> "$r/scripts/env/clean.sh"
+assert_match "  a substring offset and a numeric test are not version literals" "$(gate hard-rules)" '^fail\|1\|H4 scripts/env/clean.sh: 0 '
+cp "$T_TMP/orig" "$r/scripts/env/clean.sh"
+sed '/^H4 scripts\/env\/clean.sh 1/d' "$r/tests/contract/hard-rules-allow.txt" > "$T_TMP/allow" && cat "$T_TMP/allow" > "$r/tests/contract/hard-rules-allow.txt"
 printf '\nThe ddev config --project-type=drupal11 line.\n' >> "$r/commands/drupilot-status.md"
 printf 'DDEV commands/drupilot-status.md  # test\n' >> "$r/tests/contract/hard-rules-allow.txt"
 assert_match "an allow-list row admits its rule for its path" "$(gate hard-rules)" '^pass\|0\|'
@@ -70,10 +89,18 @@ while [[ $# -gt 0 ]]; do
 done
 EOF
 chmod +x "$s"
-assert_match "scripts: a new script that ignores an unknown flag fails" "$(gate scripts)" '^fail\|1\|scripts/env/zz-new.sh --drupilot-no-such-flag: exit 0, want 1'
+assert_match "scripts: a new script that ignores an unknown flag fails" "$(gate scripts)" '^fail\|1\|scripts/env/zz-new.sh --drupilot-no-such-flag --help: exit 0, want 1'
 sed_inplace() { local f="$1"; shift; sed "$@" "$f" > "$f.t" && cat "$f.t" > "$f" && rm -f "$f.t"; }
 sed_inplace "$s" 's/    \*) shift;;/    *) echo "Unknown argument: $1" >\&2; exit 1;;/'
 assert_match "  refusing it: green" "$(gate scripts)" '^pass\|0\|'
+cp "$s" "$T_TMP/strict.sh"
+sed_inplace "$s" 's/    \*) echo "Unknown argument: $1" >\&2; exit 1;;/    --subject) SUBJECT="${2:-}"; shift 2;;\n    *) echo "Unknown argument: $1" >\&2; shift;;/'
+printf '[[ -n "${SUBJECT:-}" ]] || { echo "Missing --subject DIR" >&2; exit 1; }\n' >> "$s"
+assert_match "  a lenient one that needs an argument still fails (no exit 1 at the flag)" "$(gate scripts)" '^fail\|1\|scripts/env/zz-new.sh --drupilot-no-such-flag --help: exit 0'
+cp "$T_TMP/strict.sh" "$s"
 sed_inplace "$s" 's#/\.\./lib/common\.sh#/lib/common.sh#'
 assert_match "  common.sh at the wrong depth fails" "$(gate scripts)" '^fail\|.*zz-new.sh: does not source common.sh'
+cp "$T_TMP/strict.sh" "$s"
+sed_inplace "$s" 's#^\. "\$(dirname#\# . "$(dirname#'
+assert_match "  a commented source line does not count" "$(gate scripts)" '^fail\|.*zz-new.sh: does not source common.sh'
 t_done

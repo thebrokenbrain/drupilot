@@ -89,7 +89,7 @@ anything:
 core, declared range, PHP floor and target, Rector sets, names) comes from it,
 never from the examples in this text (AR-26):
 
-!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show --subject "$1" 2>/dev/null || true`
+!`bash -c 'S="${1:-}"; case "$S" in --subject) S="${2:-}";; --subject=*) S="${S#--subject=}";; esac; exec bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show --subject "$S"' _ "$1" "$2" 2>/dev/null || true`
 
 If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show
 

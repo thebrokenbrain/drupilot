@@ -21,8 +21,8 @@ the absolute minimum across the entire Drupal 11 series, so it is always safe.
 
 **The upgrade plan.** Every version this procedure needs (target major, test-bed
 core, declared range, PHP floor and target, Rector sets, names) comes from it,
-never from the examples below (AR-26). Pass `--subject <path>` when the block
-names no module:
+never from the examples below (AR-26). The block is the working directory's: when it
+names no module, or a module other than the subject, run `plan show --subject <subject_dir>`:
 
 !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show 2>/dev/null || true`
 
@@ -103,9 +103,7 @@ assumed). PHP deprecation fixes whose output still runs on L (`Foo $x = NULL` ->
 `rector-compat.php`, rendered and run only when L < 8.4 and the range reaches
 8.4 (`rector_compat_needed`).
 
-The Drupal sets (the plan's per-minor `rector.drupal_sets`, ADR 0019: APIs the
-target major removed) are independent of the PHP target; the target's own sets
-(its deprecations, for the next port) are deliberately not included. The PHP level set is applied minus the
+The Drupal sets (the plan's `rector.drupal_sets` and `rector.breaking_sets`: each hop's set family per minor up to the test-bed's minor, plus the edge's always and breaking sets (ADR 0019; for a port from Drupal 10 to 11, `DRUPAL_100` to `DRUPAL_103`): read them from the plan block) are independent of the PHP target. The PHP level set is applied minus the
 rules the template skips (`ArrayToFirstClassCallableRector`,
 `AddOverrideAttributeToOverriddenMethodsRector`, `ReadOnlyPropertyRector`,
 `ReadOnlyClassRector`, `NullToStrictStringFuncCallArgRector`,

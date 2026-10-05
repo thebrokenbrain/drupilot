@@ -55,7 +55,9 @@ done
 [[ -n "$SUBJECT" && -d "$SUBJECT" ]] || SUBJECT="$PWD"
 SUBJECT="$(cd "$SUBJECT" 2> /dev/null && pwd || printf '%s' "$SUBJECT")"
 PLAN=""
-if [[ -d "$SUBJECT" ]] && is_drupal_extension_dir "$SUBJECT"; then
+# is_subject DIR -> 0 for a module or theme, Drupal 7's included.
+is_subject() { [[ -d "$1" ]] && { is_drupal_extension_dir "$1" || subject_d7_info_file "$1" > /dev/null 2>&1; }; }
+if is_subject "$SUBJECT"; then
   [[ -n "$ROOT" ]] || ROOT="$(subject_project_root "$SUBJECT" 2> /dev/null || true)"
   PLAN="$(plan_for_subject "$ROOT" "$SUBJECT" 2> /dev/null || true)"
 fi
@@ -66,7 +68,7 @@ if [[ "$AS_JSON" == "1" ]]; then
 fi
 
 if [[ -z "$PLAN" ]]; then
-  if [[ -d "$SUBJECT" ]] && is_drupal_extension_dir "$SUBJECT"; then
+  if is_subject "$SUBJECT"; then
     printf 'drupilot plan: none resolves for %s (run scripts/analysis/upgrade-path.sh --subject "%s" for the reason).\n' \
       "$(basename "$SUBJECT")" "$SUBJECT"
   else

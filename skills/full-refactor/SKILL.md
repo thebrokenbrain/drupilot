@@ -25,8 +25,8 @@ quality: modern Drupal 11 idioms, zero deprecations, PHPStan level 5–6, clean
 
 **The upgrade plan.** Every version this procedure needs (target major, test-bed
 core, declared range, PHP floor and target, Rector sets, names) comes from it,
-never from the examples below (AR-26). Pass `--subject <path>` when the block
-names no module:
+never from the examples below (AR-26). The block is the working directory's: when it
+names no module, or a module other than the subject, run `plan show --subject <subject_dir>`:
 
 !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show 2>/dev/null || true`
 
