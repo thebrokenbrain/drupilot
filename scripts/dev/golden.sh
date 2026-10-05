@@ -125,7 +125,8 @@ GOLDENS="$(printf 'baseline-0.9\t%s\n' "$REPO/tests/baseline/v0.9.0"
            done
            for d in "$REPO"/tests/golden/*; do
              [[ -f "$d/golden.json" ]] && printf '%s\t%s\n' "$(basename "$d")" "$d"
-           done)"
+           done
+           true)"
 for _n in $(printf '%s' "$ONLY" | tr ',' ' '); do
   printf '%s\n' "$GOLDENS" | cut -f1 | grep -qxF -- "$_n" || die "Unknown golden: $_n" 1
 done
