@@ -199,8 +199,8 @@ recommend_core_target() {
 
   # --- current support signals --------------------------------------------
   local had_pre11=0 current_has_11=0
-  if [[ -n "$current_req" ]] && printf '%s' "$current_req" | grep -qE '(^|[^0-9])(8|9|10)([^0-9]|$)'; then had_pre11=1; fi
-  if [[ -n "$current_req" ]] && printf '%s' "$current_req" | grep -qE '(^|[^0-9])11([^0-9]|$)'; then current_has_11=1; fi
+  if [[ -n "$current_req" ]] && printf '%s' "$current_req" | grep_q -E '(^|[^0-9])(8|9|10)([^0-9]|$)'; then had_pre11=1; fi
+  if [[ -n "$current_req" ]] && printf '%s' "$current_req" | grep_q -E '(^|[^0-9])11([^0-9]|$)'; then current_has_11=1; fi
 
   # --- BC-break detection (drives the SemVer major bump) ------------------
   local bc_break=0
@@ -240,7 +240,7 @@ recommend_core_target() {
   # plugin attribute class the code uses exists only from its core minor on
   # (config/plugin-attributes.json), e.g. the Block attribute from 10.2.
   local d10_decl_floor="" api_floor="" api_attr="" core_floor="10.0" _af d10_dropped_note=""
-  d10_decl_floor="$(core_verify_legs "$current_req" | awk -F. '$1 == "10" { print ($2 == "" ? "10.0" : $0); exit }')"
+  d10_decl_floor="$(core_verify_legs "$current_req" | awk -F. '!d && $1 == "10" { print ($2 == "" ? "10.0" : $0); d = 1 }')"
   [[ -n "$d10_decl_floor" ]] && core_floor="$d10_decl_floor"
   _af="$(subject_attribute_floor "$subject")"
   if [[ -n "$_af" ]]; then
@@ -284,7 +284,7 @@ recommend_core_target() {
     # attribute -> '^11.1'): the Drupal 10 logic follows the requirement now
     # declared, not the one read from the module.
     local req_pre11=0
-    if printf '%s' "$req" | grep -qE '(^|[^0-9])(8|9|10)([^0-9]|$)'; then req_pre11=1; fi
+    if printf '%s' "$req" | grep_q -E '(^|[^0-9])(8|9|10)([^0-9]|$)'; then req_pre11=1; fi
     if [[ "$had_pre11" == "1" && "$req_pre11" == "0" ]]; then
       resolved="d11-only"
       warnings+=("Drupal 10 cannot be kept: the code uses $api_attr, which exists only from core $api_floor (PHPStan reports the unknown class on Drupal 10). Keep the annotation instead of the attribute to stay on '$current_req'.")
@@ -301,7 +301,7 @@ recommend_core_target() {
       d10_support="declared-not-verified"
       warnings+=("The kept requirement still allows Drupal 10 ('$req'); its Drupal 10 compatibility is DECLARED, not verified — run verify-core-matrix.sh (static check on a Drupal 10 core) and install/test on Drupal 10 before relying on it.")
     fi
-    if printf '%s' "$current_req" | grep -qE '(^|[^0-9])(8|9)([^0-9]|$)'; then
+    if printf '%s' "$current_req" | grep_q -E '(^|[^0-9])(8|9)([^0-9]|$)'; then
       suggested+=("The requirement still lists EOL Drupal 8/9 ('$current_req'); narrow it (e.g. to '^10 || ^11' or '^11') via the core-target choice if you no longer support them.")
     fi
   elif [[ "$resolved" == "keep-d10" ]]; then
@@ -371,7 +371,7 @@ recommend_core_target() {
     local _rec_majors _m
     _rec_majors="$(printf '%s' "$req" | grep -oE '[0-9]+(\.[0-9]+)*' | sed -E 's/\..*//' | sort -u)"
     for _m in $(printf '%s' "$current_req" | grep -oE '[0-9]+(\.[0-9]+)*' | sed -E 's/\..*//' | sort -u); do
-      printf '%s\n' "$_rec_majors" | grep -qx "$_m" || drops_major=1
+      printf '%s\n' "$_rec_majors" | grep_q -x "$_m" || drops_major=1
     done
   fi
   local version_bump

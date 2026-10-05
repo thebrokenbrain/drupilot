@@ -163,7 +163,7 @@ size_kb() {
 root_docroot() {
   local d=""
   if [[ -f "$1/.ddev/config.yaml" ]]; then
-    d="$(sed -n 's/^docroot:[[:space:]]*//p' "$1/.ddev/config.yaml" 2>/dev/null | head -n1 | tr -d "\"' " || true)"
+    d="$(sed -n 's/^docroot:[[:space:]]*//p' "$1/.ddev/config.yaml" 2>/dev/null | sed -n '1p' | tr -d "\"' " || true)"
   fi
   [[ -n "$d" ]] || d="web"
   printf '%s' "$d"
@@ -172,7 +172,7 @@ root_docroot() {
 # ddev_name <root> -> the DDEV project name, or empty.
 ddev_name() {
   [[ -f "$1/.ddev/config.yaml" ]] || return 0
-  sed -n 's/^name:[[:space:]]*//p' "$1/.ddev/config.yaml" 2>/dev/null | head -n1 | tr -d "\"' " || true
+  sed -n 's/^name:[[:space:]]*//p' "$1/.ddev/config.yaml" 2>/dev/null | sed -n '1p' | tr -d "\"' " || true
   return 0
 }
 
@@ -275,7 +275,7 @@ copy_is_redundant() {
     ho="$(git -C "$o" rev-parse HEAD 2>/dev/null || true)"
     [[ -n "$hc" && "$hc" == "$ho" ]] || return 1
   fi
-  [[ -z "$(git -C "$c" status --porcelain --untracked-files=normal -- . 2>/dev/null | grep -v -E '(^|/| )\.drupilot(/|\.json|$)' | head -n1)" ]] || return 1
+  [[ -z "$(git -C "$c" status --porcelain --untracked-files=normal -- . 2>/dev/null | grep -v -E '(^|/| )\.drupilot(/|\.json|$)' | sed -n '1p')" ]] || return 1
   while IFS= read -r sha; do
     [[ -n "$sha" ]] || continue
     if [[ -n "$bl" ]]; then
@@ -423,7 +423,7 @@ plan_root() {
           fi
         else
           # move (or an unrecorded placement with a known origin): move it back.
-          if [[ -e "$origin" || -L "$origin" ]] && [[ -n "$(ls -A "$origin" 2>/dev/null | head -n1)" || ! -d "$origin" ]]; then
+          if [[ -e "$origin" || -L "$origin" ]] && [[ -n "$(ls -A "$origin" 2>/dev/null | sed -n '1p')" || ! -d "$origin" ]]; then
             act="refuse"; status="refused"
             reason="cannot move $mn back: $origin already exists and is not empty"
           else
@@ -553,7 +553,7 @@ exec_op() {
       ;;
     restore)
       if [[ -d "$b" && ! -L "$b" ]]; then
-        [[ -z "$(ls -A "$b" 2>/dev/null | head -n1)" ]] || { log_err "$b is not empty any more — not moving $a there."; return 1; }
+        [[ -z "$(ls -A "$b" 2>/dev/null | sed -n '1p')" ]] || { log_err "$b is not empty any more — not moving $a there."; return 1; }
         rmdir "$b" || return 1
       elif [[ -e "$b" || -L "$b" ]]; then
         log_err "$b exists — not moving $a there."; return 1

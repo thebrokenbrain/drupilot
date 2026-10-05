@@ -62,7 +62,7 @@ if [[ "$LIST" == "1" ]]; then printf '%s\n' "$TESTS" | cut -f1; exit 0; fi
 
 in_list() { case ",$(printf '%s' "$2" | tr ' ' ','),"  in *",$1,"*) return 0;; esac; return 1; }
 for _t in $(printf '%s' "$ONLY" | tr ',' ' '); do
-  printf '%s\n' "$TESTS" | cut -f1 | grep -qxF -- "$_t" || die "Unknown test: $_t (see --list)" 1
+  printf '%s\n' "$TESTS" | cut -f1 | grep_q -xF -- "$_t" || die "Unknown test: $_t (see --list)" 1
 done
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-unitrun.XXXXXX")"
@@ -108,10 +108,10 @@ while IFS="$(printf '\t')" read -r name path; do
   fi
   case "$rc" in
     0)  status="pass"; detail="$n_ok assertion(s)"; log_ok "$name";;
-    77) status="skip"; detail="$(sed -n 's/^skip - //p' "$TMP/$name.out" | head -n 1)"; log_warn "$name: skipped — $detail";;
+    77) status="skip"; detail="$(sed -n 's/^skip - //p' "$TMP/$name.out" | sed -n '1p')"; log_warn "$name: skipped — $detail";;
     *)  status="fail"; detail="exit $rc, $(grep -c '^not ok - ' "$TMP/$name.out" || true) failed assertion(s)"; FAILED=1
         log_err "$name: FAILED — $detail"
-        grep -E '^not ok - |unbound variable|syntax error|command not found' "$TMP/$name.out" | head -n 20 | sed 's/^/    /' >&2 || true
+        grep -E '^not ok - |unbound variable|syntax error|command not found' "$TMP/$name.out" | sed -n '1,20p' | sed 's/^/    /' >&2 || true
         [[ -n "$(grep -E '^not ok - ' "$TMP/$name.out" || true)" ]] || tail -n 10 "$TMP/$name.out" | sed 's/^/    /' >&2;;
   esac
   failures="$( { grep '^not ok - ' "$TMP/$name.out" || true; } | jq -R . | jq -s -c .)"

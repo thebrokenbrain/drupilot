@@ -76,7 +76,7 @@ result() {
 # report CHECK FILE ERRORS -> one pass or one fail line (the first errors).
 report() {
   if [[ -z "$3" ]]; then result "$1" "$2" pass ""
-  else result "$1" "$2" fail "$(printf '%s\n' "$3" | head -n 5 | tr '\n' ';')"; fi
+  else result "$1" "$2" fail "$(printf '%s\n' "$3" | sed -n '1,5p' | tr '\n' ';')"; fi
   return 0
 }
 

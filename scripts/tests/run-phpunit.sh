@@ -227,7 +227,7 @@ done
 group_has_tests() {
   local d="$SUBJECT/tests/src/$1"
   [[ -d "$d" ]] || return 1
-  [[ -n "$(find "$d" -type f -name '*Test.php' 2>/dev/null | head -n1)" ]]
+  [[ -n "$(find "$d" -type f -name '*Test.php' 2>/dev/null | sed -n '1p')" ]]
 }
 
 # Whether the subject ships ANY PHPUnit test (any group), independent of
@@ -235,7 +235,7 @@ group_has_tests() {
 # subject ships no tests" (F14).
 SUBJECT_HAS_TESTS="false"
 if [[ -d "$SUBJECT/tests/src" ]] \
-   && [[ -n "$(find "$SUBJECT/tests/src" -type f -name '*Test.php' 2>/dev/null | head -n1)" ]]; then
+   && [[ -n "$(find "$SUBJECT/tests/src" -type f -name '*Test.php' 2>/dev/null | sed -n '1p')" ]]; then
   SUBJECT_HAS_TESTS="true"
 fi
 
@@ -260,7 +260,7 @@ detect_selenium_host() {
     # The service name under 'services:' is the reachable host: grab the first
     # indented "<name>:" line that mentions selenium.
     host="$(grep -oE '^[[:space:]]+[A-Za-z0-9_-]+:' "$f" 2>/dev/null \
-      | sed -E 's/[[:space:]:]//g' | grep -i selenium | head -n1)"
+      | sed -E 's/[[:space:]:]//g' | grep -i selenium | sed -n '1p')"
     [[ -n "$host" ]] && { printf '%s' "$host"; return 0; }
   done
   printf 'selenium-chrome'
@@ -293,8 +293,8 @@ declare -a COVERAGE_ARGS=() COVERAGE_ENV=()
 coverage_driver() {
   local mods
   mods="$(${RUNNER[@]+"${RUNNER[@]}"} php -m < /dev/null 2>/dev/null || true)"
-  if printf '%s\n' "$mods" | grep -qix 'pcov'; then echo pcov
-  elif printf '%s\n' "$mods" | grep -qix 'xdebug'; then echo xdebug
+  if printf '%s\n' "$mods" | grep_q -ix 'pcov'; then echo pcov
+  elif printf '%s\n' "$mods" | grep_q -ix 'xdebug'; then echo xdebug
   else echo none; fi
   return 0
 }

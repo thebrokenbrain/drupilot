@@ -255,7 +255,7 @@ fi
 # --- Residue report (read-only) --------------------------------------------
 RESIDUE=()
 _tracked() { git -C "$SUBJECT_ABS" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
-  && [[ -n "$(git -C "$SUBJECT_ABS" ls-files -- "$1" 2>/dev/null | head -n1)" ]]; }
+  && [[ -n "$(git -C "$SUBJECT_ABS" ls-files -- "$1" 2>/dev/null | sed -n '1p')" ]]; }
 for _n in .ddev vendor node_modules .phpstan-cache .drupilot; do
   if [[ -e "$SUBJECT_ABS/$_n" ]] && ! _tracked "$_n"; then RESIDUE+=("$_n/"); fi
 done
