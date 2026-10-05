@@ -117,6 +117,11 @@
       "type": ["string", "null"]
     },
     "git_head": {"type": ["string", "null"]},
+    "lenient": {
+      "description": "Dependencies mglaman/composer-drupal-lenient let install on the test-bed despite their drupal/core constraint (lenient_packages: the bed's extra.drupal-lenient.allowed-list, [\"*\"] with allow-all). Never a preservation value (AR-28, CC-14). Absent in a record of drupilot 0.9.",
+      "type": "array",
+      "items": {"type": "string"}
+    },
     "baseline": {
       "description": "The comparison with test-baseline.json; null when there is no usable baseline, with --no-baseline, or when the comparison failed.",
       "type": ["object", "null"],

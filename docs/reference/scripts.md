@@ -2395,6 +2395,18 @@ mglaman/phpstan-drupal, phpstan/phpstan-deprecation-rules, drupal/coder
 via core_dev_requirement) and, with --with-upgrade-status, drupal/upgrade_status.
 Drush is NOT installed here (ddev-up.sh owns it, as a regular require).
 
+Lenient dependencies (DRUPILOT_LENIENT_DEPS, default off; AR-08, AR-28): a
+comma-separated list of drupal/<project> packages lets those contrib
+dependencies install on the test-bed although their drupal/core constraint
+does not admit its core yet. It installs mglaman/composer-drupal-lenient
+(.packages.lenient) and adds them to the bed's composer.json
+extra.drupal-lenient.allowed-list, on a test-bed drupilot built only (never
+your own project, never production; a warning skips it there). The list in
+effect is lenient_packages: the lock keeps it as .lenient_packages and every
+test record (last-test.json) as lenient[]. It is never a preservation value:
+a green suite with a lenient dependency does not show the dependency
+supports the core.
+
 The known-good reference is a matrix (config/toolchain-reference.json): one
 cell per Drupal major family. The test-bed's cell is the one its lock records
 (toolchain_cell), else the one config/targets/<major>.json names for the
@@ -2443,7 +2455,9 @@ Options:
   --json                 JSON summary on STDOUT:
                          {ok, status, root, source, deterministic, cell,
                           packages: [{name, spec, source, installed}], composer_ran,
-                          fallback_to_ranges, smoke:{ok, error}, lock_synced}
+                          fallback_to_ranges, smoke:{ok, error}, lock_synced,
+                          lenient: [packages]} (lenient: the list asked for on
+                          a dry-run, else the one in effect on the bed)
                          status: installed | unchanged | dry-run | smoke-only |
                                  smoke-failed | composer-failed
   -h, --help             Show this help.

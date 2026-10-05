@@ -565,6 +565,10 @@ fi
 #                            or none at all.
 # tests lists every executed test ({group, id, status, message}); group_results
 # the per-group outcome (passed/failed/crashed/empty/skipped/blocked).
+# lenient lists the dependencies composer-drupal-lenient let install on the
+# test-bed (lenient_packages; DRUPILOT_LENIENT_DEPS): the run used them, so a
+# green verdict does not show they support the core. It never changes
+# preservation (AR-28, CC-14).
 # negative_controls carries the summary of negative-control.sh's records (or
 # null): the proof that new tests can fail, kept next to the verdict.
 # coverage records only what was actually collected (requested + the HTML path);
@@ -693,6 +697,7 @@ else
     --argjson group_results "$GROUPRES_JSON" --slurpfile testsf "$TESTS_JSON_FILE" \
     --slurpfile baselinef "$BASELINE_JSON_FILE" \
     --argjson negative_controls "$(negative_controls_summary "$SUBJECT")" \
+    --argjson lenient "$(lenient_packages "$DRUPAL_ROOT")" \
     '{type:$type, status:$status, preservation:$preservation,
       ran:$ran, passed:$passed, failed:$failed,
       skipped:$skipped, failed_groups:$failed_groups, skipped_groups:$skipped_groups,
@@ -703,7 +708,7 @@ else
       coverage: {requested:$cov_requested, html: ($cov_html | select(. != "") // null), percent: null},
       filter: ($filter | select(. != "") // null), recorded_at:$at,
       subject_digest: ($digest | select(. != "") // null), git_head: ($head | select(. != "") // null),
-      baseline: ($baselinef[0] // null), negative_controls:$negative_controls,
+      baseline: ($baselinef[0] // null), negative_controls:$negative_controls, lenient:$lenient,
       group_results:$group_results, tests: ($testsf[0] // [])}' 2>/dev/null || true)"
   if [[ -z "$RECORD_JSON" ]]; then
     # Never fall through silently: an empty record would leave last-test.json

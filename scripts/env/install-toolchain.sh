@@ -12,6 +12,18 @@
 # via core_dev_requirement) and, with --with-upgrade-status, drupal/upgrade_status.
 # Drush is NOT installed here (ddev-up.sh owns it, as a regular require).
 #
+# Lenient dependencies (DRUPILOT_LENIENT_DEPS, default off; AR-08, AR-28): a
+# comma-separated list of drupal/<project> packages lets those contrib
+# dependencies install on the test-bed although their drupal/core constraint
+# does not admit its core yet. It installs mglaman/composer-drupal-lenient
+# (.packages.lenient) and adds them to the bed's composer.json
+# extra.drupal-lenient.allowed-list, on a test-bed drupilot built only (never
+# your own project, never production; a warning skips it there). The list in
+# effect is lenient_packages: the lock keeps it as .lenient_packages and every
+# test record (last-test.json) as lenient[]. It is never a preservation value:
+# a green suite with a lenient dependency does not show the dependency
+# supports the core.
+#
 # The known-good reference is a matrix (config/toolchain-reference.json): one
 # cell per Drupal major family. The test-bed's cell is the one its lock records
 # (toolchain_cell), else the one config/targets/<major>.json names for the
@@ -60,7 +72,9 @@
 #   --json                 JSON summary on STDOUT:
 #                          {ok, status, root, source, deterministic, cell,
 #                           packages: [{name, spec, source, installed}], composer_ran,
-#                           fallback_to_ranges, smoke:{ok, error}, lock_synced}
+#                           fallback_to_ranges, smoke:{ok, error}, lock_synced,
+#                           lenient: [packages]} (lenient: the list asked for on
+#                           a dry-run, else the one in effect on the bed)
 #                          status: installed | unchanged | dry-run | smoke-only |
 #                                  smoke-failed | composer-failed
 #   -h, --help             Show this help.
@@ -128,6 +142,27 @@ ROOT="$(cd "$ROOT" && pwd)"
 export DRUPILOT_PROJECT_DIR="$ROOT"
 REF_FILE="$(toolchain_reference_file)"
 
+# --- Lenient dependencies (bed only) -------------------------------------------
+LENIENT=()
+LENIENT_REQ="$(config_get DRUPILOT_LENIENT_DEPS off)"
+case "$(lc "$LENIENT_REQ")" in
+  ""|off|false|no|0) ;;
+  *)
+    IFS=',' read -r -a _lp <<< "$LENIENT_REQ"
+    for _p in ${_lp[@]+"${_lp[@]}"}; do
+      _p="$(printf '%s' "$_p" | tr -d '[:space:]')"
+      [[ -n "$_p" ]] || continue
+      [[ "$_p" =~ ^drupal/[a-z0-9_]+$ ]] \
+        || die "DRUPILOT_LENIENT_DEPS: '$_p' is not a drupal/<project> package (expected off, or a comma-separated list such as drupal/token,drupal/ctools)." 1
+      LENIENT+=("$_p")
+    done
+    if [[ ${#LENIENT[@]} -gt 0 && "$(testbed_kind "$ROOT")" == "none" ]]; then
+      log_warn "DRUPILOT_LENIENT_DEPS applies only to a test-bed drupilot built; $ROOT is your own project, whose composer.json drupilot never makes lenient. Skipped."
+      LENIENT=()
+    fi;;
+esac
+LENIENT_JSON="$(jq -c -n '$ARGS.positional | unique' --args ${LENIENT[@]+"${LENIENT[@]}"})"
+
 DETERMINISTIC=true; deterministic_mode || DETERMINISTIC=false
 # The toolchain cell: the lock's (a 0.9 lock: legacy_v1) when the lock decides
 # (auto, deterministic), else the cell of the installed core's major.
@@ -178,6 +213,7 @@ add_pkg phpstan_drupal
 add_pkg phpstan_deprecation_rules
 add_pkg coder "$(config_get DRUPILOT_CODER_CONSTRAINT "^8.3")"
 [[ "$WITH_US" == "1" ]] && add_pkg upgrade_status
+[[ ${#LENIENT[@]} -gt 0 ]] && add_pkg lenient
 if [[ "$WITH_CORE_DEV" == "1" ]]; then
   _cd="$(core_dev_requirement "$ROOT")"
   PKG_NAMES+=("${_cd%%:*}"); PKG_RANGES+=("${_cd#*:}")
@@ -278,12 +314,13 @@ emit_json() {
         --argjson composer_ran "$COMPOSER_RAN" --argjson fallback "$FALLBACK" \
         --argjson smoke_ok "$SMOKE_OK" --arg smoke_err "$SMOKE_ERR" \
         --argjson lock_synced "$LOCK_SYNCED" --arg reference "$REF_FILE" --arg cell "$CELL" \
+        --argjson lenient "$(if [[ "$STATUS" == "dry-run" ]]; then printf '%s' "$LENIENT_JSON"; else lenient_packages "$ROOT"; fi)" \
     '{ok: (($status|IN("installed","unchanged","dry-run","smoke-only")) and ($smoke_ok != false)),
       status:$status, root:$root, source:$source, requested_source:$requested,
       deterministic:$det, reference:$reference, cell:$cell, packages:$packages,
       composer_ran:$composer_ran, fallback_to_ranges:$fallback,
       smoke:{ok:$smoke_ok, error:(if $smoke_err=="" then null else $smoke_err end)},
-      lock_synced:$lock_synced}'
+      lock_synced:$lock_synced, lenient:$lenient}'
   return 0
 }
 
@@ -314,6 +351,10 @@ show_specs
 
 # --- Dry run --------------------------------------------------------------------
 if [[ "$DRY" == "1" ]]; then
+  if [[ ${#LENIENT[@]} -gt 0 ]]; then
+    log_info "[dry-run] would run: ddev composer config --no-plugins allow-plugins.mglaman/composer-drupal-lenient true"
+    log_info "[dry-run] would run: ddev composer config --json --merge extra.drupal-lenient.allowed-list '$LENIENT_JSON'"
+  fi
   log_info "[dry-run] would run: ddev composer require --dev -W --no-interaction ${SPECS[*]}"
   log_info "[dry-run] then the smoke test and lock-sync.sh --dir $ROOT"
   STATUS="dry-run"; emit_json; exit 0
@@ -328,10 +369,17 @@ if all_exact_installed; then
 else
   # Composer plugins the toolchain relies on must be allowed explicitly, or a
   # non-interactive require refuses to run them.
-  for plugin in phpstan/extension-installer dealerdirect/phpcodesniffer-composer-installer; do
-    ddev composer config --no-plugins "allow-plugins.$plugin" true >/dev/null 2>&1 \
+  _plugins="phpstan/extension-installer dealerdirect/phpcodesniffer-composer-installer"
+  [[ ${#LENIENT[@]} -gt 0 ]] && _plugins="$_plugins mglaman/composer-drupal-lenient"
+  for plugin in $_plugins; do
+    ddev composer config --no-plugins "allow-plugins.$plugin" true >/dev/null 2>&1 < /dev/null \
       || log_warn "Could not allow the Composer plugin $plugin."
   done
+  if [[ ${#LENIENT[@]} -gt 0 ]]; then
+    log_warn "Lenient dependencies on this test-bed only (DRUPILOT_LENIENT_DEPS): $LENIENT_JSON — their drupal/core constraint is ignored here; tests passing with them do not show they support this core."
+    ddev composer config --json --merge extra.drupal-lenient.allowed-list "$LENIENT_JSON" >/dev/null 2>&1 < /dev/null \
+      || log_warn "Could not add $LENIENT_JSON to extra.drupal-lenient.allowed-list."
+  fi
   log_step "ddev composer require --dev -W --no-interaction ${SPECS[*]}"
   COMPOSER_RAN=true
   if ddev composer require --dev -W --no-interaction "${SPECS[@]}" >&2; then
@@ -373,6 +421,12 @@ if bash "$(plugin_root)/scripts/env/lock-sync.sh" --dir "$ROOT" >/dev/null 2>&1;
   # A refreshed lock names its cell; a 0.9 lock reused as is stays legacy_v1.
   [[ "$CELL" == "legacy_v1" ]] || DRUPILOT_PROJECT_DIR="$ROOT" lock_set .toolchain_cell "$CELL" \
     || log_warn "Could not record the toolchain cell in the lock."
+  # The lenient list in effect (also a bed made lenient before, or by hand).
+  _lj="$(lenient_packages "$ROOT")"
+  if [[ "$_lj" != "[]" || -n "$(DRUPILOT_PROJECT_DIR="$ROOT" lock_get .lenient_packages "")" ]]; then
+    DRUPILOT_PROJECT_DIR="$ROOT" lock_set_json .lenient_packages "$_lj" \
+      || log_warn "Could not record the lenient packages in the lock."
+  fi
   log_info "Lock re-synced: $(drupilot_lock_file "$ROOT")"
 else
   log_warn "Could not re-sync the lock (lock-sync.sh)."

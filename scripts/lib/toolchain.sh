@@ -468,6 +468,26 @@ toolchain_reference_require_cmd() {
   return 0
 }
 
+# lenient_packages [root] -> the packages mglaman/composer-drupal-lenient lets
+# install on ROOT despite their drupal/core constraint, as a compact JSON
+# array: ROOT/composer.json extra.drupal-lenient.allowed-list, sorted, or ["*"]
+# with allow-all; [] when there is none (or no jq). Read from the bed's own
+# composer.json, so it is what is in effect, whoever set it. Every test record
+# carries it as lenient[] (AR-28): such a dependency was installed on the
+# test-bed only, so a green suite does not show it supports the target core.
+lenient_packages() {
+  local r="${1:-${DRUPILOT_PROJECT_DIR:-$PWD}}" v=""
+  if [[ -r "$r/composer.json" ]] && have_cmd jq; then
+    v="$(jq -c '((.extra // {})["drupal-lenient"] // {}) as $l
+      | if ($l | type) != "object" then []
+        elif ($l["allow-all"] // false) == true then ["*"]
+        else [($l["allowed-list"] // [])[]? | strings] | unique end' "$r/composer.json" 2> /dev/null || true)"
+  fi
+  [[ -n "$v" ]] || v='[]'
+  printf '%s' "$v"
+  return 0
+}
+
 # installed_package_version <root> <package> -> the version composer.lock
 # records for <package> (packages + packages-dev), or nothing.
 installed_package_version() {

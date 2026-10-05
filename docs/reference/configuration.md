@@ -176,6 +176,13 @@ Applies to `/drupilot-layers` runs on a **loose** folder of modules (a set insid
 - **Default:** empty
 - **Type:** enum — one of empty, `per-module`, `shared`
 
+### `DRUPILOT_LENIENT_DEPS`
+
+`off` (default), or a comma-separated list of `drupal/<project>` packages whose `drupal/core` constraint does not admit the test-bed's core yet: `install-toolchain.sh` installs `mglaman/composer-drupal-lenient` and adds them to the bed's `extra.drupal-lenient.allowed-list`, on a test-bed drupilot built only. The list in effect is kept in the lock (`.lenient_packages`), in `last-test.json` (`lenient`) and in the port report; it never changes the preservation verdict.
+
+- **Default:** `off`
+- **Type:** string
+
 ### `DRUPILOT_PATTERNS_FILE`
 
 The learned-pattern catalog. Empty means `<root>/.drupilot/patterns.json` (without a Drupal root, `<repository>/.drupilot/patterns.json` at the git top level); a module ported by `/drupilot-layers` uses the set's catalog. A relative path is taken from the Drupal root, so a team can share a committed file.

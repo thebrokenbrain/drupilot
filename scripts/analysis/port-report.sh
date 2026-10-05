@@ -210,6 +210,14 @@ case "$PRESERVATION" in
     esac;;
   *)                     PRES_LINE="• preservation: not run yet (run /drupilot-test).";;
 esac
+# Lenient dependencies the run used (last-test.json lenient[], AR-28): named
+# next to the verdict, never folded into it.
+TEST_LENIENT="$(printf '%s' "$TEST" | jq -r '(.lenient // []) | if type == "array" then join(", ") else empty end' 2>/dev/null || true)"
+if [[ -n "$TEST_LENIENT" ]]; then
+  PRES_LINE="$PRES_LINE
+
+⚠️ **Lenient dependencies:** the tests ran with $TEST_LENIENT installed through composer-drupal-lenient on the test-bed (their \`drupal/core\` constraint ignored). The verdict does not show that they support this core."
+fi
 
 VERDICT="$(printf '%s' "$ASSESS" | jq -r '.verdict // .effort // empty' 2>/dev/null || true)"
 
