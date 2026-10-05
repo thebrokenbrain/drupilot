@@ -17,7 +17,8 @@ check() {
 allow() { jq --arg h "$1" --arg w "$2" '.changes += [{snapshot: "commands.json", sha256: $h, reason: $w}]' "$A" > "$T_TMP/a" && mv "$T_TMP/a" "$A"; }
 hint() { sed "s/^argument-hint: .*/argument-hint: \"$2\"/" "$r/commands/$1.md" > "$T_TMP/c" && mv "$T_TMP/c" "$r/commands/$1.md"; }
 
-assert_eq "unchanged: same" "$(check | cut -d'|' -f1)" "same"
+# HEAD keeps the 0.9 commands, or adds argument-hint tokens (allowed as is).
+assert_match "unchanged: same, or only added tokens" "$(check | cut -d'|' -f1)" '^(same|additions)$'
 hint drupilot-setup "[subject-path] [--php-target X.Y]"
 first="$(check)"
 assert_match "a replaced argument-hint token differs" "$first" '^differs\|[0-9a-f]{64}$'

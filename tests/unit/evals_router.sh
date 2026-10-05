@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # scripts/dev/evals.sh on a scratch copy of the plugin: the static layer fails
 # when a natural-language port no longer maps to `full`, when a bare
-# `/drupilot` no longer maps to `next`, when two tabs swap places and when a
+# `/drupilot` no longer maps to `next`, when two tabs swap places, when a tab
+# is inserted where allowed_insertions does not list it, and when a
 # rule that keeps an auto run tab-free is dropped. The live layer, run against
 # a stub `claude` (no model), never counts a failed or empty run as a pass:
 # the auto case needs an explicit NO_TABS reply.
@@ -31,6 +32,10 @@ mutate "a bare /drupilot bound to status in the next rule fails" commands/drupil
   's/^  - An \*\*exploratory\*\* request or a bare `\/drupilot` ("what.s next", "where am I") →/  - An **exploratory** request ("what'"'"'s next", "where am I") → **`next`**; a bare `\/drupilot` →/; s/^    \*\*`next`\*\* (summarize/    **`status`** (summarize/' 'mode-inference: a bare `/drupilot`'
 mutate "two swapped tabs fail" commands/drupilot-port.md \
   's/--key CORE_TARGET/--key TMP_SWAP/; s/--key DIGESTS_RULES/--key CORE_TARGET/; s/--key TMP_SWAP/--key DIGESTS_RULES/' 'tab-sequence'
+mutate "a tab inserted without an allowed_insertions entry fails" commands/drupilot-setup.md \
+  's/--key TARGET_MAJOR/--key LEARN/' 'tab-sequence'
+mutate "the allowed insertion after its anchor fails" commands/drupilot-setup.md \
+  's/--key TARGET_MAJOR/--key TMP_SWAP/; s/--key PHP_TARGET/--key TARGET_MAJOR/; s/--key TMP_SWAP/--key PHP_TARGET/' 'tab-sequence'
 mutate "a dropped auto rule fails" agents/drupal-port-orchestrator.md \
   's/\*\*Never perform any outward-facing action\.\*\*/**Avoid outward-facing actions.**/' 'auto rule: \*\*Never perform'
 
