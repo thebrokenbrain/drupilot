@@ -201,9 +201,11 @@ while IFS="$(printf '\t')" read -r name dir; do
     result "$name" pass "$(jq -r '.files | length' "$TMP/bl.json") capture(s) match v0.9.0 (or an allowed difference)"
   else
     _why="$(jq -r '[.files[] | select(.status != "same" and .status != "allowed") | "\(.name): \(.status)"] | join("; ")' "$TMP/bl.json" 2>/dev/null || true)"
-    # The first lines of the diff baseline-0.9.sh printed, so a CI log shows
-    # what changed (an intermittent difference cannot be rerun to see it).
-    _diff="$(grep -E '^    [-+][^-+]' "$TMP/bl.err" 2>/dev/null | head -n 12 | sed 's/^    //' | tr '\n' '|' || true)"
+    # The diff baseline-0.9.sh printed, added lines first, so a CI log shows
+    # what the run produced, not only what it lost (an intermittent
+    # difference cannot be rerun to see it).
+    _diff="$( { grep -E '^    [+][^+]' "$TMP/bl.err"; grep -E '^    [-][^-]' "$TMP/bl.err"; } 2>/dev/null \
+      | head -n 24 | sed 's/^    //' | tr '\n' '|' || true)"
     result "$name" fail "${_why:-$(tail -n 3 "$TMP/bl.err" | tr '\n' ' ')}${_diff:+ — diff: $_diff}"
   fi
 done <<< "$GOLDENS"
