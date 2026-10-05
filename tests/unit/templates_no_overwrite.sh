@@ -6,8 +6,10 @@
 # backup) when the plan moves — even when the PHP floor stays (the BC block
 # of a ^10.3 floor) —, while a hand-edited one is never overwritten without
 # --force (then backed up). run-rector.sh keeps the sha256 of what it writes
-# and regenerates an untouched render for another plan the same way. The data
-# is the snapshot tests/golden/plans pins.
+# and regenerates an untouched render for another plan the same way, and so
+# does render-templates.sh for phpstan.neon (template 3, ADR 0020: a
+# template-2 copy upgraded, a new tmpDir per plan, --profile). The data is the
+# snapshot tests/golden/plans pins.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
 # shellcheck source=../../scripts/lib/common.sh
@@ -96,4 +98,31 @@ printf '\n// hand edit\n' >> "$r/rector.php"; cp "$r/rector.php" "$T_TMP/edited2
 sed_inplace "$INFO" 's/^core_version_requirement: .*/core_version_requirement: ^10/'
 rr
 assert_file_eq "run-rector: a hand-edited rector.php is left as it is" "$r/rector.php" "$T_TMP/edited2.php"
+
+# phpstan.neon (template 3, ADR 0020): the same rules, its tmpDir keyed by the
+# plan, its profile the plan's unless --profile names one.
+rs() { t_run env DRUPILOT_PHP_TARGET=8.3 "$T_SH" "$T_REPO/scripts/env/render-templates.sh" --root "$r" --subject "$S" --only phpstan --json "$@"; }
+N="$r/phpstan.neon"
+cp "$T_REPO/tests/fixtures/rector-render/legacy_widgets/phpstan.v2.neon" "$N"
+rs
+assert_eq "phpstan: a template-2 copy is upgraded, the plan's compat profile" \
+  "$T_RC|$(jq -r '.files[0].status' "$T_OUT")|$(jq -r .phpstan_profile "$T_OUT")|$(jq -r .plan "$T_OUT")|$(jq -r .php_floor "$T_OUT")" "0|upgraded|compat|plan|null"
+assert_eq "  its sha256 kept" "$([[ "$(kept phpstan.neon)" == "$(shaof "$N")" ]] && echo kept)" "kept"
+k1="$(sed -n 's/^  tmpDir: //p' "$N")"
+sed_inplace "$INFO" 's/^core_version_requirement: .*/core_version_requirement: ^10.3/'
+rs
+k2="$(sed -n 's/^  tmpDir: //p' "$N")"
+assert_eq "phpstan: the plan moves -> an untouched render upgraded, another cache directory" \
+  "$T_RC|$(jq -r '.files[0].status' "$T_OUT")|$([[ "$k1" != "$k2" && "$k2" == .phpstan-cache/* ]] && echo moved)" "0|upgraded|moved"
+rs --profile refactor
+assert_eq "phpstan: --profile refactor -> upgraded, no rule turned off" \
+  "$T_RC|$(jq -r '.files[0].status' "$T_OUT")|$(jq -r .phpstan_profile "$T_OUT")|$(grep -c 'Rule: false' "$N" || true)|$(grep -c '^# drupilot-phpstan-profile: refactor$' "$N")" "0|upgraded|refactor|0|1"
+rs --profile nope
+assert_eq "phpstan: an unknown profile is a usage error" "$T_RC" "1"
+printf '\n# hand edit\n' >> "$N"; cp "$N" "$T_TMP/edited.neon"
+rs
+assert_eq "phpstan: hand-edited -> differs, exit 3, kept" \
+  "$T_RC|$(jq -r '.files[0].status' "$T_OUT")|$(cmp -s "$N" "$T_TMP/edited.neon" && echo same)" "3|differs|same"
+rs --force
+assert_eq "phpstan: --force replaces it, compat again" "$T_RC|$(jq -r '.files[0].status' "$T_OUT")|$(grep -c 'Rule: false' "$N")" "0|replaced|4"
 t_done

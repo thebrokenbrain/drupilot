@@ -1,0 +1,61 @@
+# drupilot — phpstan.neon
+# drupilot-template-version: 3
+# drupilot-phpstan-profile: compat
+#
+# PHPStan configuration for analyzing a Drupal module/theme on the way to a
+# newer Drupal major. Rendered from the upgrade plan by
+# scripts/env/render-templates.sh (ADR 0020): the analysis level
+# (DRUPILOT_PHPSTAN_LEVEL: default 2 for deprecation detection; run-phpstan.sh
+# passes the refactor level, 5-6, on its command line), the PHP versions the
+# code must run on, the extension path, the profile and the cache directory.
+#
+# phpstan/extension-installer autoloads the Drupal rules and the deprecation
+# rules automatically, so no `includes:` block is needed in the common case.
+# If extension-installer is NOT present, uncomment the `includes:` block below.
+#
+# PHPStan does not bootstrap the database, but it needs the Drupal core tree
+# present. phpstan-drupal (>= 1.3) discovers the Drupal root automatically from
+# the Composer runtime; the legacy `drupal: drupal_root:` parameter is deprecated
+# (it prints a PHP deprecation on every run) and ignored, so it is intentionally
+# absent.
+parameters:
+  # Level 2 detects deprecations (the level drupal-check pins). Raise to 5-6
+  # for quality/bug analysis during the refactor.
+  level: 2
+
+  # The PHP versions the code must run on (PHP_VERSION_ID): the plan's floor
+  # (the lowest PHP the declared core range and require.php admit) and its PHP
+  # target. PHPStan checks the code against every version in between.
+  phpVersion:
+    min: 80300
+    max: 80300
+
+  # Analyze only the target extension.
+  paths:
+    - web/modules/custom/legacy_widgets
+
+  # Ignore the usual generated/contrib noise.
+  excludePaths:
+    - */vendor/*
+    - */node_modules/*
+
+  # Deterministic, project-local result cache, one directory per upgrade plan
+  # (the first 12 hex digits of its hash): a run never reuses results cached for
+  # another PHP range or plan. Safe to delete; .phpstan-cache/ is gitignored.
+  tmpDir: .phpstan-cache/7cbf794e2009
+
+  # Profile compat (ADR 0020).
+  # phpstan-drupal's opinion rules are off: a minimal port makes no change
+  # they ask for.
+  drupal:
+    rules:
+      globalDrupalDependencyInjectionRule: false
+      entityStorageDirectInjectionRule: false
+      testClassSuffixNameRule: false
+      classExtendsInternalClassRule: false
+
+# Fallback when phpstan/extension-installer is not installed. With the
+# extension installer present these are wired in automatically — leave commented.
+# includes:
+#   - vendor/mglaman/phpstan-drupal/extension.neon
+#   - vendor/phpstan/phpstan-deprecation-rules/rules.neon
