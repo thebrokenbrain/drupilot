@@ -112,7 +112,9 @@ DRUPILOT_CORE_TARGET_STRATEGY=<auto|keep-d10|d11-only> bash "${CLAUDE_PLUGIN_ROO
 ```
 
 - **Exit 0**: the final plan is frozen; it may add hops or raise the core floor
-  over the draft, never change the target, the PHP target or the test-bed.
+  over the draft, never change the target, the PHP target or the test-bed. If its
+  `.target.major` is not 11, stop: a port to Drupal 12 needs its test-bed, which
+  arrives with a later drupilot release (T-M3-08); change nothing.
 - **Exit 2**: nothing was written. Show `.message` and `.choices`; a
   `final-changes-frozen` refusal means the setup's choices no longer hold (for
   example the PHP target changed since): send the developer to
@@ -122,7 +124,7 @@ Then read the declared range and the `require.php` floor from the frozen plan,
 never from a script's own output (H4):
 
 ```bash
-bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; plan_get .range.constraint "$1"; plan_get .php.require_php "$1"' _ "<drupal_root>"
+DRUPILOT_PROJECT_DIR="<drupal_root>" bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; plan_get .range.constraint; plan_get .php.require_php'
 ```
 
 The first line is the `core_version_requirement` to apply in Step 6; the second,

@@ -87,10 +87,14 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "<path>"
 ```
 
 `<drupal_root>` is `resolve-workspace.sh`'s answer (for a loose subject, the
-test-bed it will create). Exit 2 refuses with `.message` and `.choices` and writes
-nothing: re-ask the tabs (a `d7-auto` refusal stops). The answers are persisted
-only after exit 0. Until T-M3-08, a target other than 11 stops the setup after the
-plan is frozen.
+test-bed it will create; never a site still on Drupal 10). Exit 2 refuses with
+`.message` and `.choices` and writes nothing: re-ask the tabs, overriding the value
+that led to the refusal (a `d7-auto` refusal stops). The answers are persisted only
+after exit 0 — into the root's `.drupilot.json`, right after §3 creates it for a loose
+subject — and not at all while the target is not 11: until T-M3-08 such a target
+stops the setup once the plan is frozen. After §6 installs the toolchain and the lock
+records the test-bed's core, run the same command again: it re-plans on the
+installed core when that is another minor.
 
 ## 3. Create / start the Drupal 11 DDEV project
 
