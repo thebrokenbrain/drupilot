@@ -3,9 +3,20 @@
 # drupilot — scripts/analysis/upgrade-path.sh
 # Resolve the UPGRADE PLAN of a module/theme: every version a stage uses, from
 # the subject, the target major, the PHP target, the strategy and the version
-# data (AR-06, ADR 0017; schemas/upgrade-plan.schema.json). Pure: it reads the
+# data (AR-06, ADR 0017; schemas/upgrade-plan.schema.json). It reads the
 # subject, the version data (config/, or DRUPILOT_VERSION_DATA_DIR) and the
-# root's lock, and writes nothing. No stage derives a version on its own.
+# root's lock, and writes nothing unless --freeze asks it to freeze the plan
+# in that lock (ADR 0018). No stage derives a version on its own: they read
+# the frozen plan through plan_get (scripts/lib/plan.sh).
+#
+# The frozen plan (ADR 0018): in deterministic mode (DRUPILOT_DETERMINISTIC,
+# default true) a plan frozen for the same subject is reused, printed as it
+# was frozen and with nothing written, when its phase is at least the
+# requested one and the requested T, P, strategy, explicit range and
+# pre-release opt-in are its own; anything else resolves afresh (a change of
+# the version data does not). A final plan over a frozen one may only add
+# hops or raise F: changing T, P, the toolchain cell or the bed core's minor
+# is refused as final-changes-frozen.
 #
 # Vocabulary (AR-01):
 #   S              source era: the oldest Drupal major whose APIs the code
@@ -33,7 +44,7 @@
 # Usage:
 #   upgrade-path.sh [--subject DIR] [--phase draft|final] [--target N]
 #                   [--php X.Y] [--strategy S] [--range C] [--root DIR]
-#                   [--phpstan FILE] [--auto] [--json] [-h|--help]
+#                   [--phpstan FILE] [--auto] [--freeze] [--json] [-h|--help]
 #
 # Options:
 #   --subject DIR    The module/theme directory (default: the current one).
@@ -54,6 +65,9 @@
 #                    of the subject (detect-source.sh signal 4).
 #   --auto           An autonomous run (as DRUPILOT_AUTONOMOUS=true): a Drupal
 #                    7 source is refused.
+#   --freeze         Freeze the resolved plan in the root's lock
+#                    (upgrade_plan, upgrade_plan_hash, upgrade_plan_phase,
+#                    data_hash; one write, only after exit 0; needs a root).
 #   --json           Print only the JSON on STDOUT (no summary on STDERR).
 #   -h, --help       Show this help.
 #
@@ -88,6 +102,7 @@ ROOT=""
 PHPSTAN_FILE=""
 AUTO=0
 JSON_ONLY=0
+FREEZE=0
 D7_AUTO_MESSAGE="D7 source detected: the d7-assisted track is experimental and never runs in auto. Run '/drupilot full' with DRUPILOT_EXPERIMENTAL_D7=on, or '/drupilot-assess' for a viability verdict."
 
 usage() { print_usage "$0"; }
@@ -111,6 +126,7 @@ while [[ $# -gt 0 ]]; do
     --phpstan) PHPSTAN_FILE="${2:-}"; shift 2 || die "--phpstan needs a file" 1;;
     --phpstan=*) PHPSTAN_FILE="${1#*=}"; shift;;
     --auto) AUTO=1; shift;;
+    --freeze) FREEZE=1; shift;;
     --json) JSON_ONLY=1; shift;;
     -h|--help) usage; exit 0;;
     *) die "Unknown argument: $1 (see --help)" 1;;
@@ -154,6 +170,7 @@ case "$STRATEGY" in
 esac
 [[ "$STRATEGY" != "explicit" || -n "$RANGE" ]] || die "--strategy explicit needs --range." 1
 [[ -z "$RANGE" || "$STRATEGY" == "explicit" ]] || die "--range is an explicit range: it cannot go with --strategy $STRATEGY." 1
+[[ "$FREEZE" == "0" || -n "$ROOT" ]] || die "--freeze needs a Drupal root (--root DIR)." 1
 PHPSTAN_LEVEL="$(config_get DRUPILOT_PHPSTAN_LEVEL 2)"
 [[ "$PHPSTAN_LEVEL" =~ ^(max|[0-9]+)$ ]] || die "Invalid DRUPILOT_PHPSTAN_LEVEL '$PHPSTAN_LEVEL' (expected 0-10 or max)." 1
 if [[ "$AUTO" == "0" ]] && config_bool DRUPILOT_AUTONOMOUS 0; then AUTO=1; fi
@@ -210,6 +227,14 @@ refuse() {
         elif $i == "range-excludes-bed" then
           c("core-target"; "Choose a core range that admits Drupal \($t)"; "CORE_TARGET"; {}),
           c("target-only"; "Declare Drupal \($t) only"; null; {DRUPILOT_CORE_TARGET_STRATEGY: "d11-only"})
+        elif $i == "final-changes-frozen" and .field == "php.final" then
+          c("keep-frozen"; "Keep the frozen PHP target \(.frozen)"; null; {DRUPILOT_PHP_TARGET: .frozen}),
+          c("re-setup"; "Choose the PHP target again (run the setup)"; "PHP_TARGET"; {})
+        elif $i == "final-changes-frozen" and .field == "target.major" then
+          c("keep-frozen-target"; "Keep the frozen target Drupal \(.frozen)"; null; {DRUPILOT_TARGET_MAJOR: (.frozen | tostring)}),
+          c("re-setup-target"; "Choose the target major again (run the setup)"; "TARGET_MAJOR"; {})
+        elif $i == "final-changes-frozen" then
+          c("re-setup"; "Run the setup again to re-plan"; null; {})
         elif $i == "three-majors" then
           c("keep-previous"; "Keep only the previous major"; null; {DRUPILOT_CORE_TARGET_STRATEGY: "keep-d10"}),
           c("target-only"; "Declare Drupal \($t) only"; null; {DRUPILOT_CORE_TARGET_STRATEGY: "d11-only"})
@@ -248,6 +273,26 @@ if [[ -z "$MACHINE" ]]; then
 fi
 [[ "$MACHINE" =~ ^[a-z][a-z0-9_]*$ ]] || die "Cannot read a machine name for '$SUBJECT_ABS' (got '$MACHINE')." 1
 [[ -n "$STYPE" ]] || STYPE="module"
+# --- the frozen plan (ADR 0018) ---------------------------------------------------
+FROZEN=""
+[[ -z "$ROOT" ]] || FROZEN="$(plan_frozen "$ROOT")"
+if [[ -n "$FROZEN" ]] && [[ "$(printf '%s' "$FROZEN" | jq -r '.subject.machine_name // ""')" != "$MACHINE" ]]; then
+  FROZEN=""   # another subject's plan: stale
+fi
+if [[ -n "$FROZEN" ]] && deterministic_mode; then
+  _preview=false
+  [[ "$ALLOW" == true && "$(target_get "$TARGET" '.status')" == "pre-release" ]] && _preview=true
+  if printf '%s' "$FROZEN" | jq -e --argjson t "$TARGET" --arg p "$PHP" --arg st "$STRATEGY" --arg r "$RANGE" \
+       --argjson pv "$_preview" --arg ph "$PHASE" '
+       def rank: if . == "final" then 2 elif . == "draft" then 1 else 0 end;
+       (.meta.phase | rank) >= ($ph | rank) and .target.major == $t and .php.final == $p
+       and .range.strategy == $st and (.target.preview // false) == $pv
+       and ($st != "explicit" or .range.constraint == $r)' > /dev/null 2>&1; then
+    printf '%s\n' "$FROZEN"
+    [[ "$JSON_ONLY" == "1" ]] || log_ok "Upgrade plan: the one frozen in the lock ($(printf '%s' "$FROZEN" | jq -r .meta.phase)), reused"
+    exit 0
+  fi
+fi
 EVIDENCE_HASH="$(printf '%s' "$SRC" | jq -S -c . | json_hash)"
 [[ -n "$EVIDENCE_HASH" ]] || die "upgrade-path.sh needs sha256sum or shasum." 1
 
@@ -346,8 +391,15 @@ PLAN="$(jq -n -S \
    data_hash: (if $dh == "" then null else "sha256:\($dh)" end),
    automation_estimate: null}')"
 
-V_RC=0; V="$(plan_assert "$PLAN")" || V_RC=$?
+# The final phase may only add hops or raise F over a frozen plan.
+GUARD=""
+[[ "$PHASE" != "final" ]] || GUARD="$FROZEN"
+V_RC=0; V="$(plan_assert "$PLAN" "$GUARD")" || V_RC=$?
 [[ "$V_RC" == "0" ]] || refuse "$V"
+if [[ "$FREEZE" == "1" ]]; then
+  plan_freeze "$PLAN" "$PHASE" "$ROOT" || die "Could not freeze the plan in the lock of '$ROOT'." 1
+  [[ "$JSON_ONLY" == "1" ]] || log_ok "Frozen in the lock of $ROOT ($PHASE)."
+fi
 printf '%s\n' "$PLAN"
 if [[ "$JSON_ONLY" == "0" ]]; then
   log_ok "Upgrade plan ($PHASE): Drupal $S -> $TARGET$([[ "$ALLOW" == true && "$(printf '%s' "$TB" | jq -r .preview)" == true ]] && printf ' (preview)'), $C, PHP $L..$PHP, bed $BED, hops: ${HOPS:-none}"

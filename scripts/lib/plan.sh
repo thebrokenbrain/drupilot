@@ -59,7 +59,9 @@
 # php_rector_level, plan_php_block, plan_test_matrix, plan_ci_flags,
 # plan_assert and version_data_hash. scripts/analysis/upgrade-path.sh
 # assembles the plan from them; they never write and never refuse on their
-# own (plan_assert lists, the resolver refuses).
+# own (plan_assert lists, the resolver refuses). The frozen plan (ADR 0018):
+# plan_freeze writes it to the root's lock (upgrade-path.sh --freeze only),
+# plan_frozen and plan_get read it back without creating anything.
 # =============================================================================
 
 version_data_dir() {
@@ -548,20 +550,25 @@ plan_ci_flags() {
   return 0
 }
 
-# plan_assert PLAN -> the plan's violated assertions (AR-06), one JSON array
-# of {id, detail}, in this order: source-above-target (S > T),
+# plan_assert PLAN [FROZEN] -> the plan's violated assertions (AR-06), one
+# JSON array of {id, detail}, in this order: source-above-target (S > T),
 # prerelease-not-opted-in (a pre-release T without preview),
 # range-excludes-bed (the range does not admit the bed core's minor: the
-# module could not be installed on the test-bed), floor-above-final (L > P), php-not-supported (P is not a PHP M supports, M
-# the newest released minor of T or its pre-release minor in preview),
-# minor-php-disjoint (a verified minor of a major <= T that the range admits
-# supports none of the PHP minors L..P: every answer "no"; an "unknown" one
-# is not a violation; the violation also names the `minor`), three-majors (the range reaches 3 or more majors while
-# its strategy is not explicit and it does not keep the current
-# declaration). Returns 2 when any is violated, 1 when PLAN is not an object.
+# module could not be installed on the test-bed), floor-above-final (L > P),
+# php-not-supported (P is not a PHP M supports, M the newest released minor
+# of T or its pre-release minor in preview), minor-php-disjoint (a verified
+# minor of a major <= T that the range admits supports none of the PHP
+# minors L..P: every answer "no"; an "unknown" one is not a violation; the
+# violation also names the `minor`), three-majors (the range reaches 3 or
+# more majors while its strategy is not explicit and it does not keep the
+# current declaration), and, with a FROZEN plan (a final plan over the one
+# frozen in the lock, ADR 0018), final-changes-frozen for each frozen value
+# it changes: T, P, the toolchain cell, the bed core's minor, a hop dropped,
+# or F lowered (the final plan may only add hops and raise F); each names
+# its `field`. Returns 2 when any is violated, 1 when PLAN is not an object.
 # Nothing is fixed: the caller refuses (upgrade-path.sh exits 2).
 plan_assert() {
-  local plan="${1:-}" t="" s="" l="" p="" st="" pv="" b="" c="" strat="" rs="" m x w n ans all bm
+  local plan="${1:-}" frozen="${2:-}" t="" s="" l="" p="" st="" pv="" b="" c="" strat="" rs="" m x w n ans all bm
   local out="" vals
   have_cmd jq || return 1
   # -s: an empty PLAN is [] (jq 1.6's -e exits 0 on no input at all).
@@ -615,8 +622,39 @@ plan_assert() {
   if (( n >= 3 )) && [[ "$strat" != "explicit" && "$rs" != "keep-current" ]]; then
     out="$out$(_plan_issue three-majors "'$c' reaches $n majors: only an explicit range or a kept declaration may")"$'\n'
   fi
+  if [[ -n "$frozen" ]]; then
+    out="$out$(_plan_frozen_changes "$plan" "$frozen")"
+  fi
   printf '%s' "$out" | jq -s -c '.'
   [[ -z "$out" ]] || return 2
+  return 0
+}
+
+# _plan_frozen_changes PLAN FROZEN -> one final-changes-frozen violation per
+# line ({id, detail, field, frozen, value}) for each frozen value PLAN
+# changes beyond what the final phase may (plan_assert).
+_plan_frozen_changes() {
+  local plan="$1" frozen="$2" f0 f1 rc=0
+  printf '%s' "$frozen" | jq -e -s 'length == 1 and (.[0] | type == "object")' > /dev/null 2>&1 || return 0
+  jq -n -c --argjson p "$plan" --argjson f "$frozen" '
+    def minor: tostring | sub("^v"; "") | split("-")[0] | split(".") | .[0:2] | join(".");
+    def ch($fld; $old; $new; $what): {id: "final-changes-frozen", field: $fld, frozen: $old, value: $new,
+      detail: "the final plan changes the frozen \($what) (\($old) -> \($new)): only the setup may change it"};
+    (if $p.target.major != $f.target.major then ch("target.major"; $f.target.major; $p.target.major; "target major") else empty end),
+    (if $p.php.final != $f.php.final then ch("php.final"; $f.php.final; $p.php.final; "PHP target") else empty end),
+    (if $p.toolchain_cell != $f.toolchain_cell then ch("toolchain_cell"; $f.toolchain_cell; $p.toolchain_cell; "toolchain cell") else empty end),
+    (if ($p.target.bed_core | minor) != ($f.target.bed_core | minor) then ch("target.bed_core"; $f.target.bed_core; $p.target.bed_core; "test-bed core") else empty end),
+    (($f.hops // []) - ($p.hops // [])) as $lost
+      | (if ($lost | length) > 0 then ch("hops"; ($f.hops | join(" ")); ($p.hops | join(" ")); "hops (\($lost | join(", ")) dropped)") else empty end)' \
+    2> /dev/null || true
+  f0="$(printf '%s' "$frozen" | jq -r '.range.floor // empty' 2> /dev/null || true)"
+  f1="$(printf '%s' "$plan" | jq -r '.range.floor // empty' 2> /dev/null || true)"
+  if [[ -n "$f0" && -n "$f1" ]]; then
+    core_version_cmp "$f1" "$f0" || rc=$?
+    [[ "$rc" != "1" ]] || jq -n -c --arg o "$f0" --arg n "$f1" \
+      '{id: "final-changes-frozen", field: "range.floor", frozen: $o, value: $n,
+        detail: "the final plan lowers the frozen core floor (\($o) -> \($n)): F may only rise"}'
+  fi
   return 0
 }
 
@@ -642,4 +680,55 @@ EOF
   [[ -n "$lines" ]] || return 0
   printf '%s' "$lines" | sha256_hex
   return 0
+}
+
+# ---------------------------------------------------------------------------
+# The frozen plan (ADR 0018): .upgrade_plan, .upgrade_plan_hash,
+# .upgrade_plan_phase and .data_hash in the Drupal root's lock.
+# ---------------------------------------------------------------------------
+
+# plan_get JQPATH [ROOT] -> one value of the frozen plan: `.upgrade_plan |
+# JQPATH` of ROOT's lock (default DRUPILOT_PROJECT_DIR, else $PWD), a string
+# raw, anything else as compact JSON (false and 0 included); nothing when the
+# value is null. Returns 1 when the lock holds no plan (or JQPATH is not a jq
+# path). Read-only: it never creates the state dir (lock_path). The way every
+# stage reads a version (H4): `plan_get .php.final "$ROOT"`.
+plan_get() {
+  local p="${1:-}" f
+  [[ -n "$p" ]] && have_cmd jq || return 1
+  f="$(lock_path "${2:-${DRUPILOT_PROJECT_DIR:-$PWD}}")"
+  [[ -r "$f" ]] || return 1
+  jq -e '.upgrade_plan | type == "object"' "$f" > /dev/null 2>&1 || return 1
+  jq -r ".upgrade_plan | ($p) | select(. != null) | if type == \"string\" then . else tojson end" "$f" 2> /dev/null || return 1
+  return 0
+}
+
+# plan_frozen [ROOT] -> the frozen plan, keys sorted and indented as
+# upgrade-path.sh prints it (byte for byte the output that was frozen), or
+# nothing. Read-only.
+plan_frozen() {
+  local f
+  have_cmd jq || return 0
+  f="$(lock_path "${1:-${DRUPILOT_PROJECT_DIR:-$PWD}}")"
+  [[ -r "$f" ]] || return 0
+  jq -S 'select(.upgrade_plan | type == "object") | .upgrade_plan' "$f" 2> /dev/null || true
+  return 0
+}
+
+# plan_freeze PLAN PHASE [ROOT] -> freeze PLAN (a draft or final plan) in
+# ROOT's lock in one write: {upgrade_plan: PLAN, upgrade_plan_hash:
+# json_hash(canon_json_hashable PLAN) (meta excluded), upgrade_plan_phase:
+# PHASE, data_hash: PLAN.data_hash}, through lock_merge_json (the rest of the
+# lock is kept). Returns 1 on a bad PHASE, a PLAN that is not an object, no
+# hasher, or a failed write.
+plan_freeze() {
+  local plan="${1:-}" phase="${2:-}" root="${3:-${DRUPILOT_PROJECT_DIR:-$PWD}}" h obj
+  case "$phase" in draft|final) : ;; *) return 1;; esac
+  have_cmd jq || return 1
+  printf '%s' "$plan" | jq -e -s 'length == 1 and (.[0] | type == "object")' > /dev/null 2>&1 || return 1
+  h="$(printf '%s' "$plan" | canon_json_hashable | json_hash)"
+  [[ -n "$h" ]] || return 1
+  obj="$(printf '%s' "$plan" | jq -c --arg h "$h" --arg ph "$phase" \
+    '{upgrade_plan: ., upgrade_plan_hash: $h, upgrade_plan_phase: $ph, data_hash: .data_hash}')" || return 1
+  lock_merge_json "$obj" "$root"
 }

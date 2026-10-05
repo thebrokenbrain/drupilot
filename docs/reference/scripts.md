@@ -1407,9 +1407,20 @@ Exit codes: 0 ok · 1 usage error or a file could not be written.
 drupilot — scripts/analysis/upgrade-path.sh
 Resolve the UPGRADE PLAN of a module/theme: every version a stage uses, from
 the subject, the target major, the PHP target, the strategy and the version
-data (AR-06, ADR 0017; schemas/upgrade-plan.schema.json). Pure: it reads the
+data (AR-06, ADR 0017; schemas/upgrade-plan.schema.json). It reads the
 subject, the version data (config/, or DRUPILOT_VERSION_DATA_DIR) and the
-root's lock, and writes nothing. No stage derives a version on its own.
+root's lock, and writes nothing unless --freeze asks it to freeze the plan
+in that lock (ADR 0018). No stage derives a version on its own: they read
+the frozen plan through plan_get (scripts/lib/plan.sh).
+
+The frozen plan (ADR 0018): in deterministic mode (DRUPILOT_DETERMINISTIC,
+default true) a plan frozen for the same subject is reused, printed as it
+was frozen and with nothing written, when its phase is at least the
+requested one and the requested T, P, strategy, explicit range and
+pre-release opt-in are its own; anything else resolves afresh (a change of
+the version data does not). A final plan over a frozen one may only add
+hops or raise F: changing T, P, the toolchain cell or the bed core's minor
+is refused as final-changes-frozen.
 
 Vocabulary (AR-01):
   S              source era: the oldest Drupal major whose APIs the code
@@ -1437,7 +1448,7 @@ Vocabulary (AR-01):
 Usage:
   upgrade-path.sh [--subject DIR] [--phase draft|final] [--target N]
                   [--php X.Y] [--strategy S] [--range C] [--root DIR]
-                  [--phpstan FILE] [--auto] [--json] [-h|--help]
+                  [--phpstan FILE] [--auto] [--freeze] [--json] [-h|--help]
 
 Options:
   --subject DIR    The module/theme directory (default: the current one).
@@ -1458,6 +1469,9 @@ Options:
                    of the subject (detect-source.sh signal 4).
   --auto           An autonomous run (as DRUPILOT_AUTONOMOUS=true): a Drupal
                    7 source is refused.
+  --freeze         Freeze the resolved plan in the root's lock
+                   (upgrade_plan, upgrade_plan_hash, upgrade_plan_phase,
+                   data_hash; one write, only after exit 0; needs a root).
   --json           Print only the JSON on STDOUT (no summary on STDERR).
   -h, --help       Show this help.
 
