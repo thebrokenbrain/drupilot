@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://thebrokenbrain.github.io/drupilot/schemas/lock.schema.json",
   "title": "drupilot reproducibility lockfile (drupilot-lock.json)",
-  "description": "The per-project lockfile that freezes what drupilot resolved (DRUPILOT_DETERMINISTIC). It lives in the hidden state dir of the Drupal ROOT (drupilot_lock_file: project_state_dir of the root, under drupilot's data dir), never in the project tree. It is built key by key: the lock_set (string) and lock_set_json (raw JSON) helpers of scripts/lib/common.sh create it as {\"schema\": 1} on first write (a lock without schema was created by drupilot 0.9) and stamp drupilot_version on every write; scripts/env/lock-sync.sh writes the metadata, php_target, phpstan_level, core_strategy, drupal.core, toolchain.* and ddev_addons.* (and --refresh deletes digests.sha); scripts/analysis/run-rector.sh writes digests.ref/sha; scripts/analysis/verify-core-matrix.sh writes verify_cores.*; scripts/env/install-toolchain.sh re-runs lock-sync.sh and records toolchain_cell. Every section is optional: a lock holds only what was frozen so far.",
+  "description": "The per-project lockfile that freezes what drupilot resolved (DRUPILOT_DETERMINISTIC). It lives in the hidden state dir of the Drupal ROOT (drupilot_lock_file: project_state_dir of the root, under drupilot's data dir), never in the project tree. It is built key by key: the lock_set (string), lock_set_json (raw JSON) and lock_merge_json (several keys in one write) helpers of scripts/lib/lock.sh create it as {\"schema\": 1} on first write (a lock without schema was created by drupilot 0.9) and stamp drupilot_version on every write; scripts/env/lock-sync.sh writes the metadata, php_target, phpstan_level, core_strategy, drupal.core, toolchain.* and ddev_addons.* (and --refresh deletes digests.sha); scripts/analysis/run-rector.sh writes digests.ref/sha; scripts/analysis/verify-core-matrix.sh writes verify_cores.*; scripts/env/install-toolchain.sh re-runs lock-sync.sh and records toolchain_cell; scripts/analysis/upgrade-path.sh --freeze writes upgrade_plan, upgrade_plan_hash, upgrade_plan_phase and data_hash in one write (ADR 0018). Every section is optional: a lock holds only what was frozen so far.",
   "type": "object",
   "required": ["drupilot_version"],
   "properties": {
@@ -91,6 +91,25 @@
           "type": "string"
         }
       }
+    },
+    "upgrade_plan": {
+      "description": "The frozen upgrade plan (schemas/upgrade-plan.schema.json, kept whole with its meta) that every stage reads its versions from through plan_get (ADR 0018).",
+      "type": "object",
+      "required": ["schema_version"]
+    },
+    "upgrade_plan_hash": {
+      "description": "sha256 of the plan's canonical JSON without meta (canon_json_hashable | json_hash).",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "upgrade_plan_phase": {
+      "description": "The phase of the frozen plan: draft (setup, static signals) or final (port, with the analyzer signal).",
+      "enum": ["draft", "final"]
+    },
+    "data_hash": {
+      "description": "The version data the frozen plan was resolved with (the plan's own data_hash).",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
     },
     "verify_cores": {
       "description": "Reference Drupal cores frozen by verify-core-matrix.sh, keyed by leg (e.g. \"10\", \"10.0\", \"10.3\"); each value is {constraint, version}, both strings (the composer constraint the leg resolved and the exact core it got).",

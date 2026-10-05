@@ -95,4 +95,5 @@ nav:
           - contributing/adr/0015-toolchain-cells.md
           - contributing/adr/0016-source-era-fallback.md
           - contributing/adr/0017-upgrade-plan-resolver.md
+          - contributing/adr/0018-freezing-the-upgrade-plan.md
   - Changelog: changelog.md

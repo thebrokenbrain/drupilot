@@ -95,7 +95,9 @@ jobs:
   minimal-userlands:
     name: smoke in ${{ matrix.image }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # debian:12-slim runs the unit tests with mawk and jq 1.6, the slowest
+    # tools drupilot supports (the resolver's tests alone take minutes there).
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:

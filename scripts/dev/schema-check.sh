@@ -72,7 +72,8 @@ SPECS="$(printf '%s\t%s\t%s\n' \
   paths.schema.json config/paths/graph.json . \
   toolchain.schema.json config/toolchain-reference.json . \
   catalog.schema.json schemas/examples/catalog.example.json . \
-  upgrade-plan.schema.json schemas/examples/upgrade-plan.example.json .)"
+  upgrade-plan.schema.json schemas/examples/upgrade-plan.example.json . \
+  lock.schema.json schemas/examples/lock.example.json .)"
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-schema.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT

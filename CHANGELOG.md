@@ -57,6 +57,20 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   The root's `.drupilot.json` and lock are found from the subject's logical
   path (a symlink placement included), never from the cwd; `plan_assert`
   gains `range-excludes-bed` (a range that does not admit the bed core).
+- **The upgrade plan is frozen in the lock** (T-M3-04, ADR 0018):
+  `upgrade-path.sh --freeze` writes `upgrade_plan`, `upgrade_plan_hash`,
+  `upgrade_plan_phase` and `data_hash` to the Drupal root's lock in one write,
+  only after a successful resolution; in deterministic mode a later run
+  reuses the frozen plan while the request matches, and a final plan may
+  only add hops or raise F over it (`final-changes-frozen`). Readers use
+  `plan_get JQPATH [ROOT]` / `plan_frozen [ROOT]` (`scripts/lib/plan.sh`)
+  and `lock_path` (`scripts/lib/lock.sh`), which create nothing;
+  `lock_merge_json` merges several keys in one atomic write and never gives
+  a 0.9 lock a schema (nor overwrites a lock that is not one JSON object).
+  A data refresh never makes the frozen plan stale (a default P, the bed core
+  and the toolchain cell stay the frozen ones), and a loose subject's draft
+  freezes under the test-bed root it will have (`--root` of a path that does
+  not exist yet). `schemas/lock.schema.json` describes the new keys.
 - The `jq-compat` gate also rejects a jq keyword used as a `def` parameter
   (jq 1.6 refuses `def c($label)`).
 - **`schemas/upgrade-plan.schema.json`** with an example plan
@@ -369,6 +383,9 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   follow), and `/drupilot-status` and `scripts/env/state.sh` cite
   `docs/reference/state.md` instead of a README section.
 - CI installs `check-jsonschema` 0.38.2 on the Ubuntu and macOS legs.
+- The `smoke in <image>` CI jobs may run 30 minutes (was 15): debian:12-slim
+  runs the unit tests with mawk and jq 1.6, and the resolver's tests made it
+  pass 15 minutes.
 - The `checks` CI job may run 35 minutes (was 20): on macOS it runs the
   whole gate twice, and the second run hit the limit.
 

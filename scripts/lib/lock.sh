@@ -29,6 +29,46 @@ drupilot_lock_file() {
   printf '%s/drupilot-lock.json' "$(project_state_dir "$base")"
 }
 
+# lock_path [project_dir] -> the same path as drupilot_lock_file, WITHOUT
+# creating the state dir: for a reader that must leave nothing behind for a
+# root it only looked at (plan_get, upgrade-path.sh).
+lock_path() {
+  local base="${1:-${DRUPILOT_PROJECT_DIR:-$PWD}}"
+  printf '%s/drupilot-lock.json' "$(project_state_path "$base")"
+}
+
+# lock_merge_json <json-object> [project_dir] -> merge the object's top-level
+# keys into the lockfile in ONE atomic write (temp file + mv), stamping
+# .drupilot_version. A missing, empty or blank lock starts as {"schema": 1};
+# an existing one is never given a schema it lacks (a 0.9 lock stays schema
+# 0: CC-10, ADR 0015). Returns 1 without jq, for a value that is not a JSON
+# object, for a lock that is not one JSON object (left as it is), or when the
+# write fails.
+lock_merge_json() {
+  local obj="${1:-}" f tmp st
+  have_cmd jq || return 1
+  printf '%s' "$obj" | jq -e -s 'length == 1 and (.[0] | type == "object")' > /dev/null 2>&1 || return 1
+  f="$(drupilot_lock_file "${2:-${DRUPILOT_PROJECT_DIR:-$PWD}}")"
+  # A lock that holds nothing (absent, empty or blank) starts anew; one that
+  # is not a single JSON object is never overwritten.
+  st="none"
+  if [[ -s "$f" ]]; then
+    st="$(jq -r -s 'if length == 0 then "none" elif length == 1 and (.[0] | type == "object") then "ok" else "bad" end' "$f" 2> /dev/null || true)"
+  fi
+  case "$st" in
+    ok) : ;;
+    none) printf '{"schema": 1}\n' > "$f" 2> /dev/null || return 1;;
+    *) return 1;;
+  esac
+  tmp="$(mktemp "${f}.XXXXXX" 2> /dev/null)" || return 1
+  if jq --argjson o "$obj" --arg pv "$(plugin_version)" '. + $o | .drupilot_version = $pv' "$f" > "$tmp" 2> /dev/null \
+     && jq -e -s 'length == 1 and (.[0] | type == "object")' "$tmp" > /dev/null 2>&1; then
+    mv -f "$tmp" "$f"
+  else
+    rm -f "$tmp" 2> /dev/null || true; return 1
+  fi
+}
+
 # lock_get <jq-path> [default] -> read a value from the lockfile. <jq-path> is a
 # jq filter beginning with '.', e.g. '.digests.sha'. Returns the default when the
 # lock, jq or the key is absent. STDOUT only (no logging).

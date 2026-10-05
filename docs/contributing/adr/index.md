@@ -25,6 +25,7 @@ behaviour.
 | [0015](0015-toolchain-cells.md) | How a test-bed finds its toolchain cell, and how a 0.9 lock is read |
 | [0016](0016-source-era-fallback.md) | The source era when no code signal decides, and its confidence |
 | [0017](0017-upgrade-plan-resolver.md) | What the upgrade-plan resolver decides where AR-04/AR-06 are silent |
+| [0018](0018-freezing-the-upgrade-plan.md) | Freezing the upgrade plan in the lock |
 
 A new ADR takes the next free number, gets a line here and a nav line in
 `mkdocs.yml` in the same change (the `docs` gate rejects an orphan page).

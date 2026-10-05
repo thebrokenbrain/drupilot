@@ -73,6 +73,19 @@ assert_eq "an array or object field runs nothing" "$([[ -e "$T_TMP/pwned" ]] && 
 assert_eq "  and the other checks still run" "$(printf '%s' "$r" | jq -r 'map(.id) | join(" ")')" "source-above-target floor-above-final"
 assert_eq "a numeric PHP floor is read as text" \
   "$(plan_assert "$(plan 10 11 supported false 8.1 8.3 '^10 || ^11' auto keep-previous | jq -c '.php.floor = 8.4')" | jq -r '.[0].id')" "floor-above-final"
+# The FROZEN comparison (ADR 0018): over a frozen draft a final plan may only
+# add hops and raise F; over a frozen final, hops and F are free.
+EX="$(jq -c . "$T_REPO/schemas/examples/upgrade-plan.example.json")"
+DRAFT="$(printf '%s' "$EX" | jq -c '.meta.phase = "draft"')"
+FEWER="$(printf '%s' "$EX" | jq -c '.hops = [] | .range.floor = "9.5"')"
+assert_eq "over a frozen draft: a dropped hop and a lower F" \
+  "$(plan_assert "$FEWER" "$DRAFT" | jq -c 'map(select(.id == "final-changes-frozen") | .field)')" '["hops","range.floor"]'
+assert_eq "  the lowered F names the frozen strategy" \
+  "$(plan_assert "$FEWER" "$DRAFT" | jq -r 'map(select(.field == "range.floor"))[0].frozen_strategy')" "auto"
+assert_eq "over a frozen final: hops and F are free" \
+  "$(plan_assert "$FEWER" "$EX" | jq -c 'map(select(.id == "final-changes-frozen") | .field)')" '[]'
+assert_eq "over a frozen final: P is still guarded" \
+  "$(plan_assert "$(printf '%s' "$EX" | jq -c '.php.final = "8.4"')" "$EX" | jq -c 'map(.field)')" '["php.final"]'
 assert_exit "a plan that is not an object" 1 plan_assert '[1]'
 assert_exit "no plan" 1 plan_assert ''
 t_done
