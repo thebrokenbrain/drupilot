@@ -15,7 +15,7 @@ S="$T_TMP/mod"; mkdir -p "$S"; printf 'name: m\ntype: module\n' > "$S/mod.info.y
 D="$(subject_digest "$S")"
 mkdir -p "$(project_state_dir "$S")"
 jq -n --arg d "$D" '[
-  {test: "testA", type: "unit", label: null, mutation: {kind: "revert"}, verdict: "effective",
+  {test: "testA", type: "unit", label: null, mutation: {kind: "revert-to"}, verdict: "effective",
    subject_digest: $d, digest_algo: 2, at: "2026-10-05T10:00:00Z"},
   {test: "testB", type: "kernel", label: "x", mutation: null, verdict: "ineffective",
    subject_digest: "old", at: "2026-10-05T11:00:00Z"}]' > "$(negative_controls_file "$S")"
@@ -25,7 +25,7 @@ assert_eq "the summary: no timestamp" "$(printf '%s' "$SUM" | no_ts)" "0"
 assert_eq "... no at key" "$(printf '%s' "$SUM" | jq -c '[.controls[] | has("at")]')" "[false,false]"
 assert_eq "... the rest unchanged" \
   "$(printf '%s' "$SUM" | jq -c '[.total, .effective, .ineffective, .stale, [.controls[] | [.test, .verdict, .mutation, .stale]]]')" \
-  '[2,1,1,1,[["testA","effective","revert",false],["testB","ineffective",null,true]]]'
+  '[2,1,1,1,[["testA","effective","revert-to",false],["testB","ineffective",null,true]]]'
 assert_eq "the times, in the controls' order" "$(negative_controls_times "$S")" \
   '[{"test":"testA","type":"unit","label":null,"at":"2026-10-05T10:00:00Z"},{"test":"testB","type":"kernel","label":"x","at":"2026-10-05T11:00:00Z"}]'
 mkdir -p "$T_TMP/none"

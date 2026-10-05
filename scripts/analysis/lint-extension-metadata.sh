@@ -72,7 +72,7 @@
 #   -h, --help       Show this help.
 #
 # JSON (--json):
-#   {tool, subject, generated_at, checks_run:[...], subject_digest,
+#   {tool, subject, generated_at, checks_run:[...], subject_digest, digest_algo,
 #    findings:[{check, severity: error|warn|info, extension, file, line,
 #               message, suggestion}],
 #    totals:{error, warn, info}}
@@ -501,13 +501,13 @@ fi
 # --- Report --------------------------------------------------------------------
 CHECKS_JSON="$(printf '%s\n' $CHECKS | jq -R . | jq -s -c .)"
 REPORT="$(jq -R -s --arg subject "$SUBJECT" --argjson checks "$CHECKS_JSON" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --arg digest "$(subject_digest "$SUBJECT")" '
+  --arg digest "$(subject_digest "$SUBJECT")" --argjson da "$(subject_digest_algo)" '
   split("\n") | map(select(length > 0) | split("\t")
     | {check: .[0], severity: .[1], extension: .[2], file: .[3], line: (.[4] | tonumber? // 1),
        message: .[5], suggestion: (.[6] // "")})
   | sort_by((.severity | {"error":0,"warn":1,"info":2}[.]), .extension, .file, .line) as $f
   | {tool: "lint-extension-metadata", subject: $subject, generated_at: $at, checks_run: $checks,
-     subject_digest: (if $digest == "" then null else $digest end),
+     subject_digest: (if $digest == "" then null else $digest end), digest_algo: $da,
      findings: $f,
      totals: {error: ([$f[] | select(.severity == "error")] | length),
               warn: ([$f[] | select(.severity == "warn")] | length),

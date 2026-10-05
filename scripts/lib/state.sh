@@ -20,9 +20,11 @@ negative_controls_file() { printf '%s/negative-controls.json' "$(project_state_d
 
 # negative_controls_summary <subject> -> compact JSON summary of the recorded
 # negative controls ({total, effective, ineffective, error, stale, controls:
-# [{test, type, label, verdict, at, stale}]}), or "null" when none was recorded.
-# A control is "stale" when the subject's sources changed after it ran (its
-# subject_digest differs), so a report never presents it as current proof.
+# [{test, type, label, verdict, mutation, stale}]}), or "null" when none was
+# recorded. A control is "stale" when the subject's sources changed after it
+# ran (its subject_digest differs), so a report never presents it as current
+# proof. It carries no time (AR-13: a hashed artifact keeps its timestamps
+# under its top-level meta): negative_controls_times gives them.
 negative_controls_summary() {
   local s="${1:-$PWD}" f digest
   f="$(negative_controls_file "$s")"
@@ -30,7 +32,7 @@ negative_controls_summary() {
   digest="$(subject_digest "$s")"
   jq -c --arg d "$digest" '
     if (type == "array") and (length > 0) then
-      [ .[] | {test, type, label: .label, verdict, at, mutation: (.mutation.kind // null),
+      [ .[] | {test, type, label: .label, verdict, mutation: (.mutation.kind // null),
                stale: ((.subject_digest // "") != "" and $d != "" and .subject_digest != $d)} ] as $c
       | {total: ($c | length),
          effective: ([ $c[] | select(.verdict == "effective") ] | length),
@@ -39,6 +41,19 @@ negative_controls_summary() {
          stale: ([ $c[] | select(.stale) ] | length),
          controls: $c}
     else null end' "$f" 2>/dev/null || printf 'null'
+  return 0
+}
+
+# negative_controls_times <subject> -> when each recorded negative control ran,
+# in the order of negative_controls_summary's controls ([{test, type, label,
+# at}], compact), or "null" when none was recorded: what last-test.json keeps
+# under meta.negative_controls.
+negative_controls_times() {
+  local f
+  f="$(negative_controls_file "${1:-$PWD}")"
+  if [[ ! -r "$f" ]] || ! have_cmd jq; then printf 'null'; return 0; fi
+  jq -c 'if (type == "array") and (length > 0) then [ .[] | {test, type, label: .label, at: (.at // null)} ] else null end' \
+    "$f" 2>/dev/null || printf 'null'
   return 0
 }
 

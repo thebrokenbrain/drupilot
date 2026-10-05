@@ -38,9 +38,9 @@ assert_eq "the same finding from both runners and lines: one message" \
   "$(printf 'Undefined in %s/web/a.php on line 3' "$ROOT" | finding_norm_message "$ROOT")" \
   "$(printf 'Undefined  in /var/www/html/web/a.php on line 97' | finding_norm_message "$ROOT")"
 assert_eq "an empty message" "$(printf '' | finding_norm_message)" ""
-assert_eq "the jq def is the same normalization" \
-  "$(jq -n -r --arg r "$ROOT" --arg m "$(printf 'x on line 3\n in %s/a' "$ROOT")" "$(canon_jq_defs) \$m | finding_norm_message(\$r)")" \
-  "$(printf 'x on line 3\n in %s/a' "$ROOT" | finding_norm_message "$ROOT")"
+assert_eq "the jq def: the same normalization of a message without runner paths" \
+  "$(jq -n -j --arg m "$(printf ' x  on line 3\n in web/a.php ')" "$(canon_jq_defs) \$m | finding_norm_message")" \
+  "$(printf ' x  on line 3\n in web/a.php ' | finding_norm_message)"
 
 # --- worklist_get / worklist_set ---------------------------------------------
 SUBJ="$T_TMP/mod"; mkdir -p "$SUBJ"
@@ -57,7 +57,7 @@ printf '{"items":' | worklist_set "$SUBJ"; rc=$?
 assert_eq "invalid JSON: exit 1, the worklist untouched" "$rc|$(sha256_hex < "$WL")" "1|$before"
 printf '[1,2]' | worklist_set "$SUBJ"; rc=$?
 assert_eq "a non-object: exit 1, untouched" "$rc|$(sha256_hex < "$WL")" "1|$before"
-assert_eq "no temporary file is left" "$(find "$(dirname "$WL")" -name 'worklist.json?*' | grep -c . || true)" "0"
+assert_eq "no temporary file is left" "$(find "$(dirname "$WL")" -name '*worklist*' ! -name worklist.json | grep -c . || true)" "0"
 for i in 1 2 3 4 5 6; do
   printf '{"items":[],"n":%s}' "$i" | worklist_set "$SUBJ" &
 done

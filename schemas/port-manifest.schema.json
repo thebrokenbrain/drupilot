@@ -238,6 +238,7 @@
         "generated_at": {"type": "string"},
         "checks_run": {"type": "array"},
         "subject_digest": {"type": ["string", "null"]},
+        "digest_algo": {"type": "integer"},
         "findings": {"type": "array"},
         "totals": {
           "type": "object",
@@ -269,6 +270,7 @@
             "level": {"type": "string"},
             "container_php": {"type": "string"},
             "subject_digest": {"type": "string"},
+            "digest_algo": {"type": "integer"},
             "generated_at": {"type": "string"},
             "dry_run": {"type": "boolean"},
             "legs": {"type": "array"},

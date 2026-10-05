@@ -1,12 +1,37 @@
 #!/usr/bin/env bash
 # =============================================================================
 # drupilot — scripts/lib/canon.sh
-# Canonical JSON and its hash (AR-13): the form an upgrade plan is hashed in,
-# so the same plan always gives the same .upgrade_plan_hash.
+# Canonical artifacts (AR-13; DET-2 of the determinism rules): one byte form
+# for the same JSON document and its hash without the top-level "meta" (the
+# only place a hashed artifact keeps timestamps, hosts and versions: what
+# changes between two runs that compute the same thing), paths relative to
+# the Drupal root whichever runner produced them (the host or the DDEV
+# container), the LF-normalized hash of a file, the message part of a
+# finding id and the atomic store of the worklist.
 #
-# Part of the shared library: scripts/lib/common.sh sources it with the other
-# domain libs (never source it alone); see common.sh for the conventions.
+# Every function ends with `return 0`; an early `return 1` is an explicit,
+# documented failure. Part of the shared library: scripts/lib/common.sh
+# sources it with the other domain libs (never source it alone); see
+# common.sh for the conventions.
 # =============================================================================
+
+# canon_json [ROOT] -> STDIN's JSON in its canonical form: keys sorted (jq -S,
+# which sorts by code point whatever the locale), two-space indent, LF line
+# endings, a CRLF inside a string made LF; with ROOT, the runner paths are
+# stripped first (relpath_strip_runner ROOT), so the keys sort as the
+# relative paths they become. Array order is data and is kept: a producer
+# sorts its arrays on documented keys before it writes them. Several input
+# documents give several outputs; invalid JSON prints nothing.
+# shellcheck disable=SC2120  # ROOT is optional; tests and the findings stage pass it
+canon_json() {
+  local prog='walk(if type == "string" then split("\r\n") | join("\n") else . end)'
+  if [[ -n "${1:-}" ]]; then
+    relpath_strip_runner "$1" | LC_ALL=C jq -S "$prog" 2> /dev/null || true
+  else
+    LC_ALL=C jq -S "$prog" 2> /dev/null || true
+  fi
+  return 0
+}
 
 # canon_json_hashable -> STDIN's JSON in its hashable canonical form: keys
 # sorted, compact, without the top-level "meta" (generated_at, versions: what
@@ -34,4 +59,142 @@ json_hash() {
   h="$(sha256_hex)"
   [[ -n "$h" ]] && printf 'sha256:%s' "$h"
   return 0
+}
+
+# file_hash FILE -> "sha256:<hex>" of FILE's bytes with every CRLF made LF (a
+# CR inside a line is data; a last line without LF stays without one), so a
+# checkout with CRLF line endings hashes as the LF one. Nothing for a missing
+# file or without a hasher.
+file_hash() {
+  local f="${1:-}" h="" final=1
+  [[ -f "$f" && -r "$f" ]] || return 0
+  if LC_ALL=C grep -q "$(printf '\r')" "$f" 2> /dev/null; then
+    [[ -z "$(tail -c 1 "$f" 2> /dev/null)" ]] || final=0
+    h="$(LC_ALL=C awk -v final="$final" '{ sub(/\r$/, ""); if (NR > 1) printf "\n"; printf "%s", $0 }
+      END { if (NR > 0 && final == 1) printf "\n" }' "$f" | sha256_hex)"
+  else
+    h="$(sha256_hex < "$f")"
+  fi
+  [[ -n "$h" ]] && printf 'sha256:%s' "$h"
+  return 0
+}
+
+# relpath_strip_runner [ROOT] -> STDIN with the runner prefixes of the Drupal
+# root removed wherever they appear (JSON keys, values, inside messages): the
+# DDEV container's /var/www/html/ and, with ROOT, the host's ROOT/ (as given
+# and its physical path when ROOT is a symlink), each also in its JSON-escaped
+# form (\/). A bare root not followed by a path character becomes ".". So the
+# same tree gives the same root-relative paths on the host and in DDEV. The
+# match is literal (no regex), byte-wise (LC_ALL=C); a ROOT of / adds nothing.
+# STDIN is one record (a \001 byte in it is kept unless it ends the input),
+# so a last line without LF stays without one.
+relpath_strip_runner() {
+  local root="${1:-}" phys=""
+  while [[ "$root" == */ ]]; do root="${root%/}"; done
+  if [[ -n "$root" && -d "$root" ]]; then
+    phys="$(cd -P "$root" 2> /dev/null && pwd -P || true)"
+    [[ "$phys" == "$root" || "$phys" == "/" ]] && phys=""
+  fi
+  _CANON_R1="$root" _CANON_R2="$phys" LC_ALL=C awk '
+    function esc(s,   o, i, c) {
+      o = ""
+      for (i = 1; i <= length(s); i++) { c = substr(s, i, 1); o = o (c == "/" ? "\\/" : c) }
+      return o
+    }
+    function strip(s, p,   o, i) {
+      o = ""
+      while ((i = index(s, p)) > 0) { o = o substr(s, 1, i - 1); s = substr(s, i + length(p)) }
+      return o s
+    }
+    function bare(s, p,   o, i, c) {
+      o = ""
+      while ((i = index(s, p)) > 0) {
+        c = substr(s, i + length(p), 1)
+        if (c == "" || c !~ /[A-Za-z0-9._~+-]/) o = o substr(s, 1, i - 1) "."
+        else o = o substr(s, 1, i - 1 + length(p))
+        s = substr(s, i + length(p))
+      }
+      return o s
+    }
+    BEGIN {
+      RS = "\001"; n = 0
+      r[1] = ENVIRON["_CANON_R1"]; r[2] = ENVIRON["_CANON_R2"]; r[3] = "/var/www/html"
+      for (k = 1; k <= 3; k++) {
+        if (r[k] == "") continue
+        n++; P[n] = r[k] "/"; B[n] = r[k]
+        n++; P[n] = esc(r[k]) "\\/"; B[n] = esc(r[k])
+      }
+      # Longest prefix first, so a root nested in another one is matched whole.
+      for (i = 2; i <= n; i++) {
+        p = P[i]; b = B[i]
+        for (j = i - 1; j >= 1 && length(P[j]) < length(p); j--) { P[j + 1] = P[j]; B[j + 1] = B[j] }
+        P[j + 1] = p; B[j + 1] = b
+      }
+    }
+    {
+      s = $0
+      for (k = 1; k <= n; k++) s = strip(s, P[k])
+      for (k = 1; k <= n; k++) s = bare(s, B[k])
+      printf "%s%s", (NR > 1 ? "\001" : ""), s
+    }'
+  return 0
+}
+
+# canon_jq_defs -> the jq definitions of the canonical forms, to prefix a jq
+# program with (normalize-findings uses them on every finding at once):
+#   finding_norm_message   the message part of a finding id (05 §2.4): "on
+#                          line N" dropped, every whitespace run (newlines
+#                          included) made one space, trimmed. Runner paths
+#                          are stripped before (canon_json ROOT strips them
+#                          in the whole raw document).
+canon_jq_defs() {
+  printf '%s\n' 'def finding_norm_message: gsub("\\s+on line [0-9]+"; "") | gsub("\\s+"; " ") | ltrimstr(" ") | rtrimstr(" ");'
+  return 0
+}
+
+# finding_norm_message [ROOT] -> STDIN (one message, newlines included) in its
+# normalized form (canon_jq_defs), runner paths stripped first
+# (relpath_strip_runner ROOT). No trailing newline.
+finding_norm_message() {
+  relpath_strip_runner "${1:-}" | jq -R -s -j "$(canon_jq_defs) finding_norm_message" 2> /dev/null || true
+  return 0
+}
+
+# worklist_file [SUBJECT] -> the subject's worklist.json, in its hidden state
+# dir (never created here).
+worklist_file() {
+  printf '%s/worklist.json' "$(project_state_path "${1:-$PWD}")"
+  return 0
+}
+
+# worklist_get [SUBJECT] [JQ_FILTER] -> the filter (default .) applied to the
+# subject's worklist, compact; nothing when there is none or it is unreadable.
+worklist_get() {
+  local f
+  f="$(worklist_file "${1:-$PWD}")"
+  [[ -r "$f" ]] || return 0
+  jq -c "${2:-.}" "$f" 2> /dev/null || true
+  return 0
+}
+
+# worklist_set [SUBJECT] -> writes STDIN (one JSON object) as the subject's
+# worklist, in its canonical form (canon_json), atomically: a temporary file
+# in the same directory, then mv, so a reader never sees half a document and
+# concurrent writers leave one whole document. Returns 1, the worklist
+# untouched, when STDIN is not one JSON object or the write fails.
+worklist_set() {
+  local d doc tmp
+  doc="$(canon_json)"
+  if [[ -z "$doc" ]] || ! printf '%s\n' "$doc" | jq -e -s 'length == 1 and (.[0] | type) == "object"' > /dev/null 2>&1; then
+    log_err "worklist_set: STDIN is not one JSON object; the worklist is unchanged."
+    return 1
+  fi
+  d="$(project_state_dir "${1:-$PWD}")"
+  tmp="$(mktemp "$d/.worklist.json.XXXXXX" 2> /dev/null || true)"
+  if [[ -n "$tmp" ]] && printf '%s\n' "$doc" > "$tmp" && mv -f "$tmp" "$d/worklist.json"; then
+    return 0
+  fi
+  [[ -z "$tmp" ]] || rm -f "$tmp" 2> /dev/null || true
+  log_err "worklist_set: could not write $d/worklist.json; the worklist is unchanged."
+  return 1
 }

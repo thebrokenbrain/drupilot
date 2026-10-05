@@ -116,6 +116,11 @@
       "description": "subject_digest of the sources the run tested (freshness checks compare it).",
       "type": ["string", "null"]
     },
+    "digest_algo": {
+      "description": "The subject_digest algorithm (subject_digest_algo; 2 since drupilot 1.0, which also hashes *.twig, *.js and *.css). Absent in a record of drupilot 0.9 (algorithm 1), whose digest never equals a current one, so it is stale.",
+      "type": "integer",
+      "minimum": 1
+    },
     "git_head": {"type": ["string", "null"]},
     "baseline": {
       "description": "The comparison with test-baseline.json; null when there is no usable baseline, with --no-baseline, or when the comparison failed.",
@@ -164,14 +169,17 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["test", "type", "label", "verdict", "at", "mutation", "stale"],
+            "required": ["test", "type", "label", "verdict", "mutation", "stale"],
             "additionalProperties": false,
             "properties": {
               "test": {"description": "The --filter of the guarded test.", "type": "string"},
               "type": {"enum": ["unit", "kernel", "functional", "js", "all"]},
               "label": {"type": ["string", "null"]},
               "verdict": {"enum": ["effective", "ineffective", "error"]},
-              "at": {"type": "string"},
+              "at": {
+                "description": "When the control ran: written by drupilot 0.9 only. Since 1.0 the time is in meta.negative_controls (AR-13: no timestamp outside meta).",
+                "type": "string"
+              },
               "mutation": {
                 "description": "How the guarded change was undone.",
                 "enum": ["revert-to", "patch", null]
@@ -220,6 +228,28 @@
           "message": {
             "description": "First meaningful line of a fail/error message (at most 240 characters); null otherwise.",
             "type": ["string", "null"]
+          }
+        }
+      }
+    },
+    "meta": {
+      "description": "What changes between two runs that record the same result (AR-13), excluded from any hash: when each negative control ran.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "negative_controls": {
+          "description": "negative_controls_times: one entry per control of negative_controls, in its order; null when there is none.",
+          "type": ["array", "null"],
+          "items": {
+            "type": "object",
+            "required": ["test", "type", "label", "at"],
+            "additionalProperties": false,
+            "properties": {
+              "test": {"type": "string"},
+              "type": {"enum": ["unit", "kernel", "functional", "js", "all"]},
+              "label": {"type": ["string", "null"]},
+              "at": {"type": ["string", "null"]}
+            }
           }
         }
       }

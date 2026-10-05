@@ -16,24 +16,26 @@ d0="$(subject_digest "$S")"
 assert_match "a 64-hex digest" "$d0" '^[0-9a-f]{64}$'
 assert_eq "subject_digest_algo is 2" "$(subject_digest_algo)" "2"
 
-changed() { local d; d="$(subject_digest "$S")"; [[ "$d" != "$d0" ]] && echo changed || echo same; d0="$d"; }
+# step -> R: "changed" or "same" against the previous digest (no subshell, so
+# the previous digest moves on).
+step() { local d; d="$(subject_digest "$S")"; if [[ "$d" != "$d0" ]]; then R=changed; else R=same; fi; d0="$d"; }
 mkdir -p "$S/templates" "$S/js" "$S/css"
 printf '<div>{{ widget }}</div>\n' > "$S/templates/widget.html.twig"
-assert_eq "a new Twig template changes it" "$(changed)" "changed"
+step; assert_eq "a new Twig template changes it" "$R" "changed"
 printf '<div>{{- widget -}}</div>\n' > "$S/templates/widget.html.twig"
-assert_eq "a Twig-only edit changes it" "$(changed)" "changed"
+step; assert_eq "a Twig-only edit changes it" "$R" "changed"
 printf 'Drupal.behaviors.w = {};\n' > "$S/js/w.js"
-assert_eq "a JS file changes it" "$(changed)" "changed"
+step; assert_eq "a JS file changes it" "$R" "changed"
 printf '.w { color: red; }\n' > "$S/css/w.css"
-assert_eq "a CSS file changes it" "$(changed)" "changed"
+step; assert_eq "a CSS file changes it" "$R" "changed"
 printf '.w { color: blue; }\n' > "$S/css/w.css"
-assert_eq "a CSS-only edit changes it" "$(changed)" "changed"
+step; assert_eq "a CSS-only edit changes it" "$R" "changed"
 printf 'diff\n' > "$S/legacy_widgets-port-to-drupal-11.patch"
 printf '# issue\n' > "$S/legacy_widgets-issue.md"
-assert_eq "a local patch or issue text next to the module does not" "$(changed)" "same"
+step; assert_eq "a local patch or issue text next to the module does not" "$R" "same"
 mkdir -p "$S/node_modules/x" "$S/vendor/y" "$S/.git"
 printf 'x\n' > "$S/node_modules/x/i.js"; printf 'y\n' > "$S/vendor/y/s.css"; printf 'z\n' > "$S/.git/a.twig"
-assert_eq "node_modules, vendor and .git do not" "$(changed)" "same"
+step; assert_eq "node_modules, vendor and .git do not" "$R" "same"
 assert_eq "the same tree elsewhere: the same digest" "$(cp -R "$S" "$T_TMP/copy" && subject_digest "$T_TMP/copy")" "$d0"
 
 # Algorithm 1 (drupilot 0.9), restated: on a subject without Twig/JS/CSS its

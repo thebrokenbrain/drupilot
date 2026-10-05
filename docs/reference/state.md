@@ -31,3 +31,11 @@ bash "$CLAUDE_PLUGIN_ROOT/scripts/env/state.sh" refresh --subject web/modules/cu
 
 `show` and `list` are read-only (they never create a state dir); the table goes to stderr and `--json` puts the payload on stdout. A module ported before this record existed is still listed by `--root` or `--subject`, its stage derived from its older records.
 
+
+## Freshness
+
+A verdict is only shown as current while the module's sources are the ones it was computed on. Each record tied to a version of the sources — a test run (`last-test.json`) and the pre-port baseline (`test-baseline.json`), a negative control, a core matrix, the metadata lint, the Rector dry-run — keeps the `subject_digest` of those sources and `digest_algo`, the algorithm that computed it. The digest covers the PHP family (`*.php`, `*.module`, `*.inc`, `*.install`, `*.theme`, `*.profile`, `*.engine`), `*.yml`, `composer.json`, `*.twig`, `*.js` and `*.css`, skipping `.git/`, `vendor/` and `node_modules/`; a patch or issue text next to the module does not count. A verdict whose digest differs from the current one is reported stale (`fresh: false` above, "stale" in the port report); a baseline taken on the current code is noted as unable to show what the port changed.
+
+drupilot 1.0 computes algorithm 2, which added Twig, JS and CSS. Every digest recorded by drupilot 0.9 (algorithm 1, no `digest_algo`) differs from it, so after an upgrade those records show as stale once: re-run the step to refresh them.
+
+Records that are compared or hashed between runs keep their timestamps under a top-level `meta` object, so two runs that compute the same result write the same bytes outside it: `rector-rules.json` keeps `meta.generated_at`, and `last-test.json` keeps when each negative control ran in `meta.negative_controls` (`recorded_at` stays where 0.9 put it).
