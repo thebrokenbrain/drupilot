@@ -55,14 +55,14 @@ done
 have_cmd git || die "release.sh needs git" 1
 have_cmd jq || die "release.sh needs jq" 1
 [[ -n "$DATE" ]] || DATE="$(date -u +%Y-%m-%d)"
-printf '%s\n' "$DATE" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || die "--date must be YYYY-MM-DD, got '$DATE'" 1
+printf '%s\n' "$DATE" | grep_q -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || die "--date must be YYYY-MM-DD, got '$DATE'" 1
 
 PJ="$REPO/.claude-plugin/plugin.json"
 CL="$REPO/CHANGELOG.md"
 SEMVER='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
 
 # --- 1. Validate ----------------------------------------------------------------
-printf '%s\n' "$VERSION" | grep -qE "$SEMVER" || die "'$VERSION' is not a valid version (X.Y.Z or X.Y.Z-pre.N)" 1
+printf '%s\n' "$VERSION" | grep_q -E "$SEMVER" || die "'$VERSION' is not a valid version (X.Y.Z or X.Y.Z-pre.N)" 1
 PREV="$(jq -r '.version // empty' "$PJ")"
 
 # semver_gt comes from common.sh.
@@ -88,7 +88,7 @@ fi
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-release.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 jq --arg v "$VERSION" '.version = $v' "$PJ" > "$TMP/plugin.json"
-BASE_URL="$(sed -n 's#^\[Unreleased\]: \(.*\)/compare/.*#\1#p' "$CL" | head -n 1)"
+BASE_URL="$(sed -n 's#^\[Unreleased\]: \(.*\)/compare/.*#\1#p' "$CL" | sed -n '1p')"
 [[ -n "$BASE_URL" ]] || die "CHANGELOG.md has no '[Unreleased]: <repo>/compare/...' link" 1
 awk -v v="$VERSION" -v d="$DATE" -v p="$PREV" -v u="$BASE_URL" -v promote="$PROMOTE" '
   /^## \[Unreleased\]/ && !h {

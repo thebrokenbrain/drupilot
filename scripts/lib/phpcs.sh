@@ -83,7 +83,7 @@ find_phpcs_ruleset() {
 phpcs_ruleset_value() {
   local f="$1" tag="$2" name="$3"
   grep -o "<${tag}[[:space:]][^>]*>" "$f" 2>/dev/null \
-    | grep "name=\"${name}\"" | head -n 1 \
+    | grep "name=\"${name}\"" | sed -n '1p' \
     | sed -n 's/.*value="\([^"]*\)".*/\1/p'
   return 0
 }

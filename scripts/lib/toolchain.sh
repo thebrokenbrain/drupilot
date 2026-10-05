@@ -164,7 +164,7 @@ rector_floor_tokens() {
 # rector_config_floor FILE -> the floor a rendered rector.php targets (8.1 from
 # its ->withPhpVersion(PhpVersion::PHP_81)); nothing when it has none.
 rector_config_floor() {
-  sed -n 's/.*->withPhpVersion(PhpVersion::PHP_\([0-9]\)\([0-9]\)).*/\1.\2/p' "${1:-}" 2>/dev/null | head -n 1
+  sed -n 's/.*->withPhpVersion(PhpVersion::PHP_\([0-9]\)\([0-9]\)).*/\1.\2/p' "${1:-}" 2>/dev/null | sed -n '1p'
   return 0
 }
 
@@ -224,7 +224,7 @@ phpstan_extension_config_problem() {
       case "$abs" in /var/www/html/*) [[ -n "$mount" ]] && abs="$mount/${abs#/var/www/html/}";; esac
       [[ -n "$abs" && -f "$abs/$inc" ]] && continue
       printf '%s (%s)\n' "$name" "$inc"
-    done | head -n 3 | tr '\n' ' ' || true)"
+    done | sed -n '1,3p' | tr '\n' ' ' || true)"
   if [[ -n "$missing" ]]; then
     printf 'it points to extension files that do not exist: %s' "$missing"
     return 1
@@ -233,7 +233,7 @@ phpstan_extension_config_problem() {
     listed="$(grep -oE "^  '[^']+' =>" "$gc" 2>/dev/null | sed -E "s/^  '//; s/' =>\$//" || true)"
     while IFS= read -r name; do
       [[ -n "$name" ]] || continue
-      if ! printf '%s\n' "$listed" | grep -qxF "$name"; then
+      if ! printf '%s\n' "$listed" | grep_q -xF "$name"; then
         printf 'it does not list the installed PHPStan extension %s' "$name"
         return 1
       fi
@@ -389,7 +389,7 @@ installed_package_version() {
 rector_output_ok() {
   local rc="${1:-1}" raw="${2:-}"
   case "$rc" in 0|2) ;; *) return 1;; esac
-  printf '%s\n' "$raw" | grep -qE '^[[:space:]]*\[OK\][[:space:]]' || return 1
+  printf '%s\n' "$raw" | grep_q -E '^[[:space:]]*\[OK\][[:space:]]' || return 1
   return 0
 }
 
@@ -428,7 +428,7 @@ rector_error_excerpt() {
       /Fatal error|Uncaught|Exception|Could not |not found|Failed to execute command/ {
         l = clean($0); if (length(l) > 0) print l
       }
-      END { flush() }' | head -n 8)"
+      END { flush() }' | sed -n '1,8p')"
   if [[ -z "$out" ]]; then
     out="$(printf '%s\n' "$raw" | sed -e "s/$(printf '\033')\\[[0-9;]*[A-Za-z]//g" | grep -v '^[[:space:]]*$' | tail -n 5 || true)"
   fi
@@ -521,7 +521,7 @@ PHP
   rm -rf "$dir" 2>/dev/null || true
   # shellcheck disable=SC2086  # intentional word-split: runner is a command prefix.
   raw="$(cd "$r" && $runner vendor/bin/phpstan --version 2>&1)" && rc=0 || rc=$?
-  if [[ "$rc" != "0" ]] || ! printf '%s' "$raw" | grep -q 'PHPStan'; then
+  if [[ "$rc" != "0" ]] || ! printf '%s' "$raw" | grep_q 'PHPStan'; then
     printf 'phpstan --version failed (exit %s): %s' "$rc" "$(printf '%s\n' "$raw" | tail -n 5)"
     return 1
   fi

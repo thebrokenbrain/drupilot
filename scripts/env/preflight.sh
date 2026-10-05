@@ -111,7 +111,7 @@ config_enum DRUPILOT_CORE_CACHE           auto   auto locked off        >/dev/nu
 _vc="$(config_get DRUPILOT_VERIFY_CORES auto)"
 case "$_vc" in
   auto|off) : ;;
-  *) printf '%s' "$_vc" | grep -qE '^[[:space:]]*[0-9]+(\.[0-9]+)?(\.x)?[[:space:]]*(,[[:space:]]*[0-9]+(\.[0-9]+)?(\.x)?[[:space:]]*)*$' \
+  *) printf '%s' "$_vc" | grep_q -E '^[[:space:]]*[0-9]+(\.[0-9]+)?(\.x)?[[:space:]]*(,[[:space:]]*[0-9]+(\.[0-9]+)?(\.x)?[[:space:]]*)*$' \
        || log_err "DRUPILOT_VERIFY_CORES='$_vc' is invalid. Allowed: auto, off, or a comma list of core legs such as 10,11 or 10.3,11";;
 esac
 
@@ -338,7 +338,7 @@ if [[ "$EXTENDED" == "1" ]]; then
   XL_OK="false"; XL_VER=""
   if have_cmd xmllint; then
     XL_OK="true"
-    XL_VER="$(xmllint --version 2>&1 | sed -n 's/.*using libxml version \([0-9][0-9]*\).*/\1/p' | head -n1)"
+    XL_VER="$(xmllint --version 2>&1 | sed -n 's/.*using libxml version \([0-9][0-9]*\).*/\1/p' | sed -n '1p')"
     [[ -n "$XL_VER" ]] && XL_VER="libxml $XL_VER"
   fi
   CHECKS+=("$(emit_check xmllint "xmllint" "validates generated XML configs (optional)" health "setup" soft "$XL_OK" "$XL_VER" "" "$XL_OK" "$(hint_for xmllint)")")
@@ -352,7 +352,7 @@ if [[ "$EXTENDED" == "1" ]]; then
     for _pc in phpcs.xml.dist phpcs.xml; do
       [[ -f "$HROOT/$_pc" ]] || continue
       if have_cmd xmllint; then
-        _xerr="$(xmllint --noout "$HROOT/$_pc" 2>&1 | head -n 2 | tr '\n' ' ' || true)"
+        _xerr="$(xmllint --noout "$HROOT/$_pc" 2>&1 | sed -n '1,2p' | tr '\n' ' ' || true)"
         if [[ -z "$_xerr" ]]; then
           CHECKS+=("$(emit_check phpcs_config "$_pc" "the root's PHPCS ruleset is well-formed XML" health "analyze" soft true "valid" "" true "")")
         else

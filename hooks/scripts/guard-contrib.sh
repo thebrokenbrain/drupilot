@@ -137,7 +137,7 @@ commit_hook_bypass() {
 
 HOOKS_REASON=""
 _hguard="$(config_get DRUPILOT_HOOKS_GUARD ask 2>/dev/null || echo ask)"
-if [[ "$(lc "$_hguard")" != "off" ]] && printf '%s' "$CMD" | grep -qE '(^|[^[:alnum:]_.-])git([[:space:]]|$)'; then
+if [[ "$(lc "$_hguard")" != "off" ]] && printf '%s' "$CMD" | grep_q -E '(^|[^[:alnum:]_.-])git([[:space:]]|$)'; then
   _bypass="$(commit_hook_bypass "$CMD" 2>/dev/null || true)"
   if [[ -n "$_bypass" ]]; then
     _what="${_bypass%%$'\t'*}"; _cdir="${_bypass#*$'\t'}"
@@ -167,26 +167,26 @@ OUTWARD=0
 REASON=""
 
 # git push (to any remote — this is the classic outward action).
-if printf '%s' "$CMD" | grep -qE '(^|[;&|[:space:]])git[[:space:]]+([^;&|]*[[:space:]])?push([[:space:]]|$)'; then
+if printf '%s' "$CMD" | grep_q -E '(^|[;&|[:space:]])git[[:space:]]+([^;&|]*[[:space:]])?push([[:space:]]|$)'; then
   OUTWARD=1
   REASON="This command runs 'git push', which publishes commits to a remote."
 fi
 
 # Any reference to the Drupal GitLab hosts or an issue fork remote.
-if printf '%s' "$CMD" | grep -qE "${GITLAB_SSH_HOST//./\\.}|${GITLAB_HTTPS_HOST//./\\.}|git@git\.drupal\.org:issue/|/issue/"; then
+if printf '%s' "$CMD" | grep_q -E "${GITLAB_SSH_HOST//./\\.}|${GITLAB_HTTPS_HOST//./\\.}|git@git\.drupal\.org:issue/|/issue/"; then
   OUTWARD=1
   [[ -z "$REASON" ]] && REASON="This command targets the Drupal.org GitLab (issue fork remote)."
 fi
 
 # glab mr ... (open/manage a Merge Request via the GitLab CLI).
-if printf '%s' "$CMD" | grep -qE '(^|[;&|[:space:]])glab[[:space:]]+([^;&|]*[[:space:]])?mr([[:space:]]|$)'; then
+if printf '%s' "$CMD" | grep_q -E '(^|[;&|[:space:]])glab[[:space:]]+([^;&|]*[[:space:]])?mr([[:space:]]|$)'; then
   OUTWARD=1
   REASON="This command uses 'glab mr', which opens or manages a Merge Request."
 fi
 
 # curl to a GitLab API endpoint (.../api/v4/...), typically MR creation.
-if printf '%s' "$CMD" | grep -qiE '(^|[;&|[:space:]])curl([[:space:]]|$)' \
-   && printf '%s' "$CMD" | grep -qE '/api/v[0-9]+/'; then
+if printf '%s' "$CMD" | grep_q -iE '(^|[;&|[:space:]])curl([[:space:]]|$)' \
+   && printf '%s' "$CMD" | grep_q -E '/api/v[0-9]+/'; then
   OUTWARD=1
   REASON="This command calls a GitLab API endpoint with curl (likely to open/manage an MR)."
 fi
@@ -210,7 +210,7 @@ fi
 UNATTENDED=0
 config_bool DRUPILOT_AUTONOMOUS 0 && UNATTENDED=1
 case "$(lc "${DRUPILOT_NONINTERACTIVE:-}")" in 1|true|yes|on) UNATTENDED=1;; esac
-if printf '%s' "$CMD" | grep -qiE '(^|[;&|[:space:]])(env[[:space:]]+)?DRUPILOT_(NONINTERACTIVE|AUTONOMOUS)=["'"'"']?(1|true|yes|on)([^A-Za-z0-9_]|$)'; then
+if printf '%s' "$CMD" | grep_q -iE '(^|[;&|[:space:]])(env[[:space:]]+)?DRUPILOT_(NONINTERACTIVE|AUTONOMOUS)=["'"'"']?(1|true|yes|on)([^A-Za-z0-9_]|$)'; then
   UNATTENDED=1
 fi
 if [[ "$UNATTENDED" == "1" ]]; then

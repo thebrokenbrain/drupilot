@@ -219,7 +219,7 @@ ere_problem() {
   fi
   grep -E -e "$p" </dev/null >/dev/null 2>&1 || rc=$?
   if [[ "$rc" -eq 2 ]]; then printf 'is not a valid POSIX ERE for grep -E'; return 0; fi
-  if printf '\n' | grep -qE -e "$p" 2>/dev/null; then
+  if printf '\n' | grep_q -E -e "$p" 2>/dev/null; then
     printf 'matches an empty line, so it would match every line'
     return 0
   fi
@@ -243,7 +243,7 @@ rule_problem() {
     port-safety:*)
       name="${ref#port-safety:}"
       # The check names come from check-port-safety.sh itself (its ALL_CHECKS).
-      checks="$(sed -n 's/^ALL_CHECKS="\(.*\)"$/\1/p' "$SCRIPT_DIR/check-port-safety.sh" 2>/dev/null | head -n 1)"
+      checks="$(sed -n 's/^ALL_CHECKS="\(.*\)"$/\1/p' "$SCRIPT_DIR/check-port-safety.sh" 2>/dev/null | sed -n '1p')"
       case " $checks " in
         *" $name "*) ;;
         *) printf "names an unknown check-port-safety.sh check '%s'" "$name";;
@@ -462,7 +462,7 @@ cmd_scan() {
 cmd_add() {
   local cat reason entry new mn_default="" date
   [[ -n "$ID" ]] || die "add needs --id ID." 1
-  printf '%s' "$ID" | grep -Eq '^[a-z0-9][a-z0-9._-]*$' || die "Invalid --id '$ID': use lowercase letters, digits, '.', '_' or '-'." 1
+  printf '%s' "$ID" | grep_q -E '^[a-z0-9][a-z0-9._-]*$' || die "Invalid --id '$ID': use lowercase letters, digits, '.', '_' or '-'." 1
   [[ -n "$FIX" ]] || die "add needs --fix TEXT (the fix that worked)." 1
   [[ -n "$WHY" ]] || die "add needs --why TEXT (why it was needed)." 1
   [[ -n "$PATTERN" || -n "$RULE" ]] || die "add needs a detector: --pattern ERE and/or --rule REF." 1
@@ -478,7 +478,7 @@ cmd_add() {
     reason="$(rule_problem "$RULE")"
     [[ -z "$reason" ]] || die "Refusing --rule '$RULE': it $reason." 1
   fi
-  [[ -z "$LAYER" ]] || printf '%s' "$LAYER" | grep -Eq '^[0-9]+$' || die "--layer must be a number." 1
+  [[ -z "$LAYER" ]] || printf '%s' "$LAYER" | grep_q -E '^[0-9]+$' || die "--layer must be a number." 1
   if [[ -n "$SUBJECT_ABS" ]]; then
     mn_default="$(subject_machine_name "$SUBJECT_ABS" 2>/dev/null || basename "$SUBJECT_ABS")"
     [[ -n "$LAYER" ]] || LAYER="$(state_get "$SUBJECT_ABS" '.portfolio.layer' '')"

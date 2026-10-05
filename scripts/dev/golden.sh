@@ -120,7 +120,7 @@ GOLDENS="$(printf 'baseline-0.9\t%s\n' "$REPO/tests/baseline/v0.9.0"
              [[ -d "$d" ]] && printf '%s\t%s\n' "$(basename "$d" .golden)" "$d"
            done)"
 for _n in $(printf '%s' "$ONLY" | tr ',' ' '); do
-  printf '%s\n' "$GOLDENS" | cut -f1 | grep -qxF -- "$_n" || die "Unknown golden: $_n" 1
+  printf '%s\n' "$GOLDENS" | cut -f1 | grep_q -xF -- "$_n" || die "Unknown golden: $_n" 1
 done
 
 check_manifest() {
@@ -142,7 +142,7 @@ check_manifest() {
   done <<< "$listed"
   while IFS= read -r f; do
     [[ -n "$f" ]] || continue
-    printf '%s\n' "$listed" | grep -qxF -- "$f" || { result "$name" fail "$f is not pinned in golden.json"; return 0; }
+    printf '%s\n' "$listed" | grep_q -xF -- "$f" || { result "$name" fail "$f is not pinned in golden.json"; return 0; }
   done < <(golden_files "$dir")
   result "$name" pass "$(printf '%s\n' "$listed" | grep -c .) pinned file(s) match"
   return 0
@@ -205,7 +205,7 @@ while IFS="$(printf '\t')" read -r name dir; do
     # what the run produced, not only what it lost (an intermittent
     # difference cannot be rerun to see it).
     _diff="$( { grep -E '^    [+][^+]' "$TMP/bl.err"; grep -E '^    [-][^-]' "$TMP/bl.err"; } 2>/dev/null \
-      | head -n 24 | sed 's/^    //' | tr '\n' '|' || true)"
+      | sed -n '1,24p' | sed 's/^    //' | tr '\n' '|' || true)"
     result "$name" fail "${_why:-$(tail -n 3 "$TMP/bl.err" | tr '\n' ' ')}${_diff:+ — diff: $_diff}"
   fi
 done <<< "$GOLDENS"

@@ -36,6 +36,21 @@ die() { log_err "$1"; exit "${2:-1}"; }
 # ---------------------------------------------------------------------------
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
 
+# grep_q ARGS... -> `grep -q ARGS...` that reads ALL of its input, for a
+# pipeline (`cmd | grep_q -E 'x'`). grep -q stops at the first match, and a
+# producer still writing then dies of SIGPIPE, which pipefail turns into a
+# failed pipeline: a wrong answer in an `if`, or set -e aborting the script
+# with exit 141 (an intermittent failure under load or with BusyBox tools).
+# The count goes through a command substitution because GNU grep also stops
+# early when its output is /dev/null. 0 on a match, 1 otherwise (a grep
+# error included). Never `| head`, `| grep -q`/`-m`/`-l` or an awk `exit` in
+# a pipeline either: the `sigpipe` gate of scripts/dev/check.sh enforces it.
+grep_q() {
+  local n
+  n="$(grep -c "$@" 2> /dev/null)" || true
+  [[ "${n:-0}" =~ ^[0-9]+$ && "$n" -gt 0 ]]
+}
+
 # print_usage <script> -> prints the script's header comment block (the lines
 # between its first two "# ====" rules, without the leading "# ") on STDOUT, for
 # -h/--help. Only the header is printed: later comments, shellcheck directives
@@ -86,7 +101,7 @@ semver_gt() {
 
 # extract_semver <string> -> first X.Y(.Z) found
 extract_semver() {
-  printf '%s' "$1" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1
+  printf '%s' "$1" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | sed -n '1p'
 }
 
 # tool_version <cmd> -> detected version (best-effort), empty if unavailable
@@ -94,14 +109,14 @@ tool_version() {
   local cmd="$1" out=""
   have_cmd "$cmd" || { printf ''; return 1; }
   case "$cmd" in
-    php)      out="$(php -r 'echo PHP_VERSION;' </dev/null 2>/dev/null || php -v </dev/null 2>&1 | head -n1)";;
-    composer) out="$(composer --version </dev/null 2>/dev/null | head -n1)";;
-    docker)   out="$(docker --version </dev/null 2>&1 | head -n1)";;
-    ddev)     out="$(ddev --version </dev/null 2>&1 | head -n1)";;
-    git)      out="$(git --version </dev/null 2>&1 | head -n1)";;
-    jq)       out="$(jq --version </dev/null 2>&1 | head -n1)";;
-    drush)    out="$(drush --version </dev/null 2>&1 | head -n1)";;
-    *)        out="$("$cmd" --version </dev/null 2>&1 | head -n1)";;
+    php)      out="$(php -r 'echo PHP_VERSION;' </dev/null 2>/dev/null || php -v </dev/null 2>&1 | sed -n '1p')";;
+    composer) out="$(composer --version </dev/null 2>/dev/null | sed -n '1p')";;
+    docker)   out="$(docker --version </dev/null 2>&1 | sed -n '1p')";;
+    ddev)     out="$(ddev --version </dev/null 2>&1 | sed -n '1p')";;
+    git)      out="$(git --version </dev/null 2>&1 | sed -n '1p')";;
+    jq)       out="$(jq --version </dev/null 2>&1 | sed -n '1p')";;
+    drush)    out="$(drush --version </dev/null 2>&1 | sed -n '1p')";;
+    *)        out="$("$cmd" --version </dev/null 2>&1 | sed -n '1p')";;
   esac
   extract_semver "$out"
 }

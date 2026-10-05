@@ -239,7 +239,7 @@ VENDOR_RECTOR="$DRUPAL_ROOT/vendor/palantirnet/drupal-rector/rector.php"
 TEMPLATE_RECTOR="$(plugin_root)/templates/rector.php.tmpl"
 
 # Current drupilot template generation (the marker line in the template header).
-RECTOR_TEMPLATE_VERSION="$(grep -oE 'drupilot-template-version: [0-9]+' "$TEMPLATE_RECTOR" 2>/dev/null | head -n1 || true)"
+RECTOR_TEMPLATE_VERSION="$(grep -oE 'drupilot-template-version: [0-9]+' "$TEMPLATE_RECTOR" 2>/dev/null | sed -n '1p' || true)"
 
 # write_rector_from_template — render the drupilot template into rector.php.
 write_rector_from_template() {
@@ -333,7 +333,7 @@ RECTOR_COMPAT_PHP="$DRUPAL_ROOT/rector-compat.php"
 TEMPLATE_COMPAT="$(plugin_root)/templates/rector-compat.php.tmpl"
 if [[ "$COMPAT" == "1" ]]; then
   [[ -f "$TEMPLATE_COMPAT" ]] || die "The compat pass needs $TEMPLATE_COMPAT, which is missing." 2
-  COMPAT_TEMPLATE_VERSION="$(grep -oE 'drupilot-template-version: [0-9]+' "$TEMPLATE_COMPAT" 2>/dev/null | head -n1 || true)"
+  COMPAT_TEMPLATE_VERSION="$(grep -oE 'drupilot-template-version: [0-9]+' "$TEMPLATE_COMPAT" 2>/dev/null | sed -n '1p' || true)"
   write_compat_from_template() {
     render_template "$TEMPLATE_COMPAT" "$RECTOR_COMPAT_PHP" "SUBJECT_PATH=$SUBJECT_REL" ${FLOOR_TOKENS[@]+"${FLOOR_TOKENS[@]}"} \
       || die "Could not render $TEMPLATE_COMPAT into $RECTOR_COMPAT_PHP." 1

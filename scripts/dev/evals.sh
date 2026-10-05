@@ -100,7 +100,7 @@ tabs_of() {
          h="$(printf '%s' "$t" | sed -E 's/^"([^"]*)".*$/\1/')";;
     esac
     k="$(jq -r --arg h "$h" '[.choices | to_entries[] | select(.value.header == $h) | .key][0] // empty' "$PR/config/choices.json")"
-    if [[ -n "$k" ]] && ! printf '%s\n' "$keyed" | grep -qxF -- "$k"; then printf '%s\n' "$k"; fi
+    if [[ -n "$k" ]] && ! printf '%s\n' "$keyed" | grep_q -xF -- "$k"; then printf '%s\n' "$k"; fi
   done
   return 0
 }
@@ -122,7 +122,7 @@ static_layer() {
   fi
   words="$(jq -r '.mode_words | join("|")' "$EVD/mode-inference.json")"
   hint="$(awk 'NR == 1 && /^---/ { f = 1; next } f && /^---/ { exit } f && /^argument-hint:/' "$PR/commands/drupilot.md")"
-  if printf '%s' "$hint" | grep -qF -- "[$words]"; then result "mode-words" pass "argument-hint offers [$words]"
+  if printf '%s' "$hint" | grep_q -F -- "[$words]"; then result "mode-words" pass "argument-hint offers [$words]"
   else result "mode-words" fail "argument-hint does not offer [$words]: $hint"; fi
   # The mode-inference rules: the block from "**Mode inference" to the next
   # top-level bullet, split into its sub-bullets.
@@ -141,7 +141,8 @@ static_layer() {
         while (match(before, /[*][*]`[a-z]+`[*][*]/)) { last = substr(before, RSTART + 3, RLENGTH - 6); before = substr(before, RSTART + RLENGTH) }
         return last
       }
-      /^  - / { if (b != "") { m = bind(b); if (m != "") { print m; done = 1; exit } } b = $0; next }
+      done { next }
+      /^  - / { if (b != "") { m = bind(b); if (m != "") { print m; done = 1; next } } b = $0; next }
       { b = b " " $0 }
       END { if (!done && b != "") { m = bind(b); if (m != "") print m } }')"
     if [[ "$got" == "$mode" ]]; then
@@ -153,7 +154,7 @@ static_layer() {
   # The rules that keep an auto run tab-free and push-free (the live layer
   # checks the behaviour itself): each must still be stated where listed.
   while IFS="$(printf '\t')" read -r f cue; do
-    if tr '\n' ' ' < "$PR/$f" 2>/dev/null | tr -s '[:space:]' ' ' | grep -qF -- "$cue"; then
+    if tr '\n' ' ' < "$PR/$f" 2>/dev/null | tr -s '[:space:]' ' ' | grep_q -F -- "$cue"; then
       result "auto rule: $cue" pass "stated in $f"
     else
       result "auto rule: $cue" fail "$f no longer states it"
@@ -232,7 +233,7 @@ live_layer() {
       if [[ "$(cat "$TMP/runs/$n.$i.rc" 2>/dev/null)" != "0" || ! -s "$TMP/runs/$n.$i" ]]; then
         got="<no answer>"   # claude failed, timed out or printed nothing: never equals an expectation
       elif [[ "$kind" == "mode" ]]; then
-        got="$(sed -n 's/.*DRUPILOT_MODE=\([a-z]*\).*/\1/p' "$TMP/runs/$n.$i" 2>/dev/null | head -n 1)"
+        got="$(sed -n 's/.*DRUPILOT_MODE=\([a-z]*\).*/\1/p' "$TMP/runs/$n.$i" 2>/dev/null | sed -n '1p')"
       elif ! grep -q 'TAB=' "$TMP/runs/$n.$i" && grep -qx '[[:space:]]*NO_TABS[[:space:]]*' "$TMP/runs/$n.$i"; then
         got="NO_TABS"
       else
