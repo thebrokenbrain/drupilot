@@ -377,6 +377,12 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   developer machine, and the macOS CI leg, which runs the whole gate twice,
   no longer nears its timeout. Results print as each test ends; the `--json`
   summary keeps the tests' order.
+  - The default follows the CPUs the process may use (`nproc`, a cgroup CPU
+    quota). The per-test timeout grows when `--jobs` exceeds them
+    (`--timeout`).
+  - Each test runs in its own process group. Ctrl-C or a TERM sends TERM to
+    the running tests, then KILL after 3 s, and waits for them: the run ends
+    with exit 130 and leaves no process and no temp dir behind.
 - **The `config-keys` gate fails** on an undeclared or inconsistent
   `DRUPILOT_*` key instead of warning (T-M3-14). `DRUPILOT_EXPERIMENTAL_D7`,
   which the D7-AUTO message names, is declared (environment only until the
