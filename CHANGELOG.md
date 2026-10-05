@@ -341,8 +341,12 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     it; `render-templates.sh --profile refactor` renders it, and
     `/drupilot-refactor` does so before its PHPStan run.
 
-  `render-templates.sh --json` gains `phpstan_profile`. A template-2
-  `phpstan.neon` is upgraded after a backup; a hand-edited one is kept.
+  `render-templates.sh --json` gains `phpstan_profile`. An untouched
+  `phpstan.neon` follows the plan: `run-phpstan.sh` re-renders it, after a
+  backup and with its profile, when the plan moved since (the port's final
+  freeze; a refactor refreezes the final plan for the range it applies). A
+  template-2 `phpstan.neon`, edited or not, is upgraded after a backup with its
+  diff printed; a hand-edited template-3 one is kept.
 - **Refactor: the core-target decision is a function of its own.**
   `strategy_decide` computes the decision for any target major (the ranges
   from `config/targets/<T>.json`, the older-major signals as the majors below

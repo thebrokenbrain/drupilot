@@ -1122,6 +1122,12 @@ that drupal-check fixes). The refactor phase raises it to 5-6
 (DRUPILOT_PHPSTAN_LEVEL_REFACTOR). PHPStan needs the Drupal core tree present
 but does NOT bootstrap a database.
 
+The config is the root's phpstan.neon (else phpstan.neon.dist). A drupilot
+render nobody edited (its sha256 is the one kept in the root's lock) follows
+the current upgrade plan: when the plan moved since it was rendered (the
+port's final freeze, a refactor), it is re-rendered first, after a backup,
+with its own profile (ADR 0020). A hand-edited one is used as it is.
+
 Usage:
   run-phpstan.sh --subject DIR [--level N] [--json]
 
@@ -2786,10 +2792,9 @@ Options:
                       floor is not a token: it follows the core target and
                       DRUPILOT_REQUIRE_PHP_FLOOR.
   --profile P         The PHPStan profile of phpstan.neon: compat (Phase 1:
-                      phpstan-drupal's deprecated-hook checks, without its
-                      opinion rules) or refactor (Phase 2: every
-                      phpstan-drupal rule as it ships). Default: the plan's
-                      phpstan.profile (compat).
+                      phpstan-drupal's rules without its four opinion rules)
+                      or refactor (Phase 2: every phpstan-drupal rule as it
+                      ships). Default: the plan's phpstan.profile (compat).
   --force             Replace a file that differs (after backing it up).
   --dry-run           Render and validate, report what would happen; write
                       nothing.

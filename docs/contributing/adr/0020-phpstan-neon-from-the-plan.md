@@ -73,6 +73,20 @@ Several things are left open:
      untouched render is regenerated (its sha256 is in the lock, ADR 0019); a
      hand-edited one stays (exit 3) and PHPStan runs with it.
    - `render-templates.sh --json` reports `phpstan_profile`.
+6. **The file follows the plan.** The port freezes the final plan after the
+   setup rendered `phpstan.neon` from the draft, and the refactor refreezes it
+   for the range it applies (`upgrade-path.sh --phase final --range ...`).
+   - `run-phpstan.sh` re-renders an untouched `phpstan.neon` first (its
+     sha256 is the one kept in the lock), after a backup and keeping the
+     profile of its `drupilot-phpstan-profile` line, as `run-rector.sh` does
+     for `rector.php`.
+   - Without this, a stale minimum rejects code Rector rightly wrote for the
+     new floor. In the lab, PHPStan 2.2.16 with `min: 80100` reported
+     `classConstant.nativeTypeNotSupported` for a typed constant (PHP 8.3)
+     that the `^11` plan allows.
+   - A hand-edited file is used as it is.
+   - `render-templates.sh` warns when the plan's PHP target is not the
+     configured one: re-planning is the setup's job.
 
 ## Consequences
 

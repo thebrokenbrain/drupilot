@@ -92,10 +92,9 @@
 #                       floor is not a token: it follows the core target and
 #                       DRUPILOT_REQUIRE_PHP_FLOOR.
 #   --profile P         The PHPStan profile of phpstan.neon: compat (Phase 1:
-#                       phpstan-drupal's deprecated-hook checks, without its
-#                       opinion rules) or refactor (Phase 2: every
-#                       phpstan-drupal rule as it ships). Default: the plan's
-#                       phpstan.profile (compat).
+#                       phpstan-drupal's rules without its four opinion rules)
+#                       or refactor (Phase 2: every phpstan-drupal rule as it
+#                       ships). Default: the plan's phpstan.profile (compat).
 #   --force             Replace a file that differs (after backing it up).
 #   --dry-run           Render and validate, report what would happen; write
 #                       nothing.
@@ -330,13 +329,17 @@ fi
 if [[ " $SELECTED " == *" phpstan "* ]]; then
   _pmin="$(printf '%s' "$PLAN" | jq -r '.php.phpstan_phpversion.min // empty')"
   _pmax="$(printf '%s' "$PLAN" | jq -r '.php.phpstan_phpversion.max // empty')"
-  [[ -n "$_pmin" ]] || _pmin="$(php_version_id "$PHP_FLOOR")"
-  [[ -n "$_pmax" ]] || _pmax="$(php_version_id "$PHP_TARGET")"
+  [[ -n "$_pmin" ]] || _pmin="$(php_version_id "$PHP_FLOOR" || true)"
+  [[ -n "$_pmax" ]] || _pmax="$(php_version_id "$PHP_TARGET" || true)"
   [[ "$_pmin" =~ ^[0-9]+$ && "$_pmax" =~ ^[0-9]+$ ]] \
     || die "Could not derive phpstan.neon's PHP range (floor '$PHP_FLOOR', target '$PHP_TARGET')." 1
+  _pf="$(printf '%s' "$PLAN" | jq -r '.php.final // empty')"
+  if [[ "$PLAN_SOURCE" == "plan" && -n "$_pf" && "$_pf" != "$PHP_TARGET" ]]; then
+    log_warn "phpstan.neon follows the upgrade plan's PHP target $_pf, not $PHP_TARGET: re-plan first (/drupilot-setup, or upgrade-path.sh --phase draft --root \"$ROOT\" --freeze)."
+  fi
   PHPSTAN_PROFILE="${PROFILE:-$(printf '%s' "$PLAN" | jq -r '.phpstan.profile // "compat"')}"
   case "$PHPSTAN_PROFILE" in compat|refactor) ;; *) PHPSTAN_PROFILE="compat";; esac
-  _ck="$(phpstan_cache_key "$PLAN" "$_pmin" "$_pmax")"
+  _ck="$(phpstan_cache_key "$PLAN" "$_pmin" "$_pmax" || true)"
   [[ -n "$_ck" ]] || die "Could not derive phpstan.neon's cache key from the plan." 1
   FLOOR_TOKENS+=("PHPSTAN_PHP_MIN=$_pmin" "PHPSTAN_PHP_MAX=$_pmax" "PHPSTAN_PROFILE=$PHPSTAN_PROFILE"
                  "PHPSTAN_PROFILE_BLOCK=$(phpstan_profile_block "$PHPSTAN_PROFILE")" "PHPSTAN_CACHE_KEY=$_ck")

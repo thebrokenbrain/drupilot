@@ -58,6 +58,16 @@ It recommends `^11` (drop Drupal 10) and a **major** version bump — plan a new
 `N+1.0.x` branch, not a minor. Apply its `core_version_requirement`; `^11` needs
 no `require.php`. Surface the major-bump implication in the final summary.
 
+Then refreeze the final upgrade plan for the range you applied, so the PHP floor
+of `rector.php` and `phpstan.neon` follows it (ADR 0018, ADR 0020):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "$1" --phase final --range "<the core_version_requirement you applied>" --root "<drupal_root>" --freeze --json
+```
+
+Exit 2 (`final-changes-frozen`: another target, PHP target or test-bed) means the
+refactor would change what the setup planned: stop and say so.
+
 ## Step 2 — Load the procedure and choose the scope
 
 Invoke the **full-refactor** skill for the modernization checklist and the exact

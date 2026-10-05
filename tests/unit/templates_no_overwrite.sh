@@ -125,4 +125,29 @@ assert_eq "phpstan: hand-edited -> differs, exit 3, kept" \
   "$T_RC|$(jq -r '.files[0].status' "$T_OUT")|$(cmp -s "$N" "$T_TMP/edited.neon" && echo same)" "3|differs|same"
 rs --force
 assert_eq "phpstan: --force replaces it, compat again" "$T_RC|$(jq -r '.files[0].status' "$T_OUT")|$(grep -c 'Rule: false' "$N")" "0|replaced|4"
+
+# run-phpstan.sh keeps an untouched phpstan.neon on the current plan (the
+# port's final freeze, a refactor), with its own profile; a hand edit stays.
+mk_bin "$r/vendor/bin/phpstan" 'echo "{\"totals\":{\"errors\":0,\"file_errors\":0},\"files\":{},\"errors\":[]}"; exit 0'
+rp() { t_run env PATH="$STUBS:$PATH" DRUPILOT_PHP_TARGET=8.3 "$T_SH" "$T_REPO/scripts/analysis/run-phpstan.sh" --subject "$r/$S" --json; }
+minof() { sed -n 's/^    min: //p' "$N"; }
+sed_inplace "$INFO" 's/^core_version_requirement: .*/core_version_requirement: ^10/'
+rs
+assert_eq "phpstan: rendered for ^10 (min 8.1)" "$(minof)" "80100"
+sed_inplace "$INFO" 's/^core_version_requirement: .*/core_version_requirement: ^11/'
+rp
+assert_eq "run-phpstan: the plan moved to ^11 -> re-rendered first (min 8.3), PHPStan ran" \
+  "$T_RC|$(minof)|$(jq -r .drupilot.status "$T_OUT")|$(grep -c 'regenerated for the current one' "$T_ERR")" "0|80300|clean|1"
+assert_eq "  its sha256 kept again" "$([[ "$(kept phpstan.neon)" == "$(shaof "$N")" ]] && echo kept)" "kept"
+rs --profile refactor
+sed_inplace "$INFO" 's/^core_version_requirement: .*/core_version_requirement: ^10/'
+rp
+assert_eq "run-phpstan: a refactor render keeps its profile when re-rendered" \
+  "$T_RC|$(minof)|$(grep -c '^# drupilot-phpstan-profile: refactor$' "$N")|$(grep -c 'Rule: false' "$N" || true)" "0|80100|1|0"
+rp
+assert_eq "run-phpstan: the same plan -> nothing re-rendered" "$(grep -c 'regenerated' "$T_ERR" || true)" "0"
+printf '\n# hand edit\n' >> "$N"; cp "$N" "$T_TMP/edited2.neon"
+sed_inplace "$INFO" 's/^core_version_requirement: .*/core_version_requirement: ^11/'
+rp
+assert_file_eq "run-phpstan: a hand-edited phpstan.neon is used as it is" "$N" "$T_TMP/edited2.neon"
 t_done
