@@ -98,7 +98,7 @@ have_cmd jq || die "'jq' is required to run preflight (it builds JSON). Install 
 # This never changes the exit code — preflight gates requirements, not prefs.
 # ---------------------------------------------------------------------------
 config_enum DRUPILOT_CONTRIB_MODE         semi   semi auto              >/dev/null || true
-config_enum DRUPILOT_CORE_TARGET_STRATEGY auto   auto d11-only keep-d10 >/dev/null || true
+config_enum DRUPILOT_CORE_TARGET_STRATEGY auto   auto d11-only keep-d10 target-only keep-previous widest >/dev/null || true
 config_enum DRUPILOT_REQUIRE_PHP_FLOOR    detect detect target          >/dev/null || true
 config_enum DRUPILOT_GENERATE_RULES       ask    ask auto off           >/dev/null || true
 config_enum DRUPILOT_TOOLCHAIN_SOURCE     auto   auto reference range   >/dev/null || true

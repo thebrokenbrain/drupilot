@@ -78,6 +78,18 @@ choose_one() {
     for v in "${values[@]}"; do
       [[ "$v" == "$override" ]] && { printf '%s' "$v"; return 0; }
     done
+    # An old value of the setting the choice persists (migrations.json
+    # value_aliases, e.g. CORE_TARGET keep-d10) counts as its new name (CC-07).
+    local pk=""
+    if [[ -r "$reg" ]] && have_cmd jq; then
+      pk="$(jq -r --arg k "$key" '.choices[$k].persist_key // empty' "$reg" 2>/dev/null || true)"
+    fi
+    if [[ -n "$pk" ]]; then
+      value_alias_normalize "$pk" "$override" "DRUPILOT_CHOICE_${key}"
+      for v in "${values[@]}"; do
+        [[ "$v" == "$_DRUPILOT_VALUE_ALIAS" ]] && { printf '%s' "$v"; return 0; }
+      done
+    fi
     log_warn "Ignoring DRUPILOT_CHOICE_${key}='$override' (not one of: ${values[*]})."
   fi
 

@@ -349,8 +349,11 @@ Then apply the minimal manual changes Rector cannot. Decide
 --subject <DIR> --phase port` shows each strategy's consequences, then freeze the
 final upgrade plan with the answered strategy (`DRUPILOT_CORE_TARGET_STRATEGY=<answer>
 scripts/analysis/upgrade-path.sh --subject <DIR> --phase final --root <drupal_root>
---freeze --json`, `--auto` in an autonomous run; exit 2 stops the stage with its
-message, a `final-changes-frozen` refusal means re-running the setup) and read the
+--freeze --json`, `--auto` in an autonomous run; when the draft plan's
+`.range.strategy` is `explicit` (an explicit `DRUPILOT_DRUPAL_TARGET` range, ADR
+0021), pass `--range '<its .range.constraint>'` instead of a strategy and ask no
+core-target tab; exit 2 stops the stage with its message, a
+`final-changes-frozen` refusal means re-running the setup) and read the
 values to apply from it: `plan_get .range.constraint` and `plan_get .php.require_php`
 (with `DRUPILOT_PROJECT_DIR=<drupal_root>`). Apply the range to the main `info.yml`
 AND every submodule with

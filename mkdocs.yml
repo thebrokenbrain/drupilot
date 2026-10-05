@@ -71,6 +71,7 @@ nav:
       - reference/skills-and-agents.md
       - reference/toolchain.md
       - reference/deprecations.md
+      - reference/deprecations-of-drupilot.md
       - reference/version-matrix.md
       - reference/state.md
   - Contributing:
@@ -98,4 +99,5 @@ nav:
           - contributing/adr/0018-freezing-the-upgrade-plan.md
           - contributing/adr/0019-rector-template-from-the-plan.md
           - contributing/adr/0020-phpstan-neon-from-the-plan.md
+          - contributing/adr/0021-drupal-target-and-target-major.md
   - Changelog: changelog.md

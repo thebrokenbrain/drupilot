@@ -54,7 +54,7 @@
     "CORE_TARGET": {
       "command": "/drupilot-port",
       "header": "Core target",
-      "options": ["auto", "keep-d10", "d11-only"],
+      "options": ["auto", "keep-previous", "target-only", "widest"],
       "default": "auto",
       "persist_key": "DRUPILOT_CORE_TARGET_STRATEGY"
     },

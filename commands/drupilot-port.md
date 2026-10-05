@@ -52,7 +52,9 @@ tell the user to run `/drupilot-setup` first and stop.
   echo "core_requirement=$(subject_core_requirement "$SUBJECT" 2>/dev/null || echo "<missing>")"; \
   echo "php_target=$(resolve_php_target)"; \
   echo "drupal_target=$(resolve_drupal_target)"; \
-  echo "core_strategy=$(config_get DRUPILOT_CORE_TARGET_STRATEGY auto)"; \
+  echo "core_strategy=$(config_get_noalias DRUPILOT_CORE_TARGET_STRATEGY auto)"; \
+  PROOT="$(subject_project_root "$SUBJECT" 2>/dev/null || true)"; \
+  echo "draft_range=$([[ -n "$PROOT" ]] && plan_get .range.strategy "$PROOT" 2>/dev/null) $([[ -n "$PROOT" ]] && plan_get .range.constraint "$PROOT" 2>/dev/null)"; \
   echo "use_digests=$(config_get DRUPILOT_USE_DIGESTS_RULES true)"; \
   echo "digests_ref=$(config_get DRUPILOT_DIGESTS_REF main)"; \
   echo "generate_rules=$(config_get DRUPILOT_GENERATE_RULES ask)"' \
@@ -71,15 +73,19 @@ you can show the consequences:
 **Decision point — let the developer own the core target (G4/G5).** This is one
 of the most consequential choices in the port, so surface it as a tab with
 **AskUserQuestion** (header "Core target") *unless* the run is autonomous
-(`DRUPILOT_AUTONOMOUS=true`) or `DRUPILOT_CORE_TARGET_STRATEGY` is already
-pinned. A pre-answer comes first, also in an autonomous run:
+(`DRUPILOT_AUTONOMOUS=true`), `DRUPILOT_CORE_TARGET_STRATEGY` is already
+pinned, or the setup's draft plan pinned an explicit range (`draft_range` above
+starts with `explicit`: a `DRUPILOT_DRUPAL_TARGET` such as `^10.3 || ^11`, ADR
+0021): then the range is that one, there is no tab, and the final plan below
+takes it with `--range`. A pre-answer comes first, also in an autonomous run:
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key CORE_TARGET --subject "$1" --persist --json
 ```
 
-When its `value` is not null (`auto` / `keep-d10` / `d11-only`), it is the
-answer: no tab, the script already persisted it as
+When its `value` is not null (`auto` / `keep-d10` / `d11-only` / `widest`: for
+Drupal 11 a 1.0 pre-answer, `keep-previous` or `target-only`, comes back under
+its 0.9 name), it is the answer: no tab, the script already persisted it as
 `DRUPILOT_CORE_TARGET_STRATEGY`; re-run `core-strategy.sh` above with
 `DRUPILOT_CORE_TARGET_STRATEGY=<value>` to get its consequences and say so in one
 line (if `env_override` lists the strategy, the environment variable wins). When
@@ -109,6 +115,13 @@ the answered strategy (add `--auto` in an autonomous run):
 
 ```bash
 DRUPILOT_CORE_TARGET_STRATEGY=<auto|keep-d10|d11-only> bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "$1" --phase final --root "<drupal_root>" --freeze --json
+```
+
+With an explicit draft range (`draft_range` starts with `explicit`), pass that
+range instead of a strategy, so the final plan keeps it:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "$1" --phase final --range "<the draft_range constraint>" --root "<drupal_root>" --freeze --json
 ```
 
 - **Exit 0**: the final plan is frozen; it may add hops or raise the core floor

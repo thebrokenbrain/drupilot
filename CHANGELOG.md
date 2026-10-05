@@ -14,6 +14,25 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 ## [Unreleased]
 
 ### Added
+- **`DRUPILOT_TARGET_MAJOR` and `DRUPILOT_DRUPAL_TARGET` agree** (T-M3-06,
+  X12 as ADR 0021 narrows it):
+  - `DRUPILOT_DRUPAL_TARGET` is still the test-bed's core constraint, and the
+    highest major it admits names the target major (`^12` → 12,
+    `>=11 <12` → 11);
+  - a constraint that admits two or more majors (e.g. `^10.3 || ^11`) is also
+    the declared core range `upgrade-path.sh` uses (strategy `explicit`),
+    unless `DRUPILOT_CORE_TARGET_STRATEGY` is set too. `/drupilot-port` then
+    asks no core-target question and keeps that range in the final plan;
+  - a one-major value (`^11.2`, `~11.2.0`, `11.x-dev`) only pins the test-bed,
+    as in 0.9;
+  - with only `DRUPILOT_TARGET_MAJOR` set, the test-bed's core constraint is
+    `^<major>`.
+
+  With neither set, 0.9's `11` and `^11`.
+- **`docs/reference/deprecations-of-drupilot.md`** lists every renamed setting,
+  value, field and flag of drupilot (every `config/migrations.json` row; a unit
+  test keeps the two in step). The `version` gate also checks the
+  `value_aliases` rows.
 - **The commands plan before they act** (T-M3-15): `/drupilot-setup` asks
   the new **Target major** tab (`TARGET_MAJOR`: Drupal 11 by default, 12 only as
   a preview with `DRUPILOT_ALLOW_PRERELEASE=true`; `--target N` wins) before the
@@ -448,6 +467,30 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   pass 15 minutes.
 - The `checks` CI job may run 35 minutes (was 20): on macOS it runs the
   whole gate twice, and the second run hit the limit.
+
+### Deprecated
+- **The 0.9 strategy vocabulary** (T-M3-07, CC-07), kept for all of 1.x and
+  removed in 2.0.0. The `DRUPILOT_KEEP_D10` boolean and an old value in a
+  `DRUPILOT_CHOICE_CORE_TARGET` pre-answer warn once per run. The setting's own
+  old values are accepted silently, since drupilot still writes them for
+  Drupal 11.
+  - `DRUPILOT_KEEP_D10` (any 0.9 spelling of the boolean): use
+    `DRUPILOT_CORE_TARGET_STRATEGY` (`keep-previous` / `target-only`). It is
+    still honored only while the strategy is `auto`.
+  - The strategy values `keep-d10` and `d11-only`: use `keep-previous` and
+    `target-only`. For Drupal 11 drupilot still writes and prints the 0.9
+    names (`core-strategy.sh --json`, the lock, `state.json`, a persisted
+    core-target answer), so a 0.9 reader sees no change.
+  - The `CORE_TARGET` tab's options are `auto`, `keep-previous`,
+    `target-only` and `widest`. A 0.9 pre-answer
+    (`DRUPILOT_CHOICE_CORE_TARGET=keep-d10`) is accepted without re-asking
+    (`choice.sh`, `choose_one`); for Drupal 11 `choice.sh` still reports and
+    persists it under its 0.9 name. The "Drupal 10 check" tab keeps its own
+    `d11-only` option.
+  - `make-issue.sh --d10-unverified`: use `--prev-major-unverified`.
+  - The `d10_support` field is to get its `prev_major_support` twin in
+    port-summary v2 (a later 1.x release).
+  - `preflight.sh`'s strategy check accepts both vocabularies.
 
 ### Fixed
 - **Intermittent wrong results and exit 141 under load** (the baseline-0.9

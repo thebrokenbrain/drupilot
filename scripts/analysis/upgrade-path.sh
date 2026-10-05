@@ -54,11 +54,18 @@
 #   --subject DIR    The module/theme directory (default: the current one).
 #   --phase P        draft (default: static signals, before a test-bed) or
 #                    final (also the analyzer signal: --phpstan).
-#   --target N       T (default DRUPILOT_TARGET_MAJOR, 11).
+#   --target N       T (default DRUPILOT_TARGET_MAJOR, else the major an
+#                    explicit DRUPILOT_DRUPAL_TARGET names, else 11; X12).
 #   --php X.Y        P (default as above).
 #   --strategy S     The compat strategy (default
 #                    DRUPILOT_CORE_TARGET_STRATEGY, auto).
 #   --range C        An explicit declared range (implies --strategy explicit).
+#                    Without --range or --strategy, an explicit
+#                    DRUPILOT_DRUPAL_TARGET that admits two or more majors
+#                    (e.g. '^10.3 || ^11') is one too, unless
+#                    DRUPILOT_CORE_TARGET_STRATEGY is set (X12, ADR 0021);
+#                    a one-major value ('^11.2', '~11.2.0', '11.x-dev') only
+#                    pins the test-bed's core, as in 0.9.
 #   --root DIR       The Drupal root whose lock names the bed core, whose
 #                    drupal-rector names the Rector sets and whose
 #                    .drupilot.json holds the persisted choices (default: the
@@ -179,6 +186,9 @@ if [[ -n "$ROOT" ]]; then
   else die "Root directory not found: '$ROOT' (a root that does not exist yet must be an absolute path)." 1
   fi
   export DRUPILOT_PROJECT_DIR="$ROOT"
+  # The root's .drupilot.json may hold an old name (a DRUPILOT_KEEP_D10): warn
+  # about it here, in the main shell, once (the later lookups run in subshells).
+  _config_alias_prewarn
 elif [[ -z "${DRUPILOT_PROJECT_DIR:-}" ]]; then
   # A loose subject: never the .drupilot.json of whatever root holds the cwd.
   export DRUPILOT_PROJECT_DIR="$SUBJECT_ABS"
@@ -193,6 +203,19 @@ if [[ -z "$PHP" ]]; then
   if [[ -z "$PHP" ]]; then PHP_EXPLICIT=0; PHP="$(resolve_php_target_for "$TARGET")"; fi
 fi
 [[ "$PHP" =~ ^[0-9]+\.[0-9]+$ ]] || die "Invalid PHP target '$PHP' (expected X.Y such as 8.3)." 1
+if [[ -z "$STRATEGY" && -z "$RANGE" ]]; then
+  # X12 (ADR 0021): an explicit DRUPILOT_DRUPAL_TARGET that admits two or more
+  # majors is a declared range override, unless DRUPILOT_CORE_TARGET_STRATEGY
+  # itself is set too (it wins; a DRUPILOT_KEEP_D10 boolean does not count).
+  _dtr="$(drupal_target_range)"
+  if [[ -n "$_dtr" ]]; then
+    if [[ -n "$(config_get_explicit_noalias DRUPILOT_CORE_TARGET_STRATEGY)" ]]; then
+      log_warn "DRUPILOT_DRUPAL_TARGET='$_dtr' is not used as the declared range: DRUPILOT_CORE_TARGET_STRATEGY is set."
+    else
+      RANGE="$_dtr"; RANGE_SET=1
+    fi
+  fi
+fi
 if [[ -z "$STRATEGY" ]]; then
   if [[ -n "$RANGE" ]]; then STRATEGY="explicit"; else STRATEGY="$(config_get DRUPILOT_CORE_TARGET_STRATEGY auto)"; fi
 fi

@@ -123,7 +123,7 @@ elif [[ "$DRY_RUN" != "1" && -n "$(lock_get .drupilot_revision "")" ]] && have_c
 fi
 lset_str .php_target "$(resolve_php_target)"
 lset_json .phpstan_level "$(config_get DRUPILOT_PHPSTAN_LEVEL 2)"
-lset_str .core_strategy "$(config_get DRUPILOT_CORE_TARGET_STRATEGY auto)"
+lset_str .core_strategy "$(strategy_persist_name "$(config_get_noalias DRUPILOT_CORE_TARGET_STRATEGY auto)")"
 
 # --- Drupal core + dev toolchain (from composer.lock) ---------------------
 if [[ -f "$COMPOSER_LOCK" ]]; then

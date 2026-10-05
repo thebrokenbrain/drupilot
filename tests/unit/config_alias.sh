@@ -4,7 +4,9 @@
 # still wins over every file tier (env > env alias > .drupilot.json >
 # .drupilot.json alias > defaults.json); a KEY=value row aliases one value; a
 # `when` row applies only while its condition holds without aliases. The rows
-# are synthetic (the shipped file has none until M3), in a temp plugin root.
+# are read only when needed (a renamed key looked up, an old name in use), so
+# a hook never forks jq for them. The rows are synthetic, in a temp plugin
+# root; the shipped ones are checked last.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
 pr="$T_TMP/plugin"; mkdir -p "$pr/config" "$T_TMP/root"
@@ -26,7 +28,12 @@ export CLAUDE_PLUGIN_ROOT="$pr" DRUPILOT_PROJECT_DIR="$T_TMP/root"
 # shellcheck source=../../scripts/lib/common.sh
 . "$T_LIB"
 
-assert_eq "the rows are loaded once, at source time (the invalid name ignored)" "$_DRUPILOT_ALIAS_N" "4"
+assert_eq "no row is read at source time while no old name is in use (no jq fork)" "$_DRUPILOT_ALIAS_N|$_DRUPILOT_ALIAS_PENDING" "0|1"
+assert_eq "  the scan knows the renamed keys" "$_DRUPILOT_ALIAS_NEW" "|DRUPILOT_PHP_TARGET|DRUPILOT_CONTRIB_MODE|DRUPILOT_CORE_TARGET_STRATEGY|DRUPILOT_GENERATE_RULES|DRUPILOT_SESSION_CONTEXT|"
+config_get DRUPILOT_HOOKS_GUARD x > /dev/null
+assert_eq "  a key no row renames reads none" "$_DRUPILOT_ALIAS_N|$_DRUPILOT_ALIAS_PENDING" "0|1"
+config_get DRUPILOT_PHP_TARGET x > /dev/null
+assert_eq "  the first lookup of a renamed key reads them, once (the invalid name ignored)" "$_DRUPILOT_ALIAS_N|$_DRUPILOT_ALIAS_PENDING" "4|0"
 assert_eq "no alias in use: defaults.json" "$(config_get DRUPILOT_PHP_TARGET x)" "8.3"
 
 # One warning per process: two lookups in this shell, one warning.
@@ -84,7 +91,11 @@ assert_eq "a directory named .drupilot.json: a set -e script still runs" \
   "$("$T_SH" -c 'set -euo pipefail; . "$1"; printf reached' _ "$T_LIB" 2>/dev/null)" "reached"
 rmdir "$T_TMP/root/.drupilot.json"
 
-# The shipped file has no row: nothing is loaded and nothing changes.
-assert_eq "the shipped migrations.json has no alias row" \
-  "$(env CLAUDE_PLUGIN_ROOT="$T_REPO" DRUPILOT_OLD_PHP=8.4 "$T_SH" -c '. "$1"; printf "%s|%s" "$_DRUPILOT_ALIAS_N" "$(config_get DRUPILOT_PHP_TARGET x)"' _ "$T_LIB" 2>&1)" "0|8.3"
+# The shipped file holds the eight DRUPILOT_KEEP_D10 rows (T-M3-07, one per 0.9
+# boolean spelling); a key no row names is unchanged.
+assert_eq "the shipped migrations.json: eight KEEP_D10 rows, other keys unchanged" \
+  "$(env CLAUDE_PLUGIN_ROOT="$T_REPO" DRUPILOT_OLD_PHP=8.4 "$T_SH" -c '. "$1"; config_get DRUPILOT_CORE_TARGET_STRATEGY x > /dev/null; printf "%s|%s" "$_DRUPILOT_ALIAS_N" "$(config_get DRUPILOT_PHP_TARGET x)"' _ "$T_LIB" 2>&1)" "8|8.3"
+assert_eq "  an old name in use is warned about at source time" \
+  "$(env CLAUDE_PLUGIN_ROOT="$T_REPO" DRUPILOT_KEEP_D10=yes "$T_SH" -c '. "$1"; printf "%s" "$_DRUPILOT_ALIAS_N"' _ "$T_LIB" 2>&1 | tr '\n' ' ')" \
+  "$(printf '⚠️  DRUPILOT_KEEP_D10=yes is deprecated since 1.0.0 and will be removed in 2.0.0; use DRUPILOT_CORE_TARGET_STRATEGY=keep-previous\n8' | tr '\n' ' ')"
 t_done
