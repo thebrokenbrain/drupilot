@@ -306,6 +306,21 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `templates/rector-compat.php.tmpl` is a `drupal_safe` compat rule there.
 
 ### Changed
+- **rector.php is rendered from the upgrade plan** (T-M3-09, ADR 0019;
+  template 5):
+  - the plan's per-minor Drupal sets, `defined()`-filtered, with
+    drupal-rector's bootstrap file (what its `DRUPAL_10` aggregate registers:
+    the same Rector diffs, checked in the lab);
+  - a backwards-compatibility block only when the plan enables it (`^10.3`
+    and later floors: no needless `DeprecationHelper` wrapper);
+  - the plan's PHP floor, and the skip list from `config/php/rules.json`.
+
+  `render-templates.sh` and `run-rector.sh` take the subject's frozen plan,
+  else a fresh draft (`plan_for_subject`); `render-templates.sh --json`
+  reports which (`plan`). The sha256 of every render is kept in the root's
+  lock (`.templates`), so an untouched render is regenerated when the plan
+  moves and a hand-edited one never is (INV5). The Drupal 8/9 sets stay out
+  until their hops are proven (T-M9-03).
 - **Refactor: the core-target decision is a function of its own.**
   `strategy_decide` computes the decision for any target major (the ranges
   from `config/targets/<T>.json`, the older-major signals as the majors below

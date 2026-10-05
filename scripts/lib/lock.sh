@@ -153,3 +153,31 @@ lock_clear() {
   local f; f="$(drupilot_lock_file "${1:-}")"
   if [[ -f "$f" ]]; then rm -f "$f" && log_ok "Cleared lockfile: $f"; else log_info "No lockfile to clear at $f."; fi
 }
+
+# render_sha_record ROOT REL FILE [TEMPLATE] -> keep the sha256 of a config
+# drupilot rendered (rector.php, phpstan.neon, ...) in ROOT's lock:
+# .templates[REL] = {sha256, template_version}. A later render knows the copy
+# is untouched by it (render_sha_matches) and may regenerate it (INV5: a
+# hand-edited copy never is). Silent on failure.
+render_sha_record() {
+  local root="${1:-}" rel="${2:-}" f="${3:-}" tpl="${4:-}" h v
+  [[ -n "$root" && -n "$rel" && -f "$f" ]] && have_cmd jq || return 0
+  h="$(sha256_hex < "$f" 2> /dev/null || true)"
+  [[ -n "$h" ]] || return 0
+  v="$(sed -n 's/.*drupilot-template-version: \([0-9][0-9]*\).*/\1/p' "$tpl" 2> /dev/null | sed -n '1p')"
+  DRUPILOT_PROJECT_DIR="$root" lock_set_json ".templates[\"$rel\"]" \
+    "$(jq -n -c --arg h "sha256:$h" --arg v "$v" '{sha256: $h, template_version: (if $v == "" then null else ($v | tonumber) end)}')" \
+    > /dev/null 2>&1 || true
+  return 0
+}
+
+# render_sha_matches ROOT REL FILE -> 0 when FILE is byte for byte the render
+# render_sha_record kept for REL in ROOT's lock. Read-only (lock_path).
+render_sha_matches() {
+  local root="${1:-}" rel="${2:-}" f="${3:-}" want h
+  [[ -f "$f" ]] && have_cmd jq || return 1
+  want="$(jq -r --arg r "$rel" '.templates[$r].sha256 // empty' "$(lock_path "$root")" 2> /dev/null || true)"
+  [[ -n "$want" ]] || return 1
+  h="$(sha256_hex < "$f" 2> /dev/null || true)"
+  [[ -n "$h" && "sha256:$h" == "$want" ]]
+}

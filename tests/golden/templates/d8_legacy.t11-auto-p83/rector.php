@@ -11,7 +11,7 @@
  * rector.php is missing) from the upgrade plan (scripts/analysis/upgrade-path.sh,
  * ADR 0017/0019), which fills in the extension path, the Drupal sets of the
  * plan's hops, the backwards-compatibility settings, the PHP floor
- * {{PHP_FLOOR}} and the rules skipped. Its sha256 is kept in the lock: an
+ * 8.1 and the rules skipped. Its sha256 is kept in the lock: an
  * untouched copy is regenerated when the plan moves; a hand-edited one is never
  * replaced without --force.
  *
@@ -34,7 +34,7 @@
  *
  * The complementary dbuytaert/drupal-digests AI rule layer is NOT wired in
  * here. It runs as a separate, optional pass referenced by its own config:
- *   vendor/bin/rector process {{SUBJECT_PATH}} \
+ *   vendor/bin/rector process web/modules/custom/d8_legacy \
  *     --config "$DIGESTS_CACHE/rector/all.php" --dry-run
  * (Run the official palantirnet/drupal-rector pass first, then digests.)
  *
@@ -79,7 +79,10 @@ use Rector\ValueObject\PhpVersion;
 // The Drupal sets of the plan's hops, by constant name: defined() leaves out a
 // set the installed drupal-rector does not declare, so this config always loads.
 $drupilotSets = array_map('constant', array_values(array_filter([
-{{RECTOR_SETS}}
+  'DrupalRector\\Set\\Drupal10SetList::DRUPAL_100',
+  'DrupalRector\\Set\\Drupal10SetList::DRUPAL_101',
+  'DrupalRector\\Set\\Drupal10SetList::DRUPAL_102',
+  'DrupalRector\\Set\\Drupal10SetList::DRUPAL_103',
 ], 'defined')));
 
 // drupal-rector's bootstrap file (Drupal's test namespaces and phpstan-drupal's
@@ -91,14 +94,21 @@ $drupilotBootstrap = $drupilotSets === [] ? [] : array_values(array_filter([
 // Rules skipped on purpose (see the header). String FQCNs + class_exists keep
 // this config loadable on any Rector 2.x.
 $drupilotRiskySkips = array_values(array_filter([
-{{SKIP_RULES}}
+  'Rector\\Php81\\Rector\\Array_\\ArrayToFirstClassCallableRector',
+  'Rector\\Php83\\Rector\\ClassMethod\\AddOverrideAttributeToOverriddenMethodsRector',
+  'Rector\\Php81\\Rector\\Property\\ReadOnlyPropertyRector',
+  'Rector\\Php82\\Rector\\Class_\\ReadOnlyClassRector',
+  'Rector\\Php81\\Rector\\FuncCall\\NullToStrictStringFuncCallArgRector',
+  'Rector\\Php85\\Rector\\Class_\\SleepToSerializeRector',
+  'Rector\\Php85\\Rector\\Class_\\WakeupToUnserializeRector',
+  'Rector\\Php85\\Rector\\Property\\AddOverrideAttributeToOverriddenPropertiesRector',
 ], 'class_exists'));
 
 $drupilotConfig = RectorConfig::configure()
   // Process only the target extension. Other paths (e.g. core, contrib) are
   // left untouched.
   ->withPaths([
-    '{{SUBJECT_PATH}}',
+    'web/modules/custom/d8_legacy',
   ])
   // Never rewrite third-party code or build/test artifacts, and never apply
   // the risky modernization rules listed above.
@@ -109,11 +119,11 @@ $drupilotConfig = RectorConfig::configure()
   // The Drupal deprecation sets of the plan's hops.
   ->withSets($drupilotSets)
   ->withBootstrapFiles($drupilotBootstrap)
-  // The PHP floor {{PHP_FLOOR}} (the plan's php.floor). Rector drops every
+  // The PHP floor 8.1 (the plan's php.floor). Rector drops every
   // version-bound rule above it, and the level sets stop at it. Compat fixes
   // for newer PHP run in rector-compat.php.
-  ->withPhpVersion(PhpVersion::{{PHP_VERSION_L}})
-  ->withPhpSets({{PHP_SETS_L}}: true)
+  ->withPhpVersion(PhpVersion::PHP_81)
+  ->withPhpSets(php81: true)
   // Drupal extensions Rector should treat as PHP so hooks and *.module files
   // are processed too.
   ->withFileExtensions([
@@ -125,5 +135,5 @@ $drupilotConfig = RectorConfig::configure()
     'profile',
     'engine',
   ]);
-{{BC_BLOCK}}{{POLYFILLS}}
+
 return $drupilotConfig;

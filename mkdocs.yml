@@ -96,4 +96,5 @@ nav:
           - contributing/adr/0016-source-era-fallback.md
           - contributing/adr/0017-upgrade-plan-resolver.md
           - contributing/adr/0018-freezing-the-upgrade-plan.md
+          - contributing/adr/0019-rector-template-from-the-plan.md
   - Changelog: changelog.md

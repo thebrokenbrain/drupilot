@@ -2717,6 +2717,15 @@ template leaves MINK_DRIVER_ARGS_WEBDRIVER to the Selenium add-on — but
 --set WEBDRIVER_HOST=... is still accepted). Substitution is literal
 (render_template in common.sh), so no path character can break it.
 
+rector.php (template v5) is rendered from the upgrade plan (ADR 0019): the
+frozen plan of the subject (plan_for_subject), else a fresh draft from
+scripts/analysis/upgrade-path.sh; its tokens {{RECTOR_SETS}}, {{SKIP_RULES}},
+{{BC_BLOCK}}, {{PHP_VERSION_L}} / {{PHP_SETS_L}} (the plan's php.floor) and
+{{POLYFILLS}} come from rector_sets_block, rector_skip_block,
+rector_bc_block and rector_floor_tokens. The sha256 of every file written
+goes into the root's lock (.templates, render_sha_record), so a later render
+regenerates a copy nobody edited.
+
 Every rendered file is validated BEFORE it is written: no {{TOKEN}} may be
 left, phpcs.xml.dist must be well-formed XML (`xmllint --noout`; without
 xmllint, `phpcs --standard=<file> -e` through the toolchain when available),
@@ -2775,6 +2784,11 @@ Options:
                       php_floor / php_ceiling: the floor L and the ceiling U
                       of the Rector configs (null when no rector template is
                       selected)
+                      plan: "plan" (the subject's frozen upgrade plan, else a
+                      fresh draft, gave rector.php its sets, skips, BC block
+                      and floor), "fallback" (no plan resolves: the previous
+                      major's sets and the floor above) or null (no rector
+                      template selected)
                       status: written | unchanged | differs | replaced |
                               upgraded | would-write | would-replace |
                               would-upgrade | invalid | skipped
@@ -3472,7 +3486,8 @@ skill or hook calls it; scripts/dev/check.sh runs it as its `data` gate):
               php/versions.json; a minor never lists a PHP as both supported
               and unsupported; versions.json ids and rector_level match the
               key; rules have unique ids and a verified removed-no-rule rule
-              cites php.net; a rule templates/rector.php.tmpl skips is
+              cites php.net; a rule templates/rector.php.tmpl skips (the
+              deny rows it renders through {{SKIP_RULES}}) is
               drupal_safe false, and every rule templates/rector-compat.php.tmpl
               runs is a drupal_safe compat rule (when the tree has templates/);
               graph edges are unique, named from-to, join known eras, and
