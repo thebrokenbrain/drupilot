@@ -14,6 +14,12 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 ## [Unreleased]
 
 ### Added
+- **core-strategy is checked as a view of the plan's decision** (T-M3-05,
+  CC-11, CC-36): `tests/unit/core_strategy_view.sh` resolves every fixture
+  and monorepo module with each strategy through both `core-strategy.sh` and
+  `upgrade-path.sh` and requires the same range and resolved strategy, and
+  `keep_current.sh` pins the keep-current outcome in both
+  (`keep_current_alias`).
 - **`sigpipe` gate** in `scripts/dev/check.sh` and **`grep_q`** in
   `scripts/lib/core.sh`: no pipeline in `scripts/` or `hooks/` may end in a
   consumer that stops reading early (`| head`, `| grep -q` / `-m` / `-l`, an
