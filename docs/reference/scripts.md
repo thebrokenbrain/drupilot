@@ -4067,11 +4067,18 @@ fails. Each test runs with stdin from /dev/null, without a controlling
 terminal where `setsid --wait` exists, and under a 300 s timeout where
 `timeout`/`gtimeout` exists; t_isolate sets DRUPILOT_NONINTERACTIVE=1, so on
 every platform drupilot's own prompts take their default. Ctrl-C stops the
-run (exit 130) and kills the running test.
+run (exit 130) and kills the running tests.
+
+The tests run in parallel, --jobs at a time (default: the CPUs, at most 8);
+each one is isolated (t_isolate: its own temp HOME, XDG dirs and working
+directory). Each result is reported as its test ends; the --json summary
+keeps the tests' order.
 
 Usage:
-  scripts/dev/unit.sh [--only T1,T2] [--json] [--list] [-h|--help]
+  scripts/dev/unit.sh [--only T1,T2] [--jobs N] [--json] [--list] [-h|--help]
     --only   run a subset (test names: the file names without .sh)
+    --jobs   how many tests run at once (default: the CPUs, at most 8; 1 runs
+             them one by one)
     --json   machine summary on STDOUT (the test output still goes to STDERR):
              {ok, bash, tests:[{name, status: pass|fail|skip, detail,
                                 failures:[..]}]}

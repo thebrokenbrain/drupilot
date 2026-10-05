@@ -372,6 +372,11 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `templates/rector-compat.php.tmpl` is a `drupal_safe` compat rule there.
 
 ### Changed
+- **`scripts/dev/unit.sh` runs the tests in parallel** (`--jobs N`, default
+  the CPUs, at most 8): the unit gate went from 12 minutes to under 2 on a
+  developer machine, and the macOS CI leg, which runs the whole gate twice,
+  no longer nears its timeout. Results print as each test ends; the `--json`
+  summary keeps the tests' order.
 - **The `config-keys` gate fails** on an undeclared or inconsistent
   `DRUPILOT_*` key instead of warning (T-M3-14). `DRUPILOT_EXPERIMENTAL_D7`,
   which the D7-AUTO message names, is declared (environment only until the
