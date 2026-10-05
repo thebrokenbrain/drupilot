@@ -6,8 +6,9 @@
 # script that skips an unknown flag, even one that later needs an argument,
 # has no help or sources common.sh at the wrong depth or in a comment); a
 # script's or a PHP template's comment line is not a hit, a prompt may quote an
-# old three-major range, the H4 ratchet goes down only, and an allow-list row
-# admits its rule for its path only.
+# old three-major range, the H4 ratchet goes down only, a lock path spelled
+# outside scripts/lib/lock.sh is a LOCK hit, and an allow-list row admits its
+# rule for its path only.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
 r="$T_TMP/tree"
@@ -40,6 +41,8 @@ fault scripts/env/ddev-up.sh 'ddev config --project-type=drupal12' DDEV
 fault templates/rector.php.tmpl '  ->withRules([\\Rector\\Php85\\Rector\\Class_\\SleepToSerializeRector::class])' H2
 fault templates/ddev-web-environment.yaml.tmpl 'DRUPILOT_RANGE: "^10 || ^11 || ^12"' H7
 fault commands/drupilot-port.md 'Then run ddev drush migrate:import --all.' H9
+fault scripts/lib/state.sh '_lock_of() { printf "%s" "$(project_state_path "$1")/drupilot-lock.json"; }' LOCK
+fault commands/drupilot-status.md 'Read "$(project_state_path "$ROOT")/drupilot-lock.json".' LOCK
 cp "$r/templates/rector.php.tmpl" "$T_TMP/orig"
 printf ' * SleepToSerializeRector is skipped (a doc comment).\n// WakeupToUnserializeRector too.\n' >> "$r/templates/rector.php.tmpl"
 assert_match "a PHP template's comment lines are not hits" "$(gate hard-rules)" '^pass\|0\|'

@@ -371,7 +371,7 @@ state_snapshot_json() {
   fi
   l="null"; o="null"
   if [[ -n "$rsd" ]]; then
-    l="$(_json_from "$rsd/drupilot-lock.json" '{drupal_core: (.drupal.core // null), php_target: (.php_target // null), core_strategy: (.core_strategy // null), packages: (.toolchain // null), lock_drupilot_version: (.drupilot_version // null)}')"
+    l="$(_json_from "$(lock_path "$root")" '{drupal_core: (.drupal.core // null), php_target: (.php_target // null), core_strategy: (.core_strategy // null), packages: (.toolchain // null), lock_drupilot_version: (.drupilot_version // null)}')"
     local ob; ob="$(origin_baseline_find "$root" "$mn")"
     [[ -n "$ob" ]] && o="$(_json_from "$ob" '{source: (.source // null), placement: (.placement // null)}')"
     # No baseline (an in-place subject, or one placed before baselines were

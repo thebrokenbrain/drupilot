@@ -19,22 +19,82 @@
 # to the Claude Code permission mode.
 deterministic_mode() { config_bool DRUPILOT_DETERMINISTIC 1; }
 
-# drupilot_lock_file [project_dir] -> path to this project's lockfile. The lock
-# lives under the per-project state dir (like assess.json / last-test.json), so it
-# never contaminates the user's project tree. Scripts that already know the
-# Drupal root can export DRUPILOT_PROJECT_DIR; otherwise $PWD is used (analysis
-# scripts cd into the Drupal root first, so $PWD is the project there).
-drupilot_lock_file() {
-  local base="${1:-${DRUPILOT_PROJECT_DIR:-$PWD}}"
-  printf '%s/drupilot-lock.json' "$(project_state_dir "$base")"
+# lock_location [project_dir] -> where the root's lock lives (AR-14, OD-06):
+# "project" (<root>/drupilot-lock.json, committable: drupilot's managed ignore
+# block leaves it out) when DRUPILOT_LOCK_LOCATION=project and the root is the
+# developer's own (testbed_kind none), else "state" (the hidden state dir, the
+# default). A test-bed drupilot built for a loose subject is a throwaway root,
+# so a lock committed there means nothing: it stays "state", and
+# lock_location_note says so. Silent and read-only; no jq fork while the key is
+# set nowhere (it is read on every lock access).
+lock_location() {
+  local base="${1:-${DRUPILOT_PROJECT_DIR:-$PWD}}" want
+  if [[ -z "${DRUPILOT_LOCK_LOCATION:-}" ]] && ! grep -q DRUPILOT_LOCK_LOCATION "$base/.drupilot.json" 2> /dev/null; then
+    printf 'state'; return 0
+  fi
+  want="$(export DRUPILOT_PROJECT_DIR="$base"; config_get DRUPILOT_LOCK_LOCATION state)"
+  if [[ "$want" == "project" && "$(testbed_kind "$base")" == "none" ]]; then printf 'project'; else printf 'state'; fi
+  return 0
 }
 
-# lock_path [project_dir] -> the same path as drupilot_lock_file, WITHOUT
-# creating the state dir: for a reader that must leave nothing behind for a
-# root it only looked at (plan_get, upgrade-path.sh).
+# lock_location_note [project_dir] -> a warning on STDERR when
+# DRUPILOT_LOCK_LOCATION=project cannot apply to the root (a test-bed drupilot
+# built), nothing otherwise. The lock writers call it once, in their main shell
+# (lock-sync.sh, upgrade-path.sh --freeze).
+lock_location_note() {
+  local base="${1:-${DRUPILOT_PROJECT_DIR:-$PWD}}" want
+  want="$(export DRUPILOT_PROJECT_DIR="$base"; config_get DRUPILOT_LOCK_LOCATION state)"
+  if [[ "$want" == "project" && "$(lock_location "$base")" == "state" ]]; then
+    log_warn "DRUPILOT_LOCK_LOCATION=project applies to a module already inside your own Drupal root; $base is a test-bed drupilot built for a loose module, so its lock stays in drupilot's state dir: $(lock_path "$base")"
+  fi
+  return 0
+}
+
+# _lock_files [project_dir] -> two lines: the root's lock (<root>/drupilot-lock.json)
+# and the state dir's (never created here). The only place the lock's file
+# name is spelled: every reader and writer goes through lock_path /
+# drupilot_lock_file (the hard-rules gate's LOCK rule).
+_lock_files() {
+  local base="${1:-${DRUPILOT_PROJECT_DIR:-$PWD}}" abs
+  abs="$(cd "$base" 2> /dev/null && pwd || printf '%s' "$base")"
+  printf '%s/drupilot-lock.json\n%s/drupilot-lock.json\n' "$abs" "$(project_state_path "$base")"
+  return 0
+}
+
+# drupilot_lock_file [project_dir] -> path to this project's lockfile, for a
+# writer: in the hidden per-project state dir by default (like assess.json /
+# last-test.json, so it never touches the project tree; the dir is created),
+# or <root>/drupilot-lock.json when lock_location is "project" (a lock still
+# in the state dir is copied there first, so the frozen plan and pins move
+# with it). Scripts that already know the Drupal root can export
+# DRUPILOT_PROJECT_DIR; otherwise $PWD is used (analysis scripts cd into the
+# Drupal root first, so $PWD is the project there).
+drupilot_lock_file() {
+  local base="${1:-${DRUPILOT_PROJECT_DIR:-$PWD}}" files p s
+  if [[ "$(lock_location "$base")" == "project" ]]; then
+    files="$(_lock_files "$base")"; p="$(printf '%s\n' "$files" | sed -n '1p')"; s="$(printf '%s\n' "$files" | sed -n '2p')"
+    if [[ ! -f "$p" && -f "$s" ]] && cp "$s" "$p" 2> /dev/null; then
+      log_info "The lock moves to the project root (DRUPILOT_LOCK_LOCATION=project): $p"
+    fi
+    printf '%s' "$p"; return 0
+  fi
+  printf '%s/drupilot-lock.json' "$(project_state_dir "$base")"
+  return 0
+}
+
+# lock_path [project_dir] -> the lock a reader reads (lock_location's), WITHOUT
+# creating anything: for a reader that must leave nothing behind for a root it
+# only looked at (plan_get, upgrade-path.sh, lock_get). With "project", a lock
+# still in the state dir is read until the first write moves it.
 lock_path() {
-  local base="${1:-${DRUPILOT_PROJECT_DIR:-$PWD}}"
-  printf '%s/drupilot-lock.json' "$(project_state_path "$base")"
+  local base="${1:-${DRUPILOT_PROJECT_DIR:-$PWD}}" files p s
+  files="$(_lock_files "$base")"; p="$(printf '%s\n' "$files" | sed -n '1p')"; s="$(printf '%s\n' "$files" | sed -n '2p')"
+  if [[ "$(lock_location "$base")" == "project" ]] && { [[ -f "$p" ]] || [[ ! -f "$s" ]]; }; then
+    printf '%s' "$p"
+  else
+    printf '%s' "$s"
+  fi
+  return 0
 }
 
 # lock_merge_json <json-object> [project_dir] -> merge the object's top-level
@@ -74,7 +134,7 @@ lock_merge_json() {
 # lock, jq or the key is absent. STDOUT only (no logging).
 lock_get() {
   local path="$1" def="${2:-}" f
-  f="$(drupilot_lock_file)"
+  f="$(lock_path)"
   if [[ -r "$f" ]] && have_cmd jq; then
     local v; v="$(jq -r "${path} // empty" "$f" 2>/dev/null)"
     if [[ -n "$v" && "$v" != "null" ]]; then printf '%s' "$v"; return 0; fi
@@ -140,7 +200,7 @@ lock_resolve() {
 # developer can inspect the frozen toolchain. Returns 1 (with a note on stderr)
 # when there is no lock yet. Read-only.
 lock_show() {
-  local f; f="$(drupilot_lock_file "${1:-}")"
+  local f; f="$(lock_path "${1:-}")"
   if [[ -r "$f" ]] && have_cmd jq; then jq . "$f" 2>/dev/null || cat "$f"; return 0; fi
   log_info "No lockfile yet at $f."
   return 1
@@ -148,10 +208,18 @@ lock_show() {
 
 # lock_clear [project_dir] -> delete the lockfile so the next run resolves fresh
 # and re-freezes (the deterministic escape hatch, per-project, without flipping
-# DRUPILOT_DETERMINISTIC globally).
+# DRUPILOT_DETERMINISTIC globally). With lock_location "project" it also
+# deletes the state dir's copy, which a reader would fall back to.
 lock_clear() {
-  local f; f="$(drupilot_lock_file "${1:-}")"
-  if [[ -f "$f" ]]; then rm -f "$f" && log_ok "Cleared lockfile: $f"; else log_info "No lockfile to clear at $f."; fi
+  local base="${1:-${DRUPILOT_PROJECT_DIR:-$PWD}}" f s n=0
+  f="$(lock_path "$base")"
+  s="$(_lock_files "$base" | sed -n '2p')"
+  if [[ -f "$f" ]]; then rm -f "$f" && log_ok "Cleared lockfile: $f" && n=1; fi
+  if [[ "$(lock_location "$base")" == "project" && "$s" != "$f" && -f "$s" ]]; then
+    rm -f "$s" && log_ok "Cleared the state dir's copy: $s" && n=1
+  fi
+  [[ "$n" == "1" ]] || log_info "No lockfile to clear at $f."
+  return 0
 }
 
 # render_sha_record ROOT REL FILE [TEMPLATE] -> keep the sha256 of a config
