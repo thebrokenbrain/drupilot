@@ -29,7 +29,7 @@ canon_json() {
   local prog='walk(if type == "string" then split("\r\n") | join("\n") else . end)' out
   if [[ -n "${1:-}" ]]; then
     out="$(LC_ALL=C jq -c . 2> /dev/null)" || return 0
-    out="$(printf '%s\n' "$out" | relpath_strip_runner "$1" | LC_ALL=C jq -S "$prog" 2> /dev/null)" || return 0
+    out="$(printf '%s\n' "$out" | relpath_strip_runner "$1" --json | LC_ALL=C jq -S "$prog" 2> /dev/null)" || return 0
   else
     out="$(LC_ALL=C jq -S "$prog" 2> /dev/null)" || return 0
   fi
@@ -86,24 +86,26 @@ file_hash() {
   return 0
 }
 
-# relpath_strip_runner [ROOT] -> STDIN with the runner prefixes of the Drupal
-# root removed wherever they appear (JSON keys, values, inside messages): the
-# DDEV container's /var/www/html/ and, with ROOT, the host's ROOT/ (as given
-# and its physical path when ROOT is a symlink), each also in its JSON-escaped
-# forms (\" and \\ escaped, and / as \/). A bare root not followed by a path
-# character becomes ".". So the
+# relpath_strip_runner [ROOT] [--json] -> STDIN with the runner prefixes of
+# the Drupal root removed wherever they appear (JSON keys, values, inside
+# messages): the DDEV container's /var/www/html/ and, with ROOT, the host's
+# ROOT/ (as given and its physical path when ROOT is a symlink), each also
+# with / escaped as \/; with --json (STDIN is JSON text, as canon_json passes
+# it) also with " and \ escaped as JSON escapes them. A bare root not
+# followed by a path character becomes ".". So the
 # same tree gives the same root-relative paths on the host and in DDEV. The
 # match is literal (no regex), byte-wise (LC_ALL=C); a ROOT of / adds nothing.
 # STDIN is one record (a \001 byte in it is kept unless it ends the input),
 # so a last line without LF stays without one.
 relpath_strip_runner() {
-  local root="${1:-}" phys=""
+  local root="${1:-}" phys="" json=0
+  [[ "${2:-}" == "--json" ]] && json=1
   while [[ "$root" == */ ]]; do root="${root%/}"; done
   if [[ -n "$root" && -d "$root" ]]; then
     phys="$(cd -P "$root" 2> /dev/null && pwd -P || true)"
     [[ "$phys" == "$root" || "$phys" == "/" ]] && phys=""
   fi
-  _CANON_R1="$root" _CANON_R2="$phys" LC_ALL=C awk '
+  _CANON_R1="$root" _CANON_R2="$phys" _CANON_JSON="$json" LC_ALL=C awk '
     function esc(s,   o, i, c) {
       o = ""
       for (i = 1; i <= length(s); i++) { c = substr(s, i, 1); o = o (c == "/" ? "\\/" : c) }
@@ -117,9 +119,9 @@ relpath_strip_runner() {
       }
       return o
     }
-    function add(p,   k) {
+    function add(p, sep,   k) {
       for (k = 1; k <= n; k++) if (B[k] == p) return
-      n++; P[n] = p (index(p, "\\/") ? "\\/" : "/"); B[n] = p
+      n++; P[n] = p sep; B[n] = p
     }
     function strip(s, p,   o, i) {
       o = ""
@@ -141,7 +143,8 @@ relpath_strip_runner() {
       r[1] = ENVIRON["_CANON_R1"]; r[2] = ENVIRON["_CANON_R2"]; r[3] = "/var/www/html"
       for (k = 1; k <= 3; k++) {
         if (r[k] == "") continue
-        add(r[k]); add(jesc(r[k])); add(esc(r[k])); add(esc(jesc(r[k])))
+        add(r[k], "/"); add(esc(r[k]), "\\/")
+        if (ENVIRON["_CANON_JSON"] == "1") { add(jesc(r[k]), "/"); add(esc(jesc(r[k])), "\\/") }
       }
       # Longest prefix first, so a root nested in another one is matched whole.
       for (i = 2; i <= n; i++) {

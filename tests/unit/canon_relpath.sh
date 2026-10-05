@@ -38,6 +38,11 @@ assert_eq "no ROOT: only the container prefix" \
   "$(printf '/var/www/html/a %s/b\n' "$ROOT" | relpath_strip_runner)" "a $ROOT/b"
 assert_eq "ROOT / strips nothing of its own" \
   "$(printf '/etc/a /var/www/html/b\n' | relpath_strip_runner /)" "/etc/a b"
+BS="$T_TMP/a\\/bed"; mkdir -p "$BS"
+assert_eq "a root with a component ending in a backslash" "$(printf '%s/web/x.php\n' "$BS" | relpath_strip_runner "$BS")" "web/x.php"
+BS2="$T_TMP/b\\c/bed"; mkdir -p "$BS2"
+assert_eq "plain text: another directory spelled with an escaped backslash is kept" \
+  "$(printf '%s/web/x.php\n' "$T_TMP/b\\\\c/bed" | relpath_strip_runner "$BS2")" "$T_TMP/b\\\\c/bed/web/x.php"
 ODD="$T_TMP/a.b+c[1]*(x)\\y"
 assert_eq "a ROOT with regex and awk metacharacters is literal" \
   "$(printf '%s/web/a.php %s/web/b.php\n' "$ODD" "$T_TMP/aXb+c[1]*(x)\\y" | relpath_strip_runner "$ODD")" \
@@ -59,7 +64,11 @@ QR="$T_TMP/q\"b"; mkdir -p "$QR"
 assert_eq "a root with a quote, in its JSON form" \
   "$(jq -n -c --arg p "$QR/web/a.php" '{m: $p}' | canon_json "$QR" | jq -r .m)" "web/a.php"
 
-# Keys sort as the relative paths they become (strip, then sort).
+# Keys sort as the relative paths they become (strip, then sort): sorted
+# first, the container keys would come before /var/www/html2 and the host key.
+assert_eq "keys sort after the strip (container, sibling and host keys)" \
+  "$(printf '{"/var/www/html/web/z.php":1,"/var/www/html2/a":2,"%s/web/b.php":3}' "$ROOT" | canon_json "$ROOT" | jq -c 'keys_unsorted')" \
+  '["/var/www/html2/a","web/b.php","web/z.php"]'
 assert_eq "keys sort after the strip" \
   "$(printf '{"/var/www/html/web/z.php":1,"%s/web/a.php":2,"/opt/m.php":3}' "$ROOT" | canon_json "$ROOT" | jq -r 'keys_unsorted | join(" ")')" \
   "/opt/m.php web/a.php web/z.php"

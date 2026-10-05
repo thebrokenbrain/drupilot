@@ -250,7 +250,7 @@ REPORT="$(printf '%s' "$REPORT" | jq -c '
       test_adaptations: tagged(.test_adaptations)}
   | .totals = {modules: ($mods | length),
                ported: ([$mods[] | select((.stage // "") | IN("ported", "refactored", "tested", "contributed"))] | length),
-               preservation_verified: ([$mods[] | select(.preservation == "verified")] | length),
+               preservation_verified: ([$mods[] | select(.preservation == "verified" and .tests_fresh != false)] | length),
                regressions: ([$mods[] | select(.preservation == "regression")] | length),
                hygiene_errors: ([$mods[] | .hygiene.error // 0] | add // 0),
                undeclared: ([$mods[] | .undeclared // [] | length] | add // 0),
