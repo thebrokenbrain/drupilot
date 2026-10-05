@@ -131,7 +131,7 @@ if have_cmd timeout; then TIMEOUT="timeout $PER_TEST"; elif have_cmd gtimeout; t
 # running test's group (TERM, then KILL after 3 s) and every wrapper, waits
 # for them, and ends the run with exit 130.
 stop_run() {
-  local pf p pids="" i alive
+  local pf p pids="" alive
   trap '' INT TERM HUP
   for pf in "$TMP"/*.pid; do
     [[ -f "$pf" ]] || continue
@@ -143,7 +143,7 @@ stop_run() {
   # A test gets 3 s to end on TERM (its EXIT trap removes its temp dir); a
   # group with a process still alive then is killed (a bash can spin on TERM
   # inside its EXIT trap instead of ending).
-  for i in 1 2 3; do
+  for _ in 1 2 3; do
     alive=0
     for p in $pids; do { kill -0 -- "-$p" || kill -0 "$p"; } 2> /dev/null && alive=1; done
     [[ "$alive" == "1" ]] || break
