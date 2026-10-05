@@ -57,6 +57,14 @@ assert_eq "three-majors: >=10 reaches 10, 11 and 12" "$(pa 10 11 supported false
 assert_eq "several at once, in the fixed order" \
   "$(pa 12 11 supported false 8.4 8.3 '^10 || ^11 || ^12' auto keep-previous)" "2|source-above-target floor-above-final three-majors"
 assert_eq "the schema's example plan holds" "$(plan_assert "$(cat "$T_REPO/schemas/examples/upgrade-plan.example.json")")" "[]"
+# A field of another type is never a shell word: no command runs, and the
+# checks it feeds see a value of no valid format.
+bad="$(plan 12 11 supported false 8.4 8.3 '^10 || ^11' auto keep-previous | jq -c --arg f "$T_TMP/pwned" '.range.resolved_strategy = ["x", "touch", $f] | .range.strategy = {}')"
+r="$(plan_assert "$bad" || true)"
+assert_eq "an array or object field runs nothing" "$([[ -e "$T_TMP/pwned" ]] && echo ran || echo safe)" "safe"
+assert_eq "  and the other checks still run" "$(printf '%s' "$r" | jq -r 'map(.id) | join(" ")')" "source-above-target floor-above-final"
+assert_eq "a numeric PHP floor is read as text" \
+  "$(plan_assert "$(plan 10 11 supported false 8.1 8.3 '^10 || ^11' auto keep-previous | jq -c '.php.floor = 8.4')" | jq -r '.[0].id')" "floor-above-final"
 assert_exit "a plan that is not an object" 1 plan_assert '[1]'
 assert_exit "no plan" 1 plan_assert ''
 t_done

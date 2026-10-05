@@ -38,16 +38,23 @@ core_requirement_admits() {
 # line on STDIN) the Composer-style constraint admits some release of, in
 # input order ('^10.3 || ^11' admits 10.3..10.x and 11.x; '~11.2.0' only 11.2;
 # '>=10.2 <11.1.2' 10.2..11.1). Each `||` alternative is the AND of its
-# bounds: ^X.Y and ~X.Y run to the next major, ~X.Y.Z to the next minor,
-# X.Y.* / X.Y.Z / X.Y one minor, A - B to B, >= / > from, < / <= up to.
-# An alternative with an unreadable token admits nothing, and != is ignored.
+# bounds, as composer/semver reads them: ^X.Y and ~X.Y run to the next major,
+# ~X.Y.Z to the next minor, X.Y.* / X.Y.Z / X.Y / X one minor (X.0 for a
+# bare X), X.* the whole major, A - B up to B, >= / > from, < / <= up to; !=
+# and <> exclude one release (no minor), a stability flag (@dev) or a
+# pre-release suffix (-beta1, beta1) is dropped, and * or a lone @dev admits
+# everything. An alternative with an unreadable token admits nothing.
 core_requirement_minors() {
   AWKV_c="$(printf '%s' "${1:-}" | tr -d "\"'")" awk '
     function key(maj, mn) { return maj * 1000 + mn }
-    # parse(t): VM, VN = major, minor; VP = 1 when a patch is given; VW = 1
-    # for a wildcard minor (X.* / X.x); returns 0 when t is no version.
+    # parse(t): VM, VN = major, minor; VG = 1 when a minor is given; VP = 2 /
+    # 1 for a patch above / equal to 0, -1 for a wildcard patch; VW = 1 for a
+    # wildcard minor (X.* / X.x); returns 0 when t is no version.
     function parse(t,   v, n) {
+      # 11.x-dev names the development branch itself, which no release is.
+      if (t ~ /[.]([xX]|[*])-[Dd][Ee][Vv]/) return 0
       sub(/^v/, "", t); sub(/@.*$/, "", t); sub(/-.*$/, "", t)
+      sub(/[._]?([Aa][Ll][Pp][Hh][Aa]|[Bb][Ee][Tt][Aa]|[Rr][Cc]|[Pp][Aa][Tt][Cc][Hh]|[Pp][Ll]|[Dd][Ee][Vv]|[AaBbPp])[.0-9]*$/, "", t)
       if (t !~ /^[0-9]+(\.([0-9]+|\*|x|X))*$/) return 0
       n = split(t, v, ".")
       VM = v[1] + 0; VN = 0; VP = 0; VW = 0; VG = (n >= 2)
@@ -57,19 +64,21 @@ core_requirement_minors() {
     }
     function alt(a,   n, p, i, t, op, lo, hi, x) {
       gsub(/,/, " ", a)
-      while (match(a, /(>=|<=|!=|==|>|<|\^|~|=)[[:space:]]+/)) {
+      while (match(a, /(<>|>=|<=|!=|==|>|<|\^|~|=)[[:space:]]+/)) {
         op = substr(a, RSTART, RLENGTH); sub(/[[:space:]]+$/, "", op)
         a = substr(a, 1, RSTART - 1) op substr(a, RSTART + RLENGTH)
       }
       n = split(a, p, /[[:space:]]+/); lo = -1; hi = 1e9; x = 0
       for (i = 1; i <= n; i++) {
         t = p[i]
+        sub(/@.*$/, "", t)
+        if (t == "" && p[i] != "") { x = 1; continue }
         if (t == "") continue
         if (t == "*") { x = 1; continue }
         if (t == "-" && i < n && parse(p[i + 1])) {
           hi = (VG && !VW) ? key(VM, VN + 1) : key(VM + 1, 0); i++; continue
         }
-        if (t ~ /^!=/) continue
+        if (t ~ /^(!=|<>)/) { x = 1; continue }
         op = ""; if (match(t, /^(>=|<=|==|>|<|\^|~|=)/)) { op = substr(t, 1, RLENGTH); t = substr(t, RLENGTH + 1) }
         # "A - B": A is only the lower bound.
         if (op == "" && i < n && p[i + 1] == "-") op = ">="
@@ -85,7 +94,7 @@ core_requirement_minors() {
         else if (op == "<=") { if (key(VM, VN + 1) < hi) hi = key(VM, VN + 1) }
         else {
           if (key(VM, VN) > lo) lo = key(VM, VN)
-          t = (VG && !VW) ? key(VM, VN + 1) : key(VM + 1, 0); if (t < hi) hi = t
+          t = VW ? key(VM + 1, 0) : key(VM, VN + 1); if (t < hi) hi = t
         }
       }
       if (!x) return 0
@@ -104,13 +113,62 @@ core_requirement_minors() {
   return 0
 }
 
+# core_requirement_lowest <constraint> -> the lowest core version
+# (MAJOR.MINOR.PATCH) the constraint admits ('^10.1.3 || ^11' -> 10.1.3,
+# '>10.1.2' -> 10.1.3, '^10.3 || ^11' -> 10.3.0, '<11' -> 0.0.0), read like
+# core_requirement_minors (an alternative with an unreadable token counts for
+# nothing; pre-releases are ignored). Nothing when no alternative is readable.
+core_requirement_lowest() {
+  AWKV_c="$(printf '%s' "${1:-}" | tr -d "\"'")" awk '
+    function k3(a, b, c) { return a * 1000000 + b * 1000 + c }
+    BEGIN {
+      c = ENVIRON["AWKV_c"]; gsub(/\|\|/, "|", c); na = split(c, alts, "|"); best = -1
+      for (j = 1; j <= na; j++) {
+        a = alts[j]; gsub(/,/, " ", a)
+        while (match(a, /(<>|>=|<=|!=|==|>|<|\^|~|=)[[:space:]]+/)) {
+          op = substr(a, RSTART, RLENGTH); sub(/[[:space:]]+$/, "", op)
+          a = substr(a, 1, RSTART - 1) op substr(a, RSTART + RLENGTH)
+        }
+        n = split(a, p, /[[:space:]]+/); lo = 0; ok = 1; seen = 0
+        for (i = 1; i <= n; i++) {
+          t = p[i]; sub(/@.*$/, "", t)
+          if (t == "") { if (p[i] != "") seen = 1; continue }
+          if (t == "*") { seen = 1; continue }
+          if (t == "-") { i++; continue }
+          if (t ~ /^(<|!=|<>)/) { seen = 1; continue }
+          op = ""; if (match(t, /^(>=|==|>|\^|~|=)/)) { op = substr(t, 1, RLENGTH); t = substr(t, RLENGTH + 1) }
+          if (t ~ /[.]([xX]|[*])-[Dd][Ee][Vv]/) { ok = 0; break }
+          sub(/^v/, "", t); sub(/-.*$/, "", t)
+          sub(/[._]?([Aa][Ll][Pp][Hh][Aa]|[Bb][Ee][Tt][Aa]|[Rr][Cc]|[Pp][Aa][Tt][Cc][Hh]|[Pp][Ll]|[Dd][Ee][Vv]|[AaBbPp])[.0-9]*$/, "", t)
+          if (t !~ /^[0-9]+(\.([0-9]+|\*|x|X))*$/) { ok = 0; break }
+          m = split(t, v, ".")
+          x1 = v[1] + 0; x2 = (m >= 2 && v[2] ~ /^[0-9]+$/) ? v[2] + 0 : 0; x3 = (m >= 3 && v[3] ~ /^[0-9]+$/) ? v[3] + 0 : 0
+          if (op == ">") x3++
+          seen = 1
+          if (k3(x1, x2, x3) > lo) lo = k3(x1, x2, x3)
+        }
+        if (!ok || !seen) continue
+        if (best < 0 || lo < best) best = lo
+      }
+      if (best >= 0) printf "%d.%d.%d", int(best / 1000000), int(best / 1000) % 1000, best % 1000
+    }'
+  return 0
+}
+
 # core_requirement_majors <constraint> -> the distinct majors the constraint's
 # `||` alternatives start at, ascending, space-separated ('^10.3 || ^11 ||
-# ^12' -> "10 11 12"; '>=10.2' -> "10"). Nothing when none can be read.
+# ^12' -> "10 11 12"; '>=10.2 <11.1.2' and '< 11.1.2 >= 10.2' -> "10"); an
+# upper bound (<, <=) or an exclusion (!=, <>) starts nothing. Nothing when
+# none can be read.
 core_requirement_majors() {
   printf '%s' "${1:-}" | tr -d "\"'" | tr '|' '\n' | awk '
     {
-      n = split($0, parts, /[[:space:],]+/)
+      a = $0; gsub(/,/, " ", a)
+      while (match(a, /(<>|>=|<=|!=|==|>|<|\^|~|=)[[:space:]]+/)) {
+        op = substr(a, RSTART, RLENGTH); sub(/[[:space:]]+$/, "", op)
+        a = substr(a, 1, RSTART - 1) op substr(a, RSTART + RLENGTH)
+      }
+      n = split(a, parts, /[[:space:]]+/)
       for (i = 1; i <= n; i++) {
         p = parts[i]
         if (p == "" || p ~ /^(<|!=)/) continue
@@ -120,7 +178,7 @@ core_requirement_majors() {
         break
       }
     }
-    END { out = ""; for (m = 0; m <= 99; m++) if (m in seen) out = out (out == "" ? "" : " ") m; printf "%s", out }'
+    END { out = ""; for (m = 0; m <= 999; m++) if (m in seen) out = out (out == "" ? "" : " ") m; printf "%s", out }'
   return 0
 }
 
@@ -256,12 +314,15 @@ core_matrix_legs() {
 # byte for byte), and scripts/analysis/upgrade-path.sh builds the plan's range
 # from it (any T). For T the ranges come from config/targets/<T>.json
 # .default_ranges (keep-previous / target-only: '^10 || ^11' / '^11' for 11),
-# the "older major" signals are the majors 8..T-1, and the PHP floor never goes
-# below the php_min of the kept previous-major minor (8.1 for every 10.x). It
+# the "older major" signals are the majors 8..T-1, P is resolve_php_target_for
+# T (8.3 for 11, 8.5 for 12 unless one is set), the PHP floor never goes below
+# the php_min of the kept previous-major minor (8.1 for every 10.x), and auto
+# keeps the previous major only while targets/<T-1>.json's status is not eol
+# (X15: a data commit flips it). T must be a major (else {} and return 1). It
 # never asserts anything: upgrade-path.sh checks the plan.
 strategy_decide() {
   local subject="${1:-$PWD}" t="${2:-11}" phase="${3:-port}" bc_override="${4:-auto}"
-  have_cmd jq || { printf '{}\n'; return 1; }
+  have_cmd jq && [[ "$t" =~ ^[0-9]+$ ]] || { printf '{}\n'; return 1; }
   local prev=$((t - 1)) pre_re kp_range to_range default_floor prev_php_min
   pre_re="$(seq 8 "$prev" | tr '\n' '|' | sed 's/|$//')"
   kp_range="$(target_get "$t" '.default_ranges["keep-previous"]')"
@@ -272,7 +333,7 @@ strategy_decide() {
   [[ -n "$default_floor" ]] || default_floor="$prev.0"
 
   local php_target current_req
-  php_target="$(resolve_php_target)"
+  php_target="$(resolve_php_target_for "$t")"
   current_req="$(subject_core_requirement "$subject" 2>/dev/null || true)"
   current_req="$(trim "$current_req")"
 
@@ -284,11 +345,9 @@ strategy_decide() {
 
   # --- strategy resolution (auto default; KEEP_D10 legacy override) --------
   local strat keep_override legacy_note=""
+  # The 0.9 names: upgrade-path.sh maps the 1.0 ones (target-only,
+  # keep-previous) onto them; any other value is auto, as in 0.9.
   strat="$(config_get DRUPILOT_CORE_TARGET_STRATEGY auto)"; strat="$(lc "$strat")"
-  case "$strat" in
-    target-only) strat="d11-only";;
-    keep-previous) strat="keep-d10";;
-  esac
   case "$strat" in d11-only|keep-d10|auto) : ;; *) strat="auto";; esac
   keep_override="$(config_get DRUPILOT_KEEP_D10 "")"
   if [[ "$strat" == "auto" && -n "$keep_override" ]]; then
@@ -312,10 +371,13 @@ strategy_decide() {
   esac
 
   # --- resolve `auto` into a concrete strategy ----------------------------
-  local resolved
+  local resolved prev_eol=0
+  [[ "$(target_get "$prev" '.status')" == "eol" ]] && prev_eol=1
   if [[ "$strat" == "auto" ]]; then
     if [[ "$bc_break" == "1" ]]; then
       resolved="d11-only"
+    elif [[ "$prev_eol" == "1" ]]; then
+      resolved="d11-only"           # the previous major is end-of-life (X15)
     elif [[ "$had_pre11" == "1" || -z "$current_req" ]]; then
       resolved="keep-d10"           # widest BC-preserving set
     else

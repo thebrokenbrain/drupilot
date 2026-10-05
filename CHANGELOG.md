@@ -31,9 +31,11 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `plan_rector_bc`, `plan_php_block`, `plan_test_matrix`, `plan_ci_flags`,
   `plan_assert` (the plan's assertions, never fixed silently) and
   `version_data_hash`; in `scripts/lib/strategy.sh`,
-  `core_requirement_minors` / `core_requirement_majors` (which core minors
-  and majors a `core_version_requirement` admits). The resolver CLI that
-  assembles them comes next.
+  `core_requirement_minors`, `core_requirement_lowest` and
+  `core_requirement_majors` (which core minors, lowest version and majors a
+  `core_version_requirement` admits, read as composer/semver reads it and
+  checked against its answers). The resolver CLI that assembles them comes
+  next.
 - **`schemas/upgrade-plan.schema.json`** with an example plan
   (`schemas/examples/upgrade-plan.example.json`), checked by the `schemas`
   gate; the target major and bed core, the PHP floor and final, the range,
@@ -255,8 +257,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `recommend_core_target` renders `core-strategy.sh`'s JSON from it. For T=11
   every output is byte-identical: a 168-case matrix of subjects and scenarios
   (`tests/unit/core_strategy_matrix.sh`) pins the raw stdout captured before
-  the change. `DRUPILOT_CORE_TARGET_STRATEGY` also accepts the 1.0 names
-  `target-only` and `keep-previous`.
+  the change. For another target major the
+  decision uses that target's PHP default (8.5 for 12), and `auto` keeps the
+  previous major only while `config/targets/<T-1>.json` does not say `eol`
+  (a data commit flips it, X15); the current data changes no output.
 - `config/php/rules.json`: the four Rector rules `templates/rector.php.tmpl`
   skips for Drupal reasons (first-class callables, `#[\Override]` on
   methods, readonly properties and classes) are `deny` rows, and

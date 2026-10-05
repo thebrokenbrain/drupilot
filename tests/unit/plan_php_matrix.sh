@@ -53,5 +53,10 @@ assert_eq "PREVIOUS_MAJOR: the newest minor the range admits" \
   "$(plan_test_matrix 11.4.8 8.3 8.1 '>=10.2 <10.5 || ^11' 11 | jq -c '.[-1]')" "$(prv 10.4 8.1)"
 assert_eq "a bed whose PHP list is unknown: no PHP_LOW" \
   "$(plan_test_matrix 11.0.13 8.4 8.3 '^11' 11 | jq -c 'map(.leg)')" '["CURRENT"]'
-assert_eq "ci flags of an unknown M" "$(plan_ci_flags "[$(cur 11.4.8 8.5),$(low 11.4.8 8.3)]" 8.5 '')" '{"OPT_IN_TEST_PREVIOUS_MAJOR":0,"OPT_IN_TEST_MAX_PHP":0}'
+m="$(plan_test_matrix 11.2.3 8.4 8.3 '^11' 11)"
+assert_eq "a lock bed on 11.2: PHP_LOW against the bed" "$m" "[$(cur 11.2.3 8.4),$(low 11.2.3 8.3)]"
+assert_eq "  ci flags: 8.4 is the bed minor 11.2's highest PHP (AR-06)" "$(plan_ci_flags "$m" 8.4 11.2.3)" '{"OPT_IN_TEST_PREVIOUS_MAJOR":0,"OPT_IN_TEST_MAX_PHP":1}'
+assert_eq "  the same with the bed given as its minor" "$(plan_ci_flags "$m" 8.4 11.2)" '{"OPT_IN_TEST_PREVIOUS_MAJOR":0,"OPT_IN_TEST_MAX_PHP":1}'
+assert_eq "  a pre-release bed" "$(plan_ci_flags "[$(cur 12.0.0-beta1 8.5)]" 8.5 12.0.0-beta1)" '{"OPT_IN_TEST_PREVIOUS_MAJOR":0,"OPT_IN_TEST_MAX_PHP":0}'
+assert_eq "ci flags of an unknown bed" "$(plan_ci_flags "[$(cur 11.4.8 8.5),$(low 11.4.8 8.3)]" 8.5 '')" '{"OPT_IN_TEST_PREVIOUS_MAJOR":0,"OPT_IN_TEST_MAX_PHP":0}'
 t_done

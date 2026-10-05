@@ -269,7 +269,7 @@ core_range_minors() {
 range_majors() {
   local c="${1:-}"
   [[ -n "$c" ]] || return 0
-  { core_requirement_majors "$c" | tr ' ' '\n'; core_range_minors "$c" 999 | cut -d. -f1; } \
+  { core_requirement_majors "$c" | tr ' ' '\n'; printf '\n'; core_range_minors "$c" 999 | cut -d. -f1; } \
     | awk 'NF { seen[$1 + 0] = 1 } END { out = ""; for (m = 0; m <= 999; m++) if (m in seen) out = out (out == "" ? "" : " ") m; printf "%s", out }'
   return 0
 }
@@ -457,14 +457,18 @@ plan_rector_skip() {
 
 # plan_rector_bc CONSTRAINT F -> {enabled, min_core}: drupal-rector's
 # backwards-compatible rewrites (DeprecationHelper) are on when CONSTRAINT
-# admits more than one minor (F's minor plus the next one, or the next major)
-# and F is at least PLAN_BC_MIN_CORE; min_core is then F, else null.
+# admits more than one minor (a data minor, F's next minor or the next major
+# besides F) and the lowest core it admits (core_requirement_lowest:
+# '^10.1.3 || ^11' -> 10.1.3) is at least PLAN_BC_MIN_CORE; min_core is then
+# F (MAJOR.MINOR), else null.
 plan_rector_bc() {
-  local c="${1:-}" f="${2:-}" on=false rc=0 nxt
+  local c="${1:-}" f="${2:-}" on=false rc=0 more low
   if [[ -n "$c" && "$f" =~ ^([0-9]+)\.([0-9]+)$ ]]; then
-    nxt="$(printf '%s\n%s\n' "${BASH_REMATCH[1]}.$((BASH_REMATCH[2] + 1))" "$((BASH_REMATCH[1] + 1)).0" | core_requirement_minors "$c")"
-    core_version_cmp "$f.0" "$PLAN_BC_MIN_CORE" || rc=$?
-    [[ -n "$nxt" && ( "$rc" == 0 || "$rc" == 2 ) ]] && on=true
+    more="$( { printf '%s\n%s\n' "${BASH_REMATCH[1]}.$((BASH_REMATCH[2] + 1))" "$((BASH_REMATCH[1] + 1)).0" \
+               | core_requirement_minors "$c"; core_range_minors "$c" 999; } | grep -vxF "$f" || true)"
+    low="$(core_requirement_lowest "$c")"
+    if [[ -n "$low" ]]; then core_version_cmp "$low" "$PLAN_BC_MIN_CORE" || rc=$?; else rc=1; fi
+    [[ -n "$more" && ( "$rc" == 0 || "$rc" == 2 ) ]] && on=true
   fi
   jq -n -c --argjson on "$on" --arg f "$f" '{enabled: $on, min_core: (if $on then $f else null end)}'
   return 0
@@ -527,14 +531,16 @@ plan_test_matrix() {
   return 0
 }
 
-# plan_ci_flags MATRIX P M -> the drupal.org GitLab CI opt-ins the test legs
-# map to, one JSON line: OPT_IN_TEST_PREVIOUS_MAJOR = 1 with a PREVIOUS_MAJOR
-# leg; OPT_IN_TEST_MAX_PHP = 1 with a PHP_LOW leg when P is the highest PHP
-# minor M supports (CURRENT then is the max-PHP run). 0 otherwise.
+# plan_ci_flags MATRIX P BED -> the drupal.org GitLab CI opt-ins the test
+# legs map to, one JSON line: OPT_IN_TEST_PREVIOUS_MAJOR = 1 with a
+# PREVIOUS_MAJOR leg; OPT_IN_TEST_MAX_PHP = 1 with a PHP_LOW leg when P is
+# the highest PHP the bed core's minor supports (AR-06; BED as 11.4.8 or
+# 11.4: CURRENT then is the max-PHP run). 0 otherwise.
 plan_ci_flags() {
-  local mx="${1:-[]}" p="${2:-}" m="${3:-}" max=""
+  local mx="${1:-[]}" p="${2:-}" m="" max=""
   have_cmd jq || return 1
-  [[ "$m" =~ ^[0-9]+\.[0-9]+$ ]] && \
+  m="$(printf '%s' "${3:-}" | sed -n 's/^v\{0,1\}\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
+  [[ -n "$m" ]] && \
     max="$(target_get "${m%%.*}" "(.minors[\"$m\"].php_supported // []) | sort_by(split(\".\") | map(tonumber)) | last")"
   jq -n -c --argjson mx "$mx" --arg p "$p" --arg max "$max" '
     {OPT_IN_TEST_PREVIOUS_MAJOR: (if any($mx[]; .leg == "PREVIOUS_MAJOR") then 1 else 0 end),
@@ -555,10 +561,17 @@ plan_ci_flags() {
 # Nothing is fixed: the caller refuses (upgrade-path.sh exits 2).
 plan_assert() {
   local plan="${1:-}" t="" s="" l="" p="" st="" pv="" c="" strat="" rs="" m x w n ans all
-  local out=""
+  local out="" vals
   have_cmd jq || return 1
-  printf '%s' "$plan" | jq -e 'type == "object"' > /dev/null 2>&1 || return 1
-  eval "$(printf '%s' "$plan" | jq -r '@sh "t=\(.target.major // "" | tostring) s=\(.source.major // "" | tostring) l=\(.php.floor // "") p=\(.php.final // "") st=\(.target.status // "") pv=\(.target.preview // false | tostring) c=\(.range.constraint // "") strat=\(.range.strategy // "") rs=\(.range.resolved_strategy // "")"')"
+  # -s: an empty PLAN is [] (jq 1.6's -e exits 0 on no input at all).
+  printf '%s' "$plan" | jq -e -s 'length == 1 and (.[0] | type == "object")' > /dev/null 2>&1 || return 1
+  # Every field as one shell word: a string as is, a number or boolean as
+  # text, anything else as its JSON (which then matches no check's format).
+  vals="$(printf '%s' "$plan" | jq -r 'def w: if type == "string" then . elif type == "number" or type == "boolean" then tostring
+      elif . == null then "" else tojson end;
+    @sh "t=\(.target.major | w) s=\(.source.major | w) l=\(.php.floor | w) p=\(.php.final | w) st=\(.target.status | w) pv=\(.target.preview | w) c=\(.range.constraint | w) strat=\(.range.strategy | w) rs=\(.range.resolved_strategy | w)"')" || return 1
+  [[ -n "$vals" ]] || return 1
+  eval "$vals"
   if [[ "$s" =~ ^[0-9]+$ && "$t" =~ ^[0-9]+$ ]] && (( s > t )); then
     out="$out$(_plan_issue source-above-target "the code is already Drupal $s, above the target Drupal $t")"$'\n'
   fi

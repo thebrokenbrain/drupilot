@@ -25,11 +25,11 @@ assembles them.
    module, and is already the floor of T = 12's default range
    (`^11.3 || ^12`).
 2. **Backwards-compatible rewrites** (`rector.bc`) are on when the range
-   admits more than one minor (F's minor plus the next, or the next major)
-   and F is at least 10.1.3, where `DeprecationHelper` first exists (03-F-D6);
-   `min_core` is then F. Below 10.1.3 they are off. M3 neither raises F nor
-   refuses for it, so `^10 || ^11` keeps its 0.9 result; M6 (T-M6-06)
-   revisits it.
+   admits more than one minor and the lowest core it admits is at least
+   10.1.3, where `DeprecationHelper` first exists (03-F-D6): `^10.1.3 || ^11`
+   qualifies, `^10.1 || ^11` does not. `min_core` is then F. Below 10.1.3
+   they are off. M3 neither raises F nor refuses for it, so `^10 || ^11`
+   keeps its 0.9 result; M6 (T-M6-06) revisits it.
 3. **A hop brings its edge's set family, per minor, never T's own sets.**
    `rector_sets_for_plan` takes each rector edge's `set_family` (the 10-11
    hop brings `Drupal10SetList`, not `Drupal11SetList`), per minor
@@ -47,7 +47,14 @@ assembles them.
    declares `breaking_sets`: for m ≤ F's minor when F's major is N, and all
    of them up to the bed when F's major is above N (no N.x core is kept, so
    none of them can break a supported core).
-6. **"Every minor in C" means every verified minor of a major ≤ T that C
+6. **A range is read as composer/semver reads it** (Drupal checks
+   `core_version_requirement` with `Semver::satisfies`): a bare `11` is the
+   single release 11.0.0, `11.x` the whole major, `!=`/`<>` exclude one
+   release, a stability flag or a pre-release suffix is dropped, and
+   `11.x-dev` (the development branch) admits no release.
+   `tests/unit/core_requirement_minors.sh` pins the minors and the lowest
+   version of 43 constraints against composer/semver's answers.
+   **"Every minor in C" means every verified minor of a major ≤ T that C
    admits.** A minor whose PHP list is unknown, or that is not verified, is
    not checked, and a major above T (a kept `^12` on a T = 11 port) stays
    declared-not-verified. `minor-php-disjoint` fires only when every PHP of
@@ -78,13 +85,20 @@ assembles them.
     formula; M5 runs the legs). Every leg carries `mode`. CURRENT and
     PHP_LOW name the bed's exact core; PREVIOUS_MAJOR names the newest
     released verified minor of T-1 the range admits, at the higher of L and
-    that minor's `php_min`.
+    that minor's `php_min`. `OPT_IN_TEST_MAX_PHP` is keyed to the bed core's
+    minor, as AR-06 says (PHP_LOW is computed against the bed too), not to
+    M: they differ when the lock pins an older bed.
 11. **The bed core** is the lock's core when it is a version of T (a leading
     `v` dropped), else the data's latest release of M.
 12. **The 7 → 12 route is allowed.** `paths/graph.json` lists it as
     forbidden as a direct edge only; `plan_hops` walks `7-11` then `11-12`,
     the route the file names, and the pre-release opt-in still applies.
-13. **D7 in auto.** A d7-assisted source under `--auto` or
+13. **auto keeps the previous major only while it is supported.** When
+    `targets/<T-1>.json` says `eol` (a data commit flips it, X15), auto
+    declares T only; a kept declaration (keep-current) and an explicit
+    strategy are not affected. P for the decision is T's own default
+    (`php_defaults.env`: 8.5 for 12) unless one is set.
+14. **D7 in auto.** A d7-assisted source under `--auto` or
     `DRUPILOT_AUTONOMOUS=true` is refused in both phases with AR-07's exact
     message (code `d7-auto`), before anything is written. Its range keeps
     the 0.9 result until M7.

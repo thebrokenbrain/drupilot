@@ -57,7 +57,7 @@
       "required": ["strategy", "resolved_strategy", "constraint", "floor", "spans_majors"],
       "additionalProperties": false,
       "properties": {
-        "strategy": {"enum": ["auto", "keep-previous", "target-only", "explicit"]},
+        "strategy": {"enum": ["auto", "keep-previous", "target-only", "widest", "explicit"]},
         "resolved_strategy": {"enum": ["keep-current", "keep-previous", "target-only", "explicit"]},
         "constraint": {"x-drupilot-hard-gate": true, "type": "string", "minLength": 1},
         "floor": {"type": ["string", "null"], "pattern": "^[0-9]+\\.[0-9]+$"},

@@ -108,4 +108,10 @@ assert_eq "bc ^11" "$(plan_rector_bc '^11' 11.0)" '{"enabled":true,"min_core":"1
 assert_eq "bc ^11.3 || ^12" "$(plan_rector_bc '^11.3 || ^12' 11.3)" '{"enabled":true,"min_core":"11.3"}'
 assert_eq "bc ~11.2.0 (one minor)" "$(plan_rector_bc '~11.2.0' 11.2)" '{"enabled":false,"min_core":null}'
 assert_eq "bc with no floor" "$(plan_rector_bc '^11' '')" '{"enabled":false,"min_core":null}'
+assert_eq "bc ~10.6.0 || ^11.1: more minors through a later alternative" "$(plan_rector_bc '~10.6.0 || ^11.1' 10.6)" '{"enabled":true,"min_core":"10.6"}'
+assert_eq "bc ~10.3.0 || ~10.5.0" "$(plan_rector_bc '~10.3.0 || ~10.5.0' 10.3)" '{"enabled":true,"min_core":"10.3"}'
+assert_eq "bc ^10.1.3 || ^11 (exactly DeprecationHelper's first release)" "$(plan_rector_bc '^10.1.3 || ^11' 10.1)" '{"enabled":true,"min_core":"10.1"}'
+assert_eq "bc ^10.1.2 || ^11 (10.1.2 lacks it)" "$(plan_rector_bc '^10.1.2 || ^11' 10.1)" '{"enabled":false,"min_core":null}'
+assert_eq "bc '11' (one release, 11.0.0)" "$(plan_rector_bc '11' 11.0)" '{"enabled":false,"min_core":null}'
+assert_eq "bc ^11 <>11.2.1 (an exclusion keeps the range)" "$(plan_rector_bc '^11 <>11.2.1' 11.0)" '{"enabled":true,"min_core":"11.0"}'
 t_done
