@@ -66,6 +66,11 @@
       "type": "integer",
       "minimum": 1
     },
+    "runtime_hash": {
+      "description": "The hash of the PHP helpers stage_runtime staged into <root>/.drupilot/runtime/ (scripts/php/*.php: the sorted \"name sha256\" lines, json_hash), from 1.0 (AR-23).",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
     "toolchain_cell": {
       "description": "The cell of config/toolchain-reference.json the toolchain was installed from (install-toolchain.sh, from 1.0). A lock that pins rector/rector without it was written by drupilot 0.9 and is read as cell legacy_v1 until it is refreshed.",
       "type": "string"

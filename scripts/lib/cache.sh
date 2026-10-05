@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # =============================================================================
 # drupilot — scripts/lib/cache.sh
-# Runtime caches: the digests checkout, the cached base core and the
-# copy-on-write tree copy.
+# Runtime caches: the digests checkout, the cached base core, the
+# copy-on-write tree copy and the staged PHP runtime.
 #
 # Part of the shared library: scripts/lib/common.sh sources it with the other
 # domain libs (never source it alone); see common.sh for the conventions.
@@ -126,5 +126,39 @@ core_cache_prune() {
       rm -rf "${e:?}" 2>/dev/null || true
     fi
   done
+  return 0
+}
+
+# stage_runtime <root> -> stage the plugin's PHP helpers (scripts/php/*.php)
+# into <root>/.drupilot/runtime/ (AR-23, 05-R5), where the bed's container can
+# run them: $(drupal_runner) php .drupilot/runtime/<helper>.php. Each copy is
+# verified by its sha256 (a missing or tampered one is copied again through a
+# temporary file; a helper the plugin no longer ships is removed), and the
+# hash of the set is kept in the root's lock as .runtime_hash. .drupilot/ is
+# in drupilot's managed ignore block and make-patch.sh excludes it. Prints
+# ".drupilot/runtime" (relative to the root); returns 1 when it cannot stage.
+stage_runtime() {
+  local root="${1:-}" src dst f n want lines="" rh
+  [[ -n "$root" && -d "$root" ]] || return 1
+  src="$(plugin_root)/scripts/php"; dst="$root/.drupilot/runtime"
+  mkdir -p "$dst" 2> /dev/null || return 1
+  for f in "$src"/*.php; do
+    [[ -f "$f" ]] || continue
+    n="$(basename "$f")"; want="$(sha256_hex < "$f")"
+    if [[ ! -f "$dst/$n" || "$(sha256_hex < "$dst/$n")" != "$want" ]]; then
+      { cp "$f" "$dst/.$n.$$" && mv -f "$dst/.$n.$$" "$dst/$n"; } 2> /dev/null || { rm -f "$dst/.$n.$$" 2> /dev/null; return 1; }
+      [[ "$(sha256_hex < "$dst/$n")" == "$want" ]] || return 1
+    fi
+    lines="$lines$n $want
+"
+  done
+  for f in "$dst"/*.php; do
+    [[ -f "$f" && ! -f "$src/$(basename "$f")" ]] && rm -f "$f" 2> /dev/null
+  done
+  rh="$(printf '%s' "$lines" | LC_ALL=C sort | json_hash)"
+  if [[ -n "$rh" && "$(DRUPILOT_PROJECT_DIR="$root" lock_get .runtime_hash "")" != "$rh" ]]; then
+    DRUPILOT_PROJECT_DIR="$root" lock_set .runtime_hash "$rh" > /dev/null 2>&1 || true
+  fi
+  printf '.drupilot/runtime'
   return 0
 }
