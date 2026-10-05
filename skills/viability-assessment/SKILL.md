@@ -160,7 +160,10 @@ read `.totals.file_errors` / `.totals.errors` rather than estimating from the
 human report. Check `.drupilot.status` first: `findings` / `clean` are a real
 verdict, but `crashed` (exit 3, `totals: null`, reason in `.drupilot.crash`) means
 PHPStan could not analyse at all (invalid config, fatal error) — report that as a
-blocker to fix, never as "0 deprecations" or "found issues". `.drupilot.notices`
+blocker to fix, never as "0 deprecations" or "found issues". A crash reason that
+starts with `DET-1:` means PHPStan did not run: DDEV is down for a root with a
+DDEV project, or a tool differs from the lock's pins (start DDEV, or run
+`install-toolchain.sh --dir <drupal_root>` / `lock-sync.sh --dir <drupal_root>`). `.drupilot.notices`
 lists PHP/config deprecation notices PHPStan printed (e.g. a stale `drupal_root`).
 
 **Hard vs soft (`DRUPILOT_SOFT_DEPRECATIONS`).** Classify the PHPStan JSON:

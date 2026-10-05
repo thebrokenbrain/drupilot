@@ -1,7 +1,7 @@
 {
   "data_hash": "b967dc04dc59646e99bca648bb267ff1a76ea65993d62d5af159d19ff50cbc5d",
   "files": {
-    "README.md": "6dec8a91ca9b99119a46c3e9ea0e7b384927540346a2c743fe0c36d80d1b0704",
+    "README.md": "fa6c90d5b91f2bf3f1dfac1bbe2c090d7a60fc4a6ebc57e8d9497bc8c56d85e1",
     "golden/port-to-drupal-11.patch": "27fd76cbf1c5e4838ee9e3e209f1e14fb0857dbb5e121ba00f9712962e2b72a0",
     "raw/phpcs.json": "a40041edbe48f5e168bca74c08cdc4cb46afe5926d802eb16bab65706d2ff989",
     "raw/phpstan.json": "6cda12a03999d9314c9cebdbccd72b7121c27ab487ab1748af9cb4299618dc05",

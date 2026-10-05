@@ -96,7 +96,8 @@
 #
 # Gate: `analyze` profile. Exit codes: 0 ok (including nothing to convert) ·
 # 1 usage error · 2 gate (requirements, Drupal root, vendor/bin/rector or the
-# rule missing, unknown core version) · 3 Rector crashed (no verdict).
+# rule missing, unknown core version) · 3 Rector crashed (no verdict), or a
+# DET-1 refusal (an unplanned host run, a Rector the lock does not pin).
 # =============================================================================
 set -euo pipefail
 
@@ -539,6 +540,10 @@ log_info "Config      : ${CFG#"$DRUPAL_ROOT"/} ($(grep -c . "$ACTIVE" || true) t
 ddev_ensure_running_or_host "$DRUPAL_ROOT" rector \
   || die "Could not start the DDEV project at $DRUPAL_ROOT, and there is no host vendor/bin/rector to fall back to." 2
 RUNNER="$(drupal_runner "$DRUPAL_ROOT")"
+# DET-1, as for run-rector.sh's other passes: in deterministic mode no
+# unplanned host run and no Rector the lock does not pin (exit 3).
+_det1="$(DET1_RUNNER="$RUNNER" det1_message "$DRUPAL_ROOT" Rector rector/rector palantirnet/drupal-rector)"
+[[ -z "$_det1" ]] || die "$_det1" 3
 declare -a RUN=()
 [[ -n "$RUNNER" ]] && read -r -a RUN <<<"$RUNNER"
 

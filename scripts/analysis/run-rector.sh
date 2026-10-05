@@ -228,11 +228,18 @@ ddev_ensure_running_or_host "$DRUPAL_ROOT" rector \
 RUNNER="$(drupal_runner "$DRUPAL_ROOT")"   # "ddev exec" when DDEV is up, else ""
 # DET-1: in deterministic mode the toolchain runs where the plan put it, at the
 # versions the lock pins.
-if det1_unplanned_host "$DRUPAL_ROOT" "$RUNNER"; then
-  die "DET-1: $DRUPAL_ROOT has a DDEV project but DDEV is not running, so Rector would run on the host: start it ('ddev start'), or set DRUPILOT_DETERMINISTIC=false to accept the host run." 3
-fi
-if ! _det1="$(det1_tool_mismatch "$DRUPAL_ROOT" rector/rector palantirnet/drupal-rector)"; then
-  die "DET-1: $_det1. Reinstall the pinned toolchain (bash \"$(plugin_root)/scripts/env/install-toolchain.sh\" --dir \"$DRUPAL_ROOT\"), or set DRUPILOT_DETERMINISTIC=false." 3
+_det1="$(DET1_RUNNER="$RUNNER" det1_message "$DRUPAL_ROOT" Rector rector/rector palantirnet/drupal-rector)"
+if [[ -n "$_det1" ]]; then
+  # The documented exit-3 shape on STDOUT for a --json caller, never empty.
+  if [[ "$AS_JSON" == "1" ]] && have_cmd jq; then
+    jq -n -c --arg m "$_det1" --argjson prov "$(tool_provenance "$DRUPAL_ROOT" "$RUNNER" rector/rector)" --argjson dg "$([[ "$USE_DIGESTS" == "1" ]] && echo true || echo false)" --argjson ap "$([[ "$APPLY" == "1" ]] && echo true || echo false)" \
+      '{tool: "rector", status: "error", ok: false, errors: [{pass: 0, exit_code: 3, message: $m}],
+        digests_status: (if $dg then "skipped" else "off" end), digests_sha: null, applied: $ap, digests_pass: $dg,
+        changed_files: 0, files: [], pass1_files: [], compat_files: [], pass2_files: [], rules: [],
+        rule_hits: {official: {}}, compat_status: "skipped", php_floor: null, php_ceiling: null,
+        runner: $prov, file_diffs: []}'
+  fi
+  die "$_det1" 3
 fi
 PHP_TARGET="$(resolve_php_target)"
 # The PHP floor L of the Rector configs and the ceiling U (ADR 0002).
@@ -468,7 +475,7 @@ run_rector_pass() {
 # file, its diff and the rules applied to it, from the JSON report.
 rector_report_human() {
   printf '%s' "${1:-}" | jq -r '
-    (.file_diffs // []) as $d
+    ((.file_diffs // []) | sort_by(.file)) as $d
     | if ($d | length) == 0 then "No file changed by this pass."
       else "\($d | length) file(s) with changes", "",
         ($d | to_entries[] | "\(.key + 1)) \(.value.file)", "", (.value.diff | rtrimstr("\n")), "",
@@ -617,28 +624,50 @@ elif [[ "$USE_DIGESTS" == "1" ]]; then
     [[ -f "$CONFIG_PATH" ]] || die "Digests config not found after clone/update: $CONFIG_PATH" 2
   fi
 
-  # The DDEV container cannot read the host-side cache path: the config's
-  # directory (all.php loads its rules from __DIR__) is staged under the root,
-  # in <root>/.drupilot/digests/<key>/ (gitignored, never in a patch), so the
-  # pass runs in the bed like the others (DET-1: no host fallback). A staged
-  # SHA is reused; an explicit --config is staged again on every run.
+  # The DDEV container sees the root as its working directory: a config under
+  # the root is passed relative to it. One outside (drupilot's cache on the
+  # host) is staged under <root>/.drupilot/digests/<key>/ (self-ignored,
+  # never in a patch) so the pass runs in the bed like the others (DET-1: no
+  # host fallback): the digests checkout's whole directory (all.php loads its
+  # rules from __DIR__), reused per SHA; an explicit --config's directory,
+  # staged again on every run, or the file alone when that directory holds
+  # the root or is $HOME. A staging failure is a digests error (partial,
+  # exit 4), never the end of a run whose official pass already ran.
   DIGESTS_RUNNER="$RUNNER"
-  if [[ -n "$RUNNER" && -n "$CONFIG_PATH" && "$CONFIG_PATH" != "$DRUPAL_ROOT"/* ]]; then
-    _cdir="$(dirname "$CONFIG_PATH")"
+  if [[ -n "$RUNNER" && -n "$CONFIG_PATH" && "$CONFIG_PATH" == "$DRUPAL_ROOT"/* ]]; then
+    CONFIG_PATH="${CONFIG_PATH#"$DRUPAL_ROOT"/}"
+  elif [[ -n "$RUNNER" && -n "$CONFIG_PATH" ]]; then
+    _cdir="$(dirname "$CONFIG_PATH")"; _whole=1
+    if [[ -n "$DIGESTS_CONFIG" ]]; then
+      case "$DRUPAL_ROOT/" in "$_cdir"/*) _whole=0;; esac
+      [[ "$_cdir" == "${HOME:-}" || "$_cdir" == "/" ]] && _whole=0
+    fi
     if [[ -n "$DIGESTS_CONFIG" || -z "$DIGESTS_SHA" ]]; then
-      _key="config-$(printf '%s' "$_cdir" | sha256_hex | cut -c1-16)"
+      _key="config-$(printf '%s' "$CONFIG_PATH" | sha256_hex | cut -c1-16)"
     else
       _key="$(printf '%s' "$DIGESTS_SHA" | cut -c1-16)"
     fi
-    _sd="$DRUPAL_ROOT/.drupilot/digests/$_key"
-    if [[ -n "$DIGESTS_CONFIG" || ! -f "$_sd/.staged" ]]; then
+    _sd="$DRUPAL_ROOT/.drupilot/digests/$_key"; _ok=1
+    mkdir -p "$DRUPAL_ROOT/.drupilot" 2> /dev/null || _ok=0
+    [[ -f "$DRUPAL_ROOT/.drupilot/.gitignore" ]] || printf '*\n' > "$DRUPAL_ROOT/.drupilot/.gitignore" 2> /dev/null || true
+    if [[ "$_ok" == "1" && ( -n "$DIGESTS_CONFIG" || ! -f "$_sd/.staged" ) ]]; then
       [[ "$_sd" == "$DRUPAL_ROOT"/.drupilot/digests/* && -d "$_sd" ]] && rm -rf "$_sd"
-      mkdir -p "$_sd" && fast_copy_tree "$_cdir" "$_sd/$(basename "$_cdir")" > /dev/null \
-        && printf '%s\n' "$_cdir" > "$_sd/.staged" \
-        || die "Could not stage the digests config under $DRUPAL_ROOT/.drupilot/digests/." 2
+      if [[ "$_whole" == "1" ]]; then
+        { mkdir -p "$_sd" && fast_copy_tree "$_cdir" "$_sd/$(basename "$_cdir")" > /dev/null; } 2> /dev/null || _ok=0
+      else
+        { mkdir -p "$_sd/$(basename "$_cdir")" && cp "$CONFIG_PATH" "$_sd/$(basename "$_cdir")/"; } 2> /dev/null || _ok=0
+      fi
+      [[ "$_ok" == "1" ]] && printf '%s\n' "$CONFIG_PATH" > "$_sd/.staged"
     fi
-    CONFIG_PATH="${_sd#"$DRUPAL_ROOT"/}/$(basename "$_cdir")/$(basename "$CONFIG_PATH")"
-    log_info "Digests config staged under the project root for the bed: $CONFIG_PATH"
+    if [[ "$_ok" == "1" ]]; then
+      CONFIG_PATH="${_sd#"$DRUPAL_ROOT"/}/$(basename "$_cdir")/$(basename "$CONFIG_PATH")"
+      log_info "Digests config staged under the project root for the bed: $CONFIG_PATH"
+    else
+      _m="Could not stage the digests config under $DRUPAL_ROOT/.drupilot/digests/ for the bed."
+      log_err "$_m"
+      FAILED_PASSES="$FAILED_PASSES 2"; DIGESTS_STATUS="error"; CONFIG_PATH=""
+      ERRORS_JSON="$(printf '%s' "$ERRORS_JSON" | jq -c --arg m "$_m" '. + [{pass: 2, exit_code: 2, message: $m}]')"
+    fi
   fi
 
   if [[ -n "$CONFIG_PATH" ]]; then
@@ -789,8 +818,10 @@ fi
 # so a file path containing a space is never split into two bogus entries.
 lines_to_json() { printf '%s\n' "${1:-}" | jq -R . | jq -s -c 'map(select(length>0))'; }
 # file_diffs_json -> every pass's file_diffs, [{pass: official|compat|digests,
-# file, applied_rectors, diff}], in pass order then by file (Rector sorts each
-# report by file). Through pipes only: a diff may be larger than a command line.
+# file, applied_rectors, diff}], in pass order, then sorted by file, each
+# entry's applied_rectors sorted (DET-2: Rector lists them in the order its
+# parallel jobs end, and its ksort leaves that list as it is). Through pipes
+# only: a diff may be larger than a command line.
 file_diffs_json() {
   { _fd_pass official "$PASS1_RAW"; _fd_pass compat "$PASS3_RAW"; _fd_pass digests "$PASS2_RAW"; } \
     | jq -s -c 'add // []' 2> /dev/null || printf '[]'
@@ -800,7 +831,7 @@ file_diffs_json() {
 # nothing when the report is empty or not JSON.
 _fd_pass() {
   [[ -n "${2:-}" ]] || return 0
-  printf '%s' "$2" | jq -c --arg p "$1" '[(.file_diffs // [])[] | {pass: $p, file, applied_rectors: (.applied_rectors // []), diff}]' 2> /dev/null || true
+  printf '%s' "$2" | jq -c --arg p "$1" '[(.file_diffs // [])[] | {pass: $p, file, applied_rectors: ((.applied_rectors // []) | sort), diff}] | sort_by(.file)' 2> /dev/null || true
   return 0
 }
 if [[ "$AS_JSON" == "1" ]]; then

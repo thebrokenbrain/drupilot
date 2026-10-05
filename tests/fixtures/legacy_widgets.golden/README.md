@@ -11,7 +11,7 @@ is a checkout of this repository.
 | File | What it is |
 |---|---|
 | `golden/port-to-drupal-11.patch` | the `make-patch.sh --local` output of the M2 run `rc` (byte-identical to M1's) |
-| `raw/rector-dryrun.json`, `raw/phpstan.json`, `raw/phpcs.json` | the canonicalized `--json` outputs of the M2 run `rc` (`raw-rc/` below) |
+| `raw/rector-dryrun.json`, `raw/phpstan.json`, `raw/phpcs.json` | the canonicalized `--json` outputs of the M4 run `h10a` (see "M4 re-recording" below; M2's run `rc` before) |
 | `golden.json` | the manifest `scripts/dev/golden.sh` checks: `data_hash` (the version data snapshot of the run) and the sha256 of every file here |
 
 The golden lives next to the fixture, not inside `tests/fixtures/legacy_widgets/`: that directory is the
@@ -120,9 +120,10 @@ pins), 2026-10-05, with `<repo>` on branch `m4/tool-determinism`. Run `h10a` is 
 - Rector now runs with its JSON report: `raw/rector-dryrun.json` gains `file_diffs` (the official pass's
   `WidgetImportForm.php` diff, `FunctionFirstClassCallableRector`) and `runner` (`ddev`, PHP 8.3.33, rector/rector
   2.6.1); every other key is unchanged.
-- `raw/phpstan.json` and `raw/phpcs.json` gain `drupilot.runner`; PHPStan's report is sorted, so its two messages on
-  `WidgetImportForm.php` line 18 now come by identifier (`dependencySerializationTraitProperty...`,
-  `property.readOnly`, `property.visibility`); the findings are the same.
+- `raw/phpstan.json` and `raw/phpcs.json` gain `drupilot.runner`; PHPStan's report is sorted, so the messages
+  on `WidgetImportForm.php` line 21 (the `$loggerFactory` property) now come by identifier, three of them in a
+  new place (`dependencySerializationTraitProperty.unsupportedReadOnlyProperty`, `property.readOnly`,
+  `property.visibility`); the findings are the same.
 - The H10 patch is unchanged (the R-LAB-8 run is byte-identical to the golden).
 
 ## Caveats for whoever re-records this golden
@@ -142,4 +143,5 @@ pins), 2026-10-05, with `<repo>` on branch `m4/tool-determinism`. Run `h10a` is 
 - `DRUPILOT_DRUPAL_TARGET=11.4.8` keeps the core of the first recording; `^11` would resolve a newer 11.x, whose
   PHPStan findings may differ.
 - The M1 recording also ran drupilot v0.9.0 on the same `vendor/` (its own data dir, so no lockfile) and got
-  the same four files: the patch and `phpstan.json`/`phpcs.json` here are still 0.9.0's output.
+  the same four files: the patch here is still 0.9.0's output; `phpstan.json`/`phpcs.json` differ from 0.9.0's
+  since M4 only by `drupilot.runner` and PHPStan's sorted messages.

@@ -594,7 +594,7 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   the deterministic tools. The H10 patch is unchanged.
   - `rector-dryrun.json` gains `file_diffs` and `runner`.
   - `phpstan.json` and `phpcs.json` gain `drupilot.runner`.
-  - PHPStan's two messages on one line come in identifier order.
+  - PHPStan's messages on one line come in identifier order.
 
 ### Deprecated
 - **The 0.9 strategy vocabulary** (T-M3-07, CC-07), kept for all of 1.x and

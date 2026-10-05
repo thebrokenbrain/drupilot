@@ -281,7 +281,8 @@ Output: logs on STDERR; on STDOUT the changed files (one per line), or with
 
 Gate: `analyze` profile. Exit codes: 0 ok (including nothing to convert) ·
 1 usage error · 2 gate (requirements, Drupal root, vendor/bin/rector or the
-rule missing, unknown core version) · 3 Rector crashed (no verdict).
+rule missing, unknown core version) · 3 Rector crashed (no verdict), or a
+DET-1 refusal (an unplanned host run, a Rector the lock does not pin).
 ```
 
 ### analysis/core-strategy.sh
@@ -1122,7 +1123,9 @@ Options:
                   explicit|ruleset-config|ruleset-property|php-target,
                   runner: {runner: ddev|host, php_version, tool_version}};
                   the report is sorted (files by path, their messages by
-                  line, column and source: DET-2).
+                  line, column and source: DET-2). A DET-1 refusal (exit
+                  3) prints {totals: null, files: {}, drupilot: {error,
+                  runner}}.
   --ruleset R     auto (default, DRUPILOT_PHPCS_RULESET): the project ruleset
                   when found, else Drupal,DrupalPractice. drupilot: always
                   Drupal,DrupalPractice (the pre-0.9 behavior). PATH: that
@@ -1180,7 +1183,9 @@ Options:
                    notices:[...], crash:[...], runner:{runner: ddev|host,
                    php_version, tool_version}}, and sorts the report (files
                    by path, their messages by line, identifier and message,
-                   the general errors by text: DET-2). When PHPStan crashed (no
+                   the general errors by text: DET-2). A DET-1 refusal
+                   (exit 3) is reported as crashed, its reason in crash.
+                   When PHPStan crashed (no
                   report produced) `totals` is null, `files` is {} and the
                   reason is in `drupilot.crash` — never a fake zero count.
   -h, --help      Show this help.

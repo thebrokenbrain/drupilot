@@ -29,7 +29,9 @@
 #                    notices:[...], crash:[...], runner:{runner: ddev|host,
 #                    php_version, tool_version}}, and sorts the report (files
 #                    by path, their messages by line, identifier and message,
-#                    the general errors by text: DET-2). When PHPStan crashed (no
+#                    the general errors by text: DET-2). A DET-1 refusal
+#                    (exit 3) is reported as crashed, its reason in crash.
+#                    When PHPStan crashed (no
 #                   report produced) `totals` is null, `files` is {} and the
 #                   reason is in `drupilot.crash` — never a fake zero count.
 #   -h, --help      Show this help.
@@ -123,11 +125,15 @@ ddev_ensure_running_or_host "$DRUPAL_ROOT" phpstan \
 RUNNER="$(drupal_runner "$DRUPAL_ROOT")"
 # DET-1: in deterministic mode PHPStan runs where the plan put it, at the
 # versions the lock pins.
-if det1_unplanned_host "$DRUPAL_ROOT" "$RUNNER"; then
-  die "DET-1: $DRUPAL_ROOT has a DDEV project but DDEV is not running, so PHPStan would run on the host: start it ('ddev start'), or set DRUPILOT_DETERMINISTIC=false to accept the host run." 3
-fi
-if ! _det1="$(det1_tool_mismatch "$DRUPAL_ROOT" phpstan/phpstan mglaman/phpstan-drupal phpstan/phpstan-deprecation-rules)"; then
-  die "DET-1: $_det1. Reinstall the pinned toolchain (bash \"$(plugin_root)/scripts/env/install-toolchain.sh\" --dir \"$DRUPAL_ROOT\"), or set DRUPILOT_DETERMINISTIC=false." 3
+_det1="$(DET1_RUNNER="$RUNNER" det1_message "$DRUPAL_ROOT" PHPStan phpstan/phpstan mglaman/phpstan-drupal phpstan/phpstan-deprecation-rules)"
+if [[ -n "$_det1" ]]; then
+  # The documented exit-3 shape on STDOUT for a --json caller, never empty.
+  if [[ "$AS_JSON" == "1" ]] && have_cmd jq; then
+    jq -n -c --arg m "$_det1" --argjson prov "$(tool_provenance "$DRUPAL_ROOT" "$RUNNER" phpstan/phpstan)" \
+      '{totals: null, files: {}, errors: [$m], drupilot: {status: "crashed", exit_code: 3, phpstan_exit_code: null,
+        notices: [], crash: [$m], runner: $prov}}'
+  fi
+  die "$_det1" 3
 fi
 PHP_TARGET="$(resolve_php_target)"
 

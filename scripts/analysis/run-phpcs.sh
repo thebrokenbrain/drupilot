@@ -55,7 +55,9 @@
 #                   explicit|ruleset-config|ruleset-property|php-target,
 #                   runner: {runner: ddev|host, php_version, tool_version}};
 #                   the report is sorted (files by path, their messages by
-#                   line, column and source: DET-2).
+#                   line, column and source: DET-2). A DET-1 refusal (exit
+#                   3) prints {totals: null, files: {}, drupilot: {error,
+#                   runner}}.
 #   --ruleset R     auto (default, DRUPILOT_PHPCS_RULESET): the project ruleset
 #                   when found, else Drupal,DrupalPractice. drupilot: always
 #                   Drupal,DrupalPractice (the pre-0.9 behavior). PATH: that
@@ -151,11 +153,14 @@ ddev_ensure_running_or_host "$DRUPAL_ROOT" phpcs \
 RUNNER="$(drupal_runner "$DRUPAL_ROOT")"
 # DET-1: in deterministic mode PHPCS runs where the plan put it, at the coder
 # version the lock pins.
-if det1_unplanned_host "$DRUPAL_ROOT" "$RUNNER"; then
-  die "DET-1: $DRUPAL_ROOT has a DDEV project but DDEV is not running, so PHPCS would run on the host: start it ('ddev start'), or set DRUPILOT_DETERMINISTIC=false to accept the host run." 3
-fi
-if ! _det1="$(det1_tool_mismatch "$DRUPAL_ROOT" drupal/coder)"; then
-  die "DET-1: $_det1. Reinstall the pinned toolchain (bash \"$(plugin_root)/scripts/env/install-toolchain.sh\" --dir \"$DRUPAL_ROOT\"), or set DRUPILOT_DETERMINISTIC=false." 3
+_det1="$(DET1_RUNNER="$RUNNER" det1_message "$DRUPAL_ROOT" PHPCS drupal/coder)"
+if [[ -n "$_det1" ]]; then
+  # The documented exit-3 shape on STDOUT for a --json caller, never empty.
+  if [[ "$AS_JSON" == "1" ]] && have_cmd jq; then
+    jq -n -c --arg m "$_det1" --argjson prov "$(tool_provenance "$DRUPAL_ROOT" "$RUNNER" drupal/coder)" \
+      '{totals: null, files: {}, drupilot: {error: $m, runner: $prov}}'
+  fi
+  die "$_det1" 3
 fi
 
 log_info "Drupal root : $DRUPAL_ROOT"
