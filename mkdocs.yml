@@ -97,4 +97,5 @@ nav:
           - contributing/adr/0017-upgrade-plan-resolver.md
           - contributing/adr/0018-freezing-the-upgrade-plan.md
           - contributing/adr/0019-rector-template-from-the-plan.md
+          - contributing/adr/0020-phpstan-neon-from-the-plan.md
   - Changelog: changelog.md

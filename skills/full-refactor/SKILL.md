@@ -233,6 +233,11 @@ relevant tests:
 # Coding standards: auto-fix then verify (must end clean):
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpcs.sh" --subject "<path>" --fix
 
+# phpstan.neon's refactor profile, once per refactor (every phpstan-drupal rule;
+# Phase 1's compat profile leaves its opinion rules off; exit 3 = a hand-edited
+# phpstan.neon, kept as it is):
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/render-templates.sh" --subject "<path>" --only phpstan --profile refactor
+
 # Static analysis at the refactor level (5-6):
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "<path>" \
   --level "$(config_get DRUPILOT_PHPSTAN_LEVEL_REFACTOR 6)"

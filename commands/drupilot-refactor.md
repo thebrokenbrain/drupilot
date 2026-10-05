@@ -193,6 +193,10 @@ Push static analysis to the refactor level and require clean coding standards:
 ```bash
 # Coding standards: autofix, then the result must be clean for Drupal + DrupalPractice:
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpcs.sh" --subject "$1" --fix
+# phpstan.neon's refactor profile (every phpstan-drupal rule; Phase 1's compat
+# profile leaves its opinion rules off). Exit 3 means the developer edited
+# phpstan.neon: it is kept, and PHPStan runs with it.
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/render-templates.sh" --subject "$1" --only phpstan --profile refactor
 # Static analysis at the higher refactor level:
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "$1" --level "$(bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; config_get DRUPILOT_PHPSTAN_LEVEL_REFACTOR 6')"
 ```

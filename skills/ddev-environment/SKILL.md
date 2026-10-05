@@ -334,8 +334,8 @@ rector,phpstan,phpcs,testing` limits the set; `--set KEY=VALUE` overrides a toke
 
 | Template | Destination (Drupal root) | Key placeholders |
 |---|---|---|
-| `rector.php.tmpl` | `rector.php` | `{{PHP_TARGET}}`, `{{PHP_SET}}`, `{{SUBJECT_PATH}}` |
-| `phpstan.neon.tmpl` | `phpstan.neon` | `{{PHPSTAN_LEVEL}}`, `{{SUBJECT_PATH}}` |
+| `rector.php.tmpl` | `rector.php` | `{{SUBJECT_PATH}}`, from the upgrade plan: `{{RECTOR_SETS}}`, `{{BC_BLOCK}}`, `{{PHP_VERSION_L}}`, `{{PHP_SETS_L}}`, `{{SKIP_RULES}}` (ADR 0019) |
+| `phpstan.neon.tmpl` | `phpstan.neon` | `{{PHPSTAN_LEVEL}}`, `{{SUBJECT_PATH}}`, from the upgrade plan: `{{PHPSTAN_PHP_MIN}}`/`{{PHPSTAN_PHP_MAX}}`, `{{PHPSTAN_PROFILE}}`, `{{PHPSTAN_CACHE_KEY}}` (ADR 0020) |
 | `phpcs.xml.dist.tmpl` | `phpcs.xml.dist` | `{{SUBJECT_PATH}}` |
 | `ddev-config.yaml.tmpl` | (reference for `.ddev/config.yaml`) | `{{PROJECT_NAME}}`, `{{PHP_TARGET}}` |
 | `ddev-web-environment.yaml.tmpl` | `.ddev/config.testing.yaml` (separate file) | — |
@@ -345,7 +345,9 @@ rector,phpstan,phpcs,testing` limits the set; `--set KEY=VALUE` overrides a toke
 
 `{{SUBJECT_PATH}}` is the in-docroot path, e.g. `web/modules/custom/foo`.
 `{{PHP_TARGET}}` = `resolve_php_target`; `{{PHPSTAN_LEVEL}}` =
-`DRUPILOT_PHPSTAN_LEVEL` (default 2 for Phase 1). `{{WEBDRIVER_HOST}}` (read
+`DRUPILOT_PHPSTAN_LEVEL` (default 2 for Phase 1). phpstan.neon's profile is
+`compat` (phpstan-drupal's opinion rules off) unless `--profile refactor` (the
+refactor stage) asks for every rule. `{{WEBDRIVER_HOST}}` (read
 from `.ddev/docker-compose.selenium-chrome.yaml`, default `selenium-chrome:4444`)
 is still accepted by `--set` but no current template uses it.
 The generated `phpstan.neon` intentionally has no `drupal: drupal_root:` block:
