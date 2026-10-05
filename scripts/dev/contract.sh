@@ -174,20 +174,25 @@ gen_names() {
 code() { grep -vE '^[[:space:]]*#' "$PR/$1" 2>/dev/null || true; }
 # fn_body <file> <function> -> the code of one shell function.
 fn_body() { code "$1" | awk -v f="$2" '$0 ~ "^" f "\\(\\) *\\{" { on = 1 } on { print } on && /^}/ { exit }'; }
+# code_lib -> the code of the whole shared library: the domain libs of
+# scripts/lib/ (or the single common.sh of a tree before the lib split).
+code_lib() { local f; for f in "$PR"/scripts/lib/*.sh; do grep -vE '^[[:space:]]*#' "$f" 2>/dev/null || true; done; return 0; }
+# lib_fn_body <function> -> the code of one function of the shared library.
+lib_fn_body() { code_lib | awk -v f="$1" '$0 ~ "^" f "\\(\\) *\\{" { on = 1 } on { print } on && /^}/ { exit }'; }
 sorted() { tr ' ' '\n' | grep -v '^$' | LC_ALL=C sort -u | jq -R . | jq -s -c .; }
 
 gen_enums() {
   local preservation stages inputs resolved d10 deps pstatus
   # run-phpunit.sh: every PRESERVATION="..." assignment.
   preservation="$(code scripts/tests/run-phpunit.sh | grep -oE 'PRESERVATION="[a-z-]+"' | sed 's/.*="//; s/"$//' | sorted)"
-  # common.sh stage_rank: its case labels, in the order of their rank (the
+  # stage_rank (the shared library): its case labels, in the order of their rank (the
   # ladder, CC-20), so swapping two ranks changes the snapshot too.
-  stages="$(fn_body scripts/lib/common.sh stage_rank | grep -oE '[a-z]+\) printf [1-9]' | sed 's/) printf / /' \
+  stages="$(lib_fn_body stage_rank | grep -oE '[a-z]+\) printf [1-9]' | sed 's/) printf / /' \
     | LC_ALL=C sort -k2n | cut -d' ' -f1 | jq -R . | jq -s -c .)"
   # preflight.sh: the values config_enum accepts for the strategy.
   inputs="$(code scripts/env/preflight.sh | awk '$1 == "config_enum" && $2 == "DRUPILOT_CORE_TARGET_STRATEGY" { for (i = 4; i <= NF && $i !~ /^[>|]/; i++) printf "%s ", $i }' | sorted)"
-  # common.sh: resolved="..." strategies that are not inputs.
-  resolved="$(code scripts/lib/common.sh | grep -oE 'resolved="[a-z0-9-]+"' | sed 's/.*="//; s/"$//' | sorted \
+  # The shared library: resolved="..." strategies that are not inputs.
+  resolved="$(code_lib | grep -oE 'resolved="[a-z0-9-]+"' | sed 's/.*="//; s/"$//' | sorted \
     | jq -c --argjson in "$inputs" '. - $in')"
   # d10_support: D10_SUPPORT/d10_support assignments, the literals of the jq
   # program that computes D10_SUPPORT, and verify-core-matrix's jq default.
@@ -195,7 +200,7 @@ gen_enums() {
             code scripts/analysis/verify-core-matrix.sh | awk '/^D10_SUPPORT="\$\(/ { on = 1 } on { print } on && /'"'"'\)"$/ { exit }' \
               | grep -oE '(then|else) "[a-z/-]+"'
             code scripts/analysis/verify-core-matrix.sh | grep -oE 'd10_support: \(if .* end\)' | grep -oE '"[a-z/-]+"'
-            code scripts/lib/common.sh | grep -oE 'd10_support="[a-z/-]+"'; } \
+            code_lib | grep -oE 'd10_support="[a-z/-]+"'; } \
           | grep -oE '"[a-z/-]+"' | tr -d '"' | sorted)"
   # deps-status.sh: what d11_status prints, and the st="..." its main loop
   # sets (core for a core module).

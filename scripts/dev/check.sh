@@ -45,6 +45,19 @@
 #                 parentheses (`{ok: (a) and (b)}`, a jq 1.6 syntax error;
 #                 write `{ok: ((a) and (b))}`).
 #                 A line can opt out with a trailing `# jq-compat-ok` and a reason
+#   - lib-defs    the shared library is split into domain libs (scripts/lib/*.sh):
+#                 every function is defined in exactly one lib, common.sh only
+#                 sources the domain libs (no function of its own), and its
+#                 list names each of them once (php-scan.sh and ext-scan.sh are
+#                 sourced by the scripts that need them); a hook that sources
+#                 only some libs (_DRUPILOT_LIBS) lists every lib that defines
+#                 a function it calls, directly or through other functions
+#                 (a static scan: every word of the code that names a lib
+#                 function). With
+#                 --compare-pre-split=REF it also lists the functions defined
+#                 in scripts/lib/*.sh at the git REF and fails when the set
+#                 differs (the lib split moves functions, it never adds,
+#                 renames or drops one)
 #   - bang-lint   no `!`...`` exec span in commands/*.md, skills/*/SKILL.md or
 #                 agents/*.md contains a <placeholder>: those spans run at command
 #                 load, before the model can substitute anything
@@ -112,6 +125,7 @@
 # Usage:
 #   scripts/dev/check.sh [--json] [--only G1,G2] [--skip G1,G2]
 #                        [--allow-fail G1,G2] [--allow-known] [--smoke] [--ci]
+#                        [--compare-pre-split=REF]
 #     --json         machine summary on STDOUT (logs stay on STDERR)
 #     --only/--skip  run a subset of the gates (--gate is an alias of --only)
 #     --allow-fail   report these gates' failures as "allowed-fail" (exit 0)
@@ -120,6 +134,9 @@
 #     --smoke        also run the optional golden and smoke gates (~30 s)
 #     --ci           a missing optional tool (claude/shellcheck/xmllint) is a
 #                    failure instead of a skip; implies --smoke
+#     --compare-pre-split=REF
+#                    the lib-defs gate also compares the function set of
+#                    scripts/lib/*.sh with the one at the git REF
 #
 # Output (--json):
 #   {ok, gates:[{name, status: pass|fail|skip|allowed-fail|warn, detail, findings:[..]}]}
@@ -135,14 +152,14 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export CLAUDE_PLUGIN_ROOT="$REPO"
 
-ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat bang-lint templates json version config-keys docs schemas data unit contract evals golden smoke"
+ALL_GATES="validate syntax exec-bit shellcheck portability special-vars jq-compat lib-defs bang-lint templates json version config-keys docs schemas data unit contract evals golden smoke"
 # Gates that run only when asked for (--smoke, --ci, or named in --only).
 OPTIONAL_GATES="golden smoke"
 # Gates known to fail on the current tree, with a fix tracked for 0.9.0. Empty
 # this list as the fixes land so --allow-known stops hiding them.
 KNOWN_FAILING=""
 
-AS_JSON=0; ONLY=""; SKIP=""; ALLOW=""; CI=0; SMOKE=0
+AS_JSON=0; ONLY=""; SKIP=""; ALLOW=""; CI=0; SMOKE=0; PRE_SPLIT_REF=""
 
 usage() { awk 'NR>2 && /^# =+$/ {exit} NR>2 {sub(/^# ?/, ""); print}' "${BASH_SOURCE[0]}"; }
 
@@ -158,6 +175,8 @@ while [[ $# -gt 0 ]]; do
     --allow-known) ALLOW="$ALLOW,${KNOWN_FAILING// /,}"; shift;;
     --smoke) SMOKE=1; shift;;
     --ci) CI=1; SMOKE=1; shift;;
+    --compare-pre-split) PRE_SPLIT_REF="${2:-}"; shift 2 || die "--compare-pre-split needs a git ref" 1;;
+    --compare-pre-split=*) PRE_SPLIT_REF="${1#*=}"; shift;;
     -h|--help) usage; exit 0;;
     *) die "Unknown argument: $1 (see --help)" 1;;
   esac
@@ -294,6 +313,115 @@ gate_portability() {
   else
     record portability pass "${#SCRIPTS[@]} scripts free of bash-4/GNU-only constructs"
   fi
+}
+
+# lib_functions <file...> -> "<name>\t<file>" for every function defined at
+# column 0 (name() {) in the given files.
+lib_functions() {
+  awk '/^[a-zA-Z_][a-zA-Z0-9_]*\(\) *\{/ { n = $0; sub(/\(\).*/, "", n); printf "%s\t%s\n", n, FILENAME }' "$@"
+  return 0
+}
+
+# lib_reach <defs> <script> -> the domain libs (core, paths, ...) defining a
+# function the script reaches: every word of its code and of common.sh's own
+# top-level code (comments aside) that names a lib function, then every
+# function those call, transitively. A function's code runs from its
+# definition line to the next definition, so a one-line body, a heredoc or an
+# awk program with a `}` in column 0 cannot end it early (the constants
+# between two functions are read as the first one's: wider, never narrower).
+# <defs> is lib_functions output of the domain libs. A static
+# over-approximation (a name in a string counts), so a hook's lib list can only
+# be too wide, never too narrow.
+lib_reach() {
+  local -a dl=()
+  local f
+  while IFS= read -r f; do dl+=("$f"); done <<EOF
+$(domain_libs)
+EOF
+  awk -v defs="$1" -v script="$2" -v agg="$REPO/scripts/lib/common.sh" '
+    function words(s, kind,   w) {
+      while (match(s, /[A-Za-z_][A-Za-z0-9_]*/)) {
+        w = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH)
+        if (!(w in lib)) continue
+        if (kind == "script") need[w] = 1; else edge[cur, w] = 1
+      }
+    }
+    FILENAME == defs { n = split($2, p, "/"); l = p[n]; sub(/\.sh$/, "", l); lib[$1] = l; next }
+    FNR == 1 { cur = "" }
+    { line = $0; sub(/^[[:space:]]*#.*/, "", line) }
+    FILENAME == script || FILENAME == agg { words(line, "script"); next }
+    /^[a-zA-Z_][a-zA-Z0-9_]*\(\) *\{/ { cur = $0; sub(/\(\).*/, "", cur); sub(/^[^{]*\{/, "", line) }
+    cur != "" { words(line, "lib") }
+    END {
+      do {
+        grown = 0
+        for (k in edge) {
+          split(k, e, SUBSEP)
+          if ((e[1] in need) && !(e[2] in need)) { need[e[2]] = 1; grown = 1 }
+        }
+      } while (grown)
+      for (f in need) used[lib[f]] = 1
+      for (l in used) print l
+    }' FS='\t' "$1" "$REPO/scripts/lib/common.sh" ${dl[@]+"${dl[@]}"} "$2" | LC_ALL=C sort
+  return 0
+}
+
+# domain_libs -> the paths of the domain libs, one per word (scripts/lib/*.sh but
+# the aggregator and the scanners php-scan.sh / ext-scan.sh, which common.sh
+# never sources).
+domain_libs() {
+  local f
+  for f in "$REPO"/scripts/lib/*.sh; do
+    case "${f##*/}" in common.sh|php-scan.sh|ext-scan.sh) continue;; esac
+    printf '%s\n' "$f"
+  done
+  return 0
+}
+
+gate_lib_defs() {
+  local out="$TMP/lib-defs.out" all="$TMP/lib-defs.all" b c n libs=0 pre cur order want
+  : > "$out"
+  ( cd "$REPO" && lib_functions scripts/lib/*.sh ) > "$all"
+  # shellcheck disable=SC2046  # one path per word, no spaces in the libs' names
+  lib_functions $(domain_libs) > "$TMP/lib-defs.domain"
+  # Each function in exactly one lib.
+  cut -f1 "$all" | LC_ALL=C sort | uniq -d | while IFS= read -r n; do
+    printf '%s is defined more than once: %s\n' "$n" "$(awk -F'\t' -v n="$n" '$1 == n { printf "%s ", $2 }' "$all")"
+  done >> "$out"
+  # common.sh is the aggregator: it sources the domain libs, each once.
+  awk -F'\t' '$2 == "scripts/lib/common.sh" { print "scripts/lib/common.sh defines " $1 "(): it only sources the domain libs" }' "$all" >> "$out"
+  order="$(sed -n 's/^_drupilot_libs="\(.*\)"$/\1/p' "$REPO/scripts/lib/common.sh")"
+  for b in "$REPO"/scripts/lib/*.sh; do
+    b="${b##*/}"; b="${b%.sh}"
+    case "$b" in common|php-scan|ext-scan) continue;; esac
+    libs=$((libs + 1))
+    c="$(printf '%s' "$order" | tr ' ' '\n' | grep -cx "$b" || true)"
+    [[ "$c" == "1" ]] || printf 'scripts/lib/%s.sh is listed %s time(s) in common.sh'"'"'s _drupilot_libs (once expected)\n' "$b" "$c" >> "$out"
+  done
+  # A hook's _DRUPILOT_LIBS covers the libs of every function it reaches.
+  for b in "$REPO"/hooks/scripts/*.sh; do
+    grep -q '_DRUPILOT_LIBS=' "$b" || continue
+    want="$(sed -nE 's/^[[:space:]]*(export[[:space:]]+)?_DRUPILOT_LIBS=["'"'"']?([a-z][a-z -]*)["'"'"']?[[:space:]]*$/\2/p' "$b" | head -n 1)"
+    [[ -n "$want" ]] || { printf '%s sets _DRUPILOT_LIBS in a form the gate cannot read (write _DRUPILOT_LIBS="core ...")\n' "hooks/scripts/${b##*/}" >> "$out"; continue; }
+    for c in $(lib_reach "$TMP/lib-defs.domain" "$b"); do
+      case " $want " in *" $c "*) ;; *) printf '%s calls a function of scripts/lib/%s.sh, missing from its _DRUPILOT_LIBS\n' "hooks/scripts/${b##*/}" "$c" >> "$out";; esac
+    done
+  done
+  if [[ -n "$PRE_SPLIT_REF" ]]; then
+    if ! git -C "$REPO" rev-parse -q --verify "$PRE_SPLIT_REF^{commit}" > /dev/null 2>&1; then
+      printf 'unknown git ref for --compare-pre-split: %s\n' "$PRE_SPLIT_REF" >> "$out"
+    else
+      pre="$(git -C "$REPO" ls-tree --name-only "$PRE_SPLIT_REF" scripts/lib/ \
+        | grep '\.sh$' | while IFS= read -r b; do git -C "$REPO" show "$PRE_SPLIT_REF:$b"; done \
+        | awk '/^[a-zA-Z_][a-zA-Z0-9_]*\(\) *\{/ { n = $0; sub(/\(\).*/, "", n); print n }' | LC_ALL=C sort -u)"
+      cur="$(cut -f1 "$all" | LC_ALL=C sort -u)"
+      log_info "lib-defs: $(printf '%s\n' "$pre" | grep -c .) function(s) in scripts/lib at $PRE_SPLIT_REF, $(printf '%s\n' "$cur" | grep -c .) in the tree"
+      comm -23 <(printf '%s\n' "$pre") <(printf '%s\n' "$cur") | sed "s/^/only at $PRE_SPLIT_REF: /" >> "$out"
+      comm -13 <(printf '%s\n' "$pre") <(printf '%s\n' "$cur") | sed 's/^/only in the tree: /' >> "$out"
+    fi
+  fi
+  if [[ -s "$out" ]]; then record lib-defs fail "the shared library's function definitions are inconsistent" "$out"
+  else record lib-defs pass "$(wc -l < "$all" | tr -d ' ') functions, each defined once; common.sh sources the $libs domain libs; the hooks' lib lists cover what they call$([[ -n "$PRE_SPLIT_REF" ]] && printf '; the same set as %s' "$PRE_SPLIT_REF")"; fi
 }
 
 gate_special_vars() {

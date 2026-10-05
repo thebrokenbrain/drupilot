@@ -28,6 +28,10 @@
 # =============================================================================
 set -uo pipefail
 
+# Only the shared-library domains this hook may reach (scripts/dev/check.sh,
+# gate lib-defs, checks the list with a static scan, where a function name in a
+# message counts too).
+_DRUPILOT_LIBS="core paths config subject git interact"
 # shellcheck source=../../scripts/lib/common.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../../scripts/lib/common.sh" 2>/dev/null || true
 

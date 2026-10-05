@@ -24,6 +24,7 @@ yet). The gate is bash 3.2-compatible and read-only.
 | `portability` | No bash 4-only or GNU-only construct (stock macOS bash 3.2, BSD and BusyBox userland, mawk). |
 | `special-vars` | No script assigns or loops over a bash special variable. |
 | `jq-compat` | No jq keyword used as a variable or shorthand key (jq 1.6 rejects them). |
+| `lib-defs` | The shared library is split into domain libs: every function of `scripts/lib/*.sh` is defined once, `common.sh` only sources the domain libs (each once), a hook's `_DRUPILOT_LIBS` covers every lib it reaches, and `--compare-pre-split=REF` checks the function set against a git ref. |
 | `bang-lint` | No `<placeholder>` inside a load-time `` !`...` `` span of a command, skill or agent. |
 | `templates` | Every template renders, and its XML output is well-formed. |
 | `json` | Every JSON file of `config/`, `hooks/` and `.claude-plugin/` parses. |

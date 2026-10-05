@@ -1,0 +1,529 @@
+#!/usr/bin/env bash
+# =============================================================================
+# drupilot — scripts/lib/toolchain.sh
+# The dev toolchain: the known-good reference (cells), Rector's configs
+# (the PHP floor, the compat pass), crash detection and smoke tests.
+#
+# Part of the shared library: scripts/lib/common.sh sources it with the other
+# domain libs (never source it alone); see common.sh for the conventions.
+# =============================================================================
+
+# rector_php_set_arg [ver] -> the named argument of Rector's ->withPhpSets()
+# for a PHP target: 8.3 -> php83, 8.4 -> php84. A target flagged unconfirmed
+# (PHP 8.5) or not recognised falls back to the highest confirmed supported
+# version (php84 by default) with a warning on STDERR: the matching Rector
+# LevelSet may not exist in the installed Rector, so it is never assumed.
+rector_php_set_arg() {
+  local v="${1:-$(resolve_php_target)}" file best=""
+  if [[ "$v" =~ ^8\.[0-9]$ ]] && ! php_target_unconfirmed "$v"; then
+    printf 'php%s' "${v//./}"; return 0
+  fi
+  file="$(drupilot_config_file)"
+  if [[ -r "$file" ]] && have_cmd jq; then
+    best="$(jq -r '(.php_support.unconfirmed // []) as $u
+                   | [(.php_support.supported // [])[] | select(. as $s | $u | index($s) | not)]
+                   | sort_by(split(".") | map(tonumber)) | last // empty' "$file" 2>/dev/null || true)"
+  fi
+  [[ "$best" =~ ^8\.[0-9]$ ]] || best="8.4"
+  log_warn "PHP target '$v' is not a confirmed Rector PHP set for Drupal 11; using php${best//./} (PHP $best)."
+  printf 'php%s' "${best//./}"
+  return 0
+}
+
+# The PHP floor of the Rector configs (ADR 0002). templates/rector.php.tmpl
+# runs the main pass at the floor L: ->withPhpVersion(PhpVersion::PHP_<L>) and
+# ->withPhpSets(php<L>: true), so no version-bound rule and no level set above
+# L applies. templates/rector-compat.php.tmpl is the narrow compat pass: the
+# PHP deprecation fixes whose output still runs on L (today only
+# ExplicitNullableParamTypeRector, deprecated in PHP 8.4), run right after the
+# official pass. M5 generates the compat list from config/php/rules.json.
+RECTOR_COMPAT_FROM_PHP="8.4"
+
+# _rector_range_legs RANGE -> one caret leg per alternative of a core range,
+# one per line ("^10.3"), or "?" for an alternative it cannot read. ^X.Y,
+# ~X.Y, X.Y.*, X.x and a bare version read as ^X.Y; an open >=X.Y as ^X.Y plus
+# ^M for every higher major the version data holds.
+_rector_range_legs() {
+  local alt maj min f m dir
+  local re_c='^[~^]?v?([0-9]+)(\.([0-9]+|[*xX]))?(\.([0-9]+|[*xX]))?$' re_ge='^>=?v?([0-9]+)(\.([0-9]+))?(\.[0-9]+)?$'
+  dir="$(version_data_dir)"
+  while IFS= read -r alt; do
+    alt="$(printf '%s' "$alt" | tr -d " \"'")"
+    [[ -n "$alt" ]] || continue
+    if [[ "$alt" =~ $re_c ]]; then
+      maj="${BASH_REMATCH[1]}"; min="${BASH_REMATCH[3]}"
+      case "$min" in ''|'*'|x|X) min=0;; esac
+      printf '^%s.%s\n' "$maj" "$min"
+    elif [[ "$alt" =~ $re_ge ]]; then
+      maj="${BASH_REMATCH[1]}"; min="${BASH_REMATCH[3]:-0}"
+      printf '^%s.%s\n' "$maj" "$min"
+      for f in "$dir"/targets/*.json; do
+        [[ -f "$f" ]] || continue
+        m="${f##*/}"; m="${m%.json}"
+        [[ "$m" =~ ^[0-9]+$ ]] && (( m > maj )) && printf '^%s\n' "$m"
+      done
+    else
+      printf '?\n'
+    fi
+  done <<EOF
+$(printf '%s\n' "${1:-}" | tr '|' '\n')
+EOF
+  return 0
+}
+
+# _rector_leg_major ^X.Y -> X
+_rector_leg_major() { local l="${1#^}"; printf '%s' "${l%%.*}"; }
+
+# rector_php_bounds <subject_dir> [php_target] -> "L U".
+# L, the floor, is the highest of the lowest PHP the declared core range
+# supports (core-strategy.sh's recommendation, which honors
+# DRUPILOT_CORE_TARGET_STRATEGY; each of its legs through
+# php_bounds_for_range) and the floor of the require.php composer will
+# enforce (core-strategy's require_php, which honors
+# DRUPILOT_REQUIRE_PHP_FLOOR, else the subject's own; only when the subject
+# has a composer.json), never above the PHP target P. A leg whose minor is not
+# verified yet is bounded by its major's verified minors. When a leg is one
+# the version data does not hold (a Drupal 9 leg kept as-is, an unusual
+# constraint), the range floor is unknown: L is the enforced require.php
+# floor, else the lowest PHP the data knows, with a warning. U, the highest
+# PHP the code must run on, is max(P, the highest ceiling of the known legs).
+rector_php_bounds() {
+  local subj="${1:-}" p="${2:-}" cs="" req="" rphp="" leg b lo="" hi="" f="" unknown=1 n=0
+  [[ -n "$p" ]] || p="$(resolve_php_target)"
+  if [[ -n "$subj" && -d "$subj" ]] && have_cmd jq; then
+    cs="$(DRUPILOT_PHP_TARGET="$p" bash "$(plugin_root)/scripts/analysis/core-strategy.sh" --subject "$subj" --json 2>/dev/null </dev/null || true)"
+    req="$(printf '%s' "$cs" | jq -r '.recommended_core_version_requirement // empty' 2>/dev/null || true)"
+    if [[ -f "$subj/composer.json" ]]; then
+      rphp="$(printf '%s' "$cs" | jq -r '.require_php // empty' 2>/dev/null || true)"
+      [[ -n "$rphp" ]] || rphp="$(jq -r '.require.php // empty' "$subj/composer.json" 2>/dev/null || true)"
+      f="$(php_constraint_floor "$rphp")"
+    fi
+    if [[ -n "$req" ]]; then
+      unknown=0
+      while IFS= read -r leg; do
+        [[ -n "$leg" ]] || continue
+        b=""; [[ "$leg" == "?" ]] || b="$(php_bounds_for_range "$leg")"
+        if [[ -z "$b" && "$leg" != "?" && -r "$(version_data_dir)/targets/$(_rector_leg_major "$leg").json" ]]; then
+          # The major is in the data but no verified minor reaches the leg's
+          # (^11.5 before 11.5 is verified): its verified minors bound it. A
+          # major with no verified minor at all (a future one) adds nothing.
+          b="$(php_bounds_for_range "^$(_rector_leg_major "$leg")")"
+          [[ -n "$b" ]] || continue
+        fi
+        n=$((n + 1))
+        if [[ -z "$b" ]]; then unknown=1; continue; fi
+        if [[ -z "$lo" ]] || ! version_ge "${b%% *}" "$lo"; then lo="${b%% *}"; fi
+        if [[ -z "$hi" ]] || ! version_ge "$hi" "${b##* }"; then hi="${b##* }"; fi
+      done <<EOF
+$(_rector_range_legs "$req")
+EOF
+      [[ "$n" -gt 0 ]] || unknown=1
+    fi
+  fi
+  if [[ "$unknown" == "1" ]]; then
+    lo="$f"
+    # A range drupilot could not bound (not no range at all: then P).
+    if [[ -z "$lo" && -n "$req" ]]; then
+      lo="$(jq -r '.versions | keys | sort_by(split(".") | map(tonumber)) | .[0] // empty' \
+        "$(version_data_dir)/php/versions.json" 2>/dev/null || true)"
+      log_warn "The PHP floor of the core range '$req' is not in drupilot's version data and no composer require.php bounds it: Rector targets PHP ${lo:-$p}, the lowest PHP drupilot knows."
+    fi
+  elif [[ -n "$f" ]] && ! version_ge "$lo" "$f"; then
+    lo="$f"
+  fi
+  [[ -n "$lo" ]] || lo="$p"
+  [[ -n "$hi" ]] || hi="$p"
+  version_ge "$p" "$lo" || lo="$p"
+  version_ge "$hi" "$p" || hi="$p"
+  printf '%s %s' "$lo" "$hi"
+  return 0
+}
+
+# rector_compat_needed L U -> 0 when the compat pass has a rule to run: the
+# floor is below the PHP that deprecates it, and the window reaches that PHP
+# (from L >= 8.4 on, the php84 level set of the main pass holds the rule).
+rector_compat_needed() {
+  [[ -n "${1:-}" && -n "${2:-}" ]] || return 1
+  version_ge "$1" "$RECTOR_COMPAT_FROM_PHP" && return 1
+  version_ge "$2" "$RECTOR_COMPAT_FROM_PHP"
+}
+
+# rector_floor_tokens L -> the template tokens of a floor, one KEY=VALUE per
+# line: PHP_FLOOR=8.1, PHP_FLOOR_ID=PHP_81 (Rector's PhpVersion constant) and
+# PHP_FLOOR_SET=php81 (the ->withPhpSets() argument; an unconfirmed 8.5 floor
+# gets rector_php_set_arg's php84, since no php85 set is assumed). Returns 1
+# when L is not a PHP minor.
+rector_floor_tokens() {
+  local l="${1:-}" set
+  [[ "$l" =~ ^[0-9]\.[0-9]$ ]] || return 1
+  if php_target_unconfirmed "$l"; then set="$(rector_php_set_arg "$l" 2>/dev/null)"; else set="php${l//./}"; fi
+  printf 'PHP_FLOOR=%s\nPHP_FLOOR_ID=PHP_%s\nPHP_FLOOR_SET=%s\n' "$l" "${l//./}" "$set"
+  return 0
+}
+
+# rector_config_floor FILE -> the floor a rendered rector.php targets (8.1 from
+# its ->withPhpVersion(PhpVersion::PHP_81)); nothing when it has none.
+rector_config_floor() {
+  sed -n 's/.*->withPhpVersion(PhpVersion::PHP_\([0-9]\)\([0-9]\)).*/\1.\2/p' "${1:-}" 2>/dev/null | head -n 1
+  return 0
+}
+
+# rector_config_pristine TEMPLATE FILE -> 0 when FILE is exactly what TEMPLATE
+# renders for FILE's own floor and subject path (rector.php, or
+# rector-compat.php, whose withPhpVersion is the rules' own): a drupilot
+# render nobody edited, which may be regenerated when its inputs change. A
+# hand edit, another template generation or a file of the developer's own -> 1.
+rector_config_pristine() {
+  local tpl="${1:-}" f="${2:-}" fl sp rc=1
+  [[ -f "$tpl" && -f "$f" ]] || return 1
+  fl="$(rector_config_floor "$f")"
+  [[ -n "$fl" ]] || return 1
+  # shellcheck disable=SC2016  # awk program, not a shell expansion
+  sp="$(awk -v q="'" '/->withPaths\(\[/ { if ((getline l) > 0) { sub("^[[:space:]]*" q, "", l); sub(q ",[[:space:]]*$", "", l); print l }; exit }' "$f" 2>/dev/null || true)"
+  [[ -n "$sp" ]] || return 1
+  # Rendered to STDOUT and compared through a pipe: no temp file, whatever
+  # TMPDIR holds (pipefail makes a failed render a mismatch).
+  # shellcheck disable=SC2046  # one KEY=VALUE word per line, no spaces in them
+  if ( set -o pipefail; render_template "$tpl" - "SUBJECT_PATH=$sp" $(rector_floor_tokens "$fl") 2>/dev/null \
+       | cmp -s - "$f" ); then
+    rc=0
+  fi
+  return "$rc"
+}
+
+# phpstan_extension_config_problem <project_dir> -> checks the
+# phpstan/extension-installer GeneratedConfig.php of a Composer project (a
+# test-bed or a core-matrix reference core). Prints a one-line reason on STDOUT
+# and returns 1 when it is broken: an extension include that does not resolve
+# (PHPStan resolves `relative_install_path` from the file's directory, then the
+# absolute `install_path`), or an installed `phpstan-extension` package the file
+# does not list (e.g. the stub the package ships, left in place when another
+# Composer's plugin ran instead). Returns 0, printing nothing, when the file is
+# sound or the project has no extension-installer. Host-side and read-only.
+phpstan_extension_config_problem() {
+  local d="${1:-}" src gc listed missing name mount=""
+  src="$d/vendor/phpstan/extension-installer/src"
+  gc="$src/GeneratedConfig.php"
+  [[ -d "$src" ]] || return 0
+  if [[ ! -f "$gc" ]]; then printf 'vendor/phpstan/extension-installer/src/GeneratedConfig.php is missing'; return 1; fi
+  mount="$(cd "$d" 2>/dev/null && pwd || true)"
+  while [[ -n "$mount" && "$mount" != "/" && ! -f "$mount/.ddev/config.yaml" ]]; do mount="$(dirname "$mount")"; done
+  [[ "$mount" == "/" ]] && mount=""
+  # Each extension entry -> "name<TAB>relative_install_path<TAB>install_path<TAB>include".
+  missing="$(awk '
+    function val(s,   i) { i = index(s, "=>"); s = substr(s, i + 2); gsub(/^[ \t]*\047|\047,?[ \t]*$/, "", s); return s }
+    /^  \047[^\047]+\047 => *$/ { name = $0; sub(/^  \047/, "", name); sub(/\047.*$/, "", name); rel = ""; abs = ""; next }
+    name != "" && /\047relative_install_path\047 =>/ { rel = val($0); next }
+    name != "" && /\047install_path\047 =>/ { abs = val($0); next }
+    name != "" && /^        [0-9]+ => \047/ { printf "%s\t%s\t%s\t%s\n", name, rel, abs, val($0); next }
+  ' "$gc" 2>/dev/null | while IFS="$(printf '\t')" read -r name rel abs inc; do
+      [[ -n "$inc" ]] || continue
+      if [[ -n "$rel" && -f "$src/$rel/$inc" ]]; then continue; fi
+      # install_path is a container path (/var/www/html/...): map it to the
+      # host through the DDEV project that mounts it.
+      case "$abs" in /var/www/html/*) [[ -n "$mount" ]] && abs="$mount/${abs#/var/www/html/}";; esac
+      [[ -n "$abs" && -f "$abs/$inc" ]] && continue
+      printf '%s (%s)\n' "$name" "$inc"
+    done | head -n 3 | tr '\n' ' ' || true)"
+  if [[ -n "$missing" ]]; then
+    printf 'it points to extension files that do not exist: %s' "$missing"
+    return 1
+  fi
+  if have_cmd jq && [[ -f "$d/vendor/composer/installed.json" ]]; then
+    listed="$(grep -oE "^  '[^']+' =>" "$gc" 2>/dev/null | sed -E "s/^  '//; s/' =>\$//" || true)"
+    while IFS= read -r name; do
+      [[ -n "$name" ]] || continue
+      if ! printf '%s\n' "$listed" | grep -qxF "$name"; then
+        printf 'it does not list the installed PHPStan extension %s' "$name"
+        return 1
+      fi
+    done < <(jq -r '(if type == "object" then (.packages // []) else . end)[] | select(.type == "phpstan-extension") | .name' "$d/vendor/composer/installed.json" 2>/dev/null || true)
+  fi
+  return 0
+}
+
+# core_dev_requirement [root] -> the Composer requirement for drupal/core-dev
+# (PHPUnit + the Drupal test dependencies) MATCHING the installed core, so the
+# test toolchain never drifts from core:
+#   11.4.8        -> drupal/core-dev:~11.4.8   (same minor, >= that patch)
+#   11.2.0-rc1    -> drupal/core-dev:11.2.0-rc1 (pre-release: exact)
+#   11.x-dev      -> drupal/core-dev:11.x-dev   (dev branch: exact)
+#   unknown       -> drupal/core-dev:<resolve_drupal_target> (e.g. ^11)
+# The package name comes from config .packages.core_dev (default drupal/core-dev).
+core_dev_requirement() {
+  local r="${1:-$(find_drupal_root 2>/dev/null || true)}" v pkg
+  pkg="$(config_json '.packages.core_dev' 'drupal/core-dev')"
+  pkg="${pkg%%:*}"; [[ -n "$pkg" ]] || pkg="drupal/core-dev"
+  v="$(drupal_core_version "$r")"
+  if [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    printf '%s:~%s' "$pkg" "$v"
+  elif [[ -n "$v" ]]; then
+    printf '%s:%s' "$pkg" "$v"
+  else
+    printf '%s:%s' "$pkg" "$(resolve_drupal_target)"
+  fi
+  return 0
+}
+
+# phpunit_available [root] -> 0 when vendor/bin/phpunit exists for the project,
+# checked through drupal_runner (inside the container when DDEV is up), so a
+# mutagen-synced or container-only vendor is seen exactly as PHPUnit would be.
+phpunit_available() {
+  local r="${1:-$(find_drupal_root 2>/dev/null || true)}" runner
+  [[ -n "$r" ]] || return 1
+  runner="$(drupal_runner "$r")"
+  if [[ -n "$runner" ]]; then
+    # shellcheck disable=SC2086  # intentional word-split: runner is a command prefix.
+    ( cd "$r" && $runner test -f vendor/bin/phpunit ) >/dev/null 2>&1
+  else
+    [[ -f "$r/vendor/bin/phpunit" ]]
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Toolchain health: the known-good reference set + Rector crash detection
+# ---------------------------------------------------------------------------
+# config/toolchain-reference.json is the KNOWN-GOOD dev-toolchain matrix shipped
+# with the plugin: one cell per Drupal major family (.cells["11"], ["12"], ...),
+# each an exact set verified together end to end (install + a Rector dry-run and
+# apply + PHPStan), plus the single set drupilot 0.9 shipped (.legacy_v1).
+# install-toolchain.sh pins a test-bed to its cell when the project has no lock
+# yet (deterministic mode), so a fresh test-bed created after a broken upstream
+# release still gets a set that works. Only a verified cell is pinned.
+
+# toolchain_reference_file -> path to the shipped reference matrix.
+toolchain_reference_file() { printf '%s/config/toolchain-reference.json' "$(plugin_root)"; }
+
+# toolchain_cell_for <root> [fresh] -> the toolchain cell of a test-bed: the
+# cell its lock records (.toolchain_cell); "legacy_v1" for a lock drupilot 0.9
+# created (no .schema; it pins rector/rector, which only install-toolchain.sh
+# installs, and records no cell: it keeps 0.9's set until it is refreshed);
+# else, and always with a second argument (a refresh), the cell
+# config/targets/<major>.json names for the installed core's major; else
+# "11". A lock's answer that no longer fits the installed core's cell (the
+# root was rebuilt on another major) gives way to the core's. Reads the lock
+# without creating drupilot's data dir.
+toolchain_cell_for() {
+  local r="${1:-}" c="" major core_cell="" lf
+  if [[ -n "$r" ]]; then
+    major="$(drupal_core_version "$r" | sed -n 's/^v\{0,1\}\([0-9][0-9]*\)\..*/\1/p')"
+    [[ -n "$major" ]] && core_cell="$(target_get "$major" .toolchain_cell)"
+  fi
+  if [[ -n "$r" && -z "${2:-}" ]] && have_cmd jq; then
+    lf="$(project_state_path "$r")/drupilot-lock.json"
+    if [[ -r "$lf" ]]; then
+      c="$(jq -r 'if (.toolchain_cell // "") != "" then .toolchain_cell
+                  elif (.schema // 0) == 0 and ((.toolchain // {})["rector/rector"] // "") != "" then "legacy_v1"
+                  else "" end' "$lf" 2> /dev/null || true)"
+    fi
+    # legacy_v1 is 0.9's Drupal 11 set.
+    if [[ -n "$c" && -n "$core_cell" ]]; then
+      if [[ "$c" == "legacy_v1" && "$core_cell" != "11" ]] || [[ "$c" != "legacy_v1" && "$c" != "$core_cell" ]]; then c=""; fi
+    fi
+  fi
+  printf '%s' "${c:-${core_cell:-11}}"
+  return 0
+}
+
+# toolchain_cell_verified <cell> -> 0 when the cell holds a verified set
+# (legacy_v1 always does: drupilot 0.9 verified it).
+toolchain_cell_verified() {
+  local f; f="$(toolchain_reference_file)"
+  [[ "${1:-}" == "legacy_v1" ]] && return 0
+  [[ -r "$f" ]] && have_cmd jq || return 1
+  jq -e --arg c "${1:-}" '.cells[$c].verified == true' "$f" > /dev/null 2>&1
+}
+
+# toolchain_reference_set [cell] -> the cell's pins as one JSON object
+# ({package: version}; a null pin is left out), {} for an unverified or unknown
+# cell. Default cell: 11.
+toolchain_reference_set() {
+  local f; f="$(toolchain_reference_file)"
+  [[ -r "$f" ]] && have_cmd jq || { printf '{}'; return 0; }
+  jq -c --arg c "${1:-11}" '(if $c == "legacy_v1" then .legacy_v1 else (.cells[$c] | select(.verified == true)) end
+      | .toolchain // {}) // {} | with_entries(select(.value != null))' "$f" 2>/dev/null || printf '{}'
+  return 0
+}
+
+# toolchain_reference_version <package> [cell] -> the known-good exact version
+# of a Composer package in that cell (e.g. rector/rector -> 2.6.1 in cell 11),
+# or nothing when the cell does not pin it or is not verified. Never fatal.
+toolchain_reference_version() {
+  local f; f="$(toolchain_reference_file)"
+  [[ -r "$f" ]] && have_cmd jq || return 0
+  jq -r --arg n "${1:-}" --arg c "${2:-11}" '(if $c == "legacy_v1" then .legacy_v1 else (.cells[$c] | select(.verified == true)) end
+      | .toolchain[$n]) // empty' "$f" 2>/dev/null || true
+  return 0
+}
+
+# toolchain_reference_require_cmd [cell] -> the exact command that installs the
+# cell's set (Rector + PHPStan core packages), printed for remediation
+# messages. Empty when the reference is unreadable or the cell is not verified.
+toolchain_reference_require_cmd() {
+  local f specs; f="$(toolchain_reference_file)"
+  [[ -r "$f" ]] && have_cmd jq || return 0
+  specs="$(jq -r --argjson t "$(toolchain_reference_set "${1:-11}")" '(.remediation_packages // []) as $p
+                  | [$p[] | select($t[.] != null) | "\(.):\($t[.])"] | join(" ")' "$f" 2>/dev/null || true)"
+  [[ -n "$specs" ]] && printf 'ddev composer require --dev -W %s' "$specs"
+  return 0
+}
+
+# installed_package_version <root> <package> -> the version composer.lock
+# records for <package> (packages + packages-dev), or nothing.
+installed_package_version() {
+  local r="${1:-}" n="${2:-}"
+  [[ -n "$r" && -f "$r/composer.lock" ]] && have_cmd jq || return 0
+  jq -r --arg n "$n" '((.packages // []) + (."packages-dev" // []))
+         | map(select(.name == $n)) | (.[0].version // empty)' "$r/composer.lock" 2>/dev/null \
+    | sed 's/^v//' || true
+  return 0
+}
+
+# rector_output_ok <exit_code> <raw_output> -> 0 when a `rector process` run
+# finished normally, 1 when it crashed or reported errors. Rector exits 0 (no
+# change / applied) or 2 (dry-run found changes) and always ends with an
+# "[OK] ..." line; a configuration error ("[ERROR] Could not detect twig set."),
+# per-file processing errors (exit 1) or a PHP fatal (exit 255) do not. Both the
+# exit code AND the [OK] marker are required, so neither a wrapper that loses the
+# exit code nor a crash after partial output can pass as "no changes".
+rector_output_ok() {
+  local rc="${1:-1}" raw="${2:-}"
+  case "$rc" in 0|2) ;; *) return 1;; esac
+  printf '%s\n' "$raw" | grep -qE '^[[:space:]]*\[OK\][[:space:]]' || return 1
+  return 0
+}
+
+# rector_applied_rules <raw_output> -> the " * SomeRector" lines of Rector's
+# "Applied rules:" blocks, without the bullet, one per line (once per changed
+# file, as Rector prints them). Only inside those blocks: Rector also bullets
+# the rules of a "[WARNING] This skipped rule is never registered" notice, and
+# those were never applied. Never fails.
+rector_applied_rules() {
+  printf '%s\n' "${1:-}" | awk '
+    /^Applied rules:[[:space:]]*$/ { inb = 1; next }
+    inb && /^ \* [A-Za-z0-9_\\]+Rector[[:space:]]*$/ { sub(/^ \* /, ""); sub(/[[:space:]]+$/, ""); print; next }
+    { inb = 0 }'
+  return 0
+}
+
+# rector_error_excerpt <raw_output> -> the lines that explain a failed Rector run
+# (at most 8), for logs and the --json "errors" payload. Diff hunks are skipped,
+# so a module string such as 'Fatal error:' can never be mistaken for a crash.
+# A boxed "[ERROR] ..." message wraps onto indented continuation lines (e.g.
+# 'Expected an existing class name. Got:' + '"SomeRector"'); those are joined
+# into the same excerpt line up to the closing blank line, so the offending
+# class/rule name is kept. Falls back to the last non-empty lines when no known
+# marker is found.
+rector_error_excerpt() {
+  local raw="${1:-}" out
+  out="$(printf '%s\n' "$raw" | awk '
+      function clean(s) { gsub(/\033\[[0-9;]*[A-Za-z]/, "", s); sub(/[[:space:]]+$/, "", s); sub(/^[[:space:]]+/, "", s); return s }
+      function flush() { if (length(cur) > 0) print cur; cur = ""; inbox = 0 }
+      /-+ begin diff -+/ { flush(); indiff = 1; next }
+      /-+ end diff -+/   { indiff = 0; next }
+      indiff { next }
+      /\[ERROR\]/ { flush(); cur = clean($0); inbox = 1; next }
+      inbox && /^[[:space:]]+[^[:space:]]/ && !/\[[A-Z]+\]/ { cur = cur " " clean($0); next }
+      inbox { flush() }
+      /Fatal error|Uncaught|Exception|Could not |not found|Failed to execute command/ {
+        l = clean($0); if (length(l) > 0) print l
+      }
+      END { flush() }' | head -n 8)"
+  if [[ -z "$out" ]]; then
+    out="$(printf '%s\n' "$raw" | sed -e "s/$(printf '\033')\\[[0-9;]*[A-Za-z]//g" | grep -v '^[[:space:]]*$' | tail -n 5 || true)"
+  fi
+  printf '%s' "$out"
+  return 0
+}
+
+# toolchain_diagnostics <root> [cell] -> log (STDERR) the installed vs known-good
+# versions of the Rector/PHPStan packages and the exact remediation command.
+# Used after a failed smoke test and by run-rector.sh after a Rector crash.
+toolchain_diagnostics() {
+  local r="${1:-}" f pkg inst ref cmd differs=0 cell="${2:-}" fix_cell
+  f="$(toolchain_reference_file)"
+  [[ -n "$cell" ]] || cell="$(toolchain_cell_for "$r")"
+  if ! toolchain_cell_verified "$cell"; then
+    log_plain "   Toolchain cell $cell has no verified set yet ($(basename "$f")): there is no known-good"
+    log_plain "   version to compare with. Check its known_broken combinations, or the Rector config."
+    return 0
+  fi
+  log_plain "   Installed vs known-good toolchain ($(basename "$f"), cell $cell):"
+  for pkg in rector/rector palantirnet/drupal-rector phpstan/phpstan mglaman/phpstan-drupal; do
+    inst="$(installed_package_version "$r" "$pkg")"
+    ref="$(toolchain_reference_version "$pkg" "$cell")"
+    [[ -n "$ref" && "$inst" != "$ref" ]] && differs=1
+    log_plain "     $(printf '%-28s' "$pkg") installed: ${inst:-?}   known-good: ${ref:-?}"
+  done
+  if [[ "$differs" == "0" ]]; then
+    log_plain "   The installed toolchain matches the known-good set, so look at the Rector config"
+    log_plain "   (rector.php; regenerate it with render-templates.sh --only rector --force) or the error above."
+    return 0
+  fi
+  # The fix installs the cell --source reference installs: for a 0.9 lock,
+  # the refreshed cell, not legacy_v1.
+  fix_cell="$cell"; [[ "$cell" == "legacy_v1" ]] && fix_cell="$(toolchain_cell_for "$r" fresh)"
+  cmd="$(toolchain_reference_require_cmd "$fix_cell")"
+  if [[ -n "$cmd" ]]; then
+    [[ "$fix_cell" == "$cell" ]] || log_plain "   This project's lock was written by drupilot 0.9 (legacy_v1); the fix refreshes it to cell $fix_cell."
+    log_plain "   Fix: reinstall the known-good set (from the Drupal root):"
+    log_plain "     bash \"$(plugin_root)/scripts/env/install-toolchain.sh\" --dir \"$r\" --source reference"
+    log_plain "   or by hand:  $cmd"
+  fi
+  return 0
+}
+
+# rector_smoke <root> -> run a trivial Rector dry-run (with the Drupal 10 set
+# that drupal-rector loads at config time) plus `phpstan --version`, through
+# drupal_runner, to prove the installed toolchain actually works. Scratch files
+# go under <root>/.drupilot/rector-smoke.* (inside the project so the DDEV
+# container sees them; removed afterwards). Prints the failure excerpt on STDOUT
+# and returns 1 when broken; prints nothing and returns 0 when healthy.
+rector_smoke() {
+  local r="${1:-}" runner dir rel raw rc
+  [[ -n "$r" && -d "$r" ]] || { printf 'rector_smoke: no Drupal root'; return 1; }
+  if [[ ! -f "$r/vendor/bin/rector" ]]; then printf 'vendor/bin/rector is missing'; return 1; fi
+  runner="$(drupal_runner "$r")"
+  mkdir -p "$r/.drupilot" 2>/dev/null || true
+  [[ -f "$r/.drupilot/.gitignore" ]] || printf '*\n' > "$r/.drupilot/.gitignore" 2>/dev/null || true
+  dir="$(mktemp -d "$r/.drupilot/rector-smoke.XXXXXX" 2>/dev/null)" \
+    || { printf 'rector_smoke: cannot create a scratch dir under %s/.drupilot' "$r"; return 1; }
+  rel="${dir#"$r"/}"
+  cat > "$dir/smoke.php" <<'PHP'
+<?php
+
+function drupilot_smoke(array $items): bool {
+  return strpos('drupilot', 'pilot') !== FALSE && count($items) >= 0;
+}
+PHP
+  cat > "$dir/rector.php" <<'PHP'
+<?php
+
+declare(strict_types=1);
+
+use DrupalRector\Set\Drupal10SetList;
+use Rector\Config\RectorConfig;
+
+return RectorConfig::configure()
+  ->withPaths([__DIR__ . '/smoke.php'])
+  ->withSets([Drupal10SetList::DRUPAL_10])
+  ->withPhpSets(php80: true);
+PHP
+  # `&& rc=0 || rc=$?` keeps a failing run from tripping the caller's `set -e`.
+  # shellcheck disable=SC2086  # intentional word-split: runner is a command prefix.
+  raw="$(cd "$r" && $runner vendor/bin/rector process --config "$rel/rector.php" --dry-run --no-progress-bar --clear-cache 2>&1)" \
+    && rc=0 || rc=$?
+  if ! rector_output_ok "$rc" "$raw"; then
+    rm -rf "$dir" 2>/dev/null || true
+    printf 'rector smoke dry-run failed (exit %s): %s' "$rc" "$(rector_error_excerpt "$raw")"
+    return 1
+  fi
+  rm -rf "$dir" 2>/dev/null || true
+  # shellcheck disable=SC2086  # intentional word-split: runner is a command prefix.
+  raw="$(cd "$r" && $runner vendor/bin/phpstan --version 2>&1)" && rc=0 || rc=$?
+  if [[ "$rc" != "0" ]] || ! printf '%s' "$raw" | grep -q 'PHPStan'; then
+    printf 'phpstan --version failed (exit %s): %s' "$rc" "$(printf '%s\n' "$raw" | tail -n 5)"
+    return 1
+  fi
+  return 0
+}

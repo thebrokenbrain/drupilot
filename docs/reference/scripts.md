@@ -3120,6 +3120,19 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
                 parentheses (`{ok: (a) and (b)}`, a jq 1.6 syntax error;
                 write `{ok: ((a) and (b))}`).
                 A line can opt out with a trailing `# jq-compat-ok` and a reason
+  - lib-defs    the shared library is split into domain libs (scripts/lib/*.sh):
+                every function is defined in exactly one lib, common.sh only
+                sources the domain libs (no function of its own), and its
+                list names each of them once (php-scan.sh and ext-scan.sh are
+                sourced by the scripts that need them); a hook that sources
+                only some libs (_DRUPILOT_LIBS) lists every lib that defines
+                a function it calls, directly or through other functions
+                (a static scan: every word of the code that names a lib
+                function). With
+                --compare-pre-split=REF it also lists the functions defined
+                in scripts/lib/*.sh at the git REF and fails when the set
+                differs (the lib split moves functions, it never adds,
+                renames or drops one)
   - bang-lint   no `!`...`` exec span in commands/*.md, skills/*/SKILL.md or
                 agents/*.md contains a <placeholder>: those spans run at command
                 load, before the model can substitute anything
@@ -3187,6 +3200,7 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
 Usage:
   scripts/dev/check.sh [--json] [--only G1,G2] [--skip G1,G2]
                        [--allow-fail G1,G2] [--allow-known] [--smoke] [--ci]
+                       [--compare-pre-split=REF]
     --json         machine summary on STDOUT (logs stay on STDERR)
     --only/--skip  run a subset of the gates (--gate is an alias of --only)
     --allow-fail   report these gates' failures as "allowed-fail" (exit 0)
@@ -3195,6 +3209,9 @@ Usage:
     --smoke        also run the optional golden and smoke gates (~30 s)
     --ci           a missing optional tool (claude/shellcheck/xmllint) is a
                    failure instead of a skip; implies --smoke
+    --compare-pre-split=REF
+                   the lib-defs gate also compares the function set of
+                   scripts/lib/*.sh with the one at the git REF
 
 Output (--json):
   {ok, gates:[{name, status: pass|fail|skip|allowed-fail|warn, detail, findings:[..]}]}

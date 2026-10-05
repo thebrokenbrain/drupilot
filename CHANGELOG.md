@@ -14,6 +14,11 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 ## [Unreleased]
 
 ### Added
+- **The `lib-defs` gate**: every function of `scripts/lib/*.sh` is defined in
+  exactly one lib, `common.sh` lists each domain lib once, and a hook's
+  `_DRUPILOT_LIBS` covers every lib it reaches (a static call scan);
+  `check.sh --compare-pre-split=REF` also compares the function set with a git
+  ref.
 - **Unit tests and the `unit` gate.** `tests/lib/assert.sh` is a portable
   assertion library (bash 3.2, BSD/BusyBox, jq 1.6; no bats) with its own
   self-test; `scripts/dev/unit.sh` runs it and every `tests/unit/*.sh` with the
@@ -201,6 +206,17 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `templates/rector-compat.php.tmpl` is a `drupal_safe` compat rule there.
 
 ### Changed
+- **Refactor: `scripts/lib/common.sh` is split into domain libs** (T-M3-10):
+  `core`, `paths`, `config`, `lock`, `cache`, `subject`, `ddev`, `state`,
+  `strategy`, `toolchain`, `git`, `interact` and `phpcs`, sourced in a fixed
+  order with `plan` by `common.sh`, which every script still sources. The
+  move is mechanical: no function is renamed, added, dropped or edited (the
+  same 187 function definitions and 18 variables after sourcing, byte for
+  byte), and `shellcheck` checks each lib on its own. The hooks source only
+  the libs they use (`_DRUPILOT_LIBS`, checked by the `lib-defs` gate), so
+  each hook starts faster than in 0.9 (p95 on a developer machine:
+  `guard-contrib` 98 ms instead of 108, `post-edit-lint` 156 instead of 163,
+  `session-detect-env` 956 instead of 960; T-M3-11).
 - **Rector targets the PHP floor of the declared core range, not the PHP
   target** (T-M2-13, ADR 0002). `rector.php` (template marker 4) sets
   `->withPhpVersion(PhpVersion::PHP_<L>)` and `->withPhpSets(php<L>: true)`,
