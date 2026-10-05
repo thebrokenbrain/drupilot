@@ -23,6 +23,7 @@ behaviour.
 | [0013](0013-config-keys-scope.md) | What the config-keys gate scans, and the comment limit |
 | [0014](0014-version-data-hard-gates.md) | The schemas mark what a hard gate reads, and the data follows the source |
 | [0015](0015-toolchain-cells.md) | How a test-bed finds its toolchain cell, and how a 0.9 lock is read |
+| [0016](0016-source-era-fallback.md) | The source era when no code signal decides, and its confidence |
 
 A new ADR takes the next free number, gets a line here and a nav line in
 `mkdocs.yml` in the same change (the `docs` gate rejects an orphan page).

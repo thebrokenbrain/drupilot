@@ -1,0 +1,21 @@
+{
+  "confidence": "medium",
+  "evidence": [
+    {
+      "detail": "core_version_requirement: ^10.3",
+      "era": 10,
+      "file": "acme_core.info.yml",
+      "id": "declared",
+      "signal": 3
+    }
+  ],
+  "signals_used": [
+    1,
+    2,
+    3,
+    5,
+    6
+  ],
+  "source_major": 10,
+  "track": "standard"
+}

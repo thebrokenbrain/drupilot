@@ -1,0 +1,4 @@
+name: 'D8 legacy'
+type: module
+description: 'A Drupal 8 module before core_version_requirement (source detection fixture).'
+core: 8.x

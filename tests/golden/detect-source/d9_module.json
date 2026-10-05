@@ -1,0 +1,21 @@
+{
+  "confidence": "medium",
+  "evidence": [
+    {
+      "detail": "core_version_requirement: ^9",
+      "era": 9,
+      "file": "d9_module.info.yml",
+      "id": "declared",
+      "signal": 3
+    }
+  ],
+  "signals_used": [
+    1,
+    2,
+    3,
+    5,
+    6
+  ],
+  "source_major": 9,
+  "track": "standard"
+}

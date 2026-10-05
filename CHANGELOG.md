@@ -14,6 +14,17 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 ## [Unreleased]
 
 ### Added
+- **`scripts/analysis/detect-source.sh`** (T-M3-02, AR-05): the source era
+  S of a module or theme, the oldest Drupal major whose APIs it still uses,
+  with its track (`d7-assisted` for Drupal 7), a confidence and the evidence:
+  a Drupal 7 `.info`, a `core: 8.x` `.info.yml`, the declared constraint, the
+  SimpleTest and Drupal 7 test APIs (the `config/paths/eras.json` signals)
+  and, with `--full --phpstan FILE`, PHPStan's "removed from drupal:X". S is
+  the minimum of the code signals and the declared floor (ADR 0016).
+  `subject_d7_info_file` / `info_value_d7` read a Drupal 7 `.info` without
+  changing anything for `.info.yml` subjects. Goldens in
+  `tests/golden/detect-source/`, and the source-era fixtures `d7_minimal`,
+  `d8_legacy`, `d9_module`, `d11_php_only` and `keep_current`.
 - **The `lib-defs` gate**: every function of `scripts/lib/*.sh` is defined in
   exactly one lib, `common.sh` lists each domain lib once, and a hook's
   `_DRUPILOT_LIBS` covers every lib it reaches (a static call scan);

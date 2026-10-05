@@ -333,3 +333,35 @@ subject_project_root() {
   [[ -n "$r" ]] && printf '%s' "$r"
   return 0
 }
+
+# subject_d7_info_file <dir> -> the Drupal 7 <name>.info of a directory that
+# has NO *.info.yml (the D7 track, AR-05): <basename>.info when present, else
+# the first *.info in a stable (LC_ALL=C) order. Returns 1 otherwise, and never
+# answers for a directory with a *.info.yml, so the .info.yml subjects keep
+# their behavior (CC-22).
+subject_d7_info_file() {
+  local dir="${1:-$PWD}" f first=""
+  subject_info_file "$dir" > /dev/null 2>&1 && return 1
+  if [[ -f "$dir/${dir##*/}.info" ]]; then printf '%s' "$dir/${dir##*/}.info"; return 0; fi
+  first="$(for f in "$dir"/*.info; do [[ -f "$f" ]] && printf '%s\n' "$f"; done | LC_ALL=C sort | head -n 1)"
+  [[ -n "$first" ]] || return 1
+  printf '%s' "$first"
+  return 0
+}
+
+# info_value_d7 <file> <key> -> the value of a top-level `key = value` line of
+# a Drupal 7 .info file (quotes and surrounding spaces stripped); nothing when
+# the key is absent.
+info_value_d7() {
+  [[ -r "${1:-}" && -n "${2:-}" ]] || return 0
+  awk -v k="$2" -v q="'" '
+    { line = $0; sub(/^[[:space:]]+/, "", line) }
+    index(line, k) == 1 {
+      rest = substr(line, length(k) + 1)
+      if (rest !~ /^[[:space:]]*=/) next
+      sub(/^[[:space:]]*=[[:space:]]*/, "", rest); sub(/[[:space:]]+$/, "", rest)
+      gsub(/^"|"$/, "", rest); gsub("^" q "|" q "$", "", rest)
+      print rest; exit
+    }' "$1" 2>/dev/null || true
+  return 0
+}

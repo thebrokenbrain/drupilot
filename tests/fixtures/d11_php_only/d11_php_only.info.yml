@@ -1,0 +1,4 @@
+name: 'D11 PHP only'
+type: module
+description: 'A Drupal 11 module that only needs PHP work (S = T = 11, no hop).'
+core_version_requirement: ^11

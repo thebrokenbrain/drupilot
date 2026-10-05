@@ -93,4 +93,5 @@ nav:
           - contributing/adr/0013-config-keys-scope.md
           - contributing/adr/0014-version-data-hard-gates.md
           - contributing/adr/0015-toolchain-cells.md
+          - contributing/adr/0016-source-era-fallback.md
   - Changelog: changelog.md
