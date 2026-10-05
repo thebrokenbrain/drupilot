@@ -1,0 +1,4 @@
+name: 'D9 module'
+type: module
+description: 'A Drupal 9 module (source detection fixture).'
+core_version_requirement: ^9

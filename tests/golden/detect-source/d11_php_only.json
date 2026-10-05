@@ -1,0 +1,21 @@
+{
+  "confidence": "medium",
+  "evidence": [
+    {
+      "detail": "core_version_requirement: ^11",
+      "era": 11,
+      "file": "d11_php_only.info.yml",
+      "id": "declared",
+      "signal": 3
+    }
+  ],
+  "signals_used": [
+    1,
+    2,
+    3,
+    5,
+    6
+  ],
+  "source_major": 11,
+  "track": "standard"
+}

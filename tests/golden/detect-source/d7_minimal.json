@@ -1,0 +1,29 @@
+{
+  "confidence": "high",
+  "evidence": [
+    {
+      "detail": "core = 7.x",
+      "era": 7,
+      "file": "d7_minimal.info",
+      "id": "info-core-7x",
+      "signal": 1
+    },
+    {
+      "detail": "class D7MinimalTestCase extends DrupalWebTestCase {",
+      "era": 7,
+      "file": "d7_minimal.test",
+      "id": "d7-test-case",
+      "line": 6,
+      "signal": 6
+    }
+  ],
+  "signals_used": [
+    1,
+    2,
+    3,
+    5,
+    6
+  ],
+  "source_major": 7,
+  "track": "d7-assisted"
+}

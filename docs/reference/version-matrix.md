@@ -355,6 +355,7 @@ As of 2026-10-04. Each source era is recognised by its signals; the graph says w
 | 7 | d7-assisted | `d7-test-case` | test-api | `ere:extends[[:space:]]+Drupal(Web\|Unit)TestCase` |  | yes |
 | 8 | standard | `info-core-8x` | info | `.info.yml: core: 8.x without core_version_requirement` |  | yes |
 | 8 | standard | `simpletest-webtestbase` | test-api | `ere:(Drupal\\simpletest\\WebTestBase\|extends[[:space:]]+WebTestBase)` | 9.0 | yes |
+| 8 | standard | `simpletest-javascripttestbase` | test-api | `ere:(Drupal\\FunctionalJavascriptTests\\JavascriptTestBase\|extends[[:space:]]+JavascriptTestBase)` | 9.0 | yes |
 | 9 | standard | `removed-symbols-9` | symbols | `catalog:config/deprecations.json#lifecycle` |  | yes |
 | 10 | standard | `removed-symbols-10` | symbols | `catalog:config/deprecations.json#lifecycle` |  | yes |
 | 11 | standard | `removed-symbols-11` | symbols | `catalog:config/deprecations.json#lifecycle` |  | yes |
@@ -377,6 +378,7 @@ Sources:
 - `d7-test-case`: drupilot 1.0 architecture AR-05 (source detection signals), signal 6
 - `info-core-8x`: drupilot 1.0 architecture AR-05 (source detection signals), signal 2 S &lt;= 8: the minor is not used.
 - `simpletest-webtestbase`: drupilot 1.0 architecture AR-05 (source detection signals), signal 5 ; WebTestBase deprecated in 8.8.0, removed in 9.0.0 (04-F-64) Tests under src/Tests/ that extend SimpleTest.
+- `simpletest-javascripttestbase`: https://git.drupalcode.org/project/drupal/-/raw/8.9.x/core/tests/Drupal/FunctionalJavascriptTests/JavascriptTestBase.php (@deprecated in drupal:8.6.0 and is removed from drupal:9.0.0; the file is absent on 9.0.x), read 2026-10-05 FunctionalJavascript tests of the Drupal 8 era (WebDriverTestBase replaced it).
 - `removed-symbols-9`: drupilot 1.0 architecture AR-05 (source detection signals), signal 4 (needs the test-bed: Rector per-era hits plus PHPStan unknown symbols joined to removed_in)
 - `removed-symbols-10`: drupilot 1.0 architecture AR-05 (source detection signals), signal 4
 - `removed-symbols-11`: drupilot 1.0 architecture AR-05 (source detection signals), signal 4
