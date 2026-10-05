@@ -68,6 +68,30 @@ rr
 assert_eq "run-rector: the untouched render is regenerated for the new plan" \
   "$T_RC|$(grep -c "setMinimumCoreVersionSupported('10.3.0')" "$r/rector.php")|$(grep -c 'regenerated' "$T_ERR")" "0|1|1"
 assert_eq "  and its sha256 kept" "$([[ "$(kept rector.php)" == "$(shaof "$r/rector.php")" ]] && echo kept)" "kept"
+assert_eq "  with no false render error (the comparison reads the whole render)" "$(grep -c 'Could not render' "$T_ERR" || true)" "0"
+
+# The lock lost its record (a cleared lock, a moved root): the untouched render
+# is kept again as soon as it is found equal to the current render...
+lk="$(lock_path "$r")"; jq 'del(.templates)' "$lk" > "$T_TMP/lk" && cat "$T_TMP/lk" > "$lk"
+rr
+assert_eq "run-rector: the current render, no sha256 kept -> kept again, the file untouched" \
+  "$T_RC|$([[ "$(kept rector.php)" == "$(shaof "$r/rector.php")" ]] && echo kept)" "0|kept"
+jq 'del(.templates)' "$lk" > "$T_TMP/lk" && cat "$T_TMP/lk" > "$lk"
+rt
+assert_eq "render-templates: unchanged -> kept again" \
+  "$T_RC|$(jq -r '.files[0].status' "$T_OUT")|$([[ "$(kept rector.php)" == "$(shaof "$r/rector.php")" ]] && echo kept)" "0|unchanged|kept"
+# ... and while it is not, it counts as hand-edited: never overwritten.
+jq 'del(.templates)' "$lk" > "$T_TMP/lk" && cat "$T_TMP/lk" > "$lk"
+cp "$r/rector.php" "$T_TMP/unrecorded.php"
+sed_inplace "$INFO" 's/^core_version_requirement: .*/core_version_requirement: ^11/'
+rt
+assert_eq "render-templates: an untouched render whose sha256 was lost, the plan moved: differs" \
+  "$T_RC|$(jq -r '.files[0].status' "$T_OUT")" "3|differs"
+rr
+assert_file_eq "run-rector: left untouched too" "$r/rector.php" "$T_TMP/unrecorded.php"
+assert_eq "  the warning names the lost record" "$(grep -c 'its sha256 is not kept in the lock' "$T_ERR")" "1"
+rt --force
+assert_eq "--force replaces it" "$T_RC|$(jq -r '.files[0].status' "$T_OUT")" "0|replaced"
 printf '\n// hand edit\n' >> "$r/rector.php"; cp "$r/rector.php" "$T_TMP/edited2.php"
 sed_inplace "$INFO" 's/^core_version_requirement: .*/core_version_requirement: ^10/'
 rr

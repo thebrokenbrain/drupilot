@@ -20,7 +20,8 @@
  * the target's own sets (they would rewrite to APIs the kept previous major
  * lacks). drupal-rector's own aggregates (DRUPAL_10) also register its
  * bootstrap file, so it is registered here too. A set the installed
- * drupal-rector does not declare is left out (defined()).
+ * drupal-rector does not declare is left out (defined()); none at all stops
+ * the run.
  *
  * The PHP floor (ADR 0002): the code must keep running on the lowest PHP the
  * declared core range and the composer require.php admit (never above
@@ -77,8 +78,10 @@ use Rector\Config\RectorConfig;
 use Rector\ValueObject\PhpVersion;
 
 // The Drupal sets of the plan's hops, by constant name: defined() leaves out a
-// set the installed drupal-rector does not declare, so this config always loads.
-$drupilotSets = array_map('constant', array_values(array_filter([
+// set the installed drupal-rector does not declare. When none of them resolves,
+// drupal-rector is missing or cannot be autoloaded: stop, rather than run a
+// pass that applies no Drupal rule and reports nothing to change.
+$drupilotSetNames = [
   'DrupalRector\\Set\\Drupal10SetList::DRUPAL_100',
   'DrupalRector\\Set\\Drupal10SetList::DRUPAL_101',
   'DrupalRector\\Set\\Drupal10SetList::DRUPAL_102',
@@ -92,7 +95,11 @@ $drupilotSets = array_map('constant', array_values(array_filter([
   'DrupalRector\\Set\\Drupal11SetList::DRUPAL_111_BREAKING',
   'DrupalRector\\Set\\Drupal11SetList::DRUPAL_112_BREAKING',
   'DrupalRector\\Set\\Drupal11SetList::DRUPAL_113_BREAKING',
-], 'defined')));
+];
+$drupilotSets = array_map('constant', array_values(array_filter($drupilotSetNames, 'defined')));
+if ($drupilotSetNames !== [] && $drupilotSets === []) {
+  throw new \RuntimeException('drupilot: no Drupal set of rector.php resolves; is palantirnet/drupal-rector installed (composer require --dev palantirnet/drupal-rector)?');
+}
 
 // drupal-rector's bootstrap file (Drupal's test namespaces and phpstan-drupal's
 // service map, for type inference), which its aggregate sets register.

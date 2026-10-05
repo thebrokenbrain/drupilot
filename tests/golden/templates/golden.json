@@ -1,17 +1,17 @@
 {
   "data_hash": "b967dc04dc59646e99bca648bb267ff1a76ea65993d62d5af159d19ff50cbc5d",
   "files": {
-    "d11_php_only.t11-p85/rector.php": "3d6c96968e5d89ffaa68fc65a88c9f3f8f1060395a0fdf56c47ddafb3c03464c",
-    "d7_minimal.t11-draft/rector.php": "a52ac33f69d263bb0a086ef8761ab1dfb401898c4622ddfa2892d035bd8991a3",
-    "d8_legacy.t11-auto-p83/rector.php": "e928bafd99f839834b64f65b89c3081f03c918dcf49b1f1a5a29c0570aaccfd5",
-    "d9_module.t11-auto-p83/rector.php": "dfe8c0dd81e8569275a5f7f3e6af6b2a5d54123a34bb4b599d3f84eaea2e6d93",
-    "keep_current.t11-auto-p83/rector.php": "c979c9b4d8248ce30a667ef0b516b94e8c258fbbaf5132a0568715e4d672015b",
-    "legacy_widgets.t11-auto-p83.final-phpstan/rector.php": "7a0ba1077c0fb9cc2714ff2b316aceeadfba664f29d0c0896d9b1a4321368498",
-    "legacy_widgets.t11-auto-p83/rector.php": "7a0ba1077c0fb9cc2714ff2b316aceeadfba664f29d0c0896d9b1a4321368498",
-    "legacy_widgets.t11-auto-p84/rector.php": "7a0ba1077c0fb9cc2714ff2b316aceeadfba664f29d0c0896d9b1a4321368498",
-    "legacy_widgets.t11-keep-previous-p83/rector.php": "7a0ba1077c0fb9cc2714ff2b316aceeadfba664f29d0c0896d9b1a4321368498",
-    "legacy_widgets.t11-target-only-p83/rector.php": "dbe012eb2f79c5241bb004cde6a9ea1a9138c8bccb7c2a795f541aebf2dca066",
-    "legacy_widgets.t11-target-only-p84/rector.php": "dbe012eb2f79c5241bb004cde6a9ea1a9138c8bccb7c2a795f541aebf2dca066",
-    "legacy_widgets.t12-preview/rector.php": "86d440871a0f57223824ac2e428524c1aa90d3cc86edc669b73d6b972bd64f11"
+    "d11_php_only.t11-p85/rector.php": "0c69748be66bd0350257f06466cb18b8bae3988f7a7c95ac396def613da0de46",
+    "d7_minimal.t11-draft/rector.php": "a7e3f16e799f0387ba4f13f0cf07f4ec882d522ed5daf15fa23adeb8b74628b2",
+    "d8_legacy.t11-auto-p83/rector.php": "ed85cd05ff88f30dca3d2a503fecfbc1f02a70287ac4a391d9ce0b7f80864961",
+    "d9_module.t11-auto-p83/rector.php": "f72b7c27439524b71af01dee8830cc58da83248eee7b3a60e92b04d16ed84697",
+    "keep_current.t11-auto-p83/rector.php": "40d03efa4e4cb549ff442451e599d32705a9d7b3260b51c3f760371df9f9fc60",
+    "legacy_widgets.t11-auto-p83.final-phpstan/rector.php": "ae7a4978d09e281f051ec435ce95af77e75d5f25394a947520d932150656a6e6",
+    "legacy_widgets.t11-auto-p83/rector.php": "ae7a4978d09e281f051ec435ce95af77e75d5f25394a947520d932150656a6e6",
+    "legacy_widgets.t11-auto-p84/rector.php": "ae7a4978d09e281f051ec435ce95af77e75d5f25394a947520d932150656a6e6",
+    "legacy_widgets.t11-keep-previous-p83/rector.php": "ae7a4978d09e281f051ec435ce95af77e75d5f25394a947520d932150656a6e6",
+    "legacy_widgets.t11-target-only-p83/rector.php": "827b63ad54ee5dc20f70fe7cad8a37ca887f6f2f708c46f0fe2dc216bab06244",
+    "legacy_widgets.t11-target-only-p84/rector.php": "827b63ad54ee5dc20f70fe7cad8a37ca887f6f2f708c46f0fe2dc216bab06244",
+    "legacy_widgets.t12-preview/rector.php": "f11facdf343c5411e5e630269139539892e80694d23cffc8cdfd9d06d6d65982"
   }
 }

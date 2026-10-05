@@ -23,7 +23,11 @@ stay byte-identical. AR-24 leaves open:
 1. **Per-minor sets plus the bootstrap file.** `{{RECTOR_SETS}}` lists the
    plan's `rector.drupal_sets` then `rector.breaking_sets`, by constant name,
    kept only when `defined()`, so a set the installed drupal-rector lacks is
-   left out and the config always loads.
+   left out. When the plan names sets and none of them resolves, drupal-rector
+   is missing or cannot be autoloaded: the config throws, Rector fails, and
+   `run-rector.sh` reports a crash (exit 3), as template 4 did with its
+   `DRUPAL_10` constant. It never runs a pass that applies no Drupal rule and
+   reports nothing to change.
    - drupal-rector's aggregates (`drupal-10-all-deprecations.php` in 1.1.3)
      also register `config/drupal-phpunit-bootstrap-file.php`: Drupal's test
      namespaces and phpstan-drupal's service map, for type inference. The
@@ -77,6 +81,15 @@ stay byte-identical. AR-24 leaves open:
      with `--force`.
    - The template-4 heuristics (`older_drupilot_copy`, `rector_config_pristine`)
      still recognize copies from before the lock kept their sha256.
+     `rector_config_pristine` cannot recognize a template-5 `rector.php`: its
+     sets, skips and BC block come from the plan, not from the file.
+   - So a template-5 `rector.php` whose sha256 the lock no longer keeps (a
+     cleared lock, a moved root, another `DRUPILOT_HOME`) counts as
+     hand-edited: it is never overwritten without `--force`, and the warning
+     says so. Its sha256 is kept again as soon as it is found equal to the
+     current render (`render-templates.sh` "unchanged", `run-rector.sh`).
+     Losing the record only costs a `--force`; recognizing edits from the file
+     alone would have to trust the plan-driven regions.
 7. **The skip list is the data's.** `{{SKIP_RULES}}` renders
    `plan_rector_skip`: the `deny` rows of `config/php/rules.json` plus every
    compat row that is not `drupal_safe`, in the file's order. `data-check.sh`
@@ -92,6 +105,10 @@ stay byte-identical. AR-24 leaves open:
 - H10 holds: the lab run gives identical diffs, and
   `tests/unit/templates_v3_t11_equivalence.sh` pins the configuration
   equivalence statically.
-- Existing template-4 `rector.php` files are upgraded automatically after a
-  backup (marker 4 is older than 5); a hand-edited one is reported.
+- Existing template-4 `rector.php` files, edited or not, are upgraded
+  automatically after a backup, with their diff printed (marker 4 is older
+  than 5: the older-marker exception of `render-templates.sh`).
+- At the next marker bump, a kept sha256 that no longer matches should win
+  over the older-marker exception, so a template-5 copy proven edited is not
+  upgraded without `--force`.
 - `tests/golden/templates/` pins the render of every resolving golden plan.

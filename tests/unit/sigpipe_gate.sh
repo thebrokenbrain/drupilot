@@ -5,7 +5,7 @@
 # and the pipeline fails; grep_q (common.sh) reads its whole input, answers
 # like grep -q and also works where GNU grep would stop early on a /dev/null
 # output. The sigpipe gate of scripts/dev/check.sh, on a scratch copy: green
-# on HEAD, red on `| head`, `| grep -q` / `-m` / `-l`, an `| awk` exit, and a
+# on HEAD, red on `| head`, `| grep -q` / `-m` / `-l`, `| cmp`, an `| awk` exit, and a
 # trailing `# sigpipe-ok` opts a line out; tests/ and comments are not read.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
@@ -38,7 +38,7 @@ gate() {
 assert_match "green on HEAD" "$(gate)" '^pass\|0\|'
 f="$r/scripts/lib/zz.sh"
 for line in 'x="$(printf a | head -n1)"' 'printf a | grep -q a' 'printf a | grep -qx a' 'printf a | grep -m 1 a' \
-            'printf a | grep -l a' 'printf a | grep --quiet a' "printf a | awk '{ print; exit }'"; do
+            'printf a | grep -l a' 'printf a | grep --quiet a' 'printf a | cmp -s - f' "printf a | awk '{ print; exit }'"; do
   printf '#!/usr/bin/env bash\n%s\n' "$line" > "$f"
   assert_match "red: $line" "$(gate)" '^fail\|1\|scripts/lib/zz\.sh:2: '
 done

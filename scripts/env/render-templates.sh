@@ -50,11 +50,15 @@
 # there but the template's current "drupilot-template-version: N" marker is
 # not) is upgraded without --force, after the same backup — e.g. the invalid
 # 0.8.x phpcs.xml.dist or a phpstan.neon with the deprecated drupal_root. So is
-# a rector.php or rector-compat.php that is exactly what the current template
-# renders for its own floor and subject (rector_config_pristine): nobody edited
-# it, and its floor moved (the core target changed) or it was rendered for
-# another subject of a shared test-bed (0.9 reported that as "differs"). Any
-# other current-generation copy that differs counts as hand-edited.
+# an untouched render: a file whose sha256 is the one kept in the root's lock
+# (ADR 0019), or a rector-compat.php (or template-4 rector.php) that is exactly
+# what its template renders for its own floor and subject
+# (rector_config_pristine): nobody edited it, and its plan or floor moved (the
+# core target changed) or it was rendered for another subject of a shared
+# test-bed (0.9 reported that as "differs"). Any other current-generation copy
+# that differs counts as hand-edited, a template-5 rector.php whose sha256 the
+# lock no longer keeps included (its sha256 is kept again when it is found up
+# to date).
 #
 # rector-compat.php is rendered only when the compat pass has a rule to run
 # (rector_compat_needed: the floor is below PHP 8.4 and the core range runs on
@@ -286,7 +290,9 @@ if [[ "$needs_floor" == "1" ]]; then
     [[ -z "$_pf" ]] || PHP_FLOOR="$_pf"
   else
     PLAN_SOURCE="fallback"
-    PLAN="$(plan_render_fallback "$(resolve_target_major)")"
+    _tm="$(resolve_target_major)"
+    PLAN="$(plan_render_fallback "$_tm")" \
+      || die "No rector.php can be rendered for DRUPILOT_TARGET_MAJOR '$_tm' (expected an integer such as 11)." 1
   fi
   _ft="$(rector_floor_tokens "$PHP_FLOOR" || true)"
   for _t in $_ft; do FLOOR_TOKENS+=("$_t"); done

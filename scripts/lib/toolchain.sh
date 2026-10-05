@@ -222,6 +222,8 @@ rector_config_floor() {
 # rector-compat.php, whose withPhpVersion is the rules' own): a drupilot
 # render nobody edited, which may be regenerated when its inputs change. A
 # hand edit, another template generation or a file of the developer's own -> 1.
+# A template-5 rector.php never matches (its sets, skips and BC block come from
+# the plan): the sha256 kept in the lock recognizes it (render_sha_matches).
 rector_config_pristine() {
   local tpl="${1:-}" f="${2:-}" fl sp rc=1
   [[ -f "$tpl" && -f "$f" ]] || return 1
@@ -234,7 +236,7 @@ rector_config_pristine() {
   # TMPDIR holds (pipefail makes a failed render a mismatch).
   # shellcheck disable=SC2046  # one KEY=VALUE word per line, no spaces in them
   if ( set -o pipefail; render_template "$tpl" - "SUBJECT_PATH=$sp" $(rector_floor_tokens "$fl") 2>/dev/null \
-       | cmp -s - "$f" ); then
+       | cmp -s - "$f" ); then  # sigpipe-ok: any failure is a mismatch, the render's stderr is discarded
     rc=0
   fi
   return "$rc"

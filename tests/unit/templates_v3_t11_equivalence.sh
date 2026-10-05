@@ -38,7 +38,7 @@ assert_eq "v4: the DRUPAL_10 aggregate" "$(sed -n '/->withSets(\[/,/\])/p' "$V4"
 # What the aggregate registers: the verified per-minor sets of Drupal 10 (the
 # data records them from drupal-rector's Drupal10SetList) and the bootstrap file.
 AGG="$(target_get 10 '.rector_sets.own_major[]' | sed 's/^/DrupalRector\\\\Set\\\\/')"
-assert_eq "v5: the aggregate's per-minor sets, in order" "$(list "$V5" '$drupilotSets = ')" "$AGG"
+assert_eq "v5: the aggregate's per-minor sets, in order" "$(list "$V5" '$drupilotSetNames = ')" "$AGG"
 assert_eq "v5: drupal-rector's bootstrap file, as the aggregate registers it" \
   "$(grep -c "vendor/palantirnet/drupal-rector/config/drupal-phpunit-bootstrap-file.php" "$V5")|$(grep -c 'withBootstrapFiles' "$V5")" "1|1"
 assert_eq "v5: no BC block for ^10 || ^11 (drupal-rector's default, as in v4)" \
