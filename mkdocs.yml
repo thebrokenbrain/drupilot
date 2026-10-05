@@ -69,6 +69,7 @@ nav:
       - reference/commands.md
       - reference/configuration.md
       - reference/choices.md
+      - reference/pipeline.md
       - reference/scripts.md
       - reference/skills-and-agents.md
       - reference/toolchain.md
