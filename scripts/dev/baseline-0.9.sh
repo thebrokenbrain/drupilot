@@ -259,7 +259,7 @@ cap() {
   printf '%s\n' "$rc" > "$RAW/$name.rc"
   printf '%s\n' "$view" > "$RAW/$name.view"
   hit="$(grep -E 'syntax error|unbound variable|command not found|bad substitution|: invalid option|integer expression expected' \
-           "$RAW/$name.err" 2>/dev/null | head -n 2 || true)"
+           "$RAW/$name.err" 2>/dev/null | sed -n '1,2p' || true)"
   [[ -z "$hit" ]] || printf '%s: shell error: %s\n' "$name" "$(printf '%s' "$hit" | tr '\n' ' ')" >> "$ERRORS"
   return 0
 }
@@ -501,7 +501,7 @@ while IFS= read -r _f; do
     result "$_f" allowed "${_why:-listed in allowed-diffs.txt}"
     continue
   fi
-  diff -u "$_b" "$OUT/$_f" 2>/dev/null | head -n 60 | sed 's/^/    /' >&2 || true
+  diff -u "$_b" "$OUT/$_f" 2>/dev/null | sed -n '1,60p' | sed 's/^/    /' >&2 || true
   if [[ -z "$_h" ]]; then
     result "$_f" differs "differs from the baseline (no sha256 tool to check allowed-diffs.txt)"
   elif [[ -n "$_want" ]]; then

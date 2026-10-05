@@ -23,7 +23,7 @@ fast_copy_tree() {
   local src="$1" dest="$2"
   [[ -d "$src" ]] || return 1
   mkdir -p "$dest" 2>/dev/null || return 1
-  if cp --help 2>&1 | grep -q -- '--reflink'; then
+  if cp --help 2>&1 | grep_q -- '--reflink'; then
     cp -a --reflink=auto "$src/." "$dest/" 2>/dev/null || return 1
     printf 'reflink-auto'; return 0
   fi

@@ -397,8 +397,8 @@ php_chain_has() {
       case "$fq" in Drupal\\*) r="unknown";; *) r="no";; esac
     fi
   else
-    parent="$(printf '%s\n' "$recs" | awk -F'\t' '$1 == "CLASS" { print $6; exit }')"
-    impls="$(printf '%s\n' "$recs" | awk -F'\t' '$1 == "CLASS" { print $7; exit }' | tr ',' '\n')"
+    parent="$(printf '%s\n' "$recs" | awk -F'\t' '!d && $1 == "CLASS" { print $6; d = 1 }')"
+    impls="$(printf '%s\n' "$recs" | awk -F'\t' '!d && $1 == "CLASS" { print $7; d = 1 }' | tr ',' '\n')"
     if [[ "$target" == *Trait ]]; then
       impls="$(printf '%s\n' "$recs" | awk -F'\t' '$1 == "TRAIT" { print $3 }')"
     fi
@@ -416,7 +416,7 @@ php_chain_has() {
 
 # php_first_parent FQCN -> the declared parent class (for "verify manually").
 php_first_parent() {
-  php_class_records "$1" | awk -F'\t' '$1 == "CLASS" { print $6; exit }'
+  php_class_records "$1" | awk -F'\t' '!d && $1 == "CLASS" { print $6; d = 1 }'
   return 0
 }
 

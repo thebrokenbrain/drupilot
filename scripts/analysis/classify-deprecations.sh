@@ -108,10 +108,10 @@ CATALOG="$(plugin_root)/config/deprecations.json"
 [[ -r "$CATALOG" ]] || die "Missing $CATALOG." 1
 
 case "$PHASE" in port|refactor) : ;; *) die "--phase must be port or refactor, got '$PHASE'." 1;; esac
-if [[ -n "$FLOOR_OPT" ]] && ! printf '%s' "$FLOOR_OPT" | grep -qE '^[0-9]+(\.[0-9]+)?$'; then
+if [[ -n "$FLOOR_OPT" ]] && ! printf '%s' "$FLOOR_OPT" | grep_q -E '^[0-9]+(\.[0-9]+)?$'; then
   die "--core-floor must be MAJOR.MINOR (e.g. 10.3), got '$FLOOR_OPT'." 1
 fi
-if [[ -n "$TARGET_MAJOR" ]] && ! printf '%s' "$TARGET_MAJOR" | grep -qE '^[0-9]+$'; then
+if [[ -n "$TARGET_MAJOR" ]] && ! printf '%s' "$TARGET_MAJOR" | grep_q -E '^[0-9]+$'; then
   die "--target-major must be a Drupal major number (e.g. 11), got '$TARGET_MAJOR'." 1
 fi
 

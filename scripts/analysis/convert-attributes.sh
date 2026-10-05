@@ -442,8 +442,8 @@ while IFS= read -r f; do
     awk -F '\t' -v f="$f" -v a="$ann" '$1 == "TAG" && $2 == f && $3 == a { found = 1 } END { exit !found }' "$SCAN" || continue
     rej="$(rejected_keys "$f" "$ann" "$attr" "$since")"
     if [[ -n "$rej" ]]; then
-      if printf '%s\n' "$rej" | grep -q '^?'; then
-        skip_reason="the constructor of $attr could not be read ($(printf '%s\n' "$rej" | awk -F '\t' '$1 == "?" { print $2; exit }')), so its accepted arguments are unknown: annotation kept"
+      if printf '%s\n' "$rej" | grep_q '^?'; then
+        skip_reason="the constructor of $attr could not be read ($(printf '%s\n' "$rej" | awk -F '\t' '!d && $1 == "?" { print $2; d = 1 }')), so its accepted arguments are unknown: annotation kept"
       else
         skip_reason="@$ann key(s) $(printf '%s\n' "$rej" | cut -f1 | sort -u | paste -sd, - | sed 's/,/, /g') have no parameter in $attr::__construct() ($(printf '%s\n' "$rej" | cut -f2 | sort -u | paste -sd, - | sed 's/,/, /g')): the attribute would fatal with 'Unknown named parameter' when the plugin is discovered. The annotation is kept, as Drupal core does for such plugins"
       fi
@@ -710,7 +710,7 @@ if [[ "$APPLY" == "1" ]]; then
   log_ok "Attributes pass applied: $COUNT file(s) changed ($MODE mode)."
 else
   log_ok "Attributes dry-run: $COUNT file(s) would change ($MODE mode). Re-run with --apply after reviewing the diff."
-  if printf '%s\n' "$RAW" | grep -E '^\+#\[' | grep -qE '[(, ][A-Za-z_][A-Za-z0-9_]*\\[A-Za-z0-9_\\]*::'; then
+  if printf '%s\n' "$RAW" | grep -E '^\+#\[' | grep_q -E '[(, ][A-Za-z_][A-Za-z0-9_]*\\[A-Za-z0-9_\\]*::'; then
     log_info "Class constants named relative to the annotation's namespace are fully qualified on --apply."
   fi
 fi

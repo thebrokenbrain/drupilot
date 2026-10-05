@@ -201,7 +201,7 @@ DDEV_CONFIG="$PROJECT_DIR/.ddev/config.yaml"
 # An existing project keeps its configured name ('ddev config' is not re-run), so
 # report THAT name rather than the --name/directory default.
 if [[ -f "$DDEV_CONFIG" ]]; then
-  _cfg_name="$(grep -E '^name:' "$DDEV_CONFIG" 2>/dev/null | head -n1 \
+  _cfg_name="$(grep -E '^name:' "$DDEV_CONFIG" 2>/dev/null | sed -n '1p' \
     | sed -E 's/^name:[[:space:]]*//; s/[[:space:]]*(#.*)?$//' | tr -d '"'"'"'')"
   if [[ -n "$_cfg_name" && "$_cfg_name" != "$PROJECT_NAME" ]]; then
     [[ "$_RAW_PROJECT_NAME" != "$(basename "$PROJECT_DIR")" ]] \
@@ -221,7 +221,7 @@ log_info "Docroot           : $DOCROOT"
 if [[ -f "$DDEV_CONFIG" ]]; then
   log_ok "DDEV is already configured (.ddev/config.yaml exists) — not re-running 'ddev config'."
   # Reconcile the PHP version if the existing config differs from the target.
-  EXISTING_PHP="$(grep -E '^[[:space:]]*php_version:' "$DDEV_CONFIG" 2>/dev/null | head -n1 \
+  EXISTING_PHP="$(grep -E '^[[:space:]]*php_version:' "$DDEV_CONFIG" 2>/dev/null | sed -n '1p' \
     | sed -E 's/^[[:space:]]*php_version:[[:space:]]*//; s/[[:space:]]*(#.*)?$//' | tr -d '"'"'"'')"
   EXISTING_PHP="$(trim "$EXISTING_PHP")"
   if [[ -n "$EXISTING_PHP" && "$EXISTING_PHP" != "$PHP_TARGET" ]]; then
@@ -283,7 +283,7 @@ if php_target_unconfirmed "$PHP_TARGET" && [[ "$DO_CREATE" == "1" && ! -f "$PROJ
   _floor=""; _from=""
   if [[ -n "$LOCKED_CORE" ]]; then
     _floor="$LOCKED_CORE"; _from="the lockfile pins Drupal $LOCKED_CORE"
-  elif ! printf '%s' "$DRUPAL_TARGET" | grep -qE '@|-dev|[0-9]\.(x|\*)'; then
+  elif ! printf '%s' "$DRUPAL_TARGET" | grep_q -E '@|-dev|[0-9]\.(x|\*)'; then
     _floor="$(core_floor_from_requirement "$DRUPAL_TARGET")"
     _from="the Drupal target $DRUPAL_TARGET also admits $_floor (Composer installs the newest core it admits; the installed one is checked at the end)"
   fi
@@ -305,7 +305,7 @@ docroot_pristine() {
   extra="$(cd "$d" && find . \( -type f -o -type l \) \
       ! -path './sites/default/settings.php' ! -path './sites/default/settings.ddev.php' \
       ! -path './sites/default/settings.local.php' ! -path './sites/default/.gitignore' \
-      -print 2>/dev/null | head -n 1)"
+      -print 2>/dev/null | sed -n '1p')"
   [[ -z "$extra" ]]
 }
 DOCROOT_PRISTINE="false"
@@ -448,7 +448,7 @@ fi
 EFFECTIVE_PHP=""
 PRIMARY_URL=""
 if [[ -f "$DDEV_CONFIG" ]]; then
-  EFFECTIVE_PHP="$(grep -E '^[[:space:]]*php_version:' "$DDEV_CONFIG" 2>/dev/null | head -n1 \
+  EFFECTIVE_PHP="$(grep -E '^[[:space:]]*php_version:' "$DDEV_CONFIG" 2>/dev/null | sed -n '1p' \
     | sed -E 's/^[[:space:]]*php_version:[[:space:]]*//; s/[[:space:]]*(#.*)?$//' | tr -d '"'"'"'')"
   EFFECTIVE_PHP="$(trim "$EFFECTIVE_PHP")"
 fi

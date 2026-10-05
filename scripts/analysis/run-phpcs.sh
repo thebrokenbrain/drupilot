@@ -164,12 +164,12 @@ fi
 # paths ourselves (PROMPT 1.4) and re-verify. Idempotent: a no-op when present.
 declare -a ICMD=()
 [[ -n "$RUNNER" ]] && read -r -a ICMD <<<"$RUNNER"
-if ! ${ICMD[@]+"${ICMD[@]}"} vendor/bin/phpcs -i 2>/dev/null | grep -qi 'DrupalPractice'; then
+if ! ${ICMD[@]+"${ICMD[@]}"} vendor/bin/phpcs -i 2>/dev/null | grep_q -i 'DrupalPractice'; then
   log_warn "Drupal/DrupalPractice standards not registered yet — registering them now (idempotent)."
   ${ICMD[@]+"${ICMD[@]}"} vendor/bin/phpcs --config-set installed_paths \
     vendor/drupal/coder/coder_sniffer,vendor/sirbrillig/phpcs-variable-analysis,vendor/slevomat/coding-standard \
     >/dev/null 2>&1 || true
-  if ${ICMD[@]+"${ICMD[@]}"} vendor/bin/phpcs -i 2>/dev/null | grep -qi 'DrupalPractice'; then
+  if ${ICMD[@]+"${ICMD[@]}"} vendor/bin/phpcs -i 2>/dev/null | grep_q -i 'DrupalPractice'; then
     log_ok "Registered the Drupal/DrupalPractice standards."
   else
     log_warn "Could not auto-register the Drupal standards. Ensure drupal/coder is installed and its phpcodesniffer-composer-installer plugin was allowed (composer config allow-plugins)."
@@ -269,7 +269,7 @@ if [[ -n "$RS_FILE" && -z "$RS_REASON" ]]; then
     # The first line naming the problem, else PHPCS's last line. No match is
     # not an error: under pipefail a bare grep here would abort the script
     # (exit 1) before the explicit-ruleset refusal (exit 2) or the fallback.
-    _why="$(printf '%s\n' "$_probe" | grep -m 1 -E 'ERROR|does not exist|not installed' || true)"
+    _why="$(printf '%s\n' "$_probe" | grep -E 'ERROR|does not exist|not installed' | sed -n '1p' || true)"
     [[ -n "$_why" ]] || _why="$(printf '%s\n' "$_probe" | grep -v '^[[:space:]]*$' | tail -n 1 || true)"
     RS_REASON="PHPCS cannot load it (exit $_prc): $(printf '%s' "$_why" | cut -c1-200)"
     RS_REASON="${RS_REASON%: }"; RS_REASON="${RS_REASON%.}"
@@ -421,7 +421,7 @@ fi
 
 # A ruleset bug surfaces as a processing error, not as a violation: say so
 # instead of letting it read like a coding-standard finding.
-if printf '%s' "${PHPCS_TEXT:-}" | grep -qE 'An error occurred during processing|trim\(\): Passing null'; then
+if printf '%s' "${PHPCS_TEXT:-}" | grep_q -E 'An error occurred during processing|trim\(\): Passing null'; then
   log_warn "PHPCS reported a processing error (not a coding-standard violation). With PHPCompatibility this usually means testVersion is unset or malformed: pass --test-version X- (or set DRUPILOT_PHPCS_TEST_VERSION), or fix the ruleset."
 fi
 

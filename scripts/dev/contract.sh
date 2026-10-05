@@ -156,7 +156,7 @@ gen_names() {
   cp -R "$REPO/tests/fixtures/monorepo" "$r"
   "${G[@]}" -C "$r" init -q && "${G[@]}" -C "$r" add -A && "${G[@]}" -C "$r" commit -qm base
   ws2="$("$SH" "$S/env/resolve-workspace.sh" --subject "$r/web/modules/custom/acme_core" --json 2>/dev/null < /dev/null | jq -r '.drupal_root // empty')"
-  br="$(sed -n 's/.*NEW_BRANCH="\${BRANCH:-\$ISSUE-\([^"]*\)}".*/<issue>-\1/p' "$S/contrib/issue-fork.sh" | head -n 1)"
+  br="$(sed -n 's/.*NEW_BRANCH="\${BRANCH:-\$ISSUE-\([^"]*\)}".*/<issue>-\1/p' "$S/contrib/issue-fork.sh" | sed -n '1p')"
   jq -n --arg p1 "$(basename "$p1")" --arg p2 "$(basename "$p2")" --arg w1 "$(basename "$ws1")" \
         --arg w2 "$(basename "$ws2")" --arg br "$br" '
     {local_patch: ($p1 | sub("^legacy_widgets"; "<module>")),
@@ -173,12 +173,12 @@ gen_names() {
 # code <file> -> the file without its comment lines.
 code() { grep -vE '^[[:space:]]*#' "$PR/$1" 2>/dev/null || true; }
 # fn_body <file> <function> -> the code of one shell function.
-fn_body() { code "$1" | awk -v f="$2" '$0 ~ "^" f "\\(\\) *\\{" { on = 1 } on { print } on && /^}/ { exit }'; }
+fn_body() { code "$1" | awk -v f="$2" '!d && $0 ~ "^" f "\\(\\) *\\{" { on = 1 } on { print } on && /^}/ { on = 0; d = 1 }'; }
 # code_lib -> the code of the whole shared library: the domain libs of
 # scripts/lib/ (or the single common.sh of a tree before the lib split).
 code_lib() { local f; for f in "$PR"/scripts/lib/*.sh; do grep -vE '^[[:space:]]*#' "$f" 2>/dev/null || true; done; return 0; }
 # lib_fn_body <function> -> the code of one function of the shared library.
-lib_fn_body() { code_lib | awk -v f="$1" '$0 ~ "^" f "\\(\\) *\\{" { on = 1 } on { print } on && /^}/ { exit }'; }
+lib_fn_body() { code_lib | awk -v f="$1" '!d && $0 ~ "^" f "\\(\\) *\\{" { on = 1 } on { print } on && /^}/ { on = 0; d = 1 }'; }
 sorted() { tr ' ' '\n' | grep -v '^$' | LC_ALL=C sort -u | jq -R . | jq -s -c .; }
 
 gen_enums() {
@@ -197,7 +197,7 @@ gen_enums() {
   # d10_support: D10_SUPPORT/d10_support assignments, the literals of the jq
   # program that computes D10_SUPPORT, and verify-core-matrix's jq default.
   d10="$( { code scripts/analysis/verify-core-matrix.sh | grep -oE 'D10_SUPPORT="[a-z/-]+"'
-            code scripts/analysis/verify-core-matrix.sh | awk '/^D10_SUPPORT="\$\(/ { on = 1 } on { print } on && /'"'"'\)"$/ { exit }' \
+            code scripts/analysis/verify-core-matrix.sh | awk '!d && /^D10_SUPPORT="\$\(/ { on = 1 } on { print } on && /'"'"'\)"$/ { on = 0; d = 1 }' \
               | grep -oE '(then|else) "[a-z/-]+"'
             code scripts/analysis/verify-core-matrix.sh | grep -oE 'd10_support: \(if .* end\)' | grep -oE '"[a-z/-]+"'
             code_lib | grep -oE 'd10_support="[a-z/-]+"'; } \
@@ -362,7 +362,7 @@ for name in $ALL; do
   h=""; [[ -n "$HASHER" ]] && h="$($HASHER < "$new" | cut -d' ' -f1)"
   a="$(allowed_for "$name" "$h")"
   if [[ -n "$a" ]]; then result "$name" allowed "$a"; continue; fi
-  diff -u "$frozen" "$new" 2>/dev/null | head -n 40 | sed 's/^/    /' >&2 || true
+  diff -u "$frozen" "$new" 2>/dev/null | sed -n '1,40p' | sed 's/^/    /' >&2 || true
   result "$name" differs "differs from tests/contract/$name.json; to allow, add {\"snapshot\": \"$name.json\", \"sha256\": \"$h\", \"reason\": \"...\"} to allowed-changes.json"
 done
 

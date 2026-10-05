@@ -601,7 +601,7 @@ find . \( -name .git -o -name vendor -o -name node_modules \) -prune -o -type f 
   \( -name '*.php' -o -name '*.module' -o -name '*.inc' -o -name '*.install' \
      -o -name '*.theme' -o -name '*.profile' -o -name '*.engine' \) -print |
 while IFS= read -r f; do
-  out="$(php -l "$f" 2>&1)" || printf '%s\t%s\n' "${f#./}" "$(printf '%s\n' "$out" | grep -v '^Errors parsing' | grep -v '^[[:space:]]*$' | head -n 1)"
+  out="$(php -l "$f" 2>&1)" || printf '%s\t%s\n' "${f#./}" "$(printf '%s\n' "$out" | grep -v '^Errors parsing' | grep -v '^[[:space:]]*$' | sed -n '1p')"
 done
 exit 0
 LINT
@@ -894,7 +894,7 @@ D10_SUPPORT="$(printf '%s' "$LEGS_JSON" | jq -r '
     else "declared-not-verified" end')"
 # A Drupal 10 leg that only exists as the test-bed baseline is not a declared
 # leg: the declared requirement decides.
-if [[ "$D10_SUPPORT" == "n/a" ]] && printf '%s' "$CORE_REQ" | grep -qE '(^|[^0-9])10([^0-9.]|\.|$)'; then
+if [[ "$D10_SUPPORT" == "n/a" ]] && printf '%s' "$CORE_REQ" | grep_q -E '(^|[^0-9])10([^0-9.]|\.|$)'; then
   D10_SUPPORT="declared-not-verified"
 fi
 # The declared Drupal 10 FLOOR (^10 -> 10.0, ^10.3 -> 10.3). A '^10' leg
@@ -902,7 +902,7 @@ fi
 # added in 10.1-10.x passes there and still fatals on 10.0. verified-static is
 # kept for a run that checked the floor minor itself; otherwise the verdict is
 # verified-static-above-floor and names what was (not) checked.
-D10_FLOOR="$(core_verify_legs "$CORE_REQ" | awk -F. '$1 == "10" { print ($2 == "" ? "10.0" : $0); exit }')"
+D10_FLOOR="$(core_verify_legs "$CORE_REQ" | awk -F. '!d && $1 == "10" { print ($2 == "" ? "10.0" : $0); d = 1 }')"
 D10_CHECKED="$(printf '%s' "$LEGS_JSON" | jq -c '[.[] | select(.core | test("^10(\\.|$)")) | select(.status == "pass") | (.version // .core)]')"
 D10_FLOOR_CHECKED="null"
 if [[ -n "$D10_FLOOR" ]]; then

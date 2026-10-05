@@ -84,7 +84,7 @@ SCANNED="$(grep_sources -Il -e '' | wc -l | tr -d ' ')"
 # The first hit in path order (then line order), whatever order find walks in.
 scan_for() {
   local ver="$1" ere="$2" label="$3" hit
-  hit="$(grep_sources -HInE -e "$ere" | LC_ALL=C sort -t: -k1,1 -k2,2n | head -n1 || true)"
+  hit="$(grep_sources -HInE -e "$ere" | LC_ALL=C sort -t: -k1,1 -k2,2n | sed -n '1p' || true)"
   if [[ -n "$hit" ]]; then
     # location relative to the subject (file:line), trimmed.
     local loc="${hit%%:*}"; local line; line="$(printf '%s' "$hit" | cut -d: -f2)"

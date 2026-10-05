@@ -154,7 +154,7 @@ fi
 PHPCS_OUT="$(cd "$DRUPAL_ROOT" 2>/dev/null && $RUNNER "$PHPCS_BIN" --standard="$STD" ${EXT_ARGS[@]+"${EXT_ARGS[@]}"} ${TV_ARGS[@]+"${TV_ARGS[@]}"} --report=full --no-colors "$REL" 2>/dev/null || true)"
 
 # Nothing from phpcs -> only surface an autofix note, if any.
-if [[ -z "$PHPCS_OUT" ]] || ! printf '%s' "$PHPCS_OUT" | grep -qiE 'ERROR|WARNING'; then
+if [[ -z "$PHPCS_OUT" ]] || ! printf '%s' "$PHPCS_OUT" | grep_q -iE 'ERROR|WARNING'; then
   [[ -n "$CHANGED_NOTE" ]] && emit_context "$CHANGED_NOTE"
   exit 0
 fi
@@ -162,7 +162,7 @@ fi
 # Phase 1: if only WARNINGS remain (no ERROR), do not nag — just note any autofix.
 # Match ERROR case-SENSITIVELY: phpcs prints the severity column in uppercase, so
 # this avoids a WARNING whose message text says "error" tripping the error gate.
-if [[ "$PHASE" != "refactor" ]] && ! printf '%s' "$PHPCS_OUT" | grep -qE '\bERROR\b'; then
+if [[ "$PHASE" != "refactor" ]] && ! printf '%s' "$PHPCS_OUT" | grep_q -E '\bERROR\b'; then
   [[ -n "$CHANGED_NOTE" ]] && emit_context "$CHANGED_NOTE"
   exit 0
 fi
