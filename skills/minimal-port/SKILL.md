@@ -320,7 +320,13 @@ Apply only the mechanical, behavior-preserving fixes:
   bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/core-strategy.sh" --subject "<path>" --phase port --json
   ```
 
-  Apply its `recommended_core_version_requirement` (`auto` → `^10 || ^11` for a
+  `/drupilot-port` then freezes the final upgrade plan with the answered strategy
+  (`upgrade-path.sh --phase final --root "<drupal_root>" --freeze --json`; exit 2:
+  back to `/drupilot-setup`), and the value to apply is the plan's, read with
+  `plan_get .range.constraint "<drupal_root>"` (and `plan_get .php.require_php`
+  for composer's `require.php`): core-strategy shows each option's consequences,
+  the plan decides. That range is core-strategy's
+  `recommended_core_version_requirement` for the same strategy (`auto` → `^10 || ^11` for a
   BC-preserving port — `^10.N || ^11` when a minor floor was declared (`^10.3`
   stays `^10.3 || ^11`) or the code uses a plugin attribute class that exists only
   from 10.N; `^11.N` when such a class exists only in Drupal 11 — or `^11` on a BC break / `d11-only`) to the main `info.yml`

@@ -275,11 +275,25 @@ the Selenium add-on) -> continue but warn about the impact (FunctionalJavascript
 tests will be skipped). If the user has not run `/drupilot-doctor`, suggest it for
 assisted installation.
 
+### Before any stage of an autonomous run — rule D7-AUTO
+
+An autonomous run (`auto`, `DRUPILOT_AUTONOMOUS=true`) first checks the source era,
+whatever stage it starts at (a set-up site skips Stage 1):
+`scripts/analysis/upgrade-path.sh --subject <path> --phase draft --auto --json`
+(pure: no `--freeze`). Exit 2 with `.code` `d7-auto` stops the run with its
+`.message`, nothing written; the d7-assisted track never runs in auto.
+
 ### Stage 1 — setup (gate: `setup`)
 
 Goal: a Drupal 11 DDEV site with the toolchain and the subject in place. Use the
 `ddev-environment` skill and:
 - `scripts/env/detect-php.sh --json` to confirm the effective PHP target.
+- Freeze the draft upgrade plan before anything is created:
+  `scripts/analysis/upgrade-path.sh --subject <path> --phase draft --root <drupal_root> --freeze --json`
+  (`<drupal_root>` from `scripts/env/resolve-workspace.sh --json`), with `--auto`
+  in an autonomous run: a Drupal 7 source is then refused (`d7-auto`, exit 2) and
+  the run stops with its message, nothing written (rule D7-AUTO). Any other exit 2
+  stops the setup with the refusal's message and choices.
 - `scripts/env/ddev-up.sh` to create/start the D11 DDEV project at the target PHP.
 - `scripts/env/ddev-add-ons.sh --contrib [--selenium] --dir <drupal_root>` for the contrib add-on and
   (for JS tests) Selenium standalone Chrome v2.
@@ -331,14 +345,21 @@ is a must-check item to prevent while porting. Three passes
    source covers: in `ask` confirm first; in `auto` generate a reusable Rector rule
    or apply manually with change-record context; in `off` only report.
 Then apply the minimal manual changes Rector cannot. Decide
-`core_version_requirement` with `scripts/analysis/core-strategy.sh --subject <DIR>
---phase port` and apply it to the main `info.yml` AND every submodule with
+`core_version_requirement` as `/drupilot-port` does: `scripts/analysis/core-strategy.sh
+--subject <DIR> --phase port` shows each strategy's consequences, then freeze the
+final upgrade plan with the answered strategy (`DRUPILOT_CORE_TARGET_STRATEGY=<answer>
+scripts/analysis/upgrade-path.sh --subject <DIR> --phase final --root <drupal_root>
+--freeze --json`, `--auto` in an autonomous run; exit 2 stops the stage with its
+message, a `final-changes-frozen` refusal means re-running the setup) and read the
+values to apply from it: `plan_get .range.constraint` and `plan_get .php.require_php`
+(with `DRUPILOT_PROJECT_DIR=<drupal_root>`). Apply the range to the main `info.yml`
+AND every submodule with
 `scripts/analysis/set-core-requirement.sh --subject <DIR> --requirement '<value>'`
 (dry-run first with `--dry-run --json`; a submodule left on `^8.8 || ^9 || ^10`
 cannot be installed on Drupal 11; test modules are bumped only when they do not
-admit 11); when it returns a `require.php` (for `^10 || ^11`),
-add `"require": { "php": "<require_php>" }` to `composer.json` using the exact
-value returned (`DRUPILOT_REQUIRE_PHP_FLOOR` controls whether it is the real
+admit 11); when the plan holds a `require.php` (for `^10 || ^11`),
+add `"require": { "php": "<require_php>" }` to `composer.json` using that exact
+value (`DRUPILOT_REQUIRE_PHP_FLOOR` controls whether it is the real
 detected floor or `>=<target>`). Apply
 the remaining mechanical Twig/CKEditor/jQuery fixes. Plugin annotations →
 attributes are NOT part of a minimal port: only when the developer opts in at

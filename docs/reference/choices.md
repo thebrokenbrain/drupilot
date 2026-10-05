@@ -228,3 +228,14 @@ The push is the point of no return and stays a human decision in semi mode. DRUP
 - **Default:** `attributes,di,strict-types,final,deprecations`
 - **Pre-answer:** `DRUPILOT_CHOICE_REFACTOR_SCOPE`
 - **Remembered as:** `DRUPILOT_REFACTOR_SCOPE`
+
+## TARGET_MAJOR
+
+- **Tab:** Target major
+- **Command:** `/drupilot-setup`
+- **Options:** `11`, `12`
+- **Default:** `11`
+- **Pre-answer:** `DRUPILOT_CHOICE_TARGET_MAJOR`
+- **Remembered as:** `DRUPILOT_TARGET_MAJOR`
+
+12 is a pre-release: it is offered only with DRUPILOT_ALLOW_PRERELEASE=true and ports to it as a preview. A --target N argument wins; the answer is persisted only after the draft upgrade plan resolves.

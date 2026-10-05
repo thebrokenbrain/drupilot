@@ -66,7 +66,7 @@ Phase 2 opt-in full refactor to the modern Drupal 11 way — PHP 8 attributes fo
 
 Provision a Drupal 11 DDEV environment for porting a module/theme - start DDEV, install the contrib (+ Selenium) add-ons, install the Composer dev toolchain (drupal-rector, PHPStan + extensions, coder, drush 13, drupal/core-dev for PHPUnit), and write rector.php / phpstan.neon / phpcs.xml.dist / testing web_environment from templates. Idempotent. Use for "/drupilot-setup", "set up the environment", "spin up DDEV for this module".
 
-- **Arguments:** `[subject-path] [--php X.Y]`
+- **Arguments:** `[subject-path] [--php X.Y] [--target N]`
 - **Allowed tools:** Bash, Read, Skill, Task, AskUserQuestion
 
 ## /drupilot-status

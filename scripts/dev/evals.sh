@@ -8,8 +8,9 @@
 #     * the ordered tab sequence of a guided `full` run, extracted from the
 #       prompts in flow order: each command's `choice.sh --key KEY` calls, plus
 #       the tabs declared only by an AskUserQuestion header (a choices.json key
-#       with no choice.sh call, such as PUSH). New tabs may only be inserted:
-#       the 0.9 sequence must stay a subsequence (CC-02);
+#       with no choice.sh call, such as PUSH). New tabs may only be inserted
+#       (CC-02), each as tab-sequence.json's allowed_insertions lists it: right
+#       before the 0.9 tab it names (D32); without them, the 0.9 sequence;
 #     * the router's mode words, in its argument-hint;
 #     * the router's mode-inference rules: each cue's mode is the first bold
 #       **`mode`** after it in its rule, else the last one before it;
@@ -112,13 +113,15 @@ static_layer() {
   want="$(jq -c '.full' "$EVD/tab-sequence.json")"
   if [[ "$got" == "$want" ]]; then
     result "tab-sequence" pass "the full run declares the 0.9 tab sequence ($(printf '%s' "$want" | jq 'length') tabs)"
-  elif jq -n -e --argjson o "$want" --argjson n "$got" '
-      def subseq($a; $b): if ($a | length) == 0 then true elif ($b | length) == 0 then false
-                          elif $a[0] == $b[0] then subseq($a[1:]; $b[1:]) else subseq($a; $b[1:]) end;
-      subseq($o; $n)' > /dev/null; then
-    result "tab-sequence" pass "the 0.9 tab sequence is kept, with inserted tabs: $got"
+  elif jq -n -e --argjson o "$want" --argjson n "$got" --argjson ins "$(jq -c '.allowed_insertions // []' "$EVD/tab-sequence.json")" '
+      # Drop each allowed insertion that stands right before the tab it names;
+      # what is left must be the 0.9 sequence itself.
+      $n | . as $a
+      | [range(0; length) as $i | select(any($ins[]; .key == $a[$i] and .before == ($a[$i + 1] // null)) | not) | $a[$i]]
+      | . == $o' > /dev/null; then
+    result "tab-sequence" pass "the 0.9 tab sequence is kept, with the allowed insertions: $got"
   else
-    result "tab-sequence" fail "the tab sequence changed: got $got, want (as a subsequence) $want"
+    result "tab-sequence" fail "the tab sequence changed: got $got, want $want (a new tab only as tests/evals/router/tab-sequence.json allowed_insertions lists it)"
   fi
   words="$(jq -r '.mode_words | join("|")' "$EVD/mode-inference.json")"
   hint="$(awk 'NR == 1 && /^---/ { f = 1; next } f && /^---/ { exit } f && /^argument-hint:/' "$PR/commands/drupilot.md")"

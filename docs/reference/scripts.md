@@ -3499,8 +3499,9 @@ two layers (G-EVALS):
     * the ordered tab sequence of a guided `full` run, extracted from the
       prompts in flow order: each command's `choice.sh --key KEY` calls, plus
       the tabs declared only by an AskUserQuestion header (a choices.json key
-      with no choice.sh call, such as PUSH). New tabs may only be inserted:
-      the 0.9 sequence must stay a subsequence (CC-02);
+      with no choice.sh call, such as PUSH). New tabs may only be inserted
+      (CC-02), each as tab-sequence.json's allowed_insertions lists it: right
+      before the 0.9 tab it names (D32); without them, the 0.9 sequence;
     * the router's mode words, in its argument-hint;
     * the router's mode-inference rules: each cue's mode is the first bold
       **`mode`** after it in its rule, else the last one before it;

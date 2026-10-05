@@ -8,9 +8,22 @@
       "default": "next",
       "note": "Answers only the ambiguous-intent tab; an explicit mode word wins. 'auto' is as safe as the auto mode word: it never pushes, opens a Merge Request or contributes."
     },
+    "TARGET_MAJOR": {
+      "command": "/drupilot-setup",
+      "header": "Target major",
+      "stage": "plan-draft",
+      "options": [
+        "11",
+        "12"
+      ],
+      "default": "11",
+      "persist_key": "DRUPILOT_TARGET_MAJOR",
+      "note": "12 is a pre-release: it is offered only with DRUPILOT_ALLOW_PRERELEASE=true and ports to it as a preview. A --target N argument wins; the answer is persisted only after the draft upgrade plan resolves."
+    },
     "PHP_TARGET": {
       "command": "/drupilot-setup",
       "header": "PHP target",
+      "stage": "plan-draft",
       "options": ["8.3", "8.4", "8.5"],
       "default": "8.4",
       "persist_key": "DRUPILOT_PHP_TARGET",

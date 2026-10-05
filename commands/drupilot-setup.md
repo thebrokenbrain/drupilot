@@ -1,6 +1,6 @@
 ---
 description: Provision a Drupal 11 DDEV environment for porting a module/theme - start DDEV, install the contrib (+ Selenium) add-ons, install the Composer dev toolchain (drupal-rector, PHPStan + extensions, coder, drush 13, drupal/core-dev for PHPUnit), and write rector.php / phpstan.neon / phpcs.xml.dist / testing web_environment from templates. Idempotent. Use for "/drupilot-setup", "set up the environment", "spin up DDEV for this module".
-argument-hint: "[subject-path] [--php X.Y]"
+argument-hint: "[subject-path] [--php X.Y] [--target N]"
 allowed-tools: Bash, Read, Skill, Task, AskUserQuestion
 ---
 
@@ -21,32 +21,57 @@ missing, the script prints an actionable report and exits non-zero — in that c
 If that command exited non-zero (missing Docker/daemon/DDEV), do not proceed: show the
 report and recommend `/drupilot-doctor`.
 
-## Step 2 — Resolve subject and PHP target
+## Step 2 — Resolve subject, target major and PHP target
 
 Determine the subject directory (`$1` if it is a Drupal extension, else detect from the
-cwd), its type (module/theme), and the effective PHP target:
+cwd), its type (module/theme), the target major and the effective PHP target (the
+target's own default unless one is set; `target_set` / `php_set` say whether a value
+was set in the environment or `.drupilot.json`):
 
-!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; printf "subject_dir=%s\n" "$SUBJ"; printf "machine_name=%s\n" "$(subject_machine_name "$SUBJ" 2>/dev/null || echo -)"; printf "subject_type=%s\n" "$(subject_type "$SUBJ" 2>/dev/null || echo -)"; printf "php_target=%s\n" "$(resolve_php_target)"; printf "php_unconfirmed=%s\n" "$(php_target_unconfirmed "$(resolve_php_target)" && echo yes || echo no)"; printf "drupal_target=%s\n" "$(resolve_drupal_target)"' _ "$1"`
+!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; T="$(resolve_target_major)"; P="$(resolve_php_target_for "$T")"; printf "subject_dir=%s\n" "$SUBJ"; printf "machine_name=%s\n" "$(subject_machine_name "$SUBJ" 2>/dev/null || echo -)"; printf "subject_type=%s\n" "$(subject_type "$SUBJ" 2>/dev/null || echo -)"; printf "target_major=%s\n" "$T"; printf "target_set=%s\n" "$([[ -n "$(config_get_explicit DRUPILOT_TARGET_MAJOR)" ]] && echo yes || echo no)"; printf "allow_prerelease=%s\n" "$(config_get DRUPILOT_ALLOW_PRERELEASE false)"; printf "php_target=%s\n" "$P"; printf "php_set=%s\n" "$([[ -n "$(config_get_explicit DRUPILOT_PHP_TARGET)" ]] && echo yes || echo no)"; printf "php_unconfirmed=%s\n" "$(php_target_unconfirmed "$P" && echo yes || echo no)"; printf "drupal_target=%s\n" "$(resolve_drupal_target)"' _ "$1"`
+
+Nothing is persisted in this step until the draft upgrade plan below resolves
+(D30). A `--target N` / `--php X.Y` flag in `$ARGUMENTS` wins over every other
+source.
+
+**Decision point — the target major (T-M3-15).** The Drupal major the port
+targets (T) decides the test-bed, the toolchain cell and the PHP choices, so it
+comes first. A pre-answer comes first, also in an autonomous run:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key TARGET_MAJOR --subject "<subject_dir>" --json
+```
+
+When its `value` is not null it is the answer (no tab; if `env_override` lists
+`DRUPILOT_TARGET_MAJOR`, the environment variable wins). Otherwise, when
+`target_set` is `yes`, when the run is autonomous, or when `allow_prerelease` is
+not `true` (then Drupal 11 is the only target to offer), use `target_major` with
+no tab and say so in one line. Only when `allow_prerelease` is `true`, ask with
+**AskUserQuestion** (header "Target major", default = the recommended option):
+
+- **Drupal 11 — recommended**: the current supported major; the default.
+- **Drupal 12 (preview)**: Drupal 12 has no stable release yet, so the port is a
+  preview on its pre-release core.
+
+Use the answer as T below.
 
 **Decision point — let the developer pick the PHP target (G4/G5).** The PHP
 version pins the whole toolchain (PHPStan, PHPCS, DDEV `php_version`, and the
-ceiling of Rector's PHP floor), so make it an explicit choice with **AskUserQuestion** (header
-"PHP target", default = the recommended option) *unless* a `--php X.Y` flag is in
-`$ARGUMENTS`, or `DRUPILOT_PHP_TARGET` is already pinned (environment or
-`.drupilot.json`), or the run is autonomous. A pre-answer comes first (after
-`--php`): run
+ceiling of Rector's PHP floor). When T is not 11, use the target's own default
+(`php_target` above, recomputed for T if the target changed: `config/targets/<T>.json`
+`php_defaults.tab`) with no tab. For Drupal 11 make it an explicit choice with
+**AskUserQuestion** (header "PHP target", default = the recommended option)
+*unless* `php_set` is `yes` (a pinned value) or the run is autonomous. A
+pre-answer comes first:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key PHP_TARGET --subject "<subject_dir>" --persist --json
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key PHP_TARGET --subject "<subject_dir>" --json
 ```
 
-When its `value` is not null, it is the answer: no tab, export
-`DRUPILOT_PHP_TARGET=<value>` for the following scripts (the script already
-persisted it to `.drupilot.json` when a Drupal root exists; otherwise persist it
-after 3a with `prefs_set`), and say so in one line. If `env_override` lists
-`DRUPILOT_PHP_TARGET`, the environment variable wins: say so and keep it. A
-pre-answered `8.5` still gets the Drupal 11.3 warning below. When `value` is null
-(unset, or invalid — already warned), continue as above. Offer:
+When its `value` is not null, it is the answer: no tab, and say so in one line. If
+`env_override` lists `DRUPILOT_PHP_TARGET`, the environment variable wins: say so and
+keep it. A pre-answered `8.5` still gets the Drupal 11.3 warning below. When `value`
+is null (unset, or invalid — already warned), continue as above. Offer:
 
 - **8.4 — recommended** (`php_support.recommended`) — current, supported on
   Drupal 11; the default.
@@ -56,10 +81,49 @@ pre-answered `8.5` still gets the Drupal 11.3 warning below. When `value` is nul
   earlier) and no Rector `php85` set is assumed (Rector uses `php84`); if chosen,
   say so, and relay `ddev-up.sh`'s warning when the core is older.
 
-A `--php X.Y` flag always wins over the tab. Apply the choice by exporting
-`DRUPILOT_PHP_TARGET` for the subsequent scripts **and** persisting it with
-`prefs_set DRUPILOT_PHP_TARGET <X.Y>` so the rest of the flow (assess/port/test)
-reuses it without re-asking. Never proceed on 8.5 without that note.
+Never proceed on 8.5 without that note.
+
+**Resolve and freeze the draft upgrade plan (AR-06, ADR 0018).** Every later
+stage reads its versions from this plan. Find the Drupal root first with the
+read-only workspace resolver (Step 3 explains its fields; for a loose subject
+the root is the test-bed it will create):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/resolve-workspace.sh" --subject "<subject_dir>" --json
+```
+
+When `.in_place_ok` is `false` (a site still on Drupal 10), settle the workspace
+first as Step 3 describes (a test-bed through `DRUPILOT_WORKSPACE_DIR`) and run the
+resolver again: never freeze a plan under a Drupal 10 site. Then resolve the draft
+plan. Pass `DRUPILOT_TARGET_MAJOR` / `DRUPILOT_PHP_TARGET` only for a value that was
+answered in a tab, pre-answered or given as a flag (a pinned or default value is read
+by the script itself); add `--auto` in an autonomous run:
+
+```bash
+DRUPILOT_TARGET_MAJOR=<T> DRUPILOT_PHP_TARGET=<X.Y> bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "<subject_dir>" --phase draft --root "<drupal_root>" --freeze --json
+```
+
+- **Exit 0**: the plan is frozen in the root's lock. Report in one line the
+  target and its test-bed core (`target.bed_core`), the declared range
+  (`range.constraint`), the PHP window (`php.floor`..`php.final`) and the hops.
+  - If `.target.major` is not 11, stop here, persisting nothing: say that the
+    draft plan is frozen and that Drupal 12 test-beds arrive with a later drupilot
+    release (T-M3-08); do not run the setup scripts below.
+  - Otherwise persist the answered values (`prefs_set DRUPILOT_TARGET_MAJOR <T>`,
+    `prefs_set DRUPILOT_PHP_TARGET <X.Y>`, run with
+    `DRUPILOT_PROJECT_DIR=<drupal_root>`): now when `drupal_root_exists` is `true`,
+    else right after 3a creates the root, before the subject is placed.
+- **Exit 2 with `.code` `d7-auto`**: stop with its `.message`; nothing was written.
+- **Any other exit 2**: nothing was written or persisted. Show `.message` and
+  offer the refusal's `.choices` (each names the tab to re-ask in `.tab` or the
+  values to `set`). Then ask the target and PHP tabs again, this time even when a
+  pre-answer, a flag or a pinned value decided them (that value led to the
+  refusal), and resolve again with the new answers. In an autonomous run, stop
+  with the message instead.
+- **Exit 1**: a usage error; show it and stop.
+
+The plan is resolved once more at the end of 3c, when the test-bed's core is
+installed and recorded in the lock (see there).
 
 ## Step 3 — State the plan, then do the work via the ddev-environment skill
 
@@ -230,6 +294,13 @@ Read the JSON (`ok`, `status`, `source`, `smoke`) and act on the exit code:
 - `2` — a requirement is missing or DDEV is not running (fix 3a first).
 - `1` — Composer could not resolve the set (its output is on stderr); if the pinned
   set did not resolve it already retried once with the ranges (`fallback_to_ranges`).
+
+Once the toolchain is installed (exit 0), the lock records the test-bed's real
+core: run the Step 2 draft command again (`upgrade-path.sh ... --phase draft --root
+"<drupal_root>" --freeze --json`, with the same variables). When the installed core is
+another minor than the one the draft named (an existing site, a cached core, a newer
+release), it re-plans on the installed core and refreezes; otherwise it reuses the
+frozen draft. A refusal now (exit 2) stops the setup with its message and choices.
 
 drupal/coder ships a Composer plugin (`*/phpcodesniffer-composer-installer`) that
 auto-registers the PHPCS `installed_paths`. Allow that plugin, let it run, then just

@@ -14,6 +14,25 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 ## [Unreleased]
 
 ### Added
+- **The commands plan before they act** (T-M3-15): `/drupilot-setup` asks
+  the new **Target major** tab (`TARGET_MAJOR`: Drupal 11 by default, 12 only as
+  a preview with `DRUPILOT_ALLOW_PRERELEASE=true`; `--target N` wins) before the
+  PHP target, then freezes the draft upgrade plan in the root's lock
+  (`upgrade-path.sh --phase draft --freeze`), persisting both answers only once
+  it resolves (into a loose subject's test-bed right after it is created); a
+  refusal re-asks the tabs, overriding the value that led to it; a target other
+  than 11 stops after the plan, persisting nothing, until T-M3-08; and once the
+  toolchain is installed the draft is resolved again, so it re-plans on the
+  core the test-bed really runs. The Target major tab shows only when a
+  pre-release may be chosen (`DRUPILOT_ALLOW_PRERELEASE=true`); the PHP default
+  is the target's own. `/drupilot-port` freezes the final plan with
+  the core-target answer and applies the plan's `range.constraint` and
+  `php.require_php` (`plan_get`), so core-strategy only shows each option's
+  consequences (and refuses a final plan for a target other than 11); the
+  orchestrator checks rule D7-AUTO before any stage of an autonomous run and
+  freezes the draft and final plans as the commands do. The router
+  eval allows a new tab only as `tab-sequence.json` `allowed_insertions` lists
+  it (TARGET_MAJOR right before PHP_TARGET).
 - **core-strategy is checked as a view of the plan's decision** (T-M3-05,
   CC-11, CC-36): `tests/unit/core_strategy_view.sh` resolves every fixture
   and monorepo module with each strategy through both `core-strategy.sh` and
