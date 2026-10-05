@@ -572,6 +572,11 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   - The digests config is copied under `<root>/.drupilot/digests/<sha>/`, so
     that pass runs in the bed instead of on the host's PHP.
   - Two lab runs give byte-identical canonical reports.
+- **The `legacy_widgets` raw goldens are re-recorded** (T-M4-03, lab L-M4) with
+  the deterministic tools. The H10 patch is unchanged.
+  - `rector-dryrun.json` gains `file_diffs` and `runner`.
+  - `phpstan.json` and `phpcs.json` gain `drupilot.runner`.
+  - PHPStan's two messages on one line come in identifier order.
 
 ### Deprecated
 - **The 0.9 strategy vocabulary** (T-M3-07, CC-07), kept for all of 1.x and

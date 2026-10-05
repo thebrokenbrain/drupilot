@@ -105,6 +105,26 @@ deleted afterwards.
   The only run-to-run difference in any captured stream is the plain-text `run-phpcs.sh --fix` stdout line
   `Time: 184ms; Memory: 6MB` (vs 180ms): not a raw golden.
 
+## M4 re-recording of the raw files (T-M4-03)
+
+Lab L-M4, bed `dpl-m4-legwid-d11` (the same environment as M2: Drupal 11.4.8, PHP 8.3.33, DDEV v1.25.4, cell 11
+pins), 2026-10-05, with `<repo>` on branch `m4/tool-determinism`. Run `h10a` is the R-LAB-8 sequence above
+(lab script `rlab8.sh`); runs `a` and `b` are the three `--json` calls alone on fresh copies, canonicalized with
+`canon_json ROOT` (scripts/lib/canon.sh) plus the `rlab_<T>/` path.
+
+| Run | Patch | `rector-dryrun.json` | `phpstan.json` | `phpcs.json` |
+|---|---|---|---|---|
+| `h10a` | = M1 (`27fd76cb…`) | `a3407735…` | `6cda12a0…` | `a40041ed…` |
+| `a` = `b` | — | = `h10a` | = `h10a` | = `h10a` |
+
+- Rector now runs with its JSON report: `raw/rector-dryrun.json` gains `file_diffs` (the official pass's
+  `WidgetImportForm.php` diff, `FunctionFirstClassCallableRector`) and `runner` (`ddev`, PHP 8.3.33, rector/rector
+  2.6.1); every other key is unchanged.
+- `raw/phpstan.json` and `raw/phpcs.json` gain `drupilot.runner`; PHPStan's report is sorted, so its two messages on
+  `WidgetImportForm.php` line 18 now come by identifier (`dependencySerializationTraitProperty...`,
+  `property.readOnly`, `property.visibility`); the findings are the same.
+- The H10 patch is unchanged (the R-LAB-8 run is byte-identical to the golden).
+
 ## Caveats for whoever re-records this golden
 
 - The patch (36 lines) holds only: `core_version_requirement` `^10` -> `^10 || ^11` (main info.yml), the submodule
