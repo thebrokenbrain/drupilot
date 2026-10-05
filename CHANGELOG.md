@@ -14,6 +14,9 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 ## [Unreleased]
 
 ### Added
+- **`docs/concepts/upgrade-paths.md`**: the upgrade plan for users. It covers
+  the three axes (source, target, PHP), the hops, the core-range strategies,
+  the draft and final phases, refusals, `plan show` and the names.
 - **The `hard-rules` gate** (alias `no-version-literals`, T-M3-12) greps the
   scripts, the PHP templates (comment lines skipped) and the prompts for the
   hard rules:

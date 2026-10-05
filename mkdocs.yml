@@ -63,6 +63,8 @@ plugins:
 # The Getting started, Guides and Concepts sections arrive with their pages (docs D4).
 nav:
   - Home: index.md
+  - Concepts:
+      - concepts/upgrade-paths.md
   - Reference:
       - reference/commands.md
       - reference/configuration.md

@@ -326,6 +326,7 @@ Environment only until the d7-assisted track lands (M10, then in defaults.json a
 
 - **Default:** none
 - **Type:** string — one of `on`, `off`
+- **See:** [concepts/upgrade-paths.md](../concepts/upgrade-paths.md)
 
 ### `DRUPILOT_GITLAB_PAT`
 
