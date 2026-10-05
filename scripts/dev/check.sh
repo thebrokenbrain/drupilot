@@ -63,7 +63,9 @@
 #                 hard-coded "Drupal 12 stable" (H6), a three-major range
 #                 literal (H7), a drush migrate:import (H9), the forbidden
 #                 Drupal10SetList::DRUPAL_10 aggregate (AGG), a DDEV type
-#                 literal drupalNN outside scripts/lib/plan.sh (DDEV), and in
+#                 literal drupalNN outside scripts/lib/plan.sh (DDEV), a lock
+#                 path spelled outside scripts/lib/lock.sh (LOCK: readers go
+#                 through lock_path / drupilot_lock_file, AR-14), and in
 #                 the scripts exactly as many version-literal lines per file as
 #                 tests/contract/hard-rules-allow.txt records (H4, a ratchet: a
 #                 new literal fails, and a removed one asks to lower the count;
@@ -546,7 +548,8 @@ H6	(Drupal|D) ?12 (is )?stable|12\.0\.0 (is )?(stable|released)
 AGG	Drupal10SetList::DRUPAL_10([^0-9_]|$)
 DDEV	drupal1[0-9]([^0-9]|$)
 H7	\^[0-9]+(\.[0-9]+)? \|\| \^[0-9]+(\.[0-9]+)? \|\| \^[0-9]+
-H9	(drush|vendor/bin/drush)[^|]* (migrate:import|migrate-import|mim)([^a-z-]|$)'
+H9	(drush|vendor/bin/drush)[^|]* (migrate:import|migrate-import|mim)([^a-z-]|$)
+LOCK	/drupilot-lock\.json'
   for f in "$REPO"/scripts/*.sh "$REPO"/scripts/*/*.sh "$REPO"/hooks/scripts/*.sh "$REPO"/templates/*.tmpl \
            "$REPO"/commands/*.md "$REPO"/skills/*/SKILL.md "$REPO"/agents/*.md; do
     [[ -f "$f" ]] || continue
@@ -555,6 +558,7 @@ H9	(drush|vendor/bin/drush)[^|]* (migrate:import|migrate-import|mim)([^a-z-]|$)'
     n=$((n + 1))
     while IFS="$(printf '\t')" read -r id re; do
       [[ "$id" == "DDEV" && "$rel" == "scripts/lib/plan.sh" ]] && continue
+      [[ "$id" == "LOCK" && "$rel" == "scripts/lib/lock.sh" ]] && continue
       # H7 is about a default in code; a prompt may quote an old range.
       case "$id:$rel" in H7:commands/*|H7:skills/*|H7:agents/*) continue;; esac
       hits="$(body "$f" | grep -E -- "^[0-9]+:.*($re)" || true)"

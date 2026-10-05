@@ -2498,7 +2498,9 @@ BROKEN (smoke test failed — the diagnostic names the known-good versions).
 
 ```text
 drupilot — scripts/env/lock-sync.sh
-Capture / refresh the per-project reproducibility lockfile (drupilot-lock.json).
+Capture / refresh the per-project reproducibility lockfile (drupilot-lock.json:
+in drupilot's state dir, or at the Drupal root with
+DRUPILOT_LOCK_LOCATION=project; drupilot_lock_file).
 
 drupilot is reproducible BY DEFAULT (DRUPILOT_DETERMINISTIC, see common.sh):
 the EXACT versions/refs resolved on first setup are frozen here and reused on
@@ -3427,7 +3429,9 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
                 hard-coded "Drupal 12 stable" (H6), a three-major range
                 literal (H7), a drush migrate:import (H9), the forbidden
                 Drupal10SetList::DRUPAL_10 aggregate (AGG), a DDEV type
-                literal drupalNN outside scripts/lib/plan.sh (DDEV), and in
+                literal drupalNN outside scripts/lib/plan.sh (DDEV), a lock
+                path spelled outside scripts/lib/lock.sh (LOCK: readers go
+                through lock_path / drupilot_lock_file, AR-14), and in
                 the scripts exactly as many version-literal lines per file as
                 tests/contract/hard-rules-allow.txt records (H4, a ratchet: a
                 new literal fails, and a removed one asks to lower the count;

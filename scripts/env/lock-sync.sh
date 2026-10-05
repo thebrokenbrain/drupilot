@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================================
 # drupilot — scripts/env/lock-sync.sh
-# Capture / refresh the per-project reproducibility lockfile (drupilot-lock.json).
+# Capture / refresh the per-project reproducibility lockfile (drupilot-lock.json:
+# in drupilot's state dir, or at the Drupal root with
+# DRUPILOT_LOCK_LOCATION=project; drupilot_lock_file).
 #
 # drupilot is reproducible BY DEFAULT (DRUPILOT_DETERMINISTIC, see common.sh):
 # the EXACT versions/refs resolved on first setup are frozen here and reused on
@@ -77,7 +79,14 @@ fi
 PROJECT_DIR="$(cd "$PROJECT_DIR" 2>/dev/null && pwd || printf '%s' "$PROJECT_DIR")"
 export DRUPILOT_PROJECT_DIR="$PROJECT_DIR"
 
-LOCKFILE="$(drupilot_lock_file)"
+# A dry-run names the lock without creating or moving anything (lock_path).
+lock_location_note "$PROJECT_DIR"
+if [[ "$DRY_RUN" == "1" ]]; then
+  LOCKFILE="$(lock_write_path)"
+  [[ "$(lock_path)" == "$LOCKFILE" ]] || log_info "[dry-run] would move the lock $(lock_path) to $LOCKFILE (DRUPILOT_LOCK_LOCATION=project)"
+else
+  LOCKFILE="$(drupilot_lock_file)"
+fi
 COMPOSER_LOCK="$PROJECT_DIR/composer.lock"
 
 log_step "Syncing the drupilot lockfile"
