@@ -48,6 +48,11 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   plan (`--json`) or refuses with exit 2 and the choices that resolve it; a
   Drupal 7 source in an autonomous run is refused before anything is written
   (`d7-auto`). It writes nothing. Its goldens are `tests/golden/plans/`.
+  The root's `.drupilot.json` and lock are found from the subject's logical
+  path (a symlink placement included), never from the cwd; `plan_assert`
+  gains `range-excludes-bed` (a range that does not admit the bed core).
+- The `jq-compat` gate also rejects a jq keyword used as a `def` parameter
+  (jq 1.6 refuses `def c($label)`).
 - **`schemas/upgrade-plan.schema.json`** with an example plan
   (`schemas/examples/upgrade-plan.example.json`), checked by the `schemas`
   gate; the target major and bed core, the PHP floor and final, the range,

@@ -551,16 +551,17 @@ plan_ci_flags() {
 # plan_assert PLAN -> the plan's violated assertions (AR-06), one JSON array
 # of {id, detail}, in this order: source-above-target (S > T),
 # prerelease-not-opted-in (a pre-release T without preview),
-# floor-above-final (L > P), php-not-supported (P is not a PHP M supports, M
+# range-excludes-bed (the range does not admit the bed core's minor: the
+# module could not be installed on the test-bed), floor-above-final (L > P), php-not-supported (P is not a PHP M supports, M
 # the newest released minor of T or its pre-release minor in preview),
 # minor-php-disjoint (a verified minor of a major <= T that the range admits
 # supports none of the PHP minors L..P: every answer "no"; an "unknown" one
-# is not a violation), three-majors (the range reaches 3 or more majors while
+# is not a violation; the violation also names the `minor`), three-majors (the range reaches 3 or more majors while
 # its strategy is not explicit and it does not keep the current
 # declaration). Returns 2 when any is violated, 1 when PLAN is not an object.
 # Nothing is fixed: the caller refuses (upgrade-path.sh exits 2).
 plan_assert() {
-  local plan="${1:-}" t="" s="" l="" p="" st="" pv="" c="" strat="" rs="" m x w n ans all
+  local plan="${1:-}" t="" s="" l="" p="" st="" pv="" b="" c="" strat="" rs="" m x w n ans all bm
   local out="" vals
   have_cmd jq || return 1
   # -s: an empty PLAN is [] (jq 1.6's -e exits 0 on no input at all).
@@ -569,7 +570,7 @@ plan_assert() {
   # text, anything else as its JSON (which then matches no check's format).
   vals="$(printf '%s' "$plan" | jq -r 'def w: if type == "string" then . elif type == "number" or type == "boolean" then tostring
       elif . == null then "" else tojson end;
-    @sh "t=\(.target.major | w) s=\(.source.major | w) l=\(.php.floor | w) p=\(.php.final | w) st=\(.target.status | w) pv=\(.target.preview | w) c=\(.range.constraint | w) strat=\(.range.strategy | w) rs=\(.range.resolved_strategy | w)"')" || return 1
+    @sh "t=\(.target.major | w) s=\(.source.major | w) l=\(.php.floor | w) p=\(.php.final | w) st=\(.target.status | w) pv=\(.target.preview | w) b=\(.target.bed_core | w) c=\(.range.constraint | w) strat=\(.range.strategy | w) rs=\(.range.resolved_strategy | w)"')" || return 1
   [[ -n "$vals" ]] || return 1
   eval "$vals"
   if [[ "$s" =~ ^[0-9]+$ && "$t" =~ ^[0-9]+$ ]] && (( s > t )); then
@@ -577,6 +578,10 @@ plan_assert() {
   fi
   if [[ "$st" == "pre-release" && "$pv" != "true" ]]; then
     out="$out$(_plan_issue prerelease-not-opted-in "Drupal $t is a pre-release and the plan is not a preview")"$'\n'
+  fi
+  bm="$(printf '%s' "$b" | sed -n 's/^v\{0,1\}\([0-9][0-9]*\.[0-9][0-9]*\)\..*/\1/p')"
+  if [[ -n "$c" && -n "$bm" && -z "$(printf '%s\n' "$bm" | core_requirement_minors "$c")" ]]; then
+    out="$out$(_plan_issue range-excludes-bed "'$c' does not admit the test-bed core $b: the module could not be installed on it")"$'\n'
   fi
   if [[ -n "$l" && -n "$p" ]] && ! version_ge "$p" "$l"; then
     out="$out$(_plan_issue floor-above-final "the code needs PHP $l, above the PHP target $p")"$'\n'
@@ -603,7 +608,7 @@ plan_assert() {
         ans="$(php_supported_for "$n" "$x")"
         [[ "$ans" == "no" ]] || { all="$ans"; break; }
       done
-      [[ "$all" != "no" ]] || out="$out$(_plan_issue minor-php-disjoint "Drupal $n supports none of PHP $(printf '%s' "$w" | tr ' ' ',') ($c)")"$'\n'
+      [[ "$all" != "no" ]] || out="$out$(_plan_issue minor-php-disjoint "Drupal $n supports none of PHP $(printf '%s' "$w" | tr ' ' ',') ($c)" | jq -c --arg n "$n" '. + {minor: $n}')"$'\n'
     done
   fi
   n="$(range_majors "$c" | wc -w | tr -d ' ')"

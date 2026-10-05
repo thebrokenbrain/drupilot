@@ -1448,9 +1448,12 @@ Options:
   --strategy S     The compat strategy (default
                    DRUPILOT_CORE_TARGET_STRATEGY, auto).
   --range C        An explicit declared range (implies --strategy explicit).
-  --root DIR       The Drupal root whose lock names the bed core and whose
-                   drupal-rector names the Rector sets (default: the
-                   subject's root, if any).
+  --root DIR       The Drupal root whose lock names the bed core, whose
+                   drupal-rector names the Rector sets and whose
+                   .drupilot.json holds the persisted choices (default: the
+                   subject's root, found from its logical path, as the lock
+                   is keyed; for a loose subject, DRUPILOT_PROJECT_DIR or
+                   the subject itself, never the cwd's root).
   --phpstan FILE   With --phase final: a PHPStan --error-format=json output
                    of the subject (detect-source.sh signal 4).
   --auto           An autonomous run (as DRUPILOT_AUTONOMOUS=true): a Drupal
@@ -1466,8 +1469,12 @@ Output (STDOUT, keys sorted): the plan, or on a refusal
   d7-auto, its message also printed alone on STDERR.
 
 Exit codes: 0 the plan · 1 usage error (a bad --phase/--target/--php/
---strategy, no subject, --strategy explicit without --range) · 2 refused
-(an assertion of AR-06 failed, or the target is not a port target).
+--strategy, no subject or no machine name, --strategy explicit without
+--range, an empty --range or one with no lower bound, an invalid
+DRUPILOT_PHPSTAN_LEVEL) · 2 refused (an assertion of AR-06 failed: the
+codes of plan_assert in scripts/lib/plan.sh, invalid-target,
+php-not-supported for a PHP the data does not know, d7-auto). A
+standard-track S below 8 starts the hops at 8.
 ```
 
 ### analysis/verify-core-matrix.sh
@@ -3259,7 +3266,7 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
                 module, if, then, else, end, as, def, reduce, foreach, try,
                 catch, and, or, not, import, include, __loc__) as a --arg /
                 --argjson name, an `as $name` binding or a shorthand object
-                key (`{module, scope}`): jq 1.6 (Debian 12, Ubuntu 22.04 —
+                key (`{module, scope}`) or a `def f($label)` parameter: jq 1.6 (Debian 12, Ubuntu 22.04 —
                 drupilot's jq_min) rejects each as a syntax error, jq 1.7
                 accepts it. `{label: .x}` and `.label` are fine everywhere.
                 It also rejects an object value joined with and/or outside

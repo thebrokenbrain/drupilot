@@ -7,14 +7,6 @@
       "tab": "PHP_TARGET"
     },
     {
-      "id": "target-only",
-      "label": "Declare Drupal 11 only",
-      "set": {
-        "DRUPILOT_CORE_TARGET_STRATEGY": "target-only"
-      },
-      "tab": null
-    },
-    {
       "id": "floor-detect",
       "label": "Detect the PHP floor from the code",
       "set": {
@@ -31,31 +23,38 @@
   "violations": [
     {
       "detail": "Drupal 10.3 supports none of PHP 8.5 (^10.3 || ^11)",
-      "id": "minor-php-disjoint"
+      "id": "minor-php-disjoint",
+      "minor": "10.3"
     },
     {
       "detail": "Drupal 10.4 supports none of PHP 8.5 (^10.3 || ^11)",
-      "id": "minor-php-disjoint"
+      "id": "minor-php-disjoint",
+      "minor": "10.4"
     },
     {
       "detail": "Drupal 10.5 supports none of PHP 8.5 (^10.3 || ^11)",
-      "id": "minor-php-disjoint"
+      "id": "minor-php-disjoint",
+      "minor": "10.5"
     },
     {
       "detail": "Drupal 10.6 supports none of PHP 8.5 (^10.3 || ^11)",
-      "id": "minor-php-disjoint"
+      "id": "minor-php-disjoint",
+      "minor": "10.6"
     },
     {
       "detail": "Drupal 11.0 supports none of PHP 8.5 (^10.3 || ^11)",
-      "id": "minor-php-disjoint"
+      "id": "minor-php-disjoint",
+      "minor": "11.0"
     },
     {
       "detail": "Drupal 11.1 supports none of PHP 8.5 (^10.3 || ^11)",
-      "id": "minor-php-disjoint"
+      "id": "minor-php-disjoint",
+      "minor": "11.1"
     },
     {
       "detail": "Drupal 11.2 supports none of PHP 8.5 (^10.3 || ^11)",
-      "id": "minor-php-disjoint"
+      "id": "minor-php-disjoint",
+      "minor": "11.2"
     }
   ]
 }

@@ -11,7 +11,7 @@
   "hops": [
     "7-11"
   ],
-  "patch_name": "-port-to-drupal-11.patch",
+  "patch_name": "d7_minimal-port-to-drupal-11.patch",
   "php": {
     "final": "8.3",
     "floor": "8.1",
@@ -68,7 +68,7 @@
     "track": "d7-assisted"
   },
   "subject": {
-    "machine_name": "",
+    "machine_name": "d7_minimal",
     "type": "module"
   },
   "target": {
