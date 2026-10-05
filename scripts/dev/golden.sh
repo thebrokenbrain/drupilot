@@ -13,6 +13,10 @@
 #   baseline-0.9   tests/baseline/v0.9.0/: the Docker-free outputs of v0.9.0,
 #                  checked by rerunning them (scripts/dev/baseline-0.9.sh
 #                  --check, which this absorbs)
+#   <name>         tests/golden/<name>/ holding a golden.json: Docker-free
+#                  outputs a unit test regenerates against the pinned data
+#                  snapshot (DRUPILOT_VERSION_DATA_DIR), e.g. detect-source;
+#                  pinned and checked like a lab recording
 #   <fixture>      tests/fixtures/<fixture>.golden/: outputs recorded in the lab
 #                  (DDEV), such as a fixture's port patch and its raw tool
 #                  outputs; every file is pinned by its sha256 in golden.json,
@@ -118,7 +122,11 @@ SNAP=""; USED=""
 GOLDENS="$(printf 'baseline-0.9\t%s\n' "$REPO/tests/baseline/v0.9.0"
            for d in "$REPO"/tests/fixtures/*.golden; do
              [[ -d "$d" ]] && printf '%s\t%s\n' "$(basename "$d" .golden)" "$d"
-           done)"
+           done
+           for d in "$REPO"/tests/golden/*; do
+             [[ -f "$d/golden.json" ]] && printf '%s\t%s\n' "$(basename "$d")" "$d"
+           done
+           true)"
 for _n in $(printf '%s' "$ONLY" | tr ',' ' '); do
   printf '%s\n' "$GOLDENS" | cut -f1 | grep_q -xF -- "$_n" || die "Unknown golden: $_n" 1
 done

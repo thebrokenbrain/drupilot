@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # detect-source.sh (T-M3-01, T-M3-02, AR-05): the source era S of each fixture
-# matches its golden in tests/golden/detect-source/ (static signals, and the
+# matches its golden in tests/golden/detect-source/, computed on the data
+# snapshot its golden.json pins (static signals, and the
 # --full signal 4 from legacy_widgets' recorded PHPStan output); the misuses
 # exit 1; the Drupal 7 .info helpers answer only for a directory without a
 # .info.yml, so the .info.yml subjects behave as before (CC-22).
@@ -9,6 +10,9 @@ t_isolate
 # shellcheck source=../../scripts/lib/common.sh
 . "$T_LIB"
 F="$T_REPO/tests/fixtures"; G="$T_REPO/tests/golden/detect-source"
+# The goldens hold for the data snapshot they are pinned to (golden.sh).
+DRUPILOT_VERSION_DATA_DIR="$T_REPO/tests/fixtures/data-snapshots/$(jq -r .data_hash "$G/golden.json")"
+export DRUPILOT_VERSION_DATA_DIR
 ds() { t_run "$T_SH" "$T_REPO/scripts/analysis/detect-source.sh" "$@"; }
 
 while IFS=: read -r name dir; do

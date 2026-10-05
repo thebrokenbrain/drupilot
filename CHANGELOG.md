@@ -18,6 +18,38 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `scripts/lib/core.sh`: no pipeline in `scripts/` or `hooks/` may end in a
   consumer that stops reading early (`| head`, `| grep -q` / `-m` / `-l`, an
   `| awk` exit); `grep_q` answers like `grep -q` but reads its whole input.
+- **`DRUPILOT_TARGET_MAJOR`** (default `11` for all of 1.0.x) and
+  **`DRUPILOT_ALLOW_PRERELEASE`** (default `false`), the target Drupal major and
+  the opt-in for a major with no stable release yet (T-M3-06), with
+  `resolve_target_major`, `resolve_php_target_for` (P from the target's data
+  default unless one is set) and `config_get_explicit`. The upgrade plan
+  reads them.
+- **`scripts/lib/canon.sh`**: `canon_json_hashable`, `json_hash` and
+  `sha256_hex`, the canonical form an upgrade plan is hashed in (AR-13).
+- **The upgrade-plan building blocks** in `scripts/lib/plan.sh` (T-M3-03,
+  AR-04/AR-06, ADR 0017): `plan_target_block` (the target, its bed core and
+  the pre-release opt-in), `plan_hops` / `plan_detectors` over
+  `paths/graph.json`, `rector_sets_for_plan` (per-minor sets up to the bed,
+  breaking sets by the floor, `always_sets`, reflection from a bed's
+  drupal-rector, skipped sets recorded with a reason), `plan_rector_skip`,
+  `plan_rector_bc`, `plan_php_block`, `plan_test_matrix`, `plan_ci_flags`,
+  `plan_assert` (the plan's assertions, never fixed silently) and
+  `version_data_hash`; in `scripts/lib/strategy.sh`,
+  `core_requirement_minors`, `core_requirement_lowest` and
+  `core_requirement_majors` (which core minors, lowest version and majors a
+  `core_version_requirement` admits, read as composer/semver reads it and
+  checked against its answers). The resolver CLI that assembles them comes
+  next.
+- **`schemas/upgrade-plan.schema.json`** with an example plan
+  (`schemas/examples/upgrade-plan.example.json`), checked by the `schemas`
+  gate; the target major and bed core, the PHP floor and final, the range,
+  the hops and the toolchain cell are marked as what the hard gates read.
+- **ADR 0017**: what the upgrade-plan resolver decides where AR-04/AR-06 are
+  silent.
+- **Unit goldens pinned to a data snapshot**: `golden.sh` also checks every
+  `tests/golden/<name>/` holding a `golden.json`, and the unit tests
+  regenerate them against the snapshot it pins (`detect-source`, and the
+  168-case `core-strategy` matrix).
 - **`scripts/analysis/detect-source.sh`** (T-M3-02, AR-05): the source era
   S of a module or theme, the oldest Drupal major whose APIs it still uses,
   with its track (`d7-assisted` for Drupal 7), a confidence and the evidence:
@@ -222,6 +254,22 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `templates/rector-compat.php.tmpl` is a `drupal_safe` compat rule there.
 
 ### Changed
+- **Refactor: the core-target decision is a function of its own.**
+  `strategy_decide` computes the decision for any target major (the ranges
+  from `config/targets/<T>.json`, the older-major signals as the majors below
+  T, the PHP floor never below the kept previous minor's `php_min`), and
+  `recommend_core_target` renders `core-strategy.sh`'s JSON from it. For T=11
+  every output is byte-identical: a 168-case matrix of subjects and scenarios
+  (`tests/unit/core_strategy_matrix.sh`) pins the raw stdout captured before
+  the change. For another target major the
+  decision uses that target's PHP default (8.5 for 12), and `auto` keeps the
+  previous major only while `config/targets/<T-1>.json` does not say `eol`
+  (a data commit flips it, X15); the current data changes no output.
+- `config/php/rules.json`: the four Rector rules `templates/rector.php.tmpl`
+  skips for Drupal reasons (first-class callables, `#[\Override]` on
+  methods, readonly properties and classes) are `deny` rows, and
+  `p81-null-to-internal` moves from `compat` with `drupal_safe: false` to
+  `deny`, so the data lists the whole skip list in the template's order.
 - **Refactor: `scripts/lib/common.sh` is split into domain libs** (T-M3-10):
   `core`, `paths`, `config`, `lock`, `cache`, `subject`, `ddev`, `state`,
   `strategy`, `toolchain`, `git`, `interact` and `phpcs`, sourced in a fixed

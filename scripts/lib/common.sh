@@ -8,7 +8,8 @@
 #     . "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 #
 # It sources the domain libs below, in this order: core (logging, tool and
-# version detection, portable helpers), paths, config (and the alias layer),
+# version detection, portable helpers), canon (canonical JSON and its hash),
+# paths, config (and the alias layer),
 # lock, cache, subject, ddev, state, plan (the version data), strategy,
 # toolchain, git, interact and phpcs. Each lib only defines functions and
 # constants; every function lives in exactly one lib (the lib-defs gate of
@@ -41,7 +42,7 @@ _DRUPILOT_COMMON_SH=1
 # linter about sixty times slower, hence source=/dev/null.
 _drupilot_lib_dir="${BASH_SOURCE[0]%/*}"
 [[ "$_drupilot_lib_dir" != "${BASH_SOURCE[0]}" ]] || _drupilot_lib_dir=.
-_drupilot_libs="core paths config lock cache subject ddev state plan strategy toolchain git interact phpcs"
+_drupilot_libs="core canon paths config lock cache subject ddev state plan strategy toolchain git interact phpcs"
 _drupilot_want="$_drupilot_libs"
 case "${0:-}" in */hooks/scripts/*) _drupilot_want="${_DRUPILOT_LIBS:-$_drupilot_libs}";; esac
 unset _DRUPILOT_LIBS
