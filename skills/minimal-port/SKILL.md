@@ -207,6 +207,11 @@ is **no verdict** — never read it as "0 files would change". Stop, show the
 diagnostic (installed vs known-good versions), repair the toolchain with
 `install-toolchain.sh --dir <drupal_root> --source reference` (or fix `rector.php`
 when the toolchain already matches the known-good set), and re-run.
+A message that starts with `DET-1:` (exit 3; `errors[].pass` 0 for Rector, `.drupilot.crash` for
+PHPStan, `.drupilot.error` for PHPCS) is not a crash: the tool did not run, because DDEV is down for a
+root that has a DDEV project, or an installed tool differs from the version the lock pins. Start DDEV,
+or restore the pins (`install-toolchain.sh --dir <drupal_root>`) or accept the installed versions
+(`lock-sync.sh --dir <drupal_root>`), then re-run; `DRUPILOT_DETERMINISTIC=false` accepts the run as it is.
 
 `run-rector.sh` `cd`s to the Drupal root, uses `RUNNER=$(drupal_runner)`
 (`ddev exec` when the env is up), and ensures a `rector.php` exists at the root

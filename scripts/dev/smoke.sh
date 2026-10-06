@@ -624,7 +624,7 @@ test_dry_run() {
 # mk_stub_root DIR VERSION -> a minimal Drupal root (web/core/lib/Drupal.php
 # with VERSION) and a stub vendor/bin/rector: it logs its arguments to
 # DIR/rector-args.log and prints what DIR/rector-mode asks for (`change FILE`:
-# one changed file; anything else: nothing changed), with Rector's [OK] line.
+# one changed file; anything else: nothing changed), as Rector's JSON report.
 mk_stub_root() {
   local r="$1" v="$2"
   mkdir -p "$r/web/core/lib" "$r/web/modules/custom" "$r/vendor/bin"
@@ -635,11 +635,20 @@ mk_stub_root() {
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 printf '%s\n' "$*" >> "$root/rector-args.log"
 mode="$(cat "$root/rector-mode" 2>/dev/null || true)"
+json=0; case " $* " in *" --output-format=json "*) json=1;; esac
+# report FILE -> one changed file, as Rector's console or JSON report.
+report() {
+  if [ "$json" = 1 ]; then
+    printf '{"totals":{"changed_files":1,"errors":0},"file_diffs":[{"file":"%s","diff":"--- Original\\n+++ New\\n","applied_rectors":["Stub\\\\StubRector"]}],"changed_files":["%s"]}\n' "$1" "$1"
+  else
+    printf '1 file with changes\n===================\n\n1) %s\n\n [OK] 1 file would have been changed by Rector\n' "$1"
+  fi
+}
 case "$mode" in
   dup\ *) case " $* " in *" --dry-run "*) ;; *) printf '#[\\Drupal\\migrate\\Attribute\\MigrateSource(id: "a")]\n#[\\Drupal\\migrate\\Attribute\\MigrateSource(id: "b")]\nclass X {}\n' >> "$root/${mode#dup }";; esac
-    printf '1 file with changes\n===================\n\n1) %s\n\n [OK] 1 file has been changed by Rector\n' "${mode#dup }";;
-  change\ *) printf '1 file with changes\n===================\n\n1) %s\n\n [OK] 1 file would have been changed by Rector\n' "${mode#change }";;
-  *) printf ' [OK] Rector is done!\n';;
+    report "${mode#dup }";;
+  change\ *) report "${mode#change }";;
+  *) if [ "$json" = 1 ]; then printf '{"totals":{"changed_files":0,"errors":0}}\n'; else printf ' [OK] Rector is done!\n'; fi;;
 esac
 exit 0
 STUB

@@ -63,7 +63,7 @@ mk_bin() { printf '#!/bin/sh\n%s\n' "$2" > "$1"; chmod +x "$1"; }
 STUBS="$T_TMP/stubs"; mkdir -p "$STUBS"
 mk_bin "$STUBS/php" 'case "$1" in -r) echo 8.3.30;; -v) echo "PHP 8.3.30 (cli)";; -l) echo "No syntax errors detected in $2";; esac; exit 0'
 mk_bin "$STUBS/composer" 'echo "Composer version 2.8.0 2025-01-01 00:00:00"; exit 0'
-mk_bin "$r/vendor/bin/rector" 'echo " [OK] Rector is done!"; exit 0'
+mk_bin "$r/vendor/bin/rector" 'echo "{\"totals\":{\"changed_files\":0,\"errors\":0}}"; exit 0'
 rr() { t_run env PATH="$STUBS:$PATH" DRUPILOT_PHP_TARGET=8.3 DRUPILOT_USE_DIGESTS_RULES=false "$T_SH" "$T_REPO/scripts/analysis/run-rector.sh" --subject "$r/$S" --json; }
 sed_inplace "$INFO" 's/^core_version_requirement: .*/core_version_requirement: ^10.3/'
 rr

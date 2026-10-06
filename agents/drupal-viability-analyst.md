@@ -105,7 +105,9 @@ not reinvent their logic; capture and interpret their output.
    # add --digests to include the complementary digests pass (dry-run too)
    # add --json for {status, ok, errors, changed_files, files, pass1_files, pass2_files}
    # exit 3 = Rector crashed (status "error"): no verdict, never "0 files would
-   # change" — report it and repair with install-toolchain.sh --source reference
+   # change" — report it and repair with install-toolchain.sh --source reference;
+   # a "DET-1:" message (errors[].pass 0) means it did not run: start DDEV, or
+   # restore the pins (install-toolchain.sh --dir) / accept them (lock-sync.sh --dir)
    # exit 4 = only the digests pass crashed (status "partial", digests_status
    # "error"): the official count stands; the toolchain is fine — pin
    # --digests-ref <sha> or set DRUPILOT_USE_DIGESTS_RULES=false
@@ -115,6 +117,8 @@ not reinvent their logic; capture and interpret their output.
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject <DIR>
    # add --json for native {totals:{errors,file_errors}, files:{...}} + drupilot.status
    # (clean|findings|crashed); exit 3 = crashed: no verdict, never "0 errors"
+   # (a "DET-1:" crash reason: PHPStan did not run, as for Rector above);
+   # classify only a report whose drupilot.status is clean or findings
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject <DIR> --json \
      | bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/classify-deprecations.sh" --subject <DIR> --json
    # hard (removed in a major <= target: must fix) / soft (removed later: works on

@@ -506,6 +506,113 @@ rector_applied_rules() {
   return 0
 }
 
+# rector_json_ok <rc> <json> -> 0 when a Rector run with --output-format=json
+# finished normally: exit 0 or 2 (a dry-run with changes) and one JSON report
+# with totals and no error. Rector 2.x reports a per-file system error as
+# totals.errors > 0 with exit 1, and a broken config as {"fatal_errors": [...]}
+# (verified on 2.6.1 in lab L-M4); output that is not JSON is a crash too.
+rector_json_ok() {
+  [[ "${1:-}" == "0" || "${1:-}" == "2" ]] || return 1
+  printf '%s' "${2:-}" | jq -e -s 'length == 1 and (.[0] | type == "object" and (.totals | type) == "object"
+    and (.totals.errors // 0) == 0 and ((.fatal_errors // []) | length) == 0)' > /dev/null 2>&1
+}
+
+# rector_json_error <json> [stderr] -> at most 8 lines saying why a Rector run
+# failed: its fatal errors, its file errors ("message (file:line)", sorted by
+# file, line and message: Rector reports them in the order its parallel jobs
+# end) — from the
+# report, or from its last line when something printed text before it (a rule
+# file without "<?php" is echoed by PHP) —, else the last non-empty lines of
+# its STDERR, else of its STDOUT.
+rector_json_error() {
+  local out="" prog='((.fatal_errors // [])[]), ((.errors // []) | sort_by([(.file // ""), (.line // 0), (.message // "")])[] | "\(.message) (\(.file // "?")\(if .line then ":\(.line)" else "" end))")'
+  out="$(printf '%s' "${1:-}" | jq -r "$prog" 2> /dev/null | sed -n '1,8p' || true)"
+  [[ -n "$out" ]] || out="$(printf '%s\n' "${1:-}" | awk 'NF { l = $0 } END { print l }' | jq -r "$prog" 2> /dev/null | sed -n '1,8p' || true)"
+  [[ -n "$out" ]] || out="$(printf '%s\n' "${2:-}" | awk '{ gsub(/\033\[[0-9;]*[A-Za-z]/, "") } /[^[:space:]]/' | tail -n 8 || true)"
+  [[ -n "$out" ]] || out="$(printf '%s\n' "${1:-}" | grep -v '^[[:space:]]*$' | tail -n 8 || true)"
+  printf '%s\n' "${out:-Rector failed without a message}"
+  return 0
+}
+
+# rector_json_files <json> -> the files a Rector JSON report changed (or would
+# change: its file_diffs), sorted, one per line.
+rector_json_files() {
+  printf '%s' "${1:-}" | jq -r '[(.file_diffs // [])[] | .file] | unique | .[]' 2> /dev/null || true
+  return 0
+}
+
+# rector_json_rule_hits <json> -> {Rule: files} from a Rector JSON report: the
+# short names of each file's applied_rectors, counted once per file. {} when
+# none or not JSON.
+rector_json_rule_hits() {
+  local out
+  out="$(printf '%s' "${1:-}" | jq -c '[(.file_diffs // [])[] | {file, r: ((.applied_rectors // []) | map(split("\\") | last) | unique)[]}]
+    | group_by(.r) | map({key: .[0].r, value: length}) | from_entries' 2> /dev/null || true)"
+  [[ -n "$out" ]] || out='{}'
+  printf '%s' "$out"
+  return 0
+}
+
+# tool_provenance <root> <runner> <package> -> {runner: "ddev"|"host",
+# php_version, tool_version} (DET-1, AR-13): where a tool ran, on which PHP, at
+# which installed version (composer.lock). Values that cannot be read are null.
+tool_provenance() {
+  local root="${1:-}" runner="${2:-}" pkg="${3:-}" php="" ver="" kind="host"
+  [[ -n "$runner" ]] && kind="ddev"
+  # shellcheck disable=SC2086  # intentional word-split: runner is a command prefix.
+  php="$( (cd "$root" 2> /dev/null && $runner php -r 'echo PHP_VERSION;' < /dev/null) 2> /dev/null | tr -d '\r' || true)"
+  [[ "$php" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] || php=""
+  [[ -n "$pkg" ]] && ver="$(installed_package_version "$root" "$pkg" | sed 's/^v//')"
+  jq -n -c --arg r "$kind" --arg p "$php" --arg v "$ver" \
+    '{runner: $r, php_version: (if $p == "" then null else $p end), tool_version: (if $v == "" then null else $v end)}'
+  return 0
+}
+
+# det1_tool_mismatch <root> <package>... -> in deterministic mode, prints the
+# first package whose installed version (composer.lock) differs from the one
+# the root's lock pins, as "PKG installed INSTALLED, the lock pins PINNED", and
+# returns 1 (restore the pins with install-toolchain.sh --dir ROOT, or accept
+# the installed versions with lock-sync.sh --dir ROOT); returns 0 (silent)
+# when they agree, when either side is unknown,
+# or with DRUPILOT_DETERMINISTIC=false (DET-1). A leading "v" is ignored.
+det1_tool_mismatch() {
+  local root="${1:-}" pkg pin inst; shift || true
+  deterministic_mode || return 0
+  for pkg in "$@"; do
+    pin="$(DRUPILOT_PROJECT_DIR="$root" lock_get ".toolchain.\"$pkg\"" "" | sed 's/^v//')"
+    inst="$(installed_package_version "$root" "$pkg" | sed 's/^v//')"
+    if [[ -n "$pin" && -n "$inst" && "$pin" != "$inst" ]]; then
+      printf '%s installed %s, the lock pins %s' "$pkg" "$inst" "$pin"
+      return 1
+    fi
+  done
+  return 0
+}
+
+# det1_message <root> <tool> <package>... -> the DET-1 refusal for a tool about
+# to run, or nothing when it may run (det1_unplanned_host, det1_tool_mismatch):
+# the reason and what to do.
+det1_message() {
+  local root="${1:-}" tool="${2:-}" m; shift 2 || true
+  if det1_unplanned_host "$root" "${DET1_RUNNER:-}"; then
+    printf "DET-1: %s has a DDEV project but DDEV is not running, so %s would run on the host: start it ('ddev start'), or set DRUPILOT_DETERMINISTIC=false to accept the host run." "$root" "$tool"
+  elif ! m="$(det1_tool_mismatch "$root" "$@")"; then
+    printf 'DET-1: %s. Restore the pins (bash "%s/scripts/env/install-toolchain.sh" --dir "%s"), accept the installed versions (bash "%s/scripts/env/lock-sync.sh" --dir "%s"), or set DRUPILOT_DETERMINISTIC=false.' \
+      "$m" "$(plugin_root)" "$root" "$(plugin_root)" "$root"
+  fi
+  return 0
+}
+
+# det1_unplanned_host <root> <runner> -> 0 when, in deterministic mode, a tool
+# is about to run on the host although the root has a DDEV project and the
+# ddev CLI is there (DDEV could not start): an unplanned fallback DET-1
+# forbids. A root without .ddev/, or a machine without ddev (the analyze
+# profile is Docker-free), runs on the host by plan; its provenance says
+# runner "host".
+det1_unplanned_host() {
+  deterministic_mode && [[ -z "${2:-}" && -f "${1:-}/.ddev/config.yaml" ]] && have_cmd ddev
+}
+
 # rector_error_excerpt <raw_output> -> the lines that explain a failed Rector run
 # (at most 8), for logs and the --json "errors" payload. Diff hunks are skipped,
 # so a module string such as 'Fatal error:' can never be mistaken for a crash.
@@ -568,7 +675,7 @@ toolchain_diagnostics() {
     [[ "$fix_cell" == "$cell" ]] || log_plain "   This project's lock was written by drupilot 0.9 (legacy_v1); the fix refreshes it to cell $fix_cell."
     log_plain "   Fix: reinstall the known-good set (from the Drupal root):"
     log_plain "     bash \"$(plugin_root)/scripts/env/install-toolchain.sh\" --dir \"$r\" --source reference"
-    log_plain "   or by hand:  $cmd"
+    log_plain "   or by hand:  $cmd && bash \"$(plugin_root)/scripts/env/lock-sync.sh\" --dir \"$r\""
   fi
   return 0
 }

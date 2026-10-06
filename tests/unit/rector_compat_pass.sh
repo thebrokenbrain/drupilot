@@ -38,17 +38,17 @@ mkroot() {
 d="$(cd "$(dirname "$0")/../.." && pwd)"; echo "$*" >> "$d/calls"
 m=" $(cat "$d/mode" 2>/dev/null) "; dry=0; cfg=official
 for a in "$@"; do case "$a" in --dry-run) dry=1;; rector-compat.php) cfg=compat;; *digests.php) cfg=digests;; esac; done
+# change FILE RULE -> Rector's JSON report of one changed file (exit 2 on a dry-run).
 change() {
-  printf '1 file with changes\n===================\n\n1) web/modules/custom/legacy_widgets/%s:10\n\n' "$1"
-  printf '    ---------- begin diff ----------\n@@ @@\n-a\n+b\n    ----------- end diff -----------\n\n'
-  printf 'Applied rules:\n * %s\n\n\n' "$2"
-  if [ "$dry" = 1 ]; then echo " [OK] 1 file would have been changed (dry-run) by Rector"; exit 2; fi
-  echo " [OK] 1 file has been changed by Rector"; exit 0
+  printf '{"totals":{"changed_files":1,"errors":0},"file_diffs":[{"file":"web/modules/custom/legacy_widgets/%s","diff":"@@ @@\\n-a\\n+b\\n","applied_rectors":["Rector\\\\Stub\\\\%s"]}],"changed_files":["web/modules/custom/legacy_widgets/%s"]}\n' "$1" "$2" "$1"
+  if [ "$dry" = 1 ]; then exit 2; fi
+  exit 0
 }
+done_() { echo '{"totals":{"changed_files":0,"errors":0}}'; exit 0; }
 case "$cfg" in
   compat)
-    case "$m" in *" compat-crash "*) echo " [ERROR] Could not process: boom"; exit 1;; *" compat-noop "*) echo " [OK] Rector is done!"; exit 0;; esac
-    case "$m" in *" compat-noop-apply "*) [ "$dry" = 1 ] || { echo " [OK] Rector is done!"; exit 0; };; esac
+    case "$m" in *" compat-crash "*) echo '{"fatal_errors":["boom"]}'; exit 1;; *" compat-noop "*) done_;; esac
+    case "$m" in *" compat-noop-apply "*) [ "$dry" = 1 ] || done_;; esac
     change src/WidgetLookup.php ExplicitNullableParamTypeRector;;
   digests)
     case "$m" in *" digests-overlap "*) [ "$dry" = 1 ] && change src/WidgetLookup.php SomeDigestsRector;; esac;;
@@ -57,7 +57,7 @@ case "$cfg" in
       *" official-lookup "*) change src/WidgetLookup.php FunctionFirstClassCallableRector;;
       *" official-dry-only "*) [ "$dry" = 1 ] && change src/Form/WidgetImportForm.php FunctionFirstClassCallableRector;; esac;;
 esac
-echo " [OK] Rector is done!"; exit 0
+done_
 STUB
   chmod +x "$1/vendor/bin/rector"
 }

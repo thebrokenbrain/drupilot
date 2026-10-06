@@ -1,10 +1,10 @@
 {
-  "data_hash": "abf774ebb31975abe443ae45543c9df7088b99ab9c3885e499e28f18bd83ee93",
+  "data_hash": "b967dc04dc59646e99bca648bb267ff1a76ea65993d62d5af159d19ff50cbc5d",
   "files": {
-    "README.md": "381b4a8151bf44dc37d3b36f4360803edbadeefda45f59d6aae4e9c81e4a99ee",
+    "README.md": "fa6c90d5b91f2bf3f1dfac1bbe2c090d7a60fc4a6ebc57e8d9497bc8c56d85e1",
     "golden/port-to-drupal-11.patch": "27fd76cbf1c5e4838ee9e3e209f1e14fb0857dbb5e121ba00f9712962e2b72a0",
-    "raw/phpcs.json": "60a72e0365ef067fc61d22596a623aa808186fce593718d458fcd836d71cee7d",
-    "raw/phpstan.json": "9bb920da1d3e0af5551266c0c59e60667daa1d33c378d55ee83fc1e708ad1a23",
-    "raw/rector-dryrun.json": "f1bfa0318b001599d12797a80c7eb29019dfc1986b395a7df073c322ac06d8f2"
+    "raw/phpcs.json": "a40041edbe48f5e168bca74c08cdc4cb46afe5926d802eb16bab65706d2ff989",
+    "raw/phpstan.json": "6cda12a03999d9314c9cebdbccd72b7121c27ab487ab1748af9cb4299618dc05",
+    "raw/rector-dryrun.json": "a34077356941bee2b99f46f0980bc85523a655114c34066b1fa3bfc0dfc94cbd"
   }
 }

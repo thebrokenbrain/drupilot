@@ -234,6 +234,11 @@ before touching the toolchain. Show the diagnostic (installed vs known-good tool
 repair with `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-toolchain.sh" --dir <drupal_root> --source reference`
 (or fix `rector.php` when the toolchain already matches the known-good set), and
 re-run the pass. The digests pass is skipped automatically after such a crash.
+`errors[].pass` 0 with a message starting `DET-1:` is not a crash: Rector did not run (DDEV is down for a
+root with a DDEV project, or an installed tool differs from the lock's pins). Start DDEV, or restore the pins
+(`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-toolchain.sh" --dir <drupal_root>`) or accept the installed
+versions (`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/lock-sync.sh" --dir <drupal_root>`) — never `--source reference`
+for it — and re-run.
 
 ## Step 4 — Pass 2: complementary digests layer (apply, version-filtered)
 
