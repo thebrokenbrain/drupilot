@@ -401,8 +401,29 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   - Every reader goes through `lock_path` / `drupilot_lock_file`; the
     `hard-rules` gate's new `LOCK` rule fails on a lock path spelled anywhere
     else. `lock_get` and `lock_show` no longer create the state dir.
+- **`config/pipeline.json`, the stage catalog** (T-M4-13, AR-07): the
+  ordered stages of a port.
+  - The ids are `doctor`, `plan-draft`, `setup`, `assess`, `plan-final`,
+    `d7-rewrite`, `upgrade`, `php`, `residual`, `validate`, `test`, `report`,
+    `refactor` and `contribute`. They are public and stable from 1.0 on.
+  - Each stage carries its label, kind, weight, conditions, skip reason, tabs,
+    sub-steps, outputs, gate, the `state.json` coarse stage it records, and
+    the skill step that defines its procedure.
+  - `schemas/pipeline.schema.json` validates it (the `schemas` gate), and
+    `docs/reference/pipeline.md` is generated from it.
 
 ### Changed
+- **`scripts/dev/unit.sh` runs the tests in parallel** (`--jobs N`, default
+  the CPUs, at most 8): the unit gate went from 12 minutes to under 2 on a
+  developer machine, and the macOS CI leg, which runs the whole gate twice,
+  no longer nears its timeout. Results print as each test ends; the `--json`
+  summary keeps the tests' order.
+  - The default follows the CPUs the process may use (`nproc`, a cgroup CPU
+    quota). The per-test timeout grows when `--jobs` exceeds them
+    (`--timeout`).
+  - Each test runs in its own process group. Ctrl-C or a TERM sends TERM to
+    the running tests, then KILL after 3 s, and waits for them: the run ends
+    with exit 130 and leaves no process and no temp dir behind.
 - **The `config-keys` gate fails** on an undeclared or inconsistent
   `DRUPILOT_*` key instead of warning (T-M3-14). `DRUPILOT_EXPERIMENTAL_D7`,
   which the D7-AUTO message names, is declared (environment only until the

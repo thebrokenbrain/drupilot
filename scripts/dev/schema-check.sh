@@ -6,7 +6,8 @@
 # runs it as its `schemas` gate). Each schema is checked against the
 # instances listed below: the 0.9 captures of tests/baseline/v0.9.0/, the lab
 # samples of tests/baseline/v0.9.0/samples/, a live `preflight.sh --json`, the
-# version data of config/targets|php|paths and an example catalog (the data
+# version data of config/targets|php|paths, the stage catalog
+# config/pipeline.json and an example catalog (the data
 # gate, scripts/dev/data-check.sh, also checks their provenance). Two engines:
 #   jq         always available: the structural validator of
 #              scripts/dev/jsonschema.jq, reading the same schemas (only the
@@ -71,6 +72,7 @@ SPECS="$(printf '%s\t%s\t%s\n' \
   paths.schema.json config/paths/eras.json . \
   paths.schema.json config/paths/graph.json . \
   toolchain.schema.json config/toolchain-reference.json . \
+  pipeline.schema.json config/pipeline.json . \
   catalog.schema.json schemas/examples/catalog.example.json . \
   upgrade-plan.schema.json schemas/examples/upgrade-plan.example.json . \
   lock.schema.json schemas/examples/lock.example.json .)"
