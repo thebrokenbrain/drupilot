@@ -1,0 +1,120 @@
+{
+  "above_threshold": false,
+  "auto_fixable": {
+    "rector_official_files": 0,
+    "rector_official_rules": {}
+  },
+  "core_target": {
+    "bc_break": false,
+    "composer_core_constraint": "^10.3 || ^11",
+    "d10_support": "declared-not-verified",
+    "php_floor_detected": "8.1",
+    "php_floor_target_compatible": true,
+    "rationale": [
+      "Strategy: keep-d10 ('^10.3 || ^11').",
+      "Drupal 10 floor 10.3: the declared minor floor ('^10.3') is kept, never lowered.",
+      "Detected PHP floor is 8.1 (heuristic scan), below the target 8.3 — require.php is widened to \">=8.1\" for genuine Drupal 10 (PHP 8.1) support.",
+      "Adding Drupal 11 support without dropping a supported core major -> MINOR."
+    ],
+    "recommended_core_version_requirement": "^10.3 || ^11",
+    "require_php": ">=8.1",
+    "strategy": "keep-d10",
+    "version_bump": "minor",
+    "warnings": [
+      "require.php was lowered to \">=8.1\" from a best-effort syntactic scan. CONFIRM with PHPCompatibility (testVersion 8.1-) before release: a missed newer construct would let a Drupal 10 + PHP<8.3 site install and then fatal at runtime. Set DRUPILOT_REQUIRE_PHP_FLOOR=target to keep the conservative \">=8.3\".",
+      "Drupal 10's own minimum is PHP 8.1, but this port's floor is 8.1. require.php \">=8.1\" blocks D10 sites below that floor at install time (composer) rather than fataling at runtime. If you do not need the D10 transition window, drop to '^11'.",
+      "Drupal 10 compatibility is DECLARED, not verified. drupal-rector's standard replacements are usually available across all of Drupal 10 (deprecation contract), but this was not checked here. If the port uses an API added in a later 10.x minor, set core_version_requirement to e.g. '^10.3 || ^11'; if it uses an API absent from Drupal 10, drop to '^11'. The AI digests / ad-hoc Rector layer may introduce replacements newer than Drupal 10.0, so a raised minor (e.g. '^10.3 || ^11') is more likely — check it."
+    ]
+  },
+  "current_core_version_requirement": "^10.3",
+  "dependencies": {
+    "blockers": 0,
+    "list": [
+      {
+        "d11": "unknown",
+        "project": "acme_utils",
+        "url": "https://www.drupal.org/project/acme_utils"
+      },
+      {
+        "d11": "unknown",
+        "project": "token",
+        "url": "https://www.drupal.org/project/token"
+      }
+    ],
+    "offline": true,
+    "ready": 0,
+    "unknown": 2
+  },
+  "deprecations_hard": 0,
+  "deprecations_soft": 0,
+  "deprecations_unknown": 0,
+  "digest_algo": 2,
+  "drupal_target": "^11",
+  "effort": "S",
+  "findings_hash": "sha256:73a8e8baa85bd616c65e5a6f8fb6391f71449d2a521307887c371599d4118085",
+  "hard_break_categories": {
+    "ckeditor5": [],
+    "jquery_ui": [],
+    "symfony7": [],
+    "twig3": []
+  },
+  "hard_breaks": [],
+  "hygiene": {
+    "error": 0,
+    "info": 0,
+    "warn": 2
+  },
+  "info_yml": {
+    "core_version_requirement_present": true,
+    "d11_compatible": false,
+    "submodules_d11_compatible": true
+  },
+  "machine_name": "acme_api",
+  "manual_items": [],
+  "no_verdict": [],
+  "php_target": "8.3",
+  "phpcs": {
+    "count": 1
+  },
+  "phpstan": {
+    "count": 1,
+    "deprecations": 0
+  },
+  "provisional": false,
+  "recommended_core_version_requirement": "^10.3 || ^11",
+  "require_php": ">=8.1",
+  "rubric": {
+    "blocking_deps": 0,
+    "hard_breaks": 0,
+    "manual": 0,
+    "rule": "S: hard_breaks == 0 and manual < 5 and blocking_deps == 0"
+  },
+  "schema": 1,
+  "soft_deprecations": [],
+  "soft_deprecations_policy": "report",
+  "subject": "web/modules/custom/acme_api",
+  "subject_digest": "de67fdfc625c5b74c88fe0af262074b809f7196af6eaf2da925ce2b93f8bc30d",
+  "tool": "assess",
+  "tools": {
+    "metadata": "ok",
+    "phpcs": "ok",
+    "phpstan": "ok",
+    "port-safety": "ok",
+    "rector": "ok",
+    "signatures": "ok"
+  },
+  "type": "module",
+  "verdict": "S",
+  "version_bump": "minor",
+  "viability_threshold": "M",
+  "worklist": {
+    "by_lane": {
+      "ai-free": 1,
+      "deferred": 1,
+      "human": 2
+    },
+    "items": 4,
+    "open": 3
+  },
+  "worklist_hash": "sha256:f48f290a25eb42385d106b3c7b343dd34e04d82eff94b518fc6e7be0d8ec15aa"
+}

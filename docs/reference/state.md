@@ -53,3 +53,45 @@ drupilot 1.0 does not hand the analyzers' output to the model as it is. A stage 
 - `class` is a deprecation's `hard`, `soft` or `unknown`, else `analysis`, `safety`, `signature`, `metadata`, `style`, `php-target` or `rector`.
 
 The id never includes the line number, so moving code keeps its findings' ids. Findings of different tools about the same symbol at the same anchor are merged, and `sources[]` lists each tool. `findings.json` also records each tool's verdict in `tools` (`ok`, `partial`, `failed` or `missing`), so a run where PHPStan crashed never reads like a clean one. It is a pure function of the raw files, the target major and the soft policy: the same raw files give the same bytes outside `meta`, which records the raw files' hashes and `findings_hash`.
+
+## Worklist
+
+`scripts/ai/classify.sh` turns `findings.json` into `worklist.json`, in the same hidden state dir (schema `schemas/worklist.schema.json`, [ADR 0024](../contributing/adr/0024-worklist-and-actions.md)). Each finding gets a lane, and the findings of one file, anchor and lane make one item. The lanes are, in priority order:
+
+- `rector`: a Rector change, applied by its pass.
+- `rector-custom`: a single Rector rule a recipe names (no recipe uses it yet).
+- `codemod`: a deterministic fix from [the recipes](recipes.md).
+- `ai-templated`: the AI fixes it following a recipe's text.
+- `ai-free`: an error no recipe covers.
+- `test-adapt`: either of the two above in a file under a `tests/` directory.
+- `human`: a person decides.
+- `deferred`: nothing to do in this port: a deprecation removed only in a later major, an info finding, or a style finding (Phase 1 keeps the diff minimal).
+
+A recipe applies only when its conditions hold, its required core included: never above the declared floor. An item lists its findings, their recipes and templates, the files it may change, and whether it blocks the stage (an error finding outside `deferred`). Its status is `open`, `applied` or `deferred`.
+
+`scripts/ai/apply-recipes.sh --subject DIR [--reextract]` applies the open codemods (pipeline step S6). Each application is one line of `actions.jsonl`, the machine record of what the recipes did: the finding, the recipe and its version, the outcome, and the file's hash before and after. Your `decisions.jsonl` of divergences is a separate file. The worklist is then classified again:
+
+- a codemod that changed nothing, or failed, hands its finding to `ai-templated`;
+- with `--reextract` (step S7), the tools run again on the new tree, and a finding a codemod could not clear goes to `ai-templated` too;
+- a codemod whose change is no longer in the file (you reverted it) is tried again.
+
+The same findings, recipes and actions always give the same worklist outside `meta`.
+
+## Assessment
+
+`scripts/analysis/assess.sh --subject DIR` computes the viability verdict ([ADR 0025](../contributing/adr/0025-assess-rubric-from-findings.md)). It runs the assess stage (extraction, findings and worklist), the core-target decision and the dependency check, then writes `assess.json` to the same hidden state dir (schema `schemas/assess.schema.json`) and `viability-report.md` to the visible `.drupilot/` folder. The verdict comes from three counts:
+
+- `manual`: each call of a current hard or unknown deprecation that no Drupal Rector rule changes in the same function or method, plus the signature and port-safety findings of severity `error`. Each finding is listed in `manual_items` with its finding id and its number of calls. The digests layer is not part of the assessment.
+- `hard_breaks`: the categories of `config/catalog/hard-breaks.json` (Twig 3, CKEditor 5, jQuery UI, Symfony 7) that match at least one file of the module.
+- `blocking_deps`: the `drupal/*` dependencies with no Drupal 11 release on drupal.org. Offline, a dependency is `unknown` and does not block.
+
+The first rule that matches wins, and `rubric.rule` keeps it:
+
+| Verdict | Rule |
+|---|---|
+| XL | `blocking_deps >= 1` or `hard_breaks >= 3` or `manual > 40` |
+| L | `hard_breaks == 2` or `manual > 15` |
+| M | `hard_breaks == 1` or `manual >= 5` |
+| S | otherwise |
+
+Soft deprecations and next-major findings never count. When Rector, PHPStan, the port-safety checks or the signature scan gave no verdict, the result is provisional: it goes to `assess-provisional.json` instead of `assess.json`, the stage is not recorded and the script exits 3. The script needs the test-bed's Drupal root and reads its settings there. `assess.json` also keeps `findings_hash`, `worklist_hash` and the module's digest, so the same tree, lock and drupal.org answers give the same document outside `meta`, which holds its time. The script records the `assessed` stage with the verdict as `effort`.

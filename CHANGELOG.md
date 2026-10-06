@@ -490,8 +490,64 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   - Every codemod has `before/`, `after/` and `expect.json` fixtures in
     `tests/fixtures/recipes/`. `schemas/recipes.schema.json` validates the
     catalog, and `docs/reference/recipes.md` is generated from it.
+- **The worklist** (T-M4-07, AR-10, ADR 0024). `scripts/ai/classify.sh`
+  turns `findings.json` into `worklist.json`: every finding gets a lane, and
+  the findings of one file, anchor and lane make one item.
+  - The lanes, in priority order: `rector`, `rector-custom`, `codemod`,
+    `ai-templated`, `ai-free`, `test-adapt` (a file under a `tests/`
+    directory), `human` and `deferred`.
+    `deferred` holds the next-major deprecations, which never reach an AI
+    lane, plus info and style findings.
+  - The recipe of a finding is the first that matches (rule, symbol,
+    message) and whose conditions hold, its required core against the
+    declared floor included. A codemod that cannot apply hands its finding to
+    `ai-templated` with its text.
+  - `scripts/ai/apply-recipes.sh` applies the open codemods (step S6) and,
+    with `--reextract`, re-runs the tools on the new tree (S7).
+  - Each application is a line of the hidden `actions.jsonl`, with the
+    file's hash before and after. The classifier reads it: a codemod that
+    changed nothing, failed or did not clear its finding is not tried again,
+    and one whose change was reverted is.
+  - A project overlay (`<root>/.drupilot/recipes.json`) is checked before
+    use: a recipe in an unknown lane, without a 12-hex version or a kind, or
+    with a `message_ere`/`file_ere` that does not compile makes `classify.sh`
+    exit 1.
+  - `schemas/worklist.schema.json` is the contract. Worklist goldens for
+    `legacy_widgets`, `acme_core` and `acme_api` are computed Docker-free
+    from the findings goldens, and a test keeps next-major findings out of
+    the AI lanes.
+- **The viability verdict is computed** (T-M4-09, 07-R4, AR-10, ADR 0025).
+  `scripts/analysis/assess.sh` runs the assess stage and writes
+  `assess.json` and `viability-report.md`; the skill only narrates them.
+  - The three rubric counts come from `findings.json`:
+    - `manual`: each call of a current hard or unknown deprecation that no
+      Drupal Rector rule changes in the same function, plus the signature and
+      port-safety errors;
+    - `hard_breaks`: the categories of the new
+      `config/catalog/hard-breaks.json`, the 0.9 greps with each fact verified
+      in core;
+    - `blocking_deps`: `deps-status.sh`'s blockers.
+  - The digests layer is no longer part of the assessment, so a deprecation
+    only a digests rule fixes now counts as manual.
+  - When Rector, PHPStan, the port-safety checks or the signature scan gave
+    no verdict, the verdict is `provisional`: it goes to
+    `assess-provisional.json` (never `assess.json`), the stage is not
+    recorded, and the exit code is 3.
+  - It needs the test-bed's Drupal root, and reads the settings there.
+  - The S/M/L/XL table is the 0.9 one, first match wins, and `rubric.rule`
+    keeps the rule that matched. Soft and next-major findings never count.
+  - `assess.json` gains `schema: 1`, `tools`, `worklist`, `findings_hash`,
+    `worklist_hash`, `subject_digest` and `meta`; the same tree, lock and
+    drupal.org answers give the same document outside `meta`. Assess goldens
+    for `legacy_widgets`, `acme_core` and `acme_api` are computed Docker-free
+    from the findings and worklist goldens.
 
 ### Changed
+- **`/drupilot-assess` and the `viability-assessment` skill** no longer run
+  the analyzers one by one, grep for hard breaks or apply the rubric: they
+  run `assess.sh` and narrate `assess.json` (the skill has no `grep` left).
+  `state.json`'s snapshot reads the assessment time from `meta.generated_at`
+  too.
 - **`scripts/dev/unit.sh` runs the tests in parallel** (`--jobs N`, default
   the CPUs, at most 8): the unit gate went from 12 minutes to under 2 on a
   developer machine, and the macOS CI leg, which runs the whole gate twice,

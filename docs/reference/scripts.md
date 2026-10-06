@@ -94,6 +94,108 @@ rejected: the change was computed but a postcondition fails on it, so
 nothing is written.
 ```
 
+### ai/apply-recipes.sh
+
+```text
+drupilot — scripts/ai/apply-recipes.sh
+Pipeline steps S6 and S7 (T-M4-07, 05-R6, ADR 0024): apply every open codemod
+item of the subject's worklist.json, finding by finding, with
+scripts/ai/apply-recipe.sh, then classify again so the result shows in the
+worklist; with --reextract, run the re-extraction first (extract.sh,
+normalize-findings.sh, classify.sh on the new tree): the residual worklist.
+
+Each application is one line of the subject's actions log,
+<state>/actions.jsonl (DET-9; the machine record of what the recipes and,
+later, the AI did, kept apart from the human decisions.jsonl of
+log-decision.sh): {schema, kind: "recipe-apply", item_id, finding_id,
+recipe, version, file, line, status, input_hash, output_hash,
+findings_hash, at}; a crash of apply-recipe.sh is status error, and after the
+re-extraction a codemod applied now whose finding is still there gets a
+not-cleared line. classify.sh reads it: a codemod that gave no change,
+failed or did not clear its finding moves the finding to ai-templated, and
+an item whose codemods were all applied on the current findings (their
+output still in the file) is `applied`. The recipes are the plugin's with
+the project overlay (<root>/.drupilot/recipes.json), as classify.sh uses
+them; an application already in effect is not run again.
+
+Usage:
+  apply-recipes.sh --subject DIR [--reextract] [--dry-run] [--json]
+                   [-h|--help]
+    --subject DIR   the module/theme (inside its Drupal root)
+    --reextract     S7: re-run extract.sh (the worklist's stage),
+                    normalize-findings.sh and classify.sh after applying
+    --dry-run       report what each codemod would change; write nothing,
+                    log nothing
+    --json          {subject, stage, dry_run, applications: [{item_id,
+                     finding_id, recipe, file, line, status}], applied,
+                     not_applied, reextracted, worklist: {counts}} on STDOUT
+
+Exit codes: 0 done · 1 usage error, no worklist.json or findings.json, a
+recipe catalog that is not one, or a re-extraction step that failed · 3 a
+codemod was rejected (a postcondition failed: that file is unchanged), or the
+re-extraction gave no verdict (extract.sh exit 3).
+```
+
+### ai/classify.sh
+
+```text
+drupilot — scripts/ai/classify.sh
+Turn findings.json into worklist.json (pipeline step S4; T-M4-07, AR-10, ADR
+0024): every finding gets a lane, and the findings of one file, anchor and
+lane become one item. The lanes, in priority order: rector > rector-custom >
+codemod > ai-templated > ai-free > test-adapt > human > deferred.
+
+  deferred      a next-major finding (it never reaches an AI lane: X18), an
+                info one (nothing to change), a PHPCS style one (Phase 1
+                keeps the diff minimal: phpcbf only touches changed lines)
+  rector        a Rector finding (its pass applies it)
+  <recipe lane> the first recipe of config/recipes.json (plus the project
+                overlay <root>/.drupilot/recipes.json, whose ids replace
+                the plugin's) that matches the finding — by rule, then
+                symbol, then message, then id — and whose applies_when
+                holds (file, severity, core_min against the declared floor
+                F, read from the subject's own frozen plan: a recipe never
+                applies above F). A codemod that does not apply, or whose
+                last action on this finding (the actions log of
+                scripts/ai/apply-recipes.sh) changed nothing, failed, was
+                found not to clear it (not-cleared, S7) or was applied on
+                an earlier extraction with the finding still there, falls
+                to ai-templated with its template. A codemod applied on
+                these very findings whose output is still in the file makes
+                its item `applied` until the re-extraction; one whose output
+                is gone (a revert) is tried again. (Without --subject, the
+                files are not read: every applied action counts as in
+                effect.)
+  ai-free       an analysis error or deprecation no recipe matches
+  human         a catalog finding no recipe matches
+  test-adapt    an ai-templated or ai-free finding in a file under a tests/
+                directory (the module's or a submodule's)
+
+Idempotent: the same findings.json, recipes, floor and actions give the same
+worklist.json outside meta (DET-2).
+
+Usage:
+  classify.sh (--subject DIR | --findings FILE) [--recipes FILE]
+              [--overlay FILE] [--core-floor X.Y] [--actions FILE]
+              [--out FILE] [--json] [-h|--help]
+    --subject DIR     the module/theme: findings.json, actions.jsonl and
+                      worklist.json in its hidden state dir; the floor from
+                      its upgrade plan (range.floor); the overlay from its
+                      Drupal root
+    --findings FILE   classify this findings.json (a golden's); with no
+                      --subject, nothing is written unless --out is given
+    --recipes FILE    default config/recipes.json
+    --overlay FILE    a project overlay (same shape); default
+                      <root>/.drupilot/recipes.json when it exists
+    --core-floor X.Y  the declared core floor F (default: the plan's)
+    --actions FILE    the actions log (default <state>/actions.jsonl)
+    --out FILE        where to write worklist.json
+    --json            print worklist.json on STDOUT
+
+Exit codes: 0 written (or printed) · 1 usage error, no findings.json, or a
+recipes file that is not a recipe catalog · 2 jq or a sha256 tool missing.
+```
+
 ### ai/extract.sh
 
 ```text
@@ -190,6 +292,66 @@ written).
 ```
 
 ## analysis
+
+### analysis/assess.sh
+
+```text
+drupilot — scripts/analysis/assess.sh
+The viability assessment, computed (07-R4, AR-10, ADR 0025): the S/M/L/XL
+verdict from three counts, the threshold rule that matched, and everything
+the viability report shows, as assess.json; the viability-assessment skill
+only narrates it.
+
+  manual         the occurrences of scope-current PHPStan deprecations of
+                 class hard or unknown that no Drupal Rector rule changes in
+                 the same function or method (a DrupalRector\ rule, or the
+                 Renaming/Transform/Arguments/Removing rules drupal-rector
+                 configures, at the same (file, anchor); a file-level anchor,
+                 or anchors unavailable, never counts as covered), plus the
+                 signature and port-safety findings of severity error
+                 (manual_items, each with its occurrences)
+  hard_breaks    the categories of config/catalog/hard-breaks.json with at
+                 least one matching file of the subject
+  blocking_deps  deps-status.sh's blockers (no Drupal 11 release on
+                 drupal.org; offline every contrib dependency is unknown)
+
+  XL  blocking_deps >= 1 or hard_breaks >= 3 or manual > 40
+  L   hard_breaks == 2 or manual > 15
+  M   hard_breaks == 1 or manual >= 5
+  S   otherwise                                     (first match wins)
+
+It runs the assess stage itself (scripts/ai/extract.sh, normalize-findings.sh,
+classify.sh), scripts/analysis/core-strategy.sh and deps-status.sh, writes
+assess.json (schema 1: the counts, the rule, the core-target decision, the
+hard-break files, the hygiene totals, findings_hash, worklist_hash and
+subject_digest; its time under meta) to the subject's hidden state dir,
+renders viability-report.md from templates/viability-report.md.tmpl into
+the visible .drupilot/ dir, and records the assessed stage with its effort.
+Next-major findings never count (X18). The settings are read from the
+subject's Drupal root (DRUPILOT_PROJECT_DIR), wherever it is run from. When
+Rector, PHPStan, the port-safety checks or the signature scan gave no
+verdict (findings.json tools: failed or missing), the verdict is
+provisional: it goes to assess-provisional.json, never to assess.json (which
+readers take as an assessment), the stage is not recorded, the report says
+so, and the exit code is 3. The digests layer is not part of the assessment, so
+a deprecation only a digests rule fixes counts as manual.
+
+Usage:
+  assess.sh --subject DIR [--findings FILE --worklist FILE] [--deps FILE]
+            [--offline] [--no-record] [--json] [-h|--help]
+    --subject DIR      the module/theme (default: the current directory)
+    --findings FILE    read this findings.json and --worklist FILE instead of
+                       running the assess stage (a golden's; no Docker)
+    --deps FILE        read this deps-status.sh --json instead of running it
+    --offline          deps-status.sh without the network
+    --no-record        do not record the stage in state.json
+    --json             print assess.json on STDOUT
+
+Exit codes: 0 assessed · 1 usage error, not a Drupal extension (no
+<machine_name>.info.yml), no Drupal root to run the assess stage in (run
+/drupilot-setup first), or no findings to assess · 2 jq missing · 3 assessed,
+but a tool gave no verdict (assess-provisional.json: provisional, tools).
+```
 
 ### analysis/check-port-safety.sh
 
@@ -4129,8 +4291,8 @@ runs it as its `schemas` gate). Each schema is checked against the
 instances listed below: the 0.9 captures of tests/baseline/v0.9.0/, the lab
 samples of tests/baseline/v0.9.0/samples/, a live `preflight.sh --json`, the
 version data of config/targets|php|paths, the stage catalog
-config/pipeline.json, the recipes config/recipes.json, the findings goldens of
-tests/golden/findings/ and an example catalog (the data
+config/pipeline.json, the recipes config/recipes.json, the findings and
+worklist goldens of tests/golden/{findings,worklist}/ and an example catalog (the data
 gate, scripts/dev/data-check.sh, also checks their provenance). Two engines:
   jq         always available: the structural validator of
              scripts/dev/jsonschema.jq, reading the same schemas (only the
