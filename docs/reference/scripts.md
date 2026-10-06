@@ -1334,8 +1334,12 @@ warning, and so is a template-5 render whose sha256 the lock no longer keeps
 current render. A hand-written rector.php is never
 replaced; a warning is printed when it does not skip
 ArrayToFirstClassCallableRector or has no withPhpVersion(). rector-compat.php
-follows the same rules (written when missing, regenerated from an older
-marker) when the compat pass runs.
+follows the same rules when the compat pass runs: written when missing,
+regenerated from an older marker, and regenerated when it is an untouched
+render (its sha256 kept in the lock, or rector_config_pristine) for another
+PHP floor or subject, so a test-bed shared by several modules never runs the
+compat pass with the previous module's config. A hand-edited copy that names
+another subject is kept, with a warning.
 
 Every pass runs with --clear-cache (Rector's cache is shared across configs,
 so a file another config cached as unchanged would otherwise be skipped). A
