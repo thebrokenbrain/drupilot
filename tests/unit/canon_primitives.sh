@@ -41,6 +41,10 @@ assert_eq "runner paths dropped, the host one too" \
 assert_eq "an anonymous class loses its file and line" \
   "$(printf 'Method class@anonymous/web/modules/custom/m/src/A.php:12::run() has no return type.' | finding_norm_message)" \
   'Method class@anonymous::run() has no return type.'
+# (On JSON, as normalize-findings.sh applies it: a NUL is the escape \u0000.)
+assert_eq "  so does a <Parent>@anonymous name, and a NUL is dropped" \
+  "$(jq -n -r "$(canon_jq_defs)"' "Method Drupal\\Core\\Form\\FormBase@anonymous/web/m/A.php:46::x()\u0000 has no type." | finding_norm_message')" \
+  'Method Drupal\Core\Form\FormBase@anonymous::x() has no type.'
 assert_eq "\"on line N\" dropped" "$(printf 'Variable $x might not be defined on line 42.' | finding_norm_message)" \
   'Variable $x might not be defined.'
 assert_eq "the same finding from both runners and lines: one message" \

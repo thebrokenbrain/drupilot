@@ -19,8 +19,10 @@
 #   rule    Rector's FQCN; PHPStan's identifier (phpstan:untyped:<8 hex of the
 #           message's sha256> without one); PHPCS's source;
 #           port-safety:<check>, signature:<id>, metadata:<check>
-#   anchor  the innermost Namespace\Class::method or function of the line
-#           (the raw anchors file, scripts/php/anchor.php), else {file}
+#   anchor  the innermost Namespace\Class::method or function of the line,
+#           the Namespace\ClassLike for a line in a class-like body outside
+#           its methods (the raw anchors file, scripts/php/anchor.php), else
+#           {file}
 #   scope   current, or next-major for a soft deprecation under the report or
 #           defer policy (DRUPILOT_SOFT_DEPRECATIONS)
 #   class   hard | soft | unknown (classify-deprecations.sh) | analysis |
@@ -94,7 +96,9 @@ INDEX=""; n_ix=0
 for f in "$RAW_DIR"/[0-9][0-9]-"$STAGE"-index.json; do [[ -f "$f" ]] && { INDEX="$f"; n_ix=$((n_ix + 1)); }; done
 [[ -n "$INDEX" ]] || die "No raw index for stage '$STAGE' in $RAW_DIR (run scripts/ai/extract.sh --stage $STAGE)." 1
 [[ "$n_ix" == "1" ]] || die "Several raw sets for stage '$STAGE' in $RAW_DIR: re-run scripts/ai/extract.sh --stage $STAGE." 1
-jq -e 'type == "object"' "$INDEX" > /dev/null 2>&1 || die "The raw index $INDEX is not a JSON object: re-run scripts/ai/extract.sh --stage $STAGE." 1
+jq -e -s 'length == 1 and (.[0] | type == "object" and ((.subject // {}) | type == "object")
+           and ((.subject.path // "") | type == "string") and ((.subject.machine_name // "") | type == "string"))' "$INDEX" > /dev/null 2>&1 \
+  || die "The raw index $INDEX is not one JSON object with a subject {path, machine_name}: re-run scripts/ai/extract.sh --stage $STAGE." 1
 NN="$(basename "$INDEX")"; NN="${NN%%-*}"
 # raw TOOL -> the stage's raw file of that tool, or nothing.
 raw() { [[ -f "$RAW_DIR/$NN-$STAGE-$1.json" ]] && printf '%s' "$RAW_DIR/$NN-$STAGE-$1.json"; return 0; }
@@ -126,6 +130,9 @@ F_SIG="$(json_or "$(raw signatures)" '{}')"
 F_META="$(json_or "$(raw metadata)" '{}')"
 F_ANCH="$(json_or "$(raw anchors)" '{"unavailable": true}')"
 MISSING="$(for t in rector phpstan phpcs port-safety signatures metadata; do [[ -n "$(raw "$t")" ]] || printf '%s ' "$t"; done)"
+# A raw file that exists but is not one JSON object counts as a failed tool.
+BROKEN="$(for t in rector phpstan phpcs port-safety signatures metadata; do f="$(raw "$t")"; [[ -n "$f" ]] || continue
+  jq -e -s 'length == 1 and (.[0] | type == "object")' "$f" > /dev/null 2>&1 || printf '%s ' "$t"; done)"
 # The deprecations' class and symbol: classify-deprecations.sh on the PHPStan
 # report. Without it every deprecation would read as a plain analysis error:
 # stop rather than write that.
@@ -151,8 +158,9 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
   | (if $sp == "" then "" else $sp + "/" end) as $pre
   | def subrel: if $pre != "" and startswith($pre) then .[($pre | length):] else . end;
     def rootrel: if $pre == "" or startswith($pre) then . else $pre + . end;
-    def anchor_of($rf; $ln): if $ln == null then "{file}"
-      else ($anch[0] | if type == "array" then (map(select(.file == $rf and .line == $ln)) | .[0].anchor // "{file}") else "{file}" end) end;
+    # The anchors, keyed once by file and line (a lookup per finding).
+    ($anch[0] | if type == "array" then (map({key: "\(.file)\u001f\(.line)", value: .anchor}) | from_entries) else {} end) as $amap
+  | def anchor_of($rf; $ln): if $ln == null then "{file}" else ($amap["\($rf)\u001f\($ln)"] // "{file}") end;
     def short: split("\\") | last;
     # The first changed line (old numbering) of each hunk of a unified diff.
     def hunk_lines: split("\n") as $l
@@ -166,7 +174,7 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
     def sev: ascii_downcase | if . == "warn" then "warning" elif . == "notice" then "info" else . end;
     # PHPStan keys an error in a trait "<file> (in context of class X)": the
     # file is the trait'"'"'s, once (the class contexts are deduplicated below).
-    def ctxless: sub(" \\(in context of (class|anonymous class) [^)]*\\)$"; "");
+    def ctxless: sub(" \\(in context of .*\\)$"; "");
     # classify-deprecations items, keyed by root-relative file, line and normalized message.
     ([($cls[0].hard // [])[], ($cls[0].soft // [])[], ($cls[0].unknown // [])[]]
       | map({key: "\(.file)\u001f\(.line)\u001f\(.message | finding_norm_message)", value: .}) | from_entries) as $cmap
@@ -188,7 +196,7 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
         | {tool: "phpstan", rule: ($m.identifier // null), rf: $rf, line: ($m.line // null),
            symbol: (if $c then $c.symbol else null end), message: $nm, severity: "error",
            scope: (if $c and $c.class == "soft" and $policy != "fix" then "next-major" else "current" end),
-           class: (if $c then $c.class else "analysis" end), ctx: ($e.key != ($e.key | ctxless))}),
+           class: (if $c then $c.class else "analysis" end), ctx: ($e.key != ($e.key | ctxless)), cx: $e.key}),
       # PHPCS: every file message.
       (($cs[0].files // {}) | to_entries[] as $e | ($e.value.messages // [])[] as $m
         | {tool: "phpcs", rule: ($m.source // "phpcs"), rf: ($e.key | rootrel), line: ($m.line // null), symbol: null,
@@ -202,24 +210,17 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
       (($meta[0].findings // [])[] | {tool: "catalog", rule: "metadata:\(.check)", rf: (.file | rootrel), line: (.line // null),
          symbol: null, message: (.message | finding_norm_message), severity: ((.severity // "error") | sev), scope: "current", class: "metadata"})
     ]
-  | (map(select(.ctx == true)) | unique_by([.rule, .rf, .line, .message])) + map(select(.ctx != true))
-  | map(del(.ctx) + {file: (.rf | subrel), anchor: anchor_of(.rf; .line)})
+  # A trait error comes once per class context: keep as many copies as the
+  # context with the most (two identical errors on one line stay two).
+  | (map(select(.ctx == true)) | group_by([.rule, .rf, .line, .message])
+      | map((group_by(.cx) | map(length) | max) as $n | .[0:$n]) | add // [])
+    + map(select(.ctx != true))
+  | map(del(.ctx, .cx) + {file: (.rf | subrel), anchor: anchor_of(.rf; .line)})
 ' > "$PRE"
-
-# hash_lines FILE -> "<line number>\t<sha256 hex>" for each line of FILE (its
-# bytes without the newline), from one hasher process over one file per line.
-if have_cmd sha256sum; then HASHER=(sha256sum); else HASHER=(shasum -a 256); fi
-hash_lines() {
-  local d="$TMP/h.$_hl"; _hl=$((_hl + 1)); mkdir -p "$d"
-  awk -v d="$d" '{ f = d "/" NR; printf "%s", $0 > f; close(f) }' "$1"
-  ( cd "$d" && find . -type f -exec "${HASHER[@]}" {} + ) | awk '{ p = $NF; sub(/^\.\//, "", p); print p "\t" $1 }'
-  return 0
-}
-_hl=0
 
 # Untyped PHPStan errors get a rule from their message's hash.
 jq -r '[.[] | select(.rule == null) | .message] | unique[]' "$PRE" > "$TMP/untyped.txt"
-hash_lines "$TMP/untyped.txt" > "$TMP/untyped.tsv"
+sha256_lines "$TMP/untyped.txt" "$TMP/h1" > "$TMP/untyped.tsv"
 jq -R -s -c --rawfile msgs "$TMP/untyped.txt" '($msgs | split("\n")) as $m
   | split("\n") | map(select(length > 0) | split("\t") | {key: $m[(.[0] | tonumber) - 1], value: ("phpstan:untyped:" + .[1][0:8])}) | from_entries' \
   "$TMP/untyped.tsv" > "$TMP/untyped.json"
@@ -235,7 +236,7 @@ jq -c --slurpfile utf "$TMP/untyped.json" --arg sep "$SEP" '
   | to_entries | map(.value + {n: .key})' "$PRE" > "$TMP/pre2.json"
 # Line k of tuples.txt is the tuple of record n = k - 1.
 jq -r --arg sep "$SEP" '.[] | "\(.tkey)\($sep)\(.occurrence)"' "$TMP/pre2.json" > "$TMP/tuples.txt"
-hash_lines "$TMP/tuples.txt" \
+sha256_lines "$TMP/tuples.txt" "$TMP/h2" \
   | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {key: ((.[0] | tonumber) - 1 | tostring), value: ("F-" + .[1][0:12])}) | from_entries' \
   > "$TMP/ids.json"
 
@@ -243,12 +244,15 @@ hash_lines "$TMP/tuples.txt" \
 DOC="$TMP/findings.json"
 jq -c --slurpfile idsf "$TMP/ids.json" --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile anch "$F_ANCH" \
   --slurpfile stan "$F_PHPSTAN" --slurpfile cs "$F_PHPCS" --slurpfile safety "$F_SAFETY" --slurpfile sig "$F_SIG" --slurpfile meta "$F_META" \
-  --arg stage "$STAGE" --argjson target "$TARGET" --arg policy "$POLICY" --arg missing "$MISSING" '
+  --arg stage "$STAGE" --argjson target "$TARGET" --arg policy "$POLICY" --arg missing "$MISSING" --arg broken "$BROKEN" '
   def prec: {"rector": 0, "phpstan": 1, "catalog": 2, "phpcs": 3}[.] // 9;
   # A tool that gave no verdict: its raw file is missing, the error record
   # extract.sh writes, or the report of a crash.
+  # (The tests read the report defensively: a field of another type is no crash.)
+  def obj: if type == "object" then . else {} end;
   def verdict($t; $failed):
     if ($missing | split(" ") | index($t)) then "missing"
+    elif ($broken | split(" ") | index($t)) then "failed"
     elif (has("error") and has("exit_code") and (has("files") or has("findings") or has("file_diffs") | not)) or $failed then "failed"
     elif $t == "rector" and .status == "partial" then "partial"
     else "ok" end;
@@ -267,12 +271,12 @@ jq -c --slurpfile idsf "$TMP/ids.json" --slurpfile ix "$INDEX" --slurpfile recto
      target: {major: $target, soft_policy: $policy,
               runner: ($rector[0].runner.runner // null), php_version: ($rector[0].runner.php_version // null)},
      anchors: (if ($anch[0] | type) == "array" then "php" else "unavailable" end),
-     tools: {rector: ($rector[0] | verdict("rector"; .status == "error")),
-             phpstan: ($stan[0] | verdict("phpstan"; .drupilot.status == "crashed")),
-             phpcs: ($cs[0] | verdict("phpcs"; (.drupilot.error // null) != null)),
-             "port-safety": ($safety[0] | verdict("port-safety"; false)),
-             signatures: ($sig[0] | verdict("signatures"; false)),
-             metadata: ($meta[0] | verdict("metadata"; false))},
+     tools: {rector: ($rector[0] | obj | verdict("rector"; .status == "error")),
+             phpstan: ($stan[0] | obj | verdict("phpstan"; (.drupilot | obj | .status) == "crashed")),
+             phpcs: ($cs[0] | obj | verdict("phpcs"; ((.drupilot | obj | .error) // null) != null)),
+             "port-safety": ($safety[0] | obj | verdict("port-safety"; false)),
+             signatures: ($sig[0] | obj | verdict("signatures"; false)),
+             metadata: ($meta[0] | obj | verdict("metadata"; false))},
      counts: {total: ($f | length),
               current: ([$f[] | select(.scope == "current")] | length),
               next_major: ([$f[] | select(.scope == "next-major")] | length),

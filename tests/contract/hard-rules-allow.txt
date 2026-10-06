@@ -15,6 +15,7 @@ DDEV templates/ddev-config.yaml.tmpl  # a reference file ddev-up.sh never render
 # defaults, messages and the PHP construct table of detect-php-floor.sh; they
 # go down as their readers move to plan_get / target_get (M5, M8).
 H4 hooks/scripts/session-detect-env.sh 2
+H4 scripts/ai/normalize-findings.sh 1  # the finding id is F- plus 12 hex digits of a sha256 (AR-10): a jq slice, not a version
 H4 scripts/analysis/check-port-safety.sh 4
 H4 scripts/analysis/classify-deprecations.sh 6
 H4 scripts/analysis/convert-attributes.sh 3
@@ -82,4 +83,3 @@ AR22-FLAG scripts/env/preflight.sh
 AR22-FLAG scripts/env/resolve-workspace.sh
 AR22-FLAG scripts/tests/discover-tests.sh
 AR22-FLAG scripts/tests/run-phpunit.sh
-H4 scripts/ai/normalize-findings.sh 1  # the finding id is F- plus 12 hex digits of a sha256 (AR-10): a jq slice, not a version

@@ -66,6 +66,25 @@ json_hash() {
   return 0
 }
 
+# sha256_lines FILE DIR -> "<line number>\t<sha256 hex>" for each line of
+# FILE (its bytes without the newline), from ONE hasher process over one file
+# per line written under DIR (created; the caller removes it): thousands of
+# ids cost one fork, not one each. A line must hold no NUL byte (BusyBox awk
+# ends a record there). Prints nothing for an empty FILE or when no hasher
+# exists.
+sha256_lines() {
+  local f="${1:-}" d="${2:-}"
+  [[ -f "$f" && -n "$d" ]] || return 0
+  mkdir -p "$d" || return 0
+  awk -v d="$d" '{ p = d "/" NR; printf "%s", $0 > p; close(p) }' "$f"
+  if have_cmd sha256sum; then
+    ( cd "$d" && find . -type f -exec sha256sum {} + ) | awk '{ p = $NF; sub(/^\.\//, "", p); print p "\t" $1 }'
+  elif have_cmd shasum; then
+    ( cd "$d" && find . -type f -exec shasum -a 256 {} + ) | awk '{ p = $NF; sub(/^\.\//, "", p); print p "\t" $1 }'
+  fi
+  return 0
+}
+
 # file_hash FILE -> "sha256:<hex>" of FILE's bytes with every CRLF made LF (a
 # CR not followed by LF is data, at the end of the file too; a last line
 # without LF stays without one), so a checkout with CRLF line endings hashes
@@ -165,15 +184,16 @@ relpath_strip_runner() {
 # canon_jq_defs -> the jq definitions of the canonical forms, to prefix a jq
 # program with (normalize-findings uses them on every finding at once):
 #   finding_norm_message   the message part of a finding id (05 §2.4): "on
-#                          line N" dropped, PHPStan's anonymous class name
-#                          (class@anonymous/<file>:<line>) made
-#                          class@anonymous, every whitespace run (newlines
+#                          line N" dropped, NUL bytes dropped, PHPStan's
+#                          anonymous class name (class@anonymous/<file>:<line>,
+#                          or <Parent>@anonymous/<file>:<line>) made
+#                          ...@anonymous, every whitespace run (newlines
 #                          included) made one space, trimmed: a line shift
 #                          keeps the message. Runner paths are stripped
 #                          before (canon_json ROOT strips them in the whole
 #                          raw document).
 canon_jq_defs() {
-  printf '%s\n' 'def finding_norm_message: gsub("\\s+on line [0-9]+"; "") | gsub("class@anonymous[^\\s:]*:[0-9]+"; "class@anonymous") | gsub("\\s+"; " ") | ltrimstr(" ") | rtrimstr(" ");'
+  printf '%s\n' 'def finding_norm_message: split("\u0000") | join("") | gsub("\\s+on line [0-9]+"; "") | gsub("@anonymous[^\\s:]*:[0-9]+"; "@anonymous") | gsub("\\s+"; " ") | ltrimstr(" ") | rtrimstr(" ");'
   return 0
 }
 
