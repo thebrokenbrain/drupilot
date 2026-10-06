@@ -277,12 +277,14 @@ Usage:
     --json             print findings.json on STDOUT
 
 findings.json also records each tool's verdict (tools: ok | partial |
-failed | missing), so a run where a tool crashed never hashes like a clean
-one; an error PHPStan reports in a trait once per class that uses it is one
-finding in the trait's file.
+failed | missing; a raw file that is not one JSON object is failed), so a run
+where a tool crashed never hashes like a clean one; an error PHPStan reports
+in a trait once per class that uses it is kept in the trait's file as many
+times as the class context with the most copies.
 
 Exit codes: 0 written (or printed) · 1 usage error, no raw index for the
-stage, several, or one that is not JSON · 2 jq or a sha256 tool missing · 3
+stage, several, or one that is not a JSON object with a subject {path,
+machine_name} of strings · 2 jq or a sha256 tool missing · 3
 classify-deprecations.sh could not classify the PHPStan report (nothing is
 written).
 ```
