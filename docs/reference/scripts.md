@@ -30,6 +30,103 @@ Output: the block (or the JSON) on STDOUT; logs on STDERR.
 Exit codes: 0 ok, also when no plan resolves · 1 usage error.
 ```
 
+## ai
+
+### ai/extract.sh
+
+```text
+drupilot — scripts/ai/extract.sh
+Run a stage's deterministic extractors on a module/theme and keep their
+reports as canonical raw files (T-M4-05, AR-07, AR-10, 05-R3, ADR 0022):
+
+  <state>/raw/<NN>-<stage>-<tool>.json
+
+NN is the stage's place in config/pipeline.json. The tools are run-rector.sh
+(a dry-run), run-phpstan.sh, run-phpcs.sh, check-port-safety.sh,
+scan-signature-changes.sh and lint-extension-metadata.sh, each with --json;
+every report goes through canon_json with the Drupal root (root-relative
+paths, sorted keys; its own timestamps moved under meta: DET-2). Then the
+anchor of every (file, line) the reports name in a PHP file is computed
+once, in the bed, by the staged
+scripts/php/anchor.php (stage_runtime) and kept as <NN>-<stage>-anchors.json
+(without a PHP runner: {"unavailable": true}), so scripts/ai/
+normalize-findings.sh needs no PHP. An index, <NN>-<stage>-index.json, names
+the subject, the target major and each tool's file and exit code. A stage's
+previous raw files (its tool files, whatever NN they were written with) are
+replaced; other stages' are kept. A PHPStan error in a trait ("<file> (in
+context of class X)") is anchored in the trait's file.
+
+Usage:
+  extract.sh --subject DIR [--stage S] [--json] [-h|--help]
+    --subject DIR  the module/theme (inside its Drupal root or test-bed)
+    --stage S      the stage id of config/pipeline.json (default assess)
+    --json         print the index on STDOUT
+
+Gate: the tools' own (the `analyze` profile). Exit codes: 0 every report
+written · 1 usage error · 2 no Drupal root or jq missing · 3 Rector or
+PHPStan gave no verdict (a crash, a DET-1 refusal, or no report at all: see
+their raw file); the other reports are still written.
+```
+
+### ai/normalize-findings.sh
+
+```text
+drupilot — scripts/ai/normalize-findings.sh
+Turn one stage's raw tool reports into findings.json (T-M4-05, AR-10, 05 §2.4,
+ADR 0022): every finding with its stable id, subject-relative file, anchor,
+symbol, normalized message, occurrence, severity, scope and class; findings
+of different tools about the same symbol at the same anchor merged (the
+precedence rector > phpstan > catalog > phpcs keeps its record, sources[]
+lists every tool); sorted by file, anchor and id. A pure function of the raw
+files, the target major and the soft-deprecation policy: no tool runs, no
+PHP, so the result is the same on every platform (DET-2).
+
+Reads <raw-dir>/<NN>-<stage>-{index,rector,phpstan,phpcs,port-safety,
+signatures,metadata,anchors}.json as scripts/ai/extract.sh writes them (any
+but the index may be missing).
+
+  id      "F-" + the first 12 hex of sha256(tool␟rule␟file␟anchor␟symbol␟
+          message␟occurrence) (␟ = 0x1f); the line is not part of it
+  rule    Rector's FQCN; PHPStan's identifier (phpstan:untyped:<8 hex of the
+          message's sha256> without one); PHPCS's source;
+          port-safety:<check>, signature:<id>, metadata:<check>
+  anchor  the innermost Namespace\Class::method or function of the line,
+          the Namespace\ClassLike for a line in a class-like body outside
+          its methods (the raw anchors file, scripts/php/anchor.php), else
+          {file}
+  scope   current, or next-major for a soft deprecation under the report or
+          defer policy (DRUPILOT_SOFT_DEPRECATIONS)
+  class   hard | soft | unknown (classify-deprecations.sh) | analysis |
+          safety | signature | metadata | style | php-target | rector
+
+Usage:
+  normalize-findings.sh (--subject DIR | --raw-dir DIR) [--stage S]
+                        [--target-major N] [--soft-policy P] [--out FILE]
+                        [--json] [-h|--help]
+    --subject DIR      the module/theme: its raw dir and findings.json are in
+                       its hidden state dir
+    --raw-dir DIR      read these raw files instead (a golden's); with no
+                       --subject, nothing is written unless --out is given
+    --stage S          the stage whose raw files to read (default assess)
+    --target-major N   default: the upgrade plan's, else DRUPILOT_TARGET_MAJOR
+    --soft-policy P    report | defer | fix (default DRUPILOT_SOFT_DEPRECATIONS)
+    --out FILE         where to write findings.json (default: the subject's
+                       state dir)
+    --json             print findings.json on STDOUT
+
+findings.json also records each tool's verdict (tools: ok | partial |
+failed | missing; a raw file that is not one JSON object is failed), so a run
+where a tool crashed never hashes like a clean one; an error PHPStan reports
+in a trait once per class that uses it is kept in the trait's file as many
+times as the class context with the most copies.
+
+Exit codes: 0 written (or printed) · 1 usage error, no raw index for the
+stage, several, or one that is not a JSON object with a subject {path,
+machine_name} of strings · 2 jq or a sha256 tool missing · 3
+classify-deprecations.sh could not classify the PHPStan report (nothing is
+written).
+```
+
 ## analysis
 
 ### analysis/check-port-safety.sh
@@ -3728,7 +3825,7 @@ Generate the reference pages of the docs site from their sources of truth
 (a developer/CI tool: no command, skill or hook calls it; the `docs` gate of
 scripts/dev/check.sh runs --check). Each page starts with a GENERATED
 comment and is never edited by hand:
-  reference/scripts.md            every scripts/{analysis,contrib,env,tests,dev}/*.sh
+  reference/scripts.md            every scripts/{ai,analysis,contrib,env,tests,dev}/*.sh
                                   header (print_usage; no script is run)
   reference/commands.md           commands/*.md frontmatter
   reference/skills-and-agents.md  skills/*/SKILL.md and agents/*.md frontmatter
@@ -3927,7 +4024,8 @@ runs it as its `schemas` gate). Each schema is checked against the
 instances listed below: the 0.9 captures of tests/baseline/v0.9.0/, the lab
 samples of tests/baseline/v0.9.0/samples/, a live `preflight.sh --json`, the
 version data of config/targets|php|paths, the stage catalog
-config/pipeline.json and an example catalog (the data
+config/pipeline.json, the findings goldens of tests/golden/findings/ and an
+example catalog (the data
 gate, scripts/dev/data-check.sh, also checks their provenance). Two engines:
   jq         always available: the structural validator of
              scripts/dev/jsonschema.jq, reading the same schemas (only the
@@ -3966,7 +4064,7 @@ Every script is run with the SAME bash that runs this file ($BASH), so
 tools end to end.
 
 Tests (names are what --only takes):
-  help           every scripts/{analysis,contrib,env,tests,dev}/*.sh --help
+  help           every scripts/{ai,analysis,contrib,env,tests,dev}/*.sh --help
                  exits 0 and prints a Usage section on STDOUT
   preflight      preflight.sh --profile analyze --json: one JSON object, exit
                  0 or 2 consistent with .ready.analyze, a passing bash row;

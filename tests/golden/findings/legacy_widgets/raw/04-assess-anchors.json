@@ -1,0 +1,192 @@
+[
+  {
+    "anchor": "legacy_widgets_entity_operation",
+    "file": "web/modules/custom/legacy_widgets/legacy_widgets.module",
+    "line": 24
+  },
+  {
+    "anchor": "legacy_widgets_find_account",
+    "file": "web/modules/custom/legacy_widgets/legacy_widgets.module",
+    "line": 58
+  },
+  {
+    "anchor": "legacy_widgets_find_account",
+    "file": "web/modules/custom/legacy_widgets/legacy_widgets.module",
+    "line": 60
+  },
+  {
+    "anchor": "legacy_widgets_summarize",
+    "file": "web/modules/custom/legacy_widgets/legacy_widgets.module",
+    "line": 75
+  },
+  {
+    "anchor": "{file}",
+    "file": "web/modules/custom/legacy_widgets/modules/legacy_widgets_extra/legacy_widgets_extra.module",
+    "line": 8
+  },
+  {
+    "anchor": "{file}",
+    "file": "web/modules/custom/legacy_widgets/modules/legacy_widgets_extra/legacy_widgets_extra.module",
+    "line": 9
+  },
+  {
+    "anchor": "legacy_widgets_extra_legacy_widget_presave",
+    "file": "web/modules/custom/legacy_widgets/modules/legacy_widgets_extra/legacy_widgets_extra.module",
+    "line": 15
+  },
+  {
+    "anchor": "Drupal\\legacy_widgets\\Controller\\WidgetStatusController::create",
+    "file": "web/modules/custom/legacy_widgets/src/Controller/WidgetStatusController.php",
+    "line": 36
+  },
+  {
+    "anchor": "Drupal\\legacy_widgets\\Entity\\LegacyWidget::getOriginal",
+    "file": "web/modules/custom/legacy_widgets/src/Entity/LegacyWidget.php",
+    "line": 57
+  },
+  {
+    "anchor": "Drupal\\legacy_widgets\\Form\\SettingsForm::__construct",
+    "file": "web/modules/custom/legacy_widgets/src/Form/SettingsForm.php",
+    "line": 32
+  },
+  {
+    "anchor": "Drupal\\legacy_widgets\\Form\\SettingsForm::create",
+    "file": "web/modules/custom/legacy_widgets/src/Form/SettingsForm.php",
+    "line": 40
+  },
+  {
+    "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::__construct",
+    "file": "web/modules/custom/legacy_widgets/src/Form/WidgetImportForm.php",
+    "line": 20
+  },
+  {
+    "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::__construct",
+    "file": "web/modules/custom/legacy_widgets/src/Form/WidgetImportForm.php",
+    "line": 21
+  },
+  {
+    "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::create",
+    "file": "web/modules/custom/legacy_widgets/src/Form/WidgetImportForm.php",
+    "line": 28
+  },
+  {
+    "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::submitForm",
+    "file": "web/modules/custom/legacy_widgets/src/Form/WidgetImportForm.php",
+    "line": 64
+  },
+  {
+    "anchor": "Drupal\\legacy_widgets\\LegacyWidgetStorage::buildRevisionCacheId",
+    "file": "web/modules/custom/legacy_widgets/src/LegacyWidgetStorage.php",
+    "line": 24
+  },
+  {
+    "anchor": "Drupal\\legacy_widgets\\Plugin\\Block\\WidgetSummaryBlock::create",
+    "file": "web/modules/custom/legacy_widgets/src/Plugin/Block/WidgetSummaryBlock.php",
+    "line": 49
+  },
+  {
+    "anchor": "Drupal\\legacy_widgets\\Plugin\\Block\\WidgetSummaryBlock::build",
+    "file": "web/modules/custom/legacy_widgets/src/Plugin/Block/WidgetSummaryBlock.php",
+    "line": 63
+  },
+  {
+    "anchor": "Drupal\\legacy_widgets\\Plugin\\Block\\WidgetSummaryBlock::build",
+    "file": "web/modules/custom/legacy_widgets/src/Plugin/Block/WidgetSummaryBlock.php",
+    "line": 64
+  },
+  {
+    "anchor": "{file}",
+    "file": "web/modules/custom/legacy_widgets/src/Plugin/Condition/WidgetsEnabledCondition.php",
+    "line": 1
+  },
+  {
+    "anchor": "Drupal\\legacy_widgets\\Plugin\\Condition\\WidgetsEnabledCondition::create",
+    "file": "web/modules/custom/legacy_widgets/src/Plugin/Condition/WidgetsEnabledCondition.php",
+    "line": 40
+  },
+  {
+    "anchor": "{file}",
+    "file": "web/modules/custom/legacy_widgets/src/Plugin/Filter/WidgetSummaryFilter.php",
+    "line": 1
+  },
+  {
+    "anchor": "Drupal\\legacy_widgets\\Plugin\\Filter\\WidgetSummaryFilter::create",
+    "file": "web/modules/custom/legacy_widgets/src/Plugin/Filter/WidgetSummaryFilter.php",
+    "line": 44
+  },
+  {
+    "anchor": "Drupal\\legacy_widgets\\Plugin\\Filter\\WidgetSummaryFilter::process",
+    "file": "web/modules/custom/legacy_widgets/src/Plugin/Filter/WidgetSummaryFilter.php",
+    "line": 59
+  },
+  {
+    "anchor": "Drupal\\legacy_widgets\\Plugin\\QueueWorker\\WidgetReindexWorker::create",
+    "file": "web/modules/custom/legacy_widgets/src/Plugin/QueueWorker/WidgetReindexWorker.php",
+    "line": 49
+  },
+  {
+    "anchor": "Drupal\\legacy_widgets\\Plugin\\QueueWorker\\WidgetReindexWorker::processItem",
+    "file": "web/modules/custom/legacy_widgets/src/Plugin/QueueWorker/WidgetReindexWorker.php",
+    "line": 67
+  },
+  {
+    "anchor": "Drupal\\legacy_widgets\\Plugin\\QueueWorker\\WidgetReindexWorker::processItem",
+    "file": "web/modules/custom/legacy_widgets/src/Plugin/QueueWorker/WidgetReindexWorker.php",
+    "line": 68
+  },
+  {
+    "anchor": "Drupal\\legacy_widgets\\Plugin\\QueueWorker\\WidgetReindexWorker::processItem",
+    "file": "web/modules/custom/legacy_widgets/src/Plugin/QueueWorker/WidgetReindexWorker.php",
+    "line": 69
+  },
+  {
+    "anchor": "Drupal\\legacy_widgets\\WidgetLookup::findOwnerByMail",
+    "file": "web/modules/custom/legacy_widgets/src/WidgetLookup.php",
+    "line": 39
+  },
+  {
+    "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testQueueWorkerProcessesItem",
+    "file": "web/modules/custom/legacy_widgets/tests/src/Kernel/LegacyWidgetsKernelTest.php",
+    "line": 45
+  },
+  {
+    "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testQueueWorkerProcessesItem",
+    "file": "web/modules/custom/legacy_widgets/tests/src/Kernel/LegacyWidgetsKernelTest.php",
+    "line": 46
+  },
+  {
+    "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testFilterProducesSummary",
+    "file": "web/modules/custom/legacy_widgets/tests/src/Kernel/LegacyWidgetsKernelTest.php",
+    "line": 57
+  },
+  {
+    "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testEntityOperationWithDrupal10Arguments",
+    "file": "web/modules/custom/legacy_widgets/tests/src/Kernel/LegacyWidgetsKernelTest.php",
+    "line": 69
+  },
+  {
+    "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testCounterService",
+    "file": "web/modules/custom/legacy_widgets/tests/src/Kernel/LegacyWidgetsKernelTest.php",
+    "line": 79
+  },
+  {
+    "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testFindAccount",
+    "file": "web/modules/custom/legacy_widgets/tests/src/Kernel/LegacyWidgetsKernelTest.php",
+    "line": 88
+  },
+  {
+    "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testFindAccount",
+    "file": "web/modules/custom/legacy_widgets/tests/src/Kernel/LegacyWidgetsKernelTest.php",
+    "line": 89
+  },
+  {
+    "anchor": "Drupal\\Tests\\legacy_widgets\\Unit\\WidgetCounterTest::testBucket",
+    "file": "web/modules/custom/legacy_widgets/tests/src/Unit/WidgetCounterTest.php",
+    "line": 23
+  },
+  {
+    "anchor": "Drupal\\Tests\\legacy_widgets\\Unit\\WidgetCounterTest::testBucket",
+    "file": "web/modules/custom/legacy_widgets/tests/src/Unit/WidgetCounterTest.php",
+    "line": 24
+  }
+]

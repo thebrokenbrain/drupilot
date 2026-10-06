@@ -1,0 +1,12 @@
+{
+  "core_floor": "10.3",
+  "core_requirement": "^10.3",
+  "drupal_root": ".",
+  "errors": 0,
+  "findings": [],
+  "infos": 0,
+  "ok": true,
+  "subject": "web/modules/custom/acme_core",
+  "tool": "scan-signature-changes",
+  "warnings": 0
+}

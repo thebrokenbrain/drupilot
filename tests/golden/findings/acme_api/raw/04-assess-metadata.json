@@ -1,0 +1,43 @@
+{
+  "checks_run": [
+    "config-schema",
+    "plugin-schema",
+    "configure-route",
+    "services-class",
+    "services-arity",
+    "submodule-core-req",
+    "undeclared-deps"
+  ],
+  "digest_algo": 2,
+  "findings": [
+    {
+      "check": "services-arity",
+      "extension": "acme_api",
+      "file": "acme_api.services.yml",
+      "line": 3,
+      "message": "Service 'acme_api.client' passes 3 argument(s) but Drupal\\acme_api\\Client\\ApiClient::__construct() takes 2: PHP silently ignores the extra one(s) (a stale argument, or a constructor that lost a parameter).",
+      "severity": "warn",
+      "suggestion": "Drop the extra argument(s), or restore the constructor parameter they were meant for."
+    },
+    {
+      "check": "undeclared-deps",
+      "extension": "acme_api",
+      "file": "src/Controller/StatusController.php",
+      "line": 5,
+      "message": "'acme_api' uses project module 'acme_core' (class,service) without declaring it in acme_api.info.yml dependencies: installing 'acme_api' alone fails or breaks at runtime.",
+      "severity": "warn",
+      "suggestion": "Add '- acme_core:acme_core' to dependencies:."
+    }
+  ],
+  "meta": {
+    "generated_at": "2026-10-06T03:15:46Z"
+  },
+  "subject": "web/modules/custom/acme_api",
+  "subject_digest": "de67fdfc625c5b74c88fe0af262074b809f7196af6eaf2da925ce2b93f8bc30d",
+  "tool": "lint-extension-metadata",
+  "totals": {
+    "error": 0,
+    "info": 0,
+    "warn": 2
+  }
+}

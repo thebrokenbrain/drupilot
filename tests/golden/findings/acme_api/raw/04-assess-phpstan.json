@@ -1,0 +1,33 @@
+{
+  "drupilot": {
+    "crash": [],
+    "exit_code": 1,
+    "notices": [],
+    "phpstan_exit_code": 1,
+    "runner": {
+      "php_version": "8.3.33",
+      "runner": "ddev",
+      "tool_version": "2.2.16"
+    },
+    "status": "findings"
+  },
+  "errors": [],
+  "files": {
+    "web/modules/custom/acme_api/src/Controller/StatusController.php": {
+      "errors": 1,
+      "messages": [
+        {
+          "identifier": "new.static",
+          "ignorable": true,
+          "line": 23,
+          "message": "Unsafe usage of new static().",
+          "tip": "See: https://phpstan.org/blog/solving-phpstan-error-unsafe-usage-of-new-static"
+        }
+      ]
+    }
+  },
+  "totals": {
+    "errors": 0,
+    "file_errors": 1
+  }
+}

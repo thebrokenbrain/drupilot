@@ -1,0 +1,45 @@
+{
+  "applied": false,
+  "changed_files": 1,
+  "compat_files": [],
+  "compat_status": "ok",
+  "digests_pass": false,
+  "digests_sha": null,
+  "digests_status": "off",
+  "errors": [],
+  "file_diffs": [
+    {
+      "applied_rectors": [
+        "Rector\\CodingStyle\\Rector\\FuncCall\\FunctionFirstClassCallableRector"
+      ],
+      "diff": "--- Original\n+++ New\n@@ -61,7 +61,7 @@\n    */\n   public function submitForm(array &$form, FormStateInterface $form_state) {\n     $storage = $this->entityTypeManager->getStorage('legacy_widget');\n-    $labels = array_filter(array_map('trim', explode(\"\\n\", trim($form_state->getValue('labels')))));\n+    $labels = array_filter(array_map(trim(...), explode(\"\\n\", trim($form_state->getValue('labels')))));\n     foreach ($labels as $label) {\n       $storage->create(['label' => $label])->save();\n     }\n",
+      "file": "web/modules/custom/legacy_widgets/src/Form/WidgetImportForm.php",
+      "pass": "official"
+    }
+  ],
+  "files": [
+    "web/modules/custom/legacy_widgets/src/Form/WidgetImportForm.php"
+  ],
+  "ok": true,
+  "pass1_files": [
+    "web/modules/custom/legacy_widgets/src/Form/WidgetImportForm.php"
+  ],
+  "pass2_files": [],
+  "php_ceiling": "8.5",
+  "php_floor": "8.1",
+  "rule_hits": {
+    "official": {
+      "FunctionFirstClassCallableRector": 1
+    }
+  },
+  "rules": [
+    "FunctionFirstClassCallableRector"
+  ],
+  "runner": {
+    "php_version": "8.3.33",
+    "runner": "ddev",
+    "tool_version": "2.6.1"
+  },
+  "status": "ok",
+  "tool": "rector"
+}

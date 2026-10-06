@@ -9,6 +9,7 @@ t_isolate
 r="$T_TMP/tree"; mkdir -p "$r/tests"
 for d in scripts config hooks schemas .claude-plugin; do cp -R "$T_REPO/$d" "$r/"; done
 cp -R "$T_REPO/tests/baseline" "$r/tests/"
+mkdir -p "$r/tests/golden"; cp -R "$T_REPO/tests/golden/findings" "$r/tests/golden/"
 S="$r/tests/baseline/v0.9.0/samples"
 # sc -> "<exit>|<first failing check>" of schema-check.sh --mode jq.
 sc() {

@@ -437,6 +437,32 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     (`.lenient_packages`), in `install-toolchain.sh --json` and in
     `last-test.json` (`lenient`). The port report names it next to the
     preservation verdict, which it never changes (CC-14).
+- **Raw tool reports and `findings.json`** (T-M4-05, AR-10, ADR 0022).
+  - `scripts/ai/extract.sh --subject DIR [--stage S]` runs a stage's
+    deterministic tools and keeps each report as
+    `<state>/raw/<NN>-<stage>-<tool>.json`. The tools are Rector (a dry-run),
+    PHPStan, PHPCS, port-safety, the signature scan and the metadata lint.
+    Each report has root-relative paths, sorted keys and its timestamps under
+    `meta`. The anchor of every reported line is computed once in the bed
+    (`anchor.php`) and kept as one more raw file.
+  - `scripts/ai/normalize-findings.sh` makes `findings.json` from them. Each
+    finding has a stable id that never includes the line, a subject-relative
+    file, an anchor, a symbol, a normalized message, an occurrence, a
+    severity, a `scope` (`current` or `next-major`) and a `class`. Findings of
+    different tools about the same symbol at the same anchor are merged into
+    one, with `sources[]`. An error PHPStan reports in a trait (once per class
+    that uses it) is kept in the trait's file, as many times as the class
+    context with the most copies. `tools` records each
+    tool's verdict (`ok`, `partial`, `failed`, `missing`), so a crashed tool
+    never reads like a clean run, and a failing `classify-deprecations.sh`
+    stops the script (exit 3) instead of losing the deprecation classes. The
+    script needs only jq and a sha256 tool, so the goldens run on every CI
+    leg; thousands of findings take seconds.
+  - `schemas/findings.schema.json` is the contract (the `schemas` gate).
+    `tests/golden/findings/` holds the lab recordings of `legacy_widgets`
+    and the monorepo's `acme_core` and `acme_api`. Two recordings of the same
+    tree gave the same bytes outside `meta`.
+  - `docs/reference/state.md` documents the raw files and the findings.
 
 ### Changed
 - **`scripts/dev/unit.sh` runs the tests in parallel** (`--jobs N`, default
@@ -680,6 +706,15 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   - `preflight.sh`'s strategy check accepts both vocabularies.
 
 ### Fixed
+- **A PHPStan run whose parallel worker died is a crash, not a clean run.**
+  When a worker reaches its memory limit, fails or times out, PHPStan drops
+  that worker's file errors and still exits 1. `run-phpstan.sh` (and
+  `verify-core-matrix.sh`) recorded such a run as `findings`, so
+  `findings.json` showed PHPStan `ok` with its findings missing, and the
+  result depended on the machine's memory. A report naming "Child process
+  error", "Child process timed out", "PHPStan process crashed" or "Result is
+  incomplete" (`phpstan_crash_ere`, verified in PHPStan 2.x's source) is now
+  `crashed`, exit 3.
 - **Intermittent wrong results and exit 141 under load** (the baseline-0.9
   flakes of PRs #11, #20 and #22): a pipeline ending in `head`, `grep -q` or
   an awk `exit` stops reading early, and under `pipefail` a producer still
@@ -702,6 +737,11 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   Drupal 10.3 code without qualification: `WidgetImportForm` redeclares
   `FormBase`'s `$loggerFactory` as `private readonly` and typed, a fatal error
   when the class loads. The fixture is unchanged (part of H12).
+- **`classify-deprecations.sh` no longer fails on a large PHPStan report.**
+  It passed every message to jq as one argument. Linux caps an argument at
+  128 KiB, so a module with a few hundred PHPStan errors stopped the script
+  with "Argument list too long". The records now go through a file; the
+  output is unchanged.
 - **`run-rector.sh` now re-renders `rector-compat.php` for the module it
   runs on** (found by the T-M4-05 lab). On a test-bed shared by several
   modules, the compat pass kept the config rendered for the previous module,

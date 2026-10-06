@@ -1,0 +1,321 @@
+{
+  "drupilot": {
+    "crash": [],
+    "exit_code": 1,
+    "notices": [],
+    "phpstan_exit_code": 1,
+    "runner": {
+      "php_version": "8.3.33",
+      "runner": "ddev",
+      "tool_version": "2.2.16"
+    },
+    "status": "findings"
+  },
+  "errors": [],
+  "files": {
+    "web/modules/custom/legacy_widgets/legacy_widgets.module": {
+      "errors": 4,
+      "messages": [
+        {
+          "identifier": "drupal.proceduralHookEntityOperationMissingCacheabilityParameter",
+          "ignorable": true,
+          "line": 24,
+          "message": "Function legacy_widgets_entity_operation() implements hook_entity_operation but is missing the CacheableMetadata parameter added in Drupal 11.3. Update the signature to: legacy_widgets_entity_operation(\\Drupal\\Core\\Entity\\EntityInterface $entity, \\Drupal\\Core\\Cache\\CacheableMetadata $cacheability).",
+          "tip": "See https://www.drupal.org/node/3533080"
+        },
+        {
+          "identifier": "function.deprecated",
+          "ignorable": true,
+          "line": 58,
+          "message": "Call to deprecated function user_load_by_mail():\nin drupal:11.4.0 and is removed from drupal:13.0.0.\n  Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties()\n  instead."
+        },
+        {
+          "identifier": "function.deprecated",
+          "ignorable": true,
+          "line": 60,
+          "message": "Call to deprecated function user_load_by_name():\nin drupal:11.4.0 and is removed from drupal:13.0.0.\n  Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties()\n  instead."
+        },
+        {
+          "identifier": "function.deprecated",
+          "ignorable": true,
+          "line": 75,
+          "message": "Call to deprecated function text_summary():\nin drupal:11.4.0 and is removed from drupal:13.0.0. Use\n  \\Drupal::service(TextSummary::class)->generate() instead."
+        }
+      ]
+    },
+    "web/modules/custom/legacy_widgets/src/Controller/WidgetStatusController.php": {
+      "errors": 1,
+      "messages": [
+        {
+          "identifier": "new.static",
+          "ignorable": true,
+          "line": 36,
+          "message": "Unsafe usage of new static().",
+          "tip": "See: https://phpstan.org/blog/solving-phpstan-error-unsafe-usage-of-new-static"
+        }
+      ]
+    },
+    "web/modules/custom/legacy_widgets/src/Entity/LegacyWidget.php": {
+      "errors": 1,
+      "messages": [
+        {
+          "identifier": "method.childReturnType",
+          "ignorable": false,
+          "line": 57,
+          "message": "Return type mixed of method Drupal\\legacy_widgets\\Entity\\LegacyWidget::getOriginal() is not covariant with return type static(Drupal\\Core\\Entity\\EntityBase)|null of method Drupal\\Core\\Entity\\EntityBase::getOriginal()."
+        }
+      ]
+    },
+    "web/modules/custom/legacy_widgets/src/Form/SettingsForm.php": {
+      "errors": 2,
+      "messages": [
+        {
+          "identifier": "arguments.count",
+          "ignorable": true,
+          "line": 32,
+          "message": "Method Drupal\\Core\\Form\\ConfigFormBase::__construct() invoked with 1 parameter, 2 required."
+        },
+        {
+          "identifier": "new.static",
+          "ignorable": true,
+          "line": 40,
+          "message": "Unsafe usage of new static().",
+          "tip": "See: https://phpstan.org/blog/solving-phpstan-error-unsafe-usage-of-new-static"
+        }
+      ]
+    },
+    "web/modules/custom/legacy_widgets/src/Form/WidgetImportForm.php": {
+      "errors": 8,
+      "messages": [
+        {
+          "identifier": "dependencySerializationTraitProperty.unsupportedPrivateProperty",
+          "ignorable": true,
+          "line": 20,
+          "message": "Drupal\\Core\\DependencyInjection\\DependencySerializationTrait does not support private properties.",
+          "tip": "See https://www.drupal.org/node/3110266"
+        },
+        {
+          "identifier": "dependencySerializationTraitProperty.unsupportedReadOnlyProperty",
+          "ignorable": true,
+          "line": 20,
+          "message": "Read-only properties are incompatible with Drupal\\Core\\DependencyInjection\\DependencySerializationTrait when the trait is used by a parent class on PHP < 8.4.",
+          "tip": "Drupal\\Core\\DependencyInjection\\DependencySerializationTrait::__wakeup() cannot initialize a read-only property declared in a child class. Use the trait in this class directly, or remove the readonly modifier."
+        },
+        {
+          "identifier": "dependencySerializationTraitProperty.unsupportedPrivateProperty",
+          "ignorable": true,
+          "line": 21,
+          "message": "Drupal\\Core\\DependencyInjection\\DependencySerializationTrait does not support private properties.",
+          "tip": "See https://www.drupal.org/node/3110266"
+        },
+        {
+          "identifier": "dependencySerializationTraitProperty.unsupportedReadOnlyProperty",
+          "ignorable": true,
+          "line": 21,
+          "message": "Read-only properties are incompatible with Drupal\\Core\\DependencyInjection\\DependencySerializationTrait when the trait is used by a parent class on PHP < 8.4.",
+          "tip": "Drupal\\Core\\DependencyInjection\\DependencySerializationTrait::__wakeup() cannot initialize a read-only property declared in a child class. Use the trait in this class directly, or remove the readonly modifier."
+        },
+        {
+          "identifier": "property.extraNativeType",
+          "ignorable": false,
+          "line": 21,
+          "message": "Property Drupal\\legacy_widgets\\Form\\WidgetImportForm::$loggerFactory (Drupal\\Core\\Logger\\LoggerChannelFactoryInterface) overriding property Drupal\\Core\\Form\\FormBase::$loggerFactory should not have a native type."
+        },
+        {
+          "identifier": "property.readOnly",
+          "ignorable": false,
+          "line": 21,
+          "message": "Readonly property Drupal\\legacy_widgets\\Form\\WidgetImportForm::$loggerFactory overrides readwrite property Drupal\\Core\\Form\\FormBase::$loggerFactory."
+        },
+        {
+          "identifier": "property.visibility",
+          "ignorable": false,
+          "line": 21,
+          "message": "Private property Drupal\\legacy_widgets\\Form\\WidgetImportForm::$loggerFactory overriding protected property Drupal\\Core\\Form\\FormBase::$loggerFactory should be protected or public."
+        },
+        {
+          "identifier": "new.static",
+          "ignorable": true,
+          "line": 28,
+          "message": "Unsafe usage of new static().",
+          "tip": "See: https://phpstan.org/blog/solving-phpstan-error-unsafe-usage-of-new-static"
+        }
+      ]
+    },
+    "web/modules/custom/legacy_widgets/src/Plugin/Block/WidgetSummaryBlock.php": {
+      "errors": 3,
+      "messages": [
+        {
+          "identifier": "new.static",
+          "ignorable": true,
+          "line": 49,
+          "message": "Unsafe usage of new static().",
+          "tip": "See: https://phpstan.org/blog/solving-phpstan-error-unsafe-usage-of-new-static"
+        },
+        {
+          "identifier": "function.deprecated",
+          "ignorable": true,
+          "line": 63,
+          "message": "Call to deprecated function check_markup():\nin drupal:11.4.0 and is removed from drupal:13.0.0. There is no\n  direct replacement. It's recommended to always return a renderable array\n  without flattening as markup to pass the cacheability metadata."
+        },
+        {
+          "identifier": "function.deprecated",
+          "ignorable": true,
+          "line": 64,
+          "message": "Call to deprecated function user_load_by_mail():\nin drupal:11.4.0 and is removed from drupal:13.0.0.\n  Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties()\n  instead."
+        }
+      ]
+    },
+    "web/modules/custom/legacy_widgets/src/Plugin/Condition/WidgetsEnabledCondition.php": {
+      "errors": 1,
+      "messages": [
+        {
+          "identifier": "new.static",
+          "ignorable": true,
+          "line": 40,
+          "message": "Unsafe usage of new static().",
+          "tip": "See: https://phpstan.org/blog/solving-phpstan-error-unsafe-usage-of-new-static"
+        }
+      ]
+    },
+    "web/modules/custom/legacy_widgets/src/Plugin/Filter/WidgetSummaryFilter.php": {
+      "errors": 2,
+      "messages": [
+        {
+          "identifier": "new.static",
+          "ignorable": true,
+          "line": 44,
+          "message": "Unsafe usage of new static().",
+          "tip": "See: https://phpstan.org/blog/solving-phpstan-error-unsafe-usage-of-new-static"
+        },
+        {
+          "identifier": "function.deprecated",
+          "ignorable": true,
+          "line": 59,
+          "message": "Call to deprecated function text_summary():\nin drupal:11.4.0 and is removed from drupal:13.0.0. Use\n  \\Drupal::service(TextSummary::class)->generate() instead."
+        }
+      ]
+    },
+    "web/modules/custom/legacy_widgets/src/Plugin/QueueWorker/WidgetReindexWorker.php": {
+      "errors": 4,
+      "messages": [
+        {
+          "identifier": "new.static",
+          "ignorable": true,
+          "line": 49,
+          "message": "Unsafe usage of new static().",
+          "tip": "See: https://phpstan.org/blog/solving-phpstan-error-unsafe-usage-of-new-static"
+        },
+        {
+          "identifier": "function.deprecated",
+          "ignorable": true,
+          "line": 67,
+          "message": "Call to deprecated function user_load_by_name():\nin drupal:11.4.0 and is removed from drupal:13.0.0.\n  Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties()\n  instead."
+        },
+        {
+          "identifier": "method.notFound",
+          "ignorable": true,
+          "line": 68,
+          "message": "Call to an undefined method Drupal\\Core\\Entity\\EntityInterface::set()."
+        },
+        {
+          "identifier": "method.notFound",
+          "ignorable": true,
+          "line": 69,
+          "message": "Call to an undefined method Drupal\\Core\\Entity\\EntityInterface::incrementHits()."
+        }
+      ]
+    },
+    "web/modules/custom/legacy_widgets/src/WidgetLookup.php": {
+      "errors": 1,
+      "messages": [
+        {
+          "identifier": "function.deprecated",
+          "ignorable": true,
+          "line": 39,
+          "message": "Call to deprecated function user_load_by_mail():\nin drupal:11.4.0 and is removed from drupal:13.0.0.\n  Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties()\n  instead."
+        }
+      ]
+    },
+    "web/modules/custom/legacy_widgets/tests/src/Kernel/LegacyWidgetsKernelTest.php": {
+      "errors": 9,
+      "messages": [
+        {
+          "identifier": "method.notFound",
+          "ignorable": true,
+          "line": 45,
+          "message": "Call to an undefined method Drupal\\Core\\Entity\\EntityInterface::get()."
+        },
+        {
+          "identifier": "method.notFound",
+          "ignorable": true,
+          "line": 45,
+          "message": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::assertSame()."
+        },
+        {
+          "identifier": "method.notFound",
+          "ignorable": true,
+          "line": 46,
+          "message": "Call to an undefined method Drupal\\Core\\Entity\\EntityInterface::get()."
+        },
+        {
+          "identifier": "method.notFound",
+          "ignorable": true,
+          "line": 46,
+          "message": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::assertSame()."
+        },
+        {
+          "identifier": "method.notFound",
+          "ignorable": true,
+          "line": 57,
+          "message": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::assertSame()."
+        },
+        {
+          "identifier": "method.notFound",
+          "ignorable": true,
+          "line": 69,
+          "message": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::assertArrayHasKey()."
+        },
+        {
+          "identifier": "method.notFound",
+          "ignorable": true,
+          "line": 79,
+          "message": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::assertSame()."
+        },
+        {
+          "identifier": "method.notFound",
+          "ignorable": true,
+          "line": 88,
+          "message": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::assertSame()."
+        },
+        {
+          "identifier": "method.notFound",
+          "ignorable": true,
+          "line": 89,
+          "message": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::assertSame()."
+        }
+      ]
+    },
+    "web/modules/custom/legacy_widgets/tests/src/Unit/WidgetCounterTest.php": {
+      "errors": 2,
+      "messages": [
+        {
+          "identifier": "method.notFound",
+          "ignorable": true,
+          "line": 23,
+          "message": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Unit\\WidgetCounterTest::createMock()."
+        },
+        {
+          "identifier": "method.notFound",
+          "ignorable": true,
+          "line": 24,
+          "message": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Unit\\WidgetCounterTest::assertSame()."
+        }
+      ]
+    }
+  },
+  "totals": {
+    "errors": 0,
+    "file_errors": 38
+  }
+}

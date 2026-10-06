@@ -38,6 +38,14 @@ assert_eq "whitespace runs and newlines become one space, trimmed" "$(printf '  
 assert_eq "runner paths dropped, the host one too" \
   "$(printf 'Class Foo in /var/www/html/web/a.php and %s/web/b.php' "$ROOT" | finding_norm_message "$ROOT")" \
   "Class Foo in web/a.php and web/b.php"
+assert_eq "an anonymous class loses its file and line" \
+  "$(printf 'Method class@anonymous/web/modules/custom/m/src/A.php:12::run() has no return type.' | finding_norm_message)" \
+  'Method class@anonymous::run() has no return type.'
+# (On JSON, as normalize-findings.sh applies it: a NUL is the escape \u0000;
+# -c keeps it visible, where a command substitution would drop the byte.)
+assert_eq "  so does a <Parent>@anonymous name, and a NUL is dropped" \
+  "$(jq -n -c "$(canon_jq_defs)"' "Method Drupal\\Core\\Form\\FormBase@anonymous/web/m/A.php:46::x()\u0000 has no type." | finding_norm_message')" \
+  '"Method Drupal\\Core\\Form\\FormBase@anonymous::x() has no type."'
 assert_eq "\"on line N\" dropped" "$(printf 'Variable $x might not be defined on line 42.' | finding_norm_message)" \
   'Variable $x might not be defined.'
 assert_eq "the same finding from both runners and lines: one message" \

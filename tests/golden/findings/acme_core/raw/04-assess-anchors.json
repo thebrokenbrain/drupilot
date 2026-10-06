@@ -1,0 +1,17 @@
+[
+  {
+    "anchor": "Drupal\\acme_core\\AcmeFormatter::__construct",
+    "file": "web/modules/custom/acme_core/src/AcmeFormatter.php",
+    "line": 12
+  },
+  {
+    "anchor": "Drupal\\acme_core\\AcmeFormatter::__construct",
+    "file": "web/modules/custom/acme_core/src/AcmeFormatter.php",
+    "line": 15
+  },
+  {
+    "anchor": "Drupal\\acme_core\\AcmeFormatter::__construct",
+    "file": "web/modules/custom/acme_core/src/AcmeFormatter.php",
+    "line": 20
+  }
+]

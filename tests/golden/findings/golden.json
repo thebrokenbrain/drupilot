@@ -1,0 +1,33 @@
+{
+  "data_hash": "b967dc04dc59646e99bca648bb267ff1a76ea65993d62d5af159d19ff50cbc5d",
+  "files": {
+    "README.md": "96f7d9e0a2f1a41273eaf8efc730db85088aebc3e60a118537b609cb5ed6d6b8",
+    "acme_api/findings.json": "cdcc15aa23c77a3c990b719c89ff379f528368ccfc8e28dfd40b6755d05396d2",
+    "acme_api/raw/04-assess-anchors.json": "610b0b3b4d2b2f208a9be5cf5f9ff5225dd72db74dc51f8fd7fe0594fd7c9281",
+    "acme_api/raw/04-assess-index.json": "5775e292c817417a57314dccfd197ef1e829a9fb10bc77777b368ee442ef73e1",
+    "acme_api/raw/04-assess-metadata.json": "aa6720921798547404bef57a95441d54ec702ac4a440f613fbfcaf2f8f872830",
+    "acme_api/raw/04-assess-phpcs.json": "a8726a266121dc1fafd54c00d002912b16198a3ec0dd402f4166dafd199cf857",
+    "acme_api/raw/04-assess-phpstan.json": "d4fe85a20048a821b142ede68ab9fde338583a54a4ad972158b48d182586061d",
+    "acme_api/raw/04-assess-port-safety.json": "3df0303708e145d963fa47b8a86c0adfb977d096d0cc64f17d74936936a28f4a",
+    "acme_api/raw/04-assess-rector.json": "27690ad30d707d14274fb5fd0209b0280ff954cea53a262918ee0f3fbdf337fa",
+    "acme_api/raw/04-assess-signatures.json": "1d0367579014a309f4803220856c40f0dab955a6cc7303e163b7c21185326b61",
+    "acme_core/findings.json": "ccd8fd3e23e30d71f6440e3688228039f8eac3f3ebc11087bf8a2f439ad2bd28",
+    "acme_core/raw/04-assess-anchors.json": "0715afae6d65b71664151039fac7d1ab5f70a691b4fb491ad8f041283c5b61ae",
+    "acme_core/raw/04-assess-index.json": "25ed4e64c3ea8b9dcd7c4497891d156019e637be0e85889604f78af75971884d",
+    "acme_core/raw/04-assess-metadata.json": "fb4fa4a11a54d1c36c9a8c676aef33faeb213b57837f8c56a3b992313bf700f9",
+    "acme_core/raw/04-assess-phpcs.json": "f1896e7024086924f6b67951e6c8241fd0319590c1d82d8e3525255fed9a52d5",
+    "acme_core/raw/04-assess-phpstan.json": "e7e7aed8f5f605e0c74561060fc83145d6175d7359ccee05d5f96a4f8f15e817",
+    "acme_core/raw/04-assess-port-safety.json": "36584082a30906ebd4df0cc8a5540a66e392a3920cde0ad2f54581913c779c2b",
+    "acme_core/raw/04-assess-rector.json": "27690ad30d707d14274fb5fd0209b0280ff954cea53a262918ee0f3fbdf337fa",
+    "acme_core/raw/04-assess-signatures.json": "8da85822cbb54fc267eaa5ace589333becd78ad072f9bcbc4d55aeff9e6c7d6a",
+    "legacy_widgets/findings.json": "5ee55b91b510f2fef35f4bb2013424f3855bb8a4c8ee93a70dadd9e5718a127c",
+    "legacy_widgets/raw/04-assess-anchors.json": "c55fcd588d545aacbc342c0264b9fb46481eac3015937a33a9304361c4597da6",
+    "legacy_widgets/raw/04-assess-index.json": "fbea4544074643a3670e17cb05325d053f620023dffcbeb08da290e89eff066e",
+    "legacy_widgets/raw/04-assess-metadata.json": "e7bc636fd06bcbb8f19b252eab8f891742a51694cc2f06a5646ee14c9b56dacf",
+    "legacy_widgets/raw/04-assess-phpcs.json": "a40041edbe48f5e168bca74c08cdc4cb46afe5926d802eb16bab65706d2ff989",
+    "legacy_widgets/raw/04-assess-phpstan.json": "72c8902c850106966ad6095d7f728878f99db0fae486df2178ac8976b45cbc2d",
+    "legacy_widgets/raw/04-assess-port-safety.json": "518e10e6536b4ae996d58b34eba2b3d508e41e0c2f832f4d1f14472e77ba0078",
+    "legacy_widgets/raw/04-assess-rector.json": "a34077356941bee2b99f46f0980bc85523a655114c34066b1fa3bfc0dfc94cbd",
+    "legacy_widgets/raw/04-assess-signatures.json": "cc5290071613ba8e7b4f0b8e4dbebd5ea8cb5002d2bae92a6c64bcb655cb03d6"
+  }
+}
