@@ -505,6 +505,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     file's hash before and after. The classifier reads it: a codemod that
     changed nothing, failed or did not clear its finding is not tried again,
     and one whose change was reverted is.
+  - A project overlay (`<root>/.drupilot/recipes.json`) is checked before
+    use: a recipe in an unknown lane, without a 12-hex version or a kind, or
+    with a `message_ere`/`file_ere` that does not compile makes `classify.sh`
+    exit 1.
   - `schemas/worklist.schema.json` is the contract. Worklist goldens for
     `legacy_widgets`, `acme_core` and `acme_api` are computed Docker-free
     from the findings goldens, and a test keeps next-major findings out of
