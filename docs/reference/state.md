@@ -95,3 +95,7 @@ The first rule that matches wins, and `rubric.rule` keeps it:
 | S | otherwise |
 
 Soft deprecations and next-major findings never count. When Rector or PHPStan gave no verdict, the verdict is marked `provisional`, the stage is not recorded and the script exits 3. The script needs the test-bed's Drupal root and reads its settings there. `assess.json` also keeps `findings_hash`, `worklist_hash` and the module's digest, so the same tree, lock and drupal.org answers give the same document outside `meta`, which holds its time. The script records the `assessed` stage with the verdict as `effort`.
+
+## Port manifest
+
+`scripts/ai/manifest.sh --subject DIR [--phase port|refactor] [--rationale FILE]` writes `port-manifest.json` to the same hidden state dir (schema `schemas/port-manifest.schema.json`, [ADR 0027](../contributing/adr/0027-generated-port-manifest.md)). It is built from what the scripts recorded, never from memory: the worklist by lane and status, the codemods still in effect, the Rector rules and files of the applying run, the digests verdicts, the decision log, and the git diff against the port's base. A manual edit is a file the diff shows that neither Rector nor a codemod changed. The only input the model gives is the rationale, `{"<worklist item id>": "why"}`. An unknown id is refused, and a later run keeps the rationale of the items still in the worklist. `port-report.sh` renders the manifest with the decision log and the verification records of the state dir. The same records and tree give the same manifest outside `meta`.

@@ -81,12 +81,12 @@
 #                      rule_hits counts them per pass, {official: {Rule: n},
 #                      compat: {Rule: n}, digests: {Rule: n}} (n = files the
 #                      rule changed; the compat and digests keys only when that
-#                      pass changed something) —
-#                      copy it into the port manifest's rector_rules. An
+#                      pass changed something). An
 #                      --apply that changes files also keeps it in the
 #                      subject's state dir (rector-rules.json: {tool,
-#                      changed_files, digests_sha, rule_hits, meta:
-#                      {generated_at, subject}}), the fallback
+#                      changed_files, files (root-relative, sorted),
+#                      digests_sha, rule_hits, meta: {generated_at,
+#                      subject}}), the fallback
 #                      port-report.sh / layer-report.sh read.
 #                      digests_filter: {implemented_yml: {ref, sha256} | null,
 #                      skipped_implemented (drupal-rector implements them in
@@ -985,16 +985,17 @@ else
   log_info "Re-run with --apply once you have reviewed the proposed diff."
 fi
 
-# An --apply that changed files records its rule counts in the subject's
-# hidden state dir (rector-rules.json), the fallback for the port manifest's
-# rector_rules in port-report.sh / layer-report.sh — also when the compat pass
+# An --apply that changed files records its rule counts and files in the
+# subject's hidden state dir (rector-rules.json): scripts/ai/manifest.sh reads
+# them (rector_rules, and the files no manual edit counts), and port-report.sh
+# / layer-report.sh fall back to them — also when the compat pass
 # crashed after the official pass had written its changes. A later apply that
 # changes nothing (a re-run on ported code) keeps the record of the real port.
 # Its time and the host path of the subject are under meta (AR-13).
 if [[ "$APPLY" == "1" && "$PASS1_RAN_OK" == "1" && "$COUNT" != "0" ]] && have_cmd jq; then
   jq -n --arg s "$SUBJECT_ABS" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson h "$RULE_HITS" \
-    --arg dsha "$DIGESTS_SHA" --argjson n "$COUNT" \
-    '{tool: "run-rector", changed_files: $n,
+    --arg dsha "$DIGESTS_SHA" --argjson n "$COUNT" --arg fl "$CHANGED" \
+    '{tool: "run-rector", changed_files: $n, files: ($fl | split("\n") | map(select(length > 0)) | sort),
       digests_sha: (if $dsha == "" then null else $dsha end), rule_hits: $h,
       meta: {generated_at: $at, subject: $s}}' \
     > "$(project_state_dir "$SUBJECT_ABS")/rector-rules.json" 2>/dev/null \

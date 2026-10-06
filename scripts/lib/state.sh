@@ -373,7 +373,7 @@ state_snapshot_json() {
   a="$(_json_from "$sd/assess.json" '{effort: (.verdict // .effort // null), at: (.timestamp // .generated_at // .meta.generated_at // null)}')"
   t="$(_json_from "$sd/last-test.json" '{status: (.status // null), preservation: (.preservation // null), executed: (.executed // null), tests_failed: ([.tests[]? | select(.status == "fail" or .status == "error")] | length), groups_passed: (.passed // null), groups_failed: (.failed // null), groups_skipped: (.skipped // null), recorded_at: (.recorded_at // .generated_at // null), digest: (.subject_digest // null), digest_algo: (.digest_algo // null)}')"
   m="$(_json_from "$sd/core-matrix.json" '{verdict: (.verdict // null), d10_support: (.d10_support // null), generated_at: (.generated_at // null), digest: (.subject_digest // null), digest_algo: (.digest_algo // null)}')"
-  pm="$(_json_from "$sd/port-manifest.json" '{patch: (.patch | if type == "string" then . else null end), phase: ((.phase // "port") | if type == "string" then . else null end), at: (.generated_at // .recorded_at // null)}')"
+  pm="$(_json_from "$sd/port-manifest.json" '{patch: (.patch | if type == "string" then . else null end), phase: ((.phase // "port") | if type == "string" then . else null end), at: (.generated_at // .recorded_at // .meta.generated_at // null)}')"
   # A relative manifest patch path is the subject's; when it is not there but
   # the same path exists under the Drupal root (a manifest written with the
   # root-relative path), use that one, so the patch is not reported missing.

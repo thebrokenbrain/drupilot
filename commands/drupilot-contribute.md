@@ -125,10 +125,11 @@ Only when a hook cannot complete in this context, run
 `git-hooks.sh --subject <dir> --run-equivalents` (phpcs / phpstan / php -l /
 composer validate, plus PHPUnit with `--with-tests`, through DDEV), fix every
 failure, and commit with `--no-verify` **only when `all_green` is true** (the
-PreToolUse guard asks the developer to confirm such a commit). Record the
-substitution for `port-report.md` (`verification.commit_hooks`: which
-validations replaced the hook, and the `uncovered` tasks) and say so in the
-MR/issue comment — never claim the hook itself passed.
+PreToolUse guard asks the developer to confirm such a commit).
+`--run-equivalents` keeps the substitution (which validations replaced the
+hook, and the `uncovered` tasks) in `hooks-substitution.json`, which
+`port-report.sh` reads for `port-report.md`; say so in the MR/issue comment —
+never claim the hook itself passed.
 
 ## Step 4 — Push, open the MR, and attach a patch
 

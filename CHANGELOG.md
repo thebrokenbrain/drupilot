@@ -566,7 +566,28 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     verdicts. `lock-sync.sh --refresh` and `DRUPILOT_DETERMINISTIC=false`
     fetch the yml again and freeze its new hash.
 
+- **The port manifest is generated** (T-M4-10, AR-10, 01-R9, ADR 0027).
+  `scripts/ai/manifest.sh` builds `port-manifest.json` (schema 1) from what
+  the scripts recorded, never from memory:
+  - the worklist, by lane and status, and the codemods still in effect;
+  - the Rector rules and files of the applying run (`rector-rules.json` now
+    lists the files) and of the attribute pass (`convert-attributes.sh
+    --apply` now keeps `attributes-rules.json`);
+  - the digests verdicts and the decision log;
+  - the git diff against the port's base: files changed, and the manual
+    edits (the files neither Rector nor a codemod changed).
+  - The model's only input is the rationale, keyed by worklist item id: an
+    unknown id is refused, and an earlier rationale is kept for the items
+    still there.
+  - `port-report.sh` renders the lane × status table, the codemods and the
+    rationale. A manifest golden pins the generator on the lab's
+    `legacy_widgets` port.
+
 ### Changed
+- **`/drupilot-port` and `/drupilot-refactor` run `manifest.sh`** instead of
+  writing the manifest. Divergences stay in the decision log, the
+  verification records in their state files, and the learned patterns in
+  the catalog; the free-text `validation` list is gone.
 - **`/drupilot-assess` and the `viability-assessment` skill** no longer run
   the analyzers one by one, grep for hard breaks or apply the rubric: they
   run `assess.sh` and narrate `assess.json` (the skill has no `grep` left).

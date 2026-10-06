@@ -69,8 +69,8 @@ All output you produce — messages, summaries, plans — is in **English**.
    run `scripts/contrib/git-hooks.sh --subject <path> --json`; when hooks exist,
    commit normally and let them run. Only if a hook cannot complete here, run
    its tasks with `git-hooks.sh --run-equivalents`, commit with `--no-verify`
-   only when `all_green`, and record the substitution (uncovered tasks
-   included) as `verification.commit_hooks` in the port manifest. The guard
+   only when `all_green`; `--run-equivalents` keeps the substitution (uncovered
+   tasks included) in `hooks-substitution.json`, which `port-report.sh` reads. The guard
    hook asks before such a commit, so an autonomous run never skips a hook (it
    keeps a hook-free checkpoint with `make-patch.sh --local`).
 10. **Every divergence is logged as it happens.** Whenever you (or a subagent)
@@ -88,10 +88,9 @@ All output you produce — messages, summaries, plans — is in **English**.
       [--script <script>] [--detected-by <tool>] [--review-hint "<how>"] [--phase refactor]
     ```
 
-    It appends to `<root>/.drupilot/decisions.jsonl` (+ `decisions.md`). The
-    port manifest's structured fields (`rector_rules`, `rector_reversions`,
-    `post_port_fixes`, `preexisting_bugs`, `behavior_changes`,
-    `tooling_deviations`, `validation`) and these entries feed the port report
+    It appends to `<root>/.drupilot/decisions.jsonl` (+ `decisions.md`). These
+    entries, merged with the generated port manifest and the Rector rules
+    `run-rector.sh --apply` keeps in `rector-rules.json`, feed the port report
     and the consolidated layer report (`layer-report.sh`).
 
 ## Verified ecosystem facts (June 2026 — do not re-research)
@@ -396,7 +395,8 @@ Phase 2) or `fix` (each item's `action`: `fix` when the replacement exists at th
 declared core floor, `fix-guarded` through
 `DeprecationHelper::backwardsCompatibleCall()`, `defer` otherwise). Autonomous
 mode applies the configured policy as is — it never upgrades `report` to `fix`.
-Store the final classification as `soft_deprecations` in the port manifest.
+Nothing to store: `scripts/ai/manifest.sh` classifies the stage's raw PHPStan
+report itself into the manifest's `soft_deprecations`.
 When the final requirement still admits Drupal 10 (`verify_cores` has a `10…`
 leg) and `DRUPILOT_VERIFY_CORES` is not `off`, run
 `scripts/analysis/verify-core-matrix.sh --subject <path> --json` once the loop is
@@ -406,8 +406,9 @@ baseline. Exit 3 = a Drupal 10 incompatibility (e.g. an `#[\Override]` on a
 method only 11.3+ core declares): fix it the D10-safe way, raise the floor or
 drop to `^11` (the "Drupal 10 check" tab of `minimal-port` §6a; autonomous mode
 fixes the code, else recommends `^11` in the report). A skipped leg (no network)
-leaves `d10_support` `declared-not-verified` and never blocks. Record
-`d10_support` and `verification.core_matrix` in the manifest. No architectural changes. Report the summarized diff, which rules
+leaves `d10_support` `declared-not-verified` and never blocks. The script keeps
+its verdict in `core-matrix.json`: `manifest.sh` takes `d10_support` from it and
+`port-report.sh` reads it. No architectural changes. Report the summarized diff, which rules
 (official/digests/ad-hoc) were applied, and what is deferred to Phase 2.
 
 When the subject validates, write the local preview patch (offline, git-only;
@@ -420,7 +421,8 @@ and post-port fixes; give each pitfall worth preventing a detector that matches
 the PRE-port code (a POSIX ERE and/or `port-safety:<check>` / `signature:<id>`)
 and `patterns.sh add` it — after the developer picks which (`minimal-port` §8),
 or, in autonomous mode, only detectors you checked, listing their ids in the
-summary. Put `learned_patterns {scan, recorded}` in the manifest.
+summary. The recorded patterns live in the project's catalog (`patterns.sh
+list`); the manifest does not carry them.
 
 ### Stage 4 — refactor (gate: `analyze`/`test`; Phase 2, OPT-IN ONLY)
 

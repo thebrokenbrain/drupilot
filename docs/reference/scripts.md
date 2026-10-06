@@ -232,6 +232,56 @@ PHPStan gave no verdict (a crash, a DET-1 refusal, or no report at all: see
 their raw file); the other reports are still written.
 ```
 
+### ai/manifest.sh
+
+```text
+drupilot — scripts/ai/manifest.sh
+The port manifest, generated (T-M4-10, AR-10, 01-R9, ADR 0027): what a port
+or a refactor did, as port-manifest.json (schema 1) in the subject's hidden
+state dir. It is built from what the scripts recorded, never from memory:
+  findings.json      the last extraction: deprecations_remaining (the
+                     current hard and unknown PHPStan occurrences),
+                     deferred_to_phase2 (the next-major symbols), and the
+                     stage's raw reports: port_safety, signature_changes,
+                     metadata_lint (the scripts' --json, canonical) and
+                     soft_deprecations (classify-deprecations.sh --json on
+                     the raw PHPStan report)
+  worklist.json      the lane x status table and every item
+  actions.jsonl      the codemods applied and still in effect
+  rector-rules.json  the rules and files of the applying Rector run, and
+                     attributes-rules.json those of the attribute pass
+                     (convert-attributes.sh --apply)
+  digests verdicts   digests-decisions.json: the rules rejected
+  decision log       log-decision.sh: the count per kind (port-report.sh
+                     merges the entries themselves)
+  the git diff       against the port's base (git_port_base_ref, the base
+                     make-patch.sh --local uses): files_changed, files, and
+                     manual_edits (the files neither Rector nor a codemod
+                     changed)
+  info.yml, composer.json, assess.json, core-matrix.json: the requirement,
+                     require.php, the SemVer bump, d10_support.
+The model writes only the rationale: --rationale FILE, a JSON object
+{"<worklist item id>": "why"}. An id the worklist does not have is refused;
+a previous manifest's rationale is kept for the ids still in the worklist.
+The same inputs give the same document outside meta; inputs records the
+hashes it was built from. port-report.sh renders it.
+
+Usage:
+  manifest.sh --subject DIR [--phase port|refactor] [--rationale FILE]
+              [--base REF] [--no-write] [--json] [-h|--help]
+    --subject DIR      the module/theme
+    --phase P          port (default) or refactor
+    --rationale FILE   {item id: text}, the model's only input
+    --base REF         the port's git base (default: git_port_base_ref)
+    --no-write         do not write port-manifest.json (with --json: a dry
+                       run)
+    --json             print the manifest on STDOUT
+
+Exit codes: 0 done · 1 usage error, no findings.json or worklist.json for
+the subject (run the pipeline first), or a rationale id the worklist does
+not have · 2 jq missing.
+```
+
 ### ai/normalize-findings.sh
 
 ```text
@@ -596,7 +646,10 @@ Output: logs on STDERR; on STDOUT the changed files (one per line), or with
   attribute_floor: the highest `since` among the converted types (the core
   floor the result needs for static analysis; also the runtime floor for the
   stripped types). floor_ok: declared_floor >= attribute_floor.
-  rule_hits merges into the port manifest's rector_rules.
+  An --apply that converts files also keeps {tool, changed_files, files,
+  rule_hits, meta} in the subject's state dir (attributes-rules.json), which
+  scripts/ai/manifest.sh merges into the manifest's rector_rules (and never
+  counts as manual edits).
 
 Gate: `analyze` profile. Exit codes: 0 ok (including nothing to convert) ·
 1 usage error · 2 gate (requirements, Drupal root, vendor/bin/rector or the
@@ -1647,12 +1700,12 @@ Options:
                      rule_hits counts them per pass, {official: {Rule: n},
                      compat: {Rule: n}, digests: {Rule: n}} (n = files the
                      rule changed; the compat and digests keys only when that
-                     pass changed something) —
-                     copy it into the port manifest's rector_rules. An
+                     pass changed something). An
                      --apply that changes files also keeps it in the
                      subject's state dir (rector-rules.json: {tool,
-                     changed_files, digests_sha, rule_hits, meta:
-                     {generated_at, subject}}), the fallback
+                     changed_files, files (root-relative, sorted),
+                     digests_sha, rule_hits, meta: {generated_at,
+                     subject}}), the fallback
                      port-report.sh / layer-report.sh read.
                      digests_filter: {implemented_yml: {ref, sha256} | null,
                      skipped_implemented (drupal-rector implements them in
@@ -3858,7 +3911,8 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
                 accepts it. `{label: .x}` and `.label` are fine everywhere.
                 It also rejects an object value joined with and/or outside
                 parentheses (`{ok: (a) and (b)}`, a jq 1.6 syntax error;
-                write `{ok: ((a) and (b))}`).
+                write `{ok: ((a) and (b))}`), and one with an unparenthesized
+                `//` (`{k: .a // "x"}`; write `{k: (.a // "x")}`).
                 A line can opt out with a trailing `# jq-compat-ok` and a reason
   - lib-defs    the shared library is split into domain libs (scripts/lib/*.sh):
                 every function is defined in exactly one lib, common.sh only

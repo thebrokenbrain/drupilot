@@ -194,7 +194,8 @@ hits, the fix that worked before, the module/layer it was learned from). Each
 hit is a **must-check item** for the steps below: prevent it while porting
 instead of repairing it after (the recorded fix is the starting point; the
 `minimal-port` golden rules still decide). No catalog or no hit is normal for a
-first module. Keep the JSON for the manifest's `learned_patterns.scan` (Step 9).
+first module. Nothing to keep for the manifest: the learned patterns live in the
+project's catalog (`patterns.sh list`), which Step 8b extends.
 
 ## Step 3 — Pass 1: official `palantirnet/drupal-rector` (apply)
 
@@ -211,10 +212,9 @@ minus the risky rules the template skips (Form API callbacks → closures,
 (`rector-compat.php`) runs right after it and fixes implicitly nullable
 parameters only (`compat_status`, `compat_files`). `--json` lists the applied
 rule names in `rules` and counts them per pass in `rule_hits` (`{official:
-{Rule: files}, compat: {...}, digests: {...}}`): copy it into the manifest's
-`rector_rules` (Step 9); an
-`--apply` that changed files also keeps it as `rector-rules.json` in the state
-dir, the report's fallback. Undo or rewrite any applied hunk only with a
+{Rule: files}, compat: {...}, digests: {...}}`); an `--apply` that changed
+files keeps it as `rector-rules.json` in the state dir, which `manifest.sh`
+reads for the manifest's `rector_rules` (Step 9). Undo or rewrite any applied hunk only with a
 `--kind rector-revert --rule <Rule>` decision-log entry.
 
 ```bash
@@ -321,8 +321,8 @@ check the repository's git hooks first —
 timeout or a background run for a slow hook). Only if a hook cannot complete
 here, run `git-hooks.sh --subject <path> --run-equivalents`, fix any failure,
 commit with `--no-verify` only when `all_green` is true (the guard hook asks the
-developer to confirm), and record it as `verification.commit_hooks` in the
-manifest. An autonomous run never skips a hook: it keeps a hook-free checkpoint
+developer to confirm); `--run-equivalents` keeps the substitution in
+`hooks-substitution.json`, which `port-report.sh` reads. An autonomous run never skips a hook: it keeps a hook-free checkpoint
 with `make-patch.sh --local` instead. Then apply the accepted subset:
 
 ```bash
@@ -415,8 +415,9 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/convert-attributes.sh" --subject "$
 Then mirror the new floor in `composer.json` (`require.drupal/core`) when the
 module declares one, record the choice (`log-decision.sh --kind manual-override
 --what "Added plugin attributes (keep mode), core floor raised to <req>" --why
-"<the developer's reason>"`), and merge the JSON's `rule_hits` into the
-manifest's `rector_rules`. `restored_files` lists files the pass put back
+"<the developer's reason>"`), and report the JSON's `rule_hits` in the Step 9
+summary (the pass keeps no state file; that decision-log entry is its record in
+the report). `restored_files` lists files the pass put back
 (duplicate attribute or `php -l` failure) and `skipped_files` those already
 half-converted by hand: report both. Step 7 validates the result (and Step 7b
 checks the new floor when `^10` is still declared).
@@ -572,7 +573,7 @@ apply cleanly) is the separate thing produced by `/drupilot-contribute`.
 ## Step 8b — Record what this port learned
 
 List the candidates — the reverted Rector changes and post-port fixes of the
-manifest and the decision log:
+decision log (`rector-revert` / `post-port-fix` entries):
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/patterns.sh" harvest --subject "<subject>" --json
@@ -626,52 +627,32 @@ Summarize in English:
 - Next suggested step: `/drupilot-test` to adapt and run the test suite, then
   optionally `/drupilot-refactor`.
 
-**Write the port report card (the trust + teaching artifact).** Record the
-decisions you made as a small manifest JSON and render the human report, so the
-developer (and a future maintainer reviewing the change) can see what changed and
-why at a glance. The report also **teaches**: as the port ran you should have
-**tee'd** the official Rector output (pass 1), the digests pass output and the
-final validate-loop PHPStan deprecation report into `<state_dir>/change-log.txt`
-(under `$HOME`, never in the project tree, so it never leaks into a patch);
-`port-report.sh` pipes that through `explain-deprecations.sh` to render a
-"Drupal 9/10 → 11 changes, explained" section grouped by migration area. Build
-the manifest from what you actually did, write it to the project state dir, then
-render:
+**Write the port report card (the trust + teaching artifact).** The manifest is
+generated, never written by hand: `scripts/ai/manifest.sh` builds
+`<state_dir>/port-manifest.json` from what the scripts recorded — the findings,
+the worklist (by lane and status), the codemods applied, the Rector rules and
+files of the applying run, the digests verdicts, the decision log and the git
+diff against the port's base (files changed, and the manual edits: the files
+neither Rector nor a codemod changed). Your only input is the **why** of the
+items you fixed or decided by hand, keyed by worklist item id (the `id`s of
+`<state_dir>/worklist.json`): write `<state_dir>/rationale.json` as
+`{"<item id>": "why"}` and pass it; an id the worklist does not have is refused.
+Every divergence (a Rector change reverted, a post-port fix, a behavior change, a
+pre-existing bug, a tooling deviation) is logged with `log-decision.sh` as it
+happens, never repeated here: `port-report.sh` merges the decision log. As the
+port ran you should have **tee'd** the official Rector output, the digests pass
+output and the final validate-loop PHPStan deprecation report into
+`<state_dir>/change-log.txt` (under `$HOME`, never in the project tree);
+`port-report.sh` pipes it through `explain-deprecations.sh` for the "changes,
+explained" section. Then generate the manifest and render:
 
 ```bash
-# Write <state_dir>/port-manifest.json with: machine_name, type, phase ("port"),
-# core_version_requirement, require_php, php_target, version_bump,
-# rector_official_files, digests {applied, rejected:[{rule,reason}], skipped},
-# manual_edits[], deprecations_remaining, deferred_to_phase2[], patch,
-# d10_support (from verify-core-matrix.sh when Step 7b ran, else the Step 1 value),
-# port_safety (the JSON printed by check-port-safety.sh --json),
-# signature_changes (the JSON printed by scan-signature-changes.sh --json),
-# metadata_lint (the JSON printed by lint-extension-metadata.sh --json, Step 7:
-# rendered as "Pre-existing hygiene (not fixed in Phase 1)"; port-report.sh falls
-# back to the metadata-lint.json it saves),
-# soft_deprecations (the JSON printed by classify-deprecations.sh --json; add its
-# soft symbols with action "defer" to deferred_to_phase2, and count only hard +
-# unknown ones in deprecations_remaining),
-# verification {core_matrix (the JSON of verify-core-matrix.sh --json, Step 7b),
-# phpcs_ruleset (the .drupilot object of run-phpcs.sh --json:
-# which ruleset was used — the project's own, or drupilot's default and why),
-# commit_hooks (the JSON of git-hooks.sh --run-equivalents when a hook was
-# substituted, else {"bypassed": false, "note": "hooks ran on commit"}),
-# negative_controls (the records of negative-control.sh --json, when a test was
-# written for a fix; port-report.sh falls back to negative-controls.json)}.
-# Each manual_edits item may be a plain string OR an object
-# {edit, why?, change_record?} so the report can explain WHY each manual change
-# was made (and link its change record).
-# Structured outcome fields (aggregated across modules and layers by
-# layer-report.sh; the log-decision.sh entries are merged in, deduplicated):
-# rector_rules (the rule_hits of the applying run-rector.sh --json),
-# rector_reversions [{rule, file, why}], post_port_fixes [{fix, file, why,
-# detected_by}], preexisting_bugs [{issue, file, note}], behavior_changes
-# [{change, why, review_hint}], tooling_deviations [{what, why}], validation
-# [strings: how the result was validated], learned_patterns {scan (the JSON of
-# patterns.sh scan --json, Step 2c), recorded [the ids added in Step 8b]}.
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/manifest.sh" --subject <path> --phase port --rationale <state_dir>/rationale.json --json
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" --subject "$1" --manifest "<state_dir>/port-manifest.json" --changes-log "<state_dir>/change-log.txt"
 ```
+
+(Leave `--rationale` out when no item needs one; an earlier rationale is kept for
+the items still in the worklist.)
 
 It writes `port-report.md` into the visible `.drupilot/` artifacts dir at the
 Drupal root (and pulls the `preservation` verdict — with the baseline
@@ -680,15 +661,13 @@ comparison: regressions, pre-existing failures, tests the port fixed — from
 `--changes-log` to `<state_dir>/change-log.txt`, so teeing the analyzer output
 there is enough. Given the manifest, it also records the **ported** stage in the
 subject's `state.json` (the per-module registry), so `/drupilot-status` and the
-router move past `/drupilot-port`. `SendUserFile` it so it surfaces as a deliverable. Every field
-is optional — the report still renders from partial data, and never invents a value.
+router move past `/drupilot-port`. `SendUserFile` it so it surfaces as a deliverable. The
+report still renders from partial data, and never invents a value.
 It also refreshes `port-summary.json` beside the report: the versioned machine
 summary (`scripts/analysis/port-summary.sh --subject <dir> --json`: status,
 effort, files changed, Rector rules, reverted rules, manual fixes, preservation,
-core matrix, patch) that wrappers read instead of the Markdown. Add
-`files_changed` (the number of files the port changed, e.g. the `diff --git`
-entries of the local patch) to the manifest so the summary does not have to
-fall back to counting the patch.
+core matrix, patch) that wrappers read instead of the Markdown; the manifest
+carries `files_changed`, so the summary does not fall back to counting the patch.
 
 ## Step 10 — What next? (developer chooses)
 
