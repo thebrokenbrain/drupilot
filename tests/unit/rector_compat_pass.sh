@@ -145,6 +145,28 @@ rr ok DRUPILOT_PHP_TARGET=8.3
 assert_eq "an older rector-compat.php is regenerated, after a backup" \
   "$(grep -c 'drupilot-template-version: 1' "$r/rector-compat.php")|$(grep -l 'drupilot-template-version: 0' "$r"/.drupilot/backups/rector-compat.php.* 2> /dev/null | grep -c . || true)" "1|1"
 
+# A test-bed shared by two modules: the untouched rector-compat.php follows the
+# subject (it named the previous one, whose path may be gone).
+O=web/modules/custom/other_mod; mkdir -p "$r/$O/src"
+printf 'name: Other\ntype: module\ncore_version_requirement: ^10 || ^11\n' > "$r/$O/other_mod.info.yml"
+printf '<?php\n' > "$r/$O/src/Other.php"
+ro() { printf '%s' "$1" > "$r/mode"; : > "$r/calls"
+  t_run env PATH="$STUBS:$PATH" DRUPILOT_PHP_TARGET=8.3 "$T_SH" "$T_REPO/scripts/analysis/run-rector.sh" --subject "$r/$2" --json; }
+ro ok "$O"
+assert_eq "another subject on the same root: rector-compat.php regenerated for it, after a backup" \
+  "$T_RC|$(grep -c "'$O'," "$r/rector-compat.php")|$(grep -c "'$S'," "$r/rector-compat.php")|$(grep -l "'$S'," "$r"/.drupilot/backups/rector-compat.php.* 2> /dev/null | xargs grep -l 'drupilot-template-version: 1' | grep -c . || true)" \
+  "0|1|0|1"
+assert_match "... with a warning" "$(tr '\n' ' ' < "$T_ERR")" 'rector-compat\.php was an untouched drupilot render for another PHP floor or subject; regenerated'
+ro ok "$S"
+assert_eq "... and back again" "$T_RC|$(grep -c "'$S'," "$r/rector-compat.php")" "0|1"
+# A hand-edited copy naming another subject is kept, with a warning.
+sed_inplace "$r/rector-compat.php" "s#'$S',#'$O',#"
+printf '\n// hand edit\n' >> "$r/rector-compat.php"; cp "$r/rector-compat.php" "$T_TMP/compat-other.php"
+ro ok "$S"
+assert_file_eq "a hand-edited rector-compat.php for another subject is left alone" "$r/rector-compat.php" "$T_TMP/compat-other.php"
+assert_match "... with a warning naming the subject" "$(tr '\n' ' ' < "$T_ERR")" "rector-compat\\.php does not name $S in withPaths\\(\\)"
+rm -f "$r/rector-compat.php"
+
 # L >= 8.4: no compat pass.
 r84="$T_TMP/root84"; mkroot "$r84"
 jq '.require.php = ">=8.4"' "$r84/$S/composer.json" > "$T_TMP/c.json" && cp "$T_TMP/c.json" "$r84/$S/composer.json"
@@ -164,10 +186,12 @@ r="$r_save"
 
 # The core target moved to ^11 after rector.php was rendered at 8.1: the
 # untouched render is regenerated at the new floor, after a backup.
+nb81() { grep -l 'PHP_81' "$r"/.drupilot/backups/rector.php.* 2> /dev/null | grep -c . || true; }
+nb_before="$(nb81)"
 rr ok DRUPILOT_PHP_TARGET=8.3 DRUPILOT_CORE_TARGET_STRATEGY=d11-only
 assert_eq "floor 8.1 -> 8.3: rector.php regenerated" \
   "$T_RC|$(j '.php_floor')|$(grep -c 'PhpVersion::PHP_83' "$r/rector.php")" '0|"8.3"|1'
-assert_eq "... the 8.1 copy backed up" "$(grep -l 'PHP_81' "$r"/.drupilot/backups/rector.php.* 2> /dev/null | grep -c . || true)" "1"
+assert_eq "... the 8.1 copy backed up" "$(( $(nb81) - nb_before ))" "1"
 # A hand-edited rector.php at another floor is left alone, with a warning.
 printf '\n// hand edit\n' >> "$r/rector.php"; cp "$r/rector.php" "$T_TMP/edited.php"
 rr ok DRUPILOT_PHP_TARGET=8.3
