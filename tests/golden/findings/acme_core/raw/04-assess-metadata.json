@@ -1,0 +1,24 @@
+{
+  "checks_run": [
+    "config-schema",
+    "plugin-schema",
+    "configure-route",
+    "services-class",
+    "services-arity",
+    "submodule-core-req",
+    "undeclared-deps"
+  ],
+  "digest_algo": 2,
+  "findings": [],
+  "meta": {
+    "generated_at": "2026-10-06T03:15:17Z"
+  },
+  "subject": "web/modules/custom/acme_core",
+  "subject_digest": "4ff2c3678b7a6f26892219451e3244eaa08f04b667c3abd1b11298f88869f196",
+  "tool": "lint-extension-metadata",
+  "totals": {
+    "error": 0,
+    "info": 0,
+    "warn": 0
+  }
+}

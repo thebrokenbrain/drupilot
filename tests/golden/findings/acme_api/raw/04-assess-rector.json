@@ -1,0 +1,28 @@
+{
+  "applied": false,
+  "changed_files": 0,
+  "compat_files": [],
+  "compat_status": "ok",
+  "digests_pass": false,
+  "digests_sha": null,
+  "digests_status": "off",
+  "errors": [],
+  "file_diffs": [],
+  "files": [],
+  "ok": true,
+  "pass1_files": [],
+  "pass2_files": [],
+  "php_ceiling": "8.5",
+  "php_floor": "8.1",
+  "rule_hits": {
+    "official": {}
+  },
+  "rules": [],
+  "runner": {
+    "php_version": "8.3.33",
+    "runner": "ddev",
+    "tool_version": "2.6.1"
+  },
+  "status": "ok",
+  "tool": "rector"
+}

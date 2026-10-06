@@ -1,0 +1,21 @@
+{
+  "base": null,
+  "checks": [
+    "plugin-di",
+    "removed-use",
+    "static-factory",
+    "fapi-callable",
+    "serialization",
+    "override-attribute",
+    "class-case"
+  ],
+  "core_requirement": "^10.3",
+  "diff_mode": false,
+  "drupal_root": ".",
+  "errors": 0,
+  "findings": [],
+  "ok": true,
+  "subject": "web/modules/custom/acme_core",
+  "tool": "check-port-safety",
+  "warnings": 0
+}

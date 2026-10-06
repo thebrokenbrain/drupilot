@@ -39,3 +39,17 @@ A verdict is only shown as current while the module's sources are the ones it wa
 drupilot 1.0 computes algorithm 2, which added Twig, JS and CSS. Every digest recorded by drupilot 0.9 (algorithm 1, no `digest_algo`) differs from it, so after an upgrade those records show as stale once (`stale_reason: "digest-algorithm"`, next to `fresh: false`; a record on changed sources has `"sources-changed"`): re-run the step to refresh them. Until then the next step after a green 0.9 test run is `/drupilot-test`, and a failing 0.9 verdict (a regression, a failed core matrix) keeps blocking `port-summary --strict`, because drupilot cannot tell whether its sources changed; a verdict on sources that did change is reported but never blocks.
 
 Records that are compared or hashed between runs keep their timestamps under a top-level `meta` object, so two runs that compute the same result write the same bytes outside it: `rector-rules.json` keeps `meta.generated_at`, and `last-test.json` keeps when each negative control ran in `meta.negative_controls` (`recorded_at` stays where 0.9 put it).
+
+## Raw reports and findings
+
+drupilot 1.0 does not hand the analyzers' output to the model as it is. A stage first runs its deterministic tools and keeps their reports in the same hidden state dir, under `raw/`. `scripts/ai/extract.sh --subject DIR [--stage S]` writes one file per tool, `raw/<NN>-<stage>-<tool>.json`, where `NN` is the stage's place in [the pipeline](pipeline.md). The tools are Rector (a dry-run), PHPStan, PHPCS, the port-safety checks, the signature-change scan and the metadata lint. Each report is canonical: its paths are relative to the Drupal root, its keys are sorted, and its timestamps are moved under `meta`. Two more files complete the stage:
+
+- `<NN>-<stage>-anchors.json` holds the anchor of every line the reports name in a PHP file, computed once in the test-bed.
+- `<NN>-<stage>-index.json` names the subject, the target major and each tool's exit code.
+
+`scripts/ai/normalize-findings.sh` then turns a stage's raw files into `findings.json` (schema `schemas/findings.schema.json`, [ADR 0022](../contributing/adr/0022-findings-shape.md)). Each finding has a stable id, its file relative to the module, its anchor (the innermost `Namespace\Class::method` or function, else `{file}`), its symbol, a normalized message and its occurrence. It also carries a severity, a `scope` and a `class`:
+
+- `scope` is `current`, or `next-major` for a soft deprecation under the `report` or `defer` policy (`DRUPILOT_SOFT_DEPRECATIONS`).
+- `class` is a deprecation's `hard`, `soft` or `unknown`, else `analysis`, `safety`, `signature`, `metadata`, `style` or `rector`.
+
+The id never includes the line number, so moving code keeps its findings' ids. Findings of different tools about the same symbol at the same anchor are merged, and `sources[]` lists each tool. `findings.json` is a pure function of the raw files, the target major and the soft policy: the same raw files give the same bytes outside `meta`, which records the raw files' hashes and `findings_hash`.

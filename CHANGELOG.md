@@ -437,6 +437,26 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     (`.lenient_packages`), in `install-toolchain.sh --json` and in
     `last-test.json` (`lenient`). The port report names it next to the
     preservation verdict, which it never changes (CC-14).
+- **Raw tool reports and `findings.json`** (T-M4-05, AR-10, ADR 0022).
+  - `scripts/ai/extract.sh --subject DIR [--stage S]` runs a stage's
+    deterministic tools and keeps each report as
+    `<state>/raw/<NN>-<stage>-<tool>.json`. The tools are Rector (a dry-run),
+    PHPStan, PHPCS, port-safety, the signature scan and the metadata lint.
+    Each report has root-relative paths, sorted keys and its timestamps under
+    `meta`. The anchor of every reported line is computed once in the bed
+    (`anchor.php`) and kept as one more raw file.
+  - `scripts/ai/normalize-findings.sh` makes `findings.json` from them. Each
+    finding has a stable id that never includes the line, a subject-relative
+    file, an anchor, a symbol, a normalized message, an occurrence, a
+    severity, a `scope` (`current` or `next-major`) and a `class`. Findings of
+    different tools about the same symbol at the same anchor are merged into
+    one, with `sources[]`. The script needs only jq and a sha256 tool, so the
+    goldens run on every CI leg.
+  - `schemas/findings.schema.json` is the contract (the `schemas` gate).
+    `tests/golden/findings/` holds the lab recordings of `legacy_widgets`
+    and the monorepo's `acme_core` and `acme_api`. Two recordings of the same
+    tree gave the same bytes outside `meta`.
+  - `docs/reference/state.md` documents the raw files and the findings.
 
 ### Changed
 - **`scripts/dev/unit.sh` runs the tests in parallel** (`--jobs N`, default

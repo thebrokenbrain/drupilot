@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thebrokenbrain.github.io/drupilot/schemas/findings.schema.json",
+  "title": "drupilot findings (<state>/findings.json)",
+  "description": "One stage's normalized findings (AR-10, ADR 0022), written by scripts/ai/normalize-findings.sh from the stage's raw tool reports. Everything outside meta is a pure function of the raw files, the target major and the soft-deprecation policy (DET-2); meta is left out of findings_hash.",
+  "type": "object",
+  "required": ["schema", "stage", "subject", "target", "anchors", "counts", "findings", "meta"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": 1},
+    "stage": {"description": "The stage id of config/pipeline.json whose raw files were read.", "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "subject": {
+      "type": "object",
+      "required": ["machine_name", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "machine_name": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
+        "path": {"description": "The subject's path relative to the Drupal root.", "anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]}
+      }
+    },
+    "target": {
+      "type": "object",
+      "required": ["major", "soft_policy", "runner", "php_version"],
+      "additionalProperties": false,
+      "properties": {
+        "major": {"type": "integer", "minimum": 8},
+        "soft_policy": {"enum": ["report", "defer", "fix"]},
+        "runner": {"description": "Where Rector ran (its report's runner provenance), or null.", "anyOf": [{"enum": ["ddev", "host"]}, {"type": "null"}]},
+        "php_version": {"anyOf": [{"type": "string", "pattern": "^[0-9]+\\.[0-9]+"}, {"type": "null"}]}
+      }
+    },
+    "anchors": {"description": "php: the raw anchors file came from anchor.php; unavailable: no PHP ran it, so every anchor is {file}.", "enum": ["php", "unavailable"]},
+    "counts": {
+      "type": "object",
+      "required": ["total", "current", "next_major", "by_tool", "by_class"],
+      "additionalProperties": false,
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "current": {"type": "integer", "minimum": 0},
+        "next_major": {"type": "integer", "minimum": 0},
+        "by_tool": {"type": "object", "propertyNames": {"$ref": "#/$defs/tool"}, "additionalProperties": {"type": "integer", "minimum": 1}},
+        "by_class": {"type": "object", "propertyNames": {"$ref": "#/$defs/class"}, "additionalProperties": {"type": "integer", "minimum": 1}}
+      }
+    },
+    "findings": {
+      "description": "Sorted by file, anchor and id.",
+      "type": "array",
+      "items": {"$ref": "#/$defs/finding"}
+    },
+    "meta": {
+      "description": "What changes between two runs of the same tree; not hashed.",
+      "type": "object",
+      "required": ["findings_hash", "raw"],
+      "properties": {
+        "findings_hash": {"description": "json_hash of the document outside meta (canon_json_hashable).", "type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "raw": {
+          "description": "Each raw file read, by name, with the hash of its content outside its own meta.",
+          "type": "object",
+          "propertyNames": {"pattern": "^[0-9]{2}-[a-z0-9-]+\\.json$"},
+          "additionalProperties": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+        },
+        "generated_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"}
+      }
+    }
+  },
+  "$defs": {
+    "tool": {"enum": ["rector", "phpstan", "phpcompat", "catalog", "upgrade_status", "phpcs"]},
+    "class": {"enum": ["hard", "soft", "unknown", "analysis", "safety", "signature", "metadata", "style", "php-target", "rector"]},
+    "finding": {
+      "type": "object",
+      "required": ["id", "tool", "rule", "file", "line", "anchor", "symbol", "message", "occurrence", "severity", "scope", "class", "sources"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"description": "F- + the first 12 hex of sha256(tool, rule, file, anchor, symbol, message, occurrence), joined by 0x1f; never the line.", "type": "string", "pattern": "^F-[0-9a-f]{12}$"},
+        "tool": {"$ref": "#/$defs/tool"},
+        "rule": {"description": "Rector's FQCN, PHPStan's identifier (phpstan:untyped:<8 hex> without one), PHPCS's source, or port-safety:<check>, signature:<id>, metadata:<check>.", "type": "string", "minLength": 1},
+        "file": {"description": "Relative to the subject.", "type": "string", "minLength": 1, "pattern": "^[^/]"},
+        "line": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
+        "anchor": {"description": "The innermost Namespace\\Class::method or function of the line, else {file}.", "type": "string", "minLength": 1},
+        "symbol": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
+        "message": {"description": "Normalized: runner paths, \"on line N\" and repeated blanks removed.", "type": "string"},
+        "occurrence": {"type": "integer", "minimum": 0},
+        "severity": {"enum": ["error", "warning", "info"]},
+        "scope": {"enum": ["current", "next-major"]},
+        "class": {"$ref": "#/$defs/class"},
+        "sources": {
+          "description": "Every tool report merged into this finding, in precedence order.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["tool", "rule", "line"],
+            "additionalProperties": false,
+            "properties": {
+              "tool": {"$ref": "#/$defs/tool"},
+              "rule": {"type": "string", "minLength": 1},
+              "line": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]}
+            }
+          }
+        }
+      }
+    }
+  }
+}

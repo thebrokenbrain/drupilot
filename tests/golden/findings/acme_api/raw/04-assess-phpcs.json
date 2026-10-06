@@ -1,0 +1,60 @@
+{
+  "drupilot": {
+    "fallback_reason": null,
+    "location": null,
+    "mode": "auto",
+    "pass_extensions": true,
+    "ruleset": null,
+    "runner": {
+      "php_version": "8.3.33",
+      "runner": "ddev",
+      "tool_version": "8.3.31"
+    },
+    "source": "drupilot",
+    "standard": "Drupal,DrupalPractice",
+    "test_version": "8.3-",
+    "test_version_source": "php-target"
+  },
+  "files": {
+    "web/modules/custom/acme_api/acme_api.info.yml": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/acme_api/acme_api.routing.yml": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/acme_api/acme_api.services.yml": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/acme_api/src/Client/ApiClient.php": {
+      "errors": 0,
+      "messages": [],
+      "warnings": 0
+    },
+    "web/modules/custom/acme_api/src/Controller/StatusController.php": {
+      "errors": 0,
+      "messages": [
+        {
+          "column": 61,
+          "fixable": false,
+          "line": 30,
+          "message": "\\Drupal calls should be avoided in classes, use dependency injection instead",
+          "severity": 5,
+          "source": "DrupalPractice.Objects.GlobalDrupal.GlobalDrupal",
+          "type": "WARNING"
+        }
+      ],
+      "warnings": 1
+    }
+  },
+  "totals": {
+    "errors": 0,
+    "fixable": 0,
+    "warnings": 1
+  }
+}

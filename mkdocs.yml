@@ -103,4 +103,5 @@ nav:
           - contributing/adr/0019-rector-template-from-the-plan.md
           - contributing/adr/0020-phpstan-neon-from-the-plan.md
           - contributing/adr/0021-drupal-target-and-target-major.md
+          - contributing/adr/0022-findings-shape.md
   - Changelog: changelog.md

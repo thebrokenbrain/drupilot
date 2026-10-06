@@ -5,7 +5,7 @@
 # (a developer/CI tool: no command, skill or hook calls it; the `docs` gate of
 # scripts/dev/check.sh runs --check). Each page starts with a GENERATED
 # comment and is never edited by hand:
-#   reference/scripts.md            every scripts/{analysis,contrib,env,tests,dev}/*.sh
+#   reference/scripts.md            every scripts/{ai,analysis,contrib,env,tests,dev}/*.sh
 #                                   header (print_usage; no script is run)
 #   reference/commands.md           commands/*.md frontmatter
 #   reference/skills-and-agents.md  skills/*/SKILL.md and agents/*.md frontmatter
@@ -97,7 +97,7 @@ gen_scripts() {
     print_usage "$REPO/scripts/$f" | sed -e 's/[[:space:]]*$//'
     printf '```\n'
   done
-  for g in analysis contrib env tests dev; do
+  for g in ai analysis contrib env tests dev; do
     printf '\n## %s\n' "$g"
     for f in $(cd "$REPO/scripts/$g" && ls ./*.sh 2>/dev/null | sed 's#^\./##' | sort); do
       printf '\n### %s/%s\n\n```text\n' "$g" "$f"

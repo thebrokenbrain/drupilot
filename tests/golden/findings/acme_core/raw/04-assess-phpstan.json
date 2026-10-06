@@ -1,0 +1,32 @@
+{
+  "drupilot": {
+    "crash": [],
+    "exit_code": 1,
+    "notices": [],
+    "phpstan_exit_code": 1,
+    "runner": {
+      "php_version": "8.3.33",
+      "runner": "ddev",
+      "tool_version": "2.2.16"
+    },
+    "status": "findings"
+  },
+  "errors": [],
+  "files": {
+    "web/modules/custom/acme_core/src/AcmeFormatter.php": {
+      "errors": 1,
+      "messages": [
+        {
+          "identifier": "parameter.notFound",
+          "ignorable": true,
+          "line": 20,
+          "message": "PHPDoc tag @param references unknown parameter: $config_factory"
+        }
+      ]
+    }
+  },
+  "totals": {
+    "errors": 0,
+    "file_errors": 1
+  }
+}
