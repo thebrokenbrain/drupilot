@@ -401,6 +401,16 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   - Every reader goes through `lock_path` / `drupilot_lock_file`; the
     `hard-rules` gate's new `LOCK` rule fails on a lock path spelled anywhere
     else. `lock_get` and `lock_show` no longer create the state dir.
+- **`config/pipeline.json`, the stage catalog** (T-M4-13, AR-07): the
+  ordered stages of a port.
+  - The ids are `doctor`, `plan-draft`, `setup`, `assess`, `plan-final`,
+    `d7-rewrite`, `upgrade`, `php`, `residual`, `validate`, `test`, `report`,
+    `refactor` and `contribute`. They are public and stable from 1.0 on.
+  - Each stage carries its label, kind, weight, conditions, skip reason, tabs,
+    sub-steps, outputs, gate, the `state.json` coarse stage it records, and
+    the skill step that defines its procedure.
+  - `schemas/pipeline.schema.json` validates it (the `schemas` gate), and
+    `docs/reference/pipeline.md` is generated from it.
 
 ### Changed
 - **`scripts/dev/unit.sh` runs the tests in parallel** (`--jobs N`, default

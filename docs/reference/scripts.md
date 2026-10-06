@@ -3672,6 +3672,7 @@ comment and is never edited by hand:
   reference/skills-and-agents.md  skills/*/SKILL.md and agents/*.md frontmatter
   reference/configuration.md      config/config-reference.json + config/defaults.json
   reference/choices.md            config/choices.json
+  reference/pipeline.md           config/pipeline.json (the stage catalog)
   reference/toolchain.md          config/toolchain-reference.json
   reference/deprecations.md       config/deprecations.json (Drupal's deprecations)
   reference/version-matrix.md     config/targets/*.json, config/php/*.json and
@@ -3863,7 +3864,8 @@ developer/CI tool: no command, skill or hook calls it; scripts/dev/check.sh
 runs it as its `schemas` gate). Each schema is checked against the
 instances listed below: the 0.9 captures of tests/baseline/v0.9.0/, the lab
 samples of tests/baseline/v0.9.0/samples/, a live `preflight.sh --json`, the
-version data of config/targets|php|paths and an example catalog (the data
+version data of config/targets|php|paths, the stage catalog
+config/pipeline.json and an example catalog (the data
 gate, scripts/dev/data-check.sh, also checks their provenance). Two engines:
   jq         always available: the structural validator of
              scripts/dev/jsonschema.jq, reading the same schemas (only the
