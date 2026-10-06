@@ -537,11 +537,12 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   parse. For `^11` with a PHP 8.4 target the sets drop from php84 to php83,
   and the compat pass keeps the implicit-nullable fix. A `rector.php` from an
   older template is backed up and regenerated as before; an untouched
-  current render of `rector.php` or `rector-compat.php` is also regenerated
-  when its floor moves (the core target chosen at port time is not the one
-  setup assumed) or, in `render-templates.sh`, when it was rendered for
-  another subject of a shared test-bed (0.9 reported that as `differs`,
-  exit 3); a hand-edited one is kept with a warning. A project's own `rector.php` without
+  current render of `rector.php` is also regenerated when its floor moves
+  (the core target chosen at port time is not the one setup assumed), and
+  one of `rector.php` or `rector-compat.php` (whose only input is the
+  subject) when it was rendered for another subject of a shared test-bed
+  (0.9 reported that as `differs`, exit 3); a hand-edited one is kept with a
+  warning. A project's own `rector.php` without
   `withPhpVersion()` gets a warning.
 - **Rector skips three more rules** (T-M2-14): `SleepToSerializeRector` and
   `WakeupToUnserializeRector` (`DependencySerializationTrait` defines
@@ -620,6 +621,39 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `last-test.json` no longer carries each control's `at`, which moves to
   `meta.negative_controls` (and stays in `negative-controls.json`). The
   `last-test.json` schema accepts both shapes.
+- **Deterministic tool invocation** (T-M4-03, 05-R2, DET-1, DET-2).
+  - `run-rector.sh` runs every pass with Rector's JSON report
+    (`--output-format=json --no-progress-bar`). The changed files and the rule
+    hits come from its `file_diffs` and `applied_rectors` instead of parsing
+    the console. A person still sees each diff and its rules on STDERR.
+  - Its `--json` gains `file_diffs` (`[{pass, file, applied_rectors, diff}]`,
+    sorted by file: Rector's parallel jobs end in any order) and `runner`.
+    Rector's file errors are sorted too.
+  - `run-phpstan.sh` and `run-phpcs.sh` sort their reports (files by path,
+    messages by line) and add `drupilot.runner`. `runner` is `{runner:
+    ddev|host, php_version, tool_version}`. Every 0.9 key is kept.
+  - In deterministic mode, these cases exit 3 (`DRUPILOT_DETERMINISTIC=false`
+    accepts them). This also applies to the attributes pass:
+    - a tool whose installed version differs from the one the lock pins (the
+      message names both remedies: restore the pins with `install-toolchain.sh`,
+      or accept the installed versions with `lock-sync.sh`);
+    - a host run on a root that has a DDEV project while the ddev CLI is
+      there. Without ddev, the analyze profile runs on the host by plan.
+  - A DET-1 refusal still prints the documented `--json` shape of exit 3 (Rector
+    `errors[].pass` 0, PHPStan `crashed`, PHPCS `drupilot.error`, the attributes
+    pass `status: "error"`). The prompts read it as "the tool did not run", not
+    as a crash to repair with `--source reference`.
+  - Under DDEV the digests checkout is copied under
+    `<root>/.drupilot/digests/<sha>/`, so that pass runs in the bed instead of
+    on the host's PHP. A config under the root is passed relative to it. An
+    explicit `--config` outside the root is staged alone. A failed copy is a
+    digests error (partial, exit 4).
+  - Two lab runs give byte-identical canonical reports.
+- **The `legacy_widgets` raw goldens are re-recorded** (T-M4-03, lab L-M4) with
+  the deterministic tools. The H10 patch is unchanged.
+  - `rector-dryrun.json` gains `file_diffs` and `runner`.
+  - `phpstan.json` and `phpcs.json` gain `drupilot.runner`.
+  - PHPStan's messages on one line come in identifier order.
 
 ### Deprecated
 - **The 0.9 strategy vocabulary** (T-M3-07, CC-07), kept for all of 1.x and
@@ -668,6 +702,18 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   Drupal 10.3 code without qualification: `WidgetImportForm` redeclares
   `FormBase`'s `$loggerFactory` as `private readonly` and typed, a fatal error
   when the class loads. The fixture is unchanged (part of H12).
+- **`run-rector.sh` now re-renders `rector-compat.php` for the module it
+  runs on** (found by the T-M4-05 lab). On a test-bed shared by several
+  modules, the compat pass kept the config rendered for the previous module,
+  and Rector stopped the pass once that module's path was gone.
+  - An untouched render for another module is now backed up and rendered
+    again, as `rector.php` already was. An untouched render is one whose
+    sha256 the lock keeps, or one that is byte for byte the template's.
+  - A hand-edited copy is kept. A warning names any relative `withPaths()`
+    path in it that does not exist.
+  - Two config backups within the same second no longer share one name, in
+    `run-rector.sh` and `render-templates.sh` alike (`config_backup` in
+    `scripts/lib/paths.sh`).
 
 ## [0.9.2] - 2026-10-04
 

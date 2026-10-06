@@ -97,7 +97,11 @@ from `DRUPILOT_PHP_TARGET` (default `8.3`) and auto-detect whether to run throug
    report it as "0 files would change". Show the diagnostic it prints (installed vs
    known-good toolchain), stop the assessment and repair the toolchain with
    `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-toolchain.sh" --dir <drupal_root> --source reference`
-   (or `/drupilot-setup`), then re-run.
+   (or `/drupilot-setup`), then re-run. A message starting `DET-1:` (`errors[].pass`
+   0) is not a crash: Rector did not run, because DDEV is down for a root with a
+   DDEV project or a tool differs from the lock's pins. Start DDEV, or restore the
+   pins (`install-toolchain.sh --dir <drupal_root>`) or accept the installed versions
+   (`lock-sync.sh --dir <drupal_root>`), never `--source reference` for it, then re-run.
 
 2. **Rector dry-run — complementary digests layer**, only if
    `DRUPILOT_USE_DIGESTS_RULES` is true. This clones/updates the unlicensed,

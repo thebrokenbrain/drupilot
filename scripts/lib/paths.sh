@@ -232,3 +232,21 @@ project_artifacts_dir() {
   [[ -f "$d/.gitignore" ]] || printf '*\n' > "$d/.gitignore" 2>/dev/null || true
   ( cd "$d" 2>/dev/null && pwd ) || printf '%s' "$d"
 }
+
+# config_backup ROOT FILE -> copy FILE into the artifacts dir of ROOT
+# (<root>/.drupilot/backups/, gitignored) as <name>.<UTC time>, numbered (.1,
+# .2, ...) when that name is taken, so two backups within one second never
+# share a name, and print the backup's path. Returns 1 when FILE is missing or
+# the copy fails. Used by every script that replaces a config it rendered.
+config_backup() {
+  local root="${1:-}" f="${2:-}" bdir base backup n=1
+  [[ -f "$f" ]] || return 1
+  bdir="$(project_artifacts_dir "$root")/backups"
+  mkdir -p "$bdir" 2> /dev/null || return 1
+  base="$bdir/$(basename "$f").$(date -u +%Y%m%dT%H%M%SZ)"
+  backup="$base"
+  while [[ -e "$backup" ]]; do backup="$base.$n"; n=$((n + 1)); done
+  cp -p "$f" "$backup" || return 1
+  printf '%s' "$backup"
+  return 0
+}

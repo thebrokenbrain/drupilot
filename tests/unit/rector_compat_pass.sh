@@ -38,17 +38,17 @@ mkroot() {
 d="$(cd "$(dirname "$0")/../.." && pwd)"; echo "$*" >> "$d/calls"
 m=" $(cat "$d/mode" 2>/dev/null) "; dry=0; cfg=official
 for a in "$@"; do case "$a" in --dry-run) dry=1;; rector-compat.php) cfg=compat;; *digests.php) cfg=digests;; esac; done
+# change FILE RULE -> Rector's JSON report of one changed file (exit 2 on a dry-run).
 change() {
-  printf '1 file with changes\n===================\n\n1) web/modules/custom/legacy_widgets/%s:10\n\n' "$1"
-  printf '    ---------- begin diff ----------\n@@ @@\n-a\n+b\n    ----------- end diff -----------\n\n'
-  printf 'Applied rules:\n * %s\n\n\n' "$2"
-  if [ "$dry" = 1 ]; then echo " [OK] 1 file would have been changed (dry-run) by Rector"; exit 2; fi
-  echo " [OK] 1 file has been changed by Rector"; exit 0
+  printf '{"totals":{"changed_files":1,"errors":0},"file_diffs":[{"file":"web/modules/custom/legacy_widgets/%s","diff":"@@ @@\\n-a\\n+b\\n","applied_rectors":["Rector\\\\Stub\\\\%s"]}],"changed_files":["web/modules/custom/legacy_widgets/%s"]}\n' "$1" "$2" "$1"
+  if [ "$dry" = 1 ]; then exit 2; fi
+  exit 0
 }
+done_() { echo '{"totals":{"changed_files":0,"errors":0}}'; exit 0; }
 case "$cfg" in
   compat)
-    case "$m" in *" compat-crash "*) echo " [ERROR] Could not process: boom"; exit 1;; *" compat-noop "*) echo " [OK] Rector is done!"; exit 0;; esac
-    case "$m" in *" compat-noop-apply "*) [ "$dry" = 1 ] || { echo " [OK] Rector is done!"; exit 0; };; esac
+    case "$m" in *" compat-crash "*) echo '{"fatal_errors":["boom"]}'; exit 1;; *" compat-noop "*) done_;; esac
+    case "$m" in *" compat-noop-apply "*) [ "$dry" = 1 ] || done_;; esac
     change src/WidgetLookup.php ExplicitNullableParamTypeRector;;
   digests)
     case "$m" in *" digests-overlap "*) [ "$dry" = 1 ] && change src/WidgetLookup.php SomeDigestsRector;; esac;;
@@ -57,7 +57,7 @@ case "$cfg" in
       *" official-lookup "*) change src/WidgetLookup.php FunctionFirstClassCallableRector;;
       *" official-dry-only "*) [ "$dry" = 1 ] && change src/Form/WidgetImportForm.php FunctionFirstClassCallableRector;; esac;;
 esac
-echo " [OK] Rector is done!"; exit 0
+done_
 STUB
   chmod +x "$1/vendor/bin/rector"
 }
@@ -145,6 +145,105 @@ rr ok DRUPILOT_PHP_TARGET=8.3
 assert_eq "an older rector-compat.php is regenerated, after a backup" \
   "$(grep -c 'drupilot-template-version: 1' "$r/rector-compat.php")|$(grep -l 'drupilot-template-version: 0' "$r"/.drupilot/backups/rector-compat.php.* 2> /dev/null | grep -c . || true)" "1|1"
 
+# A test-bed shared by two modules: the untouched rector-compat.php follows the
+# subject (it named the previous one, whose path may be gone).
+O=web/modules/custom/other_mod; mkdir -p "$r/$O/src"
+printf 'name: Other\ntype: module\ncore_version_requirement: ^10 || ^11\n' > "$r/$O/other_mod.info.yml"
+printf '<?php\n' > "$r/$O/src/Other.php"
+ro() { printf '%s' "$1" > "$r/mode"; : > "$r/calls"
+  t_run env PATH="$STUBS:$PATH" DRUPILOT_PHP_TARGET=8.3 "$T_SH" "$T_REPO/scripts/analysis/run-rector.sh" --subject "$r/$2" --json; }
+ro ok "$O"
+assert_eq "another subject on the same root: rector-compat.php regenerated for it, after a backup" \
+  "$T_RC|$(grep -c "'$O'," "$r/rector-compat.php")|$(grep -c "'$S'," "$r/rector-compat.php")|$(grep -l "'$S'," "$r"/.drupilot/backups/rector-compat.php.* 2> /dev/null | xargs grep -l 'drupilot-template-version: 1' | grep -c . || true)" \
+  "0|1|0|1"
+assert_match "... with a warning" "$(tr '\n' ' ' < "$T_ERR")" 'rector-compat\.php was an untouched drupilot render for another subject; regenerated'
+ro ok "$S"
+assert_eq "... and back again" "$T_RC|$(grep -c "'$S'," "$r/rector-compat.php")" "0|1"
+# A render whose sha256 the lock lost (written by drupilot before it kept one:
+# rector_config_pristine) follows the subject too.
+LF="$(lock_path "$r")"
+jq 'del(.templates["rector-compat.php"])' "$LF" > "$T_TMP/lock.json" && cp "$T_TMP/lock.json" "$LF"
+ro ok "$O"
+assert_eq "an untouched render with no sha256 in the lock: regenerated for the subject" \
+  "$T_RC|$(grep -c "'$O'," "$r/rector-compat.php")|$(jq -r '.templates["rector-compat.php"].sha256 // "none"' "$LF" | grep -c '^sha256:' || true)" "0|1|1"
+ro ok "$S"
+# A hand-edited copy is kept; a withPaths() path that is gone is named.
+sed_inplace "$r/rector-compat.php" "s#'$S',#'web/modules/custom/gone',#"
+printf '\n// hand edit\n' >> "$r/rector-compat.php"; cp "$r/rector-compat.php" "$T_TMP/compat-gone.php"
+ro ok "$S"
+assert_file_eq "a hand-edited rector-compat.php is left alone" "$r/rector-compat.php" "$T_TMP/compat-gone.php"
+assert_match "... with a warning naming the path that is gone, and the re-render" "$(tr '\n' ' ' < "$T_ERR")" \
+  "names a path that does not exist in withPaths\\(\\): web/modules/custom/gone\\. .*--only rector-compat --force"
+sed_inplace "$r/rector-compat.php" "s#'web/modules/custom/gone',#'$O',#"
+ro ok "$S"
+assert_eq "  naming another module that exists: no warning" "$(grep -c 'names a path that does not exist' "$T_ERR" || true)" "0"
+# The developer's own file: one line, a parent directory, no trailing comma.
+printf "<?php\nreturn Rector\\Config\\RectorConfig::configure()->withPaths(['web/modules/custom'])->withSkip(['web/nope']);\n" > "$r/rector-compat.php"
+ro ok "$S"
+assert_eq "  the developer's own one-line withPaths(): no warning (withSkip is not read)" "$(grep -c 'names a path that does not exist' "$T_ERR" || true)" "0"
+printf "<?php\nreturn Rector\\Config\\RectorConfig::configure()->withPaths(['web/nope', __DIR__ . '/x']);\n" > "$r/rector-compat.php"
+ro ok "$S"
+assert_match "  ... one that is gone: warned, told to fix it" "$(tr '\n' ' ' < "$T_ERR")" 'withPaths\(\): web/nope\. .*Fix its withPaths\(\)'
+rm -f "$r/rector-compat.php"
+
+# config_backup: a second backup within the same second gets a numbered name.
+DS="$T_TMP/datestub"; mkdir -p "$DS"; printf '#!/bin/sh\necho 20260101T000000Z\n' > "$DS/date"; chmod +x "$DS/date"
+printf 'a\n' > "$T_TMP/cfg.php"; b1="$(PATH="$DS:$PATH" config_backup "$r" "$T_TMP/cfg.php")"
+printf 'b\n' > "$T_TMP/cfg.php"; b2="$(PATH="$DS:$PATH" config_backup "$r" "$T_TMP/cfg.php")"
+assert_eq "config_backup: two backups in one second keep both copies" \
+  "$(basename "$b1")|$(basename "$b2")|$(cat "$b1")|$(cat "$b2")" "cfg.php.20260101T000000Z|cfg.php.20260101T000000Z.1|a|b"
+assert_eq "  a missing file: return 1" "$(config_backup "$r" "$T_TMP/none.php" > /dev/null; echo $?)" "1"
+# Both scripts name their backups through it.
+REALDATE="$(command -v date)"
+printf '#!/bin/sh\nif [ "$1" = "-u" ] && [ "$2" = "+%%Y%%m%%dT%%H%%M%%SZ" ]; then echo 20260101T000000Z; exit 0; fi\nexec %s "$@"\n' "$REALDATE" > "$DS/date"
+ros() { printf 'ok' > "$r/mode"; : > "$r/calls"
+  t_run env PATH="$DS:$STUBS:$PATH" DRUPILOT_PHP_TARGET=8.3 "$T_SH" "$T_REPO/scripts/analysis/run-rector.sh" --subject "$r/$1" --json; }
+nbk() { find "$r/.drupilot/backups" -name "$1.20260101T000000Z*" | grep -c . || true; }
+ros "$S"; ros "$O"; ros "$S"
+assert_eq "run-rector.sh: two regenerations in one second keep both backups of each config" \
+  "$T_RC|$(nbk rector.php)|$(nbk rector-compat.php)" "0|2|2"
+for i in 1 2; do
+  printf '\n// hand edit %s\n' "$i" >> "$r/rector-compat.php"
+  t_run env PATH="$DS:$STUBS:$PATH" DRUPILOT_PHP_TARGET=8.3 "$T_SH" "$T_REPO/scripts/env/render-templates.sh" --root "$r" --subject "$r/$S" --only rector-compat --force
+done
+assert_eq "render-templates.sh --force twice in that second: two more backups" "$T_RC|$(nbk rector-compat.php)" "0|4"
+
+# rector_config_missing_paths: the relative literal paths of withPaths([...]) that are gone.
+mp() { printf '%s\n' "$1" > "$T_TMP/mp.php"; rector_config_missing_paths "$r" "$T_TMP/mp.php" | tr '\n' ' '; }
+assert_eq "missing paths: none in a list naming the subject" "$(mp "->withPaths([
+    '$S',
+  ])")" ""
+assert_eq "  a gone path" "$(mp "->withPaths([
+    'web/gone',
+    '$S',
+  ])")" "web/gone "
+assert_eq "  a commented-out entry, an inline comment, a trailing comment: ignored" "$(mp "->withPaths([
+    // 'web/old',
+    # 'web/old2',
+    /* 'web/old3' */ '$S', // was 'web/old4'
+  ])")" ""
+assert_eq "  a wildcard, an absolute (container) path and a __DIR__ path: not checked" \
+  "$(mp "->withPaths(['web/modules/custom/*', '/var/www/html/web/x', __DIR__ . '/web/gone', __DIR__.\"/web/gone2\"])")" ""
+assert_eq "  mixed quotes on one line" "$(mp "->withPaths([\"web/gone\", '$S'])")" "web/gone "
+assert_eq "  the list ends at its ]: a withSkip after ], ) is not read" "$(mp "->withPaths([
+    '$S',
+  ], )
+  ->withSkip(['web/nope'])")" ""
+assert_eq "  a docblock example is not the list" "$(mp "/**
+ * Like ->withPaths(['web/example']).
+ */
+return RectorConfig::configure()->withPaths(['web/gone']);")" "web/gone "
+assert_eq "  comments over several lines, without a space before them, and # comments" "$(mp "->withPaths([
+    /*
+      'web/old',
+    */
+    '$S',// 'web/old2'
+    '$S', # 'web/old3'
+    /* old */ 'web/gone',
+  ])")" "web/gone "
+assert_eq "  a variable in the list is not checked and does not end it" "$(mp "->withPaths([ \$paths['custom'], 'web/gone', ])")" "web/gone "
+assert_eq "  a missing file: nothing, exit 0" "$(rector_config_missing_paths "$r" "$T_TMP/none.php"; echo "rc=$?")" "rc=0"
+
 # L >= 8.4: no compat pass.
 r84="$T_TMP/root84"; mkroot "$r84"
 jq '.require.php = ">=8.4"' "$r84/$S/composer.json" > "$T_TMP/c.json" && cp "$T_TMP/c.json" "$r84/$S/composer.json"
@@ -164,10 +263,12 @@ r="$r_save"
 
 # The core target moved to ^11 after rector.php was rendered at 8.1: the
 # untouched render is regenerated at the new floor, after a backup.
+nb81() { grep -l 'PHP_81' "$r"/.drupilot/backups/rector.php.* 2> /dev/null | grep -c . || true; }
+nb_before="$(nb81)"
 rr ok DRUPILOT_PHP_TARGET=8.3 DRUPILOT_CORE_TARGET_STRATEGY=d11-only
 assert_eq "floor 8.1 -> 8.3: rector.php regenerated" \
   "$T_RC|$(j '.php_floor')|$(grep -c 'PhpVersion::PHP_83' "$r/rector.php")" '0|"8.3"|1'
-assert_eq "... the 8.1 copy backed up" "$(grep -l 'PHP_81' "$r"/.drupilot/backups/rector.php.* 2> /dev/null | grep -c . || true)" "1"
+assert_eq "... the 8.1 copy backed up" "$(( $(nb81) - nb_before ))" "1"
 # A hand-edited rector.php at another floor is left alone, with a warning.
 printf '\n// hand edit\n' >> "$r/rector.php"; cp "$r/rector.php" "$T_TMP/edited.php"
 rr ok DRUPILOT_PHP_TARGET=8.3

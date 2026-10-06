@@ -138,7 +138,11 @@ diagnostic (installed vs known-good versions), repair the toolchain with
 `install-toolchain.sh --dir <drupal_root> --source reference` (or fix `rector.php`
 when the toolchain already matches the known-good set), and re-run.
 In the report, record the Rector line as "not available (toolchain crash)" rather
-than an auto-fixable share of 0%.
+than an auto-fixable share of 0%. A message starting `DET-1:` (`errors[].pass` 0)
+is not a crash: Rector did not run (DDEV down for a root with a DDEV project, or a
+tool that differs from the lock's pins); start DDEV, or restore the pins
+(`install-toolchain.sh --dir <drupal_root>`) or accept the installed versions
+(`lock-sync.sh --dir <drupal_root>`), never `--source reference` for it.
 
 **Exit 4 means only the digests pass crashed** (`status: "partial"`, `digests_status: "error"` with `--json`; e.g. a broken upstream rule file): `pass1_files`/the official count stand, the toolchain is fine — do **not** reinstall it. Pin a known-good digests commit (`--digests-ref <sha>` / `DRUPILOT_DIGESTS_REF`) or skip the layer (`DRUPILOT_USE_DIGESTS_RULES=false`); the broken SHA is never frozen in the lockfile. In the report, record only the digests
 line as "not available (digests ruleset crash)".
@@ -160,7 +164,10 @@ read `.totals.file_errors` / `.totals.errors` rather than estimating from the
 human report. Check `.drupilot.status` first: `findings` / `clean` are a real
 verdict, but `crashed` (exit 3, `totals: null`, reason in `.drupilot.crash`) means
 PHPStan could not analyse at all (invalid config, fatal error) — report that as a
-blocker to fix, never as "0 deprecations" or "found issues". `.drupilot.notices`
+blocker to fix, never as "0 deprecations" or "found issues". A crash reason that
+starts with `DET-1:` means PHPStan did not run: DDEV is down for a root with a
+DDEV project, or a tool differs from the lock's pins (start DDEV, or run
+`install-toolchain.sh --dir <drupal_root>` / `lock-sync.sh --dir <drupal_root>`). `.drupilot.notices`
 lists PHP/config deprecation notices PHPStan printed (e.g. a stale `drupal_root`).
 
 **Hard vs soft (`DRUPILOT_SOFT_DEPRECATIONS`).** Classify the PHPStan JSON:

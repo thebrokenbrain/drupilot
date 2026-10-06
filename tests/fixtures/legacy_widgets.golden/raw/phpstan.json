@@ -4,6 +4,11 @@
     "exit_code": 1,
     "notices": [],
     "phpstan_exit_code": 1,
+    "runner": {
+      "php_version": "8.3.33",
+      "runner": "ddev",
+      "tool_version": "2.2.16"
+    },
     "status": "findings"
   },
   "errors": [],
@@ -104,10 +109,11 @@
           "tip": "See https://www.drupal.org/node/3110266"
         },
         {
-          "identifier": "property.visibility",
-          "ignorable": false,
+          "identifier": "dependencySerializationTraitProperty.unsupportedReadOnlyProperty",
+          "ignorable": true,
           "line": 21,
-          "message": "Private property Drupal\\legacy_widgets\\Form\\WidgetImportForm::$loggerFactory overriding protected property Drupal\\Core\\Form\\FormBase::$loggerFactory should be protected or public."
+          "message": "Read-only properties are incompatible with Drupal\\Core\\DependencyInjection\\DependencySerializationTrait when the trait is used by a parent class on PHP < 8.4.",
+          "tip": "Drupal\\Core\\DependencyInjection\\DependencySerializationTrait::__wakeup() cannot initialize a read-only property declared in a child class. Use the trait in this class directly, or remove the readonly modifier."
         },
         {
           "identifier": "property.extraNativeType",
@@ -116,17 +122,16 @@
           "message": "Property Drupal\\legacy_widgets\\Form\\WidgetImportForm::$loggerFactory (Drupal\\Core\\Logger\\LoggerChannelFactoryInterface) overriding property Drupal\\Core\\Form\\FormBase::$loggerFactory should not have a native type."
         },
         {
-          "identifier": "dependencySerializationTraitProperty.unsupportedReadOnlyProperty",
-          "ignorable": true,
-          "line": 21,
-          "message": "Read-only properties are incompatible with Drupal\\Core\\DependencyInjection\\DependencySerializationTrait when the trait is used by a parent class on PHP < 8.4.",
-          "tip": "Drupal\\Core\\DependencyInjection\\DependencySerializationTrait::__wakeup() cannot initialize a read-only property declared in a child class. Use the trait in this class directly, or remove the readonly modifier."
-        },
-        {
           "identifier": "property.readOnly",
           "ignorable": false,
           "line": 21,
           "message": "Readonly property Drupal\\legacy_widgets\\Form\\WidgetImportForm::$loggerFactory overrides readwrite property Drupal\\Core\\Form\\FormBase::$loggerFactory."
+        },
+        {
+          "identifier": "property.visibility",
+          "ignorable": false,
+          "line": 21,
+          "message": "Private property Drupal\\legacy_widgets\\Form\\WidgetImportForm::$loggerFactory overriding protected property Drupal\\Core\\Form\\FormBase::$loggerFactory should be protected or public."
         },
         {
           "identifier": "new.static",

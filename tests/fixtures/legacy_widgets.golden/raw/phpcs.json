@@ -5,6 +5,11 @@
     "mode": "auto",
     "pass_extensions": true,
     "ruleset": "web/modules/custom/legacy_widgets/phpcs.xml.dist",
+    "runner": {
+      "php_version": "8.3.33",
+      "runner": "ddev",
+      "tool_version": "8.3.31"
+    },
     "source": "fallback",
     "standard": "Drupal,DrupalPractice",
     "test_version": "8.1-",
