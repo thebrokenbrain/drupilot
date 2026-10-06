@@ -266,9 +266,43 @@ rector_config_floor() {
   return 0
 }
 
+# rector_config_missing_paths ROOT FILE -> the relative literal paths of the
+# withPaths([...]) list of a Rector config FILE that do not exist under ROOT,
+# one per line (Rector stops on such a path). Comment lines, /* */ and trailing
+# // comments are ignored; an absolute path (it may be the container's), a
+# __DIR__ path and a wildcard are not checked; only the first list after the
+# first ->withPaths([ outside a comment is read. Read-only; prints nothing
+# when FILE is missing.
+rector_config_missing_paths() {
+  local root="${1:-}" f="${2:-}" p list
+  [[ -f "$f" ]] || return 0
+  # shellcheck disable=SC2016  # awk program, not a shell expansion
+  list="$(awk -v q="'" '
+    {
+      l = $0
+      sub(/^[ \t]*(\*|\/\*|#|\/\/).*/, "", l)
+      gsub(/\/\*[^*]*\*\//, "", l)
+      sub(/[ \t]\/\/.*$/, "", l)
+      if (!on) { if (!match(l, /->withPaths\(\[/)) next; on = 1; l = substr(l, RSTART + RLENGTH) }
+      last = 0
+      if (match(l, /\]/)) { l = substr(l, 1, RSTART - 1); last = 1 }
+      gsub("__DIR__[ \t]*[.][ \t]*(" q "[^" q "]*" q "|\"[^\"]*\")", "", l)
+      while (match(l, q "[^" q "]*" q "|\"[^\"]*\"")) { print substr(l, RSTART + 1, RLENGTH - 2); l = substr(l, RSTART + RLENGTH) }
+      if (last) exit
+    }' "$f" 2> /dev/null || true)"
+  while IFS= read -r p; do
+    [[ -n "$p" && "$p" != /* && "$p" != *[*?[]* ]] || continue
+    [[ -e "$root/$p" ]] || printf '%s\n' "$p"
+  done <<EOF
+$list
+EOF
+  return 0
+}
+
 # rector_config_pristine TEMPLATE FILE -> 0 when FILE is exactly what TEMPLATE
 # renders for FILE's own floor and subject path (rector.php, or
-# rector-compat.php, whose withPhpVersion is the rules' own): a drupilot
+# rector-compat.php, whose only token is the subject: its withPhpVersion is
+# the rules' own and the floor tokens are ignored): a drupilot
 # render nobody edited, which may be regenerated when its inputs change. A
 # hand edit, another template generation or a file of the developer's own -> 1.
 # A template-5 rector.php never matches (its sets, skips and BC block come from

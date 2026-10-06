@@ -2854,10 +2854,10 @@ not) is upgraded without --force, after the same backup — e.g. the invalid
 0.8.x phpcs.xml.dist or a phpstan.neon with the deprecated drupal_root. So is
 an untouched render: a file whose sha256 is the one kept in the root's lock
 (ADR 0019), or a rector-compat.php (or template-4 rector.php) that is exactly
-what its template renders for its own floor and subject
-(rector_config_pristine): nobody edited it, and its plan or floor moved (the
-core target changed) or it was rendered for another subject of a shared
-test-bed (0.9 reported that as "differs"). Any other current-generation copy
+what its template renders for its own subject (and, for rector.php, its
+floor) (rector_config_pristine): nobody edited it, and it was rendered for
+another subject of a shared test-bed, or (rector.php) its plan or floor moved
+because the core target changed (0.9 reported that as "differs"). Any other current-generation copy
 that differs counts as hand-edited, a template-5 rector.php whose sha256 the
 lock no longer keeps included (its sha256 is kept again when it is found up
 to date).

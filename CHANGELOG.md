@@ -525,11 +525,12 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   parse. For `^11` with a PHP 8.4 target the sets drop from php84 to php83,
   and the compat pass keeps the implicit-nullable fix. A `rector.php` from an
   older template is backed up and regenerated as before; an untouched
-  current render of `rector.php` or `rector-compat.php` is also regenerated
-  when its floor moves (the core target chosen at port time is not the one
-  setup assumed) or, in `render-templates.sh`, when it was rendered for
-  another subject of a shared test-bed (0.9 reported that as `differs`,
-  exit 3); a hand-edited one is kept with a warning. A project's own `rector.php` without
+  current render of `rector.php` is also regenerated when its floor moves
+  (the core target chosen at port time is not the one setup assumed), and
+  one of `rector.php` or `rector-compat.php` (whose only input is the
+  subject) when it was rendered for another subject of a shared test-bed
+  (0.9 reported that as `differs`, exit 3); a hand-edited one is kept with a
+  warning. A project's own `rector.php` without
   `withPhpVersion()` gets a warning.
 - **Rector skips three more rules** (T-M2-14): `SleepToSerializeRector` and
   `WakeupToUnserializeRector` (`DependencySerializationTrait` defines
