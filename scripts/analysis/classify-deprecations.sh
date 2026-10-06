@@ -152,7 +152,8 @@ if [[ -n "$FLOOR_OPT" ]]; then FLOOR="$FLOOR_OPT"; else FLOOR="$(core_floor_from
 
 # --- Input ------------------------------------------------------------------
 TMP="$(mktemp "${TMPDIR:-/tmp}/drupilot-classify.XXXXXX")"
-trap 'rm -f "$TMP" "$TMP.raw"' EXIT
+RAWF="$(mktemp "${TMPDIR:-/tmp}/drupilot-classify-raw.XXXXXX")"
+trap 'rm -f "$TMP" "$RAWF"' EXIT
 if [[ "$FILE" == "-" ]]; then
   [[ -t 0 ]] && die "No input: pass --file F, or pipe the analyzer output (e.g. run-phpstan.sh --json | classify-deprecations.sh)." 1
   cat > "$TMP" 2>/dev/null || true
@@ -200,9 +201,9 @@ fi
 
 # The records go through a file: one argv string is capped (128 KiB on Linux),
 # and a report of a few hundred messages exceeds it.
-printf '%s\n' "$RAW" > "$TMP.raw"
+printf '%s\n' "$RAW" > "$RAWF"
 RESULT="$(jq -n \
-  --slurpfile rawf "$TMP.raw" \
+  --slurpfile rawf "$RAWF" \
   --slurpfile cat "$CATALOG" \
   --arg policy "$POLICY" --arg phase "$PHASE" \
   --argjson tmaj "$TARGET_MAJOR" \

@@ -90,8 +90,10 @@ but the index may be missing).
   rule    Rector's FQCN; PHPStan's identifier (phpstan:untyped:<8 hex of the
           message's sha256> without one); PHPCS's source;
           port-safety:<check>, signature:<id>, metadata:<check>
-  anchor  the innermost Namespace\Class::method or function of the line
-          (the raw anchors file, scripts/php/anchor.php), else {file}
+  anchor  the innermost Namespace\Class::method or function of the line,
+          the Namespace\ClassLike for a line in a class-like body outside
+          its methods (the raw anchors file, scripts/php/anchor.php), else
+          {file}
   scope   current, or next-major for a soft deprecation under the report or
           defer policy (DRUPILOT_SOFT_DEPRECATIONS)
   class   hard | soft | unknown (classify-deprecations.sh) | analysis |
