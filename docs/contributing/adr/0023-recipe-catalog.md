@@ -75,11 +75,15 @@ Docker-free engines:
 - `info-yml`: `set-core-requirement.sh` with the subject's own plan's `range.constraint`. It runs on a copy
   of the physical tree, so a symlinked subject is never edited through the link, and only the finding's file
   is written. A requirement whose floor is above the main `.info.yml`'s is `not-applicable`: no recipe raises
-  the declared floor.
+  the declared floor. The upgrade stage sets the main `.info.yml` first, so the codemods (S6) see the
+  ported floor.
 
 `params.captures` (`{name: ERE}`, matched on the finding's line before the change) gives `{name}` to the
-postconditions. Postconditions apply to the line, the file, or the file's code lines but the finding's
-(`file-except-line`, comment lines left out). A file without a final newline keeps none.
+postconditions. Postconditions apply to the line, the file, the file's code lines but the finding's
+(`file-except-line`), or the body of the function the finding's line declares (`function-body`, up to the
+`}` at the signature's indentation); comment lines are not code there. An unresolved `{placeholder}` or an
+empty capture fails the postcondition, and `gen-recipes.sh` names a placeholder no capture defines. A file
+without a final newline keeps none.
 
 `attributes`, `php-script` and `rector-rule` stay in the schema's engine list. They get their executors with
 the first recipe that needs one: no v1 recipe does. A recipe whose replacement is not exact reports
@@ -89,8 +93,8 @@ the first recipe that needs one: no v1 recipe does. A recipe whose replacement i
 - `sig.hook-entity-operation` and `sig.hook-entity-operation-alter` (`ere-replace`): a required
   `CacheableMetadata` parameter becomes `?CacheableMetadata $x = NULL`. The catalog's `d10_compat` says an
   optional parameter works on every core. That holds only when the body does not use the parameter (it is
-  NULL on older cores), so a postcondition rejects the change when the parameter appears in any other code
-  line of the file. The finding then goes to the AI with the template.
+  NULL on older cores), so a postcondition rejects the change when the parameter appears in the function's
+  body. The finding then goes to the AI with the template.
 - `safety.class-case` (`yaml-edit`): in a `.yml` file, the class name gets the case of the file that exists.
   The class is `Drupal\<extension>\` plus its path under `src/`.
 - `meta.submodule-core-req` (`info-yml`): the submodule's `core_version_requirement` becomes the plan's

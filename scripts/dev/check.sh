@@ -940,7 +940,8 @@ gate_data() {
     jq -r '.checks[] | select(.status != "pass") | "\(.check): \(.file): \(.detail)"' "$js" > "$out" 2>/dev/null || true
     jq -r '.problems[]? | "recipes: \(.)"' "$rj" >> "$out" 2>/dev/null || true
     # The generator died before its report: its own error says why.
-    if [[ "$rok" == "0" ]] && ! jq -e '.problems' "$rj" > /dev/null 2>&1; then tail -n 5 "$TMP/recipes.err" | sed 's/^/recipes: /' >> "$out"; fi
+    # (-s: jq 1.6 exits 0 on an empty input with -e.)
+    if [[ "$rok" == "0" ]] && ! jq -e -s 'length == 1 and (.[0] | has("problems"))' "$rj" > /dev/null 2>&1; then tail -n 5 "$TMP/recipes.err" | sed 's/^/recipes: /' >> "$out"; fi
     [[ -s "$out" ]] || tail -n 20 "$err" > "$out"
     record data fail "the version data or the recipes have problems (scripts/dev/data-check.sh, scripts/dev/gen-recipes.sh --check)" "$out"
   fi

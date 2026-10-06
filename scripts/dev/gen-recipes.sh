@@ -136,7 +136,9 @@ jq -r '
   (.[] | select(.engine == "ere-replace") | select((.params.search + .params.replace) | test("\u0001")) | "\(.id): params contain the \\x01 delimiter"),
   (.[] | select(.kind == "codemod" and .lane != "codemod" and .lane != "rector-custom") | "\(.id): a codemod belongs to lane codemod or rector-custom"),
   (.[] | select(.kind != "codemod" and (.lane == "codemod" or .lane == "rector-custom")) | "\(.id): lane \(.lane) needs a codemod engine"),
-  (.[] | (.postconditions // [])[] as $p | select(($p | keys - ["type", "where", "ere", "text"]) | length > 0) | "\(.id): a postcondition has an unknown key")' \
+  (.[] | (.postconditions // [])[] as $p | select(($p | keys - ["type", "where", "ere", "text"]) | length > 0) | "\(.id): a postcondition has an unknown key"),
+  (.[] | . as $r | (.postconditions // [])[] | ((.ere // .text // "") | [match("\\{([A-Za-z_][A-Za-z0-9_]*)\\}"; "g").captures[0].string])[] as $ph
+     | select(["from", "to"] + (($r.params.captures // {}) | keys) | index($ph) | not) | "\($r.id): postcondition placeholder {\($ph)} has no capture")' \
   "$TMP/pre.json" >> "$PROBLEMS"
 for id in $(jq -r '.[] | select(.engine | IN("ere-replace", "yaml-edit", "info-yml")) | .id' "$TMP/pre.json"); do
   d="$REPO/$FIX/$id"

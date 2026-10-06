@@ -59,8 +59,10 @@ params.captures ({name: ERE}, matched on the finding's line before the
 change) give {name} to the postconditions, e.g. "the parameter made optional
 is not used elsewhere in the file". The change is written only when it is
 exact and every postcondition holds on the result (absent-ere / absent-fixed
-/ present-fixed on the line, the file, or the file's code lines but the
-finding's (file-except-line: comment lines left out); rescan is
+/ present-fixed on the line, the file, the file's code lines but the
+finding's (file-except-line), or the body of the function the finding's line
+declares (function-body); comment lines are not code there. An unresolved
+{placeholder} or an empty capture fails the postcondition. rescan is
 left to apply-recipes.sh's re-extraction). A file without a final newline
 keeps none. A replacement that does not apply is `no-match`, and nothing
 changes: the item falls to its next lane. applies_when is honored: file_ere,
