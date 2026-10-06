@@ -699,6 +699,19 @@ rector_error_excerpt() {
   return 0
 }
 
+# phpstan_crash_ere -> the POSIX ERE (match it case-insensitively) of the
+# PHPStan messages that mean the report is incomplete, so a run that printed
+# them never reads as clean or as its findings: an internal error, a parallel
+# worker that died (its memory limit, a fatal, a segfault) or timed out, and
+# "Result is incomplete because of severe errors". With a worker gone PHPStan
+# drops that worker's file errors and still exits 1. The messages are
+# PHPStan 2.x's (src/Parallel/ParallelAnalyser.php, src/Parallel/Process.php,
+# src/Command/AnalyseCommand.php in phpstan.phar).
+phpstan_crash_ere() {
+  printf '%s' 'Internal error|Child process (error|timed out)|PHPStan process crashed|Result is incomplete'
+  return 0
+}
+
 # toolchain_diagnostics <root> [cell] -> log (STDERR) the installed vs known-good
 # versions of the Rector/PHPStan packages and the exact remediation command.
 # Used after a failed smoke test and by run-rector.sh after a Rector crash.

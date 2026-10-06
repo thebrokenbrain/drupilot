@@ -573,7 +573,8 @@ run_phpstan() {
   set -e
   json="$(sed -n '/^{/,$p' "$raw")"
   if [[ -n "$json" ]] && printf '%s' "$json" | jq -e 'type == "object" and has("totals")' >/dev/null 2>&1; then
-    if printf '%s' "$json" | jq -e '[.errors[]? | select(type == "string" and test("Internal error"; "i"))] | length > 0' >/dev/null 2>&1; then status="crashed"
+    if printf '%s' "$json" | jq -e --arg re "$(phpstan_crash_ere)" '[.errors[]? | select(type == "string" and test($re; "i"))] | length > 0' >/dev/null 2>&1 \
+       || grep_q -iE -- "$(phpstan_crash_ere)" "$err"; then status="crashed"
     elif [[ "$rc" -eq 0 ]]; then status="clean"
     elif [[ "$rc" -eq 1 ]]; then status="findings"
     else status="crashed"; fi
