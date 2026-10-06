@@ -231,8 +231,8 @@ if [[ "$AS_JSON" == "1" ]]; then
   # line (display_errors to stdout) by parsing from the first '{'.
   JSON_OUT="$(sed -n '/^{/,$p' "$OUT_F")"
   if [[ -n "$JSON_OUT" ]] && printf '%s' "$JSON_OUT" | jq -e 'type == "object" and has("totals")' >/dev/null 2>&1; then
-    INTERNAL="$(printf '%s' "$JSON_OUT" | jq '[.errors[]? | select(type == "string" and test("Internal error"; "i"))] | length' 2>/dev/null || echo 0)"
-    if [[ "$INTERNAL" != "0" ]]; then STATUS="crashed"
+    INTERNAL="$(printf '%s' "$JSON_OUT" | jq --arg re "$(phpstan_crash_ere)" '[.errors[]? | select(type == "string" and test($re; "i"))] | length' 2>/dev/null || echo 0)"
+    if [[ "$INTERNAL" != "0" ]] || grep_q -iE -- "$(phpstan_crash_ere)" "$ERR_F"; then STATUS="crashed"
     elif [[ "$PHPSTAN_RC" -eq 0 ]]; then STATUS="clean"
     elif [[ "$PHPSTAN_RC" -eq 1 ]]; then STATUS="findings"
     else STATUS="crashed"; fi
@@ -242,7 +242,7 @@ if [[ "$AS_JSON" == "1" ]]; then
 else
   if [[ "$PHPSTAN_RC" -eq 0 ]]; then STATUS="clean"
   elif [[ "$PHPSTAN_RC" -eq 1 ]] && grep -qE 'Found [0-9]+ errors?' "$OUT_F"; then
-    if grep -qiE 'Internal error' "$OUT_F"; then STATUS="crashed"; else STATUS="findings"; fi
+    if grep -qiE -- "$(phpstan_crash_ere)" "$OUT_F" "$ERR_F"; then STATUS="crashed"; else STATUS="findings"; fi
   else
     STATUS="crashed"
   fi

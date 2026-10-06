@@ -173,6 +173,17 @@ nf --raw-dir "$RT" --target-major 11 --soft-policy report --json
 assert_eq "an anonymous class context too; two identical errors on one trait line stay two" \
   "$(j '[.findings[] | select(.tool == "phpstan") | [.file, .anchor, .occurrence]]')" '[["src/T.php","M\\T::foo",0],["src/T.php","M\\T::foo",1]]'
 
+# Contexts with different counts: the larger count stands; a directory named
+# "(in context of ...)" is not a class context.
+jq --arg sp "$SP" '.files = {($sp + "/src/T.php (in context of class M\\A)"): {messages: [{message: "Undefined variable: $t", line: 4}]},
+                             ($sp + "/src/T.php (in context of class M\\B)"): {messages: [{message: "Undefined variable: $t", line: 4}, {message: "Undefined variable: $t", line: 4}]},
+                             ($sp + "/src/x (in context of y)/U.php"): {messages: [{message: "Undefined variable: $u", line: 2}]},
+                             ($sp + "/src/x (in context of y)/W.php (in context of class M\\B)"): {messages: [{message: "Undefined variable: $w", line: 2}]}}' \
+  "$R0/04-assess-phpstan.json" > "$RT/04-assess-phpstan.json"
+nf --raw-dir "$RT" --target-major 11 --soft-policy report --json
+assert_eq "counts 1 and 2 in two contexts: two findings; a directory with the words is a path, even before a context" \
+  "$(j '[.findings[] | select(.tool == "phpstan") | .file] | sort')" '["src/T.php","src/T.php","src/x (in context of y)/U.php","src/x (in context of y)/W.php"]'
+
 # The anchor is part of the merge key: the same symbol in two methods is two findings.
 RA="$T_TMP/rawa"; mkraw "$RA" 0
 jq '.files[].messages += [.files[].messages[0] | .line = 40]' "$R0/04-assess-phpstan.json" > "$RA/04-assess-phpstan.json"
@@ -210,24 +221,57 @@ jq --arg sp "$SP" '.files[($sp + "/src/A.php")].messages = ([range(0; 900) as $i
   "$R0/04-assess-phpstan.json" > "$RL/04-assess-phpstan.json"
 assert_eq "  (the report is over 128 KiB)" "$([[ "$(wc -c < "$RL/04-assess-phpstan.json")" -gt 131072 ]] && echo big)" "big"
 nf --raw-dir "$RL" --target-major 11 --soft-policy report --out "$T_TMP/large/f.json"
-assert_eq "900 deprecations: exit 0, every one hard" \
-  "$T_RC|$(jq -c '[.findings[] | select(.symbol == "user_roles") | .class] | [length, unique]' "$T_TMP/large/f.json")" '0|[1,["hard"]]'
+assert_eq "900 deprecations: exit 0, every one hard (one finding, 900 sources)" \
+  "$T_RC|$(jq -c '[.findings[] | select(.symbol == "user_roles")] | [length, (map(.class) | unique), (.[0].sources | length)]' "$T_TMP/large/f.json")" '0|[1,["hard"],900]'
+assert_eq "  no deprecation left unclassified" "$(jq -c '[.findings[] | select(.rule == "function.deprecated" and .class == "analysis")] | length' "$T_TMP/large/f.json")" "0"
 
 # A raw file that is not JSON, and one of an unexpected shape.
 RX="$T_TMP/rawx"; mkraw "$RX" 0; printf '{"files": ' > "$RX/04-assess-phpstan.json"
 nf --raw-dir "$RX" --target-major 11 --soft-policy report --json
 assert_eq "a truncated PHPStan raw file: failed, not ok" "$T_RC|$(j '.tools.phpstan')" '0|"failed"'
 printf '{"drupilot": "x", "files": {}}\n' > "$RX/04-assess-phpstan.json"
+jq '.runner = "ddev"' "$R0/04-assess-rector.json" > "$RX/04-assess-rector.json"
 nf --raw-dir "$RX" --target-major 11 --soft-policy report --json
-assert_eq "a raw file with a field of another type: no crash" "$T_RC|$(j '.tools.phpstan')" '0|"ok"'
+assert_eq "raw files with fields of another type: no crash" "$T_RC|$(j '[.tools.phpstan, .tools.rector, .target.runner]')" '0|["ok","ok",null]'
+for v in '[]' '"x"' '5'; do
+  mkraw "$RX" 0
+  for t in rector metadata phpcs signatures port-safety; do printf '%s\n' "$v" > "$RX/04-assess-$t.json"; done
+  nf --raw-dir "$RX" --target-major 11 --soft-policy report --json
+  assert_eq "  raw files that are $v: failed, no crash" "$T_RC|$(j '[.tools.rector, .tools.metadata, .tools.phpcs, .tools.signatures, .tools["port-safety"]] | unique')" '0|["failed"]'
+done
+# Fields of an unexpected type inside a valid report: read as missing.
+mkraw "$RX" 0
+jq '.file_diffs[0].diff = 5' "$R0/04-assess-rector.json" > "$RX/04-assess-rector.json"
+printf '{"files": "x"}\n' > "$RX/04-assess-phpcs.json"
+printf '{"findings": "x"}\n' > "$RX/04-assess-port-safety.json"
+printf '{"findings": [1, {"check": "c", "file": "m.info.yml", "line": "2", "message": null}]}\n' > "$RX/04-assess-metadata.json"
+jq '.runner = {runner: 5, php_version: [8]}' "$R0/04-assess-rector.json" | jq '.file_diffs[0].diff = 5' > "$RX/04-assess-rector.json"
+jq '.files[].messages[0].line = "x" | .files[].messages[1].message = null' "$R0/04-assess-phpstan.json" > "$RX/04-assess-phpstan.json"
+printf '[1, "x"]\n' > "$RX/04-assess-anchors.json"
+nf --raw-dir "$RX" --target-major 11 --soft-policy report --json
+assert_eq "fields of other types in valid reports: no crash, the bad entries read as missing" \
+  "$T_RC|$(j '[.target.runner, .target.php_version, .anchors, ([.findings[] | select(.tool == "rector") | .line] | unique), ([.findings[].anchor] | unique)]')" \
+  '0|[null,null,"unavailable",[null],["{file}"]]'
+# A NUL in a message is dropped before the id (the same id on every awk).
+mkraw "$RX" 0
+jq '.files[].messages[0].message = "Missing\u0000 function doc comment"' "$R0/04-assess-phpcs.json" > "$RX/04-assess-phpcs.json"
+nf --raw-dir "$RX" --target-major 11 --soft-policy report --json
+assert_eq "a NUL in a message: dropped" \
+  "$(j '[.findings[] | select(.tool == "phpcs") | .message | explode | index([0])] | unique')|$(j '[.findings[] | select(.tool == "phpcs") | .message] | unique')" \
+  '[null]|["Missing comment","Missing function doc comment"]'
 
 # The raw index: exactly one per stage, a JSON object.
 RI="$T_TMP/rawi"; mkraw "$RI" 0; printf '{"stage": ' > "$RI/04-assess-index.json"
 nf --raw-dir "$RI"
 assert_eq "a truncated index: exit 1" "$T_RC" "1"
-jq '.subject = "web/modules/custom/m"' "$R0/04-assess-index.json" > "$RI/04-assess-index.json"
-nf --raw-dir "$RI"
-assert_eq "an index whose subject is not an object: exit 1" "$T_RC" "1"
+for bad in '.subject = "web/modules/custom/m"' '.subject.path = 5' '.subject.machine_name = ["m"]'; do
+  jq "$bad" "$R0/04-assess-index.json" > "$RI/04-assess-index.json"
+  nf --raw-dir "$RI"
+  assert_eq "an index with $bad: exit 1" "$T_RC" "1"
+done
+{ cat "$R0/04-assess-index.json"; cat "$R0/04-assess-index.json"; } > "$RI/04-assess-index.json"
+nf --raw-dir "$RI" --target-major 11 --soft-policy report
+assert_eq "an index of two JSON objects: exit 1" "$T_RC" "1"
 mkraw "$RI" 0; cp "$RI/04-assess-index.json" "$RI/02-assess-index.json"
 nf --raw-dir "$RI"
 assert_eq "two raw sets of one stage: exit 1" "$T_RC" "1"

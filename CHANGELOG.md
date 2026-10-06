@@ -451,7 +451,8 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     severity, a `scope` (`current` or `next-major`) and a `class`. Findings of
     different tools about the same symbol at the same anchor are merged into
     one, with `sources[]`. An error PHPStan reports in a trait (once per class
-    that uses it) is one finding in the trait's file. `tools` records each
+    that uses it) is kept in the trait's file, as many times as the class
+    context with the most copies. `tools` records each
     tool's verdict (`ok`, `partial`, `failed`, `missing`), so a crashed tool
     never reads like a clean run, and a failing `classify-deprecations.sh`
     stops the script (exit 3) instead of losing the deprecation classes. The
@@ -729,6 +730,15 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   - `preflight.sh`'s strategy check accepts both vocabularies.
 
 ### Fixed
+- **A PHPStan run whose parallel worker died is a crash, not a clean run.**
+  When a worker reaches its memory limit, fails or times out, PHPStan drops
+  that worker's file errors and still exits 1. `run-phpstan.sh` (and
+  `verify-core-matrix.sh`) recorded such a run as `findings`, so
+  `findings.json` showed PHPStan `ok` with its findings missing, and the
+  result depended on the machine's memory. A report naming "Child process
+  error", "Child process timed out", "PHPStan process crashed" or "Result is
+  incomplete" (`phpstan_crash_ere`, verified in PHPStan 2.x's source) is now
+  `crashed`, exit 3.
 - **Intermittent wrong results and exit 141 under load** (the baseline-0.9
   flakes of PRs #11, #20 and #22): a pipeline ending in `head`, `grep -q` or
   an awk `exit` stops reading early, and under `pipefail` a producer still
