@@ -13,6 +13,102 @@ cache_dir() { local d; d="$(data_dir)/cache"; mkdir -p "$d" 2>/dev/null || true;
 # digests_cache_dir -> cache for the dbuytaert/drupal-digests repo (cloned at runtime).
 digests_cache_dir() { printf '%s/drupal-digests' "$(cache_dir)"; }
 
+# digests_rector_version ROOT -> the palantirnet/drupal-rector version ROOT's
+# composer.lock installs (packages or packages-dev), or nothing.
+digests_rector_version() {
+  local root="${1:-}"
+  [[ -f "$root/composer.lock" ]] && have_cmd jq || return 0
+  jq -r '[(.packages // [])[], (.["packages-dev"] // [])[]] | map(select(.name == "palantirnet/drupal-rector"))
+         | .[0].version // empty' "$root/composer.lock" 2> /dev/null || true
+  return 0
+}
+
+# digests_implemented_yml ROOT -> the path of drupal-rector's
+# docs/implemented-digests.yml at the version ROOT installs (03-R17: the
+# digests rules drupal-rector already implements). The package's docs/ is
+# export-ignored, so the file is fetched once from GitHub at that tag and
+# cached under <cache>/drupal-rector/<version>/; its sha256 and version are
+# frozen in ROOT's lock (.digests.implemented_yml_sha256 / _ref). A cached
+# copy whose sha256 is not the one frozen for this version is fetched again;
+# still not it, or nothing cached and nothing to fetch it from (offline):
+# nothing, return 1.
+digests_implemented_yml() {
+  local root="${1:-}" v ref d f url want="" fref got
+  v="$(digests_rector_version "$root")"
+  [[ -n "$v" ]] || return 1
+  ref="${v#v}"; case "$ref" in dev-*) ref="${ref#dev-}";; esac
+  d="$(cache_dir)/drupal-rector/$ref"; f="$d/implemented-digests.yml"
+  fref="$(DRUPILOT_PROJECT_DIR="$root" lock_get .digests.implemented_yml_ref "")"
+  [[ "$fref" == "$ref" ]] && want="$(DRUPILOT_PROJECT_DIR="$root" lock_get .digests.implemented_yml_sha256 "")"
+  if [[ ! -s "$f" ]] || { [[ -n "$want" ]] && [[ "$(file_hash "$f")" != "$want" ]]; }; then
+    mkdir -p "$d" 2> /dev/null || return 1
+    url="https://raw.githubusercontent.com/palantirnet/drupal-rector/$ref/docs/implemented-digests.yml"
+    if have_cmd curl; then curl -fsSL --max-time 20 "$url" -o "$f.tmp.$$" < /dev/null 2> /dev/null || rm -f "$f.tmp.$$"
+    elif have_cmd wget; then wget -q -T 20 -O "$f.tmp.$$" "$url" < /dev/null 2> /dev/null || rm -f "$f.tmp.$$"
+    fi
+    if [[ -s "$f.tmp.$$" ]]; then mv -f "$f.tmp.$$" "$f"; else rm -f "$f.tmp.$$" 2> /dev/null; fi
+  fi
+  [[ -s "$f" ]] || return 1
+  got="$(file_hash "$f")"
+  [[ -z "$want" || "$got" == "$want" ]] || return 1
+  if [[ -z "$want" ]]; then
+    DRUPILOT_PROJECT_DIR="$root" lock_set .digests.implemented_yml_sha256 "$got" > /dev/null 2>&1 || true
+    DRUPILOT_PROJECT_DIR="$root" lock_set .digests.implemented_yml_ref "$ref" > /dev/null 2>&1 || true
+  fi
+  printf '%s' "$f"
+  return 0
+}
+
+# digests_rules DIR -> "file<TAB>class<TAB>nid" for each rule DIR/all.php
+# loads (its require_once lines) and registers (withRules): the class the
+# rule file declares, the drupal.org nid its file name ends with.
+digests_rules() {
+  local dir="${1:-}" f cls nid reg
+  [[ -f "$dir/all.php" ]] || return 0
+  reg="$(sed -n 's/.*->withRules(\[\(.*\)\]).*/\1/p' "$dir/all.php" | tr ',' '\n' | sed -e 's/::class//' -e 's/^[[:space:]\\]*//' -e 's/[[:space:]]*$//')"
+  sed -n "s/^require_once __DIR__ \. '\/\(rules\/[^']*\)';.*/\1/p" "$dir/all.php" | while IFS= read -r f; do
+    [[ -f "$dir/$f" ]] || continue
+    cls="$(sed -n 's/^[[:space:]]*\(final[[:space:]]\{1,\}\|abstract[[:space:]]\{1,\}\)\{0,1\}class[[:space:]]\{1,\}\([A-Za-z0-9_]\{1,\}\).*/\2/p' "$dir/$f" | sed -n '1p')"
+    [[ -n "$cls" ]] || continue
+    printf '%s\n' "$reg" | grep_q -Fx -- "$cls" || continue
+    nid="$(printf '%s' "$f" | sed -n 's/.*-\([0-9]\{1,\}\)\.php$/\1/p')"
+    printf '%s\t%s\t%s\n' "$f" "$cls" "$nid"
+  done
+  return 0
+}
+
+# digests_implemented_skips YML ROOT -> "nid<TAB>status" for each entry of
+# implemented-digests.yml a digests rule of that nid must be skipped for:
+# config-only, or implemented by classes that all exist in the drupal-rector
+# ROOT installs (vendor/palantirnet/drupal-rector/src; the file also marks
+# implemented some rules only an open pull request has). Line-oriented: the
+# file's own layout (two-space nid keys, four-space fields, "class:" a name or
+# a "- name" list).
+digests_implemented_skips() {
+  local yml="${1:-}" root="${2:-}" src nid st cls c all
+  [[ -f "$yml" ]] || return 0
+  src="$root/vendor/palantirnet/drupal-rector/src"
+  awk '
+    /^  [^ ]/ { if (nid != "") print nid "\t" st "\t" cls; nid = $1; gsub(/[^0-9]/, "", nid); st = ""; cls = ""; inl = 0; next }
+    nid == "" { next }
+    /^    status:/ { st = $2; gsub(/[^a-z-]/, "", st); inl = 0; next }
+    /^    class:[ \t]*$/ { inl = 1; next }
+    /^    class:/ { c = $2; gsub(/[^A-Za-z0-9_]/, "", c); cls = c; inl = 0; next }
+    inl && /^      - / { c = $2; gsub(/[^A-Za-z0-9_]/, "", c); cls = (cls == "" ? c : cls " " c); next }
+    /^    [a-z_]+:/ { inl = 0 }
+    END { if (nid != "") print nid "\t" st "\t" cls }' "$yml" | while IFS="$(printf '\t')" read -r nid st cls; do
+    case "$st" in
+      config-only) printf '%s\tconfig-only\n' "$nid";;
+      implemented)
+        [[ -n "$cls" && -d "$src" ]] || continue
+        all=1
+        for c in $cls; do [[ -n "$(grep -rlE "class[[:space:]]+$c([^A-Za-z0-9_]|$)" "$src" 2> /dev/null)" ]] || { all=0; break; }; done
+        if [[ "$all" == "1" ]]; then printf '%s\timplemented\n' "$nid"; fi;;
+    esac
+  done
+  return 0
+}
+
 # fast_copy_tree <src> <dest> -> copy the CONTENTS of <src> into <dest>
 # (created), preserving modes, times and symlinks, as cheaply as the filesystem
 # allows: a copy-on-write clone where possible (GNU cp --reflink=auto on

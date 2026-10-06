@@ -261,6 +261,23 @@ they decide.
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "$1" --digests --json
 ```
 
+**Recorded verdicts first (replay).** The `--json` dry-run carries
+`digests_review`: every rule it would apply with the developer's verdict for
+this digests SHA and these sources (`accept`, `reject` or `pending`); rules
+rejected earlier and rules drupal-rector already implements are filtered out
+(`digests_filter`). When `digests_review.pending` is empty, every verdict is
+known: **ask nothing**, say in one line that the recorded verdicts are replayed,
+and apply. Otherwise review only the pending rules, as below, and record each
+answer before applying:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/digests-decisions.sh" --subject <path> --accept <Rule,...> --reject <Rule,...>
+```
+
+(an autonomous run records its safe default the same way: unflagged rules
+accepted, flagged ones rejected). Then re-run the dry-run if any rule was
+rejected (the rejected rules leave the config) and apply.
+
 **Decision point — the developer owns the digests pass (G5).** Read the dry-run
 diff and, for each change, note the **rule** and the **API/min-version** it
 targets; **pre-flag** any rule whose target API was added *after* the floor you
@@ -274,9 +291,12 @@ returns a `value`, `apply-unflagged` applies every unflagged rule and `skip`
 applies nothing (say so in one line). The per-rule review cannot be pre-answered.
 
 - **Review and pick** — show the per-rule list (rule → target → files, flagged
-  ones marked) and apply only the rules the developer keeps.
-- **Apply all (unflagged)** — apply every rule that is not pre-flagged.
-- **Skip the digests pass** — apply nothing from this layer.
+  ones marked) and apply only the rules the developer keeps (record the kept
+  ones as accepted, the others as rejected).
+- **Apply all (unflagged)** — apply every rule that is not pre-flagged (record
+  the unflagged as accepted, the flagged as rejected).
+- **Skip the digests pass** — apply nothing from this layer (record every
+  pending rule as rejected).
 
 Before applying, suggest a git checkpoint (`git add -A && git commit`) so a
 disliked digests pass can be dropped cleanly. **Never normalize `--no-verify`:**

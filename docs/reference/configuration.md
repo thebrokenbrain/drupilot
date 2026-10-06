@@ -290,7 +290,7 @@ Where `install-toolchain.sh` takes the dev-toolchain versions from: `auto` (the 
 
 ### `DRUPILOT_USE_DIGESTS_RULES`
 
-Use the complementary `drupal-digests` layer after official Rector.
+Use the complementary `drupal-digests` layer after official Rector. Its rules that drupal-rector already implements (its `implemented-digests.yml` at the installed version, frozen in the lock) are left out, and so are the rules you rejected for a module: your verdicts are recorded (`digests-decisions.sh`), so a later port of the same sources asks nothing. `/drupilot-clean` forgets them.
 
 - **Default:** `true`
 - **Type:** bool

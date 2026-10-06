@@ -256,10 +256,19 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" \
 
 `run-rector.sh --digests` clones/updates the repo into `digests_cache_dir`,
 checks out the resolved ref/SHA and **verifies** it (recloning rather than
-silently reusing a stale cache), then runs `vendor/bin/rector process <path>
---config <cache>/rector/all.php --dry-run`. In deterministic mode the SHA that
-`main` first resolved is frozen in the per-project lockfile and reused on later
-runs, so the same project always applies the same digests rules.
+silently reusing a stale cache), stages it under the Drupal root and runs a
+filtered `all.php`: without the rules drupal-rector already implements (its
+`implemented-digests.yml`, frozen in the lock) and without the rules rejected
+for this module. In deterministic mode the SHA that `main` first resolved is
+frozen in the per-project lockfile and reused on later runs, so the same project
+always applies the same digests rules.
+
+**Verdicts are recorded and replayed.** The `--json` dry-run's `digests_review`
+gives each rule's verdict (`accept`, `reject`, `pending`). Review only the
+pending ones; record every answer with
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/digests-decisions.sh" --subject <path> --accept <Rule,...> --reject <Rule,...>`.
+A later port of the same module with the same digests SHA has no pending rule
+and asks nothing. `/drupilot-clean` forgets the verdicts.
 
 **Mandatory handling (PROMPT §2.1.1) — these are non-negotiable:**
 

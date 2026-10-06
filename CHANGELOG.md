@@ -438,6 +438,24 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     `last-test.json` (`lenient`). The port report names it next to the
     preservation verdict, which it never changes (CC-14).
 
+- **The digests pass remembers your verdicts and skips what drupal-rector
+  already does** (T-M4-08, 03-R17, 05-R6).
+  - `run-rector.sh --digests` runs a filtered `all.php`. It leaves out the
+    rules drupal-rector already implements, from its
+    `docs/implemented-digests.yml` at the installed version: fetched once,
+    cached, and its hash frozen in the lock (`.digests.implemented_yml_*`).
+    A rule counts as implemented only when every class the file names
+    exists in `vendor/`. On the lab bed, 112 of 174 rules are left out.
+  - It also leaves out the rules you rejected for the module.
+  - `scripts/analysis/digests-decisions.sh` records each verdict, keyed by
+    the rule, the digests SHA and the module's sources, in the hidden
+    `digests-decisions.json`.
+  - `run-rector.sh --json` reports `digests_filter` and `digests_review`.
+    `/drupilot-port` asks only about the pending rules: a second port of the
+    same sources asks nothing.
+  - `/drupilot-clean` and `lock-sync.sh --refresh` reset the verdicts and the
+    frozen yml.
+
 ### Changed
 - **`scripts/dev/unit.sh` runs the tests in parallel** (`--jobs N`, default
   the CPUs, at most 8): the unit gate went from 12 minutes to under 2 on a
