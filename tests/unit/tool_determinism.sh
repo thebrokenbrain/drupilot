@@ -192,6 +192,18 @@ assert_eq "  files by path, messages by line then identifier (not message), erro
   "$(j '[(.files | keys_unsorted), [.files["a.php"].messages[] | "\(.line):\(.identifier)"], .errors]')" '[["a.php","b.php"],["5:a.id","5:z.id","8:a.id"],["first","second"]]'
 assert_eq "  drupilot.runner" "$(j '.drupilot.runner')" '{"runner":"host","php_version":"8.3.30","tool_version":"2.2.16"}'
 assert_eq "  its 0.9 keys kept" "$(j '[.totals.file_errors, (.drupilot | [has("status"), has("exit_code"), has("phpstan_exit_code"), has("notices"), has("crash")] | all)]')" '[4,true]'
+# A parallel worker that died: PHPStan drops its file errors and exits 1.
+cp "$r/vendor/bin/phpstan" "$T_TMP/phpstan.ok"
+mk_bin "$r/vendor/bin/phpstan" 'echo "{\"totals\":{\"errors\":1,\"file_errors\":0},\"files\":[],\"errors\":[\"Child process error: PHPStan process crashed because it reached configured PHP memory limit: 128M\"]}"; exit 1'
+t_run env PATH="$STUBS:$PATH" DRUPILOT_PHP_TARGET=8.3 "$T_SH" "$T_REPO/scripts/analysis/run-phpstan.sh" --subject "$r/$S" --json
+assert_eq "run-phpstan: a worker that hit its memory limit is a crash, never a clean or findings run" "$T_RC|$(j .drupilot.status)" '3|"crashed"'
+mk_bin "$r/vendor/bin/phpstan" 'echo "{\"totals\":{\"errors\":0,\"file_errors\":0},\"files\":[],\"errors\":[]}"; echo "Result is incomplete because of severe errors." >&2; exit 1'
+t_run env PATH="$STUBS:$PATH" DRUPILOT_PHP_TARGET=8.3 "$T_SH" "$T_REPO/scripts/analysis/run-phpstan.sh" --subject "$r/$S" --json
+assert_eq "  \"Result is incomplete\" on STDERR: crashed" "$T_RC|$(j .drupilot.status)" '3|"crashed"'
+mk_bin "$r/vendor/bin/phpstan" 'echo " ------ ----"; echo "  Line   a.php"; echo " ------ ----"; echo "  Child process timed out after 600.0 seconds."; echo " [ERROR] Found 1 error"; exit 1'
+t_run env PATH="$STUBS:$PATH" DRUPILOT_PHP_TARGET=8.3 "$T_SH" "$T_REPO/scripts/analysis/run-phpstan.sh" --subject "$r/$S"
+assert_eq "  a timed-out worker in the text report: crashed" "$T_RC" "3"
+cp "$T_TMP/phpstan.ok" "$r/vendor/bin/phpstan"
 t_run env PATH="$STUBS:$PATH" DRUPILOT_PHP_TARGET=8.3 "$T_SH" "$T_REPO/scripts/analysis/run-phpcs.sh" --subject "$r/$S" --json
 assert_eq "run-phpcs: PHPCS's exit code" "$T_RC" "2"
 assert_eq "  files by path, messages by line, column, then source (not message)" \

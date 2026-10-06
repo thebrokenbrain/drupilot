@@ -113,7 +113,7 @@ printf '{"recipes": [{"id": "meta.services-arity", "lane": "ai-free", "kind": "t
 t_run "$T_SH" "$CL" --findings "$T_TMP/f.json" --overlay "$T_TMP/ov.json" --core-floor 10.3 --json
 assert_eq "the project overlay replaces a recipe by id" "$(lane F-00000000000a)" "ai-free|meta.services-arity|-|open"
 assert_eq "  and keeps the plugin's other recipes" "$(lane F-000000000002)" "codemod|sig.hook-entity-operation|-|open"
-printf '{"recipes": [{"id": "x", "lane": "nowhere", "matches": {}, "template": {"why": "w"}}]}\n' > "$T_TMP/ov-bad.json"
+printf '{"recipes": [{"id": "x", "lane": "nowhere", "kind": "template", "version": "000000000000", "matches": {}, "template": {"why": "w"}}]}\n' > "$T_TMP/ov-bad.json"
 t_run "$T_SH" "$CL" --findings "$T_TMP/f.json" --overlay "$T_TMP/ov-bad.json"
 assert_eq "an overlay recipe in an unknown lane: exit 1" "$T_RC" "1"
 
@@ -205,6 +205,17 @@ t_run env CLAUDE_PLUGIN_ROOT="$P" STUB_FINDINGS="$T_TMP/f-same.json" "$T_SH" "$P
 assert_eq "S6 then S7 alone (same findings_hash): the earlier application is not-cleared, ai-templated" \
   "$T_RC|$(jq -c '.applications | length' "$T_OUT")|$(jq -s -c '[.[].status]' "$SD/actions.jsonl")|$(lanew F-0000000000c1)" \
   '0|0|["applied","not-cleared"]|ai-templated|the codemod did not clear the finding|open'
+# S6, then a revert, then S7 alone: the reverted application is not in effect,
+# so it is not marked not-cleared and the codemod is open again.
+cp "$T_REPO/tests/fixtures/recipes/safety.class-case/before/m.services.yml" "$S/m.services.yml"; : > "$SD/actions.jsonl"
+{ fnd F-0000000000c1 catalog port-safety:class-case m.services.yml 3 error current safety "" "$MSG"; } | jq -s . | mkf "$SD/findings.json"
+t_run env CLAUDE_PLUGIN_ROOT="$P" "$T_SH" "$P/scripts/ai/classify.sh" --subject "$S" --core-floor 10.3
+t_run env CLAUDE_PLUGIN_ROOT="$P" "$T_SH" "$P/scripts/ai/apply-recipes.sh" --subject "$S"
+cp "$T_REPO/tests/fixtures/recipes/safety.class-case/before/m.services.yml" "$S/m.services.yml"
+cp "$SD/findings.json" "$T_TMP/f-rev.json"
+t_run env CLAUDE_PLUGIN_ROOT="$P" STUB_FINDINGS="$T_TMP/f-rev.json" "$T_SH" "$P/scripts/ai/apply-recipes.sh" --subject "$S" --reextract --json
+assert_eq "S6, a revert, then S7: no not-cleared for the reverted application; the codemod is open again" \
+  "$T_RC|$(jq -s -c '[.[].status]' "$SD/actions.jsonl")|$(lanew F-0000000000c1)" '0|["applied"]|codemod|-|open'
 t_run env CLAUDE_PLUGIN_ROOT="$P" STUB_EXTRACT_RC=3 STUB_FINDINGS="$T_TMP/f-clear.json" "$T_SH" "$P/scripts/ai/apply-recipes.sh" --subject "$S" --reextract
 assert_eq "S7: the re-extraction gives no verdict: exit 3" "$T_RC" "3"
 # The overlay's version of a codemod is the one applied and logged.
@@ -244,6 +255,15 @@ assert_eq "  in the codemod lane without a codemod kind: exit 1" "$T_RC" "1"
 printf '{"recipes": [{"id": "x", "lane": "ai-free", "kind": "template", "version": "000000000000", "matches": {"rule": "port-safety:x"}, "template": {}}]}\n' > "$T_TMP/ov-why.json"
 t_run "$T_SH" "$CL" --findings "$T_TMP/f.json" --overlay "$T_TMP/ov-why.json"
 assert_eq "  without template.why: exit 1" "$T_RC" "1"
+printf '{"recipes": [{"id": "x", "lane": "ai-free", "kind": "template", "version": "v2", "matches": {"rule": "port-safety:x"}, "template": {"why": "w"}}]}\n' > "$T_TMP/ov-ver.json"
+t_run "$T_SH" "$CL" --findings "$T_TMP/f.json" --overlay "$T_TMP/ov-ver.json"
+assert_eq "  a version that is not 12 hex digits: exit 1" "$T_RC" "1"
+printf '{"recipes": [{"id": "x", "lane": "ai-free", "kind": "template", "version": "000000000000", "matches": {"message_ere": "foo("}, "template": {"why": "w"}}]}\n' > "$T_TMP/ov-re.json"
+t_run "$T_SH" "$CL" --findings "$T_TMP/f.json" --overlay "$T_TMP/ov-re.json"
+assert_eq "  a message_ere that does not compile: exit 1" "$T_RC" "1"
+printf '{"recipes": [{"id": "x", "lane": "ai-free", "kind": "template", "version": "000000000000", "matches": {"rule": "port-safety:x"}, "applies_when": {"file_ere": "[a-"}, "template": {"why": "w"}}]}\n' > "$T_TMP/ov-fre.json"
+t_run "$T_SH" "$CL" --findings "$T_TMP/f.json" --overlay "$T_TMP/ov-fre.json"
+assert_eq "  a file_ere that does not compile: exit 1" "$T_RC" "1"
 # --findings mode reads no file: an applied action counts as in effect.
 t_run "$T_SH" "$CL" --findings "$SD/findings.json" --actions "$SD/actions.jsonl" --core-floor 10.3 --json
 assert_eq "--findings with --actions: the applied items are applied" "$(jq -c '[.items[] | .status] | unique' "$T_OUT")" '["applied"]'

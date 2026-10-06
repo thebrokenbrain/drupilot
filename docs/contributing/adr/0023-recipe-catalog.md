@@ -82,7 +82,10 @@ Docker-free engines:
 postconditions. Postconditions apply to the line, the file, the file's code lines but the finding's
 (`file-except-line`), or the function the finding's line declares (`function-body`: the rest of that line,
 then every line up to the next function declared at the same indentation, or the end of the file; a `}` in a
-string never ends it, so it errs on the safe side); comment lines are not code there. An unresolved
+string never ends it, and a heredoc or nowdoc body is kept whole, so a `function` line inside one does not end
+it either: the body read is never shorter than the function); comments are not code there (`//` and `#`
+lines, `/* ... */` blocks; a line starting with `*` outside a block, such as a continued multiplication, is
+code). An unresolved
 `{placeholder}`, an empty capture or an ERE that does not compile fails the postcondition, and
 `gen-recipes.sh` names a placeholder no capture defines (`{from}`/`{to}` belong to `yaml-edit`) and an ERE
 that does not compile. A file without a final newline keeps none.

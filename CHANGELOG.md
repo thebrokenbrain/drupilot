@@ -484,6 +484,9 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     `ere-replace`, `yaml-edit` and `info-yml` engines. It writes only an
     exact change whose postconditions hold; anything else is `no-match`, and
     nothing changes.
+  - A postcondition on the function's body reads it whole: a heredoc or a
+    `/* */` block never ends it early, and a line starting with `*` outside
+    a comment is code.
   - Every codemod has `before/`, `after/` and `expect.json` fixtures in
     `tests/fixtures/recipes/`. `schemas/recipes.schema.json` validates the
     catalog, and `docs/reference/recipes.md` is generated from it.
@@ -505,6 +508,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     file's hash before and after. The classifier reads it: a codemod that
     changed nothing, failed or did not clear its finding is not tried again,
     and one whose change was reverted is.
+  - A project overlay (`<root>/.drupilot/recipes.json`) is checked before
+    use: a recipe in an unknown lane, without a 12-hex version or a kind, or
+    with a `message_ere`/`file_ere` that does not compile makes `classify.sh`
+    exit 1.
   - `schemas/worklist.schema.json` is the contract. Worklist goldens for
     `legacy_widgets`, `acme_core` and `acme_api` are computed Docker-free
     from the findings goldens, and a test keeps next-major findings out of
@@ -780,6 +787,15 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   - `preflight.sh`'s strategy check accepts both vocabularies.
 
 ### Fixed
+- **A PHPStan run whose parallel worker died is a crash, not a clean run.**
+  When a worker reaches its memory limit, fails or times out, PHPStan drops
+  that worker's file errors and still exits 1. `run-phpstan.sh` (and
+  `verify-core-matrix.sh`) recorded such a run as `findings`, so
+  `findings.json` showed PHPStan `ok` with its findings missing, and the
+  result depended on the machine's memory. A report naming "Child process
+  error", "Child process timed out", "PHPStan process crashed" or "Result is
+  incomplete" (`phpstan_crash_ere`, verified in PHPStan 2.x's source) is now
+  `crashed`, exit 3.
 - **Intermittent wrong results and exit 141 under load** (the baseline-0.9
   flakes of PRs #11, #20 and #22): a pipeline ending in `head`, `grep -q` or
   an awk `exit` stops reading early, and under `pipefail` a producer still

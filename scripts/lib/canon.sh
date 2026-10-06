@@ -262,7 +262,9 @@ recipes_effective() {
              and (.matches | type) == "object" and (.template | type) == "object" and (.template.why | type) == "string"
              and (.version | type) == "string" and (.version | test("^[0-9a-f]{6}[0-9a-f]{6}$"))
              and (.kind | IN("template", "codemod"))
-             and ((.lane | IN("codemod", "rector-custom")) == (.kind == "codemod")))' \
+             and ((.lane | IN("codemod", "rector-custom")) == (.kind == "codemod"))
+             and ([.matches.message_ere, .applies_when.file_ere] | map(strings)
+                  | all(. as $re | try ("" | test($re) | true) catch false)))' \
       "$f" > /dev/null 2>&1 || return 1
   done
   if [[ -n "$ov" ]]; then
