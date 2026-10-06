@@ -697,6 +697,14 @@ only candidates with a detector you proved and list the recorded ids in the
 summary for review (the catalog is local, self-gitignored, and
 `patterns.sh remove --id <id>` undoes an entry).
 
+**The fixpoint gate.** Before the report card run
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/fixpoint.sh" --subject "<path>" --json`:
+the extraction runs again, and Rector, the codemods and the processed lanes
+(`rector`, `rector-custom`, `codemod`) must have nothing left
+(`<state_dir>/fixpoint.json` lists what they still have). `DRUPILOT_FIXPOINT=warn`
+(the default) reports and goes on; `enforce` exits 3, and the port is not done
+until the listed items are fixed.
+
 **Write the report card (trust + teaching artifact).** While the passes ran you
 should have **tee'd** the official Rector output, the digests pass output and the
 final validate-loop PHPStan deprecation report into `<state_dir>/change-log.txt`

@@ -583,6 +583,18 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     rationale. A manifest golden pins the generator on the lab's
     `legacy_widgets` port.
 
+- **The fixpoint gate** (T-M4-11, AR-16, 05-R9, DET-8).
+  `scripts/analysis/fixpoint.sh` runs at the end of a port or a refactor. It
+  extracts again and checks that Rector, the codemods and the processed
+  lanes (`rector`, `rector-custom`, `codemod`) have nothing left. A digests
+  rule the developer rejected never counts.
+  - It writes `fixpoint.json` with the exact items left.
+  - `DRUPILOT_FIXPOINT`: `warn` (the default through the betas) reports,
+    `enforce` exits 3, `off` skips.
+  - Every run is recorded in `runs/<run_id>/run-manifest.json` with its
+    input and output hashes, and `DRUPILOT_RUNS_KEEP` (default 10) are kept.
+  - New schemas: `fixpoint.schema.json`, `run-manifest.schema.json`.
+
 ### Changed
 - **`/drupilot-port` and `/drupilot-refactor` run `manifest.sh`** instead of
   writing the manifest. Divergences stay in the decision log, the

@@ -1,0 +1,8 @@
+{
+  "inputs": {"findings_hash": "sha256:5a28c923ad4d3f0429cc4c31945171332527c3e4b826b3eff9c194b361d1b4f8", "stage": "validate", "worklist_hash": "sha256:dae0ee79349076581cf5928d696d6f842cb3ef5e1e9279770886888c5669b4fb"},
+  "meta": {"drupilot_version": "0.9.2", "finished_at": "2026-10-06T10:00:05Z", "started_at": "2026-10-06T10:00:00Z"},
+  "outputs": {"converged": false, "fixpoint_hash": "sha256:0b1e7a3c2f4d5e6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c"},
+  "run_id": "20261006T100000Z-3f9a1c",
+  "schema": 1,
+  "tool": "fixpoint"
+}

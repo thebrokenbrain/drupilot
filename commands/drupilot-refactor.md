@@ -291,6 +291,13 @@ Summarize in English:
   `/drupilot-contribute` if the subject is a contrib project the user wants to
   publish.
 
+**The fixpoint gate.** Before the report card, run
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/fixpoint.sh" --subject <path> --stage refactor --json`:
+Rector, the codemods and the processed lanes must have nothing left on the
+refactored tree (`<state_dir>/fixpoint.json`). Under `DRUPILOT_FIXPOINT=warn`
+(the default) report what it lists; under `enforce` (exit 3) the refactor is
+not done until those items are fixed.
+
 **Refresh the port report card (trust + teaching).** Regenerate the manifest for
 Phase 2 with `scripts/ai/manifest.sh --phase refactor`: it is built from the
 findings, the worklist, the codemods, the applying Rector run, the digests

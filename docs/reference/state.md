@@ -99,3 +99,14 @@ Soft deprecations and next-major findings never count. When Rector or PHPStan ga
 ## Port manifest
 
 `scripts/ai/manifest.sh --subject DIR [--phase port|refactor] [--rationale FILE]` writes `port-manifest.json` to the same hidden state dir (schema `schemas/port-manifest.schema.json`, [ADR 0027](../contributing/adr/0027-generated-port-manifest.md)). It is built from what the scripts recorded, never from memory: the worklist by lane and status, the codemods still in effect, the Rector rules and files of the applying run, the digests verdicts, the decision log, and the git diff against the port's base. A manual edit is a file the diff shows that neither Rector nor a codemod changed. The only input the model gives is the rationale, `{"<worklist item id>": "why"}`. An unknown id is refused, and a later run keeps the rationale of the items still in the worklist. `port-report.sh` renders the manifest with the decision log and the verification records of the state dir. The same records and tree give the same manifest outside `meta`.
+
+## Fixpoint and runs
+
+`scripts/analysis/fixpoint.sh --subject DIR [--stage S]` is the gate at the end of a port or a refactor. It runs the extraction again on the tree as it is, then the codemods in dry-run, and writes `fixpoint.json` (schema `schemas/fixpoint.schema.json`). The file lists the Rector changes still proposed, the codemods that would still apply, and the open items of the processed lanes. Those lanes are `rector`, `rector-custom` and `codemod`; the AI lanes join when their executor does. A digests rule you rejected never counts. The gate converges only when the three lists are empty and every tool gave a verdict.
+
+`DRUPILOT_FIXPOINT` decides what a failure does:
+- `warn`, the default through the 1.0 betas, reports it;
+- `enforce`, the default from 1.0.0-rc.1, exits 3, so the stage is not done;
+- `off` skips the gate.
+
+Each run is recorded in `runs/<run_id>/run-manifest.json` (schema `schemas/run-manifest.schema.json`), with the hashes it started from and the ones it produced. The run id is the UTC start time and the first hex digits of the inputs' hash. `DRUPILOT_RUNS_KEEP` (default 10) runs are kept per module.

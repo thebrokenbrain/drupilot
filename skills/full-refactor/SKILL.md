@@ -379,6 +379,11 @@ pre-refactor code (a POSIX ERE and/or `port-safety:<check>` /
 it (the command asks which; an autonomous run records only detectors it
 checked and lists their ids).
 
+**The fixpoint gate.** Run
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/fixpoint.sh" --subject "<path>" --stage refactor --json`
+before the report: Rector, the codemods and the processed lanes must have
+nothing left (`DRUPILOT_FIXPOINT`: `warn` reports, `enforce` exits 3).
+
 **Refresh the didactic report.** Tee the Phase 2 Rector + final PHPStan
 deprecation output into `<state_dir>/change-log.txt` (under `$HOME`, never in the
 project tree), regenerate `<state_dir>/port-manifest.json` with

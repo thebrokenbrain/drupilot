@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thebrokenbrain.github.io/drupilot/schemas/fixpoint.schema.json",
+  "title": "drupilot fixpoint record (fixpoint.json)",
+  "description": "The fixpoint gate's result (scripts/analysis/fixpoint.sh, AR-16, DET-8), in the subject's hidden state dir: after the extraction ran again, what Rector, the codemods and the processed lanes still have to do. converged is true only when the three lists are empty and every tool gave a verdict.",
+  "type": "object",
+  "required": ["schema", "tool", "mode", "stage", "converged", "rector", "codemods", "open_items"],
+  "properties": {
+    "schema": {"const": 1},
+    "tool": {"const": "fixpoint"},
+    "mode": {"description": "DRUPILOT_FIXPOINT when it ran.", "enum": ["enforce", "warn"]},
+    "stage": {"type": "string", "minLength": 1},
+    "processed_lanes": {"type": "array", "items": {"type": "string"}},
+    "no_verdict": {"description": "True when Rector or PHPStan gave no verdict (the gate cannot converge).", "type": "boolean"},
+    "converged": {"type": "boolean"},
+    "rector": {
+      "description": "The Rector findings still there (a digests rule the developer rejected left out).",
+      "type": "array",
+      "items": {"type": "object", "required": ["id", "rule", "file"], "properties": {"id": {"type": "string"}, "rule": {"type": "string"}, "file": {"type": "string"}, "anchor": {"type": ["string", "null"]}}}
+    },
+    "codemods": {
+      "description": "The codemods that would still change a file (apply-recipes.sh --dry-run: would-apply).",
+      "type": "array",
+      "items": {"type": "object", "properties": {"item_id": {"type": ["string", "null"]}, "recipe": {"type": "string"}, "file": {"type": ["string", "null"]}}}
+    },
+    "open_items": {
+      "description": "The open worklist items of a processed lane.",
+      "type": "array",
+      "items": {"type": "object", "required": ["id", "lane"], "properties": {"id": {"type": "string"}, "lane": {"type": "string"}, "file": {"type": "string"}, "anchor": {"type": ["string", "null"]}}}
+    },
+    "findings_hash": {"type": ["string", "null"]},
+    "worklist_hash": {"type": ["string", "null"]},
+    "meta": {"type": "object"}
+  }
+}

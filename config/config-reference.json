@@ -219,6 +219,22 @@
       "description": "Reproducibility (default on): freeze the resolved Drupal core, dev toolchain, digests SHA and DDEV add-ons in a per-project `drupilot-lock.json` and reuse them on later runs. Set to `false` to resolve fresh every time and refresh the lock. See Determinism.",
       "see": "concepts/determinism-lockfile.md"
     },
+    "DRUPILOT_FIXPOINT": {
+      "type": "enum",
+      "enum": ["enforce", "warn", "off"],
+      "tier": "public",
+      "default_ref": "defaults.json#/DRUPILOT_FIXPOINT",
+      "description": "The fixpoint gate at the end of a port or a refactor (`scripts/analysis/fixpoint.sh`): the extraction runs again, and Rector, the codemods and the processed lanes must have nothing left. `warn` (the default through the 1.0 betas) reports a failure and goes on; `enforce` (the default from 1.0.0-rc.1) makes it exit 3, so the stage is not done; `off` skips it.",
+      "see": "reference/state.md"
+    },
+    "DRUPILOT_RUNS_KEEP": {
+      "type": "int",
+      "enum": null,
+      "tier": "advanced",
+      "default_ref": "defaults.json#/DRUPILOT_RUNS_KEEP",
+      "description": "How many run manifests (`<state>/runs/<run_id>/run-manifest.json`: a run's input and output hashes) each module keeps; the oldest are removed.",
+      "see": "reference/state.md"
+    },
     "DRUPILOT_SOFT_DEPRECATIONS": {
       "type": "enum",
       "enum": [

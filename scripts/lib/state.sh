@@ -770,6 +770,38 @@ digests_decisions_file() {
   return 0
 }
 
+# run_manifest_record SUBJECT TOOL STARTED INPUTS_JSON OUTPUTS_JSON -> records
+# one run (AR-16) as <state>/runs/<run_id>/run-manifest.json: {schema, run_id,
+# tool, inputs, outputs, meta: {started_at, finished_at, drupilot_version}}.
+# The run id is the UTC start time and the first hex of the inputs' hash, so
+# runs sort by time; only the newest DRUPILOT_RUNS_KEEP (default 10) runs are
+# kept. Prints the run id. Never fails the caller: 1 only on bad arguments.
+run_manifest_record() {
+  local subj="${1:-}" tool="${2:-}" started="${3:-}" in="${4:-}" out="${5:-}" d id h keep n
+  [[ -n "$subj" && -n "$tool" && -n "$in" && -n "$out" ]] || return 1
+  have_cmd jq || return 0
+  d="$(project_state_dir "$subj")/runs"
+  h="$(printf '%s' "$in" | jq -S -c . 2> /dev/null | sha256_hex 2> /dev/null || true)"
+  id="$(printf '%s' "${started:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" | tr -d ':-')-$(printf '%s' "$h" | cut -c1-6)"
+  n=1; while [[ -e "$d/$id" ]]; do n=$((n + 1)); id="${id%%.*}.$n"; done
+  mkdir -p "$d/$id" 2> /dev/null || return 0
+  jq -n --arg id "$id" --arg t "$tool" --argjson i "$in" --argjson o "$out" --arg s "$started" \
+     --arg f "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg v "$(plugin_version 2> /dev/null || true)" \
+    '{schema: 1, run_id: $id, tool: $t, inputs: $i, outputs: $o,
+      meta: {started_at: (if $s == "" then null else $s end), finished_at: $f, drupilot_version: (if $v == "" then null else $v end)}}' \
+    2> /dev/null | canon_json > "$d/$id/run-manifest.json" 2> /dev/null || true
+  # Its default is defaults.json's; a value that is not a positive integer
+  # keeps every run.
+  keep="$(config_get DRUPILOT_RUNS_KEEP "")"; [[ "$keep" =~ ^[0-9]+$ && "$keep" -ge 1 ]] || keep=999999
+  for n in "$d"/*; do
+    if [[ -d "$n" ]]; then printf '%s\n' "${n##*/}"; fi
+  done | LC_ALL=C sort -r | awk -v k="$keep" 'NR > k' | while IFS= read -r n; do
+    if [[ -n "$n" && -d "$d/$n" ]]; then rm -rf "${d:?}/${n:?}"; fi
+  done
+  printf '%s\n' "$id"
+  return 0
+}
+
 # env_status_record <root> <status> [level] -> store `.environment = {status,
 # level, at}` in the state.json of every subject under <root>
 # (status: removed | ready). /drupilot-clean records `removed`; ddev-up.sh and

@@ -75,6 +75,8 @@ SPECS="$(printf '%s\t%s\t%s\n' \
   toolchain.schema.json config/toolchain-reference.json . \
   pipeline.schema.json config/pipeline.json . \
   recipes.schema.json config/recipes.json . \
+  fixpoint.schema.json schemas/examples/fixpoint.example.json . \
+  run-manifest.schema.json schemas/examples/run-manifest.example.json . \
   worklist.schema.json tests/golden/worklist/legacy_widgets.json . \
   worklist.schema.json tests/golden/worklist/acme_core.json . \
   worklist.schema.json tests/golden/worklist/acme_api.json . \

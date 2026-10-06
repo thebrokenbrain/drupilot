@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thebrokenbrain.github.io/drupilot/schemas/run-manifest.schema.json",
+  "title": "drupilot run manifest (runs/<run_id>/run-manifest.json)",
+  "description": "One run of a pipeline step (AR-16), in the subject's hidden state dir under runs/<run_id>/: the hashes it started from and the ones it produced, so two runs can be compared. common.sh run_manifest_record writes it; DRUPILOT_RUNS_KEEP runs are kept.",
+  "type": "object",
+  "required": ["schema", "run_id", "tool", "inputs", "outputs"],
+  "properties": {
+    "schema": {"const": 1},
+    "run_id": {"description": "The UTC start time and the first hex of the inputs' hash.", "type": "string", "pattern": "^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{0,6}"},
+    "tool": {"type": "string", "minLength": 1},
+    "inputs": {"type": "object"},
+    "outputs": {"type": "object"},
+    "meta": {"type": "object"}
+  }
+}

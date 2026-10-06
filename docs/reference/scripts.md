@@ -892,6 +892,43 @@ Output: a human explainer on STDOUT (or JSON with --json). Logging on STDERR.
 Exit codes: 0 ok (matches or not) · 1 usage/error. Read-only.
 ```
 
+### analysis/fixpoint.sh
+
+```text
+drupilot — scripts/analysis/fixpoint.sh
+The fixpoint gate (T-M4-11, AR-16, 05-R9, DET-8): at the end of a port or a
+refactor, run the extraction again on the tree as it is (extract.sh with
+its Rector dry-run, normalize-findings.sh, classify.sh) and the codemods in
+dry-run (apply-recipes.sh --dry-run), and check that nothing is left for the
+deterministic lanes:
+  rector     no Rector finding (the dry-run would change nothing); a
+             digests rule the developer rejected never counts
+  codemods   no codemod that would still change a file
+  open       no open item in a processed lane (rector, rector-custom,
+             codemod; the AI lanes join when their executor does)
+It writes <state>/fixpoint.json (converged, the exact items of each list)
+and records the run in <state>/runs/<run_id>/run-manifest.json (its input
+and output hashes; DRUPILOT_RUNS_KEEP runs are kept).
+
+DRUPILOT_FIXPOINT: warn (default through the betas): a failure is reported
+and the exit code stays 0 · enforce: a failure exits 3, the stage is not
+done · off: nothing runs.
+
+Usage:
+  fixpoint.sh --subject DIR [--stage S] [--findings F --worklist W]
+              [--json] [-h|--help]
+    --subject DIR   the module/theme (inside its Drupal root)
+    --stage S       the extraction's stage (default: validate)
+    --findings F    read this findings.json and --worklist W instead of
+                    extracting again (a test's; no Docker), and skip the
+                    codemod dry-run
+    --json          print fixpoint.json on STDOUT
+
+Exit codes: 0 converged, or not converged in warn mode, or off · 1 usage
+error, or the extraction failed · 3 not converged in enforce mode, or the
+extraction gave no verdict (Rector or PHPStan).
+```
+
 ### analysis/layer-report.sh
 
 ```text
