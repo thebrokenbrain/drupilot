@@ -781,6 +781,41 @@ Exit codes: 0 ok · 1 usage error, or the directory holds no .info.yml and
 no Drupal 7 .info.
 ```
 
+### analysis/digests-decisions.sh
+
+```text
+drupilot — scripts/analysis/digests-decisions.sh
+Record the developer's verdict on each dbuytaert/drupal-digests rule of a
+port (05-R6, T-M4-08), so a later port of the same module replays them and
+asks nothing: digests-decisions.json in the subject's hidden state dir, one
+verdict (accept | reject) per rule, keyed by the rule, the digests SHA and
+the subject's digest before the passes. The key comes from the last digests
+dry-run of run-rector.sh (its record, rector-dryrun.json): run
+`run-rector.sh --subject DIR --digests --json` first. A rejected rule is left
+out of the digests config of every later run with that key; a rule with no
+verdict is pending (run-rector.sh --json, digests_review.pending). A verdict
+recorded in an autonomous run (DRUPILOT_AUTONOMOUS=true) is kept with
+by: "auto": it is that run's safe default, not the developer's review, so
+only an autonomous run replays it (a guided port asks again). Verdicts are
+recorded only for the sources the dry-run saw: a module changed since then
+needs a new dry-run first.
+
+Usage:
+  digests-decisions.sh --subject DIR --list [--json]
+  digests-decisions.sh --subject DIR [--accept R[,R...]]... [--reject R[,R...]]...
+                       [--json]
+  digests-decisions.sh --subject DIR --clear
+    --list     the rules of the last digests dry-run with their verdicts
+    --accept   rules to apply (short class names, as digests_review names them)
+    --reject   rules to leave out
+    --clear    forget every verdict of the subject (/drupilot-clean does it too)
+    --json     {digests_sha, input_hash, rules: [{rule, verdict, by}],
+               pending: [...]} on STDOUT
+
+Exit codes: 0 done · 1 usage error, no digests dry-run to key the verdicts
+on, a module changed since that dry-run, or a rule it did not name.
+```
+
 ### analysis/explain-deprecations.sh
 
 ```text
@@ -1550,8 +1585,21 @@ Passes, in this order:
                    output still runs on L (`Foo $x = NULL` -> `?Foo $x =
                    NULL`). Errors and the dry-run record call it pass 3.
   Pass 2 (--digests): the COMPLEMENTARY, AI-generated `dbuytaert/drupal-digests`
-                   rules, cloned at runtime into the plugin cache and run via
-                   `--config <cache>/rector/all.php`.
+                   rules, cloned at runtime into the plugin cache, staged
+                   under <root>/.drupilot/digests/<sha>/ and run with a
+                   filtered all.php (all.drupilot.php, T-M4-08, ADR 0026):
+                   without the rules the official pass already applies
+                   (03-R17: drupal-rector's docs/implemented-digests.yml at
+                   the installed version, fetched, cached and frozen in the
+                   lock as .digests.implemented_yml_sha256 / _ref; an entry
+                   counts when every class it names is registered in a set
+                   rector.php loads) and without the rules rejected for this
+                   module (digests-decisions.json, 05-R6: per rule, digests
+                   SHA and the subject's digest before the passes; record
+                   them with scripts/analysis/digests-decisions.sh). A frozen
+                   yml that cannot be read again, an all.php drupilot cannot
+                   read whole, and an --apply on sources changed since the
+                   reviewed dry-run are digests errors (exit 4).
 
 Default is DRY-RUN (no files are modified). Use --apply to write changes.
 
@@ -1606,6 +1654,19 @@ Options:
                      changed_files, digests_sha, rule_hits, meta:
                      {generated_at, subject}}), the fallback
                      port-report.sh / layer-report.sh read.
+                     digests_filter: {implemented_yml: {ref, sha256} | null,
+                     skipped_implemented (drupal-rector implements them in
+                     a set rector.php loads), implemented_not_loaded and
+                     config_only (kept: drupal-rector has them in a set this
+                     port does not load, or the yml names no class),
+                     rejected: [rules], kept: n} and digests_review:
+                     {digests_sha, input_hash, rules: [{rule, files,
+                     verdict: accept | reject | pending}], rejected,
+                     pending: [rules]} (null without the digests pass, or
+                     when it did not finish: nothing to review); a dry-run
+                     keeps the review in its record for
+                     digests-decisions.sh. A verdict an autonomous run
+                     recorded counts only in an autonomous run.
   --attributes       Run ONLY the optional annotation -> PHP 8 attribute pass
                      instead of the official/digests passes: forwards every
                      other argument to scripts/analysis/convert-attributes.sh
@@ -2499,7 +2560,8 @@ module/theme under */custom that has no recorded origin, is refused.
 
 Afterwards every module of the root gets `.environment = {status: "removed",
 level, at}` in its state.json, so next-step.sh recommends /drupilot-setup
-until ddev-up.sh / place-subject.sh rebuild it.
+until ddev-up.sh / place-subject.sh rebuild it, and its digests verdicts
+(digests-decisions.json, scripts/analysis/digests-decisions.sh) are reset.
 
 Usage:
   clean.sh [--subject DIR | --root DIR | --all [--scan DIR]...]
@@ -2864,7 +2926,8 @@ This script reads what is actually installed and records it:
     git build when drupilot runs from a checkout)
 
 It does NOT touch digests.{ref,sha} (run-rector.sh owns those), except that
---refresh drops digests.sha so the next Rector run re-resolves the live ref.
+--refresh drops digests.sha (and the frozen implemented-digests.yml hash)
+so the next Rector run re-resolves the live ref.
 
 Fail-safe: if there is no composer.lock yet (setup not run) or DDEV is down,
 it records what it can and exits 0 — it never blocks a flow.

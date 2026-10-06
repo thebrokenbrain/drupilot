@@ -759,6 +759,17 @@ subjects_with_state_under() {
   return 0
 }
 
+# digests_decisions_file SUBJECT -> the subject's digests-decisions.json (05-R6,
+# T-M4-08): {schema: 1, decisions: [{rule, digests_sha, input_hash, verdict:
+# accept|reject, at}]}, the developer's verdict on each digests rule, keyed
+# by the rule, the digests SHA and the subject's digest before the passes, so
+# a later port of the same module replays them and asks nothing. In the
+# hidden state dir; /drupilot-clean resets it. Never created here.
+digests_decisions_file() {
+  printf '%s/digests-decisions.json' "$(project_state_path "${1:-$PWD}")"
+  return 0
+}
+
 # env_status_record <root> <status> [level] -> store `.environment = {status,
 # level, at}` in the state.json of every subject under <root>
 # (status: removed | ready). /drupilot-clean records `removed`; ddev-up.sh and

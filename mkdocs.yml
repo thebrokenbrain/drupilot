@@ -108,4 +108,5 @@ nav:
           - contributing/adr/0023-recipe-catalog.md
           - contributing/adr/0024-worklist-and-actions.md
           - contributing/adr/0025-assess-rubric-from-findings.md
+          - contributing/adr/0026-digests-rules-the-official-pass-applies.md
   - Changelog: changelog.md

@@ -540,6 +540,32 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     for `legacy_widgets`, `acme_core` and `acme_api` are computed Docker-free
     from the findings and worklist goldens.
 
+- **The digests pass remembers your verdicts and skips what drupal-rector
+  already does** (T-M4-08, 03-R17, 05-R6).
+  - `run-rector.sh --digests` runs a filtered `all.php` (ADR 0026). It
+    leaves out the rules the official pass already applies, from
+    drupal-rector's `docs/implemented-digests.yml` at the installed version:
+    fetched, cached, and its hash frozen in the lock
+    (`.digests.implemented_yml_*`). An entry counts only when every class it
+    names is registered in a set your `rector.php` loads. drupal-rector
+    implements most of them in its Drupal 11 sets, which a port to 11 does
+    not load, so those still run in the digests pass, and so do the
+    config-only entries (the file names no class for them).
+  - It also leaves out the rules you rejected for the module.
+  - It fails closed: an `all.php` it cannot read whole, or an `--apply` on
+    sources changed since the reviewed dry-run, stops the digests pass
+    (exit 4) rather than run rules nobody reviewed.
+  - `scripts/analysis/digests-decisions.sh` records each verdict, keyed by
+    the rule, the digests SHA and the module's sources, in the hidden
+    `digests-decisions.json`.
+  - `run-rector.sh --json` reports `digests_filter` and `digests_review`.
+    `/drupilot-port` asks only about the pending rules: a second port of the
+    same sources asks nothing. An autonomous run's recorded defaults are
+    marked as such and replayed only by another autonomous run.
+  - `/drupilot-clean` (or `digests-decisions.sh --clear`) forgets the
+    verdicts. `lock-sync.sh --refresh` and `DRUPILOT_DETERMINISTIC=false`
+    fetch the yml again and freeze its new hash.
+
 ### Changed
 - **`/drupilot-assess` and the `viability-assessment` skill** no longer run
   the analyzers one by one, grep for hard breaks or apply the rubric: they
