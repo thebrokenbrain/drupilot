@@ -268,11 +268,12 @@ rector_config_floor() {
 
 # rector_config_missing_paths ROOT FILE -> the relative literal paths of the
 # withPaths([...]) list of a Rector config FILE that do not exist under ROOT,
-# one per line (Rector stops on such a path). Comment lines, /* */ and trailing
-# // comments are ignored; an absolute path (it may be the container's), a
-# __DIR__ path and a wildcard are not checked; only the first list after the
-# first ->withPaths([ outside a comment is read. Read-only; prints nothing
-# when FILE is missing.
+# one per line (Rector stops on such a path). Comments (/* */ blocks, also over
+# several lines, and // or # to the end of a line) are ignored; a variable
+# ($paths['x']), an absolute path (it may be the container's), a __DIR__ path
+# and a wildcard are not checked; only the first list after the first
+# ->withPaths([ outside a comment is read. A heuristic that only feeds a
+# warning. Read-only; prints nothing when FILE is missing.
 rector_config_missing_paths() {
   local root="${1:-}" f="${2:-}" p list
   [[ -f "$f" ]] || return 0
@@ -280,9 +281,12 @@ rector_config_missing_paths() {
   list="$(awk -v q="'" '
     {
       l = $0
-      sub(/^[ \t]*(\*|\/\*|#|\/\/).*/, "", l)
-      gsub(/\/\*[^*]*\*\//, "", l)
-      sub(/[ \t]\/\/.*$/, "", l)
+      if (inc) { if (!match(l, /\*\//)) next; l = substr(l, RSTART + RLENGTH); inc = 0 }
+      gsub(/\/\*([^*]|\*+[^*\/])*\*+\//, "", l)
+      if (match(l, /\/\*/)) { l = substr(l, 1, RSTART - 1); inc = 1 }
+      sub(/^[ \t]*\*.*/, "", l)
+      sub(/(^|[ \t,(\[])(\/\/|#).*$/, "", l)
+      gsub(/\$[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])*/, "", l)
       if (!on) { if (!match(l, /->withPaths\(\[/)) next; on = 1; l = substr(l, RSTART + RLENGTH) }
       last = 0
       if (match(l, /\]/)) { l = substr(l, 1, RSTART - 1); last = 1 }
