@@ -1,0 +1,6 @@
+services:
+  m.lookup:
+    class: Drupal\m\WidgetLookUp
+    arguments: ['@entity_type.manager']
+  m.lookup_copy:
+    class: Drupal\m\WidgetLookUp

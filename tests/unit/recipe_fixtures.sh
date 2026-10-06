@@ -33,7 +33,7 @@ for d in "$FX"/*/; do
 $(jq -r '(.params // {}) | to_entries[] | "\(.key)=\(.value)"' <<< "$c")
 EOF
     ar "$@"
-    assert_eq "$id: $(cq .name): exit $(cq .exit_code // 0), $(cq .status)" \
+    assert_eq "$id: $(cq .name): exit $(cq '.exit_code // 0'), $(cq .status)" \
       "$T_RC|$(jq -r '.status' "$T_OUT")" "$(jq -r '.exit_code // 0' <<< "$c")|$(cq .status)"
     assert_eq "  the tree is $(cq .after)/" "$(diff -r "$w" "$d/$(cq .after)" > /dev/null 2>&1 && echo same || echo differs)" "same"
     for mi in "$d/$(cq .before)"/*.info.yml; do
@@ -70,6 +70,30 @@ ar --recipe sig.hook-entity-operation --recipes "$T_TMP/recipes-min.json" --subj
 assert_eq "  at the floor 11.3: it applies" "$T_RC|$(jq -r .status "$T_OUT")" '0|would-apply'
 ar --recipe sig.hook-entity-operation --recipes "$T_TMP/recipes-min.json" --subject "$w" --file m.module --line 14 --json
 assert_eq "  no floor known (no --core-floor, no plan): not-applicable" "$T_RC|$(jq -r .status "$T_OUT")" '0|not-applicable'
+
+# A symlinked subject (DRUPILOT_PLACEMENT=symlink): info-yml works on a copy
+# of the real tree, so --dry-run writes nothing and only the finding's file
+# changes.
+M="$FX/meta.submodule-core-req"
+cp -R "$M/main-core-key/before" "$T_TMP/origin"; ln -s "$T_TMP/origin" "$T_TMP/link"
+ar --recipe meta.submodule-core-req --subject "$T_TMP/link" --file modules/m_extra/m_extra.info.yml --line 5 --severity warning --param 'requirement=^10 || ^11' --dry-run --json
+assert_eq "a symlinked subject, --dry-run: would-apply, the real tree untouched" \
+  "$T_RC|$(jq -r .status "$T_OUT")|$(diff -r "$T_TMP/origin" "$M/main-core-key/before" > /dev/null && echo same)" '0|would-apply|same'
+ar --recipe meta.submodule-core-req --subject "$T_TMP/link" --file modules/m_extra/m_extra.info.yml --line 5 --severity warning --param 'requirement=^10 || ^11' --json
+assert_eq "  applied: only the finding's file changed" \
+  "$T_RC|$(jq -r .status "$T_OUT")|$(diff -r "$T_TMP/origin" "$M/main-core-key/after" > /dev/null && echo same)" '0|applied|same'
+# The plan in a shared root's lock that belongs to another module is not used.
+SR="$T_TMP/shared"; SB="$SR/web/modules/custom/m"; mkdir -p "$SR/web/core/lib" "$SR/web/modules/custom"
+printf '{"name":"x/shared"}\n' > "$SR/composer.json"
+printf "<?php\nclass Drupal {\n  const VERSION = '11.4.8';\n}\n" > "$SR/web/core/lib/Drupal.php"
+cp -R "$M/before" "$SB"
+DRUPILOT_PROJECT_DIR="$SR" lock_set_json .upgrade_plan '{"subject": {"machine_name": "other"}, "range": {"constraint": "^11.2", "floor": "11.2"}}' > /dev/null
+ar --recipe meta.submodule-core-req --subject "$SB" --file modules/m_extra/m_extra.info.yml --line 5 --severity warning
+assert_eq "another module's frozen plan: no requirement, exit 1, nothing written" \
+  "$T_RC|$(diff -r "$SB" "$M/before" > /dev/null && echo same)" "1|same"
+DRUPILOT_PROJECT_DIR="$SR" lock_set_json .upgrade_plan '{"subject": {"machine_name": "m"}, "range": {"constraint": "^10 || ^11", "floor": "10.0"}}' > /dev/null
+ar --recipe meta.submodule-core-req --subject "$SB" --file modules/m_extra/m_extra.info.yml --line 5 --severity warning --json
+assert_eq "  its own frozen plan: the plan's range" "$T_RC|$(jq -r '[.status, .to] | join("|")' "$T_OUT")" '0|applied|^10 || ^11'
 
 # Usage errors.
 ar --recipe dep.drupal-set-message --subject "$w" --file m.module --line 14

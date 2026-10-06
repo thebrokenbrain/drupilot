@@ -165,6 +165,14 @@ nf --raw-dir "$RT" --target-major 11 --soft-policy report --json
 assert_eq "a trait error: one finding, the trait's file, its anchor" \
   "$(j '[.findings[] | select(.tool == "phpstan") | [.file, .anchor, .occurrence]]')" '[["src/T.php","M\\T::foo",0]]'
 
+# An anonymous class context, and two identical errors on one line of a trait.
+jq --arg sp "$SP" '.files = {($sp + "/src/T.php (in context of class@anonymous/web/modules/custom/m/src/A.php:45)"): {messages: [{message: "Undefined variable: $t", line: 4}, {message: "Undefined variable: $t", line: 4}]},
+                             ($sp + "/src/T.php (in context of class M\\B)"): {messages: [{message: "Undefined variable: $t", line: 4}, {message: "Undefined variable: $t", line: 4}]}}' \
+  "$R0/04-assess-phpstan.json" > "$RT/04-assess-phpstan.json"
+nf --raw-dir "$RT" --target-major 11 --soft-policy report --json
+assert_eq "an anonymous class context too; two identical errors on one trait line stay two" \
+  "$(j '[.findings[] | select(.tool == "phpstan") | [.file, .anchor, .occurrence]]')" '[["src/T.php","M\\T::foo",0],["src/T.php","M\\T::foo",1]]'
+
 # The anchor is part of the merge key: the same symbol in two methods is two findings.
 RA="$T_TMP/rawa"; mkraw "$RA" 0
 jq '.files[].messages += [.files[].messages[0] | .line = 40]' "$R0/04-assess-phpstan.json" > "$RA/04-assess-phpstan.json"
@@ -195,10 +203,31 @@ nf --raw-dir "$RB" --target-major 11 --soft-policy report --out "$T_TMP/big/f.js
 assert_eq "6000 PHPCS findings: exit 0, every one with its own id" \
   "$T_RC|$(jq -c '[.counts.by_tool.phpcs, ([.findings[].id] | unique | length) == .counts.total]' "$T_TMP/big/f.json")" '0|[6000,true]'
 
+# A large PHPStan report (over the 128 KiB argv cap) goes through the real
+# classify-deprecations.sh: the deprecations keep their class.
+RL="$T_TMP/rawl"; mkraw "$RL" 0
+jq --arg sp "$SP" '.files[($sp + "/src/A.php")].messages = ([range(0; 900) as $i | {message: "Call to deprecated function user_roles():\nin drupal:10.2.0 and is removed from drupal:11.0.0. Use \\Drupal\\user\\Entity\\Role::loadMultiple() instead, then filter the anonymous role out. (\($i))", identifier: "function.deprecated", line: (1000 + $i)}])' \
+  "$R0/04-assess-phpstan.json" > "$RL/04-assess-phpstan.json"
+assert_eq "  (the report is over 128 KiB)" "$([[ "$(wc -c < "$RL/04-assess-phpstan.json")" -gt 131072 ]] && echo big)" "big"
+nf --raw-dir "$RL" --target-major 11 --soft-policy report --out "$T_TMP/large/f.json"
+assert_eq "900 deprecations: exit 0, every one hard" \
+  "$T_RC|$(jq -c '[.findings[] | select(.symbol == "user_roles") | .class] | [length, unique]' "$T_TMP/large/f.json")" '0|[1,["hard"]]'
+
+# A raw file that is not JSON, and one of an unexpected shape.
+RX="$T_TMP/rawx"; mkraw "$RX" 0; printf '{"files": ' > "$RX/04-assess-phpstan.json"
+nf --raw-dir "$RX" --target-major 11 --soft-policy report --json
+assert_eq "a truncated PHPStan raw file: failed, not ok" "$T_RC|$(j '.tools.phpstan')" '0|"failed"'
+printf '{"drupilot": "x", "files": {}}\n' > "$RX/04-assess-phpstan.json"
+nf --raw-dir "$RX" --target-major 11 --soft-policy report --json
+assert_eq "a raw file with a field of another type: no crash" "$T_RC|$(j '.tools.phpstan')" '0|"ok"'
+
 # The raw index: exactly one per stage, a JSON object.
 RI="$T_TMP/rawi"; mkraw "$RI" 0; printf '{"stage": ' > "$RI/04-assess-index.json"
 nf --raw-dir "$RI"
 assert_eq "a truncated index: exit 1" "$T_RC" "1"
+jq '.subject = "web/modules/custom/m"' "$R0/04-assess-index.json" > "$RI/04-assess-index.json"
+nf --raw-dir "$RI"
+assert_eq "an index whose subject is not an object: exit 1" "$T_RC" "1"
 mkraw "$RI" 0; cp "$RI/04-assess-index.json" "$RI/02-assess-index.json"
 nf --raw-dir "$RI"
 assert_eq "two raw sets of one stage: exit 1" "$T_RC" "1"

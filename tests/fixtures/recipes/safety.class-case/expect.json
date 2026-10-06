@@ -39,6 +39,26 @@
       "severity": "error",
       "message": "'Drupal\\m\\WidgetLookUp' does not match the real file 'src/OtherLookup.php' (case differs): works on a case-insensitive filesystem, fatals on Linux.",
       "status": "no-match"
+    },
+    {
+      "name": "the same class on two lines, the finding on the first: only its line changes",
+      "before": "two-lines/before",
+      "after": "two-lines/after",
+      "file": "m.services.yml",
+      "line": 3,
+      "severity": "error",
+      "message": "'Drupal\\m\\WidgetLookUp' does not match the real file 'src/WidgetLookup.php' (case differs): works on a case-insensitive filesystem, fatals on Linux.",
+      "status": "applied"
+    },
+    {
+      "name": "a file without a final newline keeps none",
+      "before": "no-newline/before",
+      "after": "no-newline/after",
+      "file": "m.services.yml",
+      "line": 3,
+      "severity": "error",
+      "message": "'Drupal\\m\\WidgetLookUp' does not match the real file 'src/WidgetLookup.php' (case differs): works on a case-insensitive filesystem, fatals on Linux.",
+      "status": "applied"
     }
   ]
 }

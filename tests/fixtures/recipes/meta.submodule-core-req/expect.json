@@ -23,6 +23,30 @@
         "requirement": "^10 || ^11"
       },
       "status": "not-applicable"
+    },
+    {
+      "name": "a requirement above the declared floor (^10.3 over ^10): not-applicable",
+      "before": "before",
+      "after": "before",
+      "file": "modules/m_extra/m_extra.info.yml",
+      "line": 5,
+      "severity": "warning",
+      "params": {
+        "requirement": "^10.3 || ^11"
+      },
+      "status": "not-applicable"
+    },
+    {
+      "name": "only the finding's file is written: the main info.yml keeps its core: 8.x line",
+      "before": "main-core-key/before",
+      "after": "main-core-key/after",
+      "file": "modules/m_extra/m_extra.info.yml",
+      "line": 5,
+      "severity": "warning",
+      "params": {
+        "requirement": "^10 || ^11"
+      },
+      "status": "applied"
     }
   ]
 }

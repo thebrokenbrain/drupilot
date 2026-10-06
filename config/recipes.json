@@ -1046,6 +1046,9 @@
         "rule": "signature:hook-entity-operation"
       },
       "params": {
+        "captures": {
+          "var": "CacheableMetadata[[:space:]]+\\$([A-Za-z_][A-Za-z0-9_]*)"
+        },
         "replace": "\\1?\\2\\4 = NULL\\5",
         "scope": "line",
         "search": "([(,][[:space:]]*)(\\\\?([A-Za-z_][A-Za-z0-9_]*\\\\)*CacheableMetadata)([[:space:]]+\\$[A-Za-z_][A-Za-z0-9_]*)([[:space:]]*[),])"
@@ -1055,6 +1058,11 @@
           "ere": "([(,][[:space:]]*)(\\\\?([A-Za-z_][A-Za-z0-9_]*\\\\)*CacheableMetadata)([[:space:]]+\\$[A-Za-z_][A-Za-z0-9_]*)([[:space:]]*[),])",
           "type": "absent-ere",
           "where": "line"
+        },
+        {
+          "ere": "\\${var}([^A-Za-z0-9_]|$)",
+          "type": "absent-ere",
+          "where": "file-except-line"
         }
       ],
       "source": "config/deprecations.json#/signature_changes/5",
@@ -1065,7 +1073,7 @@
         "since": "11.3",
         "why": "From 11.3 core invokes hook_entity_operation() with a second argument, CacheableMetadata $cacheability (EntityListBuilder::getOperations()); earlier cores pass only the entity. An implementation that REQUIRES the second parameter throws ArgumentCountError on every core below 11.3."
       },
-      "version": "a56e354e3418"
+      "version": "fa36f8b34efb"
     },
     {
       "applies_when": {
@@ -1082,6 +1090,9 @@
         "rule": "signature:hook-entity-operation-alter"
       },
       "params": {
+        "captures": {
+          "var": "CacheableMetadata[[:space:]]+\\$([A-Za-z_][A-Za-z0-9_]*)"
+        },
         "replace": "\\1?\\2\\4 = NULL\\5",
         "scope": "line",
         "search": "([(,][[:space:]]*)(\\\\?([A-Za-z_][A-Za-z0-9_]*\\\\)*CacheableMetadata)([[:space:]]+\\$[A-Za-z_][A-Za-z0-9_]*)([[:space:]]*[),])"
@@ -1091,6 +1102,11 @@
           "ere": "([(,][[:space:]]*)(\\\\?([A-Za-z_][A-Za-z0-9_]*\\\\)*CacheableMetadata)([[:space:]]+\\$[A-Za-z_][A-Za-z0-9_]*)([[:space:]]*[),])",
           "type": "absent-ere",
           "where": "line"
+        },
+        {
+          "ere": "\\${var}([^A-Za-z0-9_]|$)",
+          "type": "absent-ere",
+          "where": "file-except-line"
         }
       ],
       "source": "config/deprecations.json#/signature_changes/6",
@@ -1101,7 +1117,7 @@
         "since": "11.3",
         "why": "From 11.3 core alters entity operations with a third argument, CacheableMetadata $cacheability; earlier cores pass only (&$operations, $entity). An implementation that REQUIRES the third parameter throws ArgumentCountError below 11.3."
       },
-      "version": "208891190065"
+      "version": "80da98bdd6ac"
     },
     {
       "applies_when": {},
@@ -1131,7 +1147,7 @@
   ],
   "schema": "drupilot.recipes/1",
   "sources": {
-    "config/deprecations.json": "sha256:b455be7f4dd29577d29497fa4fdb43a6ffb7799e31dfcdd4ac8d98af9f411de6",
+    "config/deprecations.json": "sha256:ed9cd496b3128bbf1d0e3b7a71d190e247becdcd0cf6237fbaaeecab7d8c7e5a",
     "config/metadata-checks.json": "sha256:182f7ce002a63577a327518fcddfe45d61ea44a23826b981843933ee55fa706f",
     "config/port-checks.json": "sha256:f385130da0e7c0c58032e78a3038d79b7241dff6f3703a53b8878de3dca878f3"
   }

@@ -38,16 +38,19 @@ A finding is
 - `rule` is the Rector FQCN, the PHPStan identifier (`phpstan:untyped:<sha8 of the message>` without one), the
   PHPCS source, or `port-safety:<check>`, `signature:<id>`, `metadata:<check>` for the catalog scans;
 - `line` is kept for a person and the AI to find the code, but is never part of the id, so a line shift that
-  leaves the anchor and the message alone keeps the id (the message drops "on line N" and PHPStan's
-  `class@anonymous/<file>:<line>` name for the same reason);
+  leaves the anchor and the message alone keeps the id (the message drops "on line N" and the file and line
+  of PHPStan's anonymous class names, `class@anonymous/<file>:<line>` or `Parent@anonymous/<file>:<line>`,
+  for the same reason);
 - `anchor` is the innermost `Namespace\Class::method` or function, the `Namespace\ClassLike` for a line in a
   class body outside its methods, or `{file}`;
 - `class` is `hard`, `soft` or `unknown` (a deprecation, as `classify-deprecations.sh` says), `analysis` (any
   other PHPStan error), `safety`, `signature`, `metadata`, `style` (PHPCS), `php-target` (a PHPCompatibility
   sniff) or `rector`.
 
-**Traits.** PHPStan names an error in a trait `<file> (in context of class X)`, once per class that uses
-the trait. The context is dropped from the file, and the copies are one finding.
+**Traits.** PHPStan names an error in a trait `<file> (in context of class X)` (or of `class@anonymous/...`,
+`Parent@anonymous/...`), once per class that uses the trait. The context is dropped from the file, and the
+copies of all contexts are kept as many times as the context with the most of them: one finding for one
+error, two for two identical errors on one line.
 
 **Anchors are extracted, not computed while normalizing.** `extract.sh` runs `anchor.php` in the bed once over
 every `(file, line)` the raw reports name and stores the answers as one more raw file,

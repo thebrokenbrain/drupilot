@@ -1,0 +1,3 @@
+services:
+  m.lookup:
+    class: Drupal\m\WidgetLookup

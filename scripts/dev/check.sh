@@ -933,12 +933,14 @@ gate_schemas() {
 gate_data() {
   local js="$TMP/data.json" err="$TMP/data.err" out="$TMP/data.out" rj="$TMP/recipes.json" rok=1
   # config/recipes.json is generated from the catalogs (ADR 0023).
-  "$BASH" "$REPO/scripts/dev/gen-recipes.sh" --check --json > "$rj" 2> /dev/null || rok=0
+  "$BASH" "$REPO/scripts/dev/gen-recipes.sh" --check --json > "$rj" 2> "$TMP/recipes.err" || rok=0
   if "$BASH" "$REPO/scripts/dev/data-check.sh" --json > "$js" 2> "$err" && [[ "$rok" == "1" ]]; then
     record data pass "$(jq -r '[.checks[].file] | unique | length' "$js" 2>/dev/null || echo '?') data file(s): valid, sourced and safe for the hard gates; $(jq -r '.recipes' "$rj" 2>/dev/null || echo '?') recipes generated from the catalogs"
   else
     jq -r '.checks[] | select(.status != "pass") | "\(.check): \(.file): \(.detail)"' "$js" > "$out" 2>/dev/null || true
     jq -r '.problems[]? | "recipes: \(.)"' "$rj" >> "$out" 2>/dev/null || true
+    # The generator died before its report: its own error says why.
+    if [[ "$rok" == "0" ]] && ! jq -e '.problems' "$rj" > /dev/null 2>&1; then tail -n 5 "$TMP/recipes.err" | sed 's/^/recipes: /' >> "$out"; fi
     [[ -s "$out" ]] || tail -n 20 "$err" > "$out"
     record data fail "the version data or the recipes have problems (scripts/dev/data-check.sh, scripts/dev/gen-recipes.sh --check)" "$out"
   fi

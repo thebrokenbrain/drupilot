@@ -44,6 +44,34 @@
       "line": 14,
       "severity": "info",
       "status": "not-applicable"
+    },
+    {
+      "name": "the body uses the parameter: rejected (it would be NULL on older cores), nothing written",
+      "before": "uses-param/before",
+      "after": "uses-param/before",
+      "file": "m.module",
+      "line": 14,
+      "severity": "error",
+      "status": "rejected",
+      "exit_code": 3
+    },
+    {
+      "name": "only the docblock names the parameter: applied",
+      "before": "docblock/before",
+      "after": "docblock/after",
+      "file": "m.module",
+      "line": 17,
+      "severity": "error",
+      "status": "applied"
+    },
+    {
+      "name": "two hooks, the finding on the second: only its line changes",
+      "before": "two-hooks/before",
+      "after": "two-hooks/after",
+      "file": "m.module",
+      "line": 21,
+      "severity": "error",
+      "status": "applied"
     }
   ]
 }

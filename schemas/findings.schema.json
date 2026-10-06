@@ -93,7 +93,7 @@
         "line": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
         "anchor": {"description": "The innermost Namespace\\Class::method or function of the line, the Namespace\\ClassLike for a line in a class-like body outside its methods, else {file}.", "type": "string", "minLength": 1},
         "symbol": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
-        "message": {"description": "Normalized: runner paths, \"on line N\" and repeated blanks removed.", "type": "string"},
+        "message": {"description": "Normalized: runner paths, \"on line N\", NUL bytes, the file and line of PHPStan's anonymous class names (...@anonymous/<file>:<line>) and repeated blanks removed.", "type": "string"},
         "occurrence": {"type": "integer", "minimum": 0},
         "severity": {"enum": ["error", "warning", "info"]},
         "scope": {"enum": ["current", "next-major"]},
