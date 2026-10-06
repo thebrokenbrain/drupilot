@@ -412,7 +412,7 @@ if [[ "$COMPAT" == "1" ]]; then
   # sha256 in the lock), or to STDOUT with "-".
   write_compat_from_template() {
     local to="${1:-$RECTOR_COMPAT_PHP}"
-    render_template "$TEMPLATE_COMPAT" "$to" "SUBJECT_PATH=$SUBJECT_REL" ${FLOOR_TOKENS[@]+"${FLOOR_TOKENS[@]}"} \
+    render_template "$TEMPLATE_COMPAT" "$to" "SUBJECT_PATH=$SUBJECT_REL" \
       || die "Could not render $TEMPLATE_COMPAT into $to." 1
     [[ "$to" == "-" ]] || render_sha_record "$DRUPAL_ROOT" rector-compat.php "$RECTOR_COMPAT_PHP" "$TEMPLATE_COMPAT"
     return 0
@@ -437,25 +437,8 @@ if [[ "$COMPAT" == "1" ]]; then
   else
     log_ok "rector-compat.php already present at the Drupal root (left untouched)."
     # Rector processes the subject named on its command line, but stops on a
-    # path of withPaths() that does not exist: name the relative literal ones
-    # that are gone (an absolute or __DIR__ path may be the container's). No
-    # case statement or comment inside the $(...) below: bash 3.2 misparses
-    # their parentheses there.
-    # shellcheck disable=SC2016  # awk program, not a shell expansion
-    _gone="$(awk -v q="'" '
-      {
-        l = $0
-        if (!on) { if (!match(l, /->withPaths\(\[/)) next; on = 1; l = substr(l, RSTART + RLENGTH) }
-        last = 0
-        if (match(l, /\]\)/)) { l = substr(l, 1, RSTART - 1); last = 1 }
-        gsub("__DIR__[ \t]*[.][ \t]*(" q "[^" q "]*" q "|\"[^\"]*\")", "", l)
-        while (match(l, q "[^" q "]*" q) || match(l, "\"[^\"]*\"")) { print substr(l, RSTART + 1, RLENGTH - 2); l = substr(l, RSTART + RLENGTH) }
-        if (last) exit
-      }' "$RECTOR_COMPAT_PHP" 2> /dev/null \
-      | while IFS= read -r _p; do
-          [[ -n "$_p" && "$_p" != /* ]] || continue
-          [[ -e "$DRUPAL_ROOT/$_p" ]] || printf '%s ' "$_p"
-        done; true)"
+    # path of withPaths() that does not exist: name them.
+    _gone="$(rector_config_missing_paths "$DRUPAL_ROOT" "$RECTOR_COMPAT_PHP" | tr '\n' ' ')"
     if [[ -n "$_gone" ]]; then
       log_warn "rector-compat.php (kept: edited by hand) names a path that does not exist in withPaths(): ${_gone% }. Rector stops the compat pass on it."
       if grep -q "drupilot — rector-compat.php" "$RECTOR_COMPAT_PHP"; then

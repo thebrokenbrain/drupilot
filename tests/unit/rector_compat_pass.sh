@@ -193,6 +193,47 @@ printf 'b\n' > "$T_TMP/cfg.php"; b2="$(PATH="$DS:$PATH" config_backup "$r" "$T_T
 assert_eq "config_backup: two backups in one second keep both copies" \
   "$(basename "$b1")|$(basename "$b2")|$(cat "$b1")|$(cat "$b2")" "cfg.php.20260101T000000Z|cfg.php.20260101T000000Z.1|a|b"
 assert_eq "  a missing file: return 1" "$(config_backup "$r" "$T_TMP/none.php" > /dev/null; echo $?)" "1"
+# Both scripts name their backups through it.
+REALDATE="$(command -v date)"
+printf '#!/bin/sh\nif [ "$1" = "-u" ] && [ "$2" = "+%%Y%%m%%dT%%H%%M%%SZ" ]; then echo 20260101T000000Z; exit 0; fi\nexec %s "$@"\n' "$REALDATE" > "$DS/date"
+ros() { printf 'ok' > "$r/mode"; : > "$r/calls"
+  t_run env PATH="$DS:$STUBS:$PATH" DRUPILOT_PHP_TARGET=8.3 "$T_SH" "$T_REPO/scripts/analysis/run-rector.sh" --subject "$r/$1" --json; }
+nbk() { find "$r/.drupilot/backups" -name "$1.20260101T000000Z*" | grep -c . || true; }
+ros "$S"; ros "$O"; ros "$S"
+assert_eq "run-rector.sh: two regenerations in one second keep both backups of each config" \
+  "$T_RC|$(nbk rector.php)|$(nbk rector-compat.php)" "0|2|2"
+for i in 1 2; do
+  printf '\n// hand edit %s\n' "$i" >> "$r/rector-compat.php"
+  t_run env PATH="$DS:$STUBS:$PATH" DRUPILOT_PHP_TARGET=8.3 "$T_SH" "$T_REPO/scripts/env/render-templates.sh" --root "$r" --subject "$r/$S" --only rector-compat --force
+done
+assert_eq "render-templates.sh --force twice in that second: two more backups" "$T_RC|$(nbk rector-compat.php)" "0|4"
+
+# rector_config_missing_paths: the relative literal paths of withPaths([...]) that are gone.
+mp() { printf '%s\n' "$1" > "$T_TMP/mp.php"; rector_config_missing_paths "$r" "$T_TMP/mp.php" | tr '\n' ' '; }
+assert_eq "missing paths: none in a list naming the subject" "$(mp "->withPaths([
+    '$S',
+  ])")" ""
+assert_eq "  a gone path" "$(mp "->withPaths([
+    'web/gone',
+    '$S',
+  ])")" "web/gone "
+assert_eq "  a commented-out entry, an inline comment, a trailing comment: ignored" "$(mp "->withPaths([
+    // 'web/old',
+    # 'web/old2',
+    /* 'web/old3' */ '$S', // was 'web/old4'
+  ])")" ""
+assert_eq "  a wildcard, an absolute (container) path and a __DIR__ path: not checked" \
+  "$(mp "->withPaths(['web/modules/custom/*', '/var/www/html/web/x', __DIR__ . '/web/gone', __DIR__.\"/web/gone2\"])")" ""
+assert_eq "  mixed quotes on one line" "$(mp "->withPaths([\"web/gone\", '$S'])")" "web/gone "
+assert_eq "  the list ends at its ]: a withSkip after ], ) is not read" "$(mp "->withPaths([
+    '$S',
+  ], )
+  ->withSkip(['web/nope'])")" ""
+assert_eq "  a docblock example is not the list" "$(mp "/**
+ * Like ->withPaths(['web/example']).
+ */
+return RectorConfig::configure()->withPaths(['web/gone']);")" "web/gone "
+assert_eq "  a missing file: nothing, exit 0" "$(rector_config_missing_paths "$r" "$T_TMP/none.php"; echo "rc=$?")" "rc=0"
 
 # L >= 8.4: no compat pass.
 r84="$T_TMP/root84"; mkroot "$r84"
