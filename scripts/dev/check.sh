@@ -82,7 +82,8 @@
 #                 accepts it. `{label: .x}` and `.label` are fine everywhere.
 #                 It also rejects an object value joined with and/or outside
 #                 parentheses (`{ok: (a) and (b)}`, a jq 1.6 syntax error;
-#                 write `{ok: ((a) and (b))}`).
+#                 write `{ok: ((a) and (b))}`), and one with an unparenthesized
+#                 `//` (`{k: .a // "x"}`; write `{k: (.a // "x")}`).
 #                 A line can opt out with a trailing `# jq-compat-ok` and a reason
 #   - lib-defs    the shared library is split into domain libs (scripts/lib/*.sh):
 #                 every function is defined in exactly one lib, common.sh only
@@ -637,12 +638,13 @@ gate_jq_compat() {
             line ~ ("def[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*[(][^)]*[$]" e "[[:space:]]*[;)]") ||
             line ~ ("(^|[^$])[{][[:space:]]*" e "[[:space:]]*[,}]") ||
             line ~ ("(^|[^$])[{][^{}]*,[[:space:]]*" e "[[:space:]]*[,}]") ||
-            line ~ "(^|[^$])[{,][[:space:]]*[A-Za-z_]+:[[:space:]]*[(][^(].*[)][[:space:]]+(and|or)[[:space:]]")
+            line ~ "(^|[^$])[{,][[:space:]]*[A-Za-z_]+:[[:space:]]*[(][^(].*[)][[:space:]]+(and|or)[[:space:]]" ||
+            line ~ "(^|[^$])[{,][[:space:]]*[A-Za-z_]+:[[:space:]]*[^(,{}\"[:space:]][^,{}()\"]*[[:space:]]//[[:space:]]")
           printf "%s:%d: %s\n", F, NR, substr($0, 1, 140)
       }' "$f") >> "$out"
   done
   if [[ -s "$out" ]]; then
-    record jq-compat fail "$(wc -l < "$out" | tr -d ' ') jq 1.6 syntax error(s): a keyword used as a variable or shorthand key (rename, e.g. \$lbl / {label: .label}), or an object value joined with and/or outside parentheses (write {ok: ((a) and (b))})" "$out"
+    record jq-compat fail "$(wc -l < "$out" | tr -d ' ') jq 1.6 syntax error(s): a keyword used as a variable or shorthand key (rename, e.g. \$lbl / {label: .label}), or an object value joined with and/or or // outside parentheses (write {ok: ((a) and (b))}, {k: (.a // .b)})" "$out"
   else
     record jq-compat pass "${#SCRIPTS[@]} scripts free of jq 1.7-only keyword names"
   fi

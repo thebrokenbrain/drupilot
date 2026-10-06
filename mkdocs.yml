@@ -106,4 +106,8 @@ nav:
           - contributing/adr/0021-drupal-target-and-target-major.md
           - contributing/adr/0022-findings-shape.md
           - contributing/adr/0023-recipe-catalog.md
+          - contributing/adr/0024-worklist-and-actions.md
+          - contributing/adr/0025-assess-rubric-from-findings.md
+          - contributing/adr/0026-digests-rules-the-official-pass-applies.md
+          - contributing/adr/0027-generated-port-manifest.md
   - Changelog: changelog.md

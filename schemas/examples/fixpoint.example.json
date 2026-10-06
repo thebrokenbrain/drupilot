@@ -1,0 +1,21 @@
+{
+  "codemods": [
+    {"file": "legacy_widgets.services.yml", "item_id": "W-0123456789ab", "recipe": "safety.class-case"}
+  ],
+  "converged": false,
+  "findings_hash": "sha256:5a28c923ad4d3f0429cc4c31945171332527c3e4b826b3eff9c194b361d1b4f8",
+  "meta": {"generated_at": "2026-10-06T10:00:00Z"},
+  "mode": "warn",
+  "no_verdict": false,
+  "open_items": [
+    {"anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::submitForm", "file": "src/Form/WidgetImportForm.php", "id": "W-159f73172c54", "lane": "rector"}
+  ],
+  "processed_lanes": ["rector", "rector-custom", "codemod"],
+  "rector": [
+    {"anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::submitForm", "file": "src/Form/WidgetImportForm.php", "id": "F-0123456789ab", "rule": "Rector\\CodingStyle\\Rector\\FuncCall\\FunctionFirstClassCallableRector"}
+  ],
+  "schema": 1,
+  "stage": "validate",
+  "tool": "fixpoint",
+  "worklist_hash": "sha256:dae0ee79349076581cf5928d696d6f842cb3ef5e1e9279770886888c5669b4fb"
+}

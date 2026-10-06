@@ -122,8 +122,9 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/patterns.sh" scan --subject "<subje
 ```
 
 Read-only, exit `0`. Treat each hit as a must-check item while modernizing (the
-recorded fix is the starting point), and keep the JSON for the manifest's
-`learned_patterns.scan`.
+recorded fix is the starting point). Nothing to keep for the manifest: the
+learned patterns live in the project's catalog (`patterns.sh list`), which
+Step 6b extends.
 
 ## Step 3 — Modernize, change by change
 
@@ -153,7 +154,7 @@ behavior is preserved):
   summary). An autonomous run keeps them. Hand-convert only what the JSON lists
   as `skipped` / `skipped_files` / `restored_files` or a type it does not know
   (declare project/contrib types in `DRUPILOT_ATTRIBUTE_PLUGIN_TYPES`), and
-  merge its `rule_hits` into the manifest's `rector_rules`.
+  report its `rule_hits` in the Step 7 summary (the pass keeps no state file).
 - **Dependency injection**: replace `\Drupal::service(...)` static calls with
   constructor-injected services; implement `create()` / `ContainerFactoryPluginInterface`
   where appropriate.
@@ -244,8 +245,9 @@ Exit 3 = a leg failed (an `incompatible` finding, or `php -l` failing on the
 leg's PHP floor): fix it the Drupal 10-safe way, raise the floor, or drop to
 `^11` — the same "Drupal 10 check" tab and autonomous default as the
 `minimal-port` skill §6a. A skipped leg (no network) leaves `d10_support`
-`declared-not-verified` and never blocks the refactor. Record the JSON as
-`verification.core_matrix` and `d10_support` in the manifest.
+`declared-not-verified` and never blocks the refactor. The script keeps its
+verdict in `core-matrix.json`: `manifest.sh` takes `d10_support` from it and
+`port-report.sh` reads it.
 
 ## Step 6 — Refresh the local patch
 
@@ -289,22 +291,30 @@ Summarize in English:
   `/drupilot-contribute` if the subject is a contrib project the user wants to
   publish.
 
-**Refresh the port report card (trust + teaching).** Record the refactor's
-decisions as a manifest (`phase: "refactor"`, the modern patterns applied, the new
-`core_version_requirement` / `version_bump`, the deferred items now done, and
-`port_safety` = the JSON printed by `check-port-safety.sh --json`,
-`signature_changes` = the JSON printed by `scan-signature-changes.sh --json`,
-`d10_support` + `verification.core_matrix` from `verify-core-matrix.sh --json`
-when `^10` is kept;
-`manual_edits` items may be `{edit, why, change_record}` objects so the report
-explains each change; and the structured outcome fields `rector_rules`,
-`rector_reversions`, `post_port_fixes`, `preexisting_bugs`, `behavior_changes`,
-`tooling_deviations`, `validation`, and `learned_patterns` {scan (Step 2b),
-recorded (Step 6b)} — shapes in `port-report.sh`'s header; the
-`log-decision.sh` entries are merged in) and re-render so the report reflects Phase 2. As Phase 2
-ran, **tee** the Rector + final validate-loop PHPStan deprecation output into
-`<state_dir>/change-log.txt` (under `$HOME`, never in the project tree) so the
-report's "Drupal 9/10 → 11 changes, explained" section is populated:
+**The fixpoint gate.** Before the report card, run
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/fixpoint.sh" --subject <path> --stage refactor --json`:
+Rector, the codemods and the processed lanes must have nothing left on the
+refactored tree (`<state_dir>/fixpoint.json`). Under `DRUPILOT_FIXPOINT=warn`
+(the default) report what it lists; under `enforce` (exit 3) the refactor is
+not done until those items are fixed.
+
+**Refresh the port report card (trust + teaching).** Regenerate the manifest for
+Phase 2 with `scripts/ai/manifest.sh --phase refactor`: it is built from the
+findings, the worklist, the codemods, the applying Rector run, the digests
+verdicts, the decision log and the git diff, never by hand. Your only input is
+the **why** of the items you changed by hand, `<state_dir>/rationale.json`
+(`{"<worklist item id>": "why"}`), passed with `--rationale`; every
+architectural change a reviewer must check is a `behavior-change` entry of
+`log-decision.sh`, logged as it happens. As Phase 2 ran, **tee** the Rector +
+final validate-loop PHPStan deprecation output into `<state_dir>/change-log.txt`
+(under `$HOME`, never in the project tree) so the report's "Drupal 9/10 → 11
+changes, explained" section is populated:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/manifest.sh" --subject <path> --phase refactor --rationale <state_dir>/rationale.json --json
+```
+
+Then re-render:
 
 ```bash
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" --subject "$1" --manifest "<state_dir>/port-manifest.json" --changes-log "<state_dir>/change-log.txt"
@@ -314,7 +324,7 @@ report's "Drupal 9/10 → 11 changes, explained" section is populated:
 enough; it writes into the visible `.drupilot/` dir at the Drupal root and, given
 the manifest (`phase: "refactor"`), records the **refactored** stage in the
 subject's `state.json`, and refreshes the machine summary `port-summary.json`
-beside the report (`port-summary.sh`; set `files_changed` in the manifest).
+beside the report (`port-summary.sh`; `manifest.sh` fills `files_changed`).
 `SendUserFile` the refreshed `port-report.md`.
 
 ## Step 8 — What next? (developer chooses)

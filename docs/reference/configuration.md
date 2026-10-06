@@ -113,6 +113,14 @@ Target core range.
 - **Default:** `^11`
 - **Type:** string
 
+### `DRUPILOT_FIXPOINT`
+
+The fixpoint gate at the end of a port or a refactor (`scripts/analysis/fixpoint.sh`): the extraction runs again, and Rector, the codemods and the processed lanes must have nothing left. `warn` (the default through the 1.0 betas) reports a failure and goes on; `enforce` (the default from 1.0.0-rc.1) makes it exit 3, so the stage is not done; `off` skips it.
+
+- **Default:** `warn`
+- **Type:** enum — one of `enforce`, `warn`, `off`
+- **See:** [reference/state.md](../reference/state.md)
+
 ### `DRUPILOT_GENERATE_RULES`
 
 Generate ad-hoc Rector rules for uncovered deprecations: `ask` / `auto` / `off`.
@@ -253,6 +261,14 @@ When keeping `^10 || ^11`, how to set composer `require.php`: `detect` derives t
 - **Default:** `detect`
 - **Type:** enum — one of `detect`, `target`
 
+### `DRUPILOT_RUNS_KEEP`
+
+How many run manifests (`<state>/runs/<run_id>/run-manifest.json`: a run's input and output hashes) each module keeps; the oldest are removed.
+
+- **Default:** `10`
+- **Type:** int
+- **See:** [reference/state.md](../reference/state.md)
+
 ### `DRUPILOT_SESSION_CONTEXT`
 
 `on`/`off` toggle for the SessionStart environment summary.
@@ -290,7 +306,7 @@ Where `install-toolchain.sh` takes the dev-toolchain versions from: `auto` (the 
 
 ### `DRUPILOT_USE_DIGESTS_RULES`
 
-Use the complementary `drupal-digests` layer after official Rector.
+Use the complementary `drupal-digests` layer after official Rector. Its rules the official pass already applies are left out (drupal-rector's `implemented-digests.yml` at the installed version, frozen in the lock: an entry whose classes a set of your `rector.php` registers), and so are the rules you rejected for a module: your verdicts are recorded (`digests-decisions.sh`), so a later port of the same sources asks nothing. `/drupilot-clean` forgets them.
 
 - **Default:** `true`
 - **Type:** bool

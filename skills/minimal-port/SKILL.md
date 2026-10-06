@@ -182,8 +182,9 @@ Read-only, always exit `0`. Each hit (`hits[]`: `id`, `file:line`, `why`, `fix`,
 **must-check item**: keep it in your running list, apply the recorded fix where
 it fits as you go (the fix is the starting point, not an automatic edit — the
 golden rules above still decide), and confirm each one is resolved before §8.
-No catalog yet, or no hit, is normal for the first module. Keep the JSON for the
-manifest (`learned_patterns.scan`, §8).
+No catalog yet, or no hit, is normal for the first module. Nothing to keep for
+the manifest: the learned patterns live in the project's catalog (`patterns.sh
+list`), which §8 extends.
 
 ## 2. Pass 1 — official Rector (palantirnet/drupal-rector)
 
@@ -256,10 +257,25 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" \
 
 `run-rector.sh --digests` clones/updates the repo into `digests_cache_dir`,
 checks out the resolved ref/SHA and **verifies** it (recloning rather than
-silently reusing a stale cache), then runs `vendor/bin/rector process <path>
---config <cache>/rector/all.php --dry-run`. In deterministic mode the SHA that
-`main` first resolved is frozen in the per-project lockfile and reused on later
-runs, so the same project always applies the same digests rules.
+silently reusing a stale cache), stages it under the Drupal root and runs a
+filtered `all.php`: without the rules the official pass already applies
+(drupal-rector's `implemented-digests.yml`, frozen in the lock: an entry whose
+classes a set of your `rector.php` registers) and without the rules rejected
+for this module. drupal-rector's Drupal 11 sets are not loaded on a port to 11,
+so the digests rules it implements there still run here. In deterministic mode the SHA that `main` first resolved is
+frozen in the per-project lockfile and reused on later runs, so the same project
+always applies the same digests rules.
+
+**Verdicts are recorded and replayed.** The `--json` dry-run's `digests_review`
+gives each rule's verdict (`accept`, `reject`, `pending`). Review only the
+pending ones; record every answer with
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/digests-decisions.sh" --subject <path> --accept <Rule,...> --reject <Rule,...>`.
+A later port of the same module with the same digests SHA has no pending rule
+and asks nothing; `digests-decisions.sh --clear` (or `/drupilot-clean`)
+forgets the verdicts. An autonomous run's recorded defaults are replayed only
+by another autonomous run. Record the verdicts before the module changes: an
+`--apply` on changed sources refuses the digests pass (exit 4) until a new
+dry-run.
 
 **Mandatory handling (PROMPT §2.1.1) — these are non-negotiable:**
 
@@ -306,10 +322,9 @@ hook cannot complete in this context: run `git-hooks.sh --subject "<path>"
 only when `all_green` is true. The PreToolUse guard asks the developer to
 confirm that commit (`DRUPILOT_HOOKS_GUARD`), so an autonomous run never skips a
 hook: it keeps a hook-free checkpoint with `make-patch.sh --local` instead.
-Record what replaced the hook as `verification.commit_hooks` in
-`port-manifest.json` (the JSON `--run-equivalents` printed, also kept in
-`hooks-substitution.json`), uncovered tasks included; when the hooks simply ran,
-record `{"bypassed": false, "note": "hooks ran on commit"}`.
+`--run-equivalents` keeps what replaced the hook, uncovered tasks included, in
+`hooks-substitution.json` (state dir), which `port-report.sh` reads; when the
+hooks simply ran, there is nothing to record.
 
 ## 4. Pass 3 — ad-hoc rule generation (optional, the "Dries approach")
 
@@ -457,8 +472,9 @@ replacement, its first core and the effort from the verified `lifecycle` catalog
 in `config/deprecations.json`, and returns `{policy, blocking, counts, symbols,
 hard, soft, unknown}`. **`blocking` must be 0** (no hard or unknown item left);
 the soft items are handled per their `action` (see §0) — under the default
-`report` they stay as they are. Run it again after any fix, and keep its JSON for
-the manifest (§8).
+`report` they stay as they are. Run it again after any fix; nothing to keep for
+the manifest: `manifest.sh` classifies the stage's raw PHPStan report itself
+into `soft_deprecations` (§8).
 
 `check-port-safety.sh` (read-only, no toolchain) flags: a `create()` without
 `ContainerFactoryPluginInterface`/`ContainerInjectionInterface` in the class or
@@ -516,8 +532,8 @@ inside a `<rule>`), never overriding a ruleset's own `<config name="testVersion"
 A project ruleset PHPCS cannot load (e.g. it references PHPCompatibility, not
 installed in the test-bed) is reported and the run falls back to
 Drupal,DrupalPractice. `--json` says which one was used (`.drupilot.source`:
-project / explicit / drupilot / fallback); **report it** and record it as
-`verification.phpcs_ruleset` in the manifest. If the project ruleset makes
+project / explicit / drupilot / fallback); **report it** — the script keeps it
+in `phpcs-ruleset.json` (state dir), which `port-report.sh` reads. If the project ruleset makes
 `--fix` reformat lines the port did not touch, revert those hunks (smallest
 diff) or run that pass with `--ruleset drupilot`. `run-phpstan.sh`
 runs `$RUNNER vendor/bin/phpstan analyse --level N <subject>` against the
@@ -604,8 +620,8 @@ container, which checks the detected PHP floor for real.
   by dropping the argument the newer core needs) never fail a leg. When the
   Drupal 11 baseline leg errors, the other legs are `skipped`, not `failed`.
 
-The result persists to `<state_dir>/core-matrix.json`; put it in the manifest as
-`verification.core_matrix` and set `d10_support` from it. `--dry-run` prints the
+The result persists to `<state_dir>/core-matrix.json`: `manifest.sh` takes
+`d10_support` from it (when fresh) and `port-report.sh` reads it. `--dry-run` prints the
 plan (which legs, whether a reference core would be built) without touching
 anything.
 
@@ -650,8 +666,8 @@ types, missing tests).
 **Record what this port learned (before the report).** Every pitfall that cost
 a fix here — a Rector change you reverted, a post-port fix, a signature change,
 a hygiene defect that bit the tests — is worth a detector so the next module is
-checked before it is ported. List the candidates from the manifest's
-`rector_reversions` / `post_port_fixes` and the decision log:
+checked before it is ported. List the candidates from the decision log's
+`rector-revert` / `post-port-fix` entries:
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/patterns.sh" harvest --subject "<path>" --json
@@ -681,37 +697,34 @@ only candidates with a detector you proved and list the recorded ids in the
 summary for review (the catalog is local, self-gitignored, and
 `patterns.sh remove --id <id>` undoes an entry).
 
+**The fixpoint gate.** Before the report card run
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/fixpoint.sh" --subject "<path>" --json`:
+the extraction runs again, and Rector, the codemods and the processed lanes
+(`rector`, `rector-custom`, `codemod`) must have nothing left
+(`<state_dir>/fixpoint.json` lists what they still have). `DRUPILOT_FIXPOINT=warn`
+(the default) reports and goes on; `enforce` exits 3, and the port is not done
+until the listed items are fixed.
+
 **Write the report card (trust + teaching artifact).** While the passes ran you
 should have **tee'd** the official Rector output, the digests pass output and the
 final validate-loop PHPStan deprecation report into `<state_dir>/change-log.txt`
 (`<state_dir>` is `project_state_dir`, under `$HOME` — never in the project tree,
-so it never leaks into a patch). Then write `<state_dir>/port-manifest.json`
-(shape per `port-report.sh`: `machine_name`, `type`, `phase: "port"`,
-`core_version_requirement`, `rector_official_files`, `digests`, `manual_edits`
-[each a string or `{edit, why, change_record}`], `deprecations_remaining`,
-`deferred_to_phase2`, `patch`, `port_safety` and `signature_changes` — the JSON
-of `check-port-safety.sh --json` / `scan-signature-changes.sh --json` —,
-`metadata_lint` — the JSON of `lint-extension-metadata.sh --json` run after the
-port (§6), rendered as "Pre-existing hygiene (not fixed in Phase 1)" — and
-`soft_deprecations`, the final `classify-deprecations.sh --json`; add every soft
-symbol whose `action` is `defer` to `deferred_to_phase2`, and count only the hard
-and unknown ones in `deprecations_remaining`; `d10_support` from the core matrix
-(§6a) when it ran; and `verification`: `{core_matrix, phpcs_ruleset,
-commit_hooks}` — the JSON of `verify-core-matrix.sh --json`, the `.drupilot`
-object of `run-phpcs.sh --json` and the hook record from §3; all fall back to the
-state files the scripts write; and the **structured outcome fields** that
-aggregate across modules and layers: `rector_rules` (the `rule_hits` of the
-applying `run-rector.sh --json`; falls back to the `rector-rules.json` it
-keeps), `rector_reversions` `[{rule, file, why}]`, `post_port_fixes`
-`[{fix, file, why, detected_by}]`, `preexisting_bugs` `[{issue, file, note}]`,
-`behavior_changes` `[{change, why, review_hint}]`, `tooling_deviations`
-`[{what, why}]`, `validation` (strings: how the result was validated) and
-`learned_patterns` `{scan: <the patterns.sh scan --json of §1>, recorded: [ids]}`
-(rendered as "Learned patterns"). The
-entries you logged with `log-decision.sh` are merged in (deduplicated), so a
-decision logged there need not be repeated in the manifest) and render the report:
+so it never leaks into a patch). Then generate `<state_dir>/port-manifest.json`
+with `scripts/ai/manifest.sh` (ADR 0027): it is built from the findings, the
+worklist, the codemods applied, the applying Rector run, the digests verdicts,
+the decision log and the git diff, never from memory. Your only input is the
+**why** of the items you fixed or decided by hand: `<state_dir>/rationale.json`,
+`{"<worklist item id>": "why"}`, passed with `--rationale` (an unknown id is
+refused; an earlier rationale is kept for the items still there). Divergences
+(`rector-revert`, `post-port-fix`, `behavior-change`, `preexisting-bug`,
+`tooling-deviation`, ...) go to `log-decision.sh` as they happen, and
+`port-report.sh` merges them; the verification records (core matrix, PHPCS
+ruleset, hook substitution, negative controls) come from the state files the
+scripts write. Generate the manifest and render the report:
 
 ```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/manifest.sh" --subject "<path>" --phase port \
+  --rationale "<state_dir>/rationale.json" --json
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" \
   --subject "<path>" --manifest "<state_dir>/port-manifest.json" \
   --changes-log "<state_dir>/change-log.txt"
@@ -722,8 +735,7 @@ adding a "Drupal 9/10 → 11 changes, explained" section (each recognized change
 grouped by migration area with what changed, the fix and a change-record link).
 `--changes-log` already defaults to that path, so teeing the file is enough.
 It also refreshes `port-summary.json` beside the report (`port-summary.sh`: the
-versioned JSON summary wrappers read); record `files_changed` (files the port
-changed) in the manifest for it.
+versioned JSON summary wrappers read; the manifest carries `files_changed`).
 
 **Preservation gate.** Phase 1 is not "done" until `test-adaptation` reports the
 adapted suite **green** (or its red tests documented as external blockers) — that

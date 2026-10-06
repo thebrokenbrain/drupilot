@@ -1,0 +1,186 @@
+{
+  "above_threshold": false,
+  "auto_fixable": {
+    "rector_official_files": 1,
+    "rector_official_rules": {
+      "FunctionFirstClassCallableRector": 1
+    }
+  },
+  "core_target": {
+    "bc_break": false,
+    "composer_core_constraint": "^10 || ^11",
+    "d10_support": "declared-not-verified",
+    "php_floor_detected": "8.1",
+    "php_floor_target_compatible": true,
+    "rationale": [
+      "Strategy: keep-d10 ('^10 || ^11').",
+      "Detected PHP floor is 8.1 (heuristic scan), below the target 8.3 — require.php is widened to \">=8.1\" for genuine Drupal 10 (PHP 8.1) support.",
+      "Adding Drupal 11 support without dropping a supported core major -> MINOR."
+    ],
+    "recommended_core_version_requirement": "^10 || ^11",
+    "require_php": ">=8.1",
+    "strategy": "keep-d10",
+    "version_bump": "minor",
+    "warnings": [
+      "require.php was lowered to \">=8.1\" from a best-effort syntactic scan. CONFIRM with PHPCompatibility (testVersion 8.1-) before release: a missed newer construct would let a Drupal 10 + PHP<8.3 site install and then fatal at runtime. Set DRUPILOT_REQUIRE_PHP_FLOOR=target to keep the conservative \">=8.3\".",
+      "Drupal 10's own minimum is PHP 8.1, but this port's floor is 8.1. require.php \">=8.1\" blocks D10 sites below that floor at install time (composer) rather than fataling at runtime. If you do not need the D10 transition window, drop to '^11'.",
+      "Drupal 10 compatibility is DECLARED, not verified. drupal-rector's standard replacements are usually available across all of Drupal 10 (deprecation contract), but this was not checked here. If the port uses an API added in a later 10.x minor, set core_version_requirement to e.g. '^10.3 || ^11'; if it uses an API absent from Drupal 10, drop to '^11'. The AI digests / ad-hoc Rector layer may introduce replacements newer than Drupal 10.0, so a raised minor (e.g. '^10.3 || ^11') is more likely — check it."
+    ]
+  },
+  "current_core_version_requirement": "^10",
+  "dependencies": {
+    "blockers": 0,
+    "list": [
+      {
+        "d11": "core",
+        "project": "filter",
+        "url": "https://www.drupal.org/project/filter"
+      },
+      {
+        "d11": "core",
+        "project": "text",
+        "url": "https://www.drupal.org/project/text"
+      },
+      {
+        "d11": "core",
+        "project": "user",
+        "url": "https://www.drupal.org/project/user"
+      }
+    ],
+    "offline": true,
+    "ready": 3,
+    "unknown": 0
+  },
+  "deprecations_hard": 0,
+  "deprecations_soft": 8,
+  "deprecations_unknown": 0,
+  "digest_algo": 2,
+  "drupal_target": "^11",
+  "effort": "S",
+  "findings_hash": "sha256:5a28c923ad4d3f0429cc4c31945171332527c3e4b826b3eff9c194b361d1b4f8",
+  "hard_break_categories": {
+    "ckeditor5": [],
+    "jquery_ui": [],
+    "symfony7": [],
+    "twig3": []
+  },
+  "hard_breaks": [],
+  "hygiene": {
+    "error": 2,
+    "info": 0,
+    "warn": 8
+  },
+  "info_yml": {
+    "core_version_requirement_present": true,
+    "d11_compatible": false,
+    "submodules_d11_compatible": false
+  },
+  "machine_name": "legacy_widgets",
+  "manual_items": [
+    {
+      "file": "legacy_widgets.services.yml",
+      "finding_id": "F-bd872bc1b2d9",
+      "id": "M1",
+      "line": 9,
+      "occurrences": 1,
+      "source": "catalog:port-safety:class-case",
+      "what": "'Drupal\\legacy_widgets\\WidgetLookUp' does not match the real file 'src/WidgetLookup.php' (case differs): works on a case-insensitive filesystem, fatals on Linux."
+    },
+    {
+      "file": "src/Entity/LegacyWidget.php",
+      "finding_id": "F-b66d2f8d2b41",
+      "id": "M2",
+      "line": 57,
+      "occurrences": 1,
+      "source": "catalog:signature:entity-get-original",
+      "what": "LegacyWidget::getOriginal() collides with core's EntityInterface::getOriginal() added in Drupal 11.2 and is incompatible (return type 'none' (core: ?static or static)): a fatal 'Declaration must be compatible' when the class loads on 11.2+."
+    },
+    {
+      "file": "src/Form/SettingsForm.php",
+      "finding_id": "F-ca091c3456b8",
+      "id": "M3",
+      "line": 32,
+      "occurrences": 1,
+      "source": "catalog:signature:config-form-base-ctor",
+      "what": "SettingsForm::__construct() passes 1 argument(s) to ConfigFormBase::__construct(), which requires 2 from Drupal 11.0: ArgumentCountError on Drupal 11."
+    }
+  ],
+  "php_target": "8.3",
+  "phpcs": {
+    "count": 0
+  },
+  "phpstan": {
+    "count": 38,
+    "deprecations": 8
+  },
+  "provisional": false,
+  "recommended_core_version_requirement": "^10 || ^11",
+  "require_php": ">=8.1",
+  "rubric": {
+    "blocking_deps": 0,
+    "hard_breaks": 0,
+    "manual": 3,
+    "rule": "S: hard_breaks == 0 and manual < 5 and blocking_deps == 0"
+  },
+  "schema": 1,
+  "soft_deprecations": [
+    {
+      "deprecated_in": "11.4.0",
+      "effort": "M",
+      "removed_in": "13.0.0",
+      "replacement_since": "8.0",
+      "symbol": "check_markup"
+    },
+    {
+      "deprecated_in": "11.4.0",
+      "effort": "M",
+      "removed_in": "13.0.0",
+      "replacement_since": "11.4",
+      "symbol": "text_summary"
+    },
+    {
+      "deprecated_in": "11.4.0",
+      "effort": "S",
+      "removed_in": "13.0.0",
+      "replacement_since": "8.0",
+      "symbol": "user_load_by_mail"
+    },
+    {
+      "deprecated_in": "11.4.0",
+      "effort": "S",
+      "removed_in": "13.0.0",
+      "replacement_since": "8.0",
+      "symbol": "user_load_by_name"
+    }
+  ],
+  "soft_deprecations_policy": "report",
+  "subject": "web/modules/custom/legacy_widgets",
+  "subject_digest": "354dfe5da4b538f79a9aeee1b45fd8d56b1d4db35452d5d127c0cef137032da7",
+  "tool": "assess",
+  "tools": {
+    "metadata": "ok",
+    "phpcs": "ok",
+    "phpstan": "ok",
+    "port-safety": "ok",
+    "rector": "ok",
+    "signatures": "ok"
+  },
+  "type": "module",
+  "verdict": "S",
+  "version_bump": "minor",
+  "viability_threshold": "M",
+  "worklist": {
+    "by_lane": {
+      "ai-free": 12,
+      "ai-templated": 5,
+      "codemod": 2,
+      "deferred": 7,
+      "human": 6,
+      "rector": 1,
+      "test-adapt": 6
+    },
+    "items": 39,
+    "open": 32
+  },
+  "worklist_hash": "sha256:dae0ee79349076581cf5928d696d6f842cb3ef5e1e9279770886888c5669b4fb"
+}

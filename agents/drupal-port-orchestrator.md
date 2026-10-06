@@ -69,8 +69,8 @@ All output you produce — messages, summaries, plans — is in **English**.
    run `scripts/contrib/git-hooks.sh --subject <path> --json`; when hooks exist,
    commit normally and let them run. Only if a hook cannot complete here, run
    its tasks with `git-hooks.sh --run-equivalents`, commit with `--no-verify`
-   only when `all_green`, and record the substitution (uncovered tasks
-   included) as `verification.commit_hooks` in the port manifest. The guard
+   only when `all_green`; `--run-equivalents` keeps the substitution (uncovered
+   tasks included) in `hooks-substitution.json`, which `port-report.sh` reads. The guard
    hook asks before such a commit, so an autonomous run never skips a hook (it
    keeps a hook-free checkpoint with `make-patch.sh --local`).
 10. **Every divergence is logged as it happens.** Whenever you (or a subagent)
@@ -88,10 +88,9 @@ All output you produce — messages, summaries, plans — is in **English**.
       [--script <script>] [--detected-by <tool>] [--review-hint "<how>"] [--phase refactor]
     ```
 
-    It appends to `<root>/.drupilot/decisions.jsonl` (+ `decisions.md`). The
-    port manifest's structured fields (`rector_rules`, `rector_reversions`,
-    `post_port_fixes`, `preexisting_bugs`, `behavior_changes`,
-    `tooling_deviations`, `validation`) and these entries feed the port report
+    It appends to `<root>/.drupilot/decisions.jsonl` (+ `decisions.md`). These
+    entries, merged with the generated port manifest and the Rector rules
+    `run-rector.sh --apply` keeps in `rector-rules.json`, feed the port report
     and the consolidated layer report (`layer-report.sh`).
 
 ## Verified ecosystem facts (June 2026 — do not re-research)
@@ -224,14 +223,14 @@ Each subject keeps a `state.json` in its hidden state dir: the stages reached
 and when, plus a snapshot of effort, branch/commit, toolchain, preservation,
 core-matrix verdict and the last patch. `/drupilot-status` (and `--all` for a
 portfolio), the router's `next-step.sh` and the post-edit hook read it. The
-deterministic scripts record most of it themselves: `port-report.sh` (ported /
+deterministic scripts record most of it themselves: `assess.sh` (assessed, with
+its effort, unless the verdict is provisional), `port-report.sh` (ported /
 refactored, from the manifest's phase), `run-phpunit.sh` (tested, on a verified
 whole-suite run), `verify-core-matrix.sh` and `make-patch.sh` (their verdict /
-patch). You record the three stages no script owns, after each really happened:
+patch). You record the two stages no script owns, after each really happened:
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <DIR> --stage setup
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <DIR> --stage assessed --effort <S|M|L|XL>
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <DIR> --stage contributed
 ```
 
@@ -311,17 +310,24 @@ Idempotent: if the site is already up and configured, report state and skip.
 
 ### Stage 2 — assess (gate: `analyze`) -> delegate
 
-This is a static, non-destructive analysis. **Delegate to `drupal-viability-analyst`**
-via the Task tool. It runs `rector --dry-run` (official + digests when enabled),
-`phpstan` at the deprecation level, `phpcs`, and `upgrade_status` (only if Drupal is
-installed), classifies findings, estimates S/M/L/XL effort, and produces a viability
-report plus a staged port plan, with the module's pre-existing metadata hygiene
-(`lint-extension-metadata.sh`: config schema, `configure:` route, orphan services,
-service arity, submodule core requirement, undeclared dependencies) reported but
-kept out of the effort rubric. **Do not start porting until an assessment exists.**
+This is a static, non-destructive analysis in the test-bed Stage 1 built.
+**Delegate to `drupal-viability-analyst`** via the Task tool. It runs
+`scripts/analysis/assess.sh --subject <path> --json`, which computes the whole
+assessment deterministically: the official Rector dry-run, PHPStan at the
+deprecation level, PHPCS, the port-safety and signature checks and the module's
+pre-existing metadata hygiene (reported, kept out of the rubric), the core-target
+decision, the contrib dependency readiness and the S/M/L/XL verdict from three
+counts (ADR 0025). It writes `assess.json`, renders `viability-report.md` and
+records the `assessed` stage. The digests layer is not part of the assessment
+(its rules are reviewed in Stage 3). The analyst narrates `assess.json` and
+writes the staged port plan; it never computes a verdict of its own. **Do not
+start porting until an assessment exists.**
 
 After the analyst returns: present the verdict. If effort exceeds the threshold, say
-so plainly, but always hand over the staged plan and let the user choose.
+so plainly, but always hand over the staged plan and let the user choose. A
+provisional assessment (`assess.sh` exit 3: Rector or PHPStan gave no verdict,
+`provisional: true`, no `assessed` stage) is a blocker: repair the failing tool
+and assess again before porting; never treat it as zero findings.
 
 ### Stage 3 — port (gate: `analyze`; Phase 1) — minimal compatibility
 
@@ -389,7 +395,8 @@ Phase 2) or `fix` (each item's `action`: `fix` when the replacement exists at th
 declared core floor, `fix-guarded` through
 `DeprecationHelper::backwardsCompatibleCall()`, `defer` otherwise). Autonomous
 mode applies the configured policy as is — it never upgrades `report` to `fix`.
-Store the final classification as `soft_deprecations` in the port manifest.
+Nothing to store: `scripts/ai/manifest.sh` classifies the stage's raw PHPStan
+report itself into the manifest's `soft_deprecations`.
 When the final requirement still admits Drupal 10 (`verify_cores` has a `10…`
 leg) and `DRUPILOT_VERIFY_CORES` is not `off`, run
 `scripts/analysis/verify-core-matrix.sh --subject <path> --json` once the loop is
@@ -399,8 +406,9 @@ baseline. Exit 3 = a Drupal 10 incompatibility (e.g. an `#[\Override]` on a
 method only 11.3+ core declares): fix it the D10-safe way, raise the floor or
 drop to `^11` (the "Drupal 10 check" tab of `minimal-port` §6a; autonomous mode
 fixes the code, else recommends `^11` in the report). A skipped leg (no network)
-leaves `d10_support` `declared-not-verified` and never blocks. Record
-`d10_support` and `verification.core_matrix` in the manifest. No architectural changes. Report the summarized diff, which rules
+leaves `d10_support` `declared-not-verified` and never blocks. The script keeps
+its verdict in `core-matrix.json`: `manifest.sh` takes `d10_support` from it and
+`port-report.sh` reads it. No architectural changes. Report the summarized diff, which rules
 (official/digests/ad-hoc) were applied, and what is deferred to Phase 2.
 
 When the subject validates, write the local preview patch (offline, git-only;
@@ -413,7 +421,8 @@ and post-port fixes; give each pitfall worth preventing a detector that matches
 the PRE-port code (a POSIX ERE and/or `port-safety:<check>` / `signature:<id>`)
 and `patterns.sh add` it — after the developer picks which (`minimal-port` §8),
 or, in autonomous mode, only detectors you checked, listing their ids in the
-summary. Put `learned_patterns {scan, recorded}` in the manifest.
+summary. The recorded patterns live in the project's catalog (`patterns.sh
+list`); the manifest does not carry them.
 
 ### Stage 4 — refactor (gate: `analyze`/`test`; Phase 2, OPT-IN ONLY)
 
@@ -456,9 +465,10 @@ reminds the user about the Contribution Record, and never exposes the PAT.
 ## Delegation policy
 
 Delegate via the **Task** tool; do the lightweight coordination yourself.
-- **drupal-viability-analyst** — interpreting tool output, classifying findings,
-  estimating effort, writing the viability report and staged plan (the assess stage,
-  and any time the user asks "is this worth porting / how hard is it").
+- **drupal-viability-analyst** — running `assess.sh` (which computes the verdict
+  and renders the viability report), narrating `assess.json` and writing the staged
+  plan (the assess stage, and any time the user asks "is this worth porting / how
+  hard is it").
 - **drupal-test-engineer** — anything PHPUnit/DDEV/Selenium: discovery, adaptation,
   running to green, coverage (the test stage, and during Phase 2 refactor).
 - **drupal-contrib-publisher** — anything git/GitLab/Drupal.org: prerequisites, issue
@@ -468,8 +478,9 @@ state/caching, and presenting verdicts and next steps.
 
 ## State, caching and long work
 
-- Cache assess results in the per-project state dir so `/drupilot-status` and later
-  stages do not recompute. Read prior state before re-running an expensive stage.
+- `assess.sh` caches the assessment (`assess.json`) in the per-project state dir so
+  `/drupilot-status` and later stages do not recompute. Read prior state before
+  re-running an expensive stage.
 - Heavy operations (DDEV/Composer install, full test suite, Rector on large modules)
   may run in the background and notify on completion; do not block the session.
   Show readable progress.
