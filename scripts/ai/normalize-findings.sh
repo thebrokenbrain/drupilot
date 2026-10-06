@@ -161,8 +161,16 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
   | (if $sp == "" then "" else $sp + "/" end) as $pre
   | def subrel: if $pre != "" and startswith($pre) then .[($pre | length):] else . end;
     def rootrel: if $pre == "" or startswith($pre) then . else $pre + . end;
-    # The anchors, keyed once by file and line (a lookup per finding).
-    ($anch[0] | if type == "array" then (map({key: "\(.file)\u001f\(.line)", value: .anchor}) | from_entries) else {} end) as $amap
+    # Fields of an unexpected type are read as missing (a malformed raw file
+    # never stops the stage; its tool verdict is in tools).
+    def O: if type == "object" then . else {} end;
+    def A: if type == "array" then . else [] end;
+    def S: if type == "string" then . else null end;
+    def N: if type == "number" then . else null end;
+    # The anchors, keyed once by file and line (a lookup per finding); an
+    # anchors file whose entries are not {file, line, anchor} counts as none.
+    ($anch[0] | if type == "array" and all(.[]; type == "object" and (.file | type) == "string" and (.anchor | type) == "string")
+                then (map({key: "\(.file)\u001f\(.line)", value: .anchor}) | from_entries) else {} end) as $amap
   | def anchor_of($rf; $ln): if $ln == null then "{file}" else ($amap["\($rf)\u001f\($ln)"] // "{file}") end;
     def short: split("\\") | last;
     # The first changed line (old numbering) of each hunk of a unified diff.
@@ -187,33 +195,36 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
       # Rector: one finding per applied rule and hunk. (Each generator is
       # parenthesized: an unparenthesized "as" binding would scope over the
       # generators after it.)
-      (($rector[0].file_diffs // [])[] as $d
+      (($rector[0] | O | .file_diffs | A | map(O | select((.file | type) == "string")))[] as $d
         | ($d.file | rootrel) as $rf
-        | (($d.diff // "") | hunk_lines | if length == 0 then [null] else . end)[] as $ln
-        | ($d.applied_rectors // [])[] as $r
+        | (($d.diff | S // "") | hunk_lines | if length == 0 then [null] else . end)[] as $ln
+        | ($d.applied_rectors | A | map(S | select(. != null)))[] as $r
         | {tool: "rector", rule: $r, rf: $rf, line: $ln, symbol: null, message: ($r | short),
            severity: "info", scope: "current", class: "rector"}),
       # PHPStan: every file message; deprecations classified.
-      (($stan[0].files // {}) | to_entries[] as $e | ($e.value.messages // [])[] as $m
+      (($stan[0] | O | .files | O) | to_entries[] as $e | ($e.value | O | .messages | A | map(O | select((.message | type) == "string")))[] as $m
         | ($e.key | ctxless | rootrel) as $rf
         | ($m.message | finding_norm_message) as $nm
         | ($cmap["\($e.key)\u001f\($m.line)\u001f\($nm)"] // null) as $c
-        | {tool: "phpstan", rule: ($m.identifier // null), rf: $rf, line: ($m.line // null),
+        | {tool: "phpstan", rule: ($m.identifier | S), rf: $rf, line: ($m.line | N),
            symbol: (if $c then $c.symbol else null end), message: $nm, severity: "error",
            scope: (if $c and $c.class == "soft" and $policy != "fix" then "next-major" else "current" end),
            class: (if $c then $c.class else "analysis" end), ctx: ($e.key != ($e.key | ctxless)), cx: $e.key}),
       # PHPCS: every file message.
-      (($cs[0].files // {}) | to_entries[] as $e | ($e.value.messages // [])[] as $m
-        | {tool: "phpcs", rule: ($m.source // "phpcs"), rf: ($e.key | rootrel), line: ($m.line // null), symbol: null,
-           message: ($m.message | finding_norm_message), severity: (($m.type // "error") | sev), scope: "current",
-           class: (if (($m.source // "") | startswith("PHPCompatibility.")) then "php-target" else "style" end)}),
+      (($cs[0] | O | .files | O) | to_entries[] as $e | ($e.value | O | .messages | A | map(O | select((.message | type) == "string")))[] as $m
+        | {tool: "phpcs", rule: ($m.source | S // "phpcs"), rf: ($e.key | rootrel), line: ($m.line | N), symbol: null,
+           message: ($m.message | finding_norm_message), severity: (($m.type | S // "error") | sev), scope: "current",
+           class: (if (($m.source | S // "") | startswith("PHPCompatibility.")) then "php-target" else "style" end)}),
       # The catalog scans.
-      (($safety[0].findings // [])[] | {tool: "catalog", rule: "port-safety:\(.check)", rf: (.file | rootrel), line: (.line // null),
-         symbol: null, message: (.message | finding_norm_message), severity: ((.severity // "error") | sev), scope: "current", class: "safety"}),
-      (($sig[0].findings // [])[] | {tool: "catalog", rule: "signature:\(.id)", rf: (.file | rootrel), line: (.line // null),
-         symbol: (.member // null), message: (.message | finding_norm_message), severity: ((.severity // "error") | sev), scope: "current", class: "signature"}),
-      (($meta[0].findings // [])[] | {tool: "catalog", rule: "metadata:\(.check)", rf: (.file | rootrel), line: (.line // null),
-         symbol: null, message: (.message | finding_norm_message), severity: ((.severity // "error") | sev), scope: "current", class: "metadata"})
+      (($safety[0] | O | .findings | A | map(O | select((.file | type) == "string" and (.message | type) == "string" and (.check | type) == "string")))[]
+        | {tool: "catalog", rule: "port-safety:\(.check)", rf: (.file | rootrel), line: (.line | N),
+           symbol: null, message: (.message | finding_norm_message), severity: ((.severity | S // "error") | sev), scope: "current", class: "safety"}),
+      (($sig[0] | O | .findings | A | map(O | select((.file | type) == "string" and (.message | type) == "string" and (.id | type) == "string")))[]
+        | {tool: "catalog", rule: "signature:\(.id)", rf: (.file | rootrel), line: (.line | N),
+           symbol: (.member | S), message: (.message | finding_norm_message), severity: ((.severity | S // "error") | sev), scope: "current", class: "signature"}),
+      (($meta[0] | O | .findings | A | map(O | select((.file | type) == "string" and (.message | type) == "string" and (.check | type) == "string")))[]
+        | {tool: "catalog", rule: "metadata:\(.check)", rf: (.file | rootrel), line: (.line | N),
+           symbol: null, message: (.message | finding_norm_message), severity: ((.severity | S // "error") | sev), scope: "current", class: "metadata"})
     ]
   # A trait error comes once per class context: keep as many copies as the
   # context with the most (two identical errors on one line stay two).
@@ -274,8 +285,10 @@ jq -c --slurpfile idsf "$TMP/ids.json" --slurpfile ix "$INDEX" --slurpfile recto
   | {schema: 1, stage: $stage,
      subject: {machine_name: ($ix[0].subject.machine_name // null), path: ($ix[0].subject.path // null)},
      target: {major: $target, soft_policy: $policy,
-              runner: ($rector[0] | obj | .runner | obj | .runner // null), php_version: ($rector[0] | obj | .runner | obj | .php_version // null)},
-     anchors: (if ($anch[0] | type) == "array" then "php" else "unavailable" end),
+              runner: ($rector[0] | obj | .runner | obj | .runner | if type == "string" then . else null end),
+              php_version: ($rector[0] | obj | .runner | obj | .php_version | if type == "string" then . else null end)},
+     anchors: (if ($anch[0] | type == "array" and all(.[]; type == "object" and (.file | type) == "string" and (.anchor | type) == "string"))
+               then "php" else "unavailable" end),
      tools: {rector: ($rector[0] | obj | verdict("rector"; .status == "error")),
              phpstan: ($stan[0] | obj | verdict("phpstan"; (.drupilot | obj | .status) == "crashed")),
              phpcs: ($cs[0] | obj | verdict("phpcs"; ((.drupilot | obj | .error) // null) != null)),

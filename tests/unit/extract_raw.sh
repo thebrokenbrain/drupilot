@@ -107,12 +107,12 @@ assert_eq "an old NN of the stage is removed, another stage's file kept" \
 # A PHPStan error in a trait: its key names the class context; the anchor is
 # asked for the trait's file.
 jq -n --arg s "$R/$S" '{totals: {errors: 0, file_errors: 2}, files: {($s + "/src/T.php (in context of class M\\A)"): {messages: [{message: "Boom", line: 7}]},
-  ($s + "/src/T.php (in context of class@anonymous/" + $s + "/src/A.php:9)"): {messages: [{message: "Boom", line: 8}]},
-  ($s + "/src/x (in context of y)/U.php"): {messages: [{message: "Boom", line: 3}]}}}' > "$R/out.run-phpstan"
+  ($s + "/src/V.php (in context of class@anonymous/" + $s + "/src/A.php:9)"): {messages: [{message: "Boom", line: 8}]},
+  ($s + "/src/x (in context of y)/U.php (in context of class M\\B)"): {messages: [{message: "Boom", line: 3}]}}}' > "$R/out.run-phpstan"
 ex --subject "$R/$S"
-assert_eq "trait errors (named and anonymous contexts): the anchor requests name the trait's file; a directory with the words is a path" \
-  "$(jq -c '[.[] | select(.line == 7 or .line == 8 or .line == 3) | .file] | unique' "$RAW/04-assess-anchors.json")" \
-  '["web/modules/custom/m/src/T.php","web/modules/custom/m/src/x (in context of y)/U.php"]'
+assert_eq "trait errors (named and anonymous contexts): the anchor requests name the trait's file; a directory with the words stays a path" \
+  "$(jq -c '[.[] | select(.line == 7 or .line == 8 or .line == 3) | [.file, .line]] | sort' "$RAW/04-assess-anchors.json")" \
+  '[["web/modules/custom/m/src/T.php",7],["web/modules/custom/m/src/V.php",8],["web/modules/custom/m/src/x (in context of y)/U.php",3]]'
 
 # Rector gave no report at all (exit 2, no JSON): no verdict, exit 3.
 printf 'not json\n' > "$R/out.run-rector"; printf '2' > "$R/rc.run-rector"

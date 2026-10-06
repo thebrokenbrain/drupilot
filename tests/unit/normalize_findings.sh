@@ -177,11 +177,12 @@ assert_eq "an anonymous class context too; two identical errors on one trait lin
 # "(in context of ...)" is not a class context.
 jq --arg sp "$SP" '.files = {($sp + "/src/T.php (in context of class M\\A)"): {messages: [{message: "Undefined variable: $t", line: 4}]},
                              ($sp + "/src/T.php (in context of class M\\B)"): {messages: [{message: "Undefined variable: $t", line: 4}, {message: "Undefined variable: $t", line: 4}]},
-                             ($sp + "/src/x (in context of y)/U.php"): {messages: [{message: "Undefined variable: $u", line: 2}]}}' \
+                             ($sp + "/src/x (in context of y)/U.php"): {messages: [{message: "Undefined variable: $u", line: 2}]},
+                             ($sp + "/src/x (in context of y)/W.php (in context of class M\\B)"): {messages: [{message: "Undefined variable: $w", line: 2}]}}' \
   "$R0/04-assess-phpstan.json" > "$RT/04-assess-phpstan.json"
 nf --raw-dir "$RT" --target-major 11 --soft-policy report --json
-assert_eq "counts 1 and 2 in two contexts: two findings; a directory with the words is a path" \
-  "$(j '[.findings[] | select(.tool == "phpstan") | .file] | sort')" '["src/T.php","src/T.php","src/x (in context of y)/U.php"]'
+assert_eq "counts 1 and 2 in two contexts: two findings; a directory with the words is a path, even before a context" \
+  "$(j '[.findings[] | select(.tool == "phpstan") | .file] | sort')" '["src/T.php","src/T.php","src/x (in context of y)/U.php","src/x (in context of y)/W.php"]'
 
 # The anchor is part of the merge key: the same symbol in two methods is two findings.
 RA="$T_TMP/rawa"; mkraw "$RA" 0
@@ -233,10 +234,24 @@ jq '.runner = "ddev"' "$R0/04-assess-rector.json" > "$RX/04-assess-rector.json"
 nf --raw-dir "$RX" --target-major 11 --soft-policy report --json
 assert_eq "raw files with fields of another type: no crash" "$T_RC|$(j '[.tools.phpstan, .tools.rector, .target.runner]')" '0|["ok","ok",null]'
 for v in '[]' '"x"' '5'; do
-  mkraw "$RX" 0; printf '%s\n' "$v" > "$RX/04-assess-rector.json"; printf '%s\n' "$v" > "$RX/04-assess-metadata.json"
+  mkraw "$RX" 0
+  for t in rector metadata phpcs signatures port-safety; do printf '%s\n' "$v" > "$RX/04-assess-$t.json"; done
   nf --raw-dir "$RX" --target-major 11 --soft-policy report --json
-  assert_eq "  a raw file that is $v: failed, no crash" "$T_RC|$(j '[.tools.rector, .tools.metadata]')" '0|["failed","failed"]'
+  assert_eq "  raw files that are $v: failed, no crash" "$T_RC|$(j '[.tools.rector, .tools.metadata, .tools.phpcs, .tools.signatures, .tools["port-safety"]] | unique')" '0|["failed"]'
 done
+# Fields of an unexpected type inside a valid report: read as missing.
+mkraw "$RX" 0
+jq '.file_diffs[0].diff = 5' "$R0/04-assess-rector.json" > "$RX/04-assess-rector.json"
+printf '{"files": "x"}\n' > "$RX/04-assess-phpcs.json"
+printf '{"findings": "x"}\n' > "$RX/04-assess-port-safety.json"
+printf '{"findings": [1, {"check": "c", "file": "m.info.yml", "line": "2", "message": null}]}\n' > "$RX/04-assess-metadata.json"
+jq '.runner = {runner: 5, php_version: [8]}' "$R0/04-assess-rector.json" | jq '.file_diffs[0].diff = 5' > "$RX/04-assess-rector.json"
+jq '.files[].messages[0].line = "x" | .files[].messages[1].message = null' "$R0/04-assess-phpstan.json" > "$RX/04-assess-phpstan.json"
+printf '[1, "x"]\n' > "$RX/04-assess-anchors.json"
+nf --raw-dir "$RX" --target-major 11 --soft-policy report --json
+assert_eq "fields of other types in valid reports: no crash, the bad entries read as missing" \
+  "$T_RC|$(j '[.target.runner, .target.php_version, .anchors, ([.findings[] | select(.tool == "rector") | .line] | unique), ([.findings[].anchor] | unique)]')" \
+  '0|[null,null,"unavailable",[null],["{file}"]]'
 # A NUL in a message is dropped before the id (the same id on every awk).
 mkraw "$RX" 0
 jq '.files[].messages[0].message = "Missing\u0000 function doc comment"' "$R0/04-assess-phpcs.json" > "$RX/04-assess-phpcs.json"
@@ -255,7 +270,7 @@ for bad in '.subject = "web/modules/custom/m"' '.subject.path = 5' '.subject.mac
   assert_eq "an index with $bad: exit 1" "$T_RC" "1"
 done
 { cat "$R0/04-assess-index.json"; cat "$R0/04-assess-index.json"; } > "$RI/04-assess-index.json"
-nf --raw-dir "$RI"
+nf --raw-dir "$RI" --target-major 11 --soft-policy report
 assert_eq "an index of two JSON objects: exit 1" "$T_RC" "1"
 mkraw "$RI" 0; cp "$RI/04-assess-index.json" "$RI/02-assess-index.json"
 nf --raw-dir "$RI"
