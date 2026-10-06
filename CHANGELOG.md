@@ -473,10 +473,12 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     catalogs ignore the block, so their outputs are unchanged.
   - 42 recipes: 30 for the AI, with the catalog's text as their template; 8
     for a person; 4 codemods.
-  - The codemods: a required `CacheableMetadata` hook parameter made optional
-    (`hook_entity_operation`, `_alter`); a class name in a `.yml` file given
-    the case of its file; a submodule's `core_version_requirement` set to the
-    plan's range.
+  - The codemods:
+    - a required `CacheableMetadata` hook parameter made optional
+      (`hook_entity_operation`, `_alter`), only when the body does not use it;
+    - a class name in a `.yml` file given the case of its file;
+    - a submodule's `core_version_requirement` set to the module's own
+      plan's range, never above the declared floor.
   - `scripts/ai/apply-recipe.sh` applies one codemod to one finding with the
     `ere-replace`, `yaml-edit` and `info-yml` engines. It writes only an
     exact change whose postconditions hold; anything else is `no-match`, and

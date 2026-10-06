@@ -66,7 +66,10 @@ jq -n --slurpfile dep "$REPO/$DEP" --slurpfile pc "$REPO/$PC" --slurpfile mc "$R
   --arg DEP_PATH "$DEP" --arg PC_PATH "$PC" --arg MC_PATH "$MC" '
   ($dep[0].change_records_search // "") as $cr
   | def slug: ascii_downcase | gsub("[^a-z0-9]+"; "-") | sub("^-+"; "") | sub("-+$"; "");
-    def crurl($s): if $cr == "" or $s == null then null else $cr + ($s | @uri) end;
+    # jq 1.6 leaves ! * apostrophe ( ) unencoded and 1.7+ encodes them: encode
+    # them here, so every jq gives the same file (as gen-docs.sh does).
+    def crurl($s): if $cr == "" or $s == null then null
+      else $cr + ($s | @uri | gsub("!"; "%21") | gsub("\\*"; "%2A") | gsub("'"'"'"; "%27") | gsub("\\("; "%28") | gsub("\\)"; "%29")) end;
     def istag: (.pattern // "") | startswith("\\[");
     def drop_nulls: with_entries(select(.value != null));
     # The recipe of a catalog entry: its recipe block over the defaults.
@@ -129,9 +132,11 @@ jq -r '
   (.[] | select(.lane | IN("rector", "rector-custom", "codemod", "ai-templated", "ai-free", "test-adapt", "human", "deferred") | not) | "\(.id): unknown lane \(.lane)"),
   (.[] | select(.engine | IN("template", "ere-replace", "yaml-edit", "info-yml", "attributes", "php-script", "rector-rule") | not) | "\(.id): unknown engine \(.engine)"),
   (.[] | select(.engine == "ere-replace") | select((.params.search // "") == "" or (.params.replace // null) == null) | "\(.id): ere-replace needs params.search and params.replace"),
-  (.[] | select(.engine == "ere-replace") | select(.params.search | test("\\\\[bBsSdDwW]|\\(\\?")) | "\(.id): params.search is not POSIX ERE (no \\b, \\s, \\d, \\w or (?...))"),
+  (.[] | select(.engine == "ere-replace") | select(.params.search | test("(^|[^\\\\])(\\\\\\\\)*(\\\\[bBsSdDwW]|\\(\\?)")) | "\(.id): params.search is not POSIX ERE (no \\b, \\s, \\d, \\w or (?...))"),
   (.[] | select(.engine == "ere-replace") | select((.params.search + .params.replace) | test("\u0001")) | "\(.id): params contain the \\x01 delimiter"),
-  (.[] | select(.kind == "codemod" and .lane != "codemod" and .lane != "rector-custom") | "\(.id): a codemod belongs to lane codemod or rector-custom")' \
+  (.[] | select(.kind == "codemod" and .lane != "codemod" and .lane != "rector-custom") | "\(.id): a codemod belongs to lane codemod or rector-custom"),
+  (.[] | select(.kind != "codemod" and (.lane == "codemod" or .lane == "rector-custom")) | "\(.id): lane \(.lane) needs a codemod engine"),
+  (.[] | (.postconditions // [])[] as $p | select(($p | keys - ["type", "where", "ere", "text"]) | length > 0) | "\(.id): a postcondition has an unknown key")' \
   "$TMP/pre.json" >> "$PROBLEMS"
 for id in $(jq -r '.[] | select(.engine | IN("ere-replace", "yaml-edit", "info-yml")) | .id' "$TMP/pre.json"); do
   d="$REPO/$FIX/$id"

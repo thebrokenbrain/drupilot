@@ -12,34 +12,34 @@ A codemod applies only when its conditions hold. Its edit must be exact and its 
 
 | Recipe | Lane | Engine | Matches | Applies when |
 |---|---|---|---|---|
-| `dep.assertion` | ai-templated | template | message `assert\(.*instanceof\|Drupal\\Component\\Assertion` | — |
-| `dep.check-markup` | ai-templated | template | message `check_markup` or symbol `check_markup` | — |
-| `dep.ckeditor-5` | human | template | message `ckeditor4\|ckeditor/ckeditor\|core/ckeditor\b` | — |
-| `dep.db-query` | ai-templated | template | message `db_query\|db_select\|db_insert\|db_update\|db_delete` | — |
-| `dep.dependency-injection` | ai-templated | template | message `\\Drupal::service\(\|\\Drupal::(entityTypeManager\|currentUser\|database\|config\|state\|moduleHandler)\(` | — |
-| `dep.dependency-injection-forms` | ai-templated | template | message `FormBase::create\|ContainerInjectionInterface` | — |
-| `dep.drupal-set-message` | ai-templated | template | message `drupal_set_message` | — |
-| `dep.drupal-url` | ai-templated | template | message `\\Drupal::url\b` | — |
-| `dep.entity-load` | ai-templated | template | message `(entity_load\|node_load\|user_load\|taxonomy_term_load)\b` | — |
-| `dep.entitymanager` | ai-templated | template | message `EntityManager(Interface)?\b` | — |
-| `dep.format-date` | ai-templated | template | message `format_date\|\\Drupal::service\(.date.\)` | — |
-| `dep.jquery-ui` | human | template | message `jquery\.?ui\|jquery_ui\|core/jquery\.ui` | — |
-| `dep.phpunit-10` | ai-templated | template | message `getMock\b\|createMock.*willReturn.*at\(` | — |
-| `dep.request-time` | ai-templated | template | message `REQUEST_TIME` | — |
-| `dep.text-summary` | ai-templated | template | message `text_summary` or symbol `text_summary` | — |
-| `dep.twig-spaceless` | ai-templated | template | message `spaceless` | — |
-| `dep.update-hooks` | ai-templated | template | message `hook_(install\|update\|uninstall)\|hook_update_N` | — |
-| `dep.user-cookie-save` | ai-templated | template | message `user_cookie_(save\|delete)` or symbol `user_cookie_save`, `user_cookie_delete` | — |
-| `dep.user-load-by-name` | ai-templated | template | message `user_load_by_(name\|mail)` or symbol `user_load_by_name`, `user_load_by_mail` | — |
-| `dep.user-roles` | ai-templated | template | message `user_roles\(\|Function user_roles \|user_role_names` or symbol `user_roles`, `user_role_names` | — |
+| `dep.assertion` | ai-templated | template | a message pattern (below) | — |
+| `dep.check-markup` | ai-templated | template | a message pattern (below), or symbol `check_markup` | — |
+| `dep.ckeditor-5` | human | template | a message pattern (below) | — |
+| `dep.db-query` | ai-templated | template | a message pattern (below) | — |
+| `dep.dependency-injection` | ai-templated | template | a message pattern (below) | — |
+| `dep.dependency-injection-forms` | ai-templated | template | a message pattern (below) | — |
+| `dep.drupal-set-message` | ai-templated | template | a message pattern (below) | — |
+| `dep.drupal-url` | ai-templated | template | a message pattern (below) | — |
+| `dep.entity-load` | ai-templated | template | a message pattern (below) | — |
+| `dep.entitymanager` | ai-templated | template | a message pattern (below) | — |
+| `dep.format-date` | ai-templated | template | a message pattern (below) | — |
+| `dep.jquery-ui` | human | template | a message pattern (below) | — |
+| `dep.phpunit-10` | ai-templated | template | a message pattern (below) | — |
+| `dep.request-time` | ai-templated | template | a message pattern (below) | — |
+| `dep.text-summary` | ai-templated | template | a message pattern (below), or symbol `text_summary` | — |
+| `dep.twig-spaceless` | ai-templated | template | a message pattern (below) | — |
+| `dep.update-hooks` | ai-templated | template | a message pattern (below) | — |
+| `dep.user-cookie-save` | ai-templated | template | a message pattern (below), or symbol `user_cookie_save`, `user_cookie_delete` | — |
+| `dep.user-load-by-name` | ai-templated | template | a message pattern (below), or symbol `user_load_by_name`, `user_load_by_mail` | — |
+| `dep.user-roles` | ai-templated | template | a message pattern (below), or symbol `user_roles`, `user_role_names` | — |
 | `meta.config-schema` | human | template | rule `metadata:config-schema` | — |
 | `meta.configure-route` | human | template | rule `metadata:configure-route` | — |
 | `meta.plugin-schema` | human | template | rule `metadata:plugin-schema` | — |
 | `meta.services-arity` | human | template | rule `metadata:services-arity` | — |
 | `meta.services-class` | human | template | rule `metadata:services-class` | — |
-| `meta.submodule-core-req` | codemod | info-yml | rule `metadata:submodule-core-req` | `severity`: error, warning |
+| `meta.submodule-core-req` | codemod | info-yml | rule `metadata:submodule-core-req` | `severity`: `error, warning` |
 | `meta.undeclared-deps` | human | template | rule `metadata:undeclared-deps` | — |
-| `safety.class-case` | codemod | yaml-edit | rule `port-safety:class-case` | `file_ere`: \.ya?ml$ |
+| `safety.class-case` | codemod | yaml-edit | rule `port-safety:class-case` | `file_ere`: `\.ya?ml$` |
 | `safety.fapi-callable` | ai-templated | template | rule `port-safety:fapi-callable` | — |
 | `safety.override-attribute` | ai-templated | template | rule `port-safety:override-attribute` | — |
 | `safety.plugin-di` | ai-templated | template | rule `port-safety:plugin-di` | — |
@@ -51,9 +51,34 @@ A codemod applies only when its conditions hold. Its edit must be exact and its 
 | `sig.entity-get-original` | ai-templated | template | rule `signature:entity-get-original` | — |
 | `sig.entity-original-accessors-call` | ai-templated | template | rule `signature:entity-original-accessors-call` | — |
 | `sig.entity-set-original` | ai-templated | template | rule `signature:entity-set-original` | — |
-| `sig.hook-entity-operation` | codemod | ere-replace | rule `signature:hook-entity-operation` | `severity`: error |
-| `sig.hook-entity-operation-alter` | codemod | ere-replace | rule `signature:hook-entity-operation-alter` | `severity`: error |
+| `sig.hook-entity-operation` | codemod | ere-replace | rule `signature:hook-entity-operation` | `severity`: `error` |
+| `sig.hook-entity-operation-alter` | codemod | ere-replace | rule `signature:hook-entity-operation-alter` | `severity`: `error` |
 | `sig.revision-cache-id` | ai-templated | template | rule `signature:revision-cache-id` | — |
+
+## Message patterns
+
+Case-insensitive POSIX extended regular expressions, matched against a finding's message.
+
+- `dep.assertion`: `assert\(.*instanceof|Drupal\\Component\\Assertion`
+- `dep.check-markup`: `check_markup`
+- `dep.ckeditor-5`: `ckeditor4|ckeditor/ckeditor|core/ckeditor\b`
+- `dep.db-query`: `db_query|db_select|db_insert|db_update|db_delete`
+- `dep.dependency-injection`: `\\Drupal::service\(|\\Drupal::(entityTypeManager|currentUser|database|config|state|moduleHandler)\(`
+- `dep.dependency-injection-forms`: `FormBase::create|ContainerInjectionInterface`
+- `dep.drupal-set-message`: `drupal_set_message`
+- `dep.drupal-url`: `\\Drupal::url\b`
+- `dep.entity-load`: `(entity_load|node_load|user_load|taxonomy_term_load)\b`
+- `dep.entitymanager`: `EntityManager(Interface)?\b`
+- `dep.format-date`: `format_date|\\Drupal::service\(.date.\)`
+- `dep.jquery-ui`: `jquery\.?ui|jquery_ui|core/jquery\.ui`
+- `dep.phpunit-10`: `getMock\b|createMock.*willReturn.*at\(`
+- `dep.request-time`: `REQUEST_TIME`
+- `dep.text-summary`: `text_summary`
+- `dep.twig-spaceless`: `spaceless`
+- `dep.update-hooks`: `hook_(install|update|uninstall)|hook_update_N`
+- `dep.user-cookie-save`: `user_cookie_(save|delete)`
+- `dep.user-load-by-name`: `user_load_by_(name|mail)`
+- `dep.user-roles`: `user_roles\(|Function user_roles |user_role_names`
 
 ## Codemods
 
@@ -66,7 +91,7 @@ A submodule's core_version_requirement does not admit the target core (or is mis
 
 ### safety.class-case
 
-A class referenced from *.services.yml / *.routing.yml, or a PSR-4 class declaration, whose case differs from the real file name. Works on case-insensitive filesystems (macOS) and fatals on Linux.
+A class referenced from \*.services.yml / \*.routing.yml, or a PSR-4 class declaration, whose case differs from the real file name. Works on case-insensitive filesystems (macOS) and fatals on Linux.
 
 - **Engine:** `yaml-edit` with `{"from":{"capture":"^'([^']+)' does not match the real file"},"op":"replace-on-line","to":{"capture":"the real file '([^']+)'","transform":"class-from-file"}}`
 - **Fixtures:** `tests/fixtures/recipes/safety.class-case`
@@ -76,7 +101,7 @@ A class referenced from *.services.yml / *.routing.yml, or a PSR-4 class declara
 From 11.3 core invokes hook_entity_operation() with a second argument, CacheableMetadata $cacheability (EntityListBuilder::getOperations()); earlier cores pass only the entity. An implementation that REQUIRES the second parameter throws ArgumentCountError on every core below 11.3.
 
 - **Fix:** Keep the one-parameter signature, or add the new parameter as optional: ?CacheableMetadata $cacheability = NULL.
-- **Engine:** `ere-replace` with `{"replace":"\\1?\\2\\4 = NULL\\5","scope":"line","search":"([(,][[:space:]]*)(\\\\?([A-Za-z_][A-Za-z0-9_]*\\\\)*CacheableMetadata)([[:space:]]+\\$[A-Za-z_][A-Za-z0-9_]*)([[:space:]]*[),])"}`
+- **Engine:** `ere-replace` with `{"captures":{"var":"CacheableMetadata[[:space:]]+\\$([A-Za-z_][A-Za-z0-9_]*)"},"replace":"\\1?\\2\\4 = NULL\\5","scope":"line","search":"([(,][[:space:]]*)(\\\\?([A-Za-z_][A-Za-z0-9_]*\\\\)*CacheableMetadata)([[:space:]]+\\$[A-Za-z_][A-Za-z0-9_]*)([[:space:]]*[),])"}`
 - **Fixtures:** `tests/fixtures/recipes/sig.hook-entity-operation`
 
 ### sig.hook-entity-operation-alter
@@ -84,5 +109,5 @@ From 11.3 core invokes hook_entity_operation() with a second argument, Cacheable
 From 11.3 core alters entity operations with a third argument, CacheableMetadata $cacheability; earlier cores pass only (&$operations, $entity). An implementation that REQUIRES the third parameter throws ArgumentCountError below 11.3.
 
 - **Fix:** Keep the two-parameter signature, or add the new parameter as optional: ?CacheableMetadata $cacheability = NULL.
-- **Engine:** `ere-replace` with `{"replace":"\\1?\\2\\4 = NULL\\5","scope":"line","search":"([(,][[:space:]]*)(\\\\?([A-Za-z_][A-Za-z0-9_]*\\\\)*CacheableMetadata)([[:space:]]+\\$[A-Za-z_][A-Za-z0-9_]*)([[:space:]]*[),])"}`
+- **Engine:** `ere-replace` with `{"captures":{"var":"CacheableMetadata[[:space:]]+\\$([A-Za-z_][A-Za-z0-9_]*)"},"replace":"\\1?\\2\\4 = NULL\\5","scope":"line","search":"([(,][[:space:]]*)(\\\\?([A-Za-z_][A-Za-z0-9_]*\\\\)*CacheableMetadata)([[:space:]]+\\$[A-Za-z_][A-Za-z0-9_]*)([[:space:]]*[),])"}`
 - **Fixtures:** `tests/fixtures/recipes/sig.hook-entity-operation-alter`

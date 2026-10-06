@@ -13,15 +13,24 @@
 #                ERE on the finding's message) or, for `to`, a transform of
 #                one (class-from-file: Drupal\<extension>\ plus the class's
 #                path under src/, for a class name whose case differs)
-#   info-yml     scripts/analysis/set-core-requirement.sh on the subject with
-#                params.requirement (plan:<path> reads the upgrade plan,
-#                e.g. plan:range.constraint; --param overrides it)
-# The change is written only when it is exact and every postcondition holds on
-# the result (absent-ere / absent-fixed / present-fixed on the line or file;
-# rescan is left to apply-recipes.sh's re-extraction). A replacement that does
-# not apply is `no-match`, and nothing changes: the item falls to its next
-# lane. applies_when is honored: file_ere, severity (with --severity) and
-# core_min (with --core-floor, else the plan's range.floor).
+#   info-yml     scripts/analysis/set-core-requirement.sh, on a copy of the
+#                subject's physical tree, with params.requirement
+#                (plan:<path> reads the subject's own frozen upgrade plan,
+#                e.g. plan:range.constraint; --param overrides it); only the
+#                finding's file is written, and a requirement whose floor is
+#                above the main info.yml's (the declared floor) is
+#                not-applicable
+# params.captures ({name: ERE}, matched on the finding's line before the
+# change) give {name} to the postconditions, e.g. "the parameter made optional
+# is not used elsewhere in the file". The change is written only when it is
+# exact and every postcondition holds on the result (absent-ere / absent-fixed
+# / present-fixed on the line, the file, or the file's code lines but the
+# finding's (file-except-line: comment lines left out); rescan is
+# left to apply-recipes.sh's re-extraction). A file without a final newline
+# keeps none. A replacement that does not apply is `no-match`, and nothing
+# changes: the item falls to its next lane. applies_when is honored: file_ere,
+# severity (with --severity) and core_min (with --core-floor, else the
+# subject's own plan's range.floor).
 #
 # Usage:
 #   apply-recipe.sh --recipe ID --subject DIR --file REL [--line N]
@@ -92,6 +101,17 @@ pq() { jq -r "$1 // empty" <<< "$P"; }
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-recipe.XXXXXX")"
 trap 'rm -rf "$TMP" 2> /dev/null || true' EXIT
 IN_HASH="$(file_hash "$F")"
+# own_plan PATH -> the frozen upgrade plan's value at PATH, only when the plan
+# is this subject's (a shared test-bed's lock may hold another module's).
+own_plan() {
+  local root mn pmn
+  root="$(subject_project_root "$SUBJECT" 2> /dev/null || true)"; [[ -n "$root" ]] || root="$SUBJECT"
+  mn="$(subject_machine_name "$SUBJECT" 2> /dev/null || true)"
+  pmn="$(plan_get .subject.machine_name "$root" 2> /dev/null || true)"
+  [[ -n "$mn" && "$pmn" == "$mn" ]] || return 0
+  plan_get "$1" "$root" 2> /dev/null || true
+  return 0
+}
 STATUS=""; REASON=""; FROM=""; TO=""; OUT_HASH="$IN_HASH"; CHANGED=false
 finish() {
   if [[ "$AS_JSON" == "1" ]]; then
@@ -121,17 +141,22 @@ if [[ -n "$SEVERITY" ]] && jq -e '(.applies_when.severity // []) | length > 0' <
 fi
 CMIN="$(rq .applies_when.core_min)"
 if [[ -n "$CMIN" ]]; then
-  ROOT="$(subject_project_root "$SUBJECT" 2> /dev/null || true)"
-  [[ -n "$FLOOR" ]] || FLOOR="$(plan_get .range.floor "${ROOT:-$SUBJECT}" 2> /dev/null || true)"
+  [[ -n "$FLOOR" ]] || FLOOR="$(own_plan .range.floor)"
   if [[ -z "$FLOOR" ]]; then STATUS="not-applicable"; REASON="it needs core $CMIN and the core floor is unknown"; finish 0; fi
   if ! version_ge "$FLOOR" "$CMIN"; then STATUS="not-applicable"; REASON="it needs core $CMIN, above the floor $FLOOR"; finish 0; fi
 fi
 
 # line N of a file, without its newline.
 line_of() { sed -n "${2}p" "$1"; }
+# params.captures: {name: ERE} matched on the finding's line before the
+# change; the first group of each is {name} in the postconditions.
+CAPS='{}'
+if [[ -n "$LINE" ]] && jq -e '(.captures // {}) | length > 0' <<< "$P" > /dev/null 2>&1; then
+  CAPS="$(jq -c --arg l "$(line_of "$F" "$LINE")" '(.captures // {}) | map_values(. as $re | [$l | match($re).captures[0].string] | .[0] // "")' <<< "$P" 2> /dev/null || printf '{}')"
+fi
 # post FILE -> 0 when every line/file postcondition holds on FILE.
 post() {
-  local f="$1" n i t w x text
+  local f="$1" n i t w x text k v
   n="$(jq '(.postconditions // []) | length' <<< "$R")"
   i=0
   while [[ "$i" -lt "$n" ]]; do
@@ -139,7 +164,14 @@ post() {
     w="$(jq -r --argjson i "$i" '.postconditions[$i].where // "line"' <<< "$R")"
     x="$(jq -r --argjson i "$i" '.postconditions[$i].ere // .postconditions[$i].text // ""' <<< "$R")"
     x="${x//\{from\}/$FROM}"; x="${x//\{to\}/$TO}"
-    if [[ "$w" == "line" && -n "$LINE" ]]; then text="$(line_of "$f" "$LINE")"; else text="$(cat "$f")"; fi
+    for k in $(jq -r 'keys[]' <<< "$CAPS"); do v="$(jq -r --arg k "$k" '.[$k]' <<< "$CAPS")"; x="${x//\{$k\}/$v}"; done
+    case "$w" in
+      line) if [[ -n "$LINE" ]]; then text="$(line_of "$f" "$LINE")"; else text="$(cat "$f")"; fi;;
+      # The file's code lines but the finding's: comment lines (a docblock's
+      # @param names the parameter too) are not code.
+      file-except-line) text="$(awk -v n="${LINE:-0}" 'NR != n && $0 !~ /^[ \t]*(\*|\/\*|\/\/|#)/' "$f")";;
+      *) text="$(cat "$f")";;
+    esac
     case "$t" in
       absent-ere) if printf '%s\n' "$text" | grep_q -E -- "$x"; then REASON="postcondition absent-ere fails"; return 1; fi;;
       absent-fixed) if printf '%s\n' "$text" | grep_q -F -- "$x"; then REASON="postcondition absent-fixed fails"; return 1; fi;;
@@ -198,14 +230,20 @@ case "$ENGINE" in
     ;;
   info-yml)
     REQ="$(pq .requirement)"
-    if [[ "$REQ" == plan:* ]]; then
-      ROOT="$(subject_project_root "$SUBJECT" 2> /dev/null || true)"
-      REQ="$(plan_get ".${REQ#plan:}" "${ROOT:-$SUBJECT}" 2> /dev/null || true)"
+    if [[ "$REQ" == plan:* ]]; then REQ="$(own_plan ".${REQ#plan:}")"; fi
+    [[ -n "$REQ" ]] || die "Recipe $RECIPE needs the core requirement: no upgrade plan of this module gives it (pass --param requirement=...)." 1
+    # Never above the declared floor: the main info.yml's requirement.
+    MAIN_REQ="$(sed -n 's/^core_version_requirement:[[:space:]]*//p' "$SUBJECT/$(subject_machine_name "$SUBJECT" 2> /dev/null || basename "$SUBJECT").info.yml" 2> /dev/null | sed -n '1p' | tr -d "'\"")"
+    if [[ -n "$MAIN_REQ" ]]; then
+      _rf="$(core_floor_from_requirement "$REQ" 2> /dev/null || true)"; _mf="$(core_floor_from_requirement "$MAIN_REQ" 2> /dev/null || true)"
+      if [[ -n "$_rf" && -n "$_mf" ]] && ! version_ge "$_mf" "$_rf"; then
+        STATUS="not-applicable"; REASON="$REQ would raise the declared floor $_mf (core_version_requirement: $MAIN_REQ)"; finish 0
+      fi
     fi
-    [[ -n "$REQ" ]] || die "Recipe $RECIPE needs the core requirement: no upgrade plan gives it (pass --param requirement=...)." 1
-    # set-core-requirement.sh works on the whole subject; the result is read
-    # from a copy, so the finding's file is written below like the others.
-    cp -R "$SUBJECT" "$TMP/subject"
+    # set-core-requirement.sh works on the whole subject; it runs on a copy of
+    # the physical tree (a symlinked subject would be edited through the link),
+    # and only the finding's file is written below, like the other engines.
+    mkdir -p "$TMP/subject" && cp -R "$(cd "$SUBJECT" && pwd -P)/." "$TMP/subject/" || die "Could not copy the subject." 1
     bash "$(plugin_root)/scripts/analysis/set-core-requirement.sh" --subject "$TMP/subject" --requirement "$REQ" > /dev/null 2>&1 < /dev/null \
       || die "set-core-requirement.sh failed on the subject." 1
     cp "$TMP/subject/$FILE" "$NEW"
@@ -215,6 +253,10 @@ case "$ENGINE" in
   *) die "Recipe $RECIPE has no codemod engine ($ENGINE): it is applied by its lane, not here." 1;;
 esac
 
+# A file without a final newline keeps none (awk always ends with one).
+if [[ -s "$F" && -n "$(tail -c 1 "$F")" && -s "$NEW" && -z "$(tail -c 1 "$NEW")" ]]; then
+  awk 'NR > 1 { print prev } { prev = $0 } END { if (NR > 0) printf "%s", prev }' "$NEW" > "$NEW.nl" && mv -f "$NEW.nl" "$NEW"
+fi
 if cmp -s "$NEW" "$F"; then STATUS="no-match"; REASON="the replacement changes nothing"; finish 0; fi
 post "$NEW" || { STATUS="rejected"; log_warn "apply-recipe: $RECIPE on $FILE: $REASON; nothing is written."; finish 3; }
 OUT_HASH="$(file_hash "$NEW")"; CHANGED=true

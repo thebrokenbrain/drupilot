@@ -48,15 +48,24 @@ Docker-free engines:
                ERE on the finding's message) or, for `to`, a transform of
                one (class-from-file: Drupal\<extension>\ plus the class's
                path under src/, for a class name whose case differs)
-  info-yml     scripts/analysis/set-core-requirement.sh on the subject with
-               params.requirement (plan:<path> reads the upgrade plan,
-               e.g. plan:range.constraint; --param overrides it)
-The change is written only when it is exact and every postcondition holds on
-the result (absent-ere / absent-fixed / present-fixed on the line or file;
-rescan is left to apply-recipes.sh's re-extraction). A replacement that does
-not apply is `no-match`, and nothing changes: the item falls to its next
-lane. applies_when is honored: file_ere, severity (with --severity) and
-core_min (with --core-floor, else the plan's range.floor).
+  info-yml     scripts/analysis/set-core-requirement.sh, on a copy of the
+               subject's physical tree, with params.requirement
+               (plan:<path> reads the subject's own frozen upgrade plan,
+               e.g. plan:range.constraint; --param overrides it); only the
+               finding's file is written, and a requirement whose floor is
+               above the main info.yml's (the declared floor) is
+               not-applicable
+params.captures ({name: ERE}, matched on the finding's line before the
+change) give {name} to the postconditions, e.g. "the parameter made optional
+is not used elsewhere in the file". The change is written only when it is
+exact and every postcondition holds on the result (absent-ere / absent-fixed
+/ present-fixed on the line, the file, or the file's code lines but the
+finding's (file-except-line: comment lines left out); rescan is
+left to apply-recipes.sh's re-extraction). A file without a final newline
+keeps none. A replacement that does not apply is `no-match`, and nothing
+changes: the item falls to its next lane. applies_when is honored: file_ere,
+severity (with --severity) and core_min (with --core-floor, else the
+subject's own plan's range.floor).
 
 Usage:
   apply-recipe.sh --recipe ID --subject DIR --file REL [--line N]

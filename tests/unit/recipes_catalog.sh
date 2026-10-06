@@ -70,6 +70,19 @@ jq '(.signature_changes[] | select(.id == "hook-entity-operation") | .recipe.par
 gr --check --json
 assert_eq "a search that is not POSIX ERE (\\b): exit 1, named" \
   "$T_RC|$(jq -r '.problems[]' "$T_OUT" | grep -c 'sig.hook-entity-operation: params.search is not POSIX ERE' || true)" "1|1"
+jq '(.signature_changes[] | select(.id == "hook-entity-operation") | .recipe.params.search) = "\\\\Drupal\\\\(Core|Component)\\\\Cache\\(?"' "$C/config/deprecations.json" > "$T_TMP/d.json" \
+  && cp "$T_TMP/d.json" "$C/config/deprecations.json"
+gr --check --json
+assert_eq "  escaped backslashes before D/C and an optional literal paren are POSIX ERE: no such problem" \
+  "$(jq -r '.problems[]' "$T_OUT" | grep -c 'not POSIX ERE' || true)" "0"
+jq '(.checks["config-schema"].recipe) = {"lane": "codemod"}' "$C/config/metadata-checks.json" > "$T_TMP/m.json" && cp "$T_TMP/m.json" "$C/config/metadata-checks.json"
+jq '(.signature_changes[] | select(.id == "hook-entity-operation") | .recipe.postconditions[0].were) = "file"' "$C/config/deprecations.json" > "$T_TMP/d.json" \
+  && cp "$T_TMP/d.json" "$C/config/deprecations.json"
+gr --check --json
+assert_eq "lane codemod without a codemod engine, and a postcondition key typo: named" \
+  "$(jq -r '.problems[]' "$T_OUT" | grep -cE 'meta.config-schema: lane codemod needs a codemod engine|sig.hook-entity-operation: a postcondition has an unknown key' || true)" "2"
+assert_eq "no change-record URL holds a character jq versions encode differently" \
+  "$(jq -r '.recipes[].template.change_record_search_url // empty' "$RJ" | grep -c "[()!*']" || true)" "0"
 gr --bogus
 assert_eq "an unknown flag: exit 1" "$T_RC" "1"
 t_done
