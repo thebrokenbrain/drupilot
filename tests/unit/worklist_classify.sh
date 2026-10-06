@@ -66,6 +66,9 @@ fnd() {  # fnd ID TOOL RULE FILE LINE SEVERITY SCOPE CLASS [SYMBOL] [MESSAGE]
   fnd F-000000000009 phpstan method.notFound src/A.php 10 error current analysis
   fnd F-00000000000a catalog metadata:services-arity m.services.yml 3 warning current metadata
   fnd F-00000000000b phpstan x.y src/A.php 11 error current analysis "" "Call to drupal_set_message() here."
+  fnd F-00000000000c phpstan function.deprecated tests/src/Unit/T.php 12 error next-major soft user_load_by_mail
+  fnd F-00000000000d phpstan method.notFound modules/sub/tests/src/Kernel/S.php 13 error current analysis
+  fnd F-00000000000e phpcs PHPCompatibility.FunctionUse.X src/A.php 15 error current php-target
 } | jq -s . | mkf "$T_TMP/f.json"
 t_run "$T_SH" "$CL" --findings "$T_TMP/f.json" --core-floor 10.3 --json
 lane() { jq -r --arg id "$1" '.items[] | select(.finding_ids | index($id)) | "\(.lane)|\(.recipe_of[$id] // "-")|\(.reason // "-")|\(.status)"' "$T_OUT"; }
@@ -82,9 +85,12 @@ assert_eq "style: deferred (Phase 1 keeps the diff minimal)" "$(lane F-000000000
 assert_eq "an analysis error no recipe matches: ai-free" "$(lane F-000000000009)" "ai-free|-|-|open"
 assert_eq "a metadata finding: human" "$(lane F-00000000000a)" "human|meta.services-arity|-|open"
 assert_eq "a message matched by a recipe's pattern" "$(lane F-00000000000b)" "ai-templated|dep.drupal-set-message|-|open"
+assert_eq "a next-major finding under tests/: deferred, never test-adapt" "$(lane F-00000000000c)" "deferred|-|next-major|deferred"
+assert_eq "a submodule's tests/: test-adapt" "$(lane F-00000000000d)" "test-adapt|-|-|open"
+assert_eq "a PHP target finding: ai-free" "$(lane F-00000000000e)" "ai-free|-|-|open"
 assert_eq "blocking: the items with an error finding outside deferred (the metadata warning is not)" \
   "$(jq -c '[.items[] | select(.blocking) | .lane] | sort' "$T_OUT")" \
-  '["ai-free","ai-templated","ai-templated","ai-templated","codemod","test-adapt"]'
+  '["ai-free","ai-free","ai-templated","ai-templated","ai-templated","codemod","test-adapt","test-adapt"]'
 assert_eq "items sorted by lane priority, then file and anchor" \
   "$(jq -c '["rector","rector-custom","codemod","ai-templated","ai-free","test-adapt","human","deferred"] as $o
      | [.items[] | [(.lane as $l | $o | index($l)), .file, .anchor]] | . == sort' "$T_OUT")" "true"
@@ -106,6 +112,10 @@ assert_eq "  no floor known: not applied either" "$(lane F-000000000002 | cut -d
 printf '{"recipes": [{"id": "meta.services-arity", "lane": "ai-free", "kind": "template", "engine": "template", "matches": {"rule": "metadata:services-arity"}, "applies_when": {}, "template": {"why": "project rule"}, "postconditions": [{"type": "rescan"}], "version": "000000000000"}]}\n' > "$T_TMP/ov.json"
 t_run "$T_SH" "$CL" --findings "$T_TMP/f.json" --overlay "$T_TMP/ov.json" --core-floor 10.3 --json
 assert_eq "the project overlay replaces a recipe by id" "$(lane F-00000000000a)" "ai-free|meta.services-arity|-|open"
+assert_eq "  and keeps the plugin's other recipes" "$(lane F-000000000002)" "codemod|sig.hook-entity-operation|-|open"
+printf '{"recipes": [{"id": "x", "lane": "nowhere", "matches": {}, "template": {"why": "w"}}]}\n' > "$T_TMP/ov-bad.json"
+t_run "$T_SH" "$CL" --findings "$T_TMP/f.json" --overlay "$T_TMP/ov-bad.json"
+assert_eq "an overlay recipe in an unknown lane: exit 1" "$T_RC" "1"
 
 # apply-recipes.sh on a Drupal root: the class-case codemod and a hook that no
 # longer matches (its parameters over several lines).
@@ -139,11 +149,62 @@ assert_eq "  the worklist: the applied codemod's item is applied" "$(lanew F-000
 assert_eq "  the codemod that gave no change: ai-templated" "$(lanew F-0000000000c2)" "ai-templated|the codemod gave no change|open"
 t_run "$T_SH" "$AP" --subject "$S" --json
 assert_eq "  a second run: nothing left to apply" "$T_RC|$(jq -c '.applications | length' "$T_OUT")" '0|0'
+# A revert of the applied change: the codemod is open again (it is tried again).
+cp "$T_REPO/tests/fixtures/recipes/safety.class-case/before/m.services.yml" "$S/m.services.yml"
+t_run "$T_SH" "$CL" --subject "$S" --core-floor 10.3
+assert_eq "the file no longer holds the codemod's output: open again" "$(lanew F-0000000000c1)" "codemod|-|open"
+t_run "$T_SH" "$AP" --subject "$S" --json
+assert_eq "  applied again" "$T_RC|$(jq -c '[.applications[] | [.finding_id, .status]]' "$T_OUT")" '0|[["F-0000000000c1","applied"]]'
 # A re-extraction (another findings_hash) that still finds the class-case finding.
 jq '.meta.findings_hash = "sha256:\("1" * 64)"' "$SD/findings.json" > "$T_TMP/f2.json" && cp "$T_TMP/f2.json" "$SD/findings.json"
 t_run "$T_SH" "$CL" --subject "$S" --core-floor 10.3
 assert_eq "after a re-extraction the applied codemod left its finding: ai-templated" \
   "$(lanew F-0000000000c1)" "ai-templated|the codemod did not clear the finding|open"
+
+# A codemod that fails (info-yml with no plan of this module and no
+# requirement): status error with the recipe's version, then ai-templated.
+S2="$R/web/modules/custom/n"; cp -R "$T_REPO/tests/fixtures/recipes/meta.submodule-core-req/before" "$S2"
+mv "$S2/m.info.yml" "$S2/n.info.yml"
+DRUPILOT_PROJECT_DIR="$R" lock_set_json .upgrade_plan '{"subject": {"machine_name": "other"}, "range": {"constraint": "^11.2", "floor": "11.2"}, "source": {"major": 9}}' > /dev/null
+SD2="$(project_state_dir "$S2")"
+fnd F-0000000000e1 catalog metadata:submodule-core-req modules/m_extra/m_extra.info.yml 5 warning current metadata | jq -s . | mkf "$SD2/findings.json"
+t_run "$T_SH" "$CL" --subject "$S2"
+assert_eq "another module's plan in the lock: no floor, no era" "$(jq -c '[.floor, .items[0].era, .items[0].lane]' "$SD2/worklist.json")" '[null,null,"codemod"]'
+t_run "$T_SH" "$AP" --subject "$S2" --json
+assert_eq "apply-recipe.sh fails: an error action with the recipe's version" \
+  "$T_RC|$(jq -s -c '[.[] | [.status, (.version | test("^[0-9a-f]{12}$"))]]' "$SD2/actions.jsonl")" '0|[["error",true]]'
+assert_eq "  the finding falls to ai-templated" "$(jq -r '.items[0] | "\(.lane)|\(.reason)"' "$SD2/worklist.json")" "ai-templated|the codemod failed"
+
+# S7 with stub extract.sh / normalize-findings.sh in a copy of the plugin.
+P="$T_TMP/plugin"; mkdir -p "$P/scripts"; cp -R "$T_REPO/scripts/lib" "$T_REPO/scripts/ai" "$T_REPO/scripts/analysis" "$P/scripts/"; cp -R "$T_REPO/config" "$P/"
+printf '#!/bin/sh\nexit "${STUB_EXTRACT_RC:-0}"\n' > "$P/scripts/ai/extract.sh"
+printf '#!/bin/sh\ncp "$STUB_FINDINGS" "%s/findings.json"\n' "$SD" > "$P/scripts/ai/normalize-findings.sh"
+cp "$T_REPO/tests/fixtures/recipes/safety.class-case/before/m.services.yml" "$S/m.services.yml"
+: > "$SD/actions.jsonl"
+{ fnd F-0000000000c1 catalog port-safety:class-case m.services.yml 3 error current safety "" "$MSG"; } | jq -s . | mkf "$SD/findings.json"
+t_run env CLAUDE_PLUGIN_ROOT="$P" "$T_SH" "$P/scripts/ai/classify.sh" --subject "$S" --core-floor 10.3
+jq '.meta.findings_hash = "sha256:\("2" * 64)"' "$SD/findings.json" > "$T_TMP/f-next.json"
+t_run env CLAUDE_PLUGIN_ROOT="$P" STUB_FINDINGS="$T_TMP/f-next.json" "$T_SH" "$P/scripts/ai/apply-recipes.sh" --subject "$S" --reextract --json
+assert_eq "S7: applied, re-extracted; the finding is still there: not-cleared, ai-templated" \
+  "$T_RC|$(jq -c '[.reextracted, .applied]' "$T_OUT")|$(jq -s -c '[.[] | .status]' "$SD/actions.jsonl")|$(lanew F-0000000000c1)" \
+  '0|[true,1]|["applied","not-cleared"]|ai-templated|the codemod did not clear the finding|open'
+cp "$T_REPO/tests/fixtures/recipes/safety.class-case/before/m.services.yml" "$S/m.services.yml"; : > "$SD/actions.jsonl"
+{ fnd F-0000000000c1 catalog port-safety:class-case m.services.yml 3 error current safety "" "$MSG"; } | jq -s . | mkf "$SD/findings.json"
+t_run env CLAUDE_PLUGIN_ROOT="$P" "$T_SH" "$P/scripts/ai/classify.sh" --subject "$S" --core-floor 10.3
+jq '.findings = [] | .meta.findings_hash = "sha256:\("3" * 64)"' "$SD/findings.json" > "$T_TMP/f-clear.json"
+t_run env CLAUDE_PLUGIN_ROOT="$P" STUB_FINDINGS="$T_TMP/f-clear.json" "$T_SH" "$P/scripts/ai/apply-recipes.sh" --subject "$S" --reextract --json
+assert_eq "S7: the finding is gone: no codemod item left" "$T_RC|$(jq -c '.counts.by_lane' "$SD/worklist.json")" '0|{}'
+t_run env CLAUDE_PLUGIN_ROOT="$P" STUB_EXTRACT_RC=3 STUB_FINDINGS="$T_TMP/f-clear.json" "$T_SH" "$P/scripts/ai/apply-recipes.sh" --subject "$S" --reextract
+assert_eq "S7: the re-extraction gives no verdict: exit 3" "$T_RC" "3"
+# The overlay's version of a codemod is the one applied and logged.
+cp "$T_REPO/tests/fixtures/recipes/safety.class-case/before/m.services.yml" "$S/m.services.yml"; : > "$SD/actions.jsonl"
+mkdir -p "$R/.drupilot"; jq '{recipes: [.recipes[] | select(.id == "safety.class-case") | .version = "0000000000aa"]}' "$T_REPO/config/recipes.json" > "$R/.drupilot/recipes.json"
+{ fnd F-0000000000c1 catalog port-safety:class-case m.services.yml 3 error current safety "" "$MSG"; } | jq -s . | mkf "$SD/findings.json"
+t_run "$T_SH" "$CL" --subject "$S" --core-floor 10.3
+t_run "$T_SH" "$AP" --subject "$S" --json
+assert_eq "the project overlay's recipe is the one applied (its version logged)" \
+  "$T_RC|$(jq -s -c '[.[] | [.status, .version]]' "$SD/actions.jsonl")|$(lanew F-0000000000c1)" '0|[["applied","0000000000aa"]]|codemod|-|applied'
+rm -f "$R/.drupilot/recipes.json"
 
 # Usage errors.
 t_run "$T_SH" "$CL" --findings "$T_TMP/nope.json"

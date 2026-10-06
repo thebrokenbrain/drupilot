@@ -245,3 +245,27 @@ worklist_set() {
   log_err "worklist_set: could not write $d/worklist.json; the worklist is unchanged."
   return 1
 }
+
+# recipes_effective BASE OVERLAY OUT -> writes to OUT the recipes in effect
+# (ADR 0024): BASE (config/recipes.json), with the recipes of OVERLAY (a
+# project's <root>/.drupilot/recipes.json; empty: none) replacing BASE's by
+# id, sorted by id, as {recipes: [...]}. Returns 1, writing nothing, when a
+# file is not a recipe catalog: every recipe needs a string id, a lane of
+# AR-10, a matches object and a template with a why.
+recipes_effective() {
+  local base="${1:-}" ov="${2:-}" out="${3:-}" f
+  [[ -n "$base" && -n "$out" ]] || return 1
+  for f in "$base" ${ov:+"$ov"}; do
+    jq -e '(.recipes | type) == "array" and all(.recipes[]; (.id | type) == "string"
+             and (.lane | IN("rector", "rector-custom", "codemod", "ai-templated", "ai-free", "test-adapt", "human", "deferred"))
+             and (.matches | type) == "object" and (.template | type) == "object" and (.template.why | type) == "string")' \
+      "$f" > /dev/null 2>&1 || return 1
+  done
+  if [[ -n "$ov" ]]; then
+    jq -s '{recipes: ((.[0].recipes | map({key: .id, value: .}) | from_entries) + (.[1].recipes | map({key: .id, value: .}) | from_entries)
+            | to_entries | map(.value) | sort_by(.id))}' "$base" "$ov" > "$out" 2> /dev/null || return 1
+  else
+    jq '{recipes: (.recipes | sort_by(.id))}' "$base" > "$out" 2> /dev/null || return 1
+  fi
+  return 0
+}

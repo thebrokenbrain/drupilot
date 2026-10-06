@@ -12,10 +12,14 @@
 # later, the AI did, kept apart from the human decisions.jsonl of
 # log-decision.sh): {schema, kind: "recipe-apply", item_id, finding_id,
 # recipe, version, file, line, status, input_hash, output_hash,
-# findings_hash, at}. classify.sh reads it: a codemod that gave no change (or
-# that was applied and, after the re-extraction, left its finding there)
-# moves the finding to ai-templated, and an item whose codemods were all
-# applied on the current findings is `applied`.
+# findings_hash, at}; a crash of apply-recipe.sh is status error, and after the
+# re-extraction a codemod applied now whose finding is still there gets a
+# not-cleared line. classify.sh reads it: a codemod that gave no change,
+# failed or did not clear its finding moves the finding to ai-templated, and
+# an item whose codemods were all applied on the current findings (their
+# output still in the file) is `applied`. The recipes are the plugin's with
+# the project overlay (<root>/.drupilot/recipes.json), as classify.sh uses
+# them; an application already in effect is not run again.
 #
 # Usage:
 #   apply-recipes.sh --subject DIR [--reextract] [--dry-run] [--json]
@@ -29,7 +33,8 @@
 #                      finding_id, recipe, file, line, status}], applied,
 #                      not_applied, reextracted, worklist: {counts}} on STDOUT
 #
-# Exit codes: 0 done · 1 usage error, no worklist.json or findings.json · 3 a
+# Exit codes: 0 done · 1 usage error, no worklist.json or findings.json, a
+# recipe catalog that is not one, or a re-extraction step that failed · 3 a
 # codemod was rejected (a postcondition failed: that file is unchanged), or the
 # re-extraction gave no verdict (extract.sh exit 3).
 # =============================================================================
@@ -64,12 +69,29 @@ FHASH="$(jq -r '.meta.findings_hash // empty' "$FJ")"
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-apply.XXXXXX")"
 trap 'rm -rf "$TMP" 2> /dev/null || true' EXIT
+# The recipes in effect, the ones classify.sh used: the project overlay
+# replaces the plugin's by id.
+ROOT="$(subject_project_root "$SUBJECT" 2> /dev/null || true)"
+OVERLAY=""; [[ -n "$ROOT" && -f "$ROOT/.drupilot/recipes.json" ]] && OVERLAY="$ROOT/.drupilot/recipes.json"
+recipes_effective "$(plugin_root)/config/recipes.json" "$OVERLAY" "$TMP/recipes.json" \
+  || die "The recipes${OVERLAY:+ (with the overlay $OVERLAY)} are not a recipe catalog." 1
+# Applications already in effect (applied, the file still holds their output)
+# are not run again.
+printf '{}\n' > "$TMP/inplace.json"
+if [[ -f "$ACT" ]]; then
+  jq -c -s '[.[] | select(.kind == "recipe-apply")] | map({key: "\(.finding_id)\u001f\(.recipe)", value: .}) | from_entries
+            | map_values(select(.status == "applied"))' "$ACT" > "$TMP/lastapplied.json" 2> /dev/null || printf '{}\n' > "$TMP/lastapplied.json"
+  jq -r 'to_entries[] | "\(.key)\t\(.value.file)\t\(.value.output_hash)"' "$TMP/lastapplied.json" | while IFS="$(printf '\t')" read -r k f oh; do
+    if [[ -n "$k" && "$(file_hash "$SUBJECT/$f")" == "$oh" ]]; then jq -n -c --arg k "$k" '{($k): true}'; fi
+  done | jq -s 'add // {}' > "$TMP/inplace.json"
+fi
 # One line per (item, finding, recipe) of an open codemod item, with the
 # finding's file, line, message and severity.
-jq -c --slurpfile f "$FJ" '
+jq -c --slurpfile f "$FJ" --slurpfile ip "$TMP/inplace.json" '
   ($f[0].findings | map({key: .id, value: .}) | from_entries) as $byid
   | .items[] | select(.lane == "codemod" and .status == "open") | . as $it
   | .finding_ids[] | . as $fid | ($it.recipe_of[$fid] // null) as $r | select($r != null)
+  | select($ip[0]["\($fid)\u001f\($r)"] != true)
   | $byid[$fid] as $x | select($x != null)
   | {item_id: $it.id, finding_id: $fid, recipe: $r, file: $x.file, line: $x.line, message: $x.message, severity: $x.severity}' \
   "$WL" > "$TMP/todo.jsonl"
@@ -78,7 +100,7 @@ jq -c --slurpfile f "$FJ" '
 while IFS= read -r t; do
   [[ -n "$t" ]] || continue
   tq() { jq -r "$1 // empty" <<< "$t"; }
-  set -- --recipe "$(tq .recipe)" --subject "$SUBJECT" --file "$(tq .file)" --json
+  set -- --recipe "$(tq .recipe)" --recipes "$TMP/recipes.json" --subject "$SUBJECT" --file "$(tq .file)" --json
   [[ -n "$(tq .line)" ]] && set -- "$@" --line "$(tq .line)"
   [[ -n "$(tq .message)" ]] && set -- "$@" --message "$(tq .message)"
   [[ -n "$(tq .severity)" ]] && set -- "$@" --severity "$(tq .severity)"
@@ -86,8 +108,11 @@ while IFS= read -r t; do
   [[ "$DRY" == "1" ]] && set -- "$@" --dry-run
   rc=0
   res="$(bash "$S/ai/apply-recipe.sh" "$@" < /dev/null)" || rc=$?
-  if ! jq -e '.status' <<< "$res" > /dev/null 2>&1; then
-    res="$(jq -n -c --arg r "$(tq .recipe)" '{recipe: $r, status: "error", version: null, input_hash: null, output_hash: null}')"
+  # (-s: jq 1.6 exits 0 on an empty input with -e.) A crash is recorded as an
+  # error of this recipe version, so classify.sh moves the finding on.
+  if ! jq -e -s 'length == 1 and (.[0] | has("status"))' <<< "$res" > /dev/null 2>&1; then
+    res="$(jq -n -c --arg r "$(tq .recipe)" --slurpfile rc "$TMP/recipes.json" --arg ih "$(file_hash "$SUBJECT/$(tq .file)")" \
+      '{recipe: $r, status: "error", version: ([$rc[0].recipes[] | select(.id == $r) | .version] | .[0] // null), input_hash: $ih, output_hash: $ih}')"
   fi
   [[ "$rc" == "3" ]] && REJECTED=1
   app="$(jq -c --argjson t "$t" --arg fh "$FHASH" '{schema: 1, kind: "recipe-apply", item_id: $t.item_id, finding_id: $t.finding_id,
@@ -110,6 +135,14 @@ if [[ "$DRY" != "1" ]]; then
     REX=true
     bash "$S/ai/extract.sh" --subject "$SUBJECT" --stage "$STAGE" < /dev/null || { rc=$?; [[ "$rc" == "3" ]] && RC=3 || die "extract.sh failed (exit $rc)." 1; }
     bash "$S/ai/normalize-findings.sh" --subject "$SUBJECT" --stage "$STAGE" < /dev/null || die "normalize-findings.sh failed." 1
+    # Each codemod applied now whose finding the new extraction still has did
+    # not clear it: recorded, so it is not tried again.
+    NEWFH="$(jq -r '.meta.findings_hash // empty' "$FJ")"
+    jq -c -s --slurpfile f "$FJ" --arg fh "$NEWFH" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
+      ([$f[0].findings[].id]) as $ids
+      | .[] | select(.status == "applied") | select(.finding_id as $i | $ids | index($i))
+      | . + {status: "not-cleared", findings_hash: (if $fh == "" then null else $fh end), at: $at}' "$TMP/apps.jsonl" >> "$ACT" \
+      || die "Could not write $ACT." 1
   fi
   bash "$S/ai/classify.sh" --subject "$SUBJECT" < /dev/null || die "classify.sh failed." 1
 fi

@@ -15,16 +15,20 @@
 #                 the plugin's) that matches the finding — by rule, then
 #                 symbol, then message, then id — and whose applies_when
 #                 holds (file, severity, core_min against the declared floor
-#                 F: a recipe never applies above F). A codemod that does not
-#                 apply, that already gave no change on this finding, or that
-#                 was applied on an earlier extraction and left the finding
-#                 there (the actions log of scripts/ai/apply-recipes.sh),
-#                 falls to ai-templated with its template. A codemod applied
-#                 on these very findings (same findings_hash) makes its item
-#                 `applied` until the re-extraction.
+#                 F, read from the subject's own frozen plan: a recipe never
+#                 applies above F). A codemod that does not apply, or whose
+#                 last action on this finding (the actions log of
+#                 scripts/ai/apply-recipes.sh) changed nothing, failed, was
+#                 found not to clear it (not-cleared, S7) or was applied on
+#                 an earlier extraction with the finding still there, falls
+#                 to ai-templated with its template. A codemod applied on
+#                 these very findings whose output is still in the file makes
+#                 its item `applied` until the re-extraction; one whose output
+#                 is gone (a revert) is tried again.
 #   ai-free       an analysis error or deprecation no recipe matches
 #   human         a catalog finding no recipe matches
-#   test-adapt    an ai-templated or ai-free finding in a file under tests/
+#   test-adapt    an ai-templated or ai-free finding in a file under a tests/
+#                 directory (the module's or a submodule's)
 #
 # Idempotent: the same findings.json, recipes, floor and actions give the same
 # worklist.json outside meta (DET-2).
@@ -83,42 +87,40 @@ if [[ -n "$SUBJECT" ]]; then
   [[ -n "$FINDINGS" ]] || FINDINGS="$(project_state_dir "$SUBJECT")/findings.json"
   [[ -n "$ACTIONS" ]] || ACTIONS="$(project_state_dir "$SUBJECT")/actions.jsonl"
   [[ -n "$OUT" ]] || OUT="$(worklist_file "$SUBJECT")"
-  [[ -n "$FLOOR" ]] || FLOOR="$(plan_get .range.floor "${ROOT:-$SUBJECT}" 2> /dev/null || true)"
+  [[ -n "$FLOOR" ]] || FLOOR="$(plan_get_own "$SUBJECT" .range.floor)"
   if [[ -z "$OVERLAY" && -n "$ROOT" && -f "$ROOT/.drupilot/recipes.json" ]]; then OVERLAY="$ROOT/.drupilot/recipes.json"; fi
 fi
 [[ -f "$FINDINGS" ]] || die "No findings.json at $FINDINGS (run scripts/ai/normalize-findings.sh first)." 1
 jq -e '.schema == 1 and (.findings | type) == "array"' "$FINDINGS" > /dev/null 2>&1 || die "$FINDINGS is not a findings.json (schema 1)." 1
 [[ -n "$RECIPES" ]] || RECIPES="$(plugin_root)/config/recipes.json"
-for r in "$RECIPES" ${OVERLAY:+"$OVERLAY"}; do
-  jq -e '(.recipes | type) == "array" and all(.recipes[]; (.id | type) == "string" and (.lane | type) == "string" and (.matches | type) == "object")' "$r" > /dev/null 2>&1 \
-    || die "$r is not a recipe catalog (a recipes array of {id, lane, matches, ...})." 1
-done
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-classify.XXXXXX")"
 trap 'rm -rf "$TMP" 2> /dev/null || true' EXIT
 # The recipes in effect: the overlay's ids replace the plugin's.
-if [[ -n "$OVERLAY" ]]; then
-  jq -s '{recipes: ((.[0].recipes | map({key: .id, value: .}) | from_entries) + (.[1].recipes | map({key: .id, value: .}) | from_entries)
-          | to_entries | map(.value) | sort_by(.id))}' "$RECIPES" "$OVERLAY" > "$TMP/recipes.json"
-else
-  jq '{recipes: (.recipes | sort_by(.id))}' "$RECIPES" > "$TMP/recipes.json"
-fi
+recipes_effective "$RECIPES" "$OVERLAY" "$TMP/recipes.json" \
+  || die "$RECIPES${OVERLAY:+ or $OVERLAY} is not a recipe catalog (every recipe: id, a lane of AR-10, matches, a template with why)." 1
 # What apply-recipes.sh already did per (finding, recipe, version): the last
-# recipe-apply action, with the findings_hash it was applied on.
+# recipe-apply action. An applied one counts only while its output is still
+# the file's content (a revert or another edit undoes it).
 FHASH="$(jq -r '.meta.findings_hash // empty' "$FINDINGS")"
+printf '{}\n' > "$TMP/done.json"; printf '{}\n' > "$TMP/now.json"
 if [[ -n "$ACTIONS" && -f "$ACTIONS" ]]; then
-  jq -c -s '[.[] | select(.kind == "recipe-apply")] | map({key: "\(.finding_id)\u001f\(.recipe)\u001f\(.version)", value: {status, findings_hash}})
+  jq -c -s '[.[] | select(.kind == "recipe-apply")] | map({key: "\(.finding_id)\u001f\(.recipe)\u001f\(.version)", value: {status, findings_hash, output_hash, file}})
             | from_entries' "$ACTIONS" > "$TMP/done.json" 2> /dev/null || printf '{}\n' > "$TMP/done.json"
-else
-  printf '{}\n' > "$TMP/done.json"
+  if [[ -n "$SUBJECT" ]]; then
+    jq -r '[.[] | select(.status == "applied") | .file // empty] | unique[]' "$TMP/done.json" | while IFS= read -r f; do
+      [[ -n "$f" ]] || continue
+      jq -n -c --arg f "$f" --arg h "$(file_hash "$SUBJECT/$f")" '{($f): $h}'
+    done | jq -s 'add // {}' > "$TMP/now.json"
+  fi
 fi
 ERA=""
-if [[ -n "$SUBJECT" ]]; then ERA="$(plan_get .source.major "${ROOT:-$SUBJECT}" 2> /dev/null || true)"; fi
+if [[ -n "$SUBJECT" ]]; then ERA="$(plan_get_own "$SUBJECT" .source.major)"; fi
 
 # Every finding with its lane, recipe and reason; then the items.
-jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile dn "$TMP/done.json" --arg floor "$FLOOR" --arg era "$ERA" --arg fh "$FHASH" '
+jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile dn "$TMP/done.json" --slurpfile nw "$TMP/now.json" --arg floor "$FLOOR" --arg era "$ERA" --arg fh "$FHASH" '
   ["rector", "rector-custom", "codemod", "ai-templated", "ai-free", "test-adapt", "human", "deferred"] as $order
-  | $rc[0].recipes as $recipes | $dn[0] as $done
+  | $rc[0].recipes as $recipes | $dn[0] as $done | $nw[0] as $now
   | (if $floor == "" then null else $floor end) as $F
   | def vnum: split(".") | map(tonumber? // 0);
     def applies($f):
@@ -131,11 +133,16 @@ jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile dn "$TMP/done.json" --arg f
       elif $f.symbol != null and ((.matches.symbols // []) | index($f.symbol)) != null then 1
       elif .matches.message_ere != null and (.matches.message_ere as $re | $f.message | test($re; "i")) then 2
       else 9 end;
-    # A codemod that gave no change on this finding, or that was applied on an
-    # earlier extraction and the finding is still there, is not tried again.
-    def action($f): $done["\($f.id)\u001f\(.id)\u001f\(.version)"];
+    # The last action of this codemod on this finding. An applied one is in
+    # effect only while the file still holds its output; else it is no action
+    # (the codemod is tried again).
+    def action($f): $done["\($f.id)\u001f\(.id)\u001f\(.version)"]
+      | if . != null and .status == "applied" and ($now[.file // ""] // "") != .output_hash then null else . end;
+    # Not tried again: it changed nothing, it failed, it was found not to
+    # clear the finding (S7), or it was applied on an earlier extraction and
+    # the finding is still there.
     def failed($f): action($f) as $a
-      | $a != null and (($a.status | IN("no-match", "not-applicable", "rejected"))
+      | $a != null and (($a.status | IN("no-match", "not-applicable", "rejected", "error", "not-cleared"))
                         or ($a.status == "applied" and $a.findings_hash != $fh));
     def applied($f): action($f) as $a | $a != null and $a.status == "applied" and $a.findings_hash == $fh;
     def lane_of:
@@ -151,12 +158,15 @@ jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile dn "$TMP/done.json" --arg f
             elif ($cands | length) > 0 then
               $cands[0] as $c
               | {lane: (if $c.kind == "codemod" then "ai-templated" else $c.lane end), recipe: $c.id,
-                 reason: (if ($c | failed($f)) then (if ($c | action($f)).status == "applied" then "the codemod did not clear the finding" else "the codemod gave no change" end)
+                 reason: (if ($c | failed($f)) then (($c | action($f)).status as $st
+                            | if $st == "applied" or $st == "not-cleared" then "the codemod did not clear the finding"
+                              elif $st == "error" then "the codemod failed"
+                              else "the codemod gave no change" end)
                           else "the recipe'"'"'s conditions do not hold" end)}
             elif $f.tool == "catalog" then {lane: "human", recipe: null, reason: "no recipe"}
             else {lane: "ai-free", recipe: null, reason: null} end
         end
-      | if (.lane == "ai-templated" or .lane == "ai-free") and ($f.file | startswith("tests/")) then .lane = "test-adapt" else . end;
+      | if (.lane == "ai-templated" or .lane == "ai-free") and ($f.file | test("(^|/)tests/")) then .lane = "test-adapt" else . end;
     ($recipes | map({key: .id, value: .}) | from_entries) as $byid
   | [.findings[] | . + {c: lane_of}]
   | group_by([.file, .anchor, .c.lane])
