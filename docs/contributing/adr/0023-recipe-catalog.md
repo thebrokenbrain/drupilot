@@ -80,10 +80,12 @@ Docker-free engines:
 
 `params.captures` (`{name: ERE}`, matched on the finding's line before the change) gives `{name}` to the
 postconditions. Postconditions apply to the line, the file, the file's code lines but the finding's
-(`file-except-line`), or the body of the function the finding's line declares (`function-body`, up to the
-`}` at the signature's indentation); comment lines are not code there. An unresolved `{placeholder}` or an
-empty capture fails the postcondition, and `gen-recipes.sh` names a placeholder no capture defines. A file
-without a final newline keeps none.
+(`file-except-line`), or the function the finding's line declares (`function-body`: the rest of that line,
+then every line up to the next function declared at the same indentation, or the end of the file; a `}` in a
+string never ends it, so it errs on the safe side); comment lines are not code there. An unresolved
+`{placeholder}`, an empty capture or an ERE that does not compile fails the postcondition, and
+`gen-recipes.sh` names a placeholder no capture defines (`{from}`/`{to}` belong to `yaml-edit`) and an ERE
+that does not compile. A file without a final newline keeps none.
 
 `attributes`, `php-script` and `rector-rule` stay in the schema's engine list. They get their executors with
 the first recipe that needs one: no v1 recipe does. A recipe whose replacement is not exact reports

@@ -73,6 +73,26 @@ jq '.recipes |= map(if .id == "sig.hook-entity-operation" then .params.captures.
 ar --recipe sig.hook-entity-operation --recipes "$T_TMP/recipes-empty.json" --subject "$w" --file m.module --line 14 --json
 assert_eq "a capture that matches nothing: rejected, exit 3" "$T_RC|$(jq -r .status "$T_OUT")" '3|rejected'
 
+# function-body is over-approximated on purpose: a "}" inside a string does
+# not end the body; a one-line body and a comment inside the body count right.
+mkh() {  # mkh FILE SIGNATURE_AND_BODY...: a module file whose line 3 is the hook
+  local f="$1"; shift
+  { printf '<?php\n\n'; printf '%s\n' "$@"; } > "$f"
+}
+hb() { w2="$T_TMP/hb-$1"; rm -rf "$w2"; mkdir -p "$w2"; shift; mkh "$w2/m.module" "$@"
+  ar --recipe sig.hook-entity-operation --subject "$w2" --file m.module --line 3 --json; }
+hb css 'function m_entity_operation(EntityInterface $e, CacheableMetadata $c) {' "  \$css = '" '.m {' '}' "';" "  \$c->addCacheTags(['x']);" '}'
+assert_eq "a '}' at column 0 inside a string does not end the body: the use is found, rejected" "$T_RC|$(jq -r .status "$T_OUT")" '3|rejected'
+hb oneline 'function m_entity_operation(EntityInterface $e, CacheableMetadata $c) { return [$c]; }'
+assert_eq "a one-line body that uses the parameter: rejected" "$T_RC|$(jq -r .status "$T_OUT")" '3|rejected'
+hb comment 'function m_entity_operation(EntityInterface $e, CacheableMetadata $c) {' '  // $c is not used here.' '  return [];' '}' '' 'function m_other(EntityInterface $e, CacheableMetadata $c) {' '  return [$c];' '}'
+assert_eq "a comment in the body, and the next function using the same name: applied" "$T_RC|$(jq -r .status "$T_OUT")" '0|applied'
+jq '.recipes |= map(if .id == "sig.hook-entity-operation" then .postconditions[1].ere = "\\${var}(" else . end)' \
+  "$T_REPO/config/recipes.json" > "$T_TMP/recipes-bad-ere.json"
+w3="$T_TMP/hb-bad"; mkdir -p "$w3"; cp "$H/before/m.module" "$w3/"
+ar --recipe sig.hook-entity-operation --recipes "$T_TMP/recipes-bad-ere.json" --subject "$w3" --file m.module --line 14 --json
+assert_eq "a postcondition ERE that does not compile: rejected, exit 3" "$T_RC|$(jq -r .status "$T_OUT")" '3|rejected'
+
 # applies_when.core_min.
 jq '.recipes |= map(if .id == "sig.hook-entity-operation" then .applies_when.core_min = "11.3" else . end)' \
   "$T_REPO/config/recipes.json" > "$T_TMP/recipes-min.json"
@@ -109,6 +129,12 @@ assert_eq "  nor its floor for core_min: not-applicable" "$T_RC|$(jq -r .status 
 DRUPILOT_PROJECT_DIR="$SR" lock_set_json .upgrade_plan '{"subject": {"machine_name": "m"}, "range": {"constraint": "^10 || ^11", "floor": "10.0"}}' > /dev/null
 ar --recipe meta.submodule-core-req --subject "$SB" --file modules/m_extra/m_extra.info.yml --line 5 --severity warning --json
 assert_eq "  its own frozen plan: the plan's range" "$T_RC|$(jq -r '[.status, .to] | join("|")' "$T_OUT")" '0|applied|^10 || ^11'
+
+# The floor guard reads "core_version_requirement :" too.
+w4="$T_TMP/floor-space"; cp -R "$FX/meta.submodule-core-req/before" "$w4"
+sed_inplace "$w4/m.info.yml" 's/^core_version_requirement: /core_version_requirement : /'
+ar --recipe meta.submodule-core-req --subject "$w4" --file modules/m_extra/m_extra.info.yml --line 5 --severity warning --param 'requirement=^10.3 || ^11' --json
+assert_eq "\"core_version_requirement :\" with a space: the floor guard still holds (not-applicable)" "$T_RC|$(jq -r .status "$T_OUT")" '0|not-applicable'
 
 # Usage errors.
 ar --recipe dep.drupal-set-message --subject "$w" --file m.module --line 14

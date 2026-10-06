@@ -97,6 +97,16 @@ jq '(.signature_changes[] | select(.id == "hook-entity-operation") | .recipe.pos
 gr --check --json
 assert_eq "a postcondition placeholder no capture defines: named" \
   "$(jq -r '.problems[]' "$T_OUT" | grep -c 'sig.hook-entity-operation: postcondition placeholder {vra} has no capture' || true)" "1"
+jq '(.signature_changes[] | select(.id == "hook-entity-operation") | .recipe.postconditions[1].ere) = "\\${var}("' "$C/config/deprecations.json" > "$T_TMP/d.json" \
+  && cp "$T_TMP/d.json" "$C/config/deprecations.json"
+gr --check --json
+assert_eq "a postcondition ERE that does not compile: named" \
+  "$(jq -r '.problems[]' "$T_OUT" | grep -c 'sig.hook-entity-operation: an ERE does not compile' || true)" "1"
+jq '(.signature_changes[] | select(.id == "hook-entity-operation") | .recipe.postconditions[1].ere) = "x{from}"' "$C/config/deprecations.json" > "$T_TMP/d.json" \
+  && cp "$T_TMP/d.json" "$C/config/deprecations.json"
+gr --check --json
+assert_eq "{from} outside yaml-edit: named" \
+  "$(jq -r '.problems[]' "$T_OUT" | grep -c 'postcondition placeholder {from} has no capture' || true)" "1"
 gr --bogus
 assert_eq "an unknown flag: exit 1" "$T_RC" "1"
 t_done
