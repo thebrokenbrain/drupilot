@@ -96,6 +96,8 @@ The flow is **command → (gate) → skill + subagent → scripts → templates*
 
 - **Stage catalog (`config/pipeline.json`, AR-07):** the ordered, public stage ids of a port (`doctor` … `contribute`), with each stage's conditions (a closed set), tabs (keys of `config/choices.json`; a choice's `stage` must be listed there), sub-steps, gate, the `state.json` coarse stage it records and its `procedure_anchor` (the one skill step that defines it). Never rename an id; `tests/unit/pipeline_catalog.sh` and `schemas/pipeline.schema.json` hold it, and `docs/reference/pipeline.md` is generated from it.
 
+- **Bash vs PHP (AR-23):** the host side stays bash + jq. PHP runs only inside the bed, from helpers the plugin ships in `scripts/php/*.php` and `stage_runtime ROOT` (`cache.sh`) copies, hash-verified, into `<root>/.drupilot/runtime/` (`.runtime_hash` in the lock): `$(drupal_runner) php .drupilot/runtime/<helper>.php`. `anchor.php` (`token_get_all`) gives a finding line its anchor (`Ns\Class::method`, a function, or `{file}`). Every PHP helper has a bash fallback or a `skipped` degrade path, never a hard-gate verdict from a heuristic.
+
 - **Plugin layout rule:** only `plugin.json` belongs in `.claude-plugin/`; all component directories (`commands/`, `agents/`, `skills/`, `hooks/`, `scripts/`, `templates/`) live at the plugin root. `marketplace.json` also sits in `.claude-plugin/` and resolves plugin `source` (`"./"`) relative to the repo root. Hook/command paths use the `"${CLAUDE_PLUGIN_ROOT}"`-prefixed form.
 
 ## Conventions when adding or editing

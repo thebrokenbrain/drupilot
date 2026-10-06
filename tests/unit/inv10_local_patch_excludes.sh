@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # INV10 (CC-26): the local patch holds only the port: local-environment residue
 # (.ddev/, vendor/, .phpstan-cache/, node_modules/), drupilot's own files
-# (.drupilot/, .drupilot.json) and its own patches (also -repo.patch) are each
+# (.drupilot/ with the staged PHP runtime, .drupilot.json) and its own patches (also -repo.patch) are each
 # excluded, and the patch applies on the pristine module.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
@@ -14,7 +14,9 @@ cp -R "$m" "$T_TMP/pristine"
 . "$T_LIB"
 sed_inplace "$m/legacy_widgets.info.yml" 's/^core_version_requirement: .*/core_version_requirement: ^10 || ^11/'
 mkdir -p "$m/.ddev" "$m/vendor/x" "$m/.phpstan-cache" "$m/js/node_modules/y" "$m/.drupilot"
+mkdir -p "$m/.drupilot/runtime"
 for f in .ddev/config.yaml vendor/x/a.php .phpstan-cache/c js/node_modules/y/i.js .drupilot/port-report.md \
+         .drupilot/runtime/anchor.php \
          .drupilot.json legacy_widgets-port-to-drupal-11-repo.patch other-port-to-drupal-11-123-4.patch; do
   printf 'residue\n' > "$m/$f"
 done

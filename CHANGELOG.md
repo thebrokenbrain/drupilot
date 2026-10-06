@@ -411,6 +411,20 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     the skill step that defines its procedure.
   - `schemas/pipeline.schema.json` validates it (the `schemas` gate), and
     `docs/reference/pipeline.md` is generated from it.
+- **The staged PHP runtime and `anchor.php`** (T-M4-04, AR-23, 05-R5).
+  - `stage_runtime ROOT` (`scripts/lib/cache.sh`) copies the plugin's PHP
+    helpers (`scripts/php/*.php`) into `<root>/.drupilot/runtime/`, where the
+    bed's container can run them. Every copy is verified by its sha256: a
+    tampered or missing one is staged again. The set's hash is kept in the
+    lock as `.runtime_hash`.
+  - The first helper, `scripts/php/anchor.php`, gives each `{file, line}` its
+    anchor: the innermost `Namespace\Class::method` or function (closures,
+    arrow functions and anonymous classes are transparent), or `{file}`. It
+    uses `token_get_all`, so it needs no dependency.
+  - It ran on the `tests/fixtures/anchor` files (traits, enums, interfaces,
+    braced namespaces, a mixed `.module`) on PHP 8.1, 8.3 (in the bed) and
+    8.5.
+  - The local patch never includes `.drupilot/runtime/` (INV10 test).
 - **`DRUPILOT_LENIENT_DEPS`** (T-M4-17, AR-08, AR-28; default `off`): a
   comma-separated list of `drupal/<project>` packages lets contrib
   dependencies whose `drupal/core` constraint does not admit the test-bed's
