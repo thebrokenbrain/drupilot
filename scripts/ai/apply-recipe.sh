@@ -172,19 +172,28 @@ post() {
       if [[ -z "$v" && "$x" == *"{$k}"* ]]; then REASON="the capture {$k} matched nothing on line $LINE"; return 1; fi
       x="${x//\{$k\}/$v}"
     done
-    # A placeholder left unresolved (a typo, an undefined capture): fail closed.
-    if printf '%s\n' "$x" | grep_q -E '\{[A-Za-z_][A-Za-z0-9_]*\}'; then REASON="a postcondition placeholder is unresolved ($x)"; return 1; fi
+    # A placeholder left unresolved (a typo, an undefined capture), or an ERE
+    # that does not compile (grep exits 2): fail closed.
+    if printf '%s\n' "$x" | grep_q -E '\{[A-Za-z_][A-Za-z0-9_-]*\}'; then REASON="a postcondition placeholder is unresolved ($x)"; return 1; fi
+    if [[ "$t" == "absent-ere" ]]; then
+      _erc=0; grep -E -- "$x" <<< "x" > /dev/null 2>&1 || _erc=$?
+      if [[ "$_erc" -ge 2 ]]; then REASON="a postcondition ERE does not compile ($x)"; return 1; fi
+    fi
     case "$w" in
       line) if [[ -n "$LINE" ]]; then text="$(line_of "$f" "$LINE")"; else text="$(cat "$f")"; fi;;
       # The file's code lines but the finding's: comment lines (a docblock's
       # @param names the parameter too) are not code.
       file-except-line) text="$(awk -v n="${LINE:-0}" 'NR != n && $0 !~ /^[ \t]*(\*|\/\*|\/\/|#)/' "$f")";;
-      # The body of the function whose signature is the finding's line: what
-      # follows its "{" there, then every code line up to the "}" at the
-      # signature's indentation (comment lines left out).
+      # The function whose signature is the finding's line, over-approximated
+      # on purpose (a "}" inside a string or a heredoc never ends it early):
+      # what follows the "{" on that line, then every code line up to the
+      # next function declared at the signature's indentation, or the end of
+      # the file (comment lines left out).
       function-body) text="$(awk -v n="${LINE:-0}" '
+          { sub(/\r$/, "") }
           NR == n { ind = $0; sub(/[^ \t].*$/, "", ind); i = index($0, "{"); if (i > 0) print substr($0, i + 1); on = 1; next }
-          on { t = $0; sub(/[ \t]+$/, "", t); if (t == ind "}") exit; if ($0 !~ /^[ \t]*(\*|\/\*|\/\/|#)/) print }' "$f")";;
+          on && (ind == "" || index($0, ind) == 1) && substr($0, length(ind) + 1) ~ /^((public|protected|private|static|final|abstract)[ \t]+)*function[ \t]/ { exit }
+          on && $0 !~ /^[ \t]*(\*|\/\*|\/\/|#)/ { print }' "$f")";;
       *) text="$(cat "$f")";;
     esac
     case "$t" in
