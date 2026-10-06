@@ -233,6 +233,15 @@ assert_eq "  a docblock example is not the list" "$(mp "/**
  * Like ->withPaths(['web/example']).
  */
 return RectorConfig::configure()->withPaths(['web/gone']);")" "web/gone "
+assert_eq "  comments over several lines, without a space before them, and # comments" "$(mp "->withPaths([
+    /*
+      'web/old',
+    */
+    '$S',// 'web/old2'
+    '$S', # 'web/old3'
+    /* old */ 'web/gone',
+  ])")" "web/gone "
+assert_eq "  a variable in the list is not checked and does not end it" "$(mp "->withPaths([ \$paths['custom'], 'web/gone', ])")" "web/gone "
 assert_eq "  a missing file: nothing, exit 0" "$(rector_config_missing_paths "$r" "$T_TMP/none.php"; echo "rc=$?")" "rc=0"
 
 # L >= 8.4: no compat pass.
