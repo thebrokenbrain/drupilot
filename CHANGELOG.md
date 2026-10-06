@@ -484,6 +484,9 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     `ere-replace`, `yaml-edit` and `info-yml` engines. It writes only an
     exact change whose postconditions hold; anything else is `no-match`, and
     nothing changes.
+  - A postcondition on the function's body reads it whole: a heredoc or a
+    `/* */` block never ends it early, and a line starting with `*` outside
+    a comment is code.
   - Every codemod has `before/`, `after/` and `expect.json` fixtures in
     `tests/fixtures/recipes/`. `schemas/recipes.schema.json` validates the
     catalog, and `docs/reference/recipes.md` is generated from it.

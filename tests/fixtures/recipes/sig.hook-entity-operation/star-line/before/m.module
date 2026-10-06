@@ -1,0 +1,20 @@
+<?php
+
+/**
+ * @file
+ * Recipe fixture: a hook implementation and its signature.
+ */
+
+use Drupal\Core\Cache\CacheableMetadata;
+use Drupal\Core\Entity\EntityInterface;
+
+/**
+ * Implements the hook.
+ */
+function m_entity_operation(EntityInterface $entity, CacheableMetadata $cacheability) {
+  /* A block comment
+     naming $cacheability does not count. */
+  $age = 2
+    * $cacheability->getCacheMaxAge();
+  return [];
+}

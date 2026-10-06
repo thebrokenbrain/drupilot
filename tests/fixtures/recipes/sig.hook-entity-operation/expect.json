@@ -56,6 +56,26 @@
       "exit_code": 3
     },
     {
+      "name": "a heredoc body whose line looks like a function declaration does not end the body; the parameter is used after it: rejected",
+      "before": "heredoc-function/before",
+      "after": "heredoc-function/before",
+      "file": "m.module",
+      "line": 14,
+      "severity": "error",
+      "status": "rejected",
+      "exit_code": 3
+    },
+    {
+      "name": "a continued line starting with * is code, not a comment: the parameter is used, rejected",
+      "before": "star-line/before",
+      "after": "star-line/before",
+      "file": "m.module",
+      "line": 14,
+      "severity": "error",
+      "status": "rejected",
+      "exit_code": 3
+    },
+    {
       "name": "only the docblock names the parameter: applied",
       "before": "docblock/before",
       "after": "docblock/after",

@@ -188,12 +188,20 @@ post() {
       # on purpose (a "}" inside a string or a heredoc never ends it early):
       # what follows the "{" on that line, then every code line up to the
       # next function declared at the signature's indentation, or the end of
-      # the file (comment lines left out).
-      function-body) text="$(awk -v n="${LINE:-0}" '
+      # the file. Comments are left out: // and # lines, and /* ... */
+      # blocks (a line starting with "*" outside one is code). A heredoc or
+      # nowdoc body is kept whole and never ends the function.
+      function-body) text="$(awk -v n="${LINE:-0}" -v q="'" '
           { sub(/\r$/, "") }
           NR == n { ind = $0; sub(/[^ \t].*$/, "", ind); i = index($0, "{"); if (i > 0) print substr($0, i + 1); on = 1; next }
-          on && (ind == "" || index($0, ind) == 1) && substr($0, length(ind) + 1) ~ /^((public|protected|private|static|final|abstract)[ \t]+)*function[ \t]/ { exit }
-          on && $0 !~ /^[ \t]*(\*|\/\*|\/\/|#)/ { print }' "$f")";;
+          !on { next }
+          hd != "" { print; t = $0; sub(/^[ \t]*/, "", t); if (index(t, hd) == 1 && substr(t, length(hd) + 1) !~ /^[A-Za-z0-9_]/) hd = ""; next }
+          inc { j = index($0, "*/"); if (j > 0) { inc = 0; print substr($0, j + 2) }; next }
+          (ind == "" || index($0, ind) == 1) && substr($0, length(ind) + 1) ~ /^((public|protected|private|static|final|abstract)[ \t]+)*function[ \t]/ { exit }
+          $0 ~ /^[ \t]*(\/\/|#)/ { next }
+          $0 ~ /^[ \t]*\/\*/ { r = $0; sub(/^[ \t]*\/\*/, "", r); j = index(r, "*/"); if (j > 0) print substr(r, j + 2); else inc = 1; next }
+          { print
+            if (match($0, "<<<[ \t]*[\"" q "]?[A-Za-z_][A-Za-z0-9_]*")) { hd = substr($0, RSTART + 3, RLENGTH - 3); gsub("[ \t\"" q "]", "", hd) } }' "$f")";;
       *) text="$(cat "$f")";;
     esac
     case "$t" in
