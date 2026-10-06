@@ -451,7 +451,8 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     severity, a `scope` (`current` or `next-major`) and a `class`. Findings of
     different tools about the same symbol at the same anchor are merged into
     one, with `sources[]`. An error PHPStan reports in a trait (once per class
-    that uses it) is one finding in the trait's file. `tools` records each
+    that uses it) is kept in the trait's file, as many times as the class
+    context with the most copies. `tools` records each
     tool's verdict (`ok`, `partial`, `failed`, `missing`), so a crashed tool
     never reads like a clean run, and a failing `classify-deprecations.sh`
     stops the script (exit 3) instead of losing the deprecation classes. The
