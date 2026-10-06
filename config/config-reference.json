@@ -338,6 +338,14 @@
       "description": "Seconds `/drupilot-setup` lets `ddev composer create-project` run (and `ddev composer install`, when `vendor/` is missing) before stopping it with a clear error (`0` = no limit). Needs `timeout` (or `gtimeout` on macOS); without it the step is unbounded.",
       "see": "concepts/determinism-lockfile.md"
     },
+    "DRUPILOT_LENIENT_DEPS": {
+      "type": "string",
+      "enum": null,
+      "tier": "advanced",
+      "default_ref": "defaults.json#/DRUPILOT_LENIENT_DEPS",
+      "description": "`off` (default), or a comma-separated list of `drupal/<project>` packages whose `drupal/core` constraint does not admit the test-bed's core yet: `install-toolchain.sh` installs `mglaman/composer-drupal-lenient` and adds them to the bed's `extra.drupal-lenient.allowed-list`, on a test-bed drupilot built only. The list in effect is kept in the lock (`.lenient_packages`), in `last-test.json` (`lenient`) and in the port report; it never changes the preservation verdict.",
+      "see": "concepts/determinism-lockfile.md"
+    },
     "DRUPILOT_LOCK_LOCATION": {
       "type": "enum",
       "enum": [
