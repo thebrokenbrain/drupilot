@@ -43,6 +43,9 @@
 #                      (default: DRUPILOT_DIGESTS_REF, falling back to 'main').
 #   --config PATH      Explicit Rector config for the complementary pass
 #                      (overrides the cloned digests all.php). Implies --digests.
+#                      Under DDEV, one outside the Drupal root is staged alone
+#                      for the container: a config that loads files beside it
+#                      must live under the root.
 #   --json             Emit a JSON summary on STDOUT instead of the plain file
 #                      list: {status, ok, errors, changed_files, files,
 #                      pass1_files, compat_files, pass2_files, rules,
@@ -56,7 +59,7 @@
 #                      the official result stands, ok stays true); errors is
 #                      [{pass, exit_code, message}] (pass 1 official, 2
 #                      digests, 3 compat — not the generated-rules "Pass 3"
-#                      of /drupilot-port); digests_status and compat_status
+#                      of /drupilot-port; 0 a DET-1 refusal: no pass ran); digests_status and compat_status
 #                      are "off", "ok", "error" or "skipped". php_floor and
 #                      php_ceiling are the L and U of the Rector configs. rules
 #                      is the sorted list of Rector rule names Rector reported
@@ -131,7 +134,8 @@
 # pass, exit 3; "partial" for digests).
 #
 # Determinism (DET-1): with DRUPILOT_DETERMINISTIC on, Rector never falls back
-# to the host for a root that has a DDEV project (DDEV not running: exit 3),
+# to the host for a root that has a DDEV project when the ddev CLI is there
+# (DDEV not running: exit 3; a machine without ddev runs on the host by plan),
 # and never runs a rector/rector or drupal-rector other than the version the
 # lock pins (exit 3). The digests config, which lives in drupilot's cache on
 # the host, is staged under <root>/.drupilot/digests/ so that pass runs in the
@@ -625,23 +629,20 @@ elif [[ "$USE_DIGESTS" == "1" ]]; then
   fi
 
   # The DDEV container sees the root as its working directory: a config under
-  # the root is passed relative to it. One outside (drupilot's cache on the
-  # host) is staged under <root>/.drupilot/digests/<key>/ (self-ignored,
-  # never in a patch) so the pass runs in the bed like the others (DET-1: no
-  # host fallback): the digests checkout's whole directory (all.php loads its
-  # rules from __DIR__), reused per SHA; an explicit --config's directory,
-  # staged again on every run, or the file alone when that directory holds
-  # the root or is $HOME. A staging failure is a digests error (partial,
-  # exit 4), never the end of a run whose official pass already ran.
+  # the root is passed relative to it. One outside is staged under
+  # <root>/.drupilot/digests/<key>/ (self-ignored, never in a patch) so the
+  # pass runs in the bed like the others (DET-1: no host fallback): the
+  # digests checkout's whole directory (its all.php loads its rules from
+  # __DIR__), reused per SHA; an explicit --config, the file alone, staged
+  # again on every run (an explicit config that loads files beside it must
+  # live under the Drupal root). A staging failure is a digests error
+  # (partial, exit 4), never the end of a run whose official pass already ran.
   DIGESTS_RUNNER="$RUNNER"
   if [[ -n "$RUNNER" && -n "$CONFIG_PATH" && "$CONFIG_PATH" == "$DRUPAL_ROOT"/* ]]; then
     CONFIG_PATH="${CONFIG_PATH#"$DRUPAL_ROOT"/}"
   elif [[ -n "$RUNNER" && -n "$CONFIG_PATH" ]]; then
     _cdir="$(dirname "$CONFIG_PATH")"; _whole=1
-    if [[ -n "$DIGESTS_CONFIG" ]]; then
-      case "$DRUPAL_ROOT/" in "$_cdir"/*) _whole=0;; esac
-      [[ "$_cdir" == "${HOME:-}" || "$_cdir" == "/" ]] && _whole=0
-    fi
+    [[ -n "$DIGESTS_CONFIG" ]] && _whole=0
     if [[ -n "$DIGESTS_CONFIG" || -z "$DIGESTS_SHA" ]]; then
       _key="config-$(printf '%s' "$CONFIG_PATH" | sha256_hex | cut -c1-16)"
     else

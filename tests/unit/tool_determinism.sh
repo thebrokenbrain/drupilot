@@ -28,7 +28,8 @@ cp -R "$T_REPO/tests/fixtures/legacy_widgets" "$r/web/modules/custom/"
 lockpkgs() {   # lockpkgs rector-version
   jq -n --arg v "$1" '{packages: [{name: "drupal/core", version: "11.4.8"}],
     "packages-dev": [{name: "rector/rector", version: $v}, {name: "palantirnet/drupal-rector", version: "1.1.3"},
-      {name: "phpstan/phpstan", version: "2.2.16"}, {name: "drupal/coder", version: "8.3.31"}]}' > "$r/composer.lock"
+      {name: "phpstan/phpstan", version: "2.2.16"}, {name: "mglaman/phpstan-drupal", version: "2.2.2"},
+      {name: "phpstan/phpstan-deprecation-rules", version: "2.0.5"}, {name: "drupal/coder", version: "8.3.31"}]}' > "$r/composer.lock"
 }
 lockpkgs 2.6.1
 # Rector: the JSON report of two changed files (in reverse order), or what $r/mode says.
@@ -122,6 +123,25 @@ t_run env PATH="$STUBS:$PATH" DRUPILOT_PHP_TARGET=8.3 "$T_SH" "$T_REPO/scripts/a
 assert_eq "DET-1: run-phpcs with drupal/coder not the lock's: exit 3, the reason" \
   "$T_RC|$(j '.drupilot.error | test("^DET-1: drupal/coder installed 8.3.31, the lock pins 8.3.30")')" '3|true'
 jq '.toolchain["phpstan/phpstan"] = "2.2.16" | .toolchain["drupal/coder"] = "8.3.31"' "$(lock_path "$r")" > "$T_TMP/l.json" && mv "$T_TMP/l.json" "$(lock_path "$r")"
+# Every package each tool checks: the lock pins it at another version -> exit 3.
+for row in "run-rector rector/rector" "run-rector palantirnet/drupal-rector" "run-phpstan phpstan/phpstan" \
+           "run-phpstan mglaman/phpstan-drupal" "run-phpstan phpstan/phpstan-deprecation-rules" "run-phpcs drupal/coder"; do
+  tool="${row%% *}"; pkg="${row#* }"
+  jq --arg p "$pkg" '."packages-dev" |= ((map(select(.name != $p))) + [{name: $p, version: "9.9.9"}])' "$r/composer.lock" > "$T_TMP/c.json"
+  cp "$r/composer.lock" "$T_TMP/c.bak"; mv "$T_TMP/c.json" "$r/composer.lock"
+  jq --arg p "$pkg" '.toolchain[$p] = "1.0.0"' "$(lock_path "$r")" > "$T_TMP/l.json" && cp "$(lock_path "$r")" "$T_TMP/l.bak" && mv "$T_TMP/l.json" "$(lock_path "$r")"
+  t_run env PATH="$STUBS:$PATH" DRUPILOT_PHP_TARGET=8.3 DRUPILOT_USE_DIGESTS_RULES=false "$T_SH" "$T_REPO/scripts/analysis/$tool.sh" --subject "$r/$S" --json
+  assert_match "DET-1: $tool checks $pkg" "$T_RC|$(t_err | tr '\n' ' ')" "^3\|.*DET-1: $pkg installed 9\.9\.9, the lock pins 1\.0\.0"
+  mv "$T_TMP/c.bak" "$r/composer.lock"; mv "$T_TMP/l.bak" "$(lock_path "$r")"
+done
+# The attributes pass (run-rector.sh --attributes) checks Rector too, with its --json error shape.
+mkdir -p "$r/vendor/palantirnet/drupal-rector/src/Drupal10/Rector/Deprecation"
+printf '<?php\n' > "$r/vendor/palantirnet/drupal-rector/src/Drupal10/Rector/Deprecation/AnnotationToAttributeRector.php"
+jq '."packages-dev" |= map(if .name == "rector/rector" then .version = "9.9.9" else . end)' "$r/composer.lock" > "$T_TMP/c.json" && cp "$r/composer.lock" "$T_TMP/c.bak" && mv "$T_TMP/c.json" "$r/composer.lock"
+t_run env PATH="$STUBS:$PATH" DRUPILOT_PHP_TARGET=8.3 "$T_SH" "$T_REPO/scripts/analysis/run-rector.sh" --attributes --subject "$r/$S" --json
+assert_eq "DET-1: the attributes pass refuses too (exit 3, its error JSON)" \
+  "$T_RC|$(j '[.tool, .status, (.errors[0].message | test("^DET-1: rector/rector installed 9.9.9"))]')" '3|["attributes","error",true]'
+mv "$T_TMP/c.bak" "$r/composer.lock"
 
 # DET-1: no ddev on the machine (the analyze profile is Docker-free): a root
 # with a committed .ddev/ runs on the host by plan.

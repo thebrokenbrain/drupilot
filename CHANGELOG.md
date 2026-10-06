@@ -599,17 +599,28 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     (`--output-format=json --no-progress-bar`). The changed files and the rule
     hits come from its `file_diffs` and `applied_rectors` instead of parsing
     the console. A person still sees each diff and its rules on STDERR.
-  - Its `--json` gains `file_diffs` (`[{pass, file, applied_rectors, diff}]`)
-    and `runner`.
+  - Its `--json` gains `file_diffs` (`[{pass, file, applied_rectors, diff}]`,
+    sorted by file: Rector's parallel jobs end in any order) and `runner`.
+    Rector's file errors are sorted too.
   - `run-phpstan.sh` and `run-phpcs.sh` sort their reports (files by path,
     messages by line) and add `drupilot.runner`. `runner` is `{runner:
     ddev|host, php_version, tool_version}`. Every 0.9 key is kept.
   - In deterministic mode, these cases exit 3 (`DRUPILOT_DETERMINISTIC=false`
-    accepts them):
-    - a tool whose installed version differs from the one the lock pins;
-    - a host run on a root that has a DDEV project.
-  - The digests config is copied under `<root>/.drupilot/digests/<sha>/`, so
-    that pass runs in the bed instead of on the host's PHP.
+    accepts them). This also applies to the attributes pass:
+    - a tool whose installed version differs from the one the lock pins (the
+      message names both remedies: restore the pins with `install-toolchain.sh`,
+      or accept the installed versions with `lock-sync.sh`);
+    - a host run on a root that has a DDEV project while the ddev CLI is
+      there. Without ddev, the analyze profile runs on the host by plan.
+  - A DET-1 refusal still prints the documented `--json` shape of exit 3 (Rector
+    `errors[].pass` 0, PHPStan `crashed`, PHPCS `drupilot.error`, the attributes
+    pass `status: "error"`). The prompts read it as "the tool did not run", not
+    as a crash to repair with `--source reference`.
+  - Under DDEV the digests checkout is copied under
+    `<root>/.drupilot/digests/<sha>/`, so that pass runs in the bed instead of
+    on the host's PHP. A config under the root is passed relative to it. An
+    explicit `--config` outside the root is staged alone. A failed copy is a
+    digests error (partial, exit 4).
   - Two lab runs give byte-identical canonical reports.
 - **The `legacy_widgets` raw goldens are re-recorded** (T-M4-03, lab L-M4) with
   the deterministic tools. The H10 patch is unchanged.

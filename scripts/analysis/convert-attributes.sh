@@ -543,7 +543,11 @@ RUNNER="$(drupal_runner "$DRUPAL_ROOT")"
 # DET-1, as for run-rector.sh's other passes: in deterministic mode no
 # unplanned host run and no Rector the lock does not pin (exit 3).
 _det1="$(DET1_RUNNER="$RUNNER" det1_message "$DRUPAL_ROOT" Rector rector/rector palantirnet/drupal-rector)"
-[[ -z "$_det1" ]] || die "$_det1" 3
+if [[ -n "$_det1" ]]; then
+  # The documented error shape for a --json caller, never an empty STDOUT.
+  [[ "$AS_JSON" == "1" ]] && emit_json error "" 0 '[]' 0 false "$(jq -nc --arg m "$_det1" '[{exit_code: 3, message: $m}]')"
+  die "$_det1" 3
+fi
 declare -a RUN=()
 [[ -n "$RUNNER" ]] && read -r -a RUN <<<"$RUNNER"
 

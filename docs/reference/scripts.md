@@ -1255,6 +1255,9 @@ Options:
                      (default: DRUPILOT_DIGESTS_REF, falling back to 'main').
   --config PATH      Explicit Rector config for the complementary pass
                      (overrides the cloned digests all.php). Implies --digests.
+                     Under DDEV, one outside the Drupal root is staged alone
+                     for the container: a config that loads files beside it
+                     must live under the root.
   --json             Emit a JSON summary on STDOUT instead of the plain file
                      list: {status, ok, errors, changed_files, files,
                      pass1_files, compat_files, pass2_files, rules,
@@ -1268,7 +1271,7 @@ Options:
                      the official result stands, ok stays true); errors is
                      [{pass, exit_code, message}] (pass 1 official, 2
                      digests, 3 compat — not the generated-rules "Pass 3"
-                     of /drupilot-port); digests_status and compat_status
+                     of /drupilot-port; 0 a DET-1 refusal: no pass ran); digests_status and compat_status
                      are "off", "ok", "error" or "skipped". php_floor and
                      php_ceiling are the L and U of the Rector configs. rules
                      is the sorted list of Rector rule names Rector reported
@@ -1343,7 +1346,8 @@ announced changes is an error (status "error" for the official and the compat
 pass, exit 3; "partial" for digests).
 
 Determinism (DET-1): with DRUPILOT_DETERMINISTIC on, Rector never falls back
-to the host for a root that has a DDEV project (DDEV not running: exit 3),
+to the host for a root that has a DDEV project when the ddev CLI is there
+(DDEV not running: exit 3; a machine without ddev runs on the host by plan),
 and never runs a rector/rector or drupal-rector other than the version the
 lock pins (exit 3). The digests config, which lives in drupilot's cache on
 the host, is staged under <root>/.drupilot/digests/ so that pass runs in the
