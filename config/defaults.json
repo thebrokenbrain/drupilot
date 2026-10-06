@@ -115,11 +115,15 @@
     "coder": "drupal/coder",
     "drush": "drush/drush:^13",
     "upgrade_status": "drupal/upgrade_status",
+    "lenient": "mglaman/composer-drupal-lenient:^2.0",
     "core_dev": "drupal/core-dev"
   },
 
   "_toolchain_comment": "Dev-toolchain installation (scripts/env/install-toolchain.sh). DRUPILOT_TOOLCHAIN_SOURCE picks where each version comes from: 'auto' (default) = in deterministic mode the project lock when it pins the whole known-good set, otherwise the shipped reference config/toolchain-reference.json (the cell of the installed core's major: exact versions verified together end to end; an unverified cell uses the ranges; a lock drupilot 0.9 wrote is read as cell legacy_v1 until refreshed), and the .packages ranges in non-deterministic mode; 'reference' = always the reference set (the repair path after a broken upstream release; the lock is then refreshed); 'range' = the .packages ranges (fresh resolve). Every install ends with a smoke test (a Rector dry-run with the Drupal 10 set + phpstan --version) and exits 3 with the known-good versions when the installed set is broken.",
   "DRUPILOT_TOOLCHAIN_SOURCE": "auto",
+
+  "_lenient_deps_comment": "Lenient contrib dependencies on the test-bed (scripts/env/install-toolchain.sh; AR-08, AR-28). 'off' (default), or a comma-separated list of drupal/<project> packages (e.g. drupal/token,drupal/ctools) whose drupal/core constraint does not admit the bed's core yet: install-toolchain.sh then installs mglaman/composer-drupal-lenient (.packages.lenient) and adds them to the bed's composer.json extra.drupal-lenient.allowed-list, so they install and the module's tests can run. Only on a test-bed drupilot built (a warning skips it on your own project); never in production. The list in effect is kept in the lock (.lenient_packages) and in every test record (last-test.json lenient[]), and the port report names it: a green suite with a lenient dependency does not show the dependency supports the core. It never changes the preservation verdict.",
+  "DRUPILOT_LENIENT_DEPS": "off",
 
   "_contrib_comment": "URLs and endpoints for the Drupal.org contribution flow (PROMPT 3).",
   "contrib": {

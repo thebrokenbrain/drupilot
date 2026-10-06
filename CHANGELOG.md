@@ -411,6 +411,18 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     the skill step that defines its procedure.
   - `schemas/pipeline.schema.json` validates it (the `schemas` gate), and
     `docs/reference/pipeline.md` is generated from it.
+- **`DRUPILOT_LENIENT_DEPS`** (T-M4-17, AR-08, AR-28; default `off`): a
+  comma-separated list of `drupal/<project>` packages lets contrib
+  dependencies whose `drupal/core` constraint does not admit the test-bed's
+  core install there anyway, so the module's tests can run.
+  - `install-toolchain.sh` installs `mglaman/composer-drupal-lenient`
+    (`.packages.lenient`, `^2.0`) and adds the packages to the bed's
+    `extra.drupal-lenient.allowed-list`.
+  - Only on a test-bed drupilot built; a warning skips it on your own project.
+  - The list in effect (`lenient_packages`) is kept in the lock
+    (`.lenient_packages`), in `install-toolchain.sh --json` and in
+    `last-test.json` (`lenient`). The port report names it next to the
+    preservation verdict, which it never changes (CC-14).
 
 ### Changed
 - **`scripts/dev/unit.sh` runs the tests in parallel** (`--jobs N`, default
