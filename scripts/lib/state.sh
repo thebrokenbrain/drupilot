@@ -370,10 +370,10 @@ state_snapshot_json() {
     rsd="$(project_state_path "$root")"
     [[ -f "$root/.ddev/config.yaml" ]] && ddev="$(sed -n 's/^name:[[:space:]]*//p' "$root/.ddev/config.yaml" 2>/dev/null | sed -n '1p' | tr -d "\"' " || true)"
   fi
-  a="$(_json_from "$sd/assess.json" '{effort: (.verdict // .effort // null), at: (.timestamp // .generated_at // null)}')"
+  a="$(_json_from "$sd/assess.json" '{effort: (.verdict // .effort // null), at: (.timestamp // .generated_at // .meta.generated_at // null)}')"
   t="$(_json_from "$sd/last-test.json" '{status: (.status // null), preservation: (.preservation // null), executed: (.executed // null), tests_failed: ([.tests[]? | select(.status == "fail" or .status == "error")] | length), groups_passed: (.passed // null), groups_failed: (.failed // null), groups_skipped: (.skipped // null), recorded_at: (.recorded_at // .generated_at // null), digest: (.subject_digest // null), digest_algo: (.digest_algo // null)}')"
   m="$(_json_from "$sd/core-matrix.json" '{verdict: (.verdict // null), d10_support: (.d10_support // null), generated_at: (.generated_at // null), digest: (.subject_digest // null), digest_algo: (.digest_algo // null)}')"
-  pm="$(_json_from "$sd/port-manifest.json" '{patch: (.patch | if type == "string" then . else null end), phase: ((.phase // "port") | if type == "string" then . else null end), at: (.generated_at // .recorded_at // null)}')"
+  pm="$(_json_from "$sd/port-manifest.json" '{patch: (.patch | if type == "string" then . else null end), phase: ((.phase // "port") | if type == "string" then . else null end), at: (.generated_at // .recorded_at // .meta.generated_at // null)}')"
   # A relative manifest patch path is the subject's; when it is not there but
   # the same path exists under the Drupal root (a manifest written with the
   # root-relative path), use that one, so the patch is not reported missing.
@@ -756,6 +756,17 @@ subjects_with_state_under() {
       | select((.drupal_root // "") == $r or ((.subject // "") | startswith($r + "/")))
       | .subject' "$f" 2>/dev/null || true
   done
+  return 0
+}
+
+# digests_decisions_file SUBJECT -> the subject's digests-decisions.json (05-R6,
+# T-M4-08): {schema: 1, decisions: [{rule, digests_sha, input_hash, verdict:
+# accept|reject, at}]}, the developer's verdict on each digests rule, keyed
+# by the rule, the digests SHA and the subject's digest before the passes, so
+# a later port of the same module replays them and asks nothing. In the
+# hidden state dir; /drupilot-clean resets it. Never created here.
+digests_decisions_file() {
+  printf '%s/digests-decisions.json' "$(project_state_path "${1:-$PWD}")"
   return 0
 }
 

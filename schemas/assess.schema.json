@@ -2,10 +2,19 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://thebrokenbrain.github.io/drupilot/schemas/assess.schema.json",
   "title": "drupilot viability assessment cache (assess.json)",
-  "description": "The machine-readable cache of a viability assessment, in the subject's hidden state dir (project_state_dir, under drupilot's data dir; never in the project tree). No script writes it in 0.9: the model writes it with the Write tool at the end of /drupilot-assess, following commands/drupilot-assess.md (Step 5), skills/viability-assessment/SKILL.md (sections 3.2, 3.5, 3.7 and 6) and agents/drupal-viability-analyst.md, which ask for the verdict, the counts, the ready flags, the core-target recommendation, the hygiene totals, the hard-break list, the auto-fixable percentage and a timestamp, without fixing every key name or nesting. Its readers (common.sh state_snapshot_json, next-step.sh, port-report.sh) take .verdict (else .effort), .timestamp (else .generated_at) and .recommended_core_version_requirement, each optional. Hence only verdict is required and the nested shapes below are the ones the 0.9 flow produces, described leniently.",
+  "description": "The machine-readable result of a viability assessment, in the subject's hidden state dir (project_state_dir, under drupilot's data dir; never in the project tree). From 1.0, scripts/analysis/assess.sh writes it (schema 1, ADR 0025): the verdict and the three rubric counts computed from findings.json, the rule that matched, and everything viability-report.md shows; the same tree and lock give the same document outside meta (its time is meta.generated_at). A 0.9 file has no schema key: the model wrote it at the end of /drupilot-assess without fixing every key name or nesting, so its readers (common.sh state_snapshot_json, next-step.sh, port-report.sh) take .verdict (else .effort), .timestamp (else .generated_at, else .meta.generated_at) and .recommended_core_version_requirement, each optional. Hence only verdict is required and the nested shapes below are described leniently.",
   "type": "object",
   "required": ["verdict"],
   "properties": {
+    "schema": {"description": "1 for a file assess.sh wrote; absent in a 0.9 file.", "const": 1},
+    "provisional": {"description": "True when Rector or PHPStan gave no verdict (tools): the counts are incomplete and the assessed stage was not recorded.", "type": "boolean"},
+    "tools": {"description": "Each extractor's verdict, from findings.json (ok | partial | failed | missing).", "type": "object"},
+    "worklist": {"description": "The worklist's item counts (classify.sh).", "type": "object"},
+    "findings_hash": {"anyOf": [{"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, {"type": "null"}]},
+    "worklist_hash": {"anyOf": [{"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, {"type": "null"}]},
+    "subject_digest": {"description": "The subject's digest the assessment was computed on (digest_algo).", "type": "string"},
+    "digest_algo": {"type": "integer", "minimum": 1},
+    "meta": {"description": "What changes between two runs (DET-2): generated_at and the drupilot version.", "type": "object"},
     "verdict": {
       "description": "The S/M/L/XL effort verdict of the deterministic rubric (the same closed set state.sh record --effort enforces).",
       "enum": ["S", "M", "L", "XL"]
@@ -18,23 +27,23 @@
     "generated_at": {"description": "Alternative name of timestamp (readers try timestamp first).", "type": "string"},
     "tool": {"type": "string"},
     "drupilot_version": {"type": "string"},
-    "subject": {"type": "string"},
+    "subject": {"description": "The subject's path relative to the Drupal root (findings.json subject.path), null when unknown.", "type": ["string", "null"]},
     "machine_name": {"type": "string"},
     "type": {"description": "module, theme or profile.", "type": "string"},
     "contrib": {"description": "Whether the subject is a drupal.org contrib project.", "type": "boolean"},
     "php_target": {"type": "string"},
     "drupal_target": {"type": "string"},
     "sandbox_core": {"description": "The Drupal core version the analysis ran against.", "type": "string"},
-    "viability_threshold": {"description": "The resolved DRUPILOT_VIABILITY_THRESHOLD (small, medium, large, xl).", "type": "string"},
+    "viability_threshold": {"description": "The resolved DRUPILOT_VIABILITY_THRESHOLD: as a verdict letter (S, M, L, XL) in a schema-1 file, as the setting's word (small, medium, large, xl) in a 0.9 one.", "type": "string"},
     "above_threshold": {"description": "True when the verdict strictly exceeds the threshold.", "type": "boolean"},
     "next_step": {"description": "The suggested next command.", "type": "string"},
     "current_core_version_requirement": {"type": ["string", "null"]},
     "recommended_core_version_requirement": {
-      "description": "From core-strategy.sh --json; port-report.sh falls back to it when the manifest has no core_version_requirement.",
-      "type": "string"
+      "description": "From core-strategy.sh --json; port-report.sh falls back to it when the manifest has no core_version_requirement. Null when core-strategy.sh gave no answer.",
+      "type": ["string", "null"]
     },
     "require_php": {"type": ["string", "null"]},
-    "version_bump": {"description": "The SemVer bump the core target implies (core-strategy.sh).", "type": "string"},
+    "version_bump": {"description": "The SemVer bump the core target implies (core-strategy.sh); null when it gave no answer.", "type": ["string", "null"]},
     "core_target": {
       "description": "The core compatibility decision, copied (possibly in part) from scripts/analysis/core-strategy.sh --json.",
       "type": "object",
@@ -69,7 +78,7 @@
         "required_changes": {"type": "integer"},
         "automated_required_changes": {"type": "integer"},
         "rector_official_files": {"type": "integer"},
-        "rector_official_rules": {"description": "{Rule: hits}.", "type": "object"},
+        "rector_official_rules": {"description": "{short Rector rule name: number of files it changes} (schema 1: the official and compat passes); {Rule: hits} in a 0.9 file.", "type": "object"},
         "rector_drupal_deprecation_hits": {"type": "integer"},
         "digests": {"description": "The digests layer's share, or \"off\" when it did not run."},
         "note": {"type": "string"}
@@ -96,6 +105,8 @@
         "type": "object",
         "properties": {
           "id": {"type": "string"},
+          "finding_id": {"description": "The findings.json id (schema 1).", "type": "string"},
+          "occurrences": {"description": "The PHPStan occurrences the finding stands for (1 for a catalog finding); manual is their sum.", "type": "integer", "minimum": 1},
           "file": {"type": "string"},
           "line": {"type": ["integer", "null"]},
           "what": {"type": "string"},
@@ -114,9 +125,9 @@
         "rule": {"type": "string"}
       }
     },
-    "deprecations_hard": {"description": "Hard deprecations (classify-deprecations.sh counts.hard).", "type": "integer", "minimum": 0},
-    "deprecations_soft": {"description": "Soft deprecations (counts.soft).", "type": "integer", "minimum": 0},
-    "deprecations_unknown": {"description": "Unclassified deprecations (counts.unknown).", "type": "integer", "minimum": 0},
+    "deprecations_hard": {"description": "Hard deprecations: the PHPStan occurrences of findings.json findings of class hard (classify-deprecations.sh counts.hard in a 0.9 file).", "type": "integer", "minimum": 0},
+    "deprecations_soft": {"description": "Soft deprecations, counted the same way (counts.soft).", "type": "integer", "minimum": 0},
+    "deprecations_unknown": {"description": "Unclassified deprecations, counted the same way (counts.unknown).", "type": "integer", "minimum": 0},
     "soft_deprecations_policy": {"description": "The DRUPILOT_SOFT_DEPRECATIONS policy applied (report, defer, fix).", "type": "string"},
     "soft_deprecations": {
       "description": "The soft deprecations, one per symbol (values n/a, or null, when the catalog has none).",
@@ -178,6 +189,7 @@
         "status": {"type": "string"},
         "file_errors": {"type": "integer", "minimum": 0},
         "deprecations": {"type": "integer", "minimum": 0},
+        "count": {"description": "Every PHPStan finding of findings.json (schema 1).", "type": "integer", "minimum": 0},
         "other": {"type": "integer", "minimum": 0}
       }
     },

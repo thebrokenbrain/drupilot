@@ -490,8 +490,109 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   - Every codemod has `before/`, `after/` and `expect.json` fixtures in
     `tests/fixtures/recipes/`. `schemas/recipes.schema.json` validates the
     catalog, and `docs/reference/recipes.md` is generated from it.
+- **The worklist** (T-M4-07, AR-10, ADR 0024). `scripts/ai/classify.sh`
+  turns `findings.json` into `worklist.json`: every finding gets a lane, and
+  the findings of one file, anchor and lane make one item.
+  - The lanes, in priority order: `rector`, `rector-custom`, `codemod`,
+    `ai-templated`, `ai-free`, `test-adapt` (a file under a `tests/`
+    directory), `human` and `deferred`.
+    `deferred` holds the next-major deprecations, which never reach an AI
+    lane, plus info and style findings.
+  - The recipe of a finding is the first that matches (rule, symbol,
+    message) and whose conditions hold, its required core against the
+    declared floor included. A codemod that cannot apply hands its finding to
+    `ai-templated` with its text.
+  - `scripts/ai/apply-recipes.sh` applies the open codemods (step S6) and,
+    with `--reextract`, re-runs the tools on the new tree (S7).
+  - Each application is a line of the hidden `actions.jsonl`, with the
+    file's hash before and after. The classifier reads it: a codemod that
+    changed nothing, failed or did not clear its finding is not tried again,
+    and one whose change was reverted is.
+  - A project overlay (`<root>/.drupilot/recipes.json`) is checked before
+    use: a recipe in an unknown lane, without a 12-hex version or a kind, or
+    with a `message_ere`/`file_ere` that does not compile makes `classify.sh`
+    exit 1.
+  - `schemas/worklist.schema.json` is the contract. Worklist goldens for
+    `legacy_widgets`, `acme_core` and `acme_api` are computed Docker-free
+    from the findings goldens, and a test keeps next-major findings out of
+    the AI lanes.
+- **The viability verdict is computed** (T-M4-09, 07-R4, AR-10, ADR 0025).
+  `scripts/analysis/assess.sh` runs the assess stage and writes
+  `assess.json` and `viability-report.md`; the skill only narrates them.
+  - The three rubric counts come from `findings.json`:
+    - `manual`: each call of a current hard or unknown deprecation that no
+      Drupal Rector rule changes in the same function, plus the signature and
+      port-safety errors;
+    - `hard_breaks`: the categories of the new
+      `config/catalog/hard-breaks.json`, the 0.9 greps with each fact verified
+      in core;
+    - `blocking_deps`: `deps-status.sh`'s blockers.
+  - The digests layer is no longer part of the assessment, so a deprecation
+    only a digests rule fixes now counts as manual.
+  - When Rector or PHPStan gave no verdict, the verdict is `provisional`:
+    exit 3, and the stage is not recorded.
+  - It needs the test-bed's Drupal root, and reads the settings there.
+  - The S/M/L/XL table is the 0.9 one, first match wins, and `rubric.rule`
+    keeps the rule that matched. Soft and next-major findings never count.
+  - `assess.json` gains `schema: 1`, `tools`, `worklist`, `findings_hash`,
+    `worklist_hash`, `subject_digest` and `meta`; the same tree, lock and
+    drupal.org answers give the same document outside `meta`. Assess goldens
+    for `legacy_widgets`, `acme_core` and `acme_api` are computed Docker-free
+    from the findings and worklist goldens.
+
+- **The digests pass remembers your verdicts and skips what drupal-rector
+  already does** (T-M4-08, 03-R17, 05-R6).
+  - `run-rector.sh --digests` runs a filtered `all.php` (ADR 0026). It
+    leaves out the rules the official pass already applies, from
+    drupal-rector's `docs/implemented-digests.yml` at the installed version:
+    fetched, cached, and its hash frozen in the lock
+    (`.digests.implemented_yml_*`). An entry counts only when every class it
+    names is registered in a set your `rector.php` loads. drupal-rector
+    implements most of them in its Drupal 11 sets, which a port to 11 does
+    not load, so those still run in the digests pass, and so do the
+    config-only entries (the file names no class for them).
+  - It also leaves out the rules you rejected for the module.
+  - It fails closed: an `all.php` it cannot read whole, or an `--apply` on
+    sources changed since the reviewed dry-run, stops the digests pass
+    (exit 4) rather than run rules nobody reviewed.
+  - `scripts/analysis/digests-decisions.sh` records each verdict, keyed by
+    the rule, the digests SHA and the module's sources, in the hidden
+    `digests-decisions.json`.
+  - `run-rector.sh --json` reports `digests_filter` and `digests_review`.
+    `/drupilot-port` asks only about the pending rules: a second port of the
+    same sources asks nothing. An autonomous run's recorded defaults are
+    marked as such and replayed only by another autonomous run.
+  - `/drupilot-clean` (or `digests-decisions.sh --clear`) forgets the
+    verdicts. `lock-sync.sh --refresh` and `DRUPILOT_DETERMINISTIC=false`
+    fetch the yml again and freeze its new hash.
+
+- **The port manifest is generated** (T-M4-10, AR-10, 01-R9, ADR 0027).
+  `scripts/ai/manifest.sh` builds `port-manifest.json` (schema 1) from what
+  the scripts recorded, never from memory:
+  - the worklist, by lane and status, and the codemods still in effect;
+  - the Rector rules and files of the applying run (`rector-rules.json` now
+    lists the files) and of the attribute pass (`convert-attributes.sh
+    --apply` now keeps `attributes-rules.json`);
+  - the digests verdicts and the decision log;
+  - the git diff against the port's base: files changed, and the manual
+    edits (the files neither Rector nor a codemod changed).
+  - The model's only input is the rationale, keyed by worklist item id: an
+    unknown id is refused, and an earlier rationale is kept for the items
+    still there.
+  - `port-report.sh` renders the lane × status table, the codemods and the
+    rationale. A manifest golden pins the generator on the lab's
+    `legacy_widgets` port.
 
 ### Changed
+- **`/drupilot-port` and `/drupilot-refactor` run `manifest.sh`** instead of
+  writing the manifest. Divergences stay in the decision log, the
+  verification records in their state files, and the learned patterns in
+  the catalog; the free-text `validation` list is gone.
+- **`/drupilot-assess` and the `viability-assessment` skill** no longer run
+  the analyzers one by one, grep for hard breaks or apply the rubric: they
+  run `assess.sh` and narrate `assess.json` (the skill has no `grep` left).
+  `state.json`'s snapshot reads the assessment time from `meta.generated_at`
+  too.
 - **`scripts/dev/unit.sh` runs the tests in parallel** (`--jobs N`, default
   the CPUs, at most 8): the unit gate went from 12 minutes to under 2 on a
   developer machine, and the macOS CI leg, which runs the whole gate twice,

@@ -378,6 +378,33 @@ printf '%s' "$PREC" | jq -e 'type == "object"' >/dev/null 2>&1 || PREC=""
   printf '\n'
   printf '### Remaining deprecations\n\n%s\n\n' "$DEPR"
 
+  # A generated manifest (manifest.sh, schema 1): the worklist by lane and
+  # status, the codemods in effect, and the rationale the model gave per item.
+  if [[ "$(printf '%s' "$M" | jq -r '(.worklist.by_lane_status // null) | type == "object"' 2>/dev/null)" == "true" ]]; then
+    printf '### Worklist (lane × status)\n\n'
+    printf '%s' "$M" | jq -r '
+      ["rector", "rector-custom", "codemod", "ai-templated", "ai-free", "test-adapt", "human", "deferred"] as $order
+      | .worklist.by_lane_status as $t
+      | ([$t[] | keys[]] | unique) as $st
+      | if ($t | length) == 0 then "_no item_"
+        else ( "| Lane | " + ($st | join(" | ")) + " |",
+               "|---|" + ($st | map("---:") | join("|")) + "|",
+               ( [$order[] | select($t[.] != null)] + ([$t | keys[] ] - $order) | .[]
+                 | . as $l | "| `\($l)` | " + ($st | map(($t[$l][.] // 0) | tostring) | join(" | ")) + " |" ) )
+        end' 2>/dev/null || printf '_unreadable_\n'
+    printf '\n'
+    if [[ "$(printf '%s' "$M" | jq -r '(.codemods // []) | length' 2>/dev/null)" != "0" ]]; then
+      printf '**Codemods applied:**\n\n'
+      printf '%s' "$M" | jq -r '.codemods[] | "- `\(.recipe)` (\(.version)) on `\(.file)`"' 2>/dev/null || true
+      printf '\n'
+    fi
+    if [[ "$(printf '%s' "$M" | jq -r '(.rationale // {}) | length' 2>/dev/null)" != "0" ]]; then
+      printf '**Why (per item):**\n\n'
+      printf '%s' "$M" | jq -r '.worklist.items[] | select(.rationale != null) | "- `\(.id)` (\(.lane), `\(.file)`): \(.rationale)"' 2>/dev/null || true
+      printf '\n'
+    fi
+  fi
+
   if [[ "$(printf '%s' "$M" | jq -r 'has("port_safety")' 2>/dev/null)" == "true" ]]; then
     printf '### Port-safety checks\n\n'
     printf '%s' "$M" | jq -r '

@@ -47,7 +47,8 @@
 #
 # Afterwards every module of the root gets `.environment = {status: "removed",
 # level, at}` in its state.json, so next-step.sh recommends /drupilot-setup
-# until ddev-up.sh / place-subject.sh rebuild it.
+# until ddev-up.sh / place-subject.sh rebuild it, and its digests verdicts
+# (digests-decisions.json, scripts/analysis/digests-decisions.sh) are reset.
 #
 # Usage:
 #   clean.sh [--subject DIR | --root DIR | --all [--scan DIR]...]
@@ -507,7 +508,7 @@ if [[ "$CORE_CACHE" == "1" ]]; then
     log_info "No cached base core to remove."
   fi
 fi
-log_plain "Always kept: the hidden state (lockfile, assess.json, state.json), the subject's git checkout and branches, .drupilot/ reports, local patches."
+log_plain "Always kept: the hidden state (lockfile, assess.json, state.json; the digests verdicts are reset), the subject's git checkout and branches, .drupilot/ reports, local patches."
 
 # --- Confirm -------------------------------------------------------------------
 EXECUTE=0
@@ -632,8 +633,10 @@ for i in $IDX; do
     fi
     freed=$(( ${R_SIZE[i]} - $(size_kb "${ROOTS[i]}") ))
     [[ "$freed" -ge 0 ]] || freed=0
-    # Every module of this root: the environment is gone until the next setup.
+    # Every module of this root: the environment is gone until the next setup,
+    # and its digests verdicts are forgotten (05-R6: a clean starts over).
     env_status_record "${ROOTS[i]}" removed "$LEVEL"
+    while IFS= read -r _s; do if [[ -n "$_s" ]]; then rm -f "$(digests_decisions_file "$_s")"; fi; done < <(subjects_with_state_under "${ROOTS[i]}")
   else
     while IFS="$TAB" read -r _op _a _b; do
       [[ -n "$_op" ]] || continue

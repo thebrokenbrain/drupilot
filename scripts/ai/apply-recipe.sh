@@ -103,17 +103,6 @@ pq() { jq -r "$1 // empty" <<< "$P"; }
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-recipe.XXXXXX")"
 trap 'rm -rf "$TMP" 2> /dev/null || true' EXIT
 IN_HASH="$(file_hash "$F")"
-# own_plan PATH -> the frozen upgrade plan's value at PATH, only when the plan
-# is this subject's (a shared test-bed's lock may hold another module's).
-own_plan() {
-  local root mn pmn
-  root="$(subject_project_root "$SUBJECT" 2> /dev/null || true)"; [[ -n "$root" ]] || root="$SUBJECT"
-  mn="$(subject_machine_name "$SUBJECT" 2> /dev/null || true)"
-  pmn="$(plan_get .subject.machine_name "$root" 2> /dev/null || true)"
-  [[ -n "$mn" && "$pmn" == "$mn" ]] || return 0
-  plan_get "$1" "$root" 2> /dev/null || true
-  return 0
-}
 STATUS=""; REASON=""; FROM=""; TO=""; OUT_HASH="$IN_HASH"; CHANGED=false
 finish() {
   if [[ "$AS_JSON" == "1" ]]; then
@@ -143,7 +132,7 @@ if [[ -n "$SEVERITY" ]] && jq -e '(.applies_when.severity // []) | length > 0' <
 fi
 CMIN="$(rq .applies_when.core_min)"
 if [[ -n "$CMIN" ]]; then
-  [[ -n "$FLOOR" ]] || FLOOR="$(own_plan .range.floor)"
+  [[ -n "$FLOOR" ]] || FLOOR="$(plan_get_own "$SUBJECT" .range.floor)"
   if [[ -z "$FLOOR" ]]; then STATUS="not-applicable"; REASON="it needs core $CMIN and the core floor is unknown"; finish 0; fi
   if ! version_ge "$FLOOR" "$CMIN"; then STATUS="not-applicable"; REASON="it needs core $CMIN, above the floor $FLOOR"; finish 0; fi
 fi
@@ -262,7 +251,7 @@ case "$ENGINE" in
     ;;
   info-yml)
     REQ="$(pq .requirement)"
-    if [[ "$REQ" == plan:* ]]; then REQ="$(own_plan ".${REQ#plan:}")"; fi
+    if [[ "$REQ" == plan:* ]]; then REQ="$(plan_get_own "$SUBJECT" ".${REQ#plan:}")"; fi
     [[ -n "$REQ" ]] || die "Recipe $RECIPE needs the core requirement: no upgrade plan of this module gives it (pass --param requirement=...)." 1
     # Never above the declared floor: the main info.yml's requirement.
     MAIN_REQ="$(sed -n 's/^core_version_requirement[[:space:]]*:[[:space:]]*//p' "$SUBJECT/$(subject_machine_name "$SUBJECT" 2> /dev/null || basename "$SUBJECT").info.yml" 2> /dev/null | sed -n '1p' | tr -d "'\"")"

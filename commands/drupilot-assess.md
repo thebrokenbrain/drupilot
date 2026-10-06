@@ -1,5 +1,5 @@
 ---
-description: Run a non-destructive Drupal 9/10 to 11 viability assessment (Rector --dry-run + PHPStan + PHPCS, plus upgrade_status if Drupal is installed) and produce a viability-report.md with an S/M/L/XL verdict and a phased porting plan. Use when the user wants to know how hard a module/theme is to port before touching any code.
+description: Run a non-destructive Drupal 9/10 to 11 viability assessment in the Drupal test-bed (assess.sh computes an S/M/L/XL verdict from the Rector --dry-run, PHPStan and PHPCS findings into assess.json and a viability-report.md), then narrate it and write a phased porting plan. Use when the user wants to know how hard a module/theme is to port before touching any code.
 argument-hint: "[module-or-theme-path]"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, Skill, AskUserQuestion
 ---
@@ -8,9 +8,10 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, Skill, AskUserQuestion
 
 You are assessing how hard it is to port a Drupal 9/10 module or theme to Drupal 11.
 This command performs **only static, non-destructive analysis**: it never writes to
-the subject's source files. It produces a `viability-report.md` with an effort
-verdict (S/M/L/XL) and a phased porting plan, and caches the result so
-`/drupilot-status` and later commands do not recompute it.
+the subject's source files. `scripts/analysis/assess.sh` computes the effort
+verdict (S/M/L/XL) deterministically into `assess.json`, renders
+`viability-report.md`, and caches the result so `/drupilot-status` and later
+commands do not recompute it; you narrate it and write the phased porting plan.
 
 Subject path argument: `$1` (fallback: the current working directory).
 
@@ -50,6 +51,14 @@ If the subject is not a Drupal extension directory (no `*.info.yml`), say so and
 ask the user for the correct path. Note whether `core_version_requirement` is
 present — a missing one is a blocking `info.yml` finding.
 
+If `drupal_root` is `<none>`, STOP: `assess.sh` runs Rector and PHPStan in the
+subject's Drupal root (the test-bed), so tell the user to **run `/drupilot-setup`
+first**, then `/drupilot-assess` again. Run no analysis and write no file. When
+setup already placed a loose subject in a sibling test-bed,
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/resolve-workspace.sh" --subject "$1" --json`
+names the placed copy (`subject_dest_abs` with `already_placed: true`): offer to
+assess that path instead.
+
 ## Step 1.5 — Is someone already porting this? (contrib only)
 
 For a contrib project hosted on drupal.org, check the issue queue before spending
@@ -72,197 +81,100 @@ the fallback.
 
 ## Step 2 — Load the operating procedure
 
-Invoke the **viability-assessment** skill to load the exact toolchain commands,
-the classification rules, and the digests handling caveats. Follow its procedure.
+Invoke the **viability-assessment** skill: it explains every field of
+`assess.json` and how to narrate it. Then delegate the narration and the plan to
+the **drupal-viability-analyst** subagent (via the Task tool): it reads the
+verdict `assess.sh` computed, never a verdict of its own.
 
-Then delegate the heavy interpretation to the **drupal-viability-analyst**
-subagent (via the Task tool): it knows how to read Rector / PHPStan /
-upgrade_status output, separate auto-fixable deprecations from manual work, spot
-hard breaks (Twig 3, CKEditor 5, jQuery UI, Symfony 7), and estimate effort.
-
-## Step 3 — Run the static analyzers (all read-only)
-
-Run each leaf script with the resolved subject path. These derive the PHP target
-from `DRUPILOT_PHP_TARGET` (default `8.3`) and auto-detect whether to run through
-`ddev exec` or host binaries.
-
-1. **Rector dry-run — official rules** (never `--apply` here):
-
-   ```bash
-   !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "$1"
-   ```
-
-   **Exit 3 means Rector crashed** (`status: "error"` with `--json`; e.g.
-   `[ERROR] Could not detect twig set.`): there is no auto-fixable count — never
-   report it as "0 files would change". Show the diagnostic it prints (installed vs
-   known-good toolchain), stop the assessment and repair the toolchain with
-   `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-toolchain.sh" --dir <drupal_root> --source reference`
-   (or `/drupilot-setup`), then re-run. A message starting `DET-1:` (`errors[].pass`
-   0) is not a crash: Rector did not run, because DDEV is down for a root with a
-   DDEV project or a tool differs from the lock's pins. Start DDEV, or restore the
-   pins (`install-toolchain.sh --dir <drupal_root>`) or accept the installed versions
-   (`lock-sync.sh --dir <drupal_root>`), never `--source reference` for it, then re-run.
-
-2. **Rector dry-run — complementary digests layer**, only if
-   `DRUPILOT_USE_DIGESTS_RULES` is true. This clones/updates the unlicensed,
-   AI-generated `dbuytaert/drupal-digests` repo into the plugin cache and runs it
-   by `--config`. Treat its hits as *candidate* edge-case deprecations, not
-   ground truth (see the skill and PROMPT 2.1.1):
-
-   ```bash
-   !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "$1" --digests
-   ```
-
-   **Exit 4 means only the digests pass crashed** (`status: "partial"`, `digests_status: "error"` with `--json`; e.g. a broken upstream rule file): the official count from step 1 stands, the toolchain is fine — do **not** reinstall it. Pin a known-good digests commit (`--digests-ref <sha>` / `DRUPILOT_DIGESTS_REF`) or skip the layer (`DRUPILOT_USE_DIGESTS_RULES=false`); the broken SHA is never frozen in the lockfile.
-   Record the digests line as "not available (digests ruleset crash)" and go on.
-
-3. **PHPStan** at the deprecation level (`DRUPILOT_PHPSTAN_LEVEL`, default `2`):
-
-   ```bash
-   !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "$1"
-   ```
-
-   Then split its deprecations into **hard** (removed in a major ≤ the target,
-   e.g. `user_roles()`, removed in 11.0.0: must fix), **soft** (removed in a later
-   major, e.g. `user_load_by_name()`/`text_summary()`/`check_markup()`, deprecated
-   in 11.4.0 and removed from 13.0.0: they work on every Drupal 11 core) and
-   **unknown** (no readable removal version: counted as hard):
-
-   ```bash
-   !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "$1" --json | bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/classify-deprecations.sh" --subject "$1" --json
-   ```
-
-   Only hard + unknown deprecations feed the effort verdict; soft ones go to the
-   report's "Soft deprecations" table with the action `DRUPILOT_SOFT_DEPRECATIONS`
-   gives them in Phase 1 (`report` by default).
-
-4. **PHPCS** (`Drupal` + `DrupalPractice`, no autofix during assessment):
-
-   ```bash
-   !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpcs.sh" --subject "$1"
-   ```
-
-5. **Upgrade Status** — only if Drupal is actually installed (needs a running
-   DDEV environment + bootstrap + DB). The script soft-skips with a clear message
-   when Drupal is not installed; do not treat that skip as a failure:
-
-   ```bash
-   !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-upgrade-status.sh" --module "$(bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; subject_machine_name "${1:-$PWD}"' -- "$1")"
-   ```
-
-6. **Core signature changes** — no toolchain needed, runs even before
-   `/drupilot-setup`. Flags the module's collisions with the verified catalog of
-   Drupal 10 → 11 signature changes (a `ConfigFormBase` subclass passing one
-   argument to `parent::__construct()`, a local `getOriginal()` /
-   `buildRevisionCacheId()` that core adds in 11.2 / 11.3, a hook implementation
-   requiring a parameter only 11.3 passes). Judge it at the floor the port will
-   keep: by default the floor of the current `core_version_requirement`; pass
-   `--core-floor 10.3` (say) when the recommended target keeps `^10.3 || ^11`.
-   Exit 3 here is not a failure of the assessment: every error finding is a
-   **manual** item of the plan (Rector does not fix them) and feeds the effort:
-
-   ```bash
-   !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/scan-signature-changes.sh" --subject "$1" --json
-   ```
-
-7. **Pre-existing hygiene** — no toolchain needed. Config without schema, a
-   `configure:` route that does not exist, orphan services / letter-case
-   mismatches, service arguments vs the constructor, submodules on an obsolete
-   `core_version_requirement`, and dependencies the code uses but `dependencies:`
-   does not declare (with the proposed `<project>:<module>` entry). Always exit
-   0; it **reports, never fixes**, and does **not** feed the effort verdict:
-
-   ```bash
-   !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/lint-extension-metadata.sh" --subject "$1" --json
-   ```
-
-Capture each tool's raw output for the report appendix. If a tool's prerequisites
-are missing (e.g. the dev toolchain is not installed because `/drupilot-setup`
-has not run), note it as "not measured" rather than inventing numbers.
-
-## Step 4 — Classify, estimate, and decide
-
-Hand the collected output to the analyst. Produce:
-
-- **Auto-fixable vs manual**: how many findings Rector (official + digests) can
-  fix automatically vs. what needs hand work. Express it as a rough percentage.
-  Count only **hard** (and unknown) deprecations; list the **soft** ones
-  separately with symbol, deprecated in, removed in, effort and the policy action.
-- **Hard breaks**: Twig 3 (removed filters/functions, `spaceless`), CKEditor 5
-  (CKEditor 4 gone), jQuery / jQuery UI (`core/jquery.ui.*` removed), Symfony 7
-  (event subscriber / type-hint changes), PHPUnit 10/11, Guzzle 7, Drush 13.
-- **`info.yml` status**: is `core_version_requirement` present and D11-compatible?
-- **Contrib dependencies**: do the declared `dependencies:` have D11-ready
-  releases? Flag any that do not.
-- **Pre-existing hygiene**: the lint's findings (step 7) go into the report's
-  "Pre-existing hygiene (not fixed in Phase 1)" table and `assess.json`'s
-  `hygiene: {error, warn, info}` — outside the S/M/L/XL rubric. Plan the
-  submodule `core_version_requirement` bump into Phase 1; list the rest as
-  follow-ups.
-- **Effort verdict**: one of **S / M / L / XL**, with a one-paragraph rationale.
-  Compare against the resolved `viability_threshold` from Step 1
-  (`DRUPILOT_VIABILITY_THRESHOLD`: `small`/`medium`/`large`/`xl` ≡ S/M/L/XL;
-  default `medium`) and use that value for the report's threshold check
-  (`{{VIABILITY_THRESHOLD}}`); if the effort strictly exceeds the threshold, say so plainly — but **still deliver a plan**. drupilot
-  never refuses: it offers a staged plan that preserves the original behavior
-  without colliding with native D11 APIs.
-
-You may consult the AI-written core-change summaries in the digests cache
-(`issues/*.md`) for context on *why* an API changed, to make the plan clearer.
-Do not copy that text into the plugin repo (the digests repo is unlicensed).
-
-## Step 5 — Write the report (from the template) and cache it
-
-Render the report from the template, substituting the `{{PLACEHOLDER}}` tokens
-with the resolved facts and findings:
-
-- Template: `@${CLAUDE_PLUGIN_ROOT}/templates/viability-report.md.tmpl`
-- Write the **human-readable** `viability-report.md` into the visible `.drupilot/`
-  artifacts dir at the Drupal root (helper `project_artifacts_dir`; when no Drupal
-  root exists yet — assess can run before setup — it falls back to
-  `<subject>/.drupilot/`, or to the hidden state dir for a module of a larger
-  repository such as a monorepo clone). Resolve the directory and write there:
+## Step 3 — Run the assessment (one script, read-only for the code)
 
 ```bash
-!bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; \
-  SUBJECT="${1:-$PWD}"; printf "%s\n" "$(project_artifacts_dir "$SUBJECT")/viability-report.md"' \
-  -- "$1"
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/assess.sh" --subject "$1" --json
 ```
 
-Write the report to that path with the Write tool. Also write a small companion
-**machine-readable** `assess.json` into the hidden per-project **state dir**
-(`project_state_dir`, under `$HOME` — never in the project tree, so it cannot leak
-into a contribution) capturing the verdict, the auto-fixable percentage, the
-hard-break list, and a timestamp, so `/drupilot-status` can show a one-line summary
-without re-reading the whole report:
+`assess.sh` runs the assess stage's deterministic tools (the official Rector
+dry-run, PHPStan, PHPCS, the port-safety checks, the signature scan and the
+metadata lint, through `scripts/ai/extract.sh`), normalizes and classifies their
+findings, asks `core-strategy.sh` and `deps-status.sh`, and computes the
+**S/M/L/XL verdict from three counts** (ADR 0025). It writes `assess.json` to the
+hidden state dir, renders `viability-report.md` into the visible `.drupilot/`
+dir, records the `assessed` stage with its effort, and prints `assess.json` on
+STDOUT. The same tree, lock and drupal.org answers give the same `assess.json`
+outside `meta`. Exit codes:
+
+- **0** — assessed: go on to Step 4.
+- **1** — a usage error, not a Drupal extension (no `<machine_name>.info.yml`),
+  no Drupal root to run the assess stage in (run `/drupilot-setup` first), or
+  no findings to assess. Relay its message and stop.
+- **2** — `jq` is missing: tell the user to run `/drupilot-doctor`, and stop.
+- **3** — **provisional**: Rector or PHPStan gave no verdict. `assess.json` has
+  `provisional: true` and `tools` says which tool failed; the counts are
+  incomplete and the `assessed` stage is not recorded. Report it as a
+  **blocker**, never as zero findings or a final verdict. A crash (e.g. a
+  Rector `[ERROR] Could not detect twig set.`): show the diagnostic it prints
+  and repair the toolchain with
+  `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-toolchain.sh" --dir <drupal_root> --source reference`
+  (or `/drupilot-setup`), then re-run. A message starting `DET-1:` is not a
+  crash: DDEV is down for a root with a DDEV project, or a tool differs from the
+  lock's pins. Start DDEV, or restore the pins (`install-toolchain.sh --dir
+  <drupal_root>`) or accept the installed versions (`lock-sync.sh --dir
+  <drupal_root>`), never `--source reference` for it, then re-run.
+
+The digests layer is not part of the assessment: a deprecation only a digests
+rule fixes counts as manual, and its candidate rules are reviewed in
+`/drupilot-port`.
+**Upgrade Status** (optional context, only when Drupal is installed; not part
+of `assess.json`): on a Drupal 11 bed it reports the *next* major's issues, so
+they never count toward the verdict:
 
 ```bash
-!bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; \
-  SUBJECT="${1:-$PWD}"; printf "%s\n" "$(project_state_dir "$SUBJECT")/assess.json"' \
-  -- "$1"
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-upgrade-status.sh" --module <machine_name>
 ```
 
-The visible `.drupilot/viability-report.md` is the developer-facing copy; the
-machine cache in the hidden state dir is what later commands read.
+## Step 4 — Narrate the verdict and write the plan
 
-Then record the **assessed** stage and the effort in the subject's `state.json`
-(the per-module registry `/drupilot-status` and the router read). Run it
-yourself, substituting the subject path and the S/M/L/XL verdict you wrote:
+Hand `assess.json` to the analyst (it reads that file and does not run
+`assess.sh` again). Never recompute or override its numbers: narrate them.
 
-```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <subject_path> --stage assessed --effort <S|M|L|XL>
-```
+- **Verdict**: `verdict`, with the three counts and the matched rule from
+  `rubric` (quote `rubric.rule` verbatim), and `above_threshold` against
+  `viability_threshold`. drupilot never refuses: even above the threshold it
+  delivers the staged plan. With `provisional: true`, say the verdict is
+  provisional and name the tool to repair.
+- **Manual work**: `manual_items` (each with its finding id and occurrences):
+  the hard and unknown deprecations no Drupal Rector rule changes in the same
+  function or method, plus the signature and port-safety errors.
+- **Auto-fixable**: `auto_fixable` (the official Rector files and rules).
+- **Hard breaks**: `hard_break_categories` (Twig 3, CKEditor 5, jQuery UI,
+  Symfony 7) with the files that matched. A Symfony 7 hit is the most likely
+  to be harmless: say whether PHPStan flags a real type or signature error
+  there.
+- **Soft deprecations**: `soft_deprecations` with the policy
+  `soft_deprecations_policy`; they never count.
+- **`info.yml`** and the core target: `info_yml`, `core_target`
+  (recommended requirement, `require.php`, version bump, warnings).
+- **Contrib dependencies**: `dependencies` (offline, contrib ones are
+  `unknown`; a blocker counts as `blocking_deps`).
+- **Pre-existing hygiene**: `hygiene` and the metadata findings; they never
+  count.
 
-It only writes drupilot's hidden state (never the subject), so it does not
-break this command's read-only promise for the code.
+Write the staged **`port-plan.md`** from `@${CLAUDE_PLUGIN_ROOT}/templates/port-plan.md.tmpl`
+into the same `.drupilot/` dir as the report, from these fields (Phase 1
+minimal port vs. Phase 2 opt-in refactor); a provisional assessment gets a plan
+marked provisional, whose first step repairs the failing tool. It is the only
+file this command writes by hand: never edit `assess.json` or
+`viability-report.md`. You may consult the AI-written core
+change summaries in the digests cache (`issues/*.md`) for why an API changed;
+never copy that text into the plugin repository (it is unlicensed).
 
-## Step 6 — Summarize in chat
+## Step 5 — Summarize in chat
 
 End with a concise English summary:
 
 - Subject (machine name + type) and the effective PHP / Drupal target.
-- The **S/M/L/XL verdict** and whether it crosses the configured threshold.
-- Auto-fixable vs manual split (rough %).
+- The **S/M/L/XL verdict**, whether it crosses the configured threshold, and
+  whether it is provisional (then the tool to repair comes first).
+- The three counts and the matched rule (`rubric`).
 - The top hard breaks and the `info.yml` / contrib-dependency status.
 - The **phased plan** at a glance: Phase 1 (minimal port via `/drupilot-port`)
   vs. Phase 2 (optional full refactor via `/drupilot-refactor`), and what is
