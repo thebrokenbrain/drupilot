@@ -7,7 +7,7 @@ the data snapshot `golden.json` pins, and compares them; `golden.sh` pins every 
 
 | Case | Subject | What it covers |
 |---|---|---|
-| `legacy_widgets` | `tests/fixtures/legacy_widgets` | Rector, PHPStan (hard and soft deprecations, untyped errors), port-safety, signature and metadata findings, anchors in classes, functions and a submodule. PHPCS fell back to `Drupal,DrupalPractice` (the fixture's ruleset needs PHPCompatibility) and found nothing. |
+| `legacy_widgets` | `tests/fixtures/legacy_widgets` | Rector, PHPStan (soft deprecations and analysis errors), port-safety, signature and metadata findings, anchors in classes, functions and a submodule. PHPCS fell back to `Drupal,DrupalPractice` (the fixture's ruleset needs PHPCompatibility) and found nothing. Hard deprecations, untyped errors, traits and merges are covered by the synthetic reports of `tests/unit/normalize_findings.sh`. |
 | `acme_core` | `tests/fixtures/monorepo` `acme_core` | The clean control: no metadata finding, one PHPStan and two PHPCS findings. |
 | `acme_api` | `tests/fixtures/monorepo` `acme_api` | The `services-arity` and `undeclared-deps` metadata findings, with the other monorepo modules on the bed. |
 

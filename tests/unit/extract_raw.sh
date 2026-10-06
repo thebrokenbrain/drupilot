@@ -94,7 +94,38 @@ ex --subject "$R/$S" --stage validate
 assert_eq "--stage validate: its own files, the assess ones kept" \
   "$T_RC|$(find "$RAW" -name '10-validate-*.json' | grep -c . || true)|$(find "$RAW" -name '04-assess-*.json' | grep -c . || true)" '0|8|9'
 ex --subject "$R/$S"
-assert_eq "  a stage's previous raw files are replaced" "$([[ -e "$RAW/04-assess-stale.json" ]] && echo kept || echo removed)" "removed"
+assert_eq "  only the stage's tool files are replaced: another file is left alone" "$([[ -e "$RAW/04-assess-stale.json" ]] && echo kept || echo removed)" "kept"
+rm -f "$RAW/04-assess-stale.json"
+
+# The stage's raw files from another NN (the stage moved in pipeline.json) go
+# too; a stage whose id merely starts with another's is left alone.
+printf '{}\n' > "$RAW/02-assess-rector.json"; printf '{}\n' > "$RAW/02-assess-x-rector.json"
+ex --subject "$R/$S"
+assert_eq "an old NN of the stage is removed, another stage's file kept" \
+  "$([[ -e "$RAW/02-assess-rector.json" ]] && echo kept || echo removed)|$([[ -e "$RAW/02-assess-x-rector.json" ]] && echo kept || echo removed)" "removed|kept"
+
+# A PHPStan error in a trait: its key names the class context; the anchor is
+# asked for the trait's file.
+jq -n --arg s "$R/$S" '{totals: {errors: 0, file_errors: 1}, files: {($s + "/src/T.php (in context of class M\\A)"): {messages: [{message: "Boom", line: 7}]}}}' > "$R/out.run-phpstan"
+ex --subject "$R/$S"
+assert_eq "a trait error: the anchor request names the trait's file" \
+  "$(jq -c '[.[] | select(.line == 7) | .file]' "$RAW/04-assess-anchors.json")" '["web/modules/custom/m/src/T.php"]'
+
+# Rector gave no report at all (exit 2, no JSON): no verdict, exit 3.
+printf 'not json\n' > "$R/out.run-rector"; printf '2' > "$R/rc.run-rector"
+ex --subject "$R/$S"
+assert_eq "Rector printed no report: exit 3" "$T_RC" "3"
+rm -f "$R/rc.run-rector"
+jq -n '{status: "error", tool: "rector", errors: [{pass: 1, exit_code: 1, message: "boom"}], file_diffs: []}' > "$R/out.run-rector"
+ex --subject "$R/$S"
+assert_eq "Rector's report says error (exit 0): exit 3" "$T_RC" "3"
+
+# The index's target major comes from the Drupal root's settings, not the caller's.
+printf '{"DRUPILOT_TARGET_MAJOR": "12"}\n' > "$R/.drupilot.json"
+jq -n --arg s "$S" '{status: "ok", tool: "rector", file_diffs: []}' > "$R/out.run-rector"
+ex --subject "$R/$S" --json
+assert_eq "the target major of the root's .drupilot.json" "$(jq -c '.target_major' "$T_OUT")" "12"
+rm -f "$R/.drupilot.json"
 
 # Usage errors.
 ex --subject "$R/$S" --stage nope

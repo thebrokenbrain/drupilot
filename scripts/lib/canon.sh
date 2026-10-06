@@ -165,12 +165,15 @@ relpath_strip_runner() {
 # canon_jq_defs -> the jq definitions of the canonical forms, to prefix a jq
 # program with (normalize-findings uses them on every finding at once):
 #   finding_norm_message   the message part of a finding id (05 §2.4): "on
-#                          line N" dropped, every whitespace run (newlines
-#                          included) made one space, trimmed. Runner paths
-#                          are stripped before (canon_json ROOT strips them
-#                          in the whole raw document).
+#                          line N" dropped, PHPStan's anonymous class name
+#                          (class@anonymous/<file>:<line>) made
+#                          class@anonymous, every whitespace run (newlines
+#                          included) made one space, trimmed: a line shift
+#                          keeps the message. Runner paths are stripped
+#                          before (canon_json ROOT strips them in the whole
+#                          raw document).
 canon_jq_defs() {
-  printf '%s\n' 'def finding_norm_message: gsub("\\s+on line [0-9]+"; "") | gsub("\\s+"; " ") | ltrimstr(" ") | rtrimstr(" ");'
+  printf '%s\n' 'def finding_norm_message: gsub("\\s+on line [0-9]+"; "") | gsub("class@anonymous[^\\s:]*:[0-9]+"; "class@anonymous") | gsub("\\s+"; " ") | ltrimstr(" ") | rtrimstr(" ");'
   return 0
 }
 

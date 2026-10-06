@@ -38,6 +38,9 @@ assert_eq "whitespace runs and newlines become one space, trimmed" "$(printf '  
 assert_eq "runner paths dropped, the host one too" \
   "$(printf 'Class Foo in /var/www/html/web/a.php and %s/web/b.php' "$ROOT" | finding_norm_message "$ROOT")" \
   "Class Foo in web/a.php and web/b.php"
+assert_eq "an anonymous class loses its file and line" \
+  "$(printf 'Method class@anonymous/web/modules/custom/m/src/A.php:12::run() has no return type.' | finding_norm_message)" \
+  'Method class@anonymous::run() has no return type.'
 assert_eq "\"on line N\" dropped" "$(printf 'Variable $x might not be defined on line 42.' | finding_norm_message)" \
   'Variable $x might not be defined.'
 assert_eq "the same finding from both runners and lines: one message" \
