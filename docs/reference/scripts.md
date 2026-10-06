@@ -1337,9 +1337,10 @@ ArrayToFirstClassCallableRector or has no withPhpVersion(). rector-compat.php
 follows the same rules when the compat pass runs: written when missing,
 regenerated from an older marker, and regenerated when it is an untouched
 render (its sha256 kept in the lock, or rector_config_pristine) for another
-PHP floor or subject, so a test-bed shared by several modules never runs the
-compat pass with the previous module's config. A hand-edited copy that names
-another subject is kept, with a warning.
+subject (its only token), so a test-bed shared by several modules never runs
+the compat pass with the previous module's config. A kept copy whose
+withPaths() names a relative path that does not exist (Rector stops on it)
+gets a warning.
 
 Every pass runs with --clear-cache (Rector's cache is shared across configs,
 so a file another config cached as unchanged would otherwise be skipped). A

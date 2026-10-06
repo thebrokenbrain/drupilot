@@ -449,7 +449,6 @@ older_drupilot_copy() {
 FILES_JSON=""
 RC=0
 RESTART=0
-TS="$(date -u +%Y%m%dT%H%M%SZ)"
 
 for name in $SELECTED; do
   case "$name" in
@@ -502,10 +501,7 @@ for name in $SELECTED; do
       elif [[ "$DRY" == "1" ]]; then
         if [[ "$FORCE" == "1" ]]; then status="would-replace"; else status="would-upgrade"; fi
       else
-        bdir="$(project_artifacts_dir "$ROOT")/backups"
-        mkdir -p "$bdir"
-        backup="$bdir/$(basename "$dest").$TS"
-        cp -p "$dest" "$backup"
+        backup="$(config_backup "$ROOT" "$dest")" || die "Could not back up $dest." 1
         cat "$tmp" > "$dest"
         if [[ "$FORCE" == "1" ]]; then
           status="replaced"
