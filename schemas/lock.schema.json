@@ -71,6 +71,11 @@
       "type": "string",
       "pattern": "^sha256:[0-9a-f]{64}$"
     },
+    "lenient_packages": {
+      "description": "The packages mglaman/composer-drupal-lenient lets install on the test-bed despite their drupal/core constraint, as its composer.json allowed-list has them (lenient_packages; [\"*\"] with allow-all), recorded by install-toolchain.sh when DRUPILOT_LENIENT_DEPS was used (AR-14, AR-28).",
+      "type": "array",
+      "items": {"type": "string"}
+    },
     "toolchain_cell": {
       "description": "The cell of config/toolchain-reference.json the toolchain was installed from (install-toolchain.sh, from 1.0). A lock that pins rector/rector without it was written by drupilot 0.9 and is read as cell legacy_v1 until it is refreshed.",
       "type": "string"
