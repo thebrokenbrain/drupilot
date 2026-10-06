@@ -98,7 +98,7 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-classify.XXXXXX")"
 trap 'rm -rf "$TMP" 2> /dev/null || true' EXIT
 # The recipes in effect: the overlay's ids replace the plugin's.
 recipes_effective "$RECIPES" "$OVERLAY" "$TMP/recipes.json" \
-  || die "$RECIPES${OVERLAY:+ or $OVERLAY} is not a recipe catalog (every recipe: id, a lane of AR-10, matches, a template with why)." 1
+  || die "$RECIPES${OVERLAY:+ or $OVERLAY} is not a recipe catalog (every recipe: id, a worklist lane, matches, a template with why)." 1
 # What apply-recipes.sh already did per (finding, recipe, version): the last
 # recipe-apply action. An applied one counts only while its output is still
 # the file's content (a revert or another edit undoes it).

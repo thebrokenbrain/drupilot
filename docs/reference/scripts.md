@@ -109,10 +109,14 @@ Each application is one line of the subject's actions log,
 later, the AI did, kept apart from the human decisions.jsonl of
 log-decision.sh): {schema, kind: "recipe-apply", item_id, finding_id,
 recipe, version, file, line, status, input_hash, output_hash,
-findings_hash, at}. classify.sh reads it: a codemod that gave no change (or
-that was applied and, after the re-extraction, left its finding there)
-moves the finding to ai-templated, and an item whose codemods were all
-applied on the current findings is `applied`.
+findings_hash, at}; a crash of apply-recipe.sh is status error, and after the
+re-extraction a codemod applied now whose finding is still there gets a
+not-cleared line. classify.sh reads it: a codemod that gave no change,
+failed or did not clear its finding moves the finding to ai-templated, and
+an item whose codemods were all applied on the current findings (their
+output still in the file) is `applied`. The recipes are the plugin's with
+the project overlay (<root>/.drupilot/recipes.json), as classify.sh uses
+them; an application already in effect is not run again.
 
 Usage:
   apply-recipes.sh --subject DIR [--reextract] [--dry-run] [--json]
@@ -126,7 +130,8 @@ Usage:
                      finding_id, recipe, file, line, status}], applied,
                      not_applied, reextracted, worklist: {counts}} on STDOUT
 
-Exit codes: 0 done · 1 usage error, no worklist.json or findings.json · 3 a
+Exit codes: 0 done · 1 usage error, no worklist.json or findings.json, a
+recipe catalog that is not one, or a re-extraction step that failed · 3 a
 codemod was rejected (a postcondition failed: that file is unchanged), or the
 re-extraction gave no verdict (extract.sh exit 3).
 ```
@@ -149,16 +154,20 @@ codemod > ai-templated > ai-free > test-adapt > human > deferred.
                 the plugin's) that matches the finding — by rule, then
                 symbol, then message, then id — and whose applies_when
                 holds (file, severity, core_min against the declared floor
-                F: a recipe never applies above F). A codemod that does not
-                apply, that already gave no change on this finding, or that
-                was applied on an earlier extraction and left the finding
-                there (the actions log of scripts/ai/apply-recipes.sh),
-                falls to ai-templated with its template. A codemod applied
-                on these very findings (same findings_hash) makes its item
-                `applied` until the re-extraction.
+                F, read from the subject's own frozen plan: a recipe never
+                applies above F). A codemod that does not apply, or whose
+                last action on this finding (the actions log of
+                scripts/ai/apply-recipes.sh) changed nothing, failed, was
+                found not to clear it (not-cleared, S7) or was applied on
+                an earlier extraction with the finding still there, falls
+                to ai-templated with its template. A codemod applied on
+                these very findings whose output is still in the file makes
+                its item `applied` until the re-extraction; one whose output
+                is gone (a revert) is tried again.
   ai-free       an analysis error or deprecation no recipe matches
   human         a catalog finding no recipe matches
-  test-adapt    an ai-templated or ai-free finding in a file under tests/
+  test-adapt    an ai-templated or ai-free finding in a file under a tests/
+                directory (the module's or a submodule's)
 
 Idempotent: the same findings.json, recipes, floor and actions give the same
 worklist.json outside meta (DET-2).

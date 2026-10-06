@@ -59,10 +59,11 @@ The id never includes the line number, so moving code keeps its findings' ids. F
 `scripts/ai/classify.sh` turns `findings.json` into `worklist.json`, in the same hidden state dir (schema `schemas/worklist.schema.json`, [ADR 0024](../contributing/adr/0024-worklist-and-actions.md)). Each finding gets a lane, and the findings of one file, anchor and lane make one item. The lanes are, in priority order:
 
 - `rector`: a Rector change, applied by its pass.
+- `rector-custom`: a single Rector rule a recipe names (no recipe uses it yet).
 - `codemod`: a deterministic fix from [the recipes](recipes.md).
 - `ai-templated`: the AI fixes it following a recipe's text.
 - `ai-free`: an error no recipe covers.
-- `test-adapt`: either of the two above in a file under `tests/`.
+- `test-adapt`: either of the two above in a file under a `tests/` directory.
 - `human`: a person decides.
 - `deferred`: nothing to do in this port: a deprecation removed only in a later major, an info finding, or a style finding (Phase 1 keeps the diff minimal).
 
@@ -70,7 +71,8 @@ A recipe applies only when its conditions hold, its required core included: neve
 
 `scripts/ai/apply-recipes.sh --subject DIR [--reextract]` applies the open codemods (pipeline step S6). Each application is one line of `actions.jsonl`, the machine record of what the recipes did: the finding, the recipe and its version, the outcome, and the file's hash before and after. Your `decisions.jsonl` of divergences is a separate file. The worklist is then classified again:
 
-- a codemod that changed nothing hands its finding to `ai-templated`;
-- with `--reextract` (step S7), the tools run again on the new tree, and a finding a codemod could not clear goes to `ai-templated` too.
+- a codemod that changed nothing, or failed, hands its finding to `ai-templated`;
+- with `--reextract` (step S7), the tools run again on the new tree, and a finding a codemod could not clear goes to `ai-templated` too;
+- a codemod whose change is no longer in the file (you reverted it) is tried again.
 
 The same findings, recipes and actions always give the same worklist outside `meta`.
