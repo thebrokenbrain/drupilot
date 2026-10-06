@@ -26,21 +26,27 @@ digests_rector_version() {
 # digests_implemented_yml ROOT -> the path of drupal-rector's
 # docs/implemented-digests.yml at the version ROOT installs (03-R17: the
 # digests rules drupal-rector already implements). The package's docs/ is
-# export-ignored, so the file is fetched once from GitHub at that tag and
-# cached under <cache>/drupal-rector/<version>/; its sha256 and version are
-# frozen in ROOT's lock (.digests.implemented_yml_sha256 / _ref). A cached
-# copy whose sha256 is not the one frozen for this version is fetched again;
-# still not it, or nothing cached and nothing to fetch it from (offline):
-# nothing, return 1.
+# export-ignored, so the file is fetched from GitHub at that tag and cached
+# under <cache>/drupal-rector/<version>/; its sha256 and version are frozen in
+# ROOT's lock (.digests.implemented_yml_sha256 / _ref). Deterministic, with a
+# frozen sha256 for this version: a cached copy that is not it is fetched
+# again; still not it: nothing, return 1. With nothing frozen, or with
+# DRUPILOT_DETERMINISTIC=false (which refreshes the lock), it is fetched (the
+# cached copy when offline) and its sha256 frozen. Nothing cached and nothing
+# to fetch it from (offline): nothing, return 1.
 digests_implemented_yml() {
-  local root="${1:-}" v ref d f url want="" fref got
+  local root="${1:-}" v ref d f url want="" fref got fetch=0
   v="$(digests_rector_version "$root")"
   [[ -n "$v" ]] || return 1
   ref="${v#v}"; case "$ref" in dev-*) ref="${ref#dev-}";; esac
   d="$(cache_dir)/drupal-rector/$ref"; f="$d/implemented-digests.yml"
-  fref="$(DRUPILOT_PROJECT_DIR="$root" lock_get .digests.implemented_yml_ref "")"
-  [[ "$fref" == "$ref" ]] && want="$(DRUPILOT_PROJECT_DIR="$root" lock_get .digests.implemented_yml_sha256 "")"
-  if [[ ! -s "$f" ]] || { [[ -n "$want" ]] && [[ "$(file_hash "$f")" != "$want" ]]; }; then
+  if DRUPILOT_PROJECT_DIR="$root" deterministic_mode; then
+    fref="$(DRUPILOT_PROJECT_DIR="$root" lock_get .digests.implemented_yml_ref "")"
+    [[ "$fref" == "$ref" ]] && want="$(DRUPILOT_PROJECT_DIR="$root" lock_get .digests.implemented_yml_sha256 "")"
+  fi
+  if [[ -z "$want" || ! -s "$f" ]]; then fetch=1
+  elif [[ "$(file_hash "$f")" != "$want" ]]; then fetch=1; fi
+  if [[ "$fetch" == "1" ]]; then
     mkdir -p "$d" 2> /dev/null || return 1
     url="https://raw.githubusercontent.com/palantirnet/drupal-rector/$ref/docs/implemented-digests.yml"
     if have_cmd curl; then curl -fsSL --max-time 20 "$url" -o "$f.tmp.$$" < /dev/null 2> /dev/null || rm -f "$f.tmp.$$"
@@ -59,51 +65,133 @@ digests_implemented_yml() {
   return 0
 }
 
-# digests_rules DIR -> "file<TAB>class<TAB>nid" for each rule DIR/all.php
-# loads (its require_once lines) and registers (withRules): the class the
-# rule file declares, the drupal.org nid its file name ends with.
-digests_rules() {
-  local dir="${1:-}" f cls nid reg
+# digests_registered DIR -> the short class names DIR/all.php registers
+# (withRules), one per line, so a caller can tell a registered rule no
+# require_once file declares.
+digests_registered() {
+  local dir="${1:-}"
   [[ -f "$dir/all.php" ]] || return 0
-  reg="$(sed -n 's/.*->withRules(\[\(.*\)\]).*/\1/p' "$dir/all.php" | tr ',' '\n' | sed -e 's/::class//' -e 's/^[[:space:]\\]*//' -e 's/[[:space:]]*$//')"
+  awk '/->withRules\(\[/ { on = 1 } on && !done { print } on && /\]\)/ { done = 1 }' "$dir/all.php" \
+    | tr '\n' ' ' | sed -e 's/.*->withRules(\[//' -e 's/\]).*//' | tr ',' '\n' \
+    | sed -e 's/::class//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/.*\\//' | grep -v '^$' || true
+  return 0
+}
+
+# digests_rules DIR -> "file<TAB>class<TAB>nid" for each rule file DIR/all.php
+# loads (its require_once lines): the class it declares that all.php registers
+# (withRules, read across lines; a code sample's class in the same file is not
+# registered) and the drupal.org nid its file name ends with. A file with no
+# registered class is printed with an empty class, so the caller can tell a
+# layout it cannot read from a rule it filters out.
+digests_rules() {
+  local dir="${1:-}" f cls nid reg c
+  [[ -f "$dir/all.php" ]] || return 0
+  reg="$(digests_registered "$dir")"
   sed -n "s/^require_once __DIR__ \. '\/\(rules\/[^']*\)';.*/\1/p" "$dir/all.php" | while IFS= read -r f; do
-    [[ -f "$dir/$f" ]] || continue
-    cls="$(sed -n 's/^[[:space:]]*\(final[[:space:]]\{1,\}\|abstract[[:space:]]\{1,\}\)\{0,1\}class[[:space:]]\{1,\}\([A-Za-z0-9_]\{1,\}\).*/\2/p' "$dir/$f" | sed -n '1p')"
-    [[ -n "$cls" ]] || continue
-    printf '%s\n' "$reg" | grep_q -Fx -- "$cls" || continue
+    cls=""
     nid="$(printf '%s' "$f" | sed -n 's/.*-\([0-9]\{1,\}\)\.php$/\1/p')"
+    if [[ -f "$dir/$f" ]]; then
+      for c in $(sed -n -E 's/^[[:space:]]*((final|abstract|readonly)[[:space:]]+)*class[[:space:]]+([A-Za-z0-9_]+).*/\3/p' "$dir/$f"); do
+        if printf '%s\n' "$reg" | grep_q -Fx -- "$c"; then cls="$c"; break; fi
+      done
+    fi
     printf '%s\t%s\t%s\n' "$f" "$cls" "$nid"
   done
   return 0
 }
 
-# digests_implemented_skips YML ROOT -> "nid<TAB>status" for each entry of
-# implemented-digests.yml a digests rule of that nid must be skipped for:
-# config-only, or implemented by classes that all exist in the drupal-rector
-# ROOT installs (vendor/palantirnet/drupal-rector/src; the file also marks
-# implemented some rules only an open pull request has). Line-oriented: the
-# file's own layout (two-space nid keys, four-space fields, "class:" a name or
-# a "- name" list).
+# _digests_php_code FILE -> FILE without its comment lines (//, #, /* and *
+# lines) and trailing // comments, for the set and class scans.
+_digests_php_code() {
+  sed -e '/^[[:space:]]*\/\//d' -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*\/\*/d' -e '/^[[:space:]]*\*/d' -e 's#[[:space:]]//.*$##' "$1" 2> /dev/null || true
+  return 0
+}
+
+# _digests_abs FILE -> FILE's physical path (its directory resolved), or
+# nothing when its directory does not exist.
+_digests_abs() {
+  local d
+  d="$(cd "$(dirname "$1")" 2> /dev/null && pwd -P)" || return 0
+  [[ -f "$d/$(basename "$1")" ]] && printf '%s/%s\n' "$d" "$(basename "$1")"
+  return 0
+}
+
+# _digests_set_file V SET -> the config file drupal-rector's set constant SET
+# (Drupal<N>SetList::CONST) names in the drupal-rector at V, or nothing when V
+# does not declare it.
+_digests_set_file() {
+  local v="$1" cls="${2%%::*}" c="${2#*::}" rel
+  [[ -f "$v/src/Set/$cls.php" ]] || return 0
+  rel="$(sed -n -E "s/^[[:space:]]*(public[[:space:]]+)?const[[:space:]]+${c}[[:space:]]*=[[:space:]]*__DIR__[[:space:]]*\.[[:space:]]*'([^']+)'.*/\2/p" "$v/src/Set/$cls.php" | sed -n '1p')"
+  [[ -n "$rel" ]] && _digests_abs "$v/src/Set/$rel"
+  return 0
+}
+
+# digests_official_classes ROOT CONFIG -> the short names of the Rector rules
+# the official pass's CONFIG (the rector.php run-rector.sh runs) applies
+# through drupal-rector's sets: each Drupal<N>SetList::CONST CONFIG names
+# (comment lines left out) resolved to its config file in ROOT's drupal-rector,
+# every config file those reach (a nested set, an __DIR__ include), and every
+# *Rector::class each of them names. One per line, sorted; nothing when
+# drupal-rector is not installed. A digests rule drupal-rector implements in a
+# set CONFIG does not load is not among them (a Drupal 11 set on a port to 11).
+digests_official_classes() {
+  local root="${1:-}" cfg="${2:-}" v queue seen="" f code s inc
+  v="$root/vendor/palantirnet/drupal-rector"
+  [[ -d "$v/src/Set" && -f "$cfg" ]] || return 0
+  queue="$(_digests_php_code "$cfg" | grep -oE 'Drupal[0-9]+SetList::[A-Z0-9_]+' | sort -u | while IFS= read -r s; do _digests_set_file "$v" "$s"; done || true)"
+  {
+    while [[ -n "$queue" ]]; do
+      f="$(printf '%s\n' "$queue" | sed -n '1p')"; queue="$(printf '%s\n' "$queue" | sed '1d')"
+      [[ -n "$f" ]] || continue
+      if printf '%s\n' "$seen" | grep_q -Fx -- "$f"; then continue; fi
+      seen="$seen
+$f"
+      code="$(_digests_php_code "$f")"
+      printf '%s\n' "$code" | grep -oE '[A-Za-z0-9_]+Rector::class' | sed 's/::class$//' || true
+      for s in $(printf '%s\n' "$code" | grep -oE 'Drupal[0-9]+SetList::[A-Z0-9_]+' | sort -u || true); do
+        queue="$queue
+$(_digests_set_file "$v" "$s")"
+      done
+      for inc in $(printf '%s\n' "$code" | sed -n -E "s/.*__DIR__[[:space:]]*\.[[:space:]]*'([^']+\.php)'.*/\1/p"); do
+        queue="$queue
+$(_digests_abs "$(dirname "$f")/$inc")"
+      done
+    done
+  } | LC_ALL=C sort -u
+  return 0
+}
+
+# digests_implemented_skips YML OFFICIAL -> "nid<TAB>status" for each entry of
+# drupal-rector's implemented-digests.yml: `implemented` when every class the
+# entry names is in OFFICIAL (the file digests_official_classes wrote: the
+# rules the official pass applies), so the digests rule of that nid is
+# skipped; `implemented-not-loaded` when one is not (a set this port does not
+# load, or a class only an open pull request has), and `config-only` (the
+# entry names no class, so which set applies it is unknown): both kept.
+# Line-oriented on the file's own layout (two-space nid keys, four-space
+# fields; "class:" a name, a "[A, B]" flow list or a "- name" block list).
 digests_implemented_skips() {
-  local yml="${1:-}" root="${2:-}" src nid st cls c all
+  local yml="${1:-}" off="${2:-}" nid st cls c all
   [[ -f "$yml" ]] || return 0
-  src="$root/vendor/palantirnet/drupal-rector/src"
   awk '
     /^  [^ ]/ { if (nid != "") print nid "\t" st "\t" cls; nid = $1; gsub(/[^0-9]/, "", nid); st = ""; cls = ""; inl = 0; next }
     nid == "" { next }
     /^    status:/ { st = $2; gsub(/[^a-z-]/, "", st); inl = 0; next }
     /^    class:[ \t]*$/ { inl = 1; next }
-    /^    class:/ { c = $2; gsub(/[^A-Za-z0-9_]/, "", c); cls = c; inl = 0; next }
+    /^    class:/ { v = $0; sub(/^    class:[ \t]*/, "", v); gsub(/[][,]/, " ", v); n = split(v, a, /[ \t]+/)
+                  for (k = 1; k <= n; k++) { c = a[k]; gsub(/[^A-Za-z0-9_]/, "", c); if (c != "") cls = (cls == "" ? c : cls " " c) }
+                  inl = 0; next }
     inl && /^      - / { c = $2; gsub(/[^A-Za-z0-9_]/, "", c); cls = (cls == "" ? c : cls " " c); next }
     /^    [a-z_]+:/ { inl = 0 }
     END { if (nid != "") print nid "\t" st "\t" cls }' "$yml" | while IFS="$(printf '\t')" read -r nid st cls; do
     case "$st" in
       config-only) printf '%s\tconfig-only\n' "$nid";;
       implemented)
-        [[ -n "$cls" && -d "$src" ]] || continue
         all=1
-        for c in $cls; do [[ -n "$(grep -rlE "class[[:space:]]+$c([^A-Za-z0-9_]|$)" "$src" 2> /dev/null)" ]] || { all=0; break; }; done
-        if [[ "$all" == "1" ]]; then printf '%s\timplemented\n' "$nid"; fi;;
+        [[ -n "$cls" && -f "$off" ]] || all=0
+        for c in $cls; do grep_q -Fx -- "$c" "$off" || { all=0; break; }; done
+        if [[ "$all" == "1" ]]; then printf '%s\timplemented\n' "$nid"; else printf '%s\timplemented-not-loaded\n' "$nid"; fi;;
     esac
   done
   return 0

@@ -21,17 +21,19 @@
 #   Pass 2 (--digests): the COMPLEMENTARY, AI-generated `dbuytaert/drupal-digests`
 #                    rules, cloned at runtime into the plugin cache, staged
 #                    under <root>/.drupilot/digests/<sha>/ and run with a
-#                    filtered all.php (all.drupilot.php, T-M4-08): without the
-#                    rules drupal-rector already implements (03-R17: its
-#                    docs/implemented-digests.yml at the installed version,
-#                    fetched once, cached and frozen in the lock as
-#                    .digests.implemented_yml_sha256 / _ref; implemented with
-#                    every class present in vendor/, or config-only) and
-#                    without the rules rejected for this module
-#                    (digests-decisions.json, 05-R6: per rule, digests SHA and
-#                    the subject's digest before the passes; record them with
-#                    scripts/analysis/digests-decisions.sh). A frozen yml that
-#                    cannot be read again is a digests error (exit 4).
+#                    filtered all.php (all.drupilot.php, T-M4-08, ADR 0026):
+#                    without the rules the official pass already applies
+#                    (03-R17: drupal-rector's docs/implemented-digests.yml at
+#                    the installed version, fetched, cached and frozen in the
+#                    lock as .digests.implemented_yml_sha256 / _ref; an entry
+#                    counts when every class it names is registered in a set
+#                    rector.php loads) and without the rules rejected for this
+#                    module (digests-decisions.json, 05-R6: per rule, digests
+#                    SHA and the subject's digest before the passes; record
+#                    them with scripts/analysis/digests-decisions.sh). A frozen
+#                    yml that cannot be read again, an all.php drupilot cannot
+#                    read whole, and an --apply on sources changed since the
+#                    reviewed dry-run are digests errors (exit 4).
 #
 # Default is DRY-RUN (no files are modified). Use --apply to write changes.
 #
@@ -87,12 +89,18 @@
 #                      {generated_at, subject}}), the fallback
 #                      port-report.sh / layer-report.sh read.
 #                      digests_filter: {implemented_yml: {ref, sha256} | null,
-#                      skipped_implemented, skipped_config_only, rejected:
-#                      [rules], kept: n} and digests_review: {digests_sha,
-#                      input_hash, rules: [{rule, files, verdict: accept |
-#                      reject | pending}], rejected, pending: [rules]} (null
-#                      without the digests pass); a dry-run keeps the review
-#                      in its record for digests-decisions.sh.
+#                      skipped_implemented (drupal-rector implements them in
+#                      a set rector.php loads), implemented_not_loaded and
+#                      config_only (kept: drupal-rector has them in a set this
+#                      port does not load, or the yml names no class),
+#                      rejected: [rules], kept: n} and digests_review:
+#                      {digests_sha, input_hash, rules: [{rule, files,
+#                      verdict: accept | reject | pending}], rejected,
+#                      pending: [rules]} (null without the digests pass, or
+#                      when it did not finish: nothing to review); a dry-run
+#                      keeps the review in its record for
+#                      digests-decisions.sh. A verdict an autonomous run
+#                      recorded counts only in an autonomous run.
 #   --attributes       Run ONLY the optional annotation -> PHP 8 attribute pass
 #                      instead of the official/digests passes: forwards every
 #                      other argument to scripts/analysis/convert-attributes.sh
@@ -593,7 +601,13 @@ PASS2_RAW=""
 DIGESTS_FILTER='null'; DIGESTS_KEPT=""
 TMP_DIGESTS_RULES="$(mktemp "${TMPDIR:-/tmp}/drupilot-digests-rules.XXXXXX")"
 TMP_DIGESTS_SKIPS="$(mktemp "${TMPDIR:-/tmp}/drupilot-digests-skips.XXXXXX")"
-trap 'rm -f "$TMP_DIGESTS_RULES" "$TMP_DIGESTS_SKIPS" 2> /dev/null || true' EXIT
+TMP_DIGESTS_OFFICIAL="$(mktemp "${TMPDIR:-/tmp}/drupilot-digests-official.XXXXXX")"
+trap 'rm -f "$TMP_DIGESTS_RULES" "$TMP_DIGESTS_SKIPS" "$TMP_DIGESTS_OFFICIAL" 2> /dev/null || true' EXIT
+DIGESTS_RULESET='null'
+# A verdict an autonomous run recorded (digests-decisions.sh: by "auto") is
+# its safe default, not the developer's review: only an autonomous run
+# replays it.
+DIGESTS_AUTO=false; [[ "$(lc "$(config_get DRUPILOT_AUTONOMOUS false)")" == "true" ]] && DIGESTS_AUTO=true
 DIGESTS_STATUS="off"      # off | ok | error | skipped
 DIGESTS_SHA=""
 DIGESTS_FROM_LOCK=0
@@ -728,12 +742,16 @@ elif [[ "$USE_DIGESTS" == "1" ]]; then
     fi
   fi
 
-  # The filtered all.php: without the rules drupal-rector already implements
-  # (its implemented-digests.yml at the installed version: implemented with
-  # every class present, or config-only) and without the rules this module's
-  # developer rejected (digests-decisions.json, for this digests SHA and these
-  # sources). A frozen yml that cannot be read again is a digests error: the
-  # pass would apply other rules than the frozen ones.
+  # The filtered all.php: without the rules the official pass already applies
+  # (drupal-rector's implemented-digests.yml at the installed version: an
+  # entry whose classes are all registered in a set rector.php loads) and
+  # without the rules this module's developer rejected (digests-decisions.json,
+  # for this digests SHA and these sources). An entry drupal-rector implements
+  # only in a set this port does not load (its Drupal 11 sets on a port to 11)
+  # and a config-only entry (no class named) are kept. A frozen yml that cannot
+  # be read again is a digests error: the pass would apply other rules than
+  # the frozen ones; so is an all.php drupilot cannot read whole, and an
+  # --apply whose sources changed since the reviewed dry-run.
   if [[ "$FILTER" == "1" && -n "$CONFIG_PATH" ]]; then
     _adir="$DRUPAL_ROOT/$(dirname "$CONFIG_PATH")"
     _yml=""; _ymlok=1
@@ -746,26 +764,53 @@ elif [[ "$USE_DIGESTS" == "1" ]]; then
       fi
     fi
     if [[ "$_ymlok" == "0" ]]; then
-      _m="The implemented-digests.yml frozen in the lock cannot be read again (offline and not cached, or changed upstream): the digests pass would not apply the frozen rules. Retry online, or refresh the lock (DRUPILOT_DETERMINISTIC=false)."
+      _m="The implemented-digests.yml frozen in the lock cannot be read again (offline and not cached, or changed upstream): the digests pass would not apply the frozen rules. Retry online, or refresh the lock (DRUPILOT_DETERMINISTIC=false, or lock-sync.sh --refresh)."
       log_err "$_m"
       FAILED_PASSES="$FAILED_PASSES 2"; DIGESTS_STATUS="error"; CONFIG_PATH=""
       ERRORS_JSON="$(printf '%s' "$ERRORS_JSON" | jq -c --arg m "$_m" '. + [{pass: 2, exit_code: 2, message: $m}]')"
     else
       digests_rules "$_adir" > "$TMP_DIGESTS_RULES"
-      digests_implemented_skips "$_yml" "$DRUPAL_ROOT" > "$TMP_DIGESTS_SKIPS"
+      digests_official_classes "$DRUPAL_ROOT" "$RECTOR_PHP" > "$TMP_DIGESTS_OFFICIAL"
+      digests_implemented_skips "$_yml" "$TMP_DIGESTS_OFFICIAL" > "$TMP_DIGESTS_SKIPS"
       _df="$(digests_decisions_file "$SUBJECT_ABS")"
       if [[ ! -f "$_df" ]] || ! jq -e -s 'length == 1 and (.[0] | type == "object")' "$_df" > /dev/null 2>&1; then _df="/dev/null"; fi
-      DIGESTS_FILTER="$(jq -R -s -c --rawfile sk "$TMP_DIGESTS_SKIPS" --slurpfile dd "$_df" \
+      # all.php read whole: every require_once file declares a class it
+      # registers, every registered class has its file, and no directive but
+      # withFileExtensions / withRules (the filtered copy keeps only those).
+      _unread="$( { awk -F'\t' '$2 == "" { print $1 }' "$TMP_DIGESTS_RULES"
+                    digests_registered "$_adir" | awk -F'\t' 'NR == FNR { if ($2 != "") have[$2] = 1; next } !($1 in have) { print $1 " (no rule file)" }' "$TMP_DIGESTS_RULES" -
+                    grep -oE -- '->with[A-Za-z]+' "$_adir/all.php" | grep -vxE -- '->with(FileExtensions|Rules)' || true; } | LC_ALL=C sort -u | tr '\n' ' ' | sed 's/ $//')"
+      if [[ -z "$(awk -F'\t' '$2 != ""' "$TMP_DIGESTS_RULES")" ]]; then _unread="${_unread:-no rule} (no readable rule at all)"; fi
+      # An --apply whose sources moved since the review: the verdicts recorded
+      # for this SHA belong to other sources, so the rejected rules would run.
+      _moved="$(jq -r -s --arg sha "$DIGESTS_SHA" --arg inp "$PRE_DIGEST" --argjson auto "$DIGESTS_AUTO" '
+        [(.[0].decisions // [])[] | select(.digests_sha == $sha and ((.by // "developer") != "auto" or $auto))]
+        | if length > 0 and (map(.input_hash) | index($inp) | not) then "moved" else "" end' "$_df" 2> /dev/null || true)"
+      if [[ -n "$_unread" ]]; then
+        _m="The digests all.php has a layout drupilot cannot filter safely ($_unread): the digests pass did not run. Update drupilot, or turn the digests layer off (DRUPILOT_USE_DIGESTS_RULES=false)."
+      elif [[ "$APPLY" == "1" && "$_moved" == "moved" ]]; then
+        _m="The module changed since the digests rules were reviewed: the verdicts belong to the old sources, so the digests pass did not run. Run the dry-run again (run-rector.sh --digests --json), review the rules, then --apply."
+      else
+        _m=""
+      fi
+      if [[ -n "$_m" ]]; then
+        log_err "$_m"
+        FAILED_PASSES="$FAILED_PASSES 2"; DIGESTS_STATUS="error"; CONFIG_PATH=""
+        ERRORS_JSON="$(printf '%s' "$ERRORS_JSON" | jq -c --arg m "$_m" '. + [{pass: 2, exit_code: 2, message: $m}]')"
+      else
+      DIGESTS_FILTER="$(jq -R -s -c --rawfile sk "$TMP_DIGESTS_SKIPS" --slurpfile dd "$_df" --argjson auto "$DIGESTS_AUTO" \
           --arg sha "$DIGESTS_SHA" --arg inp "$PRE_DIGEST" --arg yml "$_yml" \
           --arg yref "$(lock_get .digests.implemented_yml_ref "")" --arg ysha "$(lock_get .digests.implemented_yml_sha256 "")" '
         ($sk | split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: .[1]}) | from_entries) as $skip
-        | ([($dd[0].decisions // [])[] | select(.digests_sha == $sha and .input_hash == $inp and .verdict == "reject") | .rule]) as $rej
+        | ([($dd[0].decisions // [])[] | select(.digests_sha == $sha and .input_hash == $inp and .verdict == "reject"
+              and ((.by // "developer") != "auto" or $auto)) | .rule]) as $rej
         | split("\n") | map(select(length > 0) | split("\t") | {file: .[0], rule: .[1], nid: .[2]})
         | {implemented_yml: (if $yml == "" then null else {ref: $yref, sha256: $ysha} end),
            skipped_implemented: [.[] | select($skip[.nid] == "implemented") | .rule] | sort,
-           skipped_config_only: [.[] | select($skip[.nid] == "config-only") | .rule] | sort,
-           rejected: [.[] | select(.rule as $r | $rej | index($r)) | .rule] | sort,
-           kept: [.[] | select($skip[.nid] == null and (.rule as $r | $rej | index($r) | not))]}' "$TMP_DIGESTS_RULES")"
+           implemented_not_loaded: [.[] | select($skip[.nid] == "implemented-not-loaded") | .rule] | sort,
+           config_only: [.[] | select($skip[.nid] == "config-only") | .rule] | sort,
+           rejected: [.[] | select($skip[.nid] != "implemented" and (.rule as $r | $rej | index($r))) | .rule] | sort,
+           kept: [.[] | select($skip[.nid] != "implemented" and (.rule as $r | $rej | index($r) | not))]}' "$TMP_DIGESTS_RULES")"
       {
         printf '<?php\n\ndeclare(strict_types=1);\n\n'
         printf '// Generated by drupilot (run-rector.sh): the rules of all.php without those\n'
@@ -773,16 +818,19 @@ elif [[ "$USE_DIGESTS" == "1" ]]; then
         printf 'use Rector\\Config\\RectorConfig;\n\n'
         jq -r '.kept[] | "require_once __DIR__ . '"'"'/\(.file)'"'"';"' <<< "$DIGESTS_FILTER"
         printf '\nreturn RectorConfig::configure()\n'
-        grep -E '^[[:space:]]*->withFileExtensions' "$_adir/all.php" | sed -n '1p'
+        awk '/->withFileExtensions\(/ { on = 1 } on && !done { print } on && /\]\)/ { done = 1 }' "$_adir/all.php" \
+          | tr '\n' ' ' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | awk 'length > 0 { print "    " $0 }'
         printf '    ->withRules([%s]);\n' "$(jq -r '[.kept[] | .rule + "::class"] | join(", ")' <<< "$DIGESTS_FILTER")"
       } > "$_adir/all.drupilot.php.tmp" && mv -f "$_adir/all.drupilot.php.tmp" "$_adir/all.drupilot.php"
       DIGESTS_KEPT="$(jq '.kept | length' <<< "$DIGESTS_FILTER")"
+      DIGESTS_RULESET="$(jq -c '[.kept[].rule] | sort' <<< "$DIGESTS_FILTER")"
       DIGESTS_FILTER="$(jq -c '.kept = (.kept | length)' <<< "$DIGESTS_FILTER")"
-      log_info "Digests rules: $DIGESTS_KEPT kept; $(jq '.skipped_implemented | length' <<< "$DIGESTS_FILTER") skipped (drupal-rector implements them), $(jq '.skipped_config_only | length' <<< "$DIGESTS_FILTER") config-only, $(jq '.rejected | length' <<< "$DIGESTS_FILTER") rejected for this module."
+      log_info "Digests rules: $DIGESTS_KEPT kept ($(jq '.implemented_not_loaded | length' <<< "$DIGESTS_FILTER") implemented by drupal-rector in a set this port does not load, $(jq '.config_only | length' <<< "$DIGESTS_FILTER") config-only); $(jq '.skipped_implemented | length' <<< "$DIGESTS_FILTER") skipped (the official pass applies them), $(jq '.rejected | length' <<< "$DIGESTS_FILTER") rejected for this module."
       CONFIG_PATH="$(dirname "$CONFIG_PATH")/all.drupilot.php"
       if [[ "$DIGESTS_KEPT" == "0" ]]; then
         log_info "No digests rule left to run."
         CONFIG_PATH=""; DIGESTS_STATUS="ok"
+      fi
       fi
     fi
   fi
@@ -827,11 +875,12 @@ H1="$(rector_json_rule_hits "$PASS1_RAW")"; H3="$(rector_json_rule_hits "$PASS3_
 # with, and the developer's verdict on it for this SHA and these sources
 # (digests-decisions.sh); the rules rejected earlier were filtered out.
 DIGESTS_REVIEW='null'
-if [[ "$USE_DIGESTS" == "1" && "$DIGESTS_FILTER" != "null" ]]; then
+if [[ "$USE_DIGESTS" == "1" && "$DIGESTS_FILTER" != "null" && "$DIGESTS_STATUS" == "ok" ]]; then
   _df="$(digests_decisions_file "$SUBJECT_ABS")"
   if [[ ! -f "$_df" ]] || ! jq -e -s 'length == 1 and (.[0] | type == "object")' "$_df" > /dev/null 2>&1; then _df="/dev/null"; fi
-  DIGESTS_REVIEW="$(jq -n -c --argjson h "$H2" --argjson flt "$DIGESTS_FILTER" --slurpfile dd "$_df" --arg sha "$DIGESTS_SHA" --arg inp "$PRE_DIGEST" '
-    ([($dd[0].decisions // [])[] | select(.digests_sha == $sha and .input_hash == $inp)] | map({key: .rule, value: .verdict}) | from_entries) as $v
+  DIGESTS_REVIEW="$(jq -n -c --argjson h "$H2" --argjson flt "$DIGESTS_FILTER" --slurpfile dd "$_df" --arg sha "$DIGESTS_SHA" --arg inp "$PRE_DIGEST" --argjson auto "$DIGESTS_AUTO" '
+    ([($dd[0].decisions // [])[] | select(.digests_sha == $sha and .input_hash == $inp and ((.by // "developer") != "auto" or $auto))]
+     | map({key: .rule, value: .verdict}) | from_entries) as $v
     | {digests_sha: $sha, input_hash: $inp,
        rules: [$h | to_entries[] | {rule: .key, files: .value, verdict: ($v[.key] // "pending")}],
        rejected: $flt.rejected}
@@ -847,8 +896,10 @@ if [[ "$APPLY" != "1" && "$PASS1_OK" == "1" && -n "$PRE_DIGEST" ]] && have_cmd j
     --arg dc "${DIGESTS_SHA:-$DIGESTS_CONFIG}" --argjson p1 "$P1N" --argjson p2 "$P2N" --arg ds "$DIGESTS_STATUS" \
     --arg f2 "$PASS2_FILES" --arg cs "$COMPAT_STATUS" --argjson p3 "$P3N" --arg f3 "$PASS3_FILES" \
     --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson da "$(subject_digest_algo)" --argjson rv "$DIGESTS_REVIEW" \
+    --argjson rs "$DIGESTS_RULESET" \
     '{tool: "run-rector", generated_at: $at, subject_digest: $d, digest_algo: $da, rector_php: $r, digests: $dg,
       digests_config: $dc, digests_status: $ds, pass1_files: $p1, pass2_files: $p2, digests_review: $rv,
+      digests_ruleset: $rs,
       pass2_list: ($f2 | split("\n") | map(select(length > 0))),
       compat_status: $cs, compat_files: $p3, compat_list: ($f3 | split("\n") | map(select(length > 0)))}' \
     > "$DRYRUN_REC" 2>/dev/null || true
@@ -877,9 +928,11 @@ elif [[ "$APPLY" == "1" && -n "$PRE_DIGEST" && -r "$DRYRUN_REC" ]] && have_cmd j
     # Pass 2 runs on the output of pass 1 and the compat pass, so only the
     # files they left alone must still change (a digests rule may duplicate an
     # official one).
-    _dp2="$(printf '%s' "$_rec" | jq -r --arg dc "${DIGESTS_SHA:-$DIGESTS_CONFIG}" --arg f1 "$PASS1_FILES"$'\n'"$PASS3_FILES" '
+    # Only when the dry-run ran the same digests rules (a verdict recorded
+    # after it filters some out).
+    _dp2="$(printf '%s' "$_rec" | jq -r --arg dc "${DIGESTS_SHA:-$DIGESTS_CONFIG}" --arg f1 "$PASS1_FILES"$'\n'"$PASS3_FILES" --argjson rs "$DIGESTS_RULESET" '
       ($f1 | split("\n") | map(select(length > 0))) as $p1
-      | if .digests and .digests_status == "ok" and .digests_config == $dc
+      | if .digests and .digests_status == "ok" and .digests_config == $dc and (.digests_ruleset // null) == $rs
         then [(.pass2_list // [])[] | select(. as $f | any($p1[]; . == $f) | not)] | length else 0 end')"
     if [[ "$DIGESTS_STATUS" == "ok" && "$_dp2" -gt 0 && "$P2N" == "0" ]]; then
       DIGESTS_STATUS="error"; FAILED_PASSES="$FAILED_PASSES 2"

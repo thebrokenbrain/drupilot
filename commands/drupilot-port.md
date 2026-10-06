@@ -261,12 +261,19 @@ they decide.
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "$1" --digests --json
 ```
 
-**Recorded verdicts first (replay).** The `--json` dry-run carries
+**A pre-answer first.** When the `DIGESTS_RULES` pre-answer of the decision
+point below has a `value`, it decides: `skip` applies nothing from this layer,
+whatever was recorded.
+
+**Then the recorded verdicts (replay).** The `--json` dry-run carries
 `digests_review`: every rule it would apply with the developer's verdict for
 this digests SHA and these sources (`accept`, `reject` or `pending`); rules
-rejected earlier and rules drupal-rector already implements are filtered out
-(`digests_filter`). When `digests_review.pending` is empty, every verdict is
-known: **ask nothing**, say in one line that the recorded verdicts are replayed,
+rejected earlier and rules the official pass already applies are filtered out
+(`digests_filter`). `digests_review` is `null` when the digests pass did not
+finish (exit 4, below): apply nothing from this layer. When
+`digests_review.pending` is empty, every verdict is known: **ask nothing**, say
+in one line that the recorded verdicts are replayed and that
+`digests-decisions.sh --subject <path> --clear` forgets them to review again,
 and apply. Otherwise review only the pending rules, as below, and record each
 answer before applying:
 
@@ -275,8 +282,12 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/digests-decisions.sh" --subject <pa
 ```
 
 (an autonomous run records its safe default the same way: unflagged rules
-accepted, flagged ones rejected). Then re-run the dry-run if any rule was
-rejected (the rejected rules leave the config) and apply.
+accepted, flagged ones rejected; those verdicts are marked as the autonomous
+run's, and a later guided port asks the developer again). Then re-run the
+dry-run (the rejected rules leave the config, and the apply checks its result
+against that dry-run) and apply. Record the verdicts on the sources the dry-run
+saw: when the module changed since, `digests-decisions.sh` refuses (exit 1) and
+an `--apply` does not run the digests pass (exit 4): run the dry-run again.
 
 **Decision point — the developer owns the digests pass (G5).** Read the dry-run
 diff and, for each change, note the **rule** and the **API/min-version** it
@@ -320,9 +331,9 @@ with `make-patch.sh --local` instead. Then apply the accepted subset:
 
 **Exit 4 means only the digests pass crashed** (`status: "partial"`, `digests_status: "error"` with `--json`; e.g. a broken upstream rule file): the official result stands, the toolchain is fine — do **not** reinstall it. Pin a known-good digests commit (`--digests-ref <sha>` / `DRUPILOT_DIGESTS_REF`) or skip the layer (`DRUPILOT_USE_DIGESTS_RULES=false`); the broken SHA is never frozen in the lockfile.
 
-If the developer picked a subset (not "apply all"), apply the kept rules via an
-explicit `--config` pointing at a trimmed rule set, or apply all then revert the
-unwanted hunks — never silently apply a flagged rule they did not accept.
+A rule the developer did not keep is recorded as rejected, so the filtered
+config leaves it out of the apply — never silently apply a flagged rule they did
+not accept.
 
 ## Step 5 — Pass 3: ad-hoc rules / manual fixes (per `DRUPILOT_GENERATE_RULES`)
 
