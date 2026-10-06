@@ -66,6 +66,24 @@ json_hash() {
   return 0
 }
 
+# sha256_lines FILE DIR -> "<line number>\t<sha256 hex>" for each line of
+# FILE (its bytes without the newline), from ONE hasher process over one file
+# per line written under DIR (created; the caller removes it): thousands of
+# ids cost one fork, not one each. Prints nothing for an empty FILE or when no
+# hasher exists.
+sha256_lines() {
+  local f="${1:-}" d="${2:-}"
+  [[ -f "$f" && -n "$d" ]] || return 0
+  mkdir -p "$d" || return 0
+  awk -v d="$d" '{ p = d "/" NR; printf "%s", $0 > p; close(p) }' "$f"
+  if have_cmd sha256sum; then
+    ( cd "$d" && find . -type f -exec sha256sum {} + ) | awk '{ p = $NF; sub(/^\.\//, "", p); print p "\t" $1 }'
+  elif have_cmd shasum; then
+    ( cd "$d" && find . -type f -exec shasum -a 256 {} + ) | awk '{ p = $NF; sub(/^\.\//, "", p); print p "\t" $1 }'
+  fi
+  return 0
+}
+
 # file_hash FILE -> "sha256:<hex>" of FILE's bytes with every CRLF made LF (a
 # CR not followed by LF is data, at the end of the file too; a last line
 # without LF stays without one), so a checkout with CRLF line endings hashes

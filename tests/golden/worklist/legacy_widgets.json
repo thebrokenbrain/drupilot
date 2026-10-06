@@ -1,0 +1,1108 @@
+{
+  "counts": {
+    "blocking": 22,
+    "by_lane": {
+      "ai-free": 12,
+      "ai-templated": 5,
+      "codemod": 2,
+      "deferred": 7,
+      "human": 6,
+      "rector": 1,
+      "test-adapt": 6
+    },
+    "items": 39,
+    "open": 32
+  },
+  "floor": "10.3",
+  "items": [
+    {
+      "allowed_files": [
+        "src/Form/WidgetImportForm.php"
+      ],
+      "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::submitForm",
+      "blocking": false,
+      "category": "rector",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "FunctionFirstClassCallableRector",
+      "file": "src/Form/WidgetImportForm.php",
+      "finding_ids": [
+        "F-b283a14aba1d"
+      ],
+      "id": "W-159f73172c54",
+      "lane": "rector",
+      "reason": null,
+      "recipe_of": {
+        "F-b283a14aba1d": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "legacy_widgets.services.yml"
+      ],
+      "anchor": "{file}",
+      "blocking": true,
+      "category": "safety",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "A class referenced from *.services.yml / *.routing.yml, or a PSR-4 class declaration, whose case differs from the real file name. Works on case-insensitive filesystems (macOS) and fatals on Linux.",
+      "file": "legacy_widgets.services.yml",
+      "finding_ids": [
+        "F-bd872bc1b2d9"
+      ],
+      "id": "W-c6e4ecad912a",
+      "lane": "codemod",
+      "reason": null,
+      "recipe_of": {
+        "F-bd872bc1b2d9": "safety.class-case"
+      },
+      "recipes": [
+        "safety.class-case"
+      ],
+      "status": "open",
+      "templates": {
+        "safety.class-case": {
+          "why": "A class referenced from *.services.yml / *.routing.yml, or a PSR-4 class declaration, whose case differs from the real file name. Works on case-insensitive filesystems (macOS) and fatals on Linux."
+        }
+      }
+    },
+    {
+      "allowed_files": [
+        "modules/legacy_widgets_extra/legacy_widgets_extra.info.yml"
+      ],
+      "anchor": "{file}",
+      "blocking": false,
+      "category": "metadata",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "A submodule's core_version_requirement does not admit the target core (or is missing), so core refuses to install it. Set it to the parent's constraint.",
+      "file": "modules/legacy_widgets_extra/legacy_widgets_extra.info.yml",
+      "finding_ids": [
+        "F-72cf26239434"
+      ],
+      "id": "W-c39438304ac6",
+      "lane": "codemod",
+      "reason": null,
+      "recipe_of": {
+        "F-72cf26239434": "meta.submodule-core-req"
+      },
+      "recipes": [
+        "meta.submodule-core-req"
+      ],
+      "status": "open",
+      "templates": {
+        "meta.submodule-core-req": {
+          "why": "A submodule's core_version_requirement does not admit the target core (or is missing), so core refuses to install it. Set it to the parent's constraint."
+        }
+      }
+    },
+    {
+      "allowed_files": [
+        "modules/legacy_widgets_extra/legacy_widgets_extra.module"
+      ],
+      "anchor": "legacy_widgets_extra_legacy_widget_presave",
+      "blocking": false,
+      "category": "signature",
+      "change_record_search_url": "https://www.drupal.org/list-changes/drupal?keywords_description=getOriginal%20setOriginal",
+      "era": null,
+      "explanation": "->getOriginal()/->setOriginal() on a core entity exist only from Drupal 11.2; while the declared range includes an older core the call is an 'undefined method' fatal there (unless the receiver is the module's own class).",
+      "file": "modules/legacy_widgets_extra/legacy_widgets_extra.module",
+      "finding_ids": [
+        "F-6d3d4482d958"
+      ],
+      "id": "W-35c06ce28544",
+      "lane": "ai-templated",
+      "reason": null,
+      "recipe_of": {
+        "F-6d3d4482d958": "sig.entity-original-accessors-call"
+      },
+      "recipes": [
+        "sig.entity-original-accessors-call"
+      ],
+      "status": "open",
+      "templates": {
+        "sig.entity-original-accessors-call": {
+          "change_record_search_url": "https://www.drupal.org/list-changes/drupal?keywords_description=getOriginal%20setOriginal",
+          "d10_compat": "Not available on Drupal 10.",
+          "fix": "While the floor is below 11.2: keep the ->original property, or wrap the call in DeprecationHelper::backwardsCompatibleCall() (core 10.1+): backwardsCompatibleCall(\\Drupal::VERSION, '11.2', fn() => $entity->getOriginal(), fn() => $entity->original). Raise the floor to ^11.2 to use it directly.",
+          "since": "11.2",
+          "why": "->getOriginal()/->setOriginal() on a core entity exist only from Drupal 11.2; while the declared range includes an older core the call is an 'undefined method' fatal there (unless the receiver is the module's own class)."
+        }
+      }
+    },
+    {
+      "allowed_files": [
+        "src/Entity/LegacyWidget.php"
+      ],
+      "anchor": "Drupal\\legacy_widgets\\Entity\\LegacyWidget::getOriginal",
+      "blocking": true,
+      "category": "signature",
+      "change_record_search_url": "https://www.drupal.org/list-changes/drupal?keywords_description=EntityInterface%3A%3AgetOriginal",
+      "era": null,
+      "explanation": "Drupal 11.2 added EntityInterface::getOriginal(): ?static (implemented by EntityBase). An entity class that already declares its own getOriginal() without a compatible return type is a fatal 'Declaration must be compatible' on 11.2+; a compatible one silently replaces core's method there.",
+      "file": "src/Entity/LegacyWidget.php",
+      "finding_ids": [
+        "F-b66d2f8d2b41"
+      ],
+      "id": "W-32ae8ec2d063",
+      "lane": "ai-templated",
+      "reason": null,
+      "recipe_of": {
+        "F-b66d2f8d2b41": "sig.entity-get-original"
+      },
+      "recipes": [
+        "sig.entity-get-original"
+      ],
+      "status": "open",
+      "templates": {
+        "sig.entity-get-original": {
+          "change_record_search_url": "https://www.drupal.org/list-changes/drupal?keywords_description=EntityInterface%3A%3AgetOriginal",
+          "d10_compat": "Core's getOriginal() does not exist below 11.2: code kept for ^10 must not call it on core entities (use the deprecated ->original property, or DeprecationHelper::backwardsCompatibleCall()).",
+          "fix": "While the core floor is below 11.2: rename the local helper (e.g. getOriginalWidget()) and update its callers. Once the floor is ^11.2: delete it and use core's getOriginal().",
+          "since": "11.2",
+          "why": "Drupal 11.2 added EntityInterface::getOriginal(): ?static (implemented by EntityBase). An entity class that already declares its own getOriginal() without a compatible return type is a fatal 'Declaration must be compatible' on 11.2+; a compatible one silently replaces core's method there."
+        }
+      }
+    },
+    {
+      "allowed_files": [
+        "src/Form/SettingsForm.php"
+      ],
+      "anchor": "Drupal\\legacy_widgets\\Form\\SettingsForm::__construct",
+      "blocking": true,
+      "category": "signature",
+      "change_record_search_url": "https://www.drupal.org/list-changes/drupal?keywords_description=ConfigFormBase%20TypedConfigManagerInterface",
+      "era": null,
+      "explanation": "ConfigFormBase::__construct() takes a second argument, TypedConfigManagerInterface $typedConfigManager: optional (omitting it deprecated) in 10.2-10.x, REQUIRED from 11.0. A subclass constructor that calls parent::__construct($config_factory) alone throws ArgumentCountError on Drupal 11.",
+      "file": "src/Form/SettingsForm.php",
+      "finding_ids": [
+        "F-ca091c3456b8"
+      ],
+      "id": "W-10871a6ef443",
+      "lane": "ai-templated",
+      "reason": null,
+      "recipe_of": {
+        "F-ca091c3456b8": "sig.config-form-base-ctor"
+      },
+      "recipes": [
+        "sig.config-form-base-ctor"
+      ],
+      "status": "open",
+      "templates": {
+        "sig.config-form-base-ctor": {
+          "change_record_search_url": "https://www.drupal.org/list-changes/drupal?keywords_description=ConfigFormBase%20TypedConfigManagerInterface",
+          "d10_compat": "Safe for ^10 || ^11: 10.2+ accepts the argument, and PHP ignores an extra argument on older 10.x/9.x cores.",
+          "fix": "Add TypedConfigManagerInterface $typed_config_manager to the subclass constructor, forward it (parent::__construct($config_factory, $typed_config_manager)) and pass $container->get('config.typed') from create().",
+          "since": "10.2",
+          "why": "ConfigFormBase::__construct() takes a second argument, TypedConfigManagerInterface $typedConfigManager: optional (omitting it deprecated) in 10.2-10.x, REQUIRED from 11.0. A subclass constructor that calls parent::__construct($config_factory) alone throws ArgumentCountError on Drupal 11."
+        }
+      }
+    },
+    {
+      "allowed_files": [
+        "src/Form/WidgetImportForm.php"
+      ],
+      "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::__construct",
+      "blocking": false,
+      "category": "safety",
+      "change_record_search_url": "https://www.drupal.org/list-changes/drupal?keywords_description=DependencySerializationTrait",
+      "era": null,
+      "explanation": "DependencySerializationTrait runs from the base-class scope: __sleep() drops private child properties and __wakeup() cannot re-initialize readonly ones.",
+      "file": "src/Form/WidgetImportForm.php",
+      "finding_ids": [
+        "F-05d7edc34f76",
+        "F-58075dd2ffb9"
+      ],
+      "id": "W-ce1976f998f1",
+      "lane": "ai-templated",
+      "reason": null,
+      "recipe_of": {
+        "F-05d7edc34f76": "safety.serialization",
+        "F-58075dd2ffb9": "safety.serialization"
+      },
+      "recipes": [
+        "safety.serialization"
+      ],
+      "status": "open",
+      "templates": {
+        "safety.serialization": {
+          "change_record_search_url": "https://www.drupal.org/list-changes/drupal?keywords_description=DependencySerializationTrait",
+          "fix": "Declare injected services protected and non-readonly in forms and plugins.",
+          "why": "DependencySerializationTrait runs from the base-class scope: __sleep() drops private child properties and __wakeup() cannot re-initialize readonly ones."
+        }
+      }
+    },
+    {
+      "allowed_files": [
+        "src/LegacyWidgetStorage.php"
+      ],
+      "anchor": "Drupal\\legacy_widgets\\LegacyWidgetStorage::buildRevisionCacheId",
+      "blocking": false,
+      "category": "signature",
+      "change_record_search_url": "https://www.drupal.org/list-changes/drupal?keywords_description=buildRevisionCacheId",
+      "era": null,
+      "explanation": "Drupal 11.3 added ContentEntityStorageBase::buildRevisionCacheId($id): string, which core calls for its revision memory/persistent cache. A storage subclass declaring a method with that name becomes an override of core on 11.3+ (core then uses its cache ids); with an incompatible signature (no ': string', private, other parameters) it is a fatal at class load on 11.3+.",
+      "file": "src/LegacyWidgetStorage.php",
+      "finding_ids": [
+        "F-f86abdabcd86"
+      ],
+      "id": "W-1329494e46cf",
+      "lane": "ai-templated",
+      "reason": null,
+      "recipe_of": {
+        "F-f86abdabcd86": "sig.revision-cache-id"
+      },
+      "recipes": [
+        "sig.revision-cache-id"
+      ],
+      "status": "open",
+      "templates": {
+        "sig.revision-cache-id": {
+          "change_record_search_url": "https://www.drupal.org/list-changes/drupal?keywords_description=buildRevisionCacheId",
+          "d10_compat": "Never add #[\\Override] to it while the core floor is below 11.3: the parent method does not exist there and PHP 8.3+ fatals at compile time.",
+          "fix": "Rename the module's helper (e.g. buildWidgetRevisionCacheId()) unless overriding core's revision cache id on 11.3+ is intended; if kept, match protected function buildRevisionCacheId($id): string exactly.",
+          "since": "11.3",
+          "why": "Drupal 11.3 added ContentEntityStorageBase::buildRevisionCacheId($id): string, which core calls for its revision memory/persistent cache. A storage subclass declaring a method with that name becomes an override of core on 11.3+ (core then uses its cache ids); with an incompatible signature (no ': string', private, other parameters) it is a fatal at class load on 11.3+."
+        }
+      }
+    },
+    {
+      "allowed_files": [
+        "legacy_widgets.module"
+      ],
+      "anchor": "legacy_widgets_entity_operation",
+      "blocking": true,
+      "category": "analysis",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Function legacy_widgets_entity_operation() implements hook_entity_operation but is missing the CacheableMetadata parameter added in Drupal 11.3. Update the signature to: legacy_widgets_entity_operation(\\Drupal\\Core\\Entity\\EntityInterface $entity, \\Drupal\\Core\\Cache\\CacheableMetadata $cacheability).",
+      "file": "legacy_widgets.module",
+      "finding_ids": [
+        "F-22878748cc8b"
+      ],
+      "id": "W-930d804b63be",
+      "lane": "ai-free",
+      "reason": null,
+      "recipe_of": {
+        "F-22878748cc8b": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "src/Controller/WidgetStatusController.php"
+      ],
+      "anchor": "Drupal\\legacy_widgets\\Controller\\WidgetStatusController::create",
+      "blocking": true,
+      "category": "analysis",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Unsafe usage of new static().",
+      "file": "src/Controller/WidgetStatusController.php",
+      "finding_ids": [
+        "F-dc2f4886a05f"
+      ],
+      "id": "W-846e486f7bdb",
+      "lane": "ai-free",
+      "reason": null,
+      "recipe_of": {
+        "F-dc2f4886a05f": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "src/Entity/LegacyWidget.php"
+      ],
+      "anchor": "Drupal\\legacy_widgets\\Entity\\LegacyWidget::getOriginal",
+      "blocking": true,
+      "category": "analysis",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Return type mixed of method Drupal\\legacy_widgets\\Entity\\LegacyWidget::getOriginal() is not covariant with return type static(Drupal\\Core\\Entity\\EntityBase)|null of method Drupal\\Core\\Entity\\EntityBase::getOriginal().",
+      "file": "src/Entity/LegacyWidget.php",
+      "finding_ids": [
+        "F-c21a3d80dac5"
+      ],
+      "id": "W-367f74d547c8",
+      "lane": "ai-free",
+      "reason": null,
+      "recipe_of": {
+        "F-c21a3d80dac5": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "src/Form/SettingsForm.php"
+      ],
+      "anchor": "Drupal\\legacy_widgets\\Form\\SettingsForm::__construct",
+      "blocking": true,
+      "category": "analysis",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Method Drupal\\Core\\Form\\ConfigFormBase::__construct() invoked with 1 parameter, 2 required.",
+      "file": "src/Form/SettingsForm.php",
+      "finding_ids": [
+        "F-5f96e612736e"
+      ],
+      "id": "W-dbfc31cc6266",
+      "lane": "ai-free",
+      "reason": null,
+      "recipe_of": {
+        "F-5f96e612736e": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "src/Form/SettingsForm.php"
+      ],
+      "anchor": "Drupal\\legacy_widgets\\Form\\SettingsForm::create",
+      "blocking": true,
+      "category": "analysis",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Unsafe usage of new static().",
+      "file": "src/Form/SettingsForm.php",
+      "finding_ids": [
+        "F-4e63669fcce4"
+      ],
+      "id": "W-a3341794f042",
+      "lane": "ai-free",
+      "reason": null,
+      "recipe_of": {
+        "F-4e63669fcce4": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "src/Form/WidgetImportForm.php"
+      ],
+      "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::__construct",
+      "blocking": true,
+      "category": "analysis",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Read-only properties are incompatible with Drupal\\Core\\DependencyInjection\\DependencySerializationTrait when the trait is used by a parent class on PHP < 8.4.",
+      "file": "src/Form/WidgetImportForm.php",
+      "finding_ids": [
+        "F-0bb09c8bbbd9",
+        "F-15a47c89772f",
+        "F-5337170096ea",
+        "F-7f4536e30153",
+        "F-aee0abbd870b",
+        "F-bc8b7b83d8fd",
+        "F-d61fd4363c06"
+      ],
+      "id": "W-47b95476d7ed",
+      "lane": "ai-free",
+      "reason": null,
+      "recipe_of": {
+        "F-0bb09c8bbbd9": null,
+        "F-15a47c89772f": null,
+        "F-5337170096ea": null,
+        "F-7f4536e30153": null,
+        "F-aee0abbd870b": null,
+        "F-bc8b7b83d8fd": null,
+        "F-d61fd4363c06": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "src/Form/WidgetImportForm.php"
+      ],
+      "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::create",
+      "blocking": true,
+      "category": "analysis",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Unsafe usage of new static().",
+      "file": "src/Form/WidgetImportForm.php",
+      "finding_ids": [
+        "F-b18210f4ea43"
+      ],
+      "id": "W-e07b703024b3",
+      "lane": "ai-free",
+      "reason": null,
+      "recipe_of": {
+        "F-b18210f4ea43": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "src/Plugin/Block/WidgetSummaryBlock.php"
+      ],
+      "anchor": "Drupal\\legacy_widgets\\Plugin\\Block\\WidgetSummaryBlock::create",
+      "blocking": true,
+      "category": "analysis",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Unsafe usage of new static().",
+      "file": "src/Plugin/Block/WidgetSummaryBlock.php",
+      "finding_ids": [
+        "F-d4acef739b62"
+      ],
+      "id": "W-18e5fc432e0b",
+      "lane": "ai-free",
+      "reason": null,
+      "recipe_of": {
+        "F-d4acef739b62": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "src/Plugin/Condition/WidgetsEnabledCondition.php"
+      ],
+      "anchor": "Drupal\\legacy_widgets\\Plugin\\Condition\\WidgetsEnabledCondition::create",
+      "blocking": true,
+      "category": "analysis",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Unsafe usage of new static().",
+      "file": "src/Plugin/Condition/WidgetsEnabledCondition.php",
+      "finding_ids": [
+        "F-068e3078dfc1"
+      ],
+      "id": "W-2d397ba8d6eb",
+      "lane": "ai-free",
+      "reason": null,
+      "recipe_of": {
+        "F-068e3078dfc1": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "src/Plugin/Filter/WidgetSummaryFilter.php"
+      ],
+      "anchor": "Drupal\\legacy_widgets\\Plugin\\Filter\\WidgetSummaryFilter::create",
+      "blocking": true,
+      "category": "analysis",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Unsafe usage of new static().",
+      "file": "src/Plugin/Filter/WidgetSummaryFilter.php",
+      "finding_ids": [
+        "F-95efa5a31b0a"
+      ],
+      "id": "W-56f35f28002c",
+      "lane": "ai-free",
+      "reason": null,
+      "recipe_of": {
+        "F-95efa5a31b0a": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "src/Plugin/QueueWorker/WidgetReindexWorker.php"
+      ],
+      "anchor": "Drupal\\legacy_widgets\\Plugin\\QueueWorker\\WidgetReindexWorker::create",
+      "blocking": true,
+      "category": "analysis",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Unsafe usage of new static().",
+      "file": "src/Plugin/QueueWorker/WidgetReindexWorker.php",
+      "finding_ids": [
+        "F-108ee93f2968"
+      ],
+      "id": "W-023e7068f26f",
+      "lane": "ai-free",
+      "reason": null,
+      "recipe_of": {
+        "F-108ee93f2968": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "src/Plugin/QueueWorker/WidgetReindexWorker.php"
+      ],
+      "anchor": "Drupal\\legacy_widgets\\Plugin\\QueueWorker\\WidgetReindexWorker::processItem",
+      "blocking": true,
+      "category": "analysis",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Call to an undefined method Drupal\\Core\\Entity\\EntityInterface::set().",
+      "file": "src/Plugin/QueueWorker/WidgetReindexWorker.php",
+      "finding_ids": [
+        "F-5b583b655f32",
+        "F-5f0e17a1522c"
+      ],
+      "id": "W-c54651af7496",
+      "lane": "ai-free",
+      "reason": null,
+      "recipe_of": {
+        "F-5b583b655f32": null,
+        "F-5f0e17a1522c": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "tests/src/Kernel/LegacyWidgetsKernelTest.php"
+      ],
+      "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testCounterService",
+      "blocking": true,
+      "category": "analysis",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::assertSame().",
+      "file": "tests/src/Kernel/LegacyWidgetsKernelTest.php",
+      "finding_ids": [
+        "F-0171c1d6cbc2"
+      ],
+      "id": "W-1c6b1e5934df",
+      "lane": "test-adapt",
+      "reason": null,
+      "recipe_of": {
+        "F-0171c1d6cbc2": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "tests/src/Kernel/LegacyWidgetsKernelTest.php"
+      ],
+      "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testEntityOperationWithDrupal10Arguments",
+      "blocking": true,
+      "category": "analysis",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::assertArrayHasKey().",
+      "file": "tests/src/Kernel/LegacyWidgetsKernelTest.php",
+      "finding_ids": [
+        "F-d1fb6381fef0"
+      ],
+      "id": "W-4f140323f6a1",
+      "lane": "test-adapt",
+      "reason": null,
+      "recipe_of": {
+        "F-d1fb6381fef0": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "tests/src/Kernel/LegacyWidgetsKernelTest.php"
+      ],
+      "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testFilterProducesSummary",
+      "blocking": true,
+      "category": "analysis",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::assertSame().",
+      "file": "tests/src/Kernel/LegacyWidgetsKernelTest.php",
+      "finding_ids": [
+        "F-ace3d9ea173d"
+      ],
+      "id": "W-74adbead9b5f",
+      "lane": "test-adapt",
+      "reason": null,
+      "recipe_of": {
+        "F-ace3d9ea173d": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "tests/src/Kernel/LegacyWidgetsKernelTest.php"
+      ],
+      "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testFindAccount",
+      "blocking": true,
+      "category": "analysis",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::assertSame().",
+      "file": "tests/src/Kernel/LegacyWidgetsKernelTest.php",
+      "finding_ids": [
+        "F-4bf578aeff41",
+        "F-689a98fd3169"
+      ],
+      "id": "W-7ffb8dde54f8",
+      "lane": "test-adapt",
+      "reason": null,
+      "recipe_of": {
+        "F-4bf578aeff41": null,
+        "F-689a98fd3169": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "tests/src/Kernel/LegacyWidgetsKernelTest.php"
+      ],
+      "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testQueueWorkerProcessesItem",
+      "blocking": true,
+      "category": "analysis",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::assertSame().",
+      "file": "tests/src/Kernel/LegacyWidgetsKernelTest.php",
+      "finding_ids": [
+        "F-24fd6461d551",
+        "F-7ea41912a796",
+        "F-d472633b3456",
+        "F-ed1224a2de45"
+      ],
+      "id": "W-80598b164c87",
+      "lane": "test-adapt",
+      "reason": null,
+      "recipe_of": {
+        "F-24fd6461d551": null,
+        "F-7ea41912a796": null,
+        "F-d472633b3456": null,
+        "F-ed1224a2de45": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "tests/src/Unit/WidgetCounterTest.php"
+      ],
+      "anchor": "Drupal\\Tests\\legacy_widgets\\Unit\\WidgetCounterTest::testBucket",
+      "blocking": true,
+      "category": "analysis",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Unit\\WidgetCounterTest::assertSame().",
+      "file": "tests/src/Unit/WidgetCounterTest.php",
+      "finding_ids": [
+        "F-096b23ad92d5",
+        "F-75efc48c5371"
+      ],
+      "id": "W-a3f3e40a8313",
+      "lane": "test-adapt",
+      "reason": null,
+      "recipe_of": {
+        "F-096b23ad92d5": null,
+        "F-75efc48c5371": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "config/install/legacy_widgets.settings.yml"
+      ],
+      "anchor": "{file}",
+      "blocking": false,
+      "category": "metadata",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "A config/install or config/optional file has no matching config schema key: core's config validation and translation cannot type it. Add the schema to config/schema/<module>.schema.yml.",
+      "file": "config/install/legacy_widgets.settings.yml",
+      "finding_ids": [
+        "F-bb6453fe8bb8"
+      ],
+      "id": "W-729b5727cfc6",
+      "lane": "human",
+      "reason": null,
+      "recipe_of": {
+        "F-bb6453fe8bb8": "meta.config-schema"
+      },
+      "recipes": [
+        "meta.config-schema"
+      ],
+      "status": "open",
+      "templates": {
+        "meta.config-schema": {
+          "why": "A config/install or config/optional file has no matching config schema key: core's config validation and translation cannot type it. Add the schema to config/schema/<module>.schema.yml."
+        }
+      }
+    },
+    {
+      "allowed_files": [
+        "legacy_widgets.info.yml"
+      ],
+      "anchor": "{file}",
+      "blocking": false,
+      "category": "metadata",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "The info.yml configure: route is defined by no routing file, so core's module list drops the Configure link. Point it at the module's settings route.",
+      "file": "legacy_widgets.info.yml",
+      "finding_ids": [
+        "F-013f8ad4a1b9"
+      ],
+      "id": "W-da87cbe6cb6c",
+      "lane": "human",
+      "reason": null,
+      "recipe_of": {
+        "F-013f8ad4a1b9": "meta.configure-route"
+      },
+      "recipes": [
+        "meta.configure-route"
+      ],
+      "status": "open",
+      "templates": {
+        "meta.configure-route": {
+          "why": "The info.yml configure: route is defined by no routing file, so core's module list drops the Configure link. Point it at the module's settings route."
+        }
+      }
+    },
+    {
+      "allowed_files": [
+        "legacy_widgets.services.yml"
+      ],
+      "anchor": "{file}",
+      "blocking": true,
+      "category": "metadata",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "A service class in the extension's namespace has no src/ file (an orphan service: fetching it is a fatal error), or exists only with another letter case. Remove the service, restore its class, or fix the case.",
+      "file": "legacy_widgets.services.yml",
+      "finding_ids": [
+        "F-8b08def7e638",
+        "F-bed48f8ac01f",
+        "F-ecd41a63c031"
+      ],
+      "id": "W-c51655fc986b",
+      "lane": "human",
+      "reason": null,
+      "recipe_of": {
+        "F-8b08def7e638": "meta.services-class",
+        "F-bed48f8ac01f": "meta.services-arity",
+        "F-ecd41a63c031": "meta.services-class"
+      },
+      "recipes": [
+        "meta.services-arity",
+        "meta.services-class"
+      ],
+      "status": "open",
+      "templates": {
+        "meta.services-arity": {
+          "why": "A service passes another number of arguments than its class constructor takes: fewer is an ArgumentCountError, more are silently ignored. Align the arguments with the constructor."
+        },
+        "meta.services-class": {
+          "why": "A service class in the extension's namespace has no src/ file (an orphan service: fetching it is a fatal error), or exists only with another letter case. Remove the service, restore its class, or fix the case."
+        }
+      }
+    },
+    {
+      "allowed_files": [
+        "modules/legacy_widgets_extra/legacy_widgets_extra.module"
+      ],
+      "anchor": "{file}",
+      "blocking": false,
+      "category": "metadata",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "The code uses a module its info.yml does not list in dependencies: core may enable the module without it. Declare the dependency (check the project name of a contrib one).",
+      "file": "modules/legacy_widgets_extra/legacy_widgets_extra.module",
+      "finding_ids": [
+        "F-37b272b1a0e3",
+        "F-6f7ab1d035de"
+      ],
+      "id": "W-ddabc7319c4d",
+      "lane": "human",
+      "reason": null,
+      "recipe_of": {
+        "F-37b272b1a0e3": "meta.undeclared-deps",
+        "F-6f7ab1d035de": "meta.undeclared-deps"
+      },
+      "recipes": [
+        "meta.undeclared-deps"
+      ],
+      "status": "open",
+      "templates": {
+        "meta.undeclared-deps": {
+          "why": "The code uses a module its info.yml does not list in dependencies: core may enable the module without it. Declare the dependency (check the project name of a contrib one)."
+        }
+      }
+    },
+    {
+      "allowed_files": [
+        "src/Plugin/Condition/WidgetsEnabledCondition.php"
+      ],
+      "anchor": "{file}",
+      "blocking": false,
+      "category": "metadata",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "A Block, Condition, Filter, FieldFormatter or FieldWidget plugin with its own settings has no settings schema, so only core's generic fallback covers it. Add the plugin's settings schema.",
+      "file": "src/Plugin/Condition/WidgetsEnabledCondition.php",
+      "finding_ids": [
+        "F-e5e0c81071e8"
+      ],
+      "id": "W-7a060cee17db",
+      "lane": "human",
+      "reason": null,
+      "recipe_of": {
+        "F-e5e0c81071e8": "meta.plugin-schema"
+      },
+      "recipes": [
+        "meta.plugin-schema"
+      ],
+      "status": "open",
+      "templates": {
+        "meta.plugin-schema": {
+          "why": "A Block, Condition, Filter, FieldFormatter or FieldWidget plugin with its own settings has no settings schema, so only core's generic fallback covers it. Add the plugin's settings schema."
+        }
+      }
+    },
+    {
+      "allowed_files": [
+        "src/Plugin/Filter/WidgetSummaryFilter.php"
+      ],
+      "anchor": "{file}",
+      "blocking": false,
+      "category": "metadata",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "A Block, Condition, Filter, FieldFormatter or FieldWidget plugin with its own settings has no settings schema, so only core's generic fallback covers it. Add the plugin's settings schema.",
+      "file": "src/Plugin/Filter/WidgetSummaryFilter.php",
+      "finding_ids": [
+        "F-23216872c0d5"
+      ],
+      "id": "W-ff33dd2dc291",
+      "lane": "human",
+      "reason": null,
+      "recipe_of": {
+        "F-23216872c0d5": "meta.plugin-schema"
+      },
+      "recipes": [
+        "meta.plugin-schema"
+      ],
+      "status": "open",
+      "templates": {
+        "meta.plugin-schema": {
+          "why": "A Block, Condition, Filter, FieldFormatter or FieldWidget plugin with its own settings has no settings schema, so only core's generic fallback covers it. Add the plugin's settings schema."
+        }
+      }
+    },
+    {
+      "allowed_files": [
+        "legacy_widgets.module"
+      ],
+      "anchor": "legacy_widgets_entity_operation",
+      "blocking": false,
+      "category": "signature",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "legacy_widgets_entity_operation() implements hook_entity_operation(), which core invokes with 2 argument(s) from Drupal 11.3; the current 1-parameter form works on every core. If you accept the new parameter, keep it optional while the floor (10.0) is below 11.3.",
+      "file": "legacy_widgets.module",
+      "finding_ids": [
+        "F-15b9d1a1ff5a"
+      ],
+      "id": "W-0b4c8218d6e3",
+      "lane": "deferred",
+      "reason": "info",
+      "recipe_of": {
+        "F-15b9d1a1ff5a": null
+      },
+      "recipes": [],
+      "status": "deferred",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "legacy_widgets.module"
+      ],
+      "anchor": "legacy_widgets_find_account",
+      "blocking": false,
+      "category": "soft",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Call to deprecated function user_load_by_mail(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties() instead.",
+      "file": "legacy_widgets.module",
+      "finding_ids": [
+        "F-5350d83a6040",
+        "F-6b1452d09fa9"
+      ],
+      "id": "W-8ff3f37d4fde",
+      "lane": "deferred",
+      "reason": "next-major",
+      "recipe_of": {
+        "F-5350d83a6040": null,
+        "F-6b1452d09fa9": null
+      },
+      "recipes": [],
+      "status": "deferred",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "legacy_widgets.module"
+      ],
+      "anchor": "legacy_widgets_summarize",
+      "blocking": false,
+      "category": "soft",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Call to deprecated function text_summary(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::service(TextSummary::class)->generate() instead.",
+      "file": "legacy_widgets.module",
+      "finding_ids": [
+        "F-04f1758703a8"
+      ],
+      "id": "W-642e9ddd1546",
+      "lane": "deferred",
+      "reason": "next-major",
+      "recipe_of": {
+        "F-04f1758703a8": null
+      },
+      "recipes": [],
+      "status": "deferred",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "src/Plugin/Block/WidgetSummaryBlock.php"
+      ],
+      "anchor": "Drupal\\legacy_widgets\\Plugin\\Block\\WidgetSummaryBlock::build",
+      "blocking": false,
+      "category": "soft",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Call to deprecated function check_markup(): in drupal:11.4.0 and is removed from drupal:13.0.0. There is no direct replacement. It's recommended to always return a renderable array without flattening as markup to pass the cacheability metadata.",
+      "file": "src/Plugin/Block/WidgetSummaryBlock.php",
+      "finding_ids": [
+        "F-2686679ebebe",
+        "F-d8262ed5beb1"
+      ],
+      "id": "W-91d5440b6a91",
+      "lane": "deferred",
+      "reason": "next-major",
+      "recipe_of": {
+        "F-2686679ebebe": null,
+        "F-d8262ed5beb1": null
+      },
+      "recipes": [],
+      "status": "deferred",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "src/Plugin/Filter/WidgetSummaryFilter.php"
+      ],
+      "anchor": "Drupal\\legacy_widgets\\Plugin\\Filter\\WidgetSummaryFilter::process",
+      "blocking": false,
+      "category": "soft",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Call to deprecated function text_summary(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::service(TextSummary::class)->generate() instead.",
+      "file": "src/Plugin/Filter/WidgetSummaryFilter.php",
+      "finding_ids": [
+        "F-36c6b6c781b3"
+      ],
+      "id": "W-323ab3f5c0a6",
+      "lane": "deferred",
+      "reason": "next-major",
+      "recipe_of": {
+        "F-36c6b6c781b3": null
+      },
+      "recipes": [],
+      "status": "deferred",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "src/Plugin/QueueWorker/WidgetReindexWorker.php"
+      ],
+      "anchor": "Drupal\\legacy_widgets\\Plugin\\QueueWorker\\WidgetReindexWorker::processItem",
+      "blocking": false,
+      "category": "soft",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Call to deprecated function user_load_by_name(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties() instead.",
+      "file": "src/Plugin/QueueWorker/WidgetReindexWorker.php",
+      "finding_ids": [
+        "F-10f0cc90b0e9"
+      ],
+      "id": "W-07b674d94ea2",
+      "lane": "deferred",
+      "reason": "next-major",
+      "recipe_of": {
+        "F-10f0cc90b0e9": null
+      },
+      "recipes": [],
+      "status": "deferred",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "src/WidgetLookup.php"
+      ],
+      "anchor": "Drupal\\legacy_widgets\\WidgetLookup::findOwnerByMail",
+      "blocking": false,
+      "category": "soft",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Call to deprecated function user_load_by_mail(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties() instead.",
+      "file": "src/WidgetLookup.php",
+      "finding_ids": [
+        "F-fafb9932bd81"
+      ],
+      "id": "W-37c446def33e",
+      "lane": "deferred",
+      "reason": "next-major",
+      "recipe_of": {
+        "F-fafb9932bd81": null
+      },
+      "recipes": [],
+      "status": "deferred",
+      "templates": {}
+    }
+  ],
+  "meta": {
+    "findings_hash": "sha256:5a28c923ad4d3f0429cc4c31945171332527c3e4b826b3eff9c194b361d1b4f8",
+    "recipes_hash": "sha256:29aea3764ac542b5809466f06c124d8d7d760acbdc519bb94fc572beadfa3c48",
+    "worklist_hash": "sha256:d378e2c7aeafeabb886eb0cfe5e4ce958d87905e121331933d0bcf2431fb9279"
+  },
+  "schema": 1,
+  "stage": "assess",
+  "subject": {
+    "machine_name": "legacy_widgets",
+    "path": "web/modules/custom/legacy_widgets"
+  },
+  "target": {
+    "major": 11,
+    "php_version": "8.3.33",
+    "runner": "ddev",
+    "soft_policy": "report"
+  }
+}

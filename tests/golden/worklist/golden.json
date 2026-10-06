@@ -1,0 +1,9 @@
+{
+  "data_hash": "b967dc04dc59646e99bca648bb267ff1a76ea65993d62d5af159d19ff50cbc5d",
+  "files": {
+    "acme_api.json": "8a5950659d95d71d128e85af51a29e8d8712030c6bdd6938d6e6859f08b99953",
+    "acme_core.json": "3e8950cb89c4b67d19097fd96013a5a818ee3a693aebb2d9acf03e0f8d01dd7f",
+    "cases.tsv": "1953285c97cf3b0c15c59c00e707edd84d375f55ff7e0a6c030252386a996a68",
+    "legacy_widgets.json": "d134458f0c5623a326860e7366a532d8cd441da1167d8caf310456115f71a2ca"
+  }
+}

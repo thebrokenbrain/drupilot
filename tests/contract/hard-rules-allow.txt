@@ -83,3 +83,4 @@ AR22-FLAG scripts/env/resolve-workspace.sh
 AR22-FLAG scripts/tests/discover-tests.sh
 AR22-FLAG scripts/tests/run-phpunit.sh
 H4 scripts/ai/normalize-findings.sh 1  # the finding id is F- plus 12 hex digits of a sha256 (AR-10): a jq slice, not a version
+H4 scripts/ai/classify.sh 1  # the item id is W- plus 12 hex digits of a sha256 (AR-10): a jq slice, not a version

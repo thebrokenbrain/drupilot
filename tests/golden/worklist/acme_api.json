@@ -1,0 +1,140 @@
+{
+  "counts": {
+    "blocking": 1,
+    "by_lane": {
+      "ai-free": 1,
+      "deferred": 1,
+      "human": 2
+    },
+    "items": 4,
+    "open": 3
+  },
+  "floor": "10.0",
+  "items": [
+    {
+      "allowed_files": [
+        "src/Controller/StatusController.php"
+      ],
+      "anchor": "Drupal\\acme_api\\Controller\\StatusController::create",
+      "blocking": true,
+      "category": "analysis",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Unsafe usage of new static().",
+      "file": "src/Controller/StatusController.php",
+      "finding_ids": [
+        "F-385953b9a213"
+      ],
+      "id": "W-732abb4c4978",
+      "lane": "ai-free",
+      "reason": null,
+      "recipe_of": {
+        "F-385953b9a213": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "acme_api.services.yml"
+      ],
+      "anchor": "{file}",
+      "blocking": false,
+      "category": "metadata",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "A service passes another number of arguments than its class constructor takes: fewer is an ArgumentCountError, more are silently ignored. Align the arguments with the constructor.",
+      "file": "acme_api.services.yml",
+      "finding_ids": [
+        "F-ae0e83b69e66"
+      ],
+      "id": "W-9f708de7ee57",
+      "lane": "human",
+      "reason": null,
+      "recipe_of": {
+        "F-ae0e83b69e66": "meta.services-arity"
+      },
+      "recipes": [
+        "meta.services-arity"
+      ],
+      "status": "open",
+      "templates": {
+        "meta.services-arity": {
+          "why": "A service passes another number of arguments than its class constructor takes: fewer is an ArgumentCountError, more are silently ignored. Align the arguments with the constructor."
+        }
+      }
+    },
+    {
+      "allowed_files": [
+        "src/Controller/StatusController.php"
+      ],
+      "anchor": "{file}",
+      "blocking": false,
+      "category": "metadata",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "The code uses a module its info.yml does not list in dependencies: core may enable the module without it. Declare the dependency (check the project name of a contrib one).",
+      "file": "src/Controller/StatusController.php",
+      "finding_ids": [
+        "F-ce6866feb350"
+      ],
+      "id": "W-c3bdf2596357",
+      "lane": "human",
+      "reason": null,
+      "recipe_of": {
+        "F-ce6866feb350": "meta.undeclared-deps"
+      },
+      "recipes": [
+        "meta.undeclared-deps"
+      ],
+      "status": "open",
+      "templates": {
+        "meta.undeclared-deps": {
+          "why": "The code uses a module its info.yml does not list in dependencies: core may enable the module without it. Declare the dependency (check the project name of a contrib one)."
+        }
+      }
+    },
+    {
+      "allowed_files": [
+        "src/Controller/StatusController.php"
+      ],
+      "anchor": "Drupal\\acme_api\\Controller\\StatusController::status",
+      "blocking": false,
+      "category": "style",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "\\Drupal calls should be avoided in classes, use dependency injection instead",
+      "file": "src/Controller/StatusController.php",
+      "finding_ids": [
+        "F-39ffd2fbb750"
+      ],
+      "id": "W-d0bcc367aecc",
+      "lane": "deferred",
+      "reason": "style",
+      "recipe_of": {
+        "F-39ffd2fbb750": null
+      },
+      "recipes": [],
+      "status": "deferred",
+      "templates": {}
+    }
+  ],
+  "meta": {
+    "findings_hash": "sha256:73a8e8baa85bd616c65e5a6f8fb6391f71449d2a521307887c371599d4118085",
+    "recipes_hash": "sha256:29aea3764ac542b5809466f06c124d8d7d760acbdc519bb94fc572beadfa3c48",
+    "worklist_hash": "sha256:41a5832e1ba6d4c36a006d662873a2eff85fc3ca8ad63c317681cc301af310f5"
+  },
+  "schema": 1,
+  "stage": "assess",
+  "subject": {
+    "machine_name": "acme_api",
+    "path": "web/modules/custom/acme_api"
+  },
+  "target": {
+    "major": 11,
+    "php_version": "8.3.33",
+    "runner": "ddev",
+    "soft_policy": "report"
+  }
+}

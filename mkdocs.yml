@@ -106,4 +106,5 @@ nav:
           - contributing/adr/0021-drupal-target-and-target-major.md
           - contributing/adr/0022-findings-shape.md
           - contributing/adr/0023-recipe-catalog.md
+          - contributing/adr/0024-worklist-and-actions.md
   - Changelog: changelog.md
