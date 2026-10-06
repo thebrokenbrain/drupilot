@@ -1,0 +1,6 @@
+m.status:
+  path: '/m/status'
+  defaults:
+    _controller: '\Drupal\m\controller\statusController::status'
+  requirements:
+    _permission: 'access content'

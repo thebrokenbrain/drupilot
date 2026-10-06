@@ -1,0 +1,35 @@
+{
+  "_comment": "The checks of scripts/analysis/lint-extension-metadata.sh (its ALL_CHECKS, kept equal by tests/unit/recipes_catalog.sh), for scripts/dev/gen-recipes.sh: each becomes the recipe meta.<check> (ADR 0023). The lint does not read this file. 'lane' is where the classifier puts a finding of the check when no recipe block says otherwise: these are pre-existing metadata problems, so a person decides on them (human), except where 'recipe' gives a deterministic fix. 'description' is the recipe's explanation; the lint's header has the full rule.",
+  "checks": {
+    "config-schema": {
+      "lane": "human",
+      "description": "A config/install or config/optional file has no matching config schema key: core's config validation and translation cannot type it. Add the schema to config/schema/<module>.schema.yml."
+    },
+    "plugin-schema": {
+      "lane": "human",
+      "description": "A Block, Condition, Filter, FieldFormatter or FieldWidget plugin with its own settings has no settings schema, so only core's generic fallback covers it. Add the plugin's settings schema."
+    },
+    "configure-route": {
+      "lane": "human",
+      "description": "The info.yml configure: route is defined by no routing file, so core's module list drops the Configure link. Point it at the module's settings route."
+    },
+    "services-class": {
+      "lane": "human",
+      "description": "A service class in the extension's namespace has no src/ file (an orphan service: fetching it is a fatal error), or exists only with another letter case. Remove the service, restore its class, or fix the case."
+    },
+    "services-arity": {
+      "lane": "human",
+      "description": "A service passes another number of arguments than its class constructor takes: fewer is an ArgumentCountError, more are silently ignored. Align the arguments with the constructor."
+    },
+    "submodule-core-req": {
+      "lane": "human",
+      "description": "A submodule's core_version_requirement does not admit the target core (or is missing), so core refuses to install it. Set it to the parent's constraint.",
+      "recipe": {"lane": "codemod", "engine": "info-yml", "applies_when": {"severity": ["error", "warning"]},
+        "params": {"requirement": "plan:range.constraint"}}
+    },
+    "undeclared-deps": {
+      "lane": "human",
+      "description": "The code uses a module its info.yml does not list in dependencies: core may enable the module without it. Declare the dependency (check the project name of a contrib one)."
+    }
+  }
+}

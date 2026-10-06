@@ -74,6 +74,7 @@ nav:
       - reference/skills-and-agents.md
       - reference/toolchain.md
       - reference/deprecations.md
+      - reference/recipes.md
       - reference/deprecations-of-drupilot.md
       - reference/version-matrix.md
       - reference/state.md
@@ -104,4 +105,5 @@ nav:
           - contributing/adr/0020-phpstan-neon-from-the-plan.md
           - contributing/adr/0021-drupal-target-and-target-major.md
           - contributing/adr/0022-findings-shape.md
+          - contributing/adr/0023-recipe-catalog.md
   - Changelog: changelog.md

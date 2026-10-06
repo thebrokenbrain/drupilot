@@ -32,6 +32,68 @@ Exit codes: 0 ok, also when no plan resolves · 1 usage error.
 
 ## ai
 
+### ai/apply-recipe.sh
+
+```text
+drupilot — scripts/ai/apply-recipe.sh
+Apply one codemod recipe of config/recipes.json (AR-11, ADR 0023) to one
+finding: the primitive scripts/ai/apply-recipes.sh runs per worklist item,
+and the recipe fixtures (tests/fixtures/recipes/<id>/) run on their own. The
+Docker-free engines:
+  ere-replace  a `sed -E` substitution (params.search -> params.replace,
+               back-references \1..\9) on the finding's line (scope line) or
+               on every line of the file (scope file)
+  yaml-edit    op replace-on-line: on the finding's line, the fixed string
+               `from` becomes `to`; each is a capture (the first group of an
+               ERE on the finding's message) or, for `to`, a transform of
+               one (class-from-file: Drupal\<extension>\ plus the class's
+               path under src/, for a class name whose case differs)
+  info-yml     scripts/analysis/set-core-requirement.sh, on a copy of the
+               subject's physical tree, with params.requirement
+               (plan:<path> reads the subject's own frozen upgrade plan,
+               e.g. plan:range.constraint; --param overrides it); only the
+               finding's file is written, and a requirement whose floor is
+               above the main info.yml's (the declared floor) is
+               not-applicable
+params.captures ({name: ERE}, matched on the finding's line before the
+change) give {name} to the postconditions, e.g. "the parameter made optional
+is not used elsewhere in the file". The change is written only when it is
+exact and every postcondition holds on the result (absent-ere / absent-fixed
+/ present-fixed on the line, the file, the file's code lines but the
+finding's (file-except-line), or the body of the function the finding's line
+declares (function-body); comment lines are not code there. An unresolved
+{placeholder} or an empty capture fails the postcondition. rescan is
+left to apply-recipes.sh's re-extraction). A file without a final newline
+keeps none. A replacement that does not apply is `no-match`, and nothing
+changes: the item falls to its next lane. applies_when is honored: file_ere,
+severity (with --severity) and core_min (with --core-floor, else the
+subject's own plan's range.floor).
+
+Usage:
+  apply-recipe.sh --recipe ID --subject DIR --file REL [--line N]
+                  [--message TEXT] [--severity S] [--core-floor X.Y]
+                  [--param KEY=VALUE]... [--recipes FILE] [--dry-run]
+                  [--json] [-h|--help]
+    --recipe ID      a recipe id of config/recipes.json (or --recipes FILE)
+    --subject DIR    the module/theme; --file is relative to it
+    --line N         the finding's line (scope line, yaml-edit)
+    --message TEXT   the finding's message (yaml-edit captures)
+    --severity S     the finding's severity (applies_when.severity)
+    --core-floor X.Y the declared core floor (applies_when.core_min)
+    --param K=V      override params.K (a fixture's requirement, ...)
+    --dry-run        report would-apply; write nothing
+    --json           {recipe, version, engine, file, line, status, changed,
+                      input_hash, output_hash, from, to, reason} on STDOUT
+                      (status: applied | would-apply | no-match |
+                      not-applicable | rejected)
+
+Exit codes: 0 a status was reached (applied, would-apply, no-match or
+not-applicable) · 1 usage error, an unknown recipe or an engine without an
+executor (attributes, php-script, rector-rule: no v1 recipe uses them) · 3
+rejected: the change was computed but a postcondition fails on it, so
+nothing is written.
+```
+
 ### ai/extract.sh
 
 ```text
@@ -3634,7 +3696,8 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
                 config/targets|php|paths and config/catalog/*.json match
                 their schema, every value names its source, every node a
                 hard gate reads is verified and never "announced", and the
-                files agree with each other
+                files agree with each other; and config/recipes.json is what
+                scripts/dev/gen-recipes.sh generates from the catalogs
   - unit        the unit tests (scripts/dev/unit.sh: tests/lib/selftest.sh and
                 tests/unit/*.sh, run with this same bash; a test skipped
                 until its milestone is not a failure)
@@ -3834,6 +3897,8 @@ comment and is never edited by hand:
   reference/pipeline.md           config/pipeline.json (the stage catalog)
   reference/toolchain.md          config/toolchain-reference.json
   reference/deprecations.md       config/deprecations.json (Drupal's deprecations)
+  reference/recipes.md            config/recipes.json (the recipe catalog,
+                                  itself generated from the catalogs)
   reference/version-matrix.md     config/targets/*.json, config/php/*.json and
                                   config/paths/*.json (every value with its
                                   as_of, source, verified and verified_as)
@@ -3850,6 +3915,46 @@ Usage:
 
 Requires bash >= 3.2 and jq. Exit codes: 0 generated / no drift · 1 drift
 (--check) or a usage error.
+```
+
+### dev/gen-recipes.sh
+
+```text
+drupilot — scripts/dev/gen-recipes.sh
+Generate config/recipes.json (drupilot.recipes/1, AR-11, ADR 0023) from the
+catalogs, the one source of truth (CC-33): config/deprecations.json
+(deprecations, signature_changes, lifecycle), config/port-checks.json
+(checks) and config/metadata-checks.json (checks). A developer tool: the
+`data` gate of scripts/dev/check.sh runs --check, so the generated file is
+never edited by hand.
+
+  dep.<slug>     a deprecations entry (not a [tag] explainer): ai-templated,
+                 matches its pattern (case-insensitive ERE) and the symbols
+                 of the lifecycle entries the pattern matches
+  sig.<id>       a signature_changes entry: matches rule signature:<id>
+  safety.<check> a port-checks check: matches rule port-safety:<check>; its
+                 template is the [<check>] explainer of deprecations.json
+  meta.<check>   a metadata check: matches rule metadata:<check>
+  life.<symbol>  a lifecycle entry no deprecations pattern matches
+
+An entry's optional `recipe` block sets the lane, the engine (ere-replace,
+yaml-edit, info-yml, attributes, php-script, rector-rule; default template),
+its params, applies_when and postconditions. `version` is the first 12 hex
+of the sha256 of the recipe without version, source and fixtures, so it
+changes exactly when the recipe does. A codemod of a Docker-free engine
+must have its fixtures in tests/fixtures/recipes/<id>/ (expect.json,
+before/, after/).
+
+Usage:
+  scripts/dev/gen-recipes.sh [--check | --write] [--json] [-h|--help]
+    --check   compare config/recipes.json with a fresh generation (the
+              default); write nothing
+    --write   (re)write config/recipes.json
+    --json    {ok, mode, drift, recipes, by_lane, by_engine, problems} on
+              STDOUT
+
+Requires bash >= 3.2, jq and sha256sum or shasum. Exit codes: 0 generated or
+no drift · 1 drift, an invalid catalog entry or a usage error.
 ```
 
 ### dev/golden.sh
@@ -4024,8 +4129,8 @@ runs it as its `schemas` gate). Each schema is checked against the
 instances listed below: the 0.9 captures of tests/baseline/v0.9.0/, the lab
 samples of tests/baseline/v0.9.0/samples/, a live `preflight.sh --json`, the
 version data of config/targets|php|paths, the stage catalog
-config/pipeline.json, the findings goldens of tests/golden/findings/ and an
-example catalog (the data
+config/pipeline.json, the recipes config/recipes.json, the findings goldens of
+tests/golden/findings/ and an example catalog (the data
 gate, scripts/dev/data-check.sh, also checks their provenance). Two engines:
   jq         always available: the structural validator of
              scripts/dev/jsonschema.jq, reading the same schemas (only the
