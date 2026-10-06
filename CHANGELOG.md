@@ -677,14 +677,16 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   when the class loads. The fixture is unchanged (part of H12).
 - **`run-rector.sh` now re-renders `rector-compat.php` for the module it
   runs on** (found by the T-M4-05 lab). On a test-bed shared by several
-  modules, the compat pass kept the config rendered for the previous module.
-  - It crashed once that module's path was gone, and it used the previous
-    module's PHP floor.
-  - An untouched render (its sha256 kept in the lock, or byte for byte the
-    template's) for another subject or floor is now backed up and rendered
-    again, as `rector.php` already was.
-  - A hand-edited copy is kept, with a warning when it names another module.
-  - Two config backups within the same second no longer share one name.
+  modules, the compat pass kept the config rendered for the previous module,
+  and Rector stopped the pass once that module's path was gone.
+  - An untouched render for another module is now backed up and rendered
+    again, as `rector.php` already was. An untouched render is one whose
+    sha256 the lock keeps, or one that is byte for byte the template's.
+  - A hand-edited copy is kept. A warning names any relative `withPaths()`
+    path in it that does not exist.
+  - Two config backups within the same second no longer share one name, in
+    `run-rector.sh` and `render-templates.sh` alike (`config_backup` in
+    `scripts/lib/paths.sh`).
 
 ## [0.9.2] - 2026-10-04
 

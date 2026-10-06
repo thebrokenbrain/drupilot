@@ -125,9 +125,10 @@
 # follows the same rules when the compat pass runs: written when missing,
 # regenerated from an older marker, and regenerated when it is an untouched
 # render (its sha256 kept in the lock, or rector_config_pristine) for another
-# PHP floor or subject, so a test-bed shared by several modules never runs the
-# compat pass with the previous module's config. A hand-edited copy that names
-# another subject is kept, with a warning.
+# subject (its only token), so a test-bed shared by several modules never runs
+# the compat pass with the previous module's config. A kept copy whose
+# withPaths() names a relative path that does not exist (Rector stops on it)
+# gets a warning.
 #
 # Every pass runs with --clear-cache (Rector's cache is shared across configs,
 # so a file another config cached as unchanged would otherwise be skipped). A
@@ -312,19 +313,11 @@ write_rector_from_template() {
   return 0
 }
 
-# backup_config [file] — copy a config (default rector.php) to
-# <root>/.drupilot/backups/ (gitignored; same place render-templates.sh --force
-# uses) and print the path. A second backup within the same second gets a
-# numbered name instead of replacing the first.
+# backup_config [file] — back a config (default rector.php) up with
+# config_backup (<root>/.drupilot/backups/, the same place render-templates.sh
+# --force uses) and print the path.
 backup_config() {
-  local f="${1:-$RECTOR_PHP}" bdir base backup n=1
-  bdir="$(project_artifacts_dir "$DRUPAL_ROOT")/backups"
-  mkdir -p "$bdir"
-  base="$bdir/$(basename "$f").$(date -u +%Y%m%dT%H%M%SZ)"
-  backup="$base"
-  while [[ -e "$backup" ]]; do backup="$base.$n"; n=$((n + 1)); done
-  cp -p "$f" "$backup"
-  printf '%s' "$backup"
+  config_backup "$DRUPAL_ROOT" "${1:-$RECTOR_PHP}" || die "Could not back up ${1:-$RECTOR_PHP}." 1
 }
 
 if [[ -f "$RECTOR_PHP" ]]; then
@@ -436,16 +429,41 @@ if [[ "$COMPAT" == "1" ]]; then
        && { render_sha_matches "$DRUPAL_ROOT" rector-compat.php "$RECTOR_COMPAT_PHP" \
             || rector_config_pristine "$TEMPLATE_COMPAT" "$RECTOR_COMPAT_PHP"; } \
        && [[ "$(write_compat_from_template - 2> /dev/null | sha256_hex)" != "$(sha256_hex < "$RECTOR_COMPAT_PHP")" ]]; then
-    # An untouched render for another PHP floor or subject (a test-bed shared
-    # by several modules): regenerate it.
+    # An untouched render for another subject (a test-bed shared by several
+    # modules): regenerate it.
     _bk="$(backup_config "$RECTOR_COMPAT_PHP")"
     write_compat_from_template
-    log_warn "rector-compat.php was an untouched drupilot render for another PHP floor or subject; regenerated. Previous copy: ${_bk#"$DRUPAL_ROOT"/}"
+    log_warn "rector-compat.php was an untouched drupilot render for another subject; regenerated. Previous copy: ${_bk#"$DRUPAL_ROOT"/}"
   else
     log_ok "rector-compat.php already present at the Drupal root (left untouched)."
-    if ! grep -qF "'$SUBJECT_REL'," "$RECTOR_COMPAT_PHP"; then
-      log_warn "rector-compat.php does not name $SUBJECT_REL in withPaths() (edited by hand, so it is kept); Rector processes the subject named on its command line, but a path in it that no longer exists stops the compat pass. Re-render it (the current copy is backed up):"
-      log_plain "   bash \"$(plugin_root)/scripts/env/render-templates.sh\" --subject \"$SUBJECT_ABS\" --only rector-compat --force"
+    # Rector processes the subject named on its command line, but stops on a
+    # path of withPaths() that does not exist: name the relative literal ones
+    # that are gone (an absolute or __DIR__ path may be the container's). No
+    # case statement or comment inside the $(...) below: bash 3.2 misparses
+    # their parentheses there.
+    # shellcheck disable=SC2016  # awk program, not a shell expansion
+    _gone="$(awk -v q="'" '
+      {
+        l = $0
+        if (!on) { if (!match(l, /->withPaths\(\[/)) next; on = 1; l = substr(l, RSTART + RLENGTH) }
+        last = 0
+        if (match(l, /\]\)/)) { l = substr(l, 1, RSTART - 1); last = 1 }
+        gsub("__DIR__[ \t]*[.][ \t]*(" q "[^" q "]*" q "|\"[^\"]*\")", "", l)
+        while (match(l, q "[^" q "]*" q) || match(l, "\"[^\"]*\"")) { print substr(l, RSTART + 1, RLENGTH - 2); l = substr(l, RSTART + RLENGTH) }
+        if (last) exit
+      }' "$RECTOR_COMPAT_PHP" 2> /dev/null \
+      | while IFS= read -r _p; do
+          [[ -n "$_p" && "$_p" != /* ]] || continue
+          [[ -e "$DRUPAL_ROOT/$_p" ]] || printf '%s ' "$_p"
+        done; true)"
+    if [[ -n "$_gone" ]]; then
+      log_warn "rector-compat.php (kept: edited by hand) names a path that does not exist in withPaths(): ${_gone% }. Rector stops the compat pass on it."
+      if grep -q "drupilot — rector-compat.php" "$RECTOR_COMPAT_PHP"; then
+        log_plain "   Re-render it for this module (the current copy is backed up):"
+        log_plain "   bash \"$(plugin_root)/scripts/env/render-templates.sh\" --subject \"$SUBJECT_ABS\" --only rector-compat --force"
+      else
+        log_plain "   Fix its withPaths()."
+      fi
     fi
     # The current render under another sha256 or none: keep its sha256 again.
     if grep -q "drupilot — rector-compat.php" "$RECTOR_COMPAT_PHP" && [[ -f "$(lock_path "$DRUPAL_ROOT")" ]] \

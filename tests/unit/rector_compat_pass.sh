@@ -156,16 +156,43 @@ ro ok "$O"
 assert_eq "another subject on the same root: rector-compat.php regenerated for it, after a backup" \
   "$T_RC|$(grep -c "'$O'," "$r/rector-compat.php")|$(grep -c "'$S'," "$r/rector-compat.php")|$(grep -l "'$S'," "$r"/.drupilot/backups/rector-compat.php.* 2> /dev/null | xargs grep -l 'drupilot-template-version: 1' | grep -c . || true)" \
   "0|1|0|1"
-assert_match "... with a warning" "$(tr '\n' ' ' < "$T_ERR")" 'rector-compat\.php was an untouched drupilot render for another PHP floor or subject; regenerated'
+assert_match "... with a warning" "$(tr '\n' ' ' < "$T_ERR")" 'rector-compat\.php was an untouched drupilot render for another subject; regenerated'
 ro ok "$S"
 assert_eq "... and back again" "$T_RC|$(grep -c "'$S'," "$r/rector-compat.php")" "0|1"
-# A hand-edited copy naming another subject is kept, with a warning.
-sed_inplace "$r/rector-compat.php" "s#'$S',#'$O',#"
-printf '\n// hand edit\n' >> "$r/rector-compat.php"; cp "$r/rector-compat.php" "$T_TMP/compat-other.php"
+# A render whose sha256 the lock lost (written by drupilot before it kept one:
+# rector_config_pristine) follows the subject too.
+LF="$(lock_path "$r")"
+jq 'del(.templates["rector-compat.php"])' "$LF" > "$T_TMP/lock.json" && cp "$T_TMP/lock.json" "$LF"
+ro ok "$O"
+assert_eq "an untouched render with no sha256 in the lock: regenerated for the subject" \
+  "$T_RC|$(grep -c "'$O'," "$r/rector-compat.php")|$(jq -r '.templates["rector-compat.php"].sha256 // "none"' "$LF" | grep -c '^sha256:' || true)" "0|1|1"
 ro ok "$S"
-assert_file_eq "a hand-edited rector-compat.php for another subject is left alone" "$r/rector-compat.php" "$T_TMP/compat-other.php"
-assert_match "... with a warning naming the subject" "$(tr '\n' ' ' < "$T_ERR")" "rector-compat\\.php does not name $S in withPaths\\(\\)"
+# A hand-edited copy is kept; a withPaths() path that is gone is named.
+sed_inplace "$r/rector-compat.php" "s#'$S',#'web/modules/custom/gone',#"
+printf '\n// hand edit\n' >> "$r/rector-compat.php"; cp "$r/rector-compat.php" "$T_TMP/compat-gone.php"
+ro ok "$S"
+assert_file_eq "a hand-edited rector-compat.php is left alone" "$r/rector-compat.php" "$T_TMP/compat-gone.php"
+assert_match "... with a warning naming the path that is gone, and the re-render" "$(tr '\n' ' ' < "$T_ERR")" \
+  "names a path that does not exist in withPaths\\(\\): web/modules/custom/gone\\. .*--only rector-compat --force"
+sed_inplace "$r/rector-compat.php" "s#'web/modules/custom/gone',#'$O',#"
+ro ok "$S"
+assert_eq "  naming another module that exists: no warning" "$(grep -c 'names a path that does not exist' "$T_ERR" || true)" "0"
+# The developer's own file: one line, a parent directory, no trailing comma.
+printf "<?php\nreturn Rector\\Config\\RectorConfig::configure()->withPaths(['web/modules/custom'])->withSkip(['web/nope']);\n" > "$r/rector-compat.php"
+ro ok "$S"
+assert_eq "  the developer's own one-line withPaths(): no warning (withSkip is not read)" "$(grep -c 'names a path that does not exist' "$T_ERR" || true)" "0"
+printf "<?php\nreturn Rector\\Config\\RectorConfig::configure()->withPaths(['web/nope', __DIR__ . '/x']);\n" > "$r/rector-compat.php"
+ro ok "$S"
+assert_match "  ... one that is gone: warned, told to fix it" "$(tr '\n' ' ' < "$T_ERR")" 'withPaths\(\): web/nope\. .*Fix its withPaths\(\)'
 rm -f "$r/rector-compat.php"
+
+# config_backup: a second backup within the same second gets a numbered name.
+DS="$T_TMP/datestub"; mkdir -p "$DS"; printf '#!/bin/sh\necho 20260101T000000Z\n' > "$DS/date"; chmod +x "$DS/date"
+printf 'a\n' > "$T_TMP/cfg.php"; b1="$(PATH="$DS:$PATH" config_backup "$r" "$T_TMP/cfg.php")"
+printf 'b\n' > "$T_TMP/cfg.php"; b2="$(PATH="$DS:$PATH" config_backup "$r" "$T_TMP/cfg.php")"
+assert_eq "config_backup: two backups in one second keep both copies" \
+  "$(basename "$b1")|$(basename "$b2")|$(cat "$b1")|$(cat "$b2")" "cfg.php.20260101T000000Z|cfg.php.20260101T000000Z.1|a|b"
+assert_eq "  a missing file: return 1" "$(config_backup "$r" "$T_TMP/none.php" > /dev/null; echo $?)" "1"
 
 # L >= 8.4: no compat pass.
 r84="$T_TMP/root84"; mkroot "$r84"
