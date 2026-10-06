@@ -1,0 +1,3 @@
+legacy_widgets	legacy_widgets
+acme_core	monorepo/web/modules/custom/acme_core
+acme_api	monorepo/web/modules/custom/acme_api

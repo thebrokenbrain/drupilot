@@ -138,9 +138,8 @@ not reinvent their logic; capture and interpret their output.
    else Drupal,DrupalPractice; state which one in the report (`.drupilot.source`
    and `.drupilot.ruleset` in the `--json` output).
 
-Prefer the `--json` counts for the S/M/L/XL verdict so it is **reproducible**
-(the same module yields the same numbers) rather than estimated from the human
-report. Fall back to reading the report only if a tool's JSON is unavailable.
+The S/M/L/XL verdict comes from `assess.sh` (which runs these tools itself and
+keeps their raw reports); the commands above are for a closer look at a finding.
 6. **Upgrade Status** — only if Drupal is installed in DDEV:
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-upgrade-status.sh" --module <NAME>
@@ -197,26 +196,17 @@ an API changed, but never copy/redistribute them — they are unlicensed.
 
 ## Effort estimation (S/M/L/XL)
 
-Reason holistically; broad guide:
-- **S** — mostly auto-fixable; `info.yml` minimal change; no hard breaks; few/no
-  manual edits.
-- **M** — auto-fixable majority plus a handful of manual edits; at most one mild hard
-  break; contrib deps mostly D11-ready.
-- **L** — several manual edits and/or one significant hard break (e.g. CKEditor 5
-  migration, jQuery UI removal), or a key contrib dependency lagging on D11.
-- **XL** — multiple hard breaks, deep Symfony 7 surface, large untyped codebase, or a
-  blocking contrib dependency with no D11 path.
-Compare the estimate to `DRUPILOT_VIABILITY_THRESHOLD` (`small`/`medium`/`large`/`xl`
-≡ S/M/L/XL; default medium). If it strictly exceeds the threshold, mark it clearly **and still deliver the plan**.
+The verdict is computed, not judged: `scripts/analysis/assess.sh --subject <DIR> --json`
+writes it to `assess.json` (`verdict`, `rubric.manual`, `rubric.hard_breaks`,
+`rubric.blocking_deps` and the matched `rubric.rule`, ADR 0025), with
+`above_threshold` against `DRUPILOT_VIABILITY_THRESHOLD`. Quote the counts and the
+rule verbatim; never override them. If the verdict exceeds the threshold, mark it
+clearly **and still deliver the plan**.
 
 ## Deliverables
 
-1. **Viability report** — fill `${CLAUDE_PLUGIN_ROOT}/templates/viability-report.md.tmpl`
-   (substitute the `{{PLACEHOLDER}}` tokens) and write it to the per-project state /
-   working directory as `viability-report.md`. Include: subject + type, PHP/Drupal
-   target, the S/M/L/XL verdict, auto-fixable vs manual counts, the hard-break list,
-   `info.yml` status, contrib-dependency D11 status, the phased plan, and a raw
-   tool-output appendix.
+1. **Viability report** — `assess.sh` renders `viability-report.md` into the
+   visible `.drupilot/` dir from `assess.json`; read it, never rewrite its numbers.
 2. **Staged port plan** — fill `${CLAUDE_PLUGIN_ROOT}/templates/port-plan.md.tmpl`:
    ordered stages, per-stage effort and risks, what preserves the original
    functionality without colliding with D11, and what is deferred to Phase 2.

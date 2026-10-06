@@ -293,6 +293,53 @@ written).
 
 ## analysis
 
+### analysis/assess.sh
+
+```text
+drupilot — scripts/analysis/assess.sh
+The viability assessment, computed (07-R4, AR-10, ADR 0025): the S/M/L/XL
+verdict from three counts, the threshold rule that matched, and everything
+the viability report shows, as assess.json; the viability-assessment skill
+only narrates it.
+
+  manual         scope-current PHPStan deprecations of class hard or unknown
+                 with no Rector finding at the same (file, anchor), plus the
+                 signature findings of severity error (manual_items)
+  hard_breaks    the categories of config/catalog/hard-breaks.json with at
+                 least one matching file of the subject
+  blocking_deps  deps-status.sh's blockers (no Drupal 11 release on
+                 drupal.org; offline every contrib dependency is unknown)
+
+  XL  blocking_deps >= 1 or hard_breaks >= 3 or manual > 40
+  L   hard_breaks == 2 or manual > 15
+  M   hard_breaks == 1 or manual >= 5
+  S   otherwise                                     (first match wins)
+
+It runs the assess stage itself (scripts/ai/extract.sh, normalize-findings.sh,
+classify.sh), scripts/analysis/core-strategy.sh and deps-status.sh, writes
+assess.json (schema 1: the counts, the rule, the core-target decision, the
+hard-break files, the hygiene totals, findings_hash, worklist_hash and
+subject_digest; its time under meta) to the subject's hidden state dir,
+renders viability-report.md from templates/viability-report.md.tmpl into
+the visible .drupilot/ dir, and records the assessed stage with its effort.
+Next-major findings never count (X18).
+
+Usage:
+  assess.sh --subject DIR [--findings FILE --worklist FILE] [--deps FILE]
+            [--offline] [--no-record] [--json] [-h|--help]
+    --subject DIR      the module/theme
+    --findings FILE    read this findings.json and --worklist FILE instead of
+                       running the assess stage (a golden's; no Docker)
+    --deps FILE        read this deps-status.sh --json instead of running it
+    --offline          deps-status.sh without the network
+    --no-record        do not record the stage in state.json
+    --json             print assess.json on STDOUT
+
+Exit codes: 0 assessed · 1 usage error, or no findings to assess · 2 jq
+missing · 3 assessed, but Rector or PHPStan gave no verdict (see
+assess.json tools; the verdict may be low).
+```
+
 ### analysis/check-port-safety.sh
 
 ```text

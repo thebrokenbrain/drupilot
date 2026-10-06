@@ -509,8 +509,28 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     `legacy_widgets`, `acme_core` and `acme_api` are computed Docker-free
     from the findings goldens, and a test keeps next-major findings out of
     the AI lanes.
+- **The viability verdict is computed** (T-M4-09, 07-R4, AR-10, ADR 0025).
+  `scripts/analysis/assess.sh` runs the assess stage and writes
+  `assess.json` and `viability-report.md`; the skill only narrates them.
+  - The three rubric counts come from `findings.json`: `manual` (current
+    hard and unknown deprecations Rector does not change in the same function,
+    plus signature errors), `hard_breaks` (the categories of the new
+    `config/catalog/hard-breaks.json`, the 0.9 greps with each fact verified
+    in core) and `blocking_deps` (`deps-status.sh`'s blockers).
+  - The S/M/L/XL table is the 0.9 one, first match wins, and `rubric.rule`
+    keeps the rule that matched. Soft and next-major findings never count.
+  - `assess.json` gains `schema: 1`, `tools`, `worklist`, `findings_hash`,
+    `worklist_hash`, `subject_digest` and `meta`; the same tree, lock and
+    drupal.org answers give the same document outside `meta`. Assess goldens
+    for `legacy_widgets`, `acme_core` and `acme_api` are computed Docker-free
+    from the findings and worklist goldens.
 
 ### Changed
+- **`/drupilot-assess` and the `viability-assessment` skill** no longer run
+  the analyzers one by one, grep for hard breaks or apply the rubric: they
+  run `assess.sh` and narrate `assess.json` (the skill has no `grep` left).
+  `state.json`'s snapshot reads the assessment time from `meta.generated_at`
+  too.
 - **`scripts/dev/unit.sh` runs the tests in parallel** (`--jobs N`, default
   the CPUs, at most 8): the unit gate went from 12 minutes to under 2 on a
   developer machine, and the macOS CI leg, which runs the whole gate twice,

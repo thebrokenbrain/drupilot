@@ -76,3 +76,22 @@ A recipe applies only when its conditions hold, its required core included: neve
 - a codemod whose change is no longer in the file (you reverted it) is tried again.
 
 The same findings, recipes and actions always give the same worklist outside `meta`.
+
+## Assessment
+
+`scripts/analysis/assess.sh --subject DIR` computes the viability verdict ([ADR 0025](../contributing/adr/0025-assess-rubric-from-findings.md)). It runs the assess stage (extraction, findings and worklist), the core-target decision and the dependency check, then writes `assess.json` to the same hidden state dir (schema `schemas/assess.schema.json`) and `viability-report.md` to the visible `.drupilot/` folder. The verdict comes from three counts:
+
+- `manual`: the current hard or unknown deprecations that Rector does not change in the same function or method, plus the signature findings of severity `error`. Each one is listed in `manual_items` with its finding id.
+- `hard_breaks`: the categories of `config/catalog/hard-breaks.json` (Twig 3, CKEditor 5, jQuery UI, Symfony 7) that match at least one file of the module.
+- `blocking_deps`: the `drupal/*` dependencies with no Drupal 11 release on drupal.org. Offline, a dependency is `unknown` and does not block.
+
+The first rule that matches wins, and `rubric.rule` keeps it:
+
+| Verdict | Rule |
+|---|---|
+| XL | `blocking_deps >= 1` or `hard_breaks >= 3` or `manual > 40` |
+| L | `hard_breaks == 2` or `manual > 15` |
+| M | `hard_breaks == 1` or `manual >= 5` |
+| S | otherwise |
+
+Soft deprecations and next-major findings never count. `assess.json` also keeps `findings_hash`, `worklist_hash` and the module's digest, so the same tree, lock and drupal.org answers give the same document outside `meta`, which holds its time. The script records the `assessed` stage with the verdict as `effort`.

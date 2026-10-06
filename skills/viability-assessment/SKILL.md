@@ -99,6 +99,12 @@ whether it is unconfirmed (`php_target_unconfirmed "$PHP_TARGET"`).
 
 ## 3. Run the static analyses (all non-destructive)
 
+`scripts/analysis/assess.sh --subject <path> --json` runs all of this section
+(through `scripts/ai/extract.sh`, `normalize-findings.sh` and `classify.sh`),
+computes the verdict of §5 and writes the artifacts of §6. Run it, then read
+`assess.json`: the subsections below explain where each field comes from; the
+individual scripts stay available for a closer look.
+
 Run each leaf script; capture stdout (parseable / summary) and stderr (logs).
 **None of these write to the subject.**
 
@@ -271,29 +277,14 @@ Build the classification that drives the verdict:
    separately.
 3. **Manual changes** — deprecations PHPStan flags that no Rector rule covers,
    plus mechanical edits Rector skips. Medium cost.
-4. **Hard breaks** — detect each category with the EXACT greps below (run all
-   four; a category is "present" when its grep returns ≥1 file). This makes
-   `hard_breaks` reproducible instead of a judgment call:
-
-   ```bash
-   # Twig 3: spaceless tag + removed filters/functions.
-   grep -rIlE '\{%[-[:space:]]*spaceless|\|[[:space:]]*(spaceless|convert_encoding)\b' \
-     --include='*.twig' "$SUBJECT"
-   # CKEditor 4 (removed in D10): editor config + 4-era plugin JS/yml.
-   grep -rIlE 'CKEDITOR\.|Drupal\.editors\.ckeditor|editor\.editor\.ckeditor\b' \
-     --include='*.yml' --include='*.js' "$SUBJECT"
-   # jQuery UI (removed/externalized): library deps + JS usage.
-   grep -rIlE 'jquery[._]ui|core/jquery\.ui' \
-     --include='*.libraries.yml' --include='*.yml' --include='*.js' "$SUBJECT"
-   # Symfony 7 (subscriber/service signature & type changes).
-   grep -rIlE 'EventSubscriberInterface|getSubscribedEvents' --include='*.php' "$SUBJECT"
-   ```
-
-   `hard_breaks` = the number of the four categories with ≥1 matching file. Record
-   the per-category file lists. **Symfony 7** is the most false-positive-prone
-   (having a subscriber is common and may not break): keep it counted for the
-   verdict, but note in the report whether PHPStan actually flags a
-   type/signature error there — if it does not, call it "no real work".
+4. **Hard breaks** — `assess.sh` scans the four categories of
+   `config/catalog/hard-breaks.json` (Twig 3, CKEditor 5, jQuery UI, Symfony 7;
+   each a POSIX ERE over the files its globs name, each fact verified in core)
+   and lists the matching files in `hard_break_categories`. `hard_breaks` is the
+   number of categories present. **Symfony 7** is the most false-positive-prone
+   (having a subscriber is common and may not break): it still counts for the
+   verdict, but say in the report whether PHPStan actually flags a type or
+   signature error there; if it does not, call it "no real work".
 5. **info.yml status** — the recommended `core_version_requirement` comes from
    the core-strategy helper (§3.5): `auto` yields `^10 || ^11` for a
    BC-preserving port (paired with a `require.php` floor — see
@@ -408,76 +399,45 @@ changed. Read the relevant ones (match by API name / change-record number) to
 justify a finding and shape the plan. They are context only — never
 copied/redistributed (unlicensed), never the sole basis for a verdict.
 
-## 5. Estimate effort (S / M / L / XL) — deterministic rubric
+## 5. Estimate effort (S / M / L / XL) — computed by `assess.sh`
 
-The verdict is computed from three integer counts (no subjective weighting), so
-two assessments of the same module reach the same verdict:
+The verdict comes from three integer counts (ADR 0025), so two assessments of
+the same module reach the same verdict. Never recompute or override it:
 
-- `manual` — **hard** (and unknown) deprecations PHPStan flags that **no**
-  Rector rule (official or digests) covers — soft ones never count, whatever
-  `DRUPILOT_SOFT_DEPRECATIONS` says (§3.2) — plus the mechanical edits Rector cannot make, plus the
-  **error** findings of `scan-signature-changes.sh` (§3.6). (`info.yml` is not
-  counted — it is always required.)
-- `hard_breaks` — how many of the four categories are actually present (0–4),
-  counted by the fixed greps in §3 step 4.
-- `blocking_deps` — `drupal/*` dependencies with **no** D11 release **and no**
-  viable alternative. (A dependency that merely needs swapping but has an
-  alternative is not "blocking" — count it as one `hard_break` instead.)
+- `rubric.manual`: the scope-current PHPStan deprecations of class `hard` or
+  `unknown` with no Rector change in the same function (`manual_items`), plus
+  the signature findings of severity `error`. Soft ones never count, whatever
+  `DRUPILOT_SOFT_DEPRECATIONS` says.
+- `rubric.hard_breaks`: the hard-break categories present (0–4).
+- `rubric.blocking_deps`: the dependencies drupal.org has no Drupal 11 release
+  for (`deps-status.sh` blockers). Whether an alternative is viable is your
+  judgement for the plan, not for the count.
 
-Apply the FIRST matching rule, top to bottom. This IS the verdict, not a hint:
+`rubric.rule` is the first matching row, quoted verbatim in the report:
 
 | Verdict | Condition (first match wins) |
 |---|---|
 | **XL** | `blocking_deps >= 1`  OR  `hard_breaks >= 3`  OR  `manual > 40` |
 | **L**  | `hard_breaks == 2`  OR  `manual > 15` |
 | **M**  | `hard_breaks == 1`  OR  `manual >= 5` |
-| **S**  | otherwise (`hard_breaks == 0` AND `manual < 5` AND `blocking_deps == 0`) |
+| **S**  | otherwise |
 
-Record the three counts and the matched rule **verbatim** in the report so the
-verdict is auditable and reproduces. The auto-fixable share (official vs digests)
-is reported separately as context; it does **not** change the verdict — it
-measures what is cheap, not the remaining effort.
-
-Compare against `DRUPILOT_VIABILITY_THRESHOLD` (`small` / `medium` / `large` /
-`xl`, or the letters `S` / `M` / `L` / `XL`, case-insensitive; order
-`S < M < L < XL`; default `medium`). If the verdict strictly exceeds it (with
-`medium`: an L or XL verdict), set the "above threshold" flag.
-**Even then, still produce the phased plan** — never withhold it.
+`above_threshold` compares it with `viability_threshold`
+(`DRUPILOT_VIABILITY_THRESHOLD`, default `medium`). **Even above the threshold,
+still produce the phased plan** — never withhold it. The auto-fixable share
+(`auto_fixable`) is context; it does not change the verdict.
 
 ## 6. Produce the artifacts
 
-Write the human-readable `viability-report.md` (and `port-plan.md`) into the
-visible `.drupilot/` artifacts dir; keep the machine-readable `assess.json` in the
-hidden per-project state dir. Substitute the `{{...}}` tokens in the templates.
-
-```bash
-ART_DIR="$(bash -c '. "$CLAUDE_PLUGIN_ROOT/scripts/lib/common.sh"; project_artifacts_dir "$1"' _ "$SUBJECT")"
-STATE="$(project_state_dir "$SUBJECT")"
-REPORT_TMPL="$ROOT/templates/viability-report.md.tmpl"
-PLAN_TMPL="$ROOT/templates/port-plan.md.tmpl"
-```
-
-- `viability-report.md` (into `$ART_DIR`, from `templates/viability-report.md.tmpl`):
-  subject + type, PHP/Drupal target (for 8.5, note "needs Drupal 11.3 or later; no
-  Rector php85 set assumed"), the **core
-  compatibility decision** (strategy, recommended `core_version_requirement`,
-  composer constraint, `require.php`, the **version-bump verdict** and rationale,
-  and any PHP-floor warning — from §3.5), verdict (S/M/L/XL) with the
-  above-threshold flag, auto-fixable vs manual counts (official vs digests broken
-  out), the four hard-break sections with concrete findings, `info.yml` status,
-  contrib-dependency D11 table, the pre-existing hygiene table (§3.7:
-  `{{HYGIENE_SUMMARY}}` and one `{{HYGIENE_ROWS}}` row per finding —
-  `| severity | check | file:line | message | suggestion |`; `_not run_` when the
-  lint did not run, never a literal `{{...}}`), the phased plan summary, and a raw-tool-output
-  appendix (the captured rector/phpstan/phpcs/upgrade_status output, lightly
-  trimmed). Fill `{{CORE_TARGET_STRATEGY}}`, `{{RECOMMENDED_CORE_REQUIREMENT}}`,
-  `{{COMPOSER_CORE_CONSTRAINT}}`, `{{REQUIRE_PHP}}`, `{{VERSION_BUMP}}`,
-  `{{CORE_TARGET_RATIONALE}}`, `{{CORE_TARGET_WARNING}}` and
-  `{{TARGET_CORE_REQUIREMENT}}` from the helper JSON.
-- `port-plan.md` (into `$ART_DIR`, from `templates/port-plan.md.tmpl`): staged plan — stages,
-  per-stage effort, risks, exactly what preserves original functionality without
-  colliding with D11 (Phase 1), and what is explicitly **deferred to Phase 2**
-  (the refactor). The plan must exist even for an XL/above-threshold verdict.
+`assess.sh` writes the machine-readable `assess.json` to the hidden per-project
+state dir and renders the human-readable `viability-report.md` from
+`templates/viability-report.md.tmpl` into the visible `.drupilot/` dir, both
+from the same numbers, and records the `assessed` stage with its effort. You
+write only the staged **`port-plan.md`** (from `templates/port-plan.md.tmpl`, in
+the same `.drupilot/` dir): stages, per-stage effort, risks, what preserves the
+original functionality without colliding with Drupal 11 (Phase 1), and what is
+**deferred to Phase 2**. The plan must exist even for an XL/above-threshold
+verdict.
 
 Suggested phasing to encode in the plan:
 
@@ -490,13 +450,6 @@ Suggested phasing to encode in the plan:
 4. **Stage 3 — Tests green**: adapt + run the full suite (`test-adaptation`).
 5. **Phase 2 (opt-in) — Refactor**: "Drupal 11 way", PHPStan 5-6, clean PHPCS,
    added tests. Deferred unless the developer opts in.
-
-Cache a small JSON summary (`assess.json`: verdict, counts, ready flags, the
-core-target recommendation — strategy, recommended `core_version_requirement`,
-`require.php`, `version_bump` — the `hygiene` totals of §3.7, and a timestamp) in the hidden state dir `$STATE`
-(not the visible `.drupilot/` dir) for `/drupilot-status` and the port stage,
-then record the stage in the per-module registry:
-`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <DIR> --stage assessed --effort <S|M|L|XL>`.
 
 ## 7. Report in chat (concise English)
 
