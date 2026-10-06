@@ -7,8 +7,8 @@
 # instances listed below: the 0.9 captures of tests/baseline/v0.9.0/, the lab
 # samples of tests/baseline/v0.9.0/samples/, a live `preflight.sh --json`, the
 # version data of config/targets|php|paths, the stage catalog
-# config/pipeline.json, the recipes config/recipes.json, the findings goldens of
-# tests/golden/findings/ and an example catalog (the data
+# config/pipeline.json, the recipes config/recipes.json, the findings and
+# worklist goldens of tests/golden/{findings,worklist}/ and an example catalog (the data
 # gate, scripts/dev/data-check.sh, also checks their provenance). Two engines:
 #   jq         always available: the structural validator of
 #              scripts/dev/jsonschema.jq, reading the same schemas (only the
@@ -75,6 +75,9 @@ SPECS="$(printf '%s\t%s\t%s\n' \
   toolchain.schema.json config/toolchain-reference.json . \
   pipeline.schema.json config/pipeline.json . \
   recipes.schema.json config/recipes.json . \
+  worklist.schema.json tests/golden/worklist/legacy_widgets.json . \
+  worklist.schema.json tests/golden/worklist/acme_core.json . \
+  worklist.schema.json tests/golden/worklist/acme_api.json . \
   findings.schema.json tests/golden/findings/legacy_widgets/findings.json . \
   findings.schema.json tests/golden/findings/acme_core/findings.json . \
   findings.schema.json tests/golden/findings/acme_api/findings.json . \

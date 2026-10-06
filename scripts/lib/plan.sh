@@ -711,6 +711,21 @@ plan_get() {
   return 0
 }
 
+# plan_get_own SUBJECT PATH -> plan_get PATH from the lock of SUBJECT's Drupal
+# root, only when the frozen plan is SUBJECT's (its subject.machine_name): a
+# test-bed shared by several modules keeps one plan, maybe another module's.
+# Nothing otherwise.
+plan_get_own() {
+  local subj="${1:-}" p="${2:-}" root mn pmn
+  [[ -n "$subj" && -d "$subj" && -n "$p" ]] || return 0
+  root="$(subject_project_root "$subj" 2> /dev/null || true)"; [[ -n "$root" ]] || root="$subj"
+  mn="$(subject_machine_name "$subj" 2> /dev/null || true)"
+  pmn="$(plan_get .subject.machine_name "$root" 2> /dev/null || true)"
+  [[ -n "$mn" && "$pmn" == "$mn" ]] || return 0
+  plan_get "$p" "$root" 2> /dev/null || true
+  return 0
+}
+
 # plan_frozen [ROOT] -> the frozen plan, keys sorted and indented as
 # upgrade-path.sh prints it (byte for byte the output that was frozen), or
 # nothing. Read-only.
