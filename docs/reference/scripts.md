@@ -3686,6 +3686,7 @@ comment and is never edited by hand:
   reference/skills-and-agents.md  skills/*/SKILL.md and agents/*.md frontmatter
   reference/configuration.md      config/config-reference.json + config/defaults.json
   reference/choices.md            config/choices.json
+  reference/pipeline.md           config/pipeline.json (the stage catalog)
   reference/toolchain.md          config/toolchain-reference.json
   reference/deprecations.md       config/deprecations.json (Drupal's deprecations)
   reference/version-matrix.md     config/targets/*.json, config/php/*.json and
@@ -3877,7 +3878,8 @@ developer/CI tool: no command, skill or hook calls it; scripts/dev/check.sh
 runs it as its `schemas` gate). Each schema is checked against the
 instances listed below: the 0.9 captures of tests/baseline/v0.9.0/, the lab
 samples of tests/baseline/v0.9.0/samples/, a live `preflight.sh --json`, the
-version data of config/targets|php|paths and an example catalog (the data
+version data of config/targets|php|paths, the stage catalog
+config/pipeline.json and an example catalog (the data
 gate, scripts/dev/data-check.sh, also checks their provenance). Two engines:
   jq         always available: the structural validator of
              scripts/dev/jsonschema.jq, reading the same schemas (only the
@@ -4087,15 +4089,28 @@ milestone) or anything else (fail); it prints "ok - ..." / "not ok - ..."
 lines and ends with t_done's "# <name>: N passed, M failed" (tests/lib/
 assert.sh). Exit 0 counts as a pass only with that line, at least one
 assertion and no "not ok" line, so a forgotten t_done or an early `exit 0`
-fails. Each test runs with stdin from /dev/null, without a controlling
-terminal where `setsid --wait` exists, and under a 300 s timeout where
-`timeout`/`gtimeout` exists; t_isolate sets DRUPILOT_NONINTERACTIVE=1, so on
+fails. Each test runs with stdin from /dev/null, in its own process group
+(without a controlling terminal where `setsid --wait` exists), and under a
+per-test timeout where `timeout`/`gtimeout` exists (300 s, times the number
+of tests per CPU when more run at once than there are CPUs; --timeout);
+t_isolate sets DRUPILOT_NONINTERACTIVE=1, so on
 every platform drupilot's own prompts take their default. Ctrl-C stops the
-run (exit 130) and kills the running test.
+run (exit 130) and kills the running tests.
+
+The tests run in parallel, --jobs at a time (default: the CPUs this process
+may use — nproc, bounded by a cgroup CPU quota —, at most 8);
+each one is isolated (t_isolate: its own temp HOME, XDG dirs and working
+directory). Each result is reported as its test ends; the --json summary
+keeps the tests' order.
 
 Usage:
-  scripts/dev/unit.sh [--only T1,T2] [--json] [--list] [-h|--help]
+  scripts/dev/unit.sh [--only T1,T2] [--jobs N] [--timeout S] [--json] [--list]
+                      [-h|--help]
     --only   run a subset (test names: the file names without .sh)
+    --jobs   how many tests run at once (1 to 9999; default: the usable CPUs,
+             at most 8; 1 runs them one by one)
+    --timeout  seconds each test may run (default 300, times the tests per
+             CPU when --jobs exceeds the CPUs)
     --json   machine summary on STDOUT (the test output still goes to STDERR):
              {ok, bash, tests:[{name, status: pass|fail|skip, detail,
                                 failures:[..]}]}
