@@ -450,16 +450,19 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     not load, so those still run in the digests pass, and so do the
     config-only entries (the file names no class for them).
   - It also leaves out the rules you rejected for the module.
-  - It fails closed: an `all.php` it cannot read whole, or an `--apply` on
-    sources changed since the reviewed dry-run, stops the digests pass
-    (exit 4) rather than run rules nobody reviewed.
+  - It fails closed: an `all.php` it cannot read whole stops the digests
+    pass (exit 4) rather than drop a rule silently. Once the module has
+    verdicts, an `--apply` needs a dry-run of the same sources and digests
+    rules with a verdict on every rule it changed files with (exit 4
+    otherwise, with the remedy).
   - `scripts/analysis/digests-decisions.sh` records each verdict, keyed by
     the rule, the digests SHA and the module's sources, in the hidden
     `digests-decisions.json`.
   - `run-rector.sh --json` reports `digests_filter` and `digests_review`.
     `/drupilot-port` asks only about the pending rules: a second port of the
-    same sources asks nothing. An autonomous run's recorded defaults are
-    marked as such and replayed only by another autonomous run.
+    same sources asks nothing. An autonomous run's recorded defaults
+    (`digests-decisions.sh --auto`) are replayed only by another autonomous
+    run (`run-rector.sh --auto`).
   - `/drupilot-clean` (or `digests-decisions.sh --clear`) forgets the
     verdicts. `lock-sync.sh --refresh` and `DRUPILOT_DETERMINISTIC=false`
     fetch the yml again and freeze its new hash.

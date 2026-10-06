@@ -54,6 +54,7 @@ cfg=""; dry=0; prev=""
 for a in "$@"; do case "$a" in --dry-run) dry=1;; esac; [ "$prev" = "--config" ] && cfg="$a"; prev="$a"; done
 case "$cfg" in
   *.drupilot/digests/*)
+    [ -f "$d/nohits" ] && { echo '{"totals":{"changed_files":0,"errors":0}}'; exit 0; }
     rules="$(sed -n 's/.*->withRules(\[\(.*\)\]).*/\1/p' "$d/$cfg" | tr ',' '\n' | sed -e 's/::class//' -e 's/[[:space:]]//g' | grep . | sed 's/.*/"&"/' | tr '\n' ',' | sed 's/,$//')"
     if [ -n "$rules" ]; then
       printf '{"totals":{"changed_files":1,"errors":0},"file_diffs":[{"file":"web/modules/custom/m/src/A.php","diff":"@@ -1,1 +1,1 @@\\n-a\\n+b\\n","applied_rectors":[%s]}],"changed_files":["web/modules/custom/m/src/A.php"]}\n' "$rules"
@@ -73,6 +74,9 @@ declare(strict_types=1);
 use Rector\Config\RectorConfig;
 
 // Drupal11SetList::DRUPAL_110 is only named in this comment.
+/* Not yet:
+   'DrupalRector\\Set\\Drupal11SetList::DRUPAL_110',
+*/
 return RectorConfig::configure()
   ->withPaths([__DIR__ . '/web/modules/custom/m'])
   ->withSkip([ArrayToFirstClassCallableRector::class])
@@ -180,7 +184,7 @@ printf '// changed\n' >> "$R/$S/src/A.php"
 rr --apply
 assert_eq "an --apply on sources changed since the review: no digests pass (exit 4), the rejected rule not run" \
   "$T_RC|$(j '[.status, .digests_status, .digests_review]')|$(grep -c 'drupilot/digests' "$R/calls" || true)" '4|["partial","error",null]|0'
-assert_match "  it says to run the dry-run again" "$(tr '\n' ' ' < "$T_ERR")" "changed since the digests rules were reviewed"
+assert_match "  it says to run the dry-run again" "$(tr '\n' ' ' < "$T_ERR")" "No digests dry-run of these sources finished.*Run the dry-run again"
 rr
 assert_eq "changed sources: pending again" "$T_RC|$(j '.digests_review.pending | length')" '0|4'
 printf '// changed again\n' >> "$R/$S/src/A.php"
@@ -195,6 +199,49 @@ assert_eq "  a guided run asks again (nothing replayed, nothing filtered)" "$T_R
 rr_auto() { : > "$R/calls"; t_run env PATH="$STUBS:$NONET" DRUPILOT_PHP_TARGET=8.3 DRUPILOT_AUTONOMOUS=true "$T_SH" "$T_REPO/scripts/analysis/run-rector.sh" --subject "$R/$S" --digests --json; }
 rr_auto
 assert_eq "  an autonomous run replays them" "$T_RC|$(j '[.digests_filter.rejected, .digests_review.pending]')" '0|[["DRuleRector"],[]]'
+rr --auto
+assert_eq "  so does run-rector.sh --auto" "$T_RC|$(j '[.digests_filter.rejected, .digests_review.pending]')" '0|[["DRuleRector"],[]]'
+dd --clear; rr > /dev/null
+t_run env PATH="$STUBS:$NONET" DRUPILOT_AUTONOMOUS=1 "$T_SH" "$T_REPO/scripts/analysis/digests-decisions.sh" --subject "$R/$S" --reject DRuleRector --json
+assert_eq "DRUPILOT_AUTONOMOUS=1 records by auto too" "$T_RC|$(j '[.rules[] | select(.verdict != "pending") | .by] | unique')" '0|["auto"]'
+dd --clear; rr > /dev/null
+dd --reject DRuleRector --auto --json
+assert_eq "  and so does --auto" "$T_RC|$(j '[.rules[] | select(.verdict != "pending") | .by] | unique')" '0|["auto"]'
+dd --clear; rr > /dev/null
+# Once there are verdicts, an --apply needs the last dry-run to be of these
+# sources and these rules, with a verdict on every rule it changed files with.
+dd --accept BRuleRector
+rr --apply
+assert_eq "an --apply with rules the dry-run changed files with and no verdict: refused (exit 4)" \
+  "$T_RC|$(j '.digests_status')|$(grep -c 'drupilot/digests' "$R/calls" || true)" '4|"error"|0'
+assert_match "  it names them" "$(tr '\n' ' ' < "$T_ERR")" "no verdict \(CRuleRector,DRuleRector,ERuleRector\)"
+dd --accept CRuleRector,ERuleRector --reject DRuleRector
+rr --apply
+assert_eq "  every rule decided: applied" "$T_RC|$(j '.rule_hits.digests | keys')" '0|["BRuleRector","CRuleRector","ERuleRector"]'
+# A re-port of the ported sources where no digests rule changes anything any
+# more: the dry-run has nothing to review, and the apply is not refused.
+touch "$R/nohits"
+rr
+assert_eq "a re-port with nothing left: the dry-run reviews nothing" "$T_RC|$(j '.digests_review | [.rules, .pending]')" '0|[[],[]]'
+rr --apply
+assert_eq "  and the apply runs (no dead end)" "$T_RC|$(j '.digests_status')" '0|"ok"'
+rm -f "$R/nohits"
+# The digests rules moved upstream between the dry-run and the apply
+# (DRUPILOT_DETERMINISTIC=false resolves main again): refused.
+rr > /dev/null; dd --accept BRuleRector,CRuleRector,ERuleRector --reject DRuleRector
+printf '// upstream moved\n' >> "$DG/rector/rules/b-rule-222.php"
+git -C "$DG" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false commit -qam moved
+: > "$R/calls"; t_run env PATH="$STUBS:$NONET" DRUPILOT_PHP_TARGET=8.3 DRUPILOT_DETERMINISTIC=false "$T_SH" "$T_REPO/scripts/analysis/run-rector.sh" --subject "$R/$S" --digests --json --apply
+assert_eq "the digests rules moved since the dry-run: refused, the rejected rule not run" \
+  "$T_RC|$(j '[.digests_status, (.rule_hits.digests // {} | has("DRuleRector"))]')" '4|["error",false]'
+assert_match "  it says the rules changed" "$(tr '\n' ' ' < "$T_ERR")" "The digests rules changed since the last dry-run"
+git -C "$DG" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false reset -q --hard "$SHA"
+DRUPILOT_PROJECT_DIR="$R" lock_set .digests.sha "$SHA" > /dev/null
+# A damaged decisions file never stops a run.
+printf '{"decisions": [1, "x"]}\n' > "$(digests_decisions_file "$R/$S")"
+rr
+assert_eq "a damaged decisions file: ignored, every rule pending" "$T_RC|$(j '.digests_review.pending | length')" '0|4'
+dd --clear
 dd --reject BRuleRector,CRuleRector,DRuleRector,ERuleRector
 rr
 assert_eq "every rule rejected: no rule left, the pass does not run, status ok" \

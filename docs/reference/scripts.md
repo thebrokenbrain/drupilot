@@ -484,11 +484,14 @@ needs a new dry-run first.
 Usage:
   digests-decisions.sh --subject DIR --list [--json]
   digests-decisions.sh --subject DIR [--accept R[,R...]]... [--reject R[,R...]]...
-                       [--json]
+                       [--auto] [--json]
   digests-decisions.sh --subject DIR --clear
     --list     the rules of the last digests dry-run with their verdicts
     --accept   rules to apply (short class names, as digests_review names them)
     --reject   rules to leave out
+    --auto     record them as an autonomous run's defaults (by "auto"), as
+               DRUPILOT_AUTONOMOUS=true does; only an autonomous run
+               (run-rector.sh --auto) replays them
     --clear    forget every verdict of the subject (/drupilot-clean does it too)
     --json     {digests_sha, input_hash, rules: [{rule, verdict, by}],
                pending: [...]} on STDOUT
@@ -1297,6 +1300,9 @@ Options:
   --subject DIR      Path to the module/theme to process (relative to the
                      Drupal root or absolute). Required.
   --apply            Actually write changes (default is --dry-run).
+  --auto             An autonomous run (as DRUPILOT_AUTONOMOUS=true): the
+                     digests verdicts an autonomous run recorded are replayed
+                     (a guided run asks again for them).
   --digests          Run the complementary dbuytaert/drupal-digests pass after
                      the official pass.
   --digests-ref REF  Git ref (tag/branch/commit) of the digests repo to use
@@ -1425,8 +1431,12 @@ compat pass crashed or reported errors (toolchain/config broken, or a broken
 rector-compat.php; the diagnostic lists the
 installed vs known-good versions from config/toolchain-reference.json), or a
 DET-1 violation (an unplanned host run, a tool version the lock does not pin) ·
-4 only the digests pass crashed (the official result stands; fix with
---digests-ref <known-good commit> or DRUPILOT_USE_DIGESTS_RULES=false).
+4 only the digests pass crashed or was refused (the official result stands;
+for a crash, --digests-ref <known-good commit> or
+DRUPILOT_USE_DIGESTS_RULES=false; a refusal names its own remedy: an
+implemented-digests.yml that cannot be read again, an all.php drupilot
+cannot read whole, or an --apply on sources or digests rules other than
+the ones the last dry-run reviewed).
 ```
 
 ### analysis/run-upgrade-status.sh

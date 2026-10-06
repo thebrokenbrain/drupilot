@@ -100,10 +100,26 @@ digests_rules() {
   return 0
 }
 
-# _digests_php_code FILE -> FILE without its comment lines (//, #, /* and *
-# lines) and trailing // comments, for the set and class scans.
+# _digests_php_code FILE -> FILE without its comments, for the set and class
+# scans: /* ... */ blocks across lines, and the // or # tail of a line (not a
+# #[ attribute). Strings are not parsed: a // inside one cuts the line, which
+# only drops text (never adds a set or a class).
 _digests_php_code() {
-  sed -e '/^[[:space:]]*\/\//d' -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*\/\*/d' -e '/^[[:space:]]*\*/d' -e 's#[[:space:]]//.*$##' "$1" 2> /dev/null || true
+  awk '
+    { line = $0; out = ""
+      while (length(line) > 0) {
+        if (inc) { j = index(line, "*/"); if (j == 0) { line = ""; break }; inc = 0; line = substr(line, j + 2); continue }
+        a = index(line, "/*"); b = index(line, "//"); h = 0; t = line; pos = 0
+        while ((k = index(t, "#")) > 0) { if (substr(t, k + 1, 1) != "[") { h = pos + k; break }; pos += k; t = substr(t, k + 1) }
+        f = 0
+        if (a > 0) f = a
+        if (b > 0 && (f == 0 || b < f)) f = b
+        if (h > 0 && (f == 0 || h < f)) f = h
+        if (f == 0) { out = out line; line = ""; break }
+        out = out substr(line, 1, f - 1)
+        if (f == a) { inc = 1; line = substr(line, a + 2) } else { line = "" }
+      }
+      print out }' "$1" 2> /dev/null || true
   return 0
 }
 

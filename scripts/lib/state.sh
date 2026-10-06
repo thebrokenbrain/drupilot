@@ -761,12 +761,26 @@ subjects_with_state_under() {
 
 # digests_decisions_file SUBJECT -> the subject's digests-decisions.json (05-R6,
 # T-M4-08): {schema: 1, decisions: [{rule, digests_sha, input_hash, verdict:
-# accept|reject, at}]}, the developer's verdict on each digests rule, keyed
+# accept|reject, by: developer|auto, at}]}, the verdict on each digests rule, keyed
 # by the rule, the digests SHA and the subject's digest before the passes, so
 # a later port of the same module replays them and asks nothing. In the
 # hidden state dir; /drupilot-clean resets it. Never created here.
 digests_decisions_file() {
   printf '%s/digests-decisions.json' "$(project_state_path "${1:-$PWD}")"
+  return 0
+}
+
+# digests_decisions_readable SUBJECT -> the subject's digests-decisions.json
+# when it is one object whose decisions are objects, else /dev/null (a damaged
+# file never stops a run; its verdicts are then unknown).
+digests_decisions_readable() {
+  local f; f="$(digests_decisions_file "${1:-$PWD}")"
+  if [[ -f "$f" ]] && jq -e -s 'length == 1 and (.[0] | type == "object")
+       and ((.[0].decisions // []) | type == "array" and all(.[]; type == "object"))' "$f" > /dev/null 2>&1; then
+    printf '%s' "$f"
+  else
+    printf '/dev/null'
+  fi
   return 0
 }
 
