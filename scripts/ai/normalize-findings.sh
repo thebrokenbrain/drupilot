@@ -41,8 +41,15 @@
 #                        state dir)
 #     --json             print findings.json on STDOUT
 #
-# Exit codes: 0 written (or printed) · 1 usage error, or no raw index for the
-# stage · 2 jq or a sha256 tool missing.
+# findings.json also records each tool's verdict (tools: ok | partial |
+# failed | missing), so a run where a tool crashed never hashes like a clean
+# one; an error PHPStan reports in a trait once per class that uses it is one
+# finding in the trait's file.
+#
+# Exit codes: 0 written (or printed) · 1 usage error, no raw index for the
+# stage, several, or one that is not JSON · 2 jq or a sha256 tool missing · 3
+# classify-deprecations.sh could not classify the PHPStan report (nothing is
+# written).
 # =============================================================================
 set -euo pipefail
 # shellcheck source=../lib/common.sh
@@ -81,14 +88,20 @@ if [[ -n "$SUBJECT" ]]; then
   [[ -n "$OUT" ]] || OUT="$(project_state_dir "$SUBJECT")/findings.json"
 fi
 [[ -d "$RAW_DIR" ]] || die "No raw dir at $RAW_DIR (run scripts/ai/extract.sh first)." 1
-# raw FILE-SUFFIX -> the stage's raw file with that tool suffix, or nothing.
-raw() { local f; for f in "$RAW_DIR"/[0-9][0-9]-"$STAGE"-"$1".json; do [[ -f "$f" ]] && printf '%s' "$f"; return 0; done; return 0; }
-INDEX="$(raw index)"
+# The stage's index: exactly one (extract.sh replaces a stage's files whatever
+# its NN), a JSON object; the other raw files share its NN.
+INDEX=""; n_ix=0
+for f in "$RAW_DIR"/[0-9][0-9]-"$STAGE"-index.json; do [[ -f "$f" ]] && { INDEX="$f"; n_ix=$((n_ix + 1)); }; done
 [[ -n "$INDEX" ]] || die "No raw index for stage '$STAGE' in $RAW_DIR (run scripts/ai/extract.sh --stage $STAGE)." 1
+[[ "$n_ix" == "1" ]] || die "Several raw sets for stage '$STAGE' in $RAW_DIR: re-run scripts/ai/extract.sh --stage $STAGE." 1
+jq -e 'type == "object"' "$INDEX" > /dev/null 2>&1 || die "The raw index $INDEX is not a JSON object: re-run scripts/ai/extract.sh --stage $STAGE." 1
+NN="$(basename "$INDEX")"; NN="${NN%%-*}"
+# raw TOOL -> the stage's raw file of that tool, or nothing.
+raw() { [[ -f "$RAW_DIR/$NN-$STAGE-$1.json" ]] && printf '%s' "$RAW_DIR/$NN-$STAGE-$1.json"; return 0; }
 
 if [[ -z "$TARGET" ]]; then
   TARGET="$(jq -r '.target_major // empty' "$INDEX" 2> /dev/null || true)"
-  [[ -n "$TARGET" ]] || TARGET="$(resolve_target_major)"
+  [[ -n "$TARGET" ]] || TARGET="$(DRUPILOT_PROJECT_DIR="$(subject_project_root "${SUBJECT:-$PWD}" 2> /dev/null || printf '%s' "$PWD")" resolve_target_major)"
 fi
 [[ "$TARGET" =~ ^[0-9]+$ ]] || die "Invalid --target-major '$TARGET'." 1
 [[ -n "$POLICY" ]] || POLICY="$(config_get DRUPILOT_SOFT_DEPRECATIONS report)"
@@ -112,12 +125,18 @@ F_SAFETY="$(json_or "$(raw port-safety)" '{}')"
 F_SIG="$(json_or "$(raw signatures)" '{}')"
 F_META="$(json_or "$(raw metadata)" '{}')"
 F_ANCH="$(json_or "$(raw anchors)" '{"unavailable": true}')"
-# The deprecations' class and symbol: classify-deprecations.sh on the PHPStan report.
+MISSING="$(for t in rector phpstan phpcs port-safety signatures metadata; do [[ -n "$(raw "$t")" ]] || printf '%s ' "$t"; done)"
+# The deprecations' class and symbol: classify-deprecations.sh on the PHPStan
+# report. Without it every deprecation would read as a plain analysis error:
+# stop rather than write that.
 F_CLASS="$TMP/classify.json"
-if jq -e '(.files | type) == "object"' "$F_PHPSTAN" > /dev/null 2>&1; then
-  bash "$(plugin_root)/scripts/analysis/classify-deprecations.sh" --file "$F_PHPSTAN" --target-major "$TARGET" \
-    --policy "$POLICY" --json < /dev/null > "$F_CLASS" 2> /dev/null || printf '{}\n' > "$F_CLASS"
-  jq -e 'type == "object"' "$F_CLASS" > /dev/null 2>&1 || printf '{}\n' > "$F_CLASS"
+if jq -e '(.files | type) == "object" and (.files | length) > 0' "$F_PHPSTAN" > /dev/null 2>&1; then
+  if ! bash "$(plugin_root)/scripts/analysis/classify-deprecations.sh" --file "$F_PHPSTAN" --target-major "$TARGET" \
+       --policy "$POLICY" --json < /dev/null > "$F_CLASS" 2> "$TMP/classify.err" \
+     || ! jq -e 'type == "object"' "$F_CLASS" > /dev/null 2>&1; then
+    log_err "$(tail -n 3 "$TMP/classify.err" 2> /dev/null)"
+    die "classify-deprecations.sh could not classify the PHPStan report: nothing is written." 3
+  fi
 else
   printf '{}\n' > "$F_CLASS"
 fi
@@ -145,6 +164,9 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
             else . end)
       | .out;
     def sev: ascii_downcase | if . == "warn" then "warning" elif . == "notice" then "info" else . end;
+    # PHPStan keys an error in a trait "<file> (in context of class X)": the
+    # file is the trait'"'"'s, once (the class contexts are deduplicated below).
+    def ctxless: sub(" \\(in context of (class|anonymous class) [^)]*\\)$"; "");
     # classify-deprecations items, keyed by root-relative file, line and normalized message.
     ([($cls[0].hard // [])[], ($cls[0].soft // [])[], ($cls[0].unknown // [])[]]
       | map({key: "\(.file)\u001f\(.line)\u001f\(.message | finding_norm_message)", value: .}) | from_entries) as $cmap
@@ -160,13 +182,13 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
            severity: "info", scope: "current", class: "rector"}),
       # PHPStan: every file message; deprecations classified.
       (($stan[0].files // {}) | to_entries[] as $e | ($e.value.messages // [])[] as $m
-        | ($e.key | rootrel) as $rf
+        | ($e.key | ctxless | rootrel) as $rf
         | ($m.message | finding_norm_message) as $nm
         | ($cmap["\($e.key)\u001f\($m.line)\u001f\($nm)"] // null) as $c
         | {tool: "phpstan", rule: ($m.identifier // null), rf: $rf, line: ($m.line // null),
            symbol: (if $c then $c.symbol else null end), message: $nm, severity: "error",
            scope: (if $c and $c.class == "soft" and $policy != "fix" then "next-major" else "current" end),
-           class: (if $c then $c.class else "analysis" end)}),
+           class: (if $c then $c.class else "analysis" end), ctx: ($e.key != ($e.key | ctxless))}),
       # PHPCS: every file message.
       (($cs[0].files // {}) | to_entries[] as $e | ($e.value.messages // [])[] as $m
         | {tool: "phpcs", rule: ($m.source // "phpcs"), rf: ($e.key | rootrel), line: ($m.line // null), symbol: null,
@@ -180,38 +202,58 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
       (($meta[0].findings // [])[] | {tool: "catalog", rule: "metadata:\(.check)", rf: (.file | rootrel), line: (.line // null),
          symbol: null, message: (.message | finding_norm_message), severity: ((.severity // "error") | sev), scope: "current", class: "metadata"})
     ]
-  | map(. + {file: (.rf | subrel), anchor: anchor_of(.rf; .line)})
+  | (map(select(.ctx == true)) | unique_by([.rule, .rf, .line, .message])) + map(select(.ctx != true))
+  | map(del(.ctx) + {file: (.rf | subrel), anchor: anchor_of(.rf; .line)})
 ' > "$PRE"
 
+# hash_lines FILE -> "<line number>\t<sha256 hex>" for each line of FILE (its
+# bytes without the newline), from one hasher process over one file per line.
+if have_cmd sha256sum; then HASHER=(sha256sum); else HASHER=(shasum -a 256); fi
+hash_lines() {
+  local d="$TMP/h.$_hl"; _hl=$((_hl + 1)); mkdir -p "$d"
+  awk -v d="$d" '{ f = d "/" NR; printf "%s", $0 > f; close(f) }' "$1"
+  ( cd "$d" && find . -type f -exec "${HASHER[@]}" {} + ) | awk '{ p = $NF; sub(/^\.\//, "", p); print p "\t" $1 }'
+  return 0
+}
+_hl=0
+
 # Untyped PHPStan errors get a rule from their message's hash.
-UNTYPED="$TMP/untyped.tsv"; : > "$UNTYPED"
-jq -r '[.[] | select(.rule == null) | .message] | unique[]' "$PRE" | while IFS= read -r m; do
-  h="$(printf '%s' "$m" | sha256_hex)"
-  printf '%s\t%s\n' "${h:0:8}" "$m" >> "$UNTYPED"
-done
-UNTYPED_JSON="$(jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {key: .[1], value: ("phpstan:untyped:" + .[0])}) | from_entries' "$UNTYPED")"
+jq -r '[.[] | select(.rule == null) | .message] | unique[]' "$PRE" > "$TMP/untyped.txt"
+hash_lines "$TMP/untyped.txt" > "$TMP/untyped.tsv"
+jq -R -s -c --rawfile msgs "$TMP/untyped.txt" '($msgs | split("\n")) as $m
+  | split("\n") | map(select(length > 0) | split("\t") | {key: $m[(.[0] | tonumber) - 1], value: ("phpstan:untyped:" + .[1][0:8])}) | from_entries' \
+  "$TMP/untyped.tsv" > "$TMP/untyped.json"
 
 # Pass 2: rules, occurrences (the ordinal of identical tuples by line), the
 # tuples to hash.
 SEP="$(printf '\037')"
-jq -c --argjson ut "$UNTYPED_JSON" --arg sep "$SEP" '
-  map(.rule = (.rule // $ut[.message]))
+jq -c --slurpfile utf "$TMP/untyped.json" --arg sep "$SEP" '
+  $utf[0] as $ut
+  | map(.rule = (.rule // $ut[.message]))
   | map(. + {tkey: ([.tool, .rule, .file, .anchor, (.symbol // ""), .message] | join($sep))})
   | group_by(.tkey) | map(sort_by(.line // 1e9) | to_entries | map(.value + {occurrence: .key})) | add // []
   | to_entries | map(.value + {n: .key})' "$PRE" > "$TMP/pre2.json"
-IDS="$TMP/ids.tsv"; : > "$IDS"
-jq -r --arg sep "$SEP" '.[] | "\(.n)\t\(.tkey)\($sep)\(.occurrence)"' "$TMP/pre2.json" | while IFS="$(printf '\t')" read -r n t; do
-  h="$(printf '%s' "$t" | sha256_hex)"
-  printf '%s\tF-%s\n' "$n" "${h:0:12}" >> "$IDS"
-done
-IDS_JSON="$(jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: .[1]}) | from_entries' "$IDS")"
+# Line k of tuples.txt is the tuple of record n = k - 1.
+jq -r --arg sep "$SEP" '.[] | "\(.tkey)\($sep)\(.occurrence)"' "$TMP/pre2.json" > "$TMP/tuples.txt"
+hash_lines "$TMP/tuples.txt" \
+  | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {key: ((.[0] | tonumber) - 1 | tostring), value: ("F-" + .[1][0:12])}) | from_entries' \
+  > "$TMP/ids.json"
 
 # Pass 3: ids, merges, order, the document.
 DOC="$TMP/findings.json"
-jq -c --argjson ids "$IDS_JSON" --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile anch "$F_ANCH" \
-  --arg stage "$STAGE" --argjson target "$TARGET" --arg policy "$POLICY" '
+jq -c --slurpfile idsf "$TMP/ids.json" --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile anch "$F_ANCH" \
+  --slurpfile stan "$F_PHPSTAN" --slurpfile cs "$F_PHPCS" --slurpfile safety "$F_SAFETY" --slurpfile sig "$F_SIG" --slurpfile meta "$F_META" \
+  --arg stage "$STAGE" --argjson target "$TARGET" --arg policy "$POLICY" --arg missing "$MISSING" '
   def prec: {"rector": 0, "phpstan": 1, "catalog": 2, "phpcs": 3}[.] // 9;
-  map(. + {id: $ids["\(.n)"]})
+  # A tool that gave no verdict: its raw file is missing, the error record
+  # extract.sh writes, or the report of a crash.
+  def verdict($t; $failed):
+    if ($missing | split(" ") | index($t)) then "missing"
+    elif (has("error") and has("exit_code") and (has("files") or has("findings") or has("file_diffs") | not)) or $failed then "failed"
+    elif $t == "rector" and .status == "partial" then "partial"
+    else "ok" end;
+  $idsf[0] as $ids
+  | map(. + {id: $ids["\(.n)"]})
   | map({id, tool, rule, file, line, anchor, symbol, message, occurrence, severity, scope, class,
          sources: [{tool, rule, line}]})
   # The same symbol at the same anchor of a file: one finding, every source kept.
@@ -225,6 +267,12 @@ jq -c --argjson ids "$IDS_JSON" --slurpfile ix "$INDEX" --slurpfile rector "$F_R
      target: {major: $target, soft_policy: $policy,
               runner: ($rector[0].runner.runner // null), php_version: ($rector[0].runner.php_version // null)},
      anchors: (if ($anch[0] | type) == "array" then "php" else "unavailable" end),
+     tools: {rector: ($rector[0] | verdict("rector"; .status == "error")),
+             phpstan: ($stan[0] | verdict("phpstan"; .drupilot.status == "crashed")),
+             phpcs: ($cs[0] | verdict("phpcs"; (.drupilot.error // null) != null)),
+             "port-safety": ($safety[0] | verdict("port-safety"; false)),
+             signatures: ($sig[0] | verdict("signatures"; false)),
+             metadata: ($meta[0] | verdict("metadata"; false))},
      counts: {total: ($f | length),
               current: ([$f[] | select(.scope == "current")] | length),
               next_major: ([$f[] | select(.scope == "next-major")] | length),
@@ -237,7 +285,7 @@ jq -e '.schema == 1' "$DOC" > /dev/null 2>&1 || die "Could not build findings.js
 # Each raw file is named by the hash of its content outside its own meta, so
 # two runs of the same tree record the same raw hashes.
 HASH="$(canon_json_hashable < "$DOC" | json_hash)"
-RAWS="$(for f in "$RAW_DIR"/[0-9][0-9]-"$STAGE"-*.json; do [[ -f "$f" ]] && printf '%s\t%s\n' "$(basename "$f")" "$(canon_json_hashable < "$f" | json_hash)"; done \
+RAWS="$(for t in index rector phpstan phpcs port-safety signatures metadata anchors; do f="$RAW_DIR/$NN-$STAGE-$t.json"; [[ -f "$f" ]] || continue; printf '%s\t%s\n' "$(basename "$f")" "$(canon_json_hashable < "$f" | json_hash)"; done \
   | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: .[1]}) | from_entries')"
 jq --arg h "$HASH" --argjson raws "$RAWS" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   '. + {meta: {findings_hash: $h, raw: $raws, generated_at: $at}}' "$DOC" | canon_json > "$DOC.meta"

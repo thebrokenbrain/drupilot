@@ -21,12 +21,15 @@ for d in "$G"/*/; do
   t_run "$T_SH" "$T_REPO/scripts/ai/normalize-findings.sh" --raw-dir "$d/raw" \
     --target-major "$(jq -r '.target.major' "$want")" --soft-policy "$(jq -r '.target.soft_policy' "$want")" --json
   assert_eq "$c: exit 0" "$T_RC" "0"
+  canon_json < "$T_OUT" > "$T_TMP/$c.canon.json"
+  assert_file_eq "$c: the script writes findings.json canonical (canon_json changes no byte)" "$T_OUT" "$T_TMP/$c.canon.json"
   jq 'del(.meta.generated_at)' "$T_OUT" | canon_json > "$T_TMP/$c.json"
   assert_file_eq "$c: findings.json, byte for byte outside meta.generated_at" "$T_TMP/$c.json" "$want"
   assert_eq "$c: the raw hashes are the raw files' (outside their meta)" \
     "$(jq -c '.meta.raw' "$want")" \
     "$(for f in "$d"/raw/*.json; do printf '%s\t%s\n' "$(basename "$f")" "$(canon_json_hashable < "$f" | json_hash)"; done \
        | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: .[1]}) | from_entries')"
+  assert_eq "$c: every tool gave its verdict" "$(jq -c '[.tools[]] | unique' "$want")" '["ok"]'
 done
 assert_eq "three cases" "$n" "3"
 

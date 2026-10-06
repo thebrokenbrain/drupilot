@@ -152,7 +152,7 @@ if [[ -n "$FLOOR_OPT" ]]; then FLOOR="$FLOOR_OPT"; else FLOOR="$(core_floor_from
 
 # --- Input ------------------------------------------------------------------
 TMP="$(mktemp "${TMPDIR:-/tmp}/drupilot-classify.XXXXXX")"
-trap 'rm -f "$TMP"' EXIT
+trap 'rm -f "$TMP" "$TMP.raw"' EXIT
 if [[ "$FILE" == "-" ]]; then
   [[ -t 0 ]] && die "No input: pass --file F, or pipe the analyzer output (e.g. run-phpstan.sh --json | classify-deprecations.sh)." 1
   cat > "$TMP" 2>/dev/null || true
@@ -198,8 +198,11 @@ elif [[ -s "$TMP" ]]; then
   printf '%s' "$RAW" | jq empty 2>/dev/null || RAW='[]'
 fi
 
+# The records go through a file: one argv string is capped (128 KiB on Linux),
+# and a report of a few hundred messages exceeds it.
+printf '%s\n' "$RAW" > "$TMP.raw"
 RESULT="$(jq -n \
-  --argjson raw "$RAW" \
+  --slurpfile rawf "$TMP.raw" \
   --slurpfile cat "$CATALOG" \
   --arg policy "$POLICY" --arg phase "$PHASE" \
   --argjson tmaj "$TARGET_MAJOR" \
@@ -207,7 +210,8 @@ RESULT="$(jq -n \
   def vnum: tostring | split(".") | map(tonumber? // 0) | (. + [0, 0, 0])[:3];
   def major: if . == null then null else (vnum | .[0]) end;
   def norm: sub("^\\\\"; "") | sub("\\(\\)$"; "") | sub(":$"; "");
-  ($cat[0].lifecycle // []) as $life
+  $rawf[0] as $raw
+  | ($cat[0].lifecycle // []) as $life
   | ($cat[0].change_records_search // "") as $cr
   | (if $floor == "" then null else $floor end) as $fl
   | def lookup($s): ($life | map(select(.symbol == $s)) | .[0]) // null;

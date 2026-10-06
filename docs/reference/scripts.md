@@ -52,7 +52,9 @@ scripts/php/anchor.php (stage_runtime) and kept as <NN>-<stage>-anchors.json
 (without a PHP runner: {"unavailable": true}), so scripts/ai/
 normalize-findings.sh needs no PHP. An index, <NN>-<stage>-index.json, names
 the subject, the target major and each tool's file and exit code. A stage's
-previous raw files are replaced; other stages' are kept.
+previous raw files (its tool files, whatever NN they were written with) are
+replaced; other stages' are kept. A PHPStan error in a trait ("<file> (in
+context of class X)") is anchored in the trait's file.
 
 Usage:
   extract.sh --subject DIR [--stage S] [--json] [-h|--help]
@@ -62,8 +64,8 @@ Usage:
 
 Gate: the tools' own (the `analyze` profile). Exit codes: 0 every report
 written · 1 usage error · 2 no Drupal root or jq missing · 3 Rector or
-PHPStan gave no verdict (a crash or a DET-1 refusal: see their raw file); the
-other reports are still written.
+PHPStan gave no verdict (a crash, a DET-1 refusal, or no report at all: see
+their raw file); the other reports are still written.
 ```
 
 ### ai/normalize-findings.sh
@@ -110,8 +112,15 @@ Usage:
                        state dir)
     --json             print findings.json on STDOUT
 
-Exit codes: 0 written (or printed) · 1 usage error, or no raw index for the
-stage · 2 jq or a sha256 tool missing.
+findings.json also records each tool's verdict (tools: ok | partial |
+failed | missing), so a run where a tool crashed never hashes like a clean
+one; an error PHPStan reports in a trait once per class that uses it is one
+finding in the trait's file.
+
+Exit codes: 0 written (or printed) · 1 usage error, no raw index for the
+stage, several, or one that is not JSON · 2 jq or a sha256 tool missing · 3
+classify-deprecations.sh could not classify the PHPStan report (nothing is
+written).
 ```
 
 ## analysis

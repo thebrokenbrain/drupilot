@@ -450,8 +450,13 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     file, an anchor, a symbol, a normalized message, an occurrence, a
     severity, a `scope` (`current` or `next-major`) and a `class`. Findings of
     different tools about the same symbol at the same anchor are merged into
-    one, with `sources[]`. The script needs only jq and a sha256 tool, so the
-    goldens run on every CI leg.
+    one, with `sources[]`. An error PHPStan reports in a trait (once per class
+    that uses it) is one finding in the trait's file. `tools` records each
+    tool's verdict (`ok`, `partial`, `failed`, `missing`), so a crashed tool
+    never reads like a clean run, and a failing `classify-deprecations.sh`
+    stops the script (exit 3) instead of losing the deprecation classes. The
+    script needs only jq and a sha256 tool, so the goldens run on every CI
+    leg; thousands of findings take seconds.
   - `schemas/findings.schema.json` is the contract (the `schemas` gate).
     `tests/golden/findings/` holds the lab recordings of `legacy_widgets`
     and the monorepo's `acme_core` and `acme_api`. Two recordings of the same
@@ -722,6 +727,11 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   Drupal 10.3 code without qualification: `WidgetImportForm` redeclares
   `FormBase`'s `$loggerFactory` as `private readonly` and typed, a fatal error
   when the class loads. The fixture is unchanged (part of H12).
+- **`classify-deprecations.sh` no longer fails on a large PHPStan report.**
+  It passed every message to jq as one argument. Linux caps an argument at
+  128 KiB, so a module with a few hundred PHPStan errors stopped the script
+  with "Argument list too long". The records now go through a file; the
+  output is unchanged.
 - **`run-rector.sh` now re-renders `rector-compat.php` for the module it
   runs on** (found by the T-M4-05 lab). On a test-bed shared by several
   modules, the compat pass kept the config rendered for the previous module,

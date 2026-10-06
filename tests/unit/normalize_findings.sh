@@ -28,14 +28,15 @@ mkraw() {
     {message: "Call to deprecated function user_load_by_mail():\nin drupal:11.4.0 and is removed from drupal:13.0.0.\n  Use X\n  instead.", identifier: "function.deprecated", line: (12 + $s)},
     {message: "Call to deprecated function user_roles():\nin drupal:10.2.0 and is removed from drupal:11.0.0. Use X instead.", identifier: "function.deprecated", line: (14 + $s)},
     {message: "Undefined variable: $x", line: (40 + $s)},
-    {message: "Something is wrong on line \(99 + $s)  here.", identifier: "x.wrong", line: (41 + $s)}]}}}' > "$d/04-assess-phpstan.json"
+    {message: "Something is wrong on line \(99 + $s)  here.", identifier: "x.wrong", line: (41 + $s)},
+    {message: "Method class@anonymous/\($sp)/src/A.php:\(45 + $s)::run() has no return type specified.", identifier: "missingType.return", line: (45 + $s)}]}}}' > "$d/04-assess-phpstan.json"
   jq -n --arg sp "$SP" --argjson s "$s" '{totals: {errors: 0, warnings: 2, fixable: 0}, files: {($sp + "/src/A.php"): {messages: [
     {source: "Drupal.Commenting.X", message: "Missing comment", line: (52 + $s), type: "WARNING"},
     {source: "Drupal.Commenting.X", message: "Missing comment", line: (50 + $s), type: "WARNING"}]}}}' > "$d/04-assess-phpcs.json"
   jq -n --argjson s "$s" '{findings: [{id: "user-load", file: "src/A.php", line: (12 + $s), member: "user_load_by_mail", message: "user_load_by_mail() changes.", severity: "warn"}]}' > "$d/04-assess-signatures.json"
   jq -n --argjson s "$s" '{findings: [{check: "di-create", file: "src/A.php", line: (20 + $s), message: "create() passes the wrong service.", severity: "error"}]}' > "$d/04-assess-port-safety.json"
   jq -n --argjson s "$s" '{findings: [{check: "services-arity", file: "m.services.yml", line: (3 + $s), message: "Too many arguments.", severity: "warn"}], meta: {generated_at: "2026-01-01T00:00:00Z"}}' > "$d/04-assess-metadata.json"
-  jq -n --arg sp "$SP" --argjson s "$s" '[[11, "run"], [12, "run"], [14, "run"], [20, "create"], [30, "other"], [40, "other"], [41, "other"], [50, "doc"], [52, "doc"]]
+  jq -n --arg sp "$SP" --argjson s "$s" '[[11, "run"], [12, "run"], [14, "run"], [20, "create"], [30, "other"], [40, "other"], [41, "other"], [45, "other"], [50, "doc"], [52, "doc"]]
     | map({file: ($sp + "/src/A.php"), line: (.[0] + $s), anchor: ("M\\A::" + .[1])})' > "$d/04-assess-anchors.json"
 }
 nf() { t_run "$T_SH" "$NF" "$@"; }
@@ -47,8 +48,11 @@ assert_eq "exit 0, schema 1, php anchors" "$T_RC|$(j '[.schema, .stage, .anchors
 assert_eq "  the subject and the target" "$(j '[.subject, .target]')" \
   '[{"machine_name":"m","path":"web/modules/custom/m"},{"major":11,"php_version":"8.3.30","runner":"ddev","soft_policy":"report"}]'
 cp "$T_OUT" "$T_TMP/f0.json"
-assert_eq "  12 findings: 4 Rector, 4 PHPStan (one merged with the signature), 2 PHPCS, 2 catalog" \
-  "$(j '[.counts.total, .counts.current, .counts.next_major, .counts.by_tool]')" '[12,11,1,{"catalog":2,"phpcs":2,"phpstan":4,"rector":4}]'
+assert_eq "  13 findings: 4 Rector, 5 PHPStan (one merged with the signature), 2 PHPCS, 2 catalog" \
+  "$(j '[.counts.total, .counts.current, .counts.next_major, .counts.by_tool]')" '[13,12,1,{"catalog":2,"phpcs":2,"phpstan":5,"rector":4}]'
+assert_eq "  every tool gave its verdict" "$(j '.tools')" '{"metadata":"ok","phpcs":"ok","phpstan":"ok","port-safety":"ok","rector":"ok","signatures":"ok"}'
+assert_eq "  an anonymous class loses its file and line in the message" \
+  "$(j '[.findings[] | select(.rule == "missingType.return") | .message]')" '["Method class@anonymous::run() has no return type specified."]'
 assert_eq "Rector: one finding per applied rule and hunk, at the hunk's first changed line" \
   "$(j '[.findings[] | select(.tool == "rector") | [.line, .message, .anchor, .rule]] | sort')" \
   '[[11,"BarRector","M\\A::run","Rector\\B\\BarRector"],[11,"FooRector","M\\A::run","Rector\\A\\FooRector"],[30,"BarRector","M\\A::other","Rector\\B\\BarRector"],[30,"FooRector","M\\A::other","Rector\\A\\FooRector"]]'
@@ -118,7 +122,7 @@ assert_eq "  it validates too" "$(valid "$T_OUT")" ""
 RN="$T_TMP/rawn"; mkraw "$RN" 0
 jq '.file_diffs = []' "$RN/04-assess-rector.json" > "$T_TMP/r.json" && cp "$T_TMP/r.json" "$RN/04-assess-rector.json"
 nf --raw-dir "$RN" --target-major 11 --soft-policy report --json
-assert_eq "no Rector diff: the 8 other findings" "$(j '[.counts.total, .counts.by_tool]')" '[8,{"catalog":2,"phpcs":2,"phpstan":4}]'
+assert_eq "no Rector diff: the 9 other findings" "$(j '[.counts.total, .counts.by_tool]')" '[9,{"catalog":2,"phpcs":2,"phpstan":5}]'
 jq '.file_diffs[0].diff = ""' "$R0/04-assess-rector.json" > "$RN/04-assess-rector.json"
 nf --raw-dir "$RN" --target-major 11 --soft-policy report --json
 assert_eq "a diff without hunks: one finding per rule, no line, anchored {file}" \
@@ -126,7 +130,7 @@ assert_eq "a diff without hunks: one finding per rule, no line, anchored {file}"
 # A missing raw file is no error.
 rm -f "$RN/04-assess-phpcs.json"
 nf --raw-dir "$RN" --target-major 11 --soft-policy report --json
-assert_eq "no PHPCS report: exit 0, no PHPCS finding" "$T_RC|$(j '.counts.by_tool.phpcs // 0')" '0|0'
+assert_eq "no PHPCS report: exit 0, no PHPCS finding, recorded as missing" "$T_RC|$(j '.counts.by_tool.phpcs // 0')|$(j '.tools.phpcs')" '0|0|"missing"'
 
 # --subject: reads its raw dir and writes findings.json to its state dir; --out.
 SUB="$T_TMP/site/$SP"; mkdir -p "$SUB"
@@ -136,7 +140,68 @@ assert_eq "--subject: findings.json in the subject's state dir, nothing on STDOU
   "$T_RC|$(jq -c '[.findings[].id]' "$(project_state_dir "$SUB")/findings.json")|$(wc -c < "$T_OUT" | tr -d ' ')" \
   "0|$(jq -c '[.findings[].id]' "$T_TMP/f0.json")|0"
 nf --raw-dir "$R0" --target-major 11 --soft-policy report --out "$T_TMP/out/f.json"
-assert_eq "--out FILE" "$T_RC|$(jq -c '.counts.total' "$T_TMP/out/f.json")" '0|12'
+assert_eq "--out FILE" "$T_RC|$(jq -c '.counts.total' "$T_TMP/out/f.json")" '0|13'
+
+# A tool that gave no verdict is recorded: extract.sh's error record, a crash.
+RF="$T_TMP/rawf"; mkraw "$RF" 0
+printf '{"error": "the tool printed no JSON report", "exit_code": 1}\n' > "$RF/04-assess-rector.json"
+jq '. + {drupilot: {status: "crashed"}}' "$RF/04-assess-phpstan.json" > "$T_TMP/s.json" && cp "$T_TMP/s.json" "$RF/04-assess-phpstan.json"
+jq '{totals: null, files: {}, drupilot: {error: "PHPCS cannot load the ruleset"}}' "$RF/04-assess-phpcs.json" > "$T_TMP/c.json" && cp "$T_TMP/c.json" "$RF/04-assess-phpcs.json"
+nf --raw-dir "$RF" --target-major 11 --soft-policy report --json
+assert_eq "no report from Rector, a PHPStan crash, a PHPCS error: failed, and a findings_hash of its own" \
+  "$T_RC|$(j '[.tools.rector, .tools.phpstan, .tools.phpcs, .tools.signatures]')|$([[ "$(j .meta.findings_hash)" != "$(jq -c .meta.findings_hash "$T_TMP/f0.json")" ]] && echo differs)" \
+  '0|["failed","failed","failed","ok"]|differs'
+jq '.status = "partial"' "$R0/04-assess-rector.json" > "$RF/04-assess-rector.json"
+nf --raw-dir "$RF" --target-major 11 --soft-policy report --json
+assert_eq "  a digests-only crash: Rector partial" "$(j '.tools.rector')" '"partial"'
+
+# A trait: PHPStan reports its error once per class that uses it.
+RT="$T_TMP/rawt"; mkraw "$RT" 0
+jq --arg sp "$SP" '.files = {($sp + "/src/T.php (in context of class M\\A)"): {messages: [{message: "Undefined variable: $t", line: 4}]},
+                             ($sp + "/src/T.php (in context of class M\\B)"): {messages: [{message: "Undefined variable: $t", line: 4}]}}' \
+  "$R0/04-assess-phpstan.json" > "$RT/04-assess-phpstan.json"
+jq --arg sp "$SP" '. + [{file: ($sp + "/src/T.php"), line: 4, anchor: "M\\T::foo"}]' "$R0/04-assess-anchors.json" > "$RT/04-assess-anchors.json"
+nf --raw-dir "$RT" --target-major 11 --soft-policy report --json
+assert_eq "a trait error: one finding, the trait's file, its anchor" \
+  "$(j '[.findings[] | select(.tool == "phpstan") | [.file, .anchor, .occurrence]]')" '[["src/T.php","M\\T::foo",0]]'
+
+# The anchor is part of the merge key: the same symbol in two methods is two findings.
+RA="$T_TMP/rawa"; mkraw "$RA" 0
+jq '.files[].messages += [.files[].messages[0] | .line = 40]' "$R0/04-assess-phpstan.json" > "$RA/04-assess-phpstan.json"
+nf --raw-dir "$RA" --target-major 11 --soft-policy report --json
+assert_eq "the same deprecated call in two methods: two findings" \
+  "$(j '[.findings[] | select(.symbol == "user_load_by_mail") | .anchor] | sort')" '["M\\A::other","M\\A::run"]'
+
+# The soft policy defer, and an unknown deprecation.
+RD="$T_TMP/rawd"; mkraw "$RD" 0
+jq '.files[].messages += [{message: "Call to deprecated function foo_legacy().", identifier: "function.deprecated", line: 41}]' \
+  "$R0/04-assess-phpstan.json" > "$RD/04-assess-phpstan.json"
+nf --raw-dir "$RD" --target-major 11 --soft-policy defer --json
+assert_eq "defer: a soft deprecation is next-major; one whose removal is unknown is current" \
+  "$(j '[.findings[] | select(.symbol == "user_load_by_mail" or .symbol == "foo_legacy") | [.symbol, .class, .scope]] | sort')" \
+  '[["foo_legacy","unknown","current"],["user_load_by_mail","soft","next-major"]]'
+
+# classify-deprecations.sh failing: stop, nothing written.
+FP="$T_TMP/fakeplugin"; mkdir -p "$FP/scripts/analysis"
+printf '#!/bin/sh\necho "classify: boom" >&2\nexit 1\n' > "$FP/scripts/analysis/classify-deprecations.sh"
+t_run env CLAUDE_PLUGIN_ROOT="$FP" "$T_SH" "$NF" --raw-dir "$R0" --target-major 11 --soft-policy report --out "$T_TMP/cf/f.json"
+assert_eq "classify-deprecations.sh fails: exit 3, nothing written" "$T_RC|$([[ -e "$T_TMP/cf/f.json" ]] && echo written || echo none)" "3|none"
+
+# A large stage: 6000 PHPCS findings (the maps go through files, the hashes through one process).
+RB="$T_TMP/rawb"; mkraw "$RB" 0
+jq --arg sp "$SP" '.files = ([range(0; 60) as $f | {key: "\($sp)/src/F\($f).php", value: {messages: [range(0; 100) as $l | {source: "Drupal.Commenting.FunctionComment.Missing", message: "Missing function doc comment", line: ($l + 1), type: "ERROR"}]}}] | from_entries)' \
+  "$R0/04-assess-phpcs.json" > "$RB/04-assess-phpcs.json"
+nf --raw-dir "$RB" --target-major 11 --soft-policy report --out "$T_TMP/big/f.json"
+assert_eq "6000 PHPCS findings: exit 0, every one with its own id" \
+  "$T_RC|$(jq -c '[.counts.by_tool.phpcs, ([.findings[].id] | unique | length) == .counts.total]' "$T_TMP/big/f.json")" '0|[6000,true]'
+
+# The raw index: exactly one per stage, a JSON object.
+RI="$T_TMP/rawi"; mkraw "$RI" 0; printf '{"stage": ' > "$RI/04-assess-index.json"
+nf --raw-dir "$RI"
+assert_eq "a truncated index: exit 1" "$T_RC" "1"
+mkraw "$RI" 0; cp "$RI/04-assess-index.json" "$RI/02-assess-index.json"
+nf --raw-dir "$RI"
+assert_eq "two raw sets of one stage: exit 1" "$T_RC" "1"
 
 # Usage errors.
 nf --raw-dir "$T_TMP/nope"

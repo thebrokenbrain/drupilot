@@ -4,7 +4,7 @@
   "title": "drupilot findings (<state>/findings.json)",
   "description": "One stage's normalized findings (AR-10, ADR 0022), written by scripts/ai/normalize-findings.sh from the stage's raw tool reports. Everything outside meta is a pure function of the raw files, the target major and the soft-deprecation policy (DET-2); meta is left out of findings_hash.",
   "type": "object",
-  "required": ["schema", "stage", "subject", "target", "anchors", "counts", "findings", "meta"],
+  "required": ["schema", "stage", "subject", "target", "anchors", "tools", "counts", "findings", "meta"],
   "additionalProperties": false,
   "properties": {
     "schema": {"const": 1},
@@ -30,6 +30,20 @@
       }
     },
     "anchors": {"description": "php: the raw anchors file came from anchor.php; unavailable: no PHP ran it, so every anchor is {file}.", "enum": ["php", "unavailable"]},
+    "tools": {
+      "description": "Each tool's verdict: ok, partial (Rector: the digests pass crashed, the official result stands), failed (its raw file is extract.sh's error record or the report of a crash) or missing (no raw file). A tool that did not give a verdict contributes no finding, which this records.",
+      "type": "object",
+      "required": ["rector", "phpstan", "phpcs", "port-safety", "signatures", "metadata"],
+      "additionalProperties": false,
+      "properties": {
+        "rector": {"enum": ["ok", "partial", "failed", "missing"]},
+        "phpstan": {"$ref": "#/$defs/verdict"},
+        "phpcs": {"$ref": "#/$defs/verdict"},
+        "port-safety": {"$ref": "#/$defs/verdict"},
+        "signatures": {"$ref": "#/$defs/verdict"},
+        "metadata": {"$ref": "#/$defs/verdict"}
+      }
+    },
     "counts": {
       "type": "object",
       "required": ["total", "current", "next_major", "by_tool", "by_class"],
@@ -64,6 +78,7 @@
     }
   },
   "$defs": {
+    "verdict": {"enum": ["ok", "failed", "missing"]},
     "tool": {"enum": ["rector", "phpstan", "phpcompat", "catalog", "upgrade_status", "phpcs"]},
     "class": {"enum": ["hard", "soft", "unknown", "analysis", "safety", "signature", "metadata", "style", "php-target", "rector"]},
     "finding": {
@@ -76,7 +91,7 @@
         "rule": {"description": "Rector's FQCN, PHPStan's identifier (phpstan:untyped:<8 hex> without one), PHPCS's source, or port-safety:<check>, signature:<id>, metadata:<check>.", "type": "string", "minLength": 1},
         "file": {"description": "Relative to the subject.", "type": "string", "minLength": 1, "pattern": "^[^/]"},
         "line": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
-        "anchor": {"description": "The innermost Namespace\\Class::method or function of the line, else {file}.", "type": "string", "minLength": 1},
+        "anchor": {"description": "The innermost Namespace\\Class::method or function of the line, the Namespace\\ClassLike for a line in a class-like body outside its methods, else {file}.", "type": "string", "minLength": 1},
         "symbol": {"anyOf": [{"type": "string", "minLength": 1}, {"type": "null"}]},
         "message": {"description": "Normalized: runner paths, \"on line N\" and repeated blanks removed.", "type": "string"},
         "occurrence": {"type": "integer", "minimum": 0},

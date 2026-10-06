@@ -79,7 +79,7 @@
     }
   ],
   "meta": {
-    "findings_hash": "sha256:f19966e52b60e1addbfa700e654e380d837e445984fa684aa135b1d02fe02047",
+    "findings_hash": "sha256:7ae0922d32c50405a02714b54995a5cdc7639a37ad71fdbb095c3b84a5c44138",
     "raw": {
       "04-assess-anchors.json": "sha256:cfaf3210e1b796990c45a23e5454166d6037d918b3bdb0c1afca14429d994c79",
       "04-assess-index.json": "sha256:76ea22957c4fd4d4ed56b7824efbd938cbe2c759bc2d8e61ffc9cf901fdaaddd",
@@ -102,5 +102,13 @@
     "php_version": "8.3.33",
     "runner": "ddev",
     "soft_policy": "report"
+  },
+  "tools": {
+    "metadata": "ok",
+    "phpcs": "ok",
+    "phpstan": "ok",
+    "port-safety": "ok",
+    "rector": "ok",
+    "signatures": "ok"
   }
 }

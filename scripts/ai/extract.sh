@@ -17,7 +17,9 @@
 # (without a PHP runner: {"unavailable": true}), so scripts/ai/
 # normalize-findings.sh needs no PHP. An index, <NN>-<stage>-index.json, names
 # the subject, the target major and each tool's file and exit code. A stage's
-# previous raw files are replaced; other stages' are kept.
+# previous raw files (its tool files, whatever NN they were written with) are
+# replaced; other stages' are kept. A PHPStan error in a trait ("<file> (in
+# context of class X)") is anchored in the trait's file.
 #
 # Usage:
 #   extract.sh --subject DIR [--stage S] [--json] [-h|--help]
@@ -27,8 +29,8 @@
 #
 # Gate: the tools' own (the `analyze` profile). Exit codes: 0 every report
 # written · 1 usage error · 2 no Drupal root or jq missing · 3 Rector or
-# PHPStan gave no verdict (a crash or a DET-1 refusal: see their raw file); the
-# other reports are still written.
+# PHPStan gave no verdict (a crash, a DET-1 refusal, or no report at all: see
+# their raw file); the other reports are still written.
 # =============================================================================
 set -euo pipefail
 # shellcheck source=../lib/common.sh
@@ -61,7 +63,11 @@ case "$SUBJECT" in "$ROOT"/*) SUBJECT_REL="${SUBJECT#"$ROOT"/}";; *) die "Subjec
 MACHINE="$(subject_machine_name "$SUBJECT" 2> /dev/null || basename "$SUBJECT")"
 RAW="$(project_state_dir "$SUBJECT")/raw"
 mkdir -p "$RAW" || die "Cannot create $RAW." 2
-for f in "$RAW/$NN-$STAGE"-*.json; do [[ -f "$f" ]] && rm -f "$f"; done
+# The stage's previous raw files, whatever NN they were written with (the
+# stage may have moved in config/pipeline.json); each tool's name exactly, so
+# another stage whose id starts with this one is never touched.
+TOOL_FILES="index rector phpstan phpcs port-safety signatures metadata anchors"
+for t in $TOOL_FILES; do for f in "$RAW"/[0-9][0-9]-"$STAGE"-"$t".json; do [[ -f "$f" ]] && rm -f "$f"; done; done
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-extract.XXXXXX")"
 trap 'rm -rf "$TMP" 2> /dev/null || true' EXIT
@@ -109,7 +115,7 @@ jq -n -c --arg sp "$SUBJECT_REL" \
           else . end)
     | .out;
   [ (($rector[0].file_diffs // [])[] | .file as $f | ((.diff // "") | hunk_lines)[] | {file: ($f | rootrel), line: .}),
-    (($stan[0].files // {}) | to_entries[] | .key as $f | (.value.messages // [])[] | {file: ($f | rootrel), line}),
+    (($stan[0].files // {}) | to_entries[] | (.key | sub(" \\(in context of (class|anonymous class) [^)]*\\)$"; "")) as $f | (.value.messages // [])[] | {file: ($f | rootrel), line}),
     (($cs[0].files // {}) | to_entries[] | .key as $f | (.value.messages // [])[] | {file: ($f | rootrel), line}),
     (($safety[0].findings // [])[], ($sig[0].findings // [])[], ($meta[0].findings // [])[] | {file: (.file | rootrel), line}) ]
   | map(select((.line | type) == "number" and (.file | test("\\.(php|module|inc|install|theme|profile|engine)$"))))
@@ -132,13 +138,19 @@ fi
 
 # The index.
 TARGET="$(plan_get .target.major "$ROOT" 2> /dev/null || true)"
-[[ "$TARGET" =~ ^[0-9]+$ ]] || TARGET="$(resolve_target_major)"
+[[ "$TARGET" =~ ^[0-9]+$ ]] || TARGET="$(DRUPILOT_PROJECT_DIR="$ROOT" resolve_target_major)"
 jq -R -s --arg st "$STAGE" --arg mn "$MACHINE" --arg sp "$SUBJECT_REL" --argjson t "$TARGET" '
   {stage: $st, subject: {machine_name: $mn, path: $sp}, target_major: $t,
    tools: (split("\n") | map(select(length > 0) | split("\t") | {tool: .[0], file: .[1], exit_code: (.[2] | tonumber)}))}' \
   "$TOOLS_TSV" | canon_json > "$RAW/$NN-$STAGE-index.json"
 log_ok "extract: $(grep -c . "$TOOLS_TSV") report(s) and the anchors in $RAW ($NN-$STAGE-*)"
 [[ "$AS_JSON" == "1" ]] && cat "$RAW/$NN-$STAGE-index.json"
-# Rector or PHPStan gave no verdict (a crash, a DET-1 refusal): exit 3.
-if awk -F'\t' '($1 == "rector" || $1 == "phpstan") && $3 == 3 { f = 1 } END { exit !f }' "$TOOLS_TSV"; then exit 3; fi
+# Rector or PHPStan gave no verdict (a crash, a DET-1 refusal, no report at
+# all): exit 3.
+if awk -F'\t' '($1 == "rector" || $1 == "phpstan") && $3 == 3 { f = 1 } END { exit !f }' "$TOOLS_TSV" \
+   || jq -e '(has("error") and has("exit_code") and (has("file_diffs") | not)) or .status == "error"' "$RAW/$NN-$STAGE-rector.json" > /dev/null 2>&1 \
+   || jq -e '(has("error") and has("exit_code") and (has("files") | not)) or .drupilot.status == "crashed"' "$RAW/$NN-$STAGE-phpstan.json" > /dev/null 2>&1; then
+  log_warn "extract: Rector or PHPStan gave no verdict (see its raw file)."
+  exit 3
+fi
 exit 0

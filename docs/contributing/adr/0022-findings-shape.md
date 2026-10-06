@@ -24,18 +24,30 @@ decision before `normalize-findings.sh` could be written:
 ## Decision
 
 **The record.** `findings.json` is `{schema: 1, stage, subject: {machine_name, path}, target: {major,
-soft_policy, runner, php_version}, counts, findings: [...], meta}`. `meta` holds what changes between two runs
-of the same tree (the raw files' hashes, the time) and is left out of `findings_hash` (DET-2). A finding is
+soft_policy, runner, php_version}, anchors, tools, counts, findings: [...], meta}`:
+- `anchors` is `php`, or `unavailable` when no PHP computed them.
+- `tools` gives each tool's verdict: `ok`, `partial`, `failed` or `missing`. A crashed or missing tool
+  contributes no finding, and without this field its run would hash like a clean one.
+- `meta` holds what changes between two runs of the same tree (the raw files' hashes, the time) and is left
+  out of `findings_hash` (DET-2).
+
+A finding is
 `{id, tool, rule, file, line, anchor, symbol, message, occurrence, severity, scope, class, sources}`:
 - `tool` is `rector`, `phpstan`, `catalog` or `phpcs` (`phpcompat` and `upgrade_status` join when their
   extractors land);
 - `rule` is the Rector FQCN, the PHPStan identifier (`phpstan:untyped:<sha8 of the message>` without one), the
   PHPCS source, or `port-safety:<check>`, `signature:<id>`, `metadata:<check>` for the catalog scans;
 - `line` is kept for a person and the AI to find the code, but is never part of the id, so a line shift that
-  leaves the anchor and the message alone keeps the id;
+  leaves the anchor and the message alone keeps the id (the message drops "on line N" and PHPStan's
+  `class@anonymous/<file>:<line>` name for the same reason);
+- `anchor` is the innermost `Namespace\Class::method` or function, the `Namespace\ClassLike` for a line in a
+  class body outside its methods, or `{file}`;
 - `class` is `hard`, `soft` or `unknown` (a deprecation, as `classify-deprecations.sh` says), `analysis` (any
   other PHPStan error), `safety`, `signature`, `metadata`, `style` (PHPCS), `php-target` (a PHPCompatibility
   sniff) or `rector`.
+
+**Traits.** PHPStan names an error in a trait `<file> (in context of class X)`, once per class that uses
+the trait. The context is dropped from the file, and the copies are one finding.
 
 **Anchors are extracted, not computed while normalizing.** `extract.sh` runs `anchor.php` in the bed once over
 every `(file, line)` the raw reports name and stores the answers as one more raw file,
@@ -64,7 +76,8 @@ hunk of its file's diff, anchored at the hunk's first changed line, with the rul
 
 ## Consequences
 
-- `findings.json` and its hash are a pure function of the raw files, the target major and the soft policy:
+- `findings.json` and its hash are a pure function of the raw files, the target major and the soft policy
+  (with the plugin's own catalogs, which `classify-deprecations.sh` reads):
   `normalize-findings.sh` is the reference implementation and `schemas/findings.schema.json` its contract.
 - The raw files of a golden must include the anchors file. Recording one needs the lab bed (`extract.sh`).
 - A new extractor adds a `tool` or a `rule` prefix, a precedence slot and a row in this ADR's lists.
