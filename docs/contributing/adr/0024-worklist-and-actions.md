@@ -65,19 +65,28 @@ entry there as a divergence from the prescribed flow, and a recipe applied by th
 line is `{schema, kind: "recipe-apply", item_id, finding_id, recipe, version, file, line, status, input_hash,
 output_hash, findings_hash, at}`. The port manifest (T-M4-10) reads both logs.
 
-**The classifier reads the log.** An `applied` action counts only while the file still holds its output
-(`output_hash`): after a revert (a checkout, a stage checkpoint restored, a re-run of the port) the codemod
-is tried again. A codemod is not tried again on a finding, at the same recipe version, after it:
+**The classifier reads the log.** An `applied` action counts only while its file still holds the output of
+the last codemod applied to it (two codemods on one file both stay in effect): after a revert (a checkout, a
+stage checkpoint restored, a re-run of the port) the codemod is tried again. Without `--subject` the files are
+not read, and every applied action counts as in effect. A line of the log that is not JSON (a truncated
+write) is skipped; the other lines still count. A codemod is not tried again on a finding, at the same recipe version, after it:
 - gave no change (`no-match`, `not-applicable`, `rejected`);
 - failed (`error`: `apply-recipe.sh` itself stopped, e.g. no plan gives the requirement);
-- did not clear the finding: `apply-recipes.sh --reextract` writes `not-cleared` for every codemod it applied
-  whose finding the re-extraction still has, whether or not the `findings_hash` changed;
+- did not clear the finding: `apply-recipes.sh --reextract` writes `not-cleared` for every applied codemod
+  still in effect (from this run or an earlier one) whose finding the re-extraction still has, whether or not
+  the `findings_hash` changed;
 - was applied on an earlier extraction (another `findings_hash`) with the finding still there.
 
 The finding then goes to `ai-templated`. An item whose codemods were all applied on the current findings,
 their output still in the file, is `applied` until the re-extraction removes its findings.
-`apply-recipes.sh` applies the recipes `classify.sh` used, the overlay included, and skips an application
-already in effect.
+`apply-recipes.sh` applies the recipes `classify.sh` used, the overlay included (every recipe there needs a
+version and a kind), and skips an application already in effect at the same recipe version; a new version is
+tried again.
+
+**Known limit.** A finding's id has no line, and its `occurrence` is its rank among identical findings. When a
+codemod fixes the first of two identical findings, the one left takes occurrence 0, the fixed one's id, so its
+`not-cleared` line names the fixed application. The finding still reaches `ai-templated`; only that line of
+the log is misattributed.
 
 **Overlay.** `<root>/.drupilot/recipes.json` has the shape of `config/recipes.json`. Its recipes replace the
 plugin's by id. Its hash is part of the worklist's `meta.recipes_hash`.

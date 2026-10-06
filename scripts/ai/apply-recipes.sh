@@ -75,23 +75,19 @@ ROOT="$(subject_project_root "$SUBJECT" 2> /dev/null || true)"
 OVERLAY=""; [[ -n "$ROOT" && -f "$ROOT/.drupilot/recipes.json" ]] && OVERLAY="$ROOT/.drupilot/recipes.json"
 recipes_effective "$(plugin_root)/config/recipes.json" "$OVERLAY" "$TMP/recipes.json" \
   || die "The recipes${OVERLAY:+ (with the overlay $OVERLAY)} are not a recipe catalog." 1
-# Applications already in effect (applied, the file still holds their output)
-# are not run again.
-printf '{}\n' > "$TMP/inplace.json"
-if [[ -f "$ACT" ]]; then
-  jq -c -s '[.[] | select(.kind == "recipe-apply")] | map({key: "\(.finding_id)\u001f\(.recipe)", value: .}) | from_entries
-            | map_values(select(.status == "applied"))' "$ACT" > "$TMP/lastapplied.json" 2> /dev/null || printf '{}\n' > "$TMP/lastapplied.json"
-  jq -r 'to_entries[] | "\(.key)\t\(.value.file)\t\(.value.output_hash)"' "$TMP/lastapplied.json" | while IFS="$(printf '\t')" read -r k f oh; do
-    if [[ -n "$k" && "$(file_hash "$SUBJECT/$f")" == "$oh" ]]; then jq -n -c --arg k "$k" '{($k): true}'; fi
-  done | jq -s 'add // {}' > "$TMP/inplace.json"
-fi
+# Applications already in effect (applied, the file still holds the last
+# applied output) are not run again, at the same recipe version.
+actions_state "$ACT" "$SUBJECT" "$TMP/actions.json"
 # One line per (item, finding, recipe) of an open codemod item, with the
 # finding's file, line, message and severity.
-jq -c --slurpfile f "$FJ" --slurpfile ip "$TMP/inplace.json" '
+jq -c --slurpfile f "$FJ" --slurpfile asf "$TMP/actions.json" --slurpfile rc "$TMP/recipes.json" "$(actions_jq_defs)"'
   ($f[0].findings | map({key: .id, value: .}) | from_entries) as $byid
+  | ($rc[0].recipes | map({key: .id, value: .version}) | from_entries) as $ver
+  | $asf[0] as $st
   | .items[] | select(.lane == "codemod" and .status == "open") | . as $it
   | .finding_ids[] | . as $fid | ($it.recipe_of[$fid] // null) as $r | select($r != null)
-  | select($ip[0]["\($fid)\u001f\($r)"] != true)
+  | ($st.last["\($fid)\u001f\($r)\u001f\($ver[$r])"]) as $a
+  | select(($a != null and $a.status == "applied" and ($a | in_effect($st))) | not)
   | $byid[$fid] as $x | select($x != null)
   | {item_id: $it.id, finding_id: $fid, recipe: $r, file: $x.file, line: $x.line, message: $x.message, severity: $x.severity}' \
   "$WL" > "$TMP/todo.jsonl"
@@ -135,13 +131,15 @@ if [[ "$DRY" != "1" ]]; then
     REX=true
     bash "$S/ai/extract.sh" --subject "$SUBJECT" --stage "$STAGE" < /dev/null || { rc=$?; [[ "$rc" == "3" ]] && RC=3 || die "extract.sh failed (exit $rc)." 1; }
     bash "$S/ai/normalize-findings.sh" --subject "$SUBJECT" --stage "$STAGE" < /dev/null || die "normalize-findings.sh failed." 1
-    # Each codemod applied now whose finding the new extraction still has did
-    # not clear it: recorded, so it is not tried again.
+    # Every codemod applied and still in effect (this run or an earlier one)
+    # whose finding the new extraction still has did not clear it: recorded,
+    # so it is not tried again.
     NEWFH="$(jq -r '.meta.findings_hash // empty' "$FJ")"
-    jq -c -s --slurpfile f "$FJ" --arg fh "$NEWFH" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
-      ([$f[0].findings[].id]) as $ids
-      | .[] | select(.status == "applied") | select(.finding_id as $i | $ids | index($i))
-      | . + {status: "not-cleared", findings_hash: (if $fh == "" then null else $fh end), at: $at}' "$TMP/apps.jsonl" >> "$ACT" \
+    actions_state "$ACT" "$SUBJECT" "$TMP/actions2.json"
+    jq -c --slurpfile f "$FJ" --arg fh "$NEWFH" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(actions_jq_defs)"'
+      . as $st | ([$f[0].findings[].id]) as $ids
+      | .last[] | select(.status == "applied" and in_effect($st)) | select(.finding_id as $i | $ids | index($i))
+      | . + {status: "not-cleared", findings_hash: (if $fh == "" then null else $fh end), at: $at}' "$TMP/actions2.json" >> "$ACT" \
       || die "Could not write $ACT." 1
   fi
   bash "$S/ai/classify.sh" --subject "$SUBJECT" < /dev/null || die "classify.sh failed." 1

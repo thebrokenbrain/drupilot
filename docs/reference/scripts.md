@@ -163,7 +163,9 @@ codemod > ai-templated > ai-free > test-adapt > human > deferred.
                 to ai-templated with its template. A codemod applied on
                 these very findings whose output is still in the file makes
                 its item `applied` until the re-extraction; one whose output
-                is gone (a revert) is tried again.
+                is gone (a revert) is tried again. (Without --subject, the
+                files are not read: every applied action counts as in
+                effect.)
   ai-free       an analysis error or deprecation no recipe matches
   human         a catalog finding no recipe matches
   test-adapt    an ai-templated or ai-free finding in a file under a tests/

@@ -24,7 +24,9 @@
 #                 to ai-templated with its template. A codemod applied on
 #                 these very findings whose output is still in the file makes
 #                 its item `applied` until the re-extraction; one whose output
-#                 is gone (a revert) is tried again.
+#                 is gone (a revert) is tried again. (Without --subject, the
+#                 files are not read: every applied action counts as in
+#                 effect.)
 #   ai-free       an analysis error or deprecation no recipe matches
 #   human         a catalog finding no recipe matches
 #   test-adapt    an ai-templated or ai-free finding in a file under a tests/
@@ -103,24 +105,15 @@ recipes_effective "$RECIPES" "$OVERLAY" "$TMP/recipes.json" \
 # recipe-apply action. An applied one counts only while its output is still
 # the file's content (a revert or another edit undoes it).
 FHASH="$(jq -r '.meta.findings_hash // empty' "$FINDINGS")"
-printf '{}\n' > "$TMP/done.json"; printf '{}\n' > "$TMP/now.json"
-if [[ -n "$ACTIONS" && -f "$ACTIONS" ]]; then
-  jq -c -s '[.[] | select(.kind == "recipe-apply")] | map({key: "\(.finding_id)\u001f\(.recipe)\u001f\(.version)", value: {status, findings_hash, output_hash, file}})
-            | from_entries' "$ACTIONS" > "$TMP/done.json" 2> /dev/null || printf '{}\n' > "$TMP/done.json"
-  if [[ -n "$SUBJECT" ]]; then
-    jq -r '[.[] | select(.status == "applied") | .file // empty] | unique[]' "$TMP/done.json" | while IFS= read -r f; do
-      [[ -n "$f" ]] || continue
-      jq -n -c --arg f "$f" --arg h "$(file_hash "$SUBJECT/$f")" '{($f): $h}'
-    done | jq -s 'add // {}' > "$TMP/now.json"
-  fi
-fi
+actions_state "${ACTIONS:-}" "$SUBJECT" "$TMP/actions.json"
 ERA=""
 if [[ -n "$SUBJECT" ]]; then ERA="$(plan_get_own "$SUBJECT" .source.major)"; fi
 
 # Every finding with its lane, recipe and reason; then the items.
-jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile dn "$TMP/done.json" --slurpfile nw "$TMP/now.json" --arg floor "$FLOOR" --arg era "$ERA" --arg fh "$FHASH" '
+jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile asf "$TMP/actions.json" --arg floor "$FLOOR" --arg era "$ERA" --arg fh "$FHASH" \
+  "$(actions_jq_defs)"'
   ["rector", "rector-custom", "codemod", "ai-templated", "ai-free", "test-adapt", "human", "deferred"] as $order
-  | $rc[0].recipes as $recipes | $dn[0] as $done | $nw[0] as $now
+  | $rc[0].recipes as $recipes | $asf[0] as $st
   | (if $floor == "" then null else $floor end) as $F
   | def vnum: split(".") | map(tonumber? // 0);
     def applies($f):
@@ -136,8 +129,7 @@ jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile dn "$TMP/done.json" --slurp
     # The last action of this codemod on this finding. An applied one is in
     # effect only while the file still holds its output; else it is no action
     # (the codemod is tried again).
-    def action($f): $done["\($f.id)\u001f\(.id)\u001f\(.version)"]
-      | if . != null and .status == "applied" and ($now[.file // ""] // "") != .output_hash then null else . end;
+    def action($f): $st.last["\($f.id)\u001f\(.id)\u001f\(.version)"] | if in_effect($st) then . else null end;
     # Not tried again: it changed nothing, it failed, it was found not to
     # clear the finding (S7), or it was applied on an earlier extraction and
     # the finding is still there.
@@ -158,9 +150,9 @@ jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile dn "$TMP/done.json" --slurp
             elif ($cands | length) > 0 then
               $cands[0] as $c
               | {lane: (if $c.kind == "codemod" then "ai-templated" else $c.lane end), recipe: $c.id,
-                 reason: (if ($c | failed($f)) then (($c | action($f)).status as $st
-                            | if $st == "applied" or $st == "not-cleared" then "the codemod did not clear the finding"
-                              elif $st == "error" then "the codemod failed"
+                 reason: (if ($c | failed($f)) then (($c | action($f)).status as $astat
+                            | if $astat == "applied" or $astat == "not-cleared" then "the codemod did not clear the finding"
+                              elif $astat == "error" then "the codemod failed"
                               else "the codemod gave no change" end)
                           else "the recipe'"'"'s conditions do not hold" end)}
             elif $f.tool == "catalog" then {lane: "human", recipe: null, reason: "no recipe"}

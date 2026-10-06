@@ -251,14 +251,18 @@ worklist_set() {
 # project's <root>/.drupilot/recipes.json; empty: none) replacing BASE's by
 # id, sorted by id, as {recipes: [...]}. Returns 1, writing nothing, when a
 # file is not a recipe catalog: every recipe needs a string id, a lane of
-# AR-10, a matches object and a template with a why.
+# AR-10, a matches object, a template with a why, a 12-hex version and a kind
+# (codemod exactly for the codemod and rector-custom lanes).
 recipes_effective() {
   local base="${1:-}" ov="${2:-}" out="${3:-}" f
   [[ -n "$base" && -n "$out" ]] || return 1
   for f in "$base" ${ov:+"$ov"}; do
     jq -e '(.recipes | type) == "array" and all(.recipes[]; (.id | type) == "string"
              and (.lane | IN("rector", "rector-custom", "codemod", "ai-templated", "ai-free", "test-adapt", "human", "deferred"))
-             and (.matches | type) == "object" and (.template | type) == "object" and (.template.why | type) == "string")' \
+             and (.matches | type) == "object" and (.template | type) == "object" and (.template.why | type) == "string"
+             and (.version | type) == "string" and (.version | test("^[0-9a-f]{6}[0-9a-f]{6}$"))
+             and (.kind | IN("template", "codemod"))
+             and ((.lane | IN("codemod", "rector-custom")) == (.kind == "codemod")))' \
       "$f" > /dev/null 2>&1 || return 1
   done
   if [[ -n "$ov" ]]; then
@@ -267,5 +271,48 @@ recipes_effective() {
   else
     jq '{recipes: (.recipes | sort_by(.id))}' "$base" > "$out" 2> /dev/null || return 1
   fi
+  return 0
+}
+
+# actions_state ACTIONS SUBJECT OUT -> writes to OUT what the actions log
+# (actions.jsonl, scripts/ai/apply-recipes.sh) says about the codemods
+# (ADR 0024): {last: {"<finding>\u001f<recipe>\u001f<version>": its last
+# recipe-apply action}, effective: {file: the output_hash of the last applied
+# action on that file}, now: {file: its current file_hash under SUBJECT},
+# files: true when SUBJECT was given}. An applied action is in effect while
+# now[file] equals effective[file] (a later codemod on the same file keeps
+# the earlier ones in effect; a revert or another edit does not). A line
+# that is not JSON (a truncated write) is skipped, never the whole log.
+actions_state() {
+  local act="${1:-}" subj="${2:-}" out="${3:-}" f
+  [[ -n "$out" ]] || return 1
+  if [[ -n "$act" && -f "$act" ]]; then
+    jq -R -s -c 'split("\n") | map(fromjson? // empty | select(type == "object" and .kind == "recipe-apply"))
+      | {last: (map({key: "\(.finding_id)\u001f\(.recipe)\u001f\(.version)", value: .}) | from_entries),
+         effective: (map(select(.status == "applied" and (.file | type) == "string")) | map({key: .file, value: .output_hash}) | from_entries)}' \
+      "$act" > "$out.tmp" 2> /dev/null || printf '{"last": {}, "effective": {}}\n' > "$out.tmp"
+  else
+    printf '{"last": {}, "effective": {}}\n' > "$out.tmp"
+  fi
+  if [[ -n "$subj" ]]; then
+    jq -r '.effective | keys[]' "$out.tmp" | while IFS= read -r f; do
+      [[ -n "$f" ]] || continue
+      jq -n -c --arg f "$f" --arg h "$(file_hash "$subj/$f")" '{($f): $h}'
+    done | jq -s 'add // {}' > "$out.now"
+    jq --slurpfile n "$out.now" '. + {now: $n[0], files: true}' "$out.tmp" > "$out"
+    rm -f "$out.now"
+  else
+    jq '. + {now: {}, files: false}' "$out.tmp" > "$out"
+  fi
+  rm -f "$out.tmp"
+  return 0
+}
+
+# actions_jq_defs -> the jq definition the classifier and apply-recipes.sh
+# share, in_effect($state) (an actions_state document): an action is in
+# effect unless it is applied and, with the files known, its file no longer
+# holds the last applied output.
+actions_jq_defs() {
+  printf '%s\n' 'def in_effect($st): . != null and (.status != "applied" or ($st.files | not) or (($st.now[.file // ""] // "") == ($st.effective[.file // ""] // "")));'
   return 0
 }

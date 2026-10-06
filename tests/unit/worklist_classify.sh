@@ -193,7 +193,18 @@ cp "$T_REPO/tests/fixtures/recipes/safety.class-case/before/m.services.yml" "$S/
 t_run env CLAUDE_PLUGIN_ROOT="$P" "$T_SH" "$P/scripts/ai/classify.sh" --subject "$S" --core-floor 10.3
 jq '.findings = [] | .meta.findings_hash = "sha256:\("3" * 64)"' "$SD/findings.json" > "$T_TMP/f-clear.json"
 t_run env CLAUDE_PLUGIN_ROOT="$P" STUB_FINDINGS="$T_TMP/f-clear.json" "$T_SH" "$P/scripts/ai/apply-recipes.sh" --subject "$S" --reextract --json
-assert_eq "S7: the finding is gone: no codemod item left" "$T_RC|$(jq -c '.counts.by_lane' "$SD/worklist.json")" '0|{}'
+assert_eq "S7: the finding is gone: no codemod item left, no not-cleared logged" \
+  "$T_RC|$(jq -c '.counts.by_lane' "$SD/worklist.json")|$(jq -s -c '[.[].status]' "$SD/actions.jsonl")" '0|{}|["applied"]'
+# S6 and S7 in two runs: the S7 run marks the earlier application not-cleared.
+cp "$T_REPO/tests/fixtures/recipes/safety.class-case/before/m.services.yml" "$S/m.services.yml"; : > "$SD/actions.jsonl"
+{ fnd F-0000000000c1 catalog port-safety:class-case m.services.yml 3 error current safety "" "$MSG"; } | jq -s . | mkf "$SD/findings.json"
+t_run env CLAUDE_PLUGIN_ROOT="$P" "$T_SH" "$P/scripts/ai/classify.sh" --subject "$S" --core-floor 10.3
+t_run env CLAUDE_PLUGIN_ROOT="$P" "$T_SH" "$P/scripts/ai/apply-recipes.sh" --subject "$S"
+cp "$SD/findings.json" "$T_TMP/f-same.json"
+t_run env CLAUDE_PLUGIN_ROOT="$P" STUB_FINDINGS="$T_TMP/f-same.json" "$T_SH" "$P/scripts/ai/apply-recipes.sh" --subject "$S" --reextract --json
+assert_eq "S6 then S7 alone (same findings_hash): the earlier application is not-cleared, ai-templated" \
+  "$T_RC|$(jq -c '.applications | length' "$T_OUT")|$(jq -s -c '[.[].status]' "$SD/actions.jsonl")|$(lanew F-0000000000c1)" \
+  '0|0|["applied","not-cleared"]|ai-templated|the codemod did not clear the finding|open'
 t_run env CLAUDE_PLUGIN_ROOT="$P" STUB_EXTRACT_RC=3 STUB_FINDINGS="$T_TMP/f-clear.json" "$T_SH" "$P/scripts/ai/apply-recipes.sh" --subject "$S" --reextract
 assert_eq "S7: the re-extraction gives no verdict: exit 3" "$T_RC" "3"
 # The overlay's version of a codemod is the one applied and logged.
@@ -205,6 +216,45 @@ t_run "$T_SH" "$AP" --subject "$S" --json
 assert_eq "the project overlay's recipe is the one applied (its version logged)" \
   "$T_RC|$(jq -s -c '[.[] | [.status, .version]]' "$SD/actions.jsonl")|$(lanew F-0000000000c1)" '0|[["applied","0000000000aa"]]|codemod|-|applied'
 rm -f "$R/.drupilot/recipes.json"
+
+# Two codemods on one file: both stay in effect.
+cp "$T_REPO/tests/fixtures/recipes/safety.class-case/two-lines/before/m.services.yml" "$S/m.services.yml"; : > "$SD/actions.jsonl"
+{ fnd F-0000000000f1 catalog port-safety:class-case m.services.yml 3 error current safety "" "$MSG"
+  fnd F-0000000000f2 catalog port-safety:class-case m.services.yml 6 error current safety "" "$MSG"; } | jq -s . | mkf "$SD/findings.json"
+t_run "$T_SH" "$CL" --subject "$S" --core-floor 10.3
+t_run "$T_SH" "$AP" --subject "$S" --json
+assert_eq "two codemods on one file: both applied and both items applied" \
+  "$T_RC|$(jq -c '[.applications[].status]' "$T_OUT")|$(lanew F-0000000000f1)|$(lanew F-0000000000f2)" '0|["applied","applied"]|codemod|-|applied|codemod|-|applied'
+jq '.items |= map(.status = "open")' "$SD/worklist.json" > "$T_TMP/w.json" && cp "$T_TMP/w.json" "$SD/worklist.json"
+t_run "$T_SH" "$AP" --subject "$S" --json
+assert_eq "  a worklist left open (an interrupted run): the applications in effect are not run again" "$T_RC|$(jq -c '.applications | length' "$T_OUT")" '0|0'
+# A new recipe version (here through the overlay) is tried again.
+mkdir -p "$R/.drupilot"; jq '{recipes: [.recipes[] | select(.id == "safety.class-case") | .version = "0000000000bb"]}' "$T_REPO/config/recipes.json" > "$R/.drupilot/recipes.json"
+t_run "$T_SH" "$CL" --subject "$S" --core-floor 10.3
+t_run "$T_SH" "$AP" --subject "$S" --json
+assert_eq "a new recipe version: tried again (no stale skip)" "$T_RC|$(jq -c '[.applications[] | .status] | length' "$T_OUT")" '0|2'
+rm -f "$R/.drupilot/recipes.json"
+# An overlay recipe without a version or a kind is refused.
+printf '{"recipes": [{"id": "x", "lane": "codemod", "kind": "codemod", "engine": "ere-replace", "matches": {"rule": "port-safety:x"}, "template": {"why": "w"}}]}\n' > "$T_TMP/ov-nov.json"
+t_run "$T_SH" "$CL" --findings "$T_TMP/f.json" --overlay "$T_TMP/ov-nov.json"
+assert_eq "an overlay recipe without a version: exit 1" "$T_RC" "1"
+printf '{"recipes": [{"id": "x", "lane": "codemod", "kind": "template", "version": "000000000000", "matches": {"rule": "port-safety:x"}, "template": {"why": "w"}}]}\n' > "$T_TMP/ov-kind.json"
+t_run "$T_SH" "$CL" --findings "$T_TMP/f.json" --overlay "$T_TMP/ov-kind.json"
+assert_eq "  in the codemod lane without a codemod kind: exit 1" "$T_RC" "1"
+printf '{"recipes": [{"id": "x", "lane": "ai-free", "kind": "template", "version": "000000000000", "matches": {"rule": "port-safety:x"}, "template": {}}]}\n' > "$T_TMP/ov-why.json"
+t_run "$T_SH" "$CL" --findings "$T_TMP/f.json" --overlay "$T_TMP/ov-why.json"
+assert_eq "  without template.why: exit 1" "$T_RC" "1"
+# --findings mode reads no file: an applied action counts as in effect.
+t_run "$T_SH" "$CL" --findings "$SD/findings.json" --actions "$SD/actions.jsonl" --core-floor 10.3 --json
+assert_eq "--findings with --actions: the applied items are applied" "$(jq -c '[.items[] | .status] | unique' "$T_OUT")" '["applied"]'
+# A truncated last line of the log loses only that line.
+printf '{"kind": "recipe-apply", "finding_id": "F-0000000000f1", "sta' >> "$SD/actions.jsonl"
+t_run "$T_SH" "$CL" --subject "$S" --core-floor 10.3
+assert_eq "a truncated line in actions.jsonl: the other records still count" "$T_RC|$(lanew F-0000000000f2)" '0|codemod|-|applied'
+# "tests/" is a directory, not a name ending in "tests".
+{ fnd F-0000000000a1 phpstan method.notFound mytests/X.php 3 error current analysis; } | jq -s . | mkf "$T_TMP/ft.json"
+t_run "$T_SH" "$CL" --findings "$T_TMP/ft.json" --json
+assert_eq "mytests/ is not a tests directory: ai-free" "$(jq -c '[.items[].lane]' "$T_OUT")" '["ai-free"]'
 
 # Usage errors.
 t_run "$T_SH" "$CL" --findings "$T_TMP/nope.json"
