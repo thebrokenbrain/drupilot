@@ -72,6 +72,15 @@
       "line": 21,
       "severity": "error",
       "status": "applied"
+    },
+    {
+      "name": "another function uses the same variable name: only this function's body counts, applied",
+      "before": "same-var/before",
+      "after": "same-var/after",
+      "file": "m.module",
+      "line": 14,
+      "severity": "error",
+      "status": "applied"
     }
   ]
 }

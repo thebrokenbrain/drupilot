@@ -61,6 +61,18 @@ jq '.recipes |= map(if .id == "sig.hook-entity-operation" then .postconditions =
 ar --recipe sig.hook-entity-operation --recipes "$T_TMP/recipes-post.json" --subject "$w" --file m.module --line 14 --json
 assert_eq "a postcondition that fails: rejected, exit 3, nothing written" \
   "$T_RC|$(jq -r .status "$T_OUT")|$(diff -r "$w" "$H/before" > /dev/null && echo same)" '3|rejected|same'
+# A placeholder that does not resolve, or a capture that matches nothing,
+# fails the postcondition (closed): rejected, nothing written.
+jq '.recipes |= map(if .id == "sig.hook-entity-operation" then .postconditions[1].ere = "\\${vra}([^A-Za-z0-9_]|$)" else . end)' \
+  "$T_REPO/config/recipes.json" > "$T_TMP/recipes-typo.json"
+ar --recipe sig.hook-entity-operation --recipes "$T_TMP/recipes-typo.json" --subject "$w" --file m.module --line 14 --json
+assert_eq "an unresolved {placeholder}: rejected, exit 3, nothing written" \
+  "$T_RC|$(jq -r .status "$T_OUT")|$(diff -r "$w" "$H/before" > /dev/null && echo same)" '3|rejected|same'
+jq '.recipes |= map(if .id == "sig.hook-entity-operation" then .params.captures.var = "NoSuchType[[:space:]]+\\$([a-z]+)" else . end)' \
+  "$T_REPO/config/recipes.json" > "$T_TMP/recipes-empty.json"
+ar --recipe sig.hook-entity-operation --recipes "$T_TMP/recipes-empty.json" --subject "$w" --file m.module --line 14 --json
+assert_eq "a capture that matches nothing: rejected, exit 3" "$T_RC|$(jq -r .status "$T_OUT")" '3|rejected'
+
 # applies_when.core_min.
 jq '.recipes |= map(if .id == "sig.hook-entity-operation" then .applies_when.core_min = "11.3" else . end)' \
   "$T_REPO/config/recipes.json" > "$T_TMP/recipes-min.json"
@@ -91,6 +103,9 @@ DRUPILOT_PROJECT_DIR="$SR" lock_set_json .upgrade_plan '{"subject": {"machine_na
 ar --recipe meta.submodule-core-req --subject "$SB" --file modules/m_extra/m_extra.info.yml --line 5 --severity warning
 assert_eq "another module's frozen plan: no requirement, exit 1, nothing written" \
   "$T_RC|$(diff -r "$SB" "$M/before" > /dev/null && echo same)" "1|same"
+jq '.recipes |= map(if .id == "meta.submodule-core-req" then .applies_when.core_min = "10.0" else . end)' "$T_REPO/config/recipes.json" > "$T_TMP/recipes-cm.json"
+ar --recipe meta.submodule-core-req --recipes "$T_TMP/recipes-cm.json" --subject "$SB" --file modules/m_extra/m_extra.info.yml --line 5 --severity warning --param 'requirement=^10 || ^11' --json
+assert_eq "  nor its floor for core_min: not-applicable" "$T_RC|$(jq -r .status "$T_OUT")" '0|not-applicable'
 DRUPILOT_PROJECT_DIR="$SR" lock_set_json .upgrade_plan '{"subject": {"machine_name": "m"}, "range": {"constraint": "^10 || ^11", "floor": "10.0"}}' > /dev/null
 ar --recipe meta.submodule-core-req --subject "$SB" --file modules/m_extra/m_extra.info.yml --line 5 --severity warning --json
 assert_eq "  its own frozen plan: the plan's range" "$T_RC|$(jq -r '[.status, .to] | join("|")' "$T_OUT")" '0|applied|^10 || ^11'

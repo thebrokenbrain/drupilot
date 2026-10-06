@@ -83,6 +83,20 @@ assert_eq "lane codemod without a codemod engine, and a postcondition key typo: 
   "$(jq -r '.problems[]' "$T_OUT" | grep -cE 'meta.config-schema: lane codemod needs a codemod engine|sig.hook-entity-operation: a postcondition has an unknown key' || true)" "2"
 assert_eq "no change-record URL holds a character jq versions encode differently" \
   "$(jq -r '.recipes[].template.change_record_search_url // empty' "$RJ" | grep -c "[()!*']" || true)" "0"
+# A symbol with the characters jq 1.6 and 1.7 encode differently (on a fresh
+# copy of the catalogs).
+rm -rf "$C/config"; cp -R "$T_REPO/config" "$C/"
+jq '(.deprecations[] | select(.symbol == "drupal_set_message") | .symbol) = "foo() it'"'"'s *new*!"' "$C/config/deprecations.json" > "$T_TMP/d.json" \
+  && cp "$T_TMP/d.json" "$C/config/deprecations.json"
+gr --write
+assert_eq "a symbol with ! * ' ( ): encoded the same on every jq" \
+  "$(jq -r '.recipes[] | select(.id == "dep.foo-it-s-new") | .template.change_record_search_url' "$C/config/recipes.json" | sed 's/.*=//')" \
+  "foo%28%29%20it%27s%20%2Anew%2A%21"
+jq '(.signature_changes[] | select(.id == "hook-entity-operation") | .recipe.postconditions[1].ere) = "\\${vra}"' "$C/config/deprecations.json" > "$T_TMP/d.json" \
+  && cp "$T_TMP/d.json" "$C/config/deprecations.json"
+gr --check --json
+assert_eq "a postcondition placeholder no capture defines: named" \
+  "$(jq -r '.problems[]' "$T_OUT" | grep -c 'sig.hook-entity-operation: postcondition placeholder {vra} has no capture' || true)" "1"
 gr --bogus
 assert_eq "an unknown flag: exit 1" "$T_RC" "1"
 t_done

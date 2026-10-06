@@ -24,8 +24,10 @@
 # change) give {name} to the postconditions, e.g. "the parameter made optional
 # is not used elsewhere in the file". The change is written only when it is
 # exact and every postcondition holds on the result (absent-ere / absent-fixed
-# / present-fixed on the line, the file, or the file's code lines but the
-# finding's (file-except-line: comment lines left out); rescan is
+# / present-fixed on the line, the file, the file's code lines but the
+# finding's (file-except-line), or the body of the function the finding's line
+# declares (function-body); comment lines are not code there. An unresolved
+# {placeholder} or an empty capture fails the postcondition. rescan is
 # left to apply-recipes.sh's re-extraction). A file without a final newline
 # keeps none. A replacement that does not apply is `no-match`, and nothing
 # changes: the item falls to its next lane. applies_when is honored: file_ere,
@@ -164,12 +166,25 @@ post() {
     w="$(jq -r --argjson i "$i" '.postconditions[$i].where // "line"' <<< "$R")"
     x="$(jq -r --argjson i "$i" '.postconditions[$i].ere // .postconditions[$i].text // ""' <<< "$R")"
     x="${x//\{from\}/$FROM}"; x="${x//\{to\}/$TO}"
-    for k in $(jq -r 'keys[]' <<< "$CAPS"); do v="$(jq -r --arg k "$k" '.[$k]' <<< "$CAPS")"; x="${x//\{$k\}/$v}"; done
+    for k in $(jq -r 'keys[]' <<< "$CAPS"); do
+      v="$(jq -r --arg k "$k" '.[$k]' <<< "$CAPS")"
+      # An empty capture would make the check vacuous: fail closed.
+      if [[ -z "$v" && "$x" == *"{$k}"* ]]; then REASON="the capture {$k} matched nothing on line $LINE"; return 1; fi
+      x="${x//\{$k\}/$v}"
+    done
+    # A placeholder left unresolved (a typo, an undefined capture): fail closed.
+    if printf '%s\n' "$x" | grep_q -E '\{[A-Za-z_][A-Za-z0-9_]*\}'; then REASON="a postcondition placeholder is unresolved ($x)"; return 1; fi
     case "$w" in
       line) if [[ -n "$LINE" ]]; then text="$(line_of "$f" "$LINE")"; else text="$(cat "$f")"; fi;;
       # The file's code lines but the finding's: comment lines (a docblock's
       # @param names the parameter too) are not code.
       file-except-line) text="$(awk -v n="${LINE:-0}" 'NR != n && $0 !~ /^[ \t]*(\*|\/\*|\/\/|#)/' "$f")";;
+      # The body of the function whose signature is the finding's line: what
+      # follows its "{" there, then every code line up to the "}" at the
+      # signature's indentation (comment lines left out).
+      function-body) text="$(awk -v n="${LINE:-0}" '
+          NR == n { ind = $0; sub(/[^ \t].*$/, "", ind); i = index($0, "{"); if (i > 0) print substr($0, i + 1); on = 1; next }
+          on { t = $0; sub(/[ \t]+$/, "", t); if (t == ind "}") exit; if ($0 !~ /^[ \t]*(\*|\/\*|\/\/|#)/) print }' "$f")";;
       *) text="$(cat "$f")";;
     esac
     case "$t" in
@@ -233,7 +248,7 @@ case "$ENGINE" in
     if [[ "$REQ" == plan:* ]]; then REQ="$(own_plan ".${REQ#plan:}")"; fi
     [[ -n "$REQ" ]] || die "Recipe $RECIPE needs the core requirement: no upgrade plan of this module gives it (pass --param requirement=...)." 1
     # Never above the declared floor: the main info.yml's requirement.
-    MAIN_REQ="$(sed -n 's/^core_version_requirement:[[:space:]]*//p' "$SUBJECT/$(subject_machine_name "$SUBJECT" 2> /dev/null || basename "$SUBJECT").info.yml" 2> /dev/null | sed -n '1p' | tr -d "'\"")"
+    MAIN_REQ="$(sed -n 's/^core_version_requirement[[:space:]]*:[[:space:]]*//p' "$SUBJECT/$(subject_machine_name "$SUBJECT" 2> /dev/null || basename "$SUBJECT").info.yml" 2> /dev/null | sed -n '1p' | tr -d "'\"")"
     if [[ -n "$MAIN_REQ" ]]; then
       _rf="$(core_floor_from_requirement "$REQ" 2> /dev/null || true)"; _mf="$(core_floor_from_requirement "$MAIN_REQ" 2> /dev/null || true)"
       if [[ -n "$_rf" && -n "$_mf" ]] && ! version_ge "$_mf" "$_rf"; then
