@@ -1,0 +1,49 @@
+{
+  "cases": [
+    {
+      "name": "a required second parameter becomes optional",
+      "before": "before",
+      "after": "after",
+      "file": "m.module",
+      "line": 14,
+      "severity": "error",
+      "status": "applied"
+    },
+    {
+      "name": "a fully qualified type",
+      "before": "fqcn/before",
+      "after": "fqcn/after",
+      "file": "m.module",
+      "line": 14,
+      "severity": "error",
+      "status": "applied"
+    },
+    {
+      "name": "parameters over several lines: no-match (the AI lane takes it)",
+      "before": "multi-line/before",
+      "after": "multi-line/before",
+      "file": "m.module",
+      "line": 14,
+      "severity": "error",
+      "status": "no-match"
+    },
+    {
+      "name": "already optional: no-match",
+      "before": "optional/before",
+      "after": "optional/before",
+      "file": "m.module",
+      "line": 14,
+      "severity": "error",
+      "status": "no-match"
+    },
+    {
+      "name": "an info finding (the one-parameter form works): not-applicable",
+      "before": "before",
+      "after": "before",
+      "file": "m.module",
+      "line": 14,
+      "severity": "info",
+      "status": "not-applicable"
+    }
+  ]
+}

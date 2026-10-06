@@ -457,6 +457,28 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     and the monorepo's `acme_core` and `acme_api`. Two recordings of the same
     tree gave the same bytes outside `meta`.
   - `docs/reference/state.md` documents the raw files and the findings.
+- **The recipe catalog `config/recipes.json`** (T-M4-06, AR-11, ADR 0023):
+  what drupilot does with each kind of finding.
+  - `scripts/dev/gen-recipes.sh` generates it from the catalogs, the one
+    source of truth (CC-33): `config/deprecations.json`,
+    `config/port-checks.json` and the new `config/metadata-checks.json`.
+    The `data` gate runs `--check`, so it is never edited by hand.
+  - A catalog entry may carry a `recipe` block that turns it into a
+    deterministic codemod or changes its lane. The scripts that read the
+    catalogs ignore the block, so their outputs are unchanged.
+  - 42 recipes: 30 for the AI, with the catalog's text as their template; 8
+    for a person; 4 codemods.
+  - The codemods: a required `CacheableMetadata` hook parameter made optional
+    (`hook_entity_operation`, `_alter`); a class name in a `.yml` file given
+    the case of its file; a submodule's `core_version_requirement` set to the
+    plan's range.
+  - `scripts/ai/apply-recipe.sh` applies one codemod to one finding with the
+    `ere-replace`, `yaml-edit` and `info-yml` engines. It writes only an
+    exact change whose postconditions hold; anything else is `no-match`, and
+    nothing changes.
+  - Every codemod has `before/`, `after/` and `expect.json` fixtures in
+    `tests/fixtures/recipes/`. `schemas/recipes.schema.json` validates the
+    catalog, and `docs/reference/recipes.md` is generated from it.
 
 ### Changed
 - **`scripts/dev/unit.sh` runs the tests in parallel** (`--jobs N`, default

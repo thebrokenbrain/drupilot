@@ -143,7 +143,8 @@
 #                 config/targets|php|paths and config/catalog/*.json match
 #                 their schema, every value names its source, every node a
 #                 hard gate reads is verified and never "announced", and the
-#                 files agree with each other
+#                 files agree with each other; and config/recipes.json is what
+#                 scripts/dev/gen-recipes.sh generates from the catalogs
 #   - unit        the unit tests (scripts/dev/unit.sh: tests/lib/selftest.sh and
 #                 tests/unit/*.sh, run with this same bash; a test skipped
 #                 until its milestone is not a failure)
@@ -930,13 +931,16 @@ gate_schemas() {
 }
 
 gate_data() {
-  local js="$TMP/data.json" err="$TMP/data.err" out="$TMP/data.out"
-  if "$BASH" "$REPO/scripts/dev/data-check.sh" --json > "$js" 2> "$err"; then
-    record data pass "$(jq -r '[.checks[].file] | unique | length' "$js" 2>/dev/null || echo '?') data file(s): valid, sourced and safe for the hard gates"
+  local js="$TMP/data.json" err="$TMP/data.err" out="$TMP/data.out" rj="$TMP/recipes.json" rok=1
+  # config/recipes.json is generated from the catalogs (ADR 0023).
+  "$BASH" "$REPO/scripts/dev/gen-recipes.sh" --check --json > "$rj" 2> /dev/null || rok=0
+  if "$BASH" "$REPO/scripts/dev/data-check.sh" --json > "$js" 2> "$err" && [[ "$rok" == "1" ]]; then
+    record data pass "$(jq -r '[.checks[].file] | unique | length' "$js" 2>/dev/null || echo '?') data file(s): valid, sourced and safe for the hard gates; $(jq -r '.recipes' "$rj" 2>/dev/null || echo '?') recipes generated from the catalogs"
   else
     jq -r '.checks[] | select(.status != "pass") | "\(.check): \(.file): \(.detail)"' "$js" > "$out" 2>/dev/null || true
+    jq -r '.problems[]? | "recipes: \(.)"' "$rj" >> "$out" 2>/dev/null || true
     [[ -s "$out" ]] || tail -n 20 "$err" > "$out"
-    record data fail "the version data has problems (scripts/dev/data-check.sh)" "$out"
+    record data fail "the version data or the recipes have problems (scripts/dev/data-check.sh, scripts/dev/gen-recipes.sh --check)" "$out"
   fi
 }
 

@@ -1,0 +1,28 @@
+{
+  "cases": [
+    {
+      "name": "the submodule gets the plan's range; the main info.yml (the declared floor) is unchanged",
+      "before": "before",
+      "after": "after",
+      "file": "modules/m_extra/m_extra.info.yml",
+      "line": 5,
+      "severity": "warning",
+      "params": {
+        "requirement": "^10 || ^11"
+      },
+      "status": "applied"
+    },
+    {
+      "name": "an info finding (it lists Drupal 8/9 but admits 11): not-applicable",
+      "before": "before",
+      "after": "before",
+      "file": "modules/m_extra/m_extra.info.yml",
+      "line": 5,
+      "severity": "info",
+      "params": {
+        "requirement": "^10 || ^11"
+      },
+      "status": "not-applicable"
+    }
+  ]
+}
