@@ -33,15 +33,17 @@
 # the visible .drupilot/ dir, and records the assessed stage with its effort.
 # Next-major findings never count (X18). The settings are read from the
 # subject's Drupal root (DRUPILOT_PROJECT_DIR), wherever it is run from. When
-# Rector or PHPStan gave no verdict (findings.json tools: failed or missing)
-# the verdict is provisional: assess.json says so, the stage is not recorded,
-# and the exit code is 3. The digests layer is not part of the assessment, so
+# Rector, PHPStan, the port-safety checks or the signature scan gave no
+# verdict (findings.json tools: failed or missing), the verdict is
+# provisional: it goes to assess-provisional.json, never to assess.json (which
+# readers take as an assessment), the stage is not recorded, the report says
+# so, and the exit code is 3. The digests layer is not part of the assessment, so
 # a deprecation only a digests rule fixes counts as manual.
 #
 # Usage:
 #   assess.sh --subject DIR [--findings FILE --worklist FILE] [--deps FILE]
 #             [--offline] [--no-record] [--json] [-h|--help]
-#     --subject DIR      the module/theme
+#     --subject DIR      the module/theme (default: the current directory)
 #     --findings FILE    read this findings.json and --worklist FILE instead of
 #                        running the assess stage (a golden's; no Docker)
 #     --deps FILE        read this deps-status.sh --json instead of running it
@@ -52,7 +54,7 @@
 # Exit codes: 0 assessed · 1 usage error, not a Drupal extension (no
 # <machine_name>.info.yml), no Drupal root to run the assess stage in (run
 # /drupilot-setup first), or no findings to assess · 2 jq missing · 3 assessed,
-# but Rector or PHPStan gave no verdict (assess.json: provisional, tools).
+# but a tool gave no verdict (assess-provisional.json: provisional, tools).
 # =============================================================================
 set -euo pipefail
 # shellcheck source=../lib/common.sh
@@ -73,7 +75,8 @@ while [[ $# -gt 0 ]]; do
     *) die "Unknown argument: $1 (see --help)" 1;;
   esac
 done
-[[ -n "$SUBJECT" && -d "$SUBJECT" ]] || die "Pass --subject DIR (an existing directory)." 1
+[[ -n "$SUBJECT" ]] || SUBJECT="$PWD"
+[[ -d "$SUBJECT" ]] || die "Pass --subject DIR (an existing directory)." 1
 [[ -z "$FINDINGS" && -z "$WORKLIST" || -n "$FINDINGS" && -n "$WORKLIST" ]] || die "Pass --findings and --worklist together." 1
 have_cmd jq || die "jq is required (run /drupilot-doctor)." 2
 SUBJECT="$(cd "$SUBJECT" && pwd)"
@@ -83,8 +86,10 @@ TYPE="$(subject_type "$SUBJECT" 2> /dev/null || echo module)"
 INFO="$SUBJECT/$MN.info.yml"
 [[ -f "$INFO" ]] || die "$SUBJECT is not a Drupal extension (no $MN.info.yml)." 1
 # The settings of the subject's Drupal root, wherever this runs from.
-ROOT="$(find_drupal_root "$SUBJECT" 2> /dev/null || true)"
-[[ -n "$ROOT" ]] || ROOT="$(subject_project_root "$SUBJECT" 2> /dev/null || true)"
+# The root the stage runs in (as extract.sh resolves it), when the subject
+# is inside it.
+ROOT="$(subject_project_root "$SUBJECT" 2> /dev/null || true)"
+case "$SUBJECT/" in "$ROOT"/*) ;; *) ROOT="";; esac
 if [[ -n "$ROOT" && -d "$ROOT" && -z "${DRUPILOT_PROJECT_DIR:-}" ]]; then export DRUPILOT_PROJECT_DIR="$ROOT"; fi
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-assess.XXXXXX")"
 trap 'rm -rf "$TMP" 2> /dev/null || true' EXIT
@@ -146,7 +151,7 @@ jq -n -c --slurpfile f "$FINDINGS" --slurpfile w "$WORKLIST" --slurpfile cs "$TM
   | def occ: ([(.sources // [])[] | select(.tool == "phpstan")] | length) as $n | if $n > 0 then $n else 1 end;
   # A Drupal Rector rule changing the same function or method covers it.
     ([$cur[] | select(.tool == "rector" and $F.anchors == "php" and .anchor != "{file}"
-                      and ((.rule // "") | test("^(DrupalRector\\\\|Rector\\\\(Renaming|Transform|Arguments|Removing)\\\\)")))
+                      and ((.rule // "") | test("^(DrupalRector\\\\|Rector\\\\(Renaming|Transform|Arguments|Removing|Symfony|PHPUnit|Twig)\\\\)")))
       | "\(.file)\u001f\(.anchor)"] | unique) as $rx
   # manual: hard/unknown deprecations no Drupal Rector rule covers, and the
   # signature and port-safety errors.
@@ -156,7 +161,9 @@ jq -n -c --slurpfile f "$FINDINGS" --slurpfile w "$WORKLIST" --slurpfile cs "$TM
      | sort_by([.file, .line // 0, .id])) as $man
   | ([$hb | to_entries[] | select((.value | length) > 0) | .key]) as $breaks
   | ($man | map(.n) | add // 0) as $m | ($breaks | length) as $h | ($D.totals.blockers // 0) as $b
-  | ([$F.tools.rector, $F.tools.phpstan] | any(. != "ok" and . != "partial")) as $prov
+  | ([["rector", "phpstan", "port-safety", "signatures"][] | {key: ., value: (($F.tools // {})[.] // "missing")}]
+     | map(select(.value != "ok" and .value != "partial"))) as $notok
+  | ($notok | length > 0) as $prov
   | (if $b >= 1 or $h >= 3 or $m > 40 then {v: "XL", rule: "XL: blocking_deps >= 1 or hard_breaks >= 3 or manual > 40"}
      elif $h == 2 or $m > 15 then {v: "L", rule: "L: hard_breaks == 2 or manual > 15"}
      elif $h == 1 or $m >= 5 then {v: "M", rule: "M: hard_breaks == 1 or manual >= 5"}
@@ -168,6 +175,7 @@ jq -n -c --slurpfile f "$FINDINGS" --slurpfile w "$WORKLIST" --slurpfile cs "$TM
   | {schema: 1, tool: "assess", subject: ($F.subject.path // null), machine_name: $mn, type: $type,
      drupal_target: $dt, php_target: $pt, current_core_version_requirement: (if $curreq == "" then null else $curreq end),
      verdict: $vr.v, effort: $vr.v, provisional: $prov,
+     no_verdict: [$notok[] | "\(.key) \(.value)"],
      rubric: {manual: $m, hard_breaks: $h, blocking_deps: $b, rule: $vr.rule},
      viability_threshold: $tl, above_threshold: ($rank[$vr.v] > $rank[$tl]),
      core_target: ($C | {strategy, recommended_core_version_requirement, composer_core_constraint, require_php,
@@ -207,7 +215,8 @@ PROV="$(jq -r '.provisional' "$DOC")"
 jq --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg v "$(plugin_version 2> /dev/null || true)" \
   '. + {meta: {generated_at: $at, drupilot_version: (if $v == "" then null else $v end)}}' "$DOC" | canon_json > "$DOC.meta"
 SD="$(project_state_dir "$SUBJECT")"
-cp "$DOC.meta" "$SD/assess.json.tmp.$$" && mv -f "$SD/assess.json.tmp.$$" "$SD/assess.json" || die "Could not write assess.json." 1
+OUTN="assess.json"; [[ "$PROV" == "true" ]] && OUTN="assess-provisional.json"
+cp "$DOC.meta" "$SD/$OUTN.tmp.$$" && mv -f "$SD/$OUTN.tmp.$$" "$SD/$OUTN" || die "Could not write $OUTN." 1
 
 # viability-report.md, from the JSON only.
 ART="$(project_artifacts_dir "$SUBJECT")"
@@ -224,12 +233,12 @@ hbn() { jc ".hard_break_categories.$1 | if length == 0 then \"-\" else map(\"\`\
 render_template "$(plugin_root)/templates/viability-report.md.tmpl" "$ART/viability-report.md" \
   "SUBJECT_NAME=$MN" "SUBJECT_MACHINE_NAME=$MN" "SUBJECT_TYPE=$TYPE" "SUBJECT_PATH=$(jc '.subject // ""')" \
   "CURRENT_CORE_REQUIREMENT=$(jc '.current_core_version_requirement // "(none)"')" "DATE=$(date -u +%Y-%m-%d)" \
-  "DRUPAL_TARGET=$(j .drupal_target)" "PHP_TARGET=$(j .php_target)" "PHP_TARGET_NOTE=" \
+  "DRUPAL_TARGET=$(jc .drupal_target)" "PHP_TARGET=$(j .php_target)" "PHP_TARGET_NOTE=" \
   "CORE_TARGET_STRATEGY=$(jc '.core_target.strategy // "-"')" "RECOMMENDED_CORE_REQUIREMENT=$(jc '.recommended_core_version_requirement // "-"')" \
   "COMPOSER_CORE_CONSTRAINT=$(jc '.core_target.composer_core_constraint // "-"')" "REQUIRE_PHP=$(jc '.require_php // "-"')" \
   "VERSION_BUMP=$(jc '.version_bump // "-"')" "CORE_TARGET_RATIONALE=$(j '(.core_target.rationale // []) | if type == "array" then map("- " + .) | join("\n") else tostring end')" \
   "CORE_TARGET_WARNING=$(j '(.core_target.warnings // []) | map("> " + .) | join("\n>\n")')" \
-  "VERDICT=$(j 'if .provisional then "\(.verdict) (provisional)" else .verdict end')" "VERDICT_SUMMARY=$(j '(if .provisional then "**Provisional:** " + ([.tools | to_entries[] | select((.key == "rector" or .key == "phpstan") and .value != "ok" and .value != "partial") | "\(.key) \(.value)"] | join(", ")) + ", so these counts are incomplete. Fix the tool and assess again.\n\n" else "" end) + "manual \(.rubric.manual), hard breaks \(.rubric.hard_breaks), blocking dependencies \(.rubric.blocking_deps): first matching rule `\(.rubric.rule)`."')" \
+  "VERDICT=$(j 'if .provisional then "\(.verdict) (provisional)" else .verdict end')" "VERDICT_SUMMARY=$(j '(if .provisional then "**Provisional:** " + (.no_verdict | join(", ")) + ", so these counts are incomplete. Fix the tool and assess again.\n\n" else "" end) + "manual \(.rubric.manual), hard breaks \(.rubric.hard_breaks), blocking dependencies \(.rubric.blocking_deps): first matching rule `\(.rubric.rule)`."')" \
   "VIABILITY_THRESHOLD=$(j .viability_threshold)" "THRESHOLD_NOTE=$(j 'if .above_threshold then "The verdict is above the threshold." else "The verdict is within the threshold." end')" \
   "RECTOR_AUTOFIX_COUNT=$(j .auto_fixable.rector_official_files)" "DIGESTS_AUTOFIX_COUNT=-" "MANUAL_COUNT=$(j .rubric.manual)" \
   "PHPSTAN_COUNT=$(j 'if .tools.phpstan == "ok" or .tools.phpstan == "partial" then .phpstan.deprecations else "not available (PHPStan \(.tools.phpstan))" end')" "PHPSTAN_LEVEL=$(config_get DRUPILOT_PHPSTAN_LEVEL 2)" \
@@ -251,10 +260,10 @@ render_template "$(plugin_root)/templates/viability-report.md.tmpl" "$ART/viabil
   || die "Could not render viability-report.md." 1
 
 if [[ "$PROV" == "true" ]]; then
-  log_warn "assess: Rector or PHPStan gave no verdict (assess.json tools): the verdict is provisional and the assessed stage is not recorded."
+  log_warn "assess: $(j '.no_verdict | join(", ")') gave no verdict: the verdict is provisional (assess-provisional.json), and the assessed stage is not recorded."
 elif [[ "$RECORD" == "1" ]]; then
   bash "$S/env/state.sh" record --subject "$SUBJECT" --stage assessed --effort "$(j .verdict)" < /dev/null > /dev/null 2>&1 || log_warn "Could not record the assessed stage."
 fi
-log_ok "assess: $(j .verdict) ($(j .rubric.rule)); assess.json and $ART/viability-report.md written."
+log_ok "assess: $(j .verdict) ($(j .rubric.rule)); $OUTN and $ART/viability-report.md written."
 [[ "$AS_JSON" == "1" ]] && cat "$DOC.meta"
 exit "$RC"

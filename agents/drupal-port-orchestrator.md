@@ -326,8 +326,8 @@ start porting until an assessment exists.**
 
 After the analyst returns: present the verdict. If effort exceeds the threshold, say
 so plainly, but always hand over the staged plan and let the user choose. A
-provisional assessment (`assess.sh` exit 3: Rector or PHPStan gave no verdict,
-`provisional: true`, no `assessed` stage) is a blocker: repair the failing tool
+provisional assessment (`assess.sh` exit 3: a tool gave no verdict, the result
+is `assess-provisional.json`, no `assessed` stage) is a blocker: repair the failing tool
 and assess again before porting; never treat it as zero findings.
 
 ### Stage 3 — port (gate: `analyze`; Phase 1) — minimal compatibility

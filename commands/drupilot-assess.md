@@ -37,9 +37,13 @@ then stop with no side effects.
   echo "machine_name=$(subject_machine_name "$SUBJECT" 2>/dev/null || echo "?")"; \
   echo "type=$(subject_type "$SUBJECT" 2>/dev/null || echo "?")"; \
   echo "core_requirement=$(subject_core_requirement "$SUBJECT" 2>/dev/null || echo "<missing>")"; \
-  echo "drupal_root=$(find_drupal_root "$SUBJECT" 2>/dev/null || echo "<none>")"; \
+  ROOT="$(subject_project_root "$SUBJECT" 2>/dev/null || true)"; IN=no; \
+  if [[ -n "$ROOT" && "$SUBJECT/" == "$ROOT"/* ]]; then IN=yes; fi; \
+  PLACED=""; if [[ -n "$ROOT" && "$IN" == no ]]; then for t in modules themes profiles; do \
+    if [[ -d "$ROOT/web/$t/custom/$(basename "$SUBJECT")" ]]; then PLACED="$ROOT/web/$t/custom/$(basename "$SUBJECT")"; fi; done; fi; \
+  echo "drupal_root=${ROOT:-<none>}"; echo "subject_in_root=$IN"; echo "placed=${PLACED:-<none>}"; \
   echo "php_target=$(resolve_php_target)"; echo "drupal_target=$(resolve_drupal_target)"; \
-  ROOT="$(find_drupal_root "$SUBJECT" 2>/dev/null || true)"; \
+  [[ "$IN" == yes ]] || ROOT=""; \
   echo "viability_threshold=$(DRUPILOT_PROJECT_DIR="$ROOT" config_get DRUPILOT_VIABILITY_THRESHOLD medium)"' \
   -- "$1"
 ```
@@ -51,13 +55,12 @@ If the subject is not a Drupal extension directory (no `*.info.yml`), say so and
 ask the user for the correct path. Note whether `core_version_requirement` is
 present — a missing one is a blocking `info.yml` finding.
 
-If `drupal_root` is `<none>`, STOP: `assess.sh` runs Rector and PHPStan in the
-subject's Drupal root (the test-bed), so tell the user to **run `/drupilot-setup`
-first**, then `/drupilot-assess` again. Run no analysis and write no file. When
-setup already placed a loose subject in a sibling test-bed,
-`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/resolve-workspace.sh" --subject "$1" --json`
-names the placed copy (`subject_dest_abs` with `already_placed: true`): offer to
-assess that path instead.
+`assess.sh` runs Rector and PHPStan in the subject's Drupal root (the test-bed,
+`drupal_root`), so the subject must be inside it (`subject_in_root=yes`).
+Otherwise: when `placed` names a path, setup placed the module there (the
+original may even be gone, moved): offer to assess that path instead. With no
+placed copy, STOP: tell the user to **run `/drupilot-setup` first**, then
+`/drupilot-assess` again. Run no analysis and write no file.
 
 ## Step 1.5 — Is someone already porting this? (contrib only)
 
@@ -89,8 +92,10 @@ verdict `assess.sh` computed, never a verdict of its own.
 ## Step 3 — Run the assessment (one script, read-only for the code)
 
 ```bash
-!bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/assess.sh" --subject "$1" --json
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/assess.sh" --subject "<subject>" --json
 ```
+
+(`<subject>` is the `subject=` of Step 1, or the placed copy you agreed to assess.)
 
 `assess.sh` runs the assess stage's deterministic tools (the official Rector
 dry-run, PHPStan, PHPCS, the port-safety checks, the signature scan and the
@@ -107,8 +112,9 @@ outside `meta`. Exit codes:
   no Drupal root to run the assess stage in (run `/drupilot-setup` first), or
   no findings to assess. Relay its message and stop.
 - **2** — `jq` is missing: tell the user to run `/drupilot-doctor`, and stop.
-- **3** — **provisional**: Rector or PHPStan gave no verdict. `assess.json` has
-  `provisional: true` and `tools` says which tool failed; the counts are
+- **3** — **provisional**: Rector, PHPStan, the port-safety checks or the
+  signature scan gave no verdict. The result is `assess-provisional.json` (never
+  `assess.json`), with `provisional: true` and `no_verdict` naming the tool; the counts are
   incomplete and the `assessed` stage is not recorded. Report it as a
   **blocker**, never as zero findings or a final verdict. A crash (e.g. a
   Rector `[ERROR] Could not detect twig set.`): show the diagnostic it prints

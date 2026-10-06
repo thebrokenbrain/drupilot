@@ -105,6 +105,7 @@
       "what": "SettingsForm::__construct() passes 1 argument(s) to ConfigFormBase::__construct(), which requires 2 from Drupal 11.0: ArgumentCountError on Drupal 11."
     }
   ],
+  "no_verdict": [],
   "php_target": "8.3",
   "phpcs": {
     "count": 0

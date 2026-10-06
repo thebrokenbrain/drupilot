@@ -60,9 +60,17 @@ The table is the 0.9 one, first match wins:
 
 The rule that matched is kept verbatim in `rubric.rule`. Next-major findings never count (X18).
 
-**No verdict from a tool.** When Rector or PHPStan gave no verdict (`findings.json` `tools`: `failed` or
-`missing`), the counts are incomplete. `assess.json` then has `provisional: true` and the report says so.
+**No verdict from a tool.** When Rector, PHPStan, the port-safety checks or the signature scan gave no
+verdict (`findings.json` `tools`: `failed` or `missing`), the counts are incomplete. The result then goes to
+`assess-provisional.json`, with `provisional: true` and `no_verdict` naming the tools, and the report says
+so. It is never written to `assess.json`, which the router and the state snapshot take as an assessment.
 The `assessed` stage is not recorded, and the script exits 3.
+
+**Coverage, precisely.** A deprecation counts as covered when a rule of drupal-rector's Drupal sets changes
+the same function: a `DrupalRector\` rule, or one of the generic rules those sets configure or import:
+`Renaming`, `Transform`, `Arguments`, `Removing`, and the `Symfony`, `PHPUnit` and `Twig` sets. Rector's PHP
+sets also use a few generic rules. One of those, at the same anchor, would count as coverage, an
+over-match the rubric accepts.
 
 **What `assess.sh` owns.** It runs the assess stage itself: `extract.sh`, `normalize-findings.sh`,
 `classify.sh`, `core-strategy.sh` and `deps-status.sh`. It needs the test-bed's Drupal root, like

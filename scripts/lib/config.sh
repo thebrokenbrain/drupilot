@@ -402,11 +402,15 @@ constraint_top_major() {
 # Drupal major N: an `||` alternative bounded above whose majors include N, an
 # open-ended `>=X` / `>X` / `*` with X <= N, or a `^X` / `~X` / bare X with
 # X == N; 1 otherwise. '>=9.5' and '^10 || ^11' admit 11; '^10' and
-# '>=10 <11' do not.
+# '>=10 <11' do not. A space after an operator is allowed ('>= 9.5'), a
+# hyphen range 'A - B' is read as '>=A <=B', and the highest lower bound of an
+# alternative wins ('>=9 >=12' does not admit 11).
 constraint_admits_major() {
   local n="${2:-}"
   [[ "$n" =~ ^[0-9]+$ ]] || return 1
-  printf '%s\n' "${1:-}" | tr -d "\"'" | tr '|' '\n' | awk -v n="$n" '
+  printf '%s\n' "${1:-}" | tr -d "\"'" | tr '|' '\n' \
+    | sed -E -e 's/([<>=!~^])[[:space:]]+/\1/g' -e 's/([0-9][0-9.*x]*)[[:space:]]+-[[:space:]]+([0-9][0-9.*x]*)/>=\1 <=\2/g' \
+    | awk -v n="$n" '
     { k = split($0, parts, /[[:space:],]+/); lo = -1; hi = -1; open = 0
       for (i = 1; i <= k; i++) {
         p = parts[i]
@@ -419,11 +423,10 @@ constraint_admits_major() {
           if (hi < 0 || m < hi) hi = m
           continue
         }
-        if (lo >= 0) continue
         o = (p ~ /^>/); sub(/^(\^|~|>=|>|==|=|v)+/, "", p)
-        if (p == "*") { lo = 0; open = 1; continue }
+        if (p == "*") { if (lo < 0) { lo = 0; open = 1 }; continue }
         if (p !~ /^[0-9]+/) continue
-        split(p, v, "."); lo = v[1] + 0; open = o
+        split(p, v, "."); if (v[1] + 0 > lo) { lo = v[1] + 0; open = o }
       }
       if (lo < 0) next
       if (hi >= 0) { if (n + 0 >= lo && n + 0 <= hi) ok = 1 }

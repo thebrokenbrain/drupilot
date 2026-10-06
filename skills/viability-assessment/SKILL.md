@@ -63,8 +63,8 @@ the target major.
   drupilot's data dir, never in the project tree, so it cannot leak into a
   contribution); `/drupilot-status` and later steps read it so they do not
   recompute. Resolve each with
-  `bash -lc '. "$ROOT/scripts/lib/common.sh"; project_artifacts_dir "$SUBJECT"'`
-  and `bash -lc '. "$ROOT/scripts/lib/common.sh"; project_state_dir "$SUBJECT"'`.
+  `bash -c '. "$1/scripts/lib/common.sh"; project_artifacts_dir "$2"' _ "$ROOT" "$SUBJECT"`
+  and `bash -c '. "$1/scripts/lib/common.sh"; project_state_dir "$2"' _ "$ROOT" "$SUBJECT"`.
 - The field reference is `schemas/assess.schema.json`; the rubric's decision
   record is ADR 0025; the script's header documents its CLI.
 
@@ -89,16 +89,16 @@ bash "$ROOT/scripts/env/preflight.sh" --profile analyze
 
 Resolve the subject directory (the argument, else the cwd). It must hold a
 `<machine_name>.info.yml` (otherwise `assess.sh` exits `1`: ask for the right
-path) and sit under a Drupal root:
+path) and sit inside the Drupal root the stage runs in (the test-bed):
 
 ```bash
 SUBJECT="$(cd "${1:-$PWD}" && pwd)"
-bash -c '. "$1/scripts/lib/common.sh"; find_drupal_root "$2"' _ "$ROOT" "$SUBJECT"   # empty: no test-bed yet
+bash -c '. "$1/scripts/lib/common.sh"; subject_project_root "$2"' _ "$ROOT" "$SUBJECT"   # the test-bed's root
 ```
 
-When `/drupilot-setup` placed a loose subject in a sibling test-bed,
-`resolve-workspace.sh --subject <dir> --json` names the placed copy
-(`subject_dest_abs`, `already_placed`): assess that path. The subject's identity
+When the subject is not under that root, `/drupilot-setup` placed a copy at
+`<root>/web/{modules,themes,profiles}/custom/<machine_name>` (the original may
+be gone, moved): assess that path. With no root, run `/drupilot-setup` first. The subject's identity
 (`machine_name`, `type`, `current_core_version_requirement`, `php_target`,
 `drupal_target`) is in `assess.json`; do not compute it by hand.
 
@@ -123,9 +123,11 @@ same tree, lock and drupal.org answers give the same `assess.json` outside
   Drupal root to run the assess stage in (run `/drupilot-setup` first), or no
   findings to assess. Relay the message and stop.
 - `2` — `jq` is missing: run `/drupilot-doctor`.
-- `3` — **provisional**: Rector or PHPStan gave no verdict. `assess.json` has
-  `provisional: true`, `tools` names the failing tool, and the `assessed` stage
-  is not recorded. Report it as a **blocker**, never as zero findings or a clean
+- `3` — **provisional**: Rector, PHPStan, the port-safety checks or the
+  signature scan gave no verdict. The result goes to `assess-provisional.json`
+  (never `assess.json`, which the router would take as an assessment), with
+  `provisional: true` and `no_verdict` naming the failing tool; the `assessed`
+  stage is not recorded. Report it as a **blocker**, never as zero findings or a clean
   module: the counts are incomplete. The tool's raw report
   (`raw/<NN>-assess-rector.json` / `-phpstan.json` in the state dir) holds the
   reason. A crash (e.g. `[ERROR] Could not detect twig set.` from an
@@ -167,7 +169,8 @@ and which script produced it. The leaf scripts they name stay available for a
 Fields:
 
 - `tools` — each extractor's verdict (`ok` | `partial` | `failed` | `missing`).
-  Rector or PHPStan neither `ok` nor `partial` makes the result `provisional`.
+  Rector, PHPStan, port-safety or signatures neither `ok` nor `partial` makes
+  the result `provisional`.
 - `worklist` — the worklist's `items`, `open` and `by_lane` counts: what the port
   stage will work through, not an input of the verdict.
 - `subject`, `machine_name`, `type`, `drupal_target`, `php_target`,

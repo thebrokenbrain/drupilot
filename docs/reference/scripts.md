@@ -329,15 +329,17 @@ renders viability-report.md from templates/viability-report.md.tmpl into
 the visible .drupilot/ dir, and records the assessed stage with its effort.
 Next-major findings never count (X18). The settings are read from the
 subject's Drupal root (DRUPILOT_PROJECT_DIR), wherever it is run from. When
-Rector or PHPStan gave no verdict (findings.json tools: failed or missing)
-the verdict is provisional: assess.json says so, the stage is not recorded,
-and the exit code is 3. The digests layer is not part of the assessment, so
+Rector, PHPStan, the port-safety checks or the signature scan gave no
+verdict (findings.json tools: failed or missing), the verdict is
+provisional: it goes to assess-provisional.json, never to assess.json (which
+readers take as an assessment), the stage is not recorded, the report says
+so, and the exit code is 3. The digests layer is not part of the assessment, so
 a deprecation only a digests rule fixes counts as manual.
 
 Usage:
   assess.sh --subject DIR [--findings FILE --worklist FILE] [--deps FILE]
             [--offline] [--no-record] [--json] [-h|--help]
-    --subject DIR      the module/theme
+    --subject DIR      the module/theme (default: the current directory)
     --findings FILE    read this findings.json and --worklist FILE instead of
                        running the assess stage (a golden's; no Docker)
     --deps FILE        read this deps-status.sh --json instead of running it
@@ -348,7 +350,7 @@ Usage:
 Exit codes: 0 assessed · 1 usage error, not a Drupal extension (no
 <machine_name>.info.yml), no Drupal root to run the assess stage in (run
 /drupilot-setup first), or no findings to assess · 2 jq missing · 3 assessed,
-but Rector or PHPStan gave no verdict (assess.json: provisional, tools).
+but a tool gave no verdict (assess-provisional.json: provisional, tools).
 ```
 
 ### analysis/check-port-safety.sh

@@ -529,8 +529,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     - `blocking_deps`: `deps-status.sh`'s blockers.
   - The digests layer is no longer part of the assessment, so a deprecation
     only a digests rule fixes now counts as manual.
-  - When Rector or PHPStan gave no verdict, the verdict is `provisional`:
-    exit 3, and the stage is not recorded.
+  - When Rector, PHPStan, the port-safety checks or the signature scan gave
+    no verdict, the verdict is `provisional`: it goes to
+    `assess-provisional.json` (never `assess.json`), the stage is not
+    recorded, and the exit code is 3.
   - It needs the test-bed's Drupal root, and reads the settings there.
   - The S/M/L/XL table is the 0.9 one, first match wins, and `rubric.rule`
     keeps the rule that matched. Soft and next-major findings never count.

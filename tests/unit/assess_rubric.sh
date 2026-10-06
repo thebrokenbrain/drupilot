@@ -61,7 +61,7 @@ printf 'Drupal.behaviors.x = { attach: function () { jQuery.ui; CKEDITOR.replace
 mkf() {  # mkf FILE: findings.json from the JSON array of findings on STDIN
   jq '{schema: 1, stage: "assess", subject: {machine_name: "m", path: "web/modules/custom/m"},
        target: {major: 11, soft_policy: "report", runner: null, php_version: null}, anchors: "php",
-       tools: {rector: "ok", phpstan: "ok"}, counts: {}, findings: ., meta: {findings_hash: "sha256:\("0" * 64)"}}' > "$1"
+       tools: {rector: "ok", phpstan: "ok", "port-safety": "ok", signatures: "ok"}, counts: {}, findings: ., meta: {findings_hash: "sha256:\("0" * 64)"}}' > "$1"
 }
 fnd() {  # fnd ID TOOL RULE FILE ANCHOR SEVERITY SCOPE CLASS
   jq -n -c --arg id "$1" --arg t "$2" --arg r "$3" --arg f "$4" --arg a "$5" --arg s "$6" --arg sc "$7" --arg c "$8" \
@@ -93,6 +93,8 @@ assert_eq "  the dependencies as deps-status.sh gave them" "$(jq -c '.dependenci
 {
   fnd F-r1 rector 'DrupalRector\Drupal10\Rector\Deprecation\X' m.module 'f1()' info current rector
   fnd F-r7 rector 'Rector\Renaming\Rector\FuncCall\RenameFunctionRector' m.module 'f8()' info current rector
+  fnd F-r8 rector 'Rector\Symfony\Symfony61\Rector\StaticPropertyFetch\ErrorNamesPropertyToConstantRector' m.module 'f10()' info current rector
+  fnd F-u2 phpstan method.deprecated m.module 'f10()' error current unknown
   fnd F-r2 rector 'Rector\Php81\Rector\FuncCall\NullToStrictStringFuncCallArgRector' m.module 'f2()' info current rector
   fnd F-r3 rector 'DrupalRector\Drupal10\Rector\Deprecation\X' m.module '{file}' info current rector
   fnd F-h1 phpstan function.deprecated m.module 'f1()' error current hard
@@ -110,7 +112,7 @@ assert_eq "  the dependencies as deps-status.sh gave them" "$(jq -c '.dependenci
 } | jq -s . | run
 assert_eq "manual: hard and unknown no Drupal Rector rule covers (a PHP-level rule and a file-level anchor cover nothing), signature and port-safety errors" \
   "$(jq -c '[.manual_items[].finding_id]' "$T_OUT")" '["F-g1","F-h2","F-h9","F-p1","F-u1"]'
-assert_eq "  the soft count is reported, outside the rubric" "$(jq -c '[.deprecations_hard, .deprecations_soft, .deprecations_unknown]' "$T_OUT")" '[5,1,1]'
+assert_eq "  the soft count is reported, outside the rubric" "$(jq -c '[.deprecations_hard, .deprecations_soft, .deprecations_unknown]' "$T_OUT")" '[5,1,2]'
 assert_eq "  the auto-fixable files: every Rector pass" "$(jq -c '.auto_fixable.rector_official_files' "$T_OUT")" '1'
 fnd F-h1 phpstan function.deprecated m.module 'f1()' error current hard | jq -c '.sources = [range(5) as $i | {tool: "phpstan", rule: "function.deprecated", line: (3 + $i)}]' | jq -s . | run
 assert_eq "five calls merged in one finding: five occurrences, manual 5 (M)" "$(v)|$(jq -c '[.manual_items[0].occurrences, .deprecations_hard]' "$T_OUT")" "M 5 0 0|[5,5]"
@@ -150,10 +152,17 @@ unset DRUPILOT_VIABILITY_THRESHOLD
 
 # Rector or PHPStan with no verdict: provisional, exit 3, no stage recorded.
 hard 5 | jq -s . | mkf "$T_TMP/f.json"; jq '.tools.phpstan = "failed"' "$T_TMP/f.json" > "$T_TMP/fp.json"
+APATH="$(project_state_path "$SUB")/assess.json"; AH="$(file_hash "$APATH")"
 t_run "$T_SH" "$AS" --subject "$SUB" --findings "$T_TMP/fp.json" --worklist "$WL" --deps "$T_TMP/d0.json" --json
 assert_eq "PHPStan failed: exit 3, provisional, the stage not recorded" \
   "$T_RC|$(jq -c '[.verdict, .provisional]' "$T_OUT")|$([[ -f "$(subject_state_file "$SUB")" ]] && jq -r '.stage // "none"' "$(subject_state_file "$SUB")" || echo none)" '3|["M",true]|none'
 assert_match "  the report says so" "$(cat "$(project_artifacts_dir "$SUB")/viability-report.md")" "Provisional:.*phpstan failed"
+assert_eq "  written to assess-provisional.json; assess.json, which readers take as an assessment, untouched" \
+  "$(jq -c '.no_verdict' "$(project_state_path "$SUB")/assess-provisional.json")|$([[ "$(file_hash "$APATH")" == "$AH" ]] && echo untouched)" '["phpstan failed"]|untouched'
+jq '.tools["port-safety"] = "missing" | del(.tools.signatures)' "$T_TMP/f.json" > "$T_TMP/fs.json"
+t_run "$T_SH" "$AS" --subject "$SUB" --findings "$T_TMP/fs.json" --worklist "$WL" --deps "$T_TMP/d0.json" --no-record --json
+assert_eq "the port-safety checks or the signature scan with no verdict: provisional too, each named" \
+  "$T_RC|$(jq -c '.no_verdict' "$T_OUT")" '3|["port-safety missing","signatures missing"]'
 
 # info.yml: a quoted requirement, an open-ended one; the submodules.
 printf "name: M\ntype: module\ncore_version_requirement: '^10.3 || ^11'\n" > "$SUB/m.info.yml"
@@ -166,7 +175,7 @@ assert_eq "an open-ended >=9.5 admits 11; an info submodule finding keeps the su
 assert_eq "  a warning one does not" "$(jq -c '.info_yml.submodules_d11_compatible' "$T_OUT")" 'false'
 printf "name: M\ntype: module\ncore_version_requirement: ^10\n" > "$SUB/m.info.yml"
 assert_eq "constraint_admits_major" \
-  "$(for c in '^10' '^10 || ^11' '>=10 <11' '>=10.3 <12' '*' '~11.1'; do constraint_admits_major "$c" 11 && printf y || printf n; done)" "nyny""yy"
+  "$(for c in '^10' '^10 || ^11' '>=10 <11' '>=10.3 <12' '*' '~11.1' '>=10 < 11' '>= 9.5' '10.3 - 11.1' '>=9 >=12' '10.*'; do constraint_admits_major "$c" 11 && printf y || printf n; done)" "nynyyynyynn"
 
 # The settings come from the subject's Drupal root, wherever it runs from.
 DR="$T_TMP/site"; mkdir -p "$DR/web/core/lib" "$DR/web/modules/custom"
