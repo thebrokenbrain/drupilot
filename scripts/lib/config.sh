@@ -398,6 +398,40 @@ constraint_top_major() {
   constraint_majors "${1:-}" | sort -n | sed -n '$p'
 }
 
+# constraint_admits_major CONSTRAINT N -> 0 when a core constraint admits
+# Drupal major N: an `||` alternative bounded above whose majors include N, an
+# open-ended `>=X` / `>X` / `*` with X <= N, or a `^X` / `~X` / bare X with
+# X == N; 1 otherwise. '>=9.5' and '^10 || ^11' admit 11; '^10' and
+# '>=10 <11' do not.
+constraint_admits_major() {
+  local n="${2:-}"
+  [[ "$n" =~ ^[0-9]+$ ]] || return 1
+  printf '%s\n' "${1:-}" | tr -d "\"'" | tr '|' '\n' | awk -v n="$n" '
+    { k = split($0, parts, /[[:space:],]+/); lo = -1; hi = -1; open = 0
+      for (i = 1; i <= k; i++) {
+        p = parts[i]
+        if (p == "" || p ~ /^!=/) continue
+        if (p ~ /^</) {
+          inc = (p ~ /^<=/); sub(/^<=?/, "", p)
+          if (p !~ /^[0-9]+/) continue
+          c = split(p, u, "."); m = u[1] + 0
+          if (!inc && (c < 2 || u[2] + 0 == 0) && (c < 3 || u[3] + 0 == 0)) m = m - 1
+          if (hi < 0 || m < hi) hi = m
+          continue
+        }
+        if (lo >= 0) continue
+        o = (p ~ /^>/); sub(/^(\^|~|>=|>|==|=|v)+/, "", p)
+        if (p == "*") { lo = 0; open = 1; continue }
+        if (p !~ /^[0-9]+/) continue
+        split(p, v, "."); lo = v[1] + 0; open = o
+      }
+      if (lo < 0) next
+      if (hi >= 0) { if (n + 0 >= lo && n + 0 <= hi) ok = 1 }
+      else if (open) { if (n + 0 >= lo) ok = 1 }
+      else if (n + 0 == lo) ok = 1 }
+    END { if (ok) print "yes" }' | grep_q -x yes
+}
+
 # constraint_majors CONSTRAINT -> every Drupal major a core constraint admits,
 # one per line, per `||` alternative: from the major of its first lower bound
 # (`^`, `~`, `>=`, `>`, `=`, a bare version) up to the one its upper bound

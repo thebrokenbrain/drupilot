@@ -76,8 +76,10 @@
     "count": 1
   },
   "phpstan": {
-    "count": 1
+    "count": 1,
+    "deprecations": 0
   },
+  "provisional": false,
   "recommended_core_version_requirement": "^10.3 || ^11",
   "require_php": ">=8.1",
   "rubric": {

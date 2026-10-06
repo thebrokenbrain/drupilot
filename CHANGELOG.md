@@ -512,11 +512,19 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 - **The viability verdict is computed** (T-M4-09, 07-R4, AR-10, ADR 0025).
   `scripts/analysis/assess.sh` runs the assess stage and writes
   `assess.json` and `viability-report.md`; the skill only narrates them.
-  - The three rubric counts come from `findings.json`: `manual` (current
-    hard and unknown deprecations Rector does not change in the same function,
-    plus signature errors), `hard_breaks` (the categories of the new
-    `config/catalog/hard-breaks.json`, the 0.9 greps with each fact verified
-    in core) and `blocking_deps` (`deps-status.sh`'s blockers).
+  - The three rubric counts come from `findings.json`:
+    - `manual`: each call of a current hard or unknown deprecation that no
+      Drupal Rector rule changes in the same function, plus the signature and
+      port-safety errors;
+    - `hard_breaks`: the categories of the new
+      `config/catalog/hard-breaks.json`, the 0.9 greps with each fact verified
+      in core;
+    - `blocking_deps`: `deps-status.sh`'s blockers.
+  - The digests layer is no longer part of the assessment, so a deprecation
+    only a digests rule fixes now counts as manual.
+  - When Rector or PHPStan gave no verdict, the verdict is `provisional`:
+    exit 3, and the stage is not recorded.
+  - It needs the test-bed's Drupal root, and reads the settings there.
   - The S/M/L/XL table is the 0.9 one, first match wins, and `rubric.rule`
     keeps the rule that matched. Soft and next-major findings never count.
   - `assess.json` gains `schema: 1`, `tools`, `worklist`, `findings_hash`,

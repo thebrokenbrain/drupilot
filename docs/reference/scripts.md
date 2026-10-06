@@ -302,9 +302,14 @@ verdict from three counts, the threshold rule that matched, and everything
 the viability report shows, as assess.json; the viability-assessment skill
 only narrates it.
 
-  manual         scope-current PHPStan deprecations of class hard or unknown
-                 with no Rector finding at the same (file, anchor), plus the
-                 signature findings of severity error (manual_items)
+  manual         the occurrences of scope-current PHPStan deprecations of
+                 class hard or unknown that no Drupal Rector rule changes in
+                 the same function or method (a DrupalRector\ rule, or the
+                 Renaming/Transform/Arguments/Removing rules drupal-rector
+                 configures, at the same (file, anchor); a file-level anchor,
+                 or anchors unavailable, never counts as covered), plus the
+                 signature and port-safety findings of severity error
+                 (manual_items, each with its occurrences)
   hard_breaks    the categories of config/catalog/hard-breaks.json with at
                  least one matching file of the subject
   blocking_deps  deps-status.sh's blockers (no Drupal 11 release on
@@ -322,7 +327,12 @@ hard-break files, the hygiene totals, findings_hash, worklist_hash and
 subject_digest; its time under meta) to the subject's hidden state dir,
 renders viability-report.md from templates/viability-report.md.tmpl into
 the visible .drupilot/ dir, and records the assessed stage with its effort.
-Next-major findings never count (X18).
+Next-major findings never count (X18). The settings are read from the
+subject's Drupal root (DRUPILOT_PROJECT_DIR), wherever it is run from. When
+Rector or PHPStan gave no verdict (findings.json tools: failed or missing)
+the verdict is provisional: assess.json says so, the stage is not recorded,
+and the exit code is 3. The digests layer is not part of the assessment, so
+a deprecation only a digests rule fixes counts as manual.
 
 Usage:
   assess.sh --subject DIR [--findings FILE --worklist FILE] [--deps FILE]
@@ -335,9 +345,10 @@ Usage:
     --no-record        do not record the stage in state.json
     --json             print assess.json on STDOUT
 
-Exit codes: 0 assessed · 1 usage error, or no findings to assess · 2 jq
-missing · 3 assessed, but Rector or PHPStan gave no verdict (see
-assess.json tools; the verdict may be low).
+Exit codes: 0 assessed · 1 usage error, not a Drupal extension (no
+<machine_name>.info.yml), no Drupal root to run the assess stage in (run
+/drupilot-setup first), or no findings to assess · 2 jq missing · 3 assessed,
+but Rector or PHPStan gave no verdict (assess.json: provisional, tools).
 ```
 
 ### analysis/check-port-safety.sh

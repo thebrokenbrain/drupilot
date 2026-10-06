@@ -224,14 +224,14 @@ Each subject keeps a `state.json` in its hidden state dir: the stages reached
 and when, plus a snapshot of effort, branch/commit, toolchain, preservation,
 core-matrix verdict and the last patch. `/drupilot-status` (and `--all` for a
 portfolio), the router's `next-step.sh` and the post-edit hook read it. The
-deterministic scripts record most of it themselves: `port-report.sh` (ported /
+deterministic scripts record most of it themselves: `assess.sh` (assessed, with
+its effort, unless the verdict is provisional), `port-report.sh` (ported /
 refactored, from the manifest's phase), `run-phpunit.sh` (tested, on a verified
 whole-suite run), `verify-core-matrix.sh` and `make-patch.sh` (their verdict /
-patch). You record the three stages no script owns, after each really happened:
+patch). You record the two stages no script owns, after each really happened:
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <DIR> --stage setup
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <DIR> --stage assessed --effort <S|M|L|XL>
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <DIR> --stage contributed
 ```
 
@@ -311,17 +311,24 @@ Idempotent: if the site is already up and configured, report state and skip.
 
 ### Stage 2 — assess (gate: `analyze`) -> delegate
 
-This is a static, non-destructive analysis. **Delegate to `drupal-viability-analyst`**
-via the Task tool. It runs `rector --dry-run` (official + digests when enabled),
-`phpstan` at the deprecation level, `phpcs`, and `upgrade_status` (only if Drupal is
-installed), classifies findings, estimates S/M/L/XL effort, and produces a viability
-report plus a staged port plan, with the module's pre-existing metadata hygiene
-(`lint-extension-metadata.sh`: config schema, `configure:` route, orphan services,
-service arity, submodule core requirement, undeclared dependencies) reported but
-kept out of the effort rubric. **Do not start porting until an assessment exists.**
+This is a static, non-destructive analysis in the test-bed Stage 1 built.
+**Delegate to `drupal-viability-analyst`** via the Task tool. It runs
+`scripts/analysis/assess.sh --subject <path> --json`, which computes the whole
+assessment deterministically: the official Rector dry-run, PHPStan at the
+deprecation level, PHPCS, the port-safety and signature checks and the module's
+pre-existing metadata hygiene (reported, kept out of the rubric), the core-target
+decision, the contrib dependency readiness and the S/M/L/XL verdict from three
+counts (ADR 0025). It writes `assess.json`, renders `viability-report.md` and
+records the `assessed` stage. The digests layer is not part of the assessment
+(its rules are reviewed in Stage 3). The analyst narrates `assess.json` and
+writes the staged port plan; it never computes a verdict of its own. **Do not
+start porting until an assessment exists.**
 
 After the analyst returns: present the verdict. If effort exceeds the threshold, say
-so plainly, but always hand over the staged plan and let the user choose.
+so plainly, but always hand over the staged plan and let the user choose. A
+provisional assessment (`assess.sh` exit 3: Rector or PHPStan gave no verdict,
+`provisional: true`, no `assessed` stage) is a blocker: repair the failing tool
+and assess again before porting; never treat it as zero findings.
 
 ### Stage 3 — port (gate: `analyze`; Phase 1) — minimal compatibility
 
@@ -456,9 +463,10 @@ reminds the user about the Contribution Record, and never exposes the PAT.
 ## Delegation policy
 
 Delegate via the **Task** tool; do the lightweight coordination yourself.
-- **drupal-viability-analyst** — interpreting tool output, classifying findings,
-  estimating effort, writing the viability report and staged plan (the assess stage,
-  and any time the user asks "is this worth porting / how hard is it").
+- **drupal-viability-analyst** — running `assess.sh` (which computes the verdict
+  and renders the viability report), narrating `assess.json` and writing the staged
+  plan (the assess stage, and any time the user asks "is this worth porting / how
+  hard is it").
 - **drupal-test-engineer** — anything PHPUnit/DDEV/Selenium: discovery, adaptation,
   running to green, coverage (the test stage, and during Phase 2 refactor).
 - **drupal-contrib-publisher** — anything git/GitLab/Drupal.org: prerequisites, issue
@@ -468,8 +476,9 @@ state/caching, and presenting verdicts and next steps.
 
 ## State, caching and long work
 
-- Cache assess results in the per-project state dir so `/drupilot-status` and later
-  stages do not recompute. Read prior state before re-running an expensive stage.
+- `assess.sh` caches the assessment (`assess.json`) in the per-project state dir so
+  `/drupilot-status` and later stages do not recompute. Read prior state before
+  re-running an expensive stage.
 - Heavy operations (DDEV/Composer install, full test suite, Rector on large modules)
   may run in the background and notify on completion; do not block the session.
   Show readable progress.

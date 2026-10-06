@@ -78,18 +78,29 @@
   "machine_name": "legacy_widgets",
   "manual_items": [
     {
+      "file": "legacy_widgets.services.yml",
+      "finding_id": "F-bd872bc1b2d9",
+      "id": "M1",
+      "line": 9,
+      "occurrences": 1,
+      "source": "catalog:port-safety:class-case",
+      "what": "'Drupal\\legacy_widgets\\WidgetLookUp' does not match the real file 'src/WidgetLookup.php' (case differs): works on a case-insensitive filesystem, fatals on Linux."
+    },
+    {
       "file": "src/Entity/LegacyWidget.php",
       "finding_id": "F-b66d2f8d2b41",
-      "id": "M1",
+      "id": "M2",
       "line": 57,
+      "occurrences": 1,
       "source": "catalog:signature:entity-get-original",
       "what": "LegacyWidget::getOriginal() collides with core's EntityInterface::getOriginal() added in Drupal 11.2 and is incompatible (return type 'none' (core: ?static or static)): a fatal 'Declaration must be compatible' when the class loads on 11.2+."
     },
     {
       "file": "src/Form/SettingsForm.php",
       "finding_id": "F-ca091c3456b8",
-      "id": "M2",
+      "id": "M3",
       "line": 32,
+      "occurrences": 1,
       "source": "catalog:signature:config-form-base-ctor",
       "what": "SettingsForm::__construct() passes 1 argument(s) to ConfigFormBase::__construct(), which requires 2 from Drupal 11.0: ArgumentCountError on Drupal 11."
     }
@@ -99,14 +110,16 @@
     "count": 0
   },
   "phpstan": {
-    "count": 38
+    "count": 38,
+    "deprecations": 8
   },
+  "provisional": false,
   "recommended_core_version_requirement": "^10 || ^11",
   "require_php": ">=8.1",
   "rubric": {
     "blocking_deps": 0,
     "hard_breaks": 0,
-    "manual": 2,
+    "manual": 3,
     "rule": "S: hard_breaks == 0 and manual < 5 and blocking_deps == 0"
   },
   "schema": 1,

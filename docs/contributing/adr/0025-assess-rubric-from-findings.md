@@ -21,13 +21,24 @@ Three points needed a decision before they could be computed:
 
 ## Decision
 
-**`manual`** is the number of `scope: current` findings that are:
-- a PHPStan deprecation of class `hard` or `unknown` with no Rector finding at the same `(file, anchor)`. The
-  Rector dry-run changes that function or method, so its rule covers the deprecation there. `soft` never
-  counts, whatever `DRUPILOT_SOFT_DEPRECATIONS` says;
-- or a catalog `signature` finding of severity `error`.
+**`manual`** counts, among the `scope: current` findings:
+- each PHPStan occurrence of a deprecation of class `hard` or `unknown` that no Drupal Rector rule changes in
+  the same function or method. normalize-findings.sh merges the calls of one symbol in one function into a
+  finding with one source per call, and 0.9 counted each call, so the occurrences are counted. A Drupal
+  Rector rule is a `DrupalRector\` rule, or one of the `Renaming`, `Transform`, `Arguments` and `Removing`
+  rules drupal-rector configures for Drupal deprecations. A PHP-level rule (the PHP sets, the compat pass)
+  covers nothing. A file-level anchor (`{file}`) covers nothing either, and neither does any anchor when the
+  anchors were unavailable: those name no function. `soft` never counts, whatever
+  `DRUPILOT_SOFT_DEPRECATIONS` says;
+- each catalog `signature` or `port-safety` finding of severity `error`. These are 0.9's "mechanical edits
+  Rector cannot make", now from deterministic checks. PHPStan's other errors (class `analysis`) are not
+  counted: at the configured level most of them are not porting work. They are worklist items.
 
-They are listed as `manual_items`, each with its finding id.
+They are listed as `manual_items`, each with its finding id and its occurrences.
+
+**The digests layer is not part of the assessment.** 0.9 counted a deprecation a digests rule covers as
+automatic. The assess stage runs no digests pass (its rules are reviewed per port, ADR 0026 and 05-R6), so
+such a deprecation counts as manual. The verdict can only be higher for it.
 
 **`hard_breaks`** is the number of categories of `config/catalog/hard-breaks.json` with at least one matching
 file. These are the 0.9 greps, moved into a catalog, with each fact verified in core. `\b` became the POSIX
@@ -49,8 +60,13 @@ The table is the 0.9 one, first match wins:
 
 The rule that matched is kept verbatim in `rubric.rule`. Next-major findings never count (X18).
 
+**No verdict from a tool.** When Rector or PHPStan gave no verdict (`findings.json` `tools`: `failed` or
+`missing`), the counts are incomplete. `assess.json` then has `provisional: true` and the report says so.
+The `assessed` stage is not recorded, and the script exits 3.
+
 **What `assess.sh` owns.** It runs the assess stage itself: `extract.sh`, `normalize-findings.sh`,
-`classify.sh`, `core-strategy.sh` and `deps-status.sh`. With `--findings` and `--worklist` it reads given ones
+`classify.sh`, `core-strategy.sh` and `deps-status.sh`. It needs the test-bed's Drupal root, like
+`extract.sh`, and reads its settings from that root wherever it is run from. With `--findings` and `--worklist` it reads given ones
 instead, which is how the goldens run without Docker. It writes `assess.json` (schema 1, with `findings_hash`,
 `worklist_hash` and `subject_digest`; its time goes in `meta`) and renders `viability-report.md` from
 `templates/viability-report.md.tmpl`. It records the `assessed` stage with its effort; `--no-record` skips
@@ -62,3 +78,5 @@ that. The staged plan (`port-plan.md`) stays the skill's narrative, written from
 - A deprecation is counted as covered only where Rector changes the same function. That is a closer reading
   of "no rule covers it" than 0.9's prose, which compared the dry-run by eye.
 - The skill keeps no `grep`: `grep -c 'grep ' skills/viability-assessment/SKILL.md` is 0.
+- On `legacy_widgets`, `manual` is 3, as in the 0.9 sample, with one different item. 0.9's third item was a
+  PHPStan class-declaration error; it is now the port-safety class-case error.

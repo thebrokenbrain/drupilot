@@ -29,6 +29,7 @@ behaviour.
 | [0019](0019-rector-template-from-the-plan.md) | rector.php is rendered from the upgrade plan |
 | [0020](0020-phpstan-neon-from-the-plan.md) | phpstan.neon is rendered from the upgrade plan |
 | [0021](0021-drupal-target-and-target-major.md) | DRUPILOT_DRUPAL_TARGET beside the target major |
+| [0025](0025-assess-rubric-from-findings.md) | The assessment rubric from findings |
 
 A new ADR takes the next free number, gets a line here and a nav line in
 `mkdocs.yml` in the same change (the `docs` gate rejects an orphan page).

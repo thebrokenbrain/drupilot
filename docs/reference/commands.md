@@ -6,7 +6,7 @@ The slash commands of drupilot, from their frontmatter (`commands/*.md`). In a s
 
 ## /drupilot-assess
 
-Run a non-destructive Drupal 9/10 to 11 viability assessment (Rector --dry-run + PHPStan + PHPCS, plus upgrade_status if Drupal is installed) and produce a viability-report.md with an S/M/L/XL verdict and a phased porting plan. Use when the user wants to know how hard a module/theme is to port before touching any code.
+Run a non-destructive Drupal 9/10 to 11 viability assessment in the Drupal test-bed (assess.sh computes an S/M/L/XL verdict from the Rector --dry-run, PHPStan and PHPCS findings into assess.json and a viability-report.md), then narrate it and write a phased porting plan. Use when the user wants to know how hard a module/theme is to port before touching any code.
 
 - **Arguments:** `[module-or-theme-path]`
 - **Allowed tools:** Bash, Read, Write, Edit, Glob, Grep, Task, Skill, AskUserQuestion
