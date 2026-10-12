@@ -117,8 +117,9 @@ Follow the `viability-assessment` skill: its §3 is the field guide to
    visible `.drupilot/` dir and records the `assessed` stage. Exit codes:
    `0` assessed · `1` usage error, not a Drupal extension, no Drupal root (run
    `/drupilot-setup` first) or no findings — relay and stop · `2` `jq` missing ·
-   `3` **provisional**: Rector or PHPStan gave no verdict (`provisional: true`,
-   `tools` names which; the stage is not recorded). Report exit 3 as a blocker,
+   `3` **provisional**: a tool gave no verdict (the result is
+   `assess-provisional.json`, `provisional: true`, `no_verdict` names the tool;
+   the stage is not recorded). Report exit 3 as a blocker,
    never as zero findings: show the reason from the tool's raw report and the
    repair (a crash → `install-toolchain.sh --dir <drupal_root> --source
    reference`; a `DET-1:` message → start DDEV, or `install-toolchain.sh --dir

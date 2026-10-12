@@ -761,7 +761,7 @@ subjects_with_state_under() {
 
 # digests_decisions_file SUBJECT -> the subject's digests-decisions.json (05-R6,
 # T-M4-08): {schema: 1, decisions: [{rule, digests_sha, input_hash, verdict:
-# accept|reject, at}]}, the developer's verdict on each digests rule, keyed
+# accept|reject, by: developer|auto, at}]}, the verdict on each digests rule, keyed
 # by the rule, the digests SHA and the subject's digest before the passes, so
 # a later port of the same module replays them and asks nothing. In the
 # hidden state dir; /drupilot-clean resets it. Never created here.
@@ -771,8 +771,9 @@ digests_decisions_file() {
 }
 
 # run_manifest_record SUBJECT TOOL STARTED INPUTS_JSON OUTPUTS_JSON -> records
-# one run (AR-16) as <state>/runs/<run_id>/run-manifest.json: {schema, run_id,
-# tool, inputs, outputs, meta: {started_at, finished_at, drupilot_version}}.
+# one run (AR-16) as <state>/runs/<run_id>/run-manifest.json: {schema, tool,
+# inputs, outputs, meta: {run_id, started_at, finished_at, drupilot_version}}:
+# everything that differs between two runs on the same inputs is under meta.
 # The run id is the UTC start time and the first hex of the inputs' hash, so
 # runs sort by time; only the newest DRUPILOT_RUNS_KEEP (default 10) runs are
 # kept. Prints the run id. Never fails the caller: 1 only on bad arguments.
@@ -787,18 +788,35 @@ run_manifest_record() {
   mkdir -p "$d/$id" 2> /dev/null || return 0
   jq -n --arg id "$id" --arg t "$tool" --argjson i "$in" --argjson o "$out" --arg s "$started" \
      --arg f "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg v "$(plugin_version 2> /dev/null || true)" \
-    '{schema: 1, run_id: $id, tool: $t, inputs: $i, outputs: $o,
-      meta: {started_at: (if $s == "" then null else $s end), finished_at: $f, drupilot_version: (if $v == "" then null else $v end)}}' \
+    '{schema: 1, tool: $t, inputs: $i, outputs: $o,
+      meta: {run_id: $id, started_at: (if $s == "" then null else $s end), finished_at: $f, drupilot_version: (if $v == "" then null else $v end)}}' \
     2> /dev/null | canon_json > "$d/$id/run-manifest.json" 2> /dev/null || true
   # Its default is defaults.json's; a value that is not a positive integer
   # keeps every run.
-  keep="$(config_get DRUPILOT_RUNS_KEEP "")"; [[ "$keep" =~ ^[0-9]+$ && "$keep" -ge 1 ]] || keep=999999
+  keep="$(config_get DRUPILOT_RUNS_KEEP "")"
+  if [[ "$keep" =~ ^[0-9]+$ ]]; then keep="$(printf '%s' "$keep" | sed 's/^0*//')"; else keep=""; fi
+  [[ -n "$keep" ]] || keep=0
+  [[ "$keep" -ge 1 ]] || keep=999999
   for n in "$d"/*; do
     if [[ -d "$n" ]]; then printf '%s\n' "${n##*/}"; fi
   done | LC_ALL=C sort -r | awk -v k="$keep" 'NR > k' | while IFS= read -r n; do
     if [[ -n "$n" && -d "$d/$n" ]]; then rm -rf "${d:?}/${n:?}"; fi
   done
   printf '%s\n' "$id"
+  return 0
+}
+
+# digests_decisions_readable SUBJECT -> the subject's digests-decisions.json
+# when it is one object whose decisions are objects, else /dev/null (a damaged
+# file never stops a run; its verdicts are then unknown).
+digests_decisions_readable() {
+  local f; f="$(digests_decisions_file "${1:-$PWD}")"
+  if [[ -f "$f" ]] && jq -e -s 'length == 1 and (.[0] | type == "object")
+       and ((.[0].decisions // []) | type == "array" and all(.[]; type == "object"))' "$f" > /dev/null 2>&1; then
+    printf '%s' "$f"
+  else
+    printf '/dev/null'
+  fi
   return 0
 }
 

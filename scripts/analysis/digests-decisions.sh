@@ -19,11 +19,14 @@
 # Usage:
 #   digests-decisions.sh --subject DIR --list [--json]
 #   digests-decisions.sh --subject DIR [--accept R[,R...]]... [--reject R[,R...]]...
-#                        [--json]
+#                        [--auto] [--json]
 #   digests-decisions.sh --subject DIR --clear
 #     --list     the rules of the last digests dry-run with their verdicts
 #     --accept   rules to apply (short class names, as digests_review names them)
 #     --reject   rules to leave out
+#     --auto     record them as an autonomous run's defaults (by "auto"), as
+#                DRUPILOT_AUTONOMOUS=true does; only an autonomous run
+#                (run-rector.sh --auto) replays them
 #     --clear    forget every verdict of the subject (/drupilot-clean does it too)
 #     --json     {digests_sha, input_hash, rules: [{rule, verdict, by}],
 #                pending: [...]} on STDOUT
@@ -35,7 +38,7 @@ set -euo pipefail
 # shellcheck source=../lib/common.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
-SUBJECT=""; MODE="record"; ACCEPT=""; REJECT=""; AS_JSON=0
+SUBJECT=""; MODE="record"; ACCEPT=""; REJECT=""; AS_JSON=0; AUTO_FLAG=0
 usage() { print_usage "${BASH_SOURCE[0]}"; }
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -44,6 +47,7 @@ while [[ $# -gt 0 ]]; do
     --clear) MODE="clear"; shift;;
     --accept) ACCEPT="$ACCEPT,${2:-}"; shift 2 || die "--accept needs a value" 1;;
     --reject) REJECT="$REJECT,${2:-}"; shift 2 || die "--reject needs a value" 1;;
+    --auto) AUTO_FLAG=1; shift;;
     --json) AS_JSON=1; shift;;
     -h|--help) usage; exit 0;;
     *) die "Unknown argument: $1 (see --help)" 1;;
@@ -64,7 +68,8 @@ REC="$(project_state_dir "$SUBJECT")/rector-dryrun.json"
 jq -e '.digests == true and (.digests_review | type) == "object"' "$REC" > /dev/null 2>&1 \
   || die "No digests dry-run to key the verdicts on: run run-rector.sh --subject <dir> --digests --json first." 1
 SHA="$(jq -r '.digests_review.digests_sha' "$REC")"; INP="$(jq -r '.digests_review.input_hash' "$REC")"
-AUTO=false; [[ "$(lc "$(config_get DRUPILOT_AUTONOMOUS false)")" == "true" ]] && AUTO=true
+AUTO=false
+if [[ "$AUTO_FLAG" == "1" ]] || config_bool DRUPILOT_AUTONOMOUS 0; then AUTO=true; fi
 BY="developer"; [[ "$AUTO" == "true" ]] && BY="auto"
 KNOWN="$(jq -c '[.digests_review.rules[].rule] + .digests_review.rejected | unique' "$REC")"
 if [[ "$MODE" == "record" ]]; then
@@ -78,7 +83,7 @@ if [[ "$MODE" == "record" ]]; then
   [[ -z "$BAD" ]] || die "Not a rule of the last digests dry-run: $BAD (see --list)." 1
   mkdir -p "$(dirname "$DF")" || die "Cannot create $(dirname "$DF")." 1
   base='{"schema": 1, "decisions": []}'
-  [[ -f "$DF" ]] && jq -e -s 'length == 1 and (.[0] | type == "object")' "$DF" > /dev/null 2>&1 && base="$(cat "$DF")"
+  [[ "$(digests_decisions_readable "$SUBJECT")" == "$DF" ]] && base="$(cat "$DF")"
   jq -n -c --argjson b "$base" --argjson l "$LIST" --arg sha "$SHA" --arg inp "$INP" --arg by "$BY" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
     ($l | map({key: .rule, value: .verdict}) | from_entries) as $new
     | $b | .schema = 1
@@ -91,7 +96,7 @@ fi
 
 # The rules of the last dry-run with their verdicts (record mode: after it).
 base='{"decisions": []}'
-[[ -f "$DF" ]] && jq -e -s 'length == 1 and (.[0] | type == "object")' "$DF" > /dev/null 2>&1 && base="$(cat "$DF")"
+[[ "$(digests_decisions_readable "$SUBJECT")" == "$DF" ]] && base="$(cat "$DF")"
 OUTJ="$(jq -n -c --argjson b "$base" --argjson k "$KNOWN" --arg sha "$SHA" --arg inp "$INP" --argjson auto "$AUTO" '
   ([($b.decisions // [])[] | select(.digests_sha == $sha and .input_hash == $inp and ((.by // "developer") != "auto" or $auto))]
    | map({key: .rule, value: {verdict, by: (.by // "developer")}}) | from_entries) as $v

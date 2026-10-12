@@ -97,6 +97,34 @@ assert_eq "the attribute pass: its rules in rector_rules, its files not manual e
   "$(jq -c '[(.rector_rules | keys), [.manual_edits[].edit]]' "$T_OUT")" '[["attributes","official"],["modules/legacy_widgets_extra/legacy_widgets_extra.info.yml"]]'
 rm -f "$SD/attributes-rules.json"
 
+# Scans of other sources than the module now are refused.
+IDX="$SD/raw/04-assess-index.json"; cp "$IDX" "$T_TMP/idx.keep"
+jq '.subject_digest = "0000"' "$T_TMP/idx.keep" > "$IDX"
+mf --no-write
+assert_eq "an extraction of other sources (its subject_digest): refused, exit 1" "$T_RC" "1"
+assert_match "  it says to extract the ported tree" "$(t_err)" "extract on the ported tree first"
+jq --arg d "$(subject_digest "$S")" '.subject_digest = $d' "$T_TMP/idx.keep" > "$IDX"
+mf --no-write --json
+assert_eq "  of the module as it is: accepted" "$T_RC" "0"
+cp "$T_TMP/idx.keep" "$IDX"
+# A tool that printed no report is never embedded as a clean scan.
+cp "$SD/raw/04-assess-port-safety.json" "$T_TMP/ps.keep"
+printf '{"error": "the tool printed no JSON report", "exit_code": 2}\n' > "$SD/raw/04-assess-port-safety.json"
+mf --no-write --json
+assert_eq "a port-safety crash placeholder: no port_safety section (never 0 errors)" "$T_RC|$(jq -c 'has("port_safety")' "$T_OUT")" "0|false"
+cp "$T_TMP/ps.keep" "$SD/raw/04-assess-port-safety.json"
+# The local-environment residue make-patch.sh --local leaves out, and a
+# non-ASCII name.
+mkdir -p "$S/vendor/x" "$S/node_modules/y" "$S/.ddev"
+printf 'x\n' > "$S/vendor/x/a.php"; printf 'x\n' > "$S/node_modules/y/i.js"; printf 'x\n' > "$S/.ddev/config.yaml"; printf 'x\n' > "$S/se"$'\303\261'"al.txt"
+mf --no-write --json
+assert_eq "residue left out, a non-ASCII name kept as it is" "$(jq -c '[.files[].path]' "$T_OUT")" \
+  '["legacy_widgets.info.yml","modules/legacy_widgets_extra/legacy_widgets_extra.info.yml","señal.txt","src/Form/WidgetImportForm.php"]'
+rm -rf "$S/vendor" "$S/node_modules" "$S/.ddev" "$S/se"$'\303\261'"al.txt"
+# A missing rationale file is no rationale this time.
+mf --no-write --rationale "$T_TMP/nope.json" --json
+assert_eq "a --rationale file that does not exist: a warning, the earlier rationale kept" "$T_RC|$(jq -c '.rationale | length' "$T_OUT")" "0|1"
+
 # --no-write; the report; the state snapshot.
 cp "$SD/port-manifest.json" "$T_TMP/before.json"
 mf --no-write --json

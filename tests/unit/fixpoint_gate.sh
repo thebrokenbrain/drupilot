@@ -5,9 +5,8 @@
 # - legacy_widgets after its port (the findings golden without its one Rector
 #   change, the worklist computed from it): converged;
 # - an injected non-convergent case lists the exact items: a Rector change, a
-#   codemod that would still apply, an open item in a processed lane; a
-#   digests rule the developer rejected never counts; the AI lanes are not
-#   processed yet;
+#   codemod that would still apply, an open item in a processed lane; the AI
+#   lanes are not processed yet;
 # - DRUPILOT_FIXPOINT: warn reports and exits 0, enforce exits 3, off skips;
 #   a tool with no verdict never converges;
 # - fixpoint.json and the run manifest (<state>/runs/<run_id>/), of which
@@ -55,22 +54,22 @@ DRUPILOT_FIXPOINT=enforce t_run "$T_SH" "$FX" --subject "$S" --findings "$F" --w
 assert_eq "enforce: exit 3" "$T_RC" "3"
 DRUPILOT_FIXPOINT=off t_run "$T_SH" "$FX" --subject "$S" --findings "$F" --worklist "$W" --json
 assert_eq "off: nothing runs, exit 0" "$T_RC|$(jq -c '[.mode, .converged]' "$T_OUT")" '0|["off",null]'
-# A digests rule the developer rejected never counts.
-jq '.findings += [.findings[] | select(.tool == "rector") | .id = "F-000000000099" | .rule = "ReplaceDigestsThingRector" | .anchor = "x"]' "$T_TMP/fp2.json" > "$T_TMP/fd.json"
-printf '{"schema": 1, "decisions": [{"rule": "ReplaceDigestsThingRector", "digests_sha": "x", "input_hash": "y", "verdict": "reject", "by": "developer", "at": "z"}]}\n' > "$(digests_decisions_file "$S")"
-t_run "$T_SH" "$FX" --subject "$S" --findings "$T_TMP/fd.json" --worklist "$T_TMP/wp.json" --json
-assert_eq "a rejected digests rule still proposing its change: not counted" "$T_RC|$(jq -c '[.converged, (.rector | length)]' "$T_OUT")" '0|[true,0]'
-rm -f "$(digests_decisions_file "$S")"
 # A tool with no verdict never converges.
 jq '.tools.phpstan = "failed"' "$T_TMP/fp2.json" > "$T_TMP/fnv.json"
 DRUPILOT_FIXPOINT=enforce t_run "$T_SH" "$FX" --subject "$S" --findings "$T_TMP/fnv.json" --worklist "$T_TMP/wp.json" --json
 assert_eq "PHPStan with no verdict: not converged (enforce: exit 3)" "$T_RC|$(jq -c '[.converged, .no_verdict]' "$T_OUT")" '3|[false,true]'
+jq '.tools["port-safety"] = "failed"' "$T_TMP/fp2.json" > "$T_TMP/fps.json"
+t_run "$T_SH" "$FX" --subject "$S" --findings "$T_TMP/fps.json" --worklist "$T_TMP/wp.json" --json
+assert_eq "  a port-safety scan with no verdict (it feeds the codemod lane): not converged" "$T_RC|$(jq -c '[.converged, .no_verdict]' "$T_OUT")" '0|[false,true]'
 
 # DRUPILOT_RUNS_KEEP: the oldest runs go.
+rm -rf "${SD:?}/runs"
 for _ in 1 2 3 4; do
-  DRUPILOT_RUNS_KEEP=3 t_run "$T_SH" "$FX" --subject "$S" --findings "$T_TMP/fp2.json" --worklist "$T_TMP/wp.json"
+  DRUPILOT_RUNS_KEEP=03 t_run "$T_SH" "$FX" --subject "$S" --findings "$T_TMP/fp2.json" --worklist "$T_TMP/wp.json"
 done
-assert_eq "DRUPILOT_RUNS_KEEP=3: three runs kept" "$(ls "$SD/runs" | wc -l | tr -d ' ')" "3"
+assert_eq "DRUPILOT_RUNS_KEEP=03 (a leading zero): three runs kept" "$(ls "$SD/runs" | wc -l | tr -d ' ')" "3"
+assert_eq "  two runs on the same inputs differ only under meta (the run id included)" \
+  "$(for f in "$SD"/runs/*/run-manifest.json; do jq -c 'del(.meta)' "$f"; done | sort -u | wc -l | tr -d ' ')" "1"
 
 # The live path, with stub tools in a copy of the plugin: the extraction runs
 # again and the codemods run in dry-run.

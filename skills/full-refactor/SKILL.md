@@ -386,7 +386,10 @@ nothing left (`DRUPILOT_FIXPOINT`: `warn` reports, `enforce` exits 3).
 
 **Refresh the didactic report.** Tee the Phase 2 Rector + final PHPStan
 deprecation output into `<state_dir>/change-log.txt` (under `$HOME`, never in the
-project tree), regenerate `<state_dir>/port-manifest.json` with
+project tree), extract the refactored tree (`extract.sh --stage refactor`, then
+`normalize-findings.sh --stage refactor` and `classify.sh`, each with
+`--subject "<path>"`: the manifest refuses scans of other sources), regenerate
+`<state_dir>/port-manifest.json` with
 `bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/manifest.sh" --subject "<path>" --phase refactor --rationale "<state_dir>/rationale.json"`
 (it builds every field from the scripts' records; your only input is the why of
 the items you changed by hand, `{"<worklist item id>": "why"}`; every

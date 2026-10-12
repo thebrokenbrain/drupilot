@@ -154,7 +154,8 @@ behavior is preserved):
   summary). An autonomous run keeps them. Hand-convert only what the JSON lists
   as `skipped` / `skipped_files` / `restored_files` or a type it does not know
   (declare project/contrib types in `DRUPILOT_ATTRIBUTE_PLUGIN_TYPES`), and
-  report its `rule_hits` in the Step 7 summary (the pass keeps no state file).
+  report its `rule_hits` in the Step 7 summary (`--apply` keeps them in
+  `attributes-rules.json`, which `manifest.sh` reads).
 - **Dependency injection**: replace `\Drupal::service(...)` static calls with
   constructor-injected services; implement `create()` / `ContainerFactoryPluginInterface`
   where appropriate.
@@ -296,7 +297,8 @@ Summarize in English:
 Rector, the codemods and the processed lanes must have nothing left on the
 refactored tree (`<state_dir>/fixpoint.json`). Under `DRUPILOT_FIXPOINT=warn`
 (the default) report what it lists; under `enforce` (exit 3) the refactor is
-not done until those items are fixed.
+not done until those items are fixed, the validation loop and
+`make-patch.sh --local` run again, and the gate passes.
 
 **Refresh the port report card (trust + teaching).** Regenerate the manifest for
 Phase 2 with `scripts/ai/manifest.sh --phase refactor`: it is built from the
@@ -311,6 +313,9 @@ final validate-loop PHPStan deprecation output into `<state_dir>/change-log.txt`
 changes, explained" section is populated:
 
 ```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/extract.sh" --subject <path> --stage refactor
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/normalize-findings.sh" --subject <path> --stage refactor
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/classify.sh" --subject <path>
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/manifest.sh" --subject <path> --phase refactor --rationale <state_dir>/rationale.json --json
 ```
 

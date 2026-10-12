@@ -50,6 +50,9 @@
 #   --subject DIR      Path to the module/theme to process (relative to the
 #                      Drupal root or absolute). Required.
 #   --apply            Actually write changes (default is --dry-run).
+#   --auto             An autonomous run (as DRUPILOT_AUTONOMOUS=true): the
+#                      digests verdicts an autonomous run recorded are replayed
+#                      (a guided run asks again for them).
 #   --digests          Run the complementary dbuytaert/drupal-digests pass after
 #                      the official pass.
 #   --digests-ref REF  Git ref (tag/branch/commit) of the digests repo to use
@@ -85,8 +88,9 @@
 #                      --apply that changes files also keeps it in the
 #                      subject's state dir (rector-rules.json: {tool,
 #                      changed_files, files (root-relative, sorted),
-#                      digests_sha, rule_hits, meta: {generated_at,
-#                      subject}}), the fallback
+#                      port_base, digests_sha, rule_hits, meta:
+#                      {generated_at, subject}}; the applying runs on one
+#                      git base add up), the fallback
 #                      port-report.sh / layer-report.sh read.
 #                      digests_filter: {implemented_yml: {ref, sha256} | null,
 #                      skipped_implemented (drupal-rector implements them in
@@ -178,8 +182,12 @@
 # rector-compat.php; the diagnostic lists the
 # installed vs known-good versions from config/toolchain-reference.json), or a
 # DET-1 violation (an unplanned host run, a tool version the lock does not pin) ·
-# 4 only the digests pass crashed (the official result stands; fix with
-# --digests-ref <known-good commit> or DRUPILOT_USE_DIGESTS_RULES=false).
+# 4 only the digests pass crashed or was refused (the official result stands;
+# for a crash, --digests-ref <known-good commit> or
+# DRUPILOT_USE_DIGESTS_RULES=false; a refusal names its own remedy: an
+# implemented-digests.yml that cannot be read again, an all.php drupilot
+# cannot read whole, or an --apply on sources or digests rules other than
+# the ones the last dry-run reviewed).
 # =============================================================================
 set -euo pipefail
 
@@ -205,11 +213,13 @@ for _a in "$@"; do
   fi
 done
 
+DIGESTS_AUTO_FLAG=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --subject) SUBJECT="${2:-}"; shift 2;;
     --subject=*) SUBJECT="${1#*=}"; shift;;
     --apply) APPLY=1; shift;;
+    --auto) DIGESTS_AUTO_FLAG=1; shift;;
     --digests) USE_DIGESTS=1; shift;;
     --digests-ref) DIGESTS_REF="${2:-}"; USE_DIGESTS=1; shift 2;;
     --digests-ref=*) DIGESTS_REF="${1#*=}"; USE_DIGESTS=1; shift;;
@@ -604,10 +614,12 @@ TMP_DIGESTS_SKIPS="$(mktemp "${TMPDIR:-/tmp}/drupilot-digests-skips.XXXXXX")"
 TMP_DIGESTS_OFFICIAL="$(mktemp "${TMPDIR:-/tmp}/drupilot-digests-official.XXXXXX")"
 trap 'rm -f "$TMP_DIGESTS_RULES" "$TMP_DIGESTS_SKIPS" "$TMP_DIGESTS_OFFICIAL" 2> /dev/null || true' EXIT
 DIGESTS_RULESET='null'
+DIGESTS_REFUSED=""
 # A verdict an autonomous run recorded (digests-decisions.sh: by "auto") is
 # its safe default, not the developer's review: only an autonomous run
 # replays it.
-DIGESTS_AUTO=false; [[ "$(lc "$(config_get DRUPILOT_AUTONOMOUS false)")" == "true" ]] && DIGESTS_AUTO=true
+DIGESTS_AUTO=false
+if [[ "${DIGESTS_AUTO_FLAG:-0}" == "1" ]] || config_bool DRUPILOT_AUTONOMOUS 0; then DIGESTS_AUTO=true; fi
 DIGESTS_STATUS="off"      # off | ok | error | skipped
 DIGESTS_SHA=""
 DIGESTS_FROM_LOCK=0
@@ -765,6 +777,7 @@ elif [[ "$USE_DIGESTS" == "1" ]]; then
     fi
     if [[ "$_ymlok" == "0" ]]; then
       _m="The implemented-digests.yml frozen in the lock cannot be read again (offline and not cached, or changed upstream): the digests pass would not apply the frozen rules. Retry online, or refresh the lock (DRUPILOT_DETERMINISTIC=false, or lock-sync.sh --refresh)."
+      DIGESTS_REFUSED="$_m"
       log_err "$_m"
       FAILED_PASSES="$FAILED_PASSES 2"; DIGESTS_STATUS="error"; CONFIG_PATH=""
       ERRORS_JSON="$(printf '%s' "$ERRORS_JSON" | jq -c --arg m "$_m" '. + [{pass: 2, exit_code: 2, message: $m}]')"
@@ -772,8 +785,7 @@ elif [[ "$USE_DIGESTS" == "1" ]]; then
       digests_rules "$_adir" > "$TMP_DIGESTS_RULES"
       digests_official_classes "$DRUPAL_ROOT" "$RECTOR_PHP" > "$TMP_DIGESTS_OFFICIAL"
       digests_implemented_skips "$_yml" "$TMP_DIGESTS_OFFICIAL" > "$TMP_DIGESTS_SKIPS"
-      _df="$(digests_decisions_file "$SUBJECT_ABS")"
-      if [[ ! -f "$_df" ]] || ! jq -e -s 'length == 1 and (.[0] | type == "object")' "$_df" > /dev/null 2>&1; then _df="/dev/null"; fi
+      _df="$(digests_decisions_readable "$SUBJECT_ABS")"
       # all.php read whole: every require_once file declares a class it
       # registers, every registered class has its file, and no directive but
       # withFileExtensions / withRules (the filtered copy keeps only those).
@@ -781,19 +793,39 @@ elif [[ "$USE_DIGESTS" == "1" ]]; then
                     digests_registered "$_adir" | awk -F'\t' 'NR == FNR { if ($2 != "") have[$2] = 1; next } !($1 in have) { print $1 " (no rule file)" }' "$TMP_DIGESTS_RULES" -
                     grep -oE -- '->with[A-Za-z]+' "$_adir/all.php" | grep -vxE -- '->with(FileExtensions|Rules)' || true; } | LC_ALL=C sort -u | tr '\n' ' ' | sed 's/ $//')"
       if [[ -z "$(awk -F'\t' '$2 != ""' "$TMP_DIGESTS_RULES")" ]]; then _unread="${_unread:-no rule} (no readable rule at all)"; fi
-      # An --apply whose sources moved since the review: the verdicts recorded
-      # for this SHA belong to other sources, so the rejected rules would run.
-      _moved="$(jq -r -s --arg sha "$DIGESTS_SHA" --arg inp "$PRE_DIGEST" --argjson auto "$DIGESTS_AUTO" '
-        [(.[0].decisions // [])[] | select(.digests_sha == $sha and ((.by // "developer") != "auto" or $auto))]
-        | if length > 0 and (map(.input_hash) | index($inp) | not) then "moved" else "" end' "$_df" 2> /dev/null || true)"
+      # An --apply on rules nobody reviewed: once the module has digests
+      # verdicts, the last dry-run must be of these sources and these digests
+      # rules (an upstream move, or a change of the sources, would otherwise
+      # run the rules rejected for the old ones), and every rule it changed
+      # files with must have a verdict. Without any verdict the 0.9 behaviour
+      # stands (the dry-run's review is the flow's).
+      _moved=""
+      if [[ "$APPLY" == "1" ]]; then
+        _rf="$DRYRUN_REC"; jq -e -s 'length == 1 and (.[0] | type == "object")' "$_rf" > /dev/null 2>&1 || _rf=/dev/null
+        _moved="$(jq -r -n --slurpfile dd "$_df" --slurpfile rec "$_rf" --arg sha "$DIGESTS_SHA" \
+            --arg inp "$PRE_DIGEST" --argjson auto "$DIGESTS_AUTO" '
+          ([($dd[0].decisions // [])[] | select((.by // "developer") != "auto" or $auto)]) as $v
+          | ($rec[0] // {}) as $r
+          | if ($v | length) == 0 then ""
+            elif ($r.subject_digest // "") != $inp or ($r.digests // false) != true or ($r.digests_review | type) != "object" then "sources"
+            elif ($r.digests_review.digests_sha // "") != $sha then "rules"
+            else ([($r.digests_review.rules // [])[] | .rule]
+                  - [$v[] | select(.digests_sha == $sha and .input_hash == $inp) | .rule]) as $p
+                 | if ($p | length) > 0 then "pending:" + ($p | join(",")) else "" end end' 2> /dev/null || printf 'sources')"
+      fi
       if [[ -n "$_unread" ]]; then
         _m="The digests all.php has a layout drupilot cannot filter safely ($_unread): the digests pass did not run. Update drupilot, or turn the digests layer off (DRUPILOT_USE_DIGESTS_RULES=false)."
-      elif [[ "$APPLY" == "1" && "$_moved" == "moved" ]]; then
-        _m="The module changed since the digests rules were reviewed: the verdicts belong to the old sources, so the digests pass did not run. Run the dry-run again (run-rector.sh --digests --json), review the rules, then --apply."
+      elif [[ "$_moved" == "sources" ]]; then
+        _m="No digests dry-run of these sources finished (the module changed since, the last dry-run ran without --digests, or its digests pass failed): the verdicts belong to other sources, so the digests pass did not run. Run the dry-run again (run-rector.sh --digests --json), review its pending rules (digests-decisions.sh), then --apply; digests-decisions.sh --clear forgets every verdict."
+      elif [[ "$_moved" == "rules" ]]; then
+        _m="The digests rules changed since the last dry-run (another digests SHA): the digests pass did not run. Run the dry-run again, review its pending rules, then --apply."
+      elif [[ "$_moved" == pending:* ]]; then
+        _m="Digests rules the last dry-run changed files with have no verdict (${_moved#pending:}): the digests pass did not run. Record them with digests-decisions.sh --accept/--reject, then --apply."
       else
         _m=""
       fi
       if [[ -n "$_m" ]]; then
+        DIGESTS_REFUSED="$_m"
         log_err "$_m"
         FAILED_PASSES="$FAILED_PASSES 2"; DIGESTS_STATUS="error"; CONFIG_PATH=""
         ERRORS_JSON="$(printf '%s' "$ERRORS_JSON" | jq -c --arg m "$_m" '. + [{pass: 2, exit_code: 2, message: $m}]')"
@@ -827,6 +859,20 @@ elif [[ "$USE_DIGESTS" == "1" ]]; then
       DIGESTS_FILTER="$(jq -c '.kept = (.kept | length)' <<< "$DIGESTS_FILTER")"
       log_info "Digests rules: $DIGESTS_KEPT kept ($(jq '.implemented_not_loaded | length' <<< "$DIGESTS_FILTER") implemented by drupal-rector in a set this port does not load, $(jq '.config_only | length' <<< "$DIGESTS_FILTER") config-only); $(jq '.skipped_implemented | length' <<< "$DIGESTS_FILTER") skipped (the official pass applies them), $(jq '.rejected | length' <<< "$DIGESTS_FILTER") rejected for this module."
       CONFIG_PATH="$(dirname "$CONFIG_PATH")/all.drupilot.php"
+      # Once there are verdicts, an --apply runs only rules the reviewed dry-run
+      # ran (a set rector.php no longer loads, or verdicts of another mode,
+      # would otherwise add rules nobody reviewed).
+      if [[ "$APPLY" == "1" ]]; then
+        _extra="$(jq -r -n --slurpfile dd "$_df" --slurpfile rec "$_rf" --argjson ks "$DIGESTS_RULESET" --argjson auto "$DIGESTS_AUTO" '
+          ([($dd[0].decisions // [])[] | select((.by // "developer") != "auto" or $auto)] | length) as $n
+          | if $n == 0 then "" else ($ks - ($rec[0].digests_ruleset // []) | join(",")) end' 2> /dev/null || printf 'unknown')"
+        if [[ -n "$_extra" ]]; then
+          _m="The --apply would run digests rules the last dry-run did not ($_extra): the digests pass did not run. Run the dry-run again, review its pending rules, then --apply."
+          DIGESTS_REFUSED="$_m"; log_err "$_m"
+          FAILED_PASSES="$FAILED_PASSES 2"; DIGESTS_STATUS="error"; CONFIG_PATH=""; DIGESTS_KEPT=""
+          ERRORS_JSON="$(printf '%s' "$ERRORS_JSON" | jq -c --arg m "$_m" '. + [{pass: 2, exit_code: 2, message: $m}]')"
+        fi
+      fi
       if [[ "$DIGESTS_KEPT" == "0" ]]; then
         log_info "No digests rule left to run."
         CONFIG_PATH=""; DIGESTS_STATUS="ok"
@@ -853,9 +899,6 @@ elif [[ "$USE_DIGESTS" == "1" ]]; then
            log_info "Froze the digests SHA in the lockfile (reused on later runs while deterministic)."
          fi;;
     esac
-  elif [[ "$DIGESTS_STATUS" == "ok" && "${FREEZE_SHA:-0}" == "1" && -n "$DIGESTS_SHA" ]]; then
-    lock_set .digests.sha "$DIGESTS_SHA" 2>/dev/null || true
-    lock_set .digests.ref "$CONFIGURED_REF" 2>/dev/null || true
   fi
 fi
 
@@ -876,8 +919,7 @@ H1="$(rector_json_rule_hits "$PASS1_RAW")"; H3="$(rector_json_rule_hits "$PASS3_
 # (digests-decisions.sh); the rules rejected earlier were filtered out.
 DIGESTS_REVIEW='null'
 if [[ "$USE_DIGESTS" == "1" && "$DIGESTS_FILTER" != "null" && "$DIGESTS_STATUS" == "ok" ]]; then
-  _df="$(digests_decisions_file "$SUBJECT_ABS")"
-  if [[ ! -f "$_df" ]] || ! jq -e -s 'length == 1 and (.[0] | type == "object")' "$_df" > /dev/null 2>&1; then _df="/dev/null"; fi
+  _df="$(digests_decisions_readable "$SUBJECT_ABS")"
   DIGESTS_REVIEW="$(jq -n -c --argjson h "$H2" --argjson flt "$DIGESTS_FILTER" --slurpfile dd "$_df" --arg sha "$DIGESTS_SHA" --arg inp "$PRE_DIGEST" --argjson auto "$DIGESTS_AUTO" '
     ([($dd[0].decisions // [])[] | select(.digests_sha == $sha and .input_hash == $inp and ((.by // "developer") != "auto" or $auto))]
      | map({key: .rule, value: .verdict}) | from_entries) as $v
@@ -962,6 +1004,10 @@ if [[ "$FAILED" == "1" ]]; then
   [[ "$COUNT" != "0" ]] && log_warn "$COUNT file(s) were reported before the failure (partial result)."
   toolchain_diagnostics "$DRUPAL_ROOT"
   log_plain "   Check the installed toolchain:  bash \"$(plugin_root)/scripts/env/install-toolchain.sh\" --dir \"$DRUPAL_ROOT\" --smoke-only"
+elif [[ "$PARTIAL" == "1" && -n "$DIGESTS_REFUSED" ]]; then
+  log_ok "Official pass complete: $(printf '%s\n' "$PASS1_FILES" | grep -c . || true) file(s) $([[ "$APPLY" == "1" ]] && echo changed || echo 'would change') (this verdict stands)."
+  log_err "The digests pass did not run: $DIGESTS_REFUSED"
+  log_plain "   Nothing is broken: follow that remedy, then run the digests pass again."
 elif [[ "$PARTIAL" == "1" ]]; then
   log_ok "Official pass complete: $(printf '%s\n' "$PASS1_FILES" | grep -c . || true) file(s) $([[ "$APPLY" == "1" ]] && echo changed || echo 'would change') (this verdict stands)."
   if [[ -n "$DIGESTS_CONFIG" ]]; then
@@ -992,12 +1038,27 @@ fi
 # crashed after the official pass had written its changes. A later apply that
 # changes nothing (a re-run on ported code) keeps the record of the real port.
 # Its time and the host path of the subject are under meta (AR-13).
+# The applying runs of one port (the same git base: the official pass, then
+# the digests pass, ...) accumulate: their files and their rule counts per
+# pass add up; a run on another base starts a new record.
 if [[ "$APPLY" == "1" && "$PASS1_RAN_OK" == "1" && "$COUNT" != "0" ]] && have_cmd jq; then
+  _pb=""
+  if git -C "$SUBJECT_ABS" rev-parse --git-dir > /dev/null 2>&1; then
+    _pb="$(git -C "$SUBJECT_ABS" rev-parse --verify --quiet "$(git_port_base_ref "$SUBJECT_ABS" 2> /dev/null || printf HEAD)^{commit}" 2> /dev/null || true)"
+  fi
+  _prev='{}'; _rrf="$(rector_rules_file "$SUBJECT_ABS")"
+  if [[ -n "$_pb" && -f "$_rrf" ]] && jq -e --arg b "$_pb" 'type == "object" and .port_base == $b and (.files | type) == "array"' "$_rrf" > /dev/null 2>&1; then
+    _prev="$(jq -c . "$_rrf")"
+  fi
   jq -n --arg s "$SUBJECT_ABS" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson h "$RULE_HITS" \
-    --arg dsha "$DIGESTS_SHA" --argjson n "$COUNT" --arg fl "$CHANGED" \
-    '{tool: "run-rector", changed_files: $n, files: ($fl | split("\n") | map(select(length > 0)) | sort),
-      digests_sha: (if $dsha == "" then null else $dsha end), rule_hits: $h,
-      meta: {generated_at: $at, subject: $s}}' \
+    --arg dsha "$DIGESTS_SHA" --arg fl "$CHANGED" --arg pb "$_pb" --argjson p "$_prev" \
+    '(($fl | split("\n") | map(select(length > 0))) + ($p.files // []) | unique) as $files
+     | (reduce (($p.rule_hits // {}), $h) as $r ({}; reduce ($r | to_entries[]) as $pass (.;
+          reduce ($pass.value | to_entries[]) as $rule (.; .[$pass.key][$rule.key] += $rule.value)))) as $hits
+     | {tool: "run-rector", changed_files: ($files | length), files: $files,
+        port_base: (if $pb == "" then null else $pb end),
+        digests_sha: (if $dsha == "" then ($p.digests_sha // null) else $dsha end), rule_hits: $hits,
+        meta: {generated_at: $at, subject: $s}}' \
     > "$(project_state_dir "$SUBJECT_ABS")/rector-rules.json" 2>/dev/null \
     || log_warn "Could not record the applied Rector rules in $(rector_rules_file "$SUBJECT_ABS")."
 fi

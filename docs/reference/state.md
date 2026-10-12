@@ -94,7 +94,7 @@ The first rule that matches wins, and `rubric.rule` keeps it:
 | M | `hard_breaks == 1` or `manual >= 5` |
 | S | otherwise |
 
-Soft deprecations and next-major findings never count. When Rector or PHPStan gave no verdict, the verdict is marked `provisional`, the stage is not recorded and the script exits 3. The script needs the test-bed's Drupal root and reads its settings there. `assess.json` also keeps `findings_hash`, `worklist_hash` and the module's digest, so the same tree, lock and drupal.org answers give the same document outside `meta`, which holds its time. The script records the `assessed` stage with the verdict as `effort`.
+Soft deprecations and next-major findings never count. When Rector, PHPStan, the port-safety checks or the signature scan gave no verdict, the result is provisional: it goes to `assess-provisional.json` instead of `assess.json`, the stage is not recorded and the script exits 3. The script needs the test-bed's Drupal root and reads its settings there. `assess.json` also keeps `findings_hash`, `worklist_hash` and the module's digest, so the same tree, lock and drupal.org answers give the same document outside `meta`, which holds its time. The script records the `assessed` stage with the verdict as `effort`.
 
 ## Port manifest
 
@@ -102,7 +102,7 @@ Soft deprecations and next-major findings never count. When Rector or PHPStan ga
 
 ## Fixpoint and runs
 
-`scripts/analysis/fixpoint.sh --subject DIR [--stage S]` is the gate at the end of a port or a refactor. It runs the extraction again on the tree as it is, then the codemods in dry-run, and writes `fixpoint.json` (schema `schemas/fixpoint.schema.json`). The file lists the Rector changes still proposed, the codemods that would still apply, and the open items of the processed lanes. Those lanes are `rector`, `rector-custom` and `codemod`; the AI lanes join when their executor does. A digests rule you rejected never counts. The gate converges only when the three lists are empty and every tool gave a verdict.
+`scripts/analysis/fixpoint.sh --subject DIR [--stage S]` is the gate at the end of a port or a refactor. It runs the extraction again on the tree as it is, then the codemods in dry-run, and writes `fixpoint.json` (schema `schemas/fixpoint.schema.json`). The file lists the Rector changes still proposed, the codemods that would still apply, and the open items of the processed lanes. Those lanes are `rector`, `rector-custom` and `codemod`; the AI lanes join when their executor does. The Rector dry-run is the official pass: the digests rules, which you review during the port, never count. The gate converges only when the three lists are empty and every tool gave a verdict: Rector, PHPStan, and the port-safety, signature and metadata scans that feed the codemod lane.
 
 `DRUPILOT_FIXPOINT` decides what a failure does:
 - `warn`, the default through the 1.0 betas, reports it;
