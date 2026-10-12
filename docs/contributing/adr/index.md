@@ -35,6 +35,7 @@ behaviour.
 | [0025](0025-assess-rubric-from-findings.md) | The assessment rubric from findings |
 | [0026](0026-digests-rules-the-official-pass-applies.md) | Digests rules the official pass already applies |
 | [0027](0027-generated-port-manifest.md) | The generated port manifest |
+| [0028](0028-pipeline-stage-contract.md) | The pipeline's stage contract |
 
 A new ADR takes the next free number, gets a line here and a nav line in
 `mkdocs.yml` in the same change (the `docs` gate rejects an orphan page).

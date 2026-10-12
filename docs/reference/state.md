@@ -110,3 +110,9 @@ Soft deprecations and next-major findings never count. When Rector or PHPStan ga
 - `off` skips the gate.
 
 Each run is recorded in `runs/<run_id>/run-manifest.json` (schema `schemas/run-manifest.schema.json`), with the hashes it started from and the ones it produced. The run id is the UTC start time and the first hex digits of the inputs' hash. `DRUPILOT_RUNS_KEEP` (default 10) runs are kept per module.
+
+## Pipeline stages
+
+`scripts/ai/pipeline.sh --subject DIR [--stages ...]` runs the standard track's deterministic stages in the order of [the pipeline](pipeline.md): `upgrade`, `php` (a placeholder until M5), `validate` (the fixpoint gate) and `report` (the manifest and the report). See [ADR 0028](../contributing/adr/0028-pipeline-stage-contract.md). Before each stage it records a checkpoint of the module's tree, a ref under `refs/drupilot/stages/<run>/<stage>` that never touches your index or HEAD. A stage that fails puts the tree back at that checkpoint and stops the run.
+
+The records are `stages.json` in the hidden state dir: each stage's status, reason, and input and output digests. A digest is the hash of the plan, the lock and the module's sources. A stage whose output digest is the current one is up to date and is not run again, so an interrupted port resumes at the stage that did not finish. A plan with no hop skips `upgrade` with reason `same-major`.

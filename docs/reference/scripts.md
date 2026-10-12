@@ -341,6 +341,64 @@ classify-deprecations.sh could not classify the PHPStan report (nothing is
 written).
 ```
 
+### ai/pipeline.sh
+
+```text
+drupilot — scripts/ai/pipeline.sh
+The stage contract (T-M4-12, AR-07, ADR 0028) for the deterministic stages
+of the standard track: upgrade -> php -> validate -> report, in the order of
+config/pipeline.json. For each stage:
+  1. its digest: the sha256 of the frozen plan's hash, the lock's hash and
+     the subject's digest at the stage start;
+  2. a stage whose last record is done (or skipped) with an output digest
+     equal to that digest is up to date: it is not run again (a tree rolled
+     back to before the stage runs it again);
+  3. a checkpoint of the subject's tree, refs/drupilot/stages/<run>/<stage>
+     (git_stage_checkpoint: a throwaway GIT_INDEX_FILE, the real index and
+     HEAD untouched);
+  4. the stage itself; its raw tool reports are <NN>-<stage>-<tool>.json in
+     the state dir's raw/ (NN: the stage's place in config/pipeline.json),
+     and a raw file of the stage under another NN fails the stage;
+  5. done: the record keeps the input and output digests; failed: the tree
+     goes back to the stage's own checkpoint (git_stage_restore) and the
+     pipeline stops.
+The records are <state>/stages.json; each run is recorded in
+runs/<run_id>/run-manifest.json (run_manifest_record). Progress reporting
+arrives in M7.
+
+The stages:
+  upgrade   the official Rector pass (run-rector.sh --apply), the
+            extraction at stage upgrade, and the codemods (apply-recipes.sh
+            --reextract: S6, S7); skipped, reason same-major, when the
+            plan's hops are [] (the digests layer, which the developer
+            reviews, stays in /drupilot-port)
+  php       a placeholder until the PHP-target engine (M5): skipped, reason
+            placeholder
+  validate  the fixpoint gate (fixpoint.sh: the extraction again, the
+            codemods in dry-run); its exit 3 (DRUPILOT_FIXPOINT=enforce)
+            fails the stage
+  report    the generated manifest (manifest.sh, with --rationale when
+            given) and port-report.sh
+
+Usage:
+  pipeline.sh --subject DIR [--stages S1,S2,...] [--phase port|refactor]
+              [--rationale FILE] [--run ID] [--force] [--json] [-h|--help]
+    --subject DIR      the module/theme, inside its Drupal root and a git
+                       repository (the checkpoints need one)
+    --stages LIST      the stages to run, in their catalog order (default:
+                       upgrade,php,validate,report)
+    --phase P          port (default) or refactor: the manifest's phase
+    --rationale FILE   passed to manifest.sh (report)
+    --run ID           the run id (default: the UTC time and a hash)
+    --force            run every stage, even an up-to-date one
+    --json             {run_id, stages: [{id, status, reason, input_digest,
+                       output_digest, rc}]} on STDOUT
+
+Exit codes: 0 every stage done, skipped or up to date · 1 usage error, an
+unknown stage, no git repository, or a checkpoint that cannot be made ·
+3 a stage failed (the tree is back at its checkpoint; see stages.json).
+```
+
 ## analysis
 
 ### analysis/assess.sh

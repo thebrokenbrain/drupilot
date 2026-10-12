@@ -324,3 +324,53 @@ git_active_commit_hooks() {
   done
   return 0
 }
+
+# git_stage_checkpoint DIR REF -> records the working tree of DIR (a directory
+# inside a git repository: its tracked and untracked files, ignored ones left
+# out) as a commit at REF (refs/drupilot/stages/<run>/<stage>, AR-07), and
+# prints the commit. The real index, HEAD and the files are untouched: a
+# throwaway GIT_INDEX_FILE (as make-patch.sh --local), a commit object made
+# with commit-tree under drupilot's own identity, never on a branch. Returns 1
+# when DIR is not in a git repository or git fails.
+git_stage_checkpoint() {
+  local dir="${1:-}" ref="${2:-}" idx parent tree c
+  [[ -n "$dir" && -n "$ref" ]] && git -C "$dir" rev-parse --git-dir > /dev/null 2>&1 || return 1
+  idx="$(mktemp "${TMPDIR:-/tmp}/drupilot-index.XXXXXX")" || return 1
+  rm -f "$idx"
+  parent="$(git -C "$dir" rev-parse --verify --quiet HEAD 2> /dev/null || true)"
+  if [[ -n "$parent" ]]; then GIT_INDEX_FILE="$idx" git -C "$dir" read-tree HEAD > /dev/null 2>&1 || { rm -f "$idx"; return 1; }; fi
+  GIT_INDEX_FILE="$idx" git -C "$dir" add -A -- . > /dev/null 2>&1 || { rm -f "$idx"; return 1; }
+  tree="$(GIT_INDEX_FILE="$idx" git -C "$dir" write-tree 2> /dev/null || true)"
+  rm -f "$idx"
+  [[ -n "$tree" ]] || return 1
+  c="$(GIT_AUTHOR_NAME=drupilot GIT_AUTHOR_EMAIL=drupilot@localhost GIT_COMMITTER_NAME=drupilot GIT_COMMITTER_EMAIL=drupilot@localhost \
+    git -C "$dir" commit-tree "$tree" ${parent:+-p "$parent"} -m "drupilot stage checkpoint $ref" < /dev/null 2> /dev/null || true)"
+  [[ -n "$c" ]] || return 1
+  git -C "$dir" update-ref "$ref" "$c" > /dev/null 2>&1 || return 1
+  printf '%s\n' "$c"
+  return 0
+}
+
+# git_stage_restore DIR REF -> puts the working tree of DIR back as
+# git_stage_checkpoint recorded it at REF: every file of the checkpoint under
+# DIR is written back, and every file under DIR that is not in it (tracked or
+# untracked, ignored ones left alone) is removed. The real index, HEAD and the
+# files outside DIR are untouched. Returns 1 when REF does not exist or git
+# fails.
+git_stage_restore() {
+  local dir="${1:-}" ref="${2:-}" idx cur keep f
+  [[ -n "$dir" && -n "$ref" ]] && git -C "$dir" rev-parse --verify --quiet "$ref^{commit}" > /dev/null 2>&1 || return 1
+  idx="$(mktemp "${TMPDIR:-/tmp}/drupilot-index.XXXXXX")" || return 1
+  rm -f "$idx"
+  GIT_INDEX_FILE="$idx" git -C "$dir" read-tree "$ref" > /dev/null 2>&1 || { rm -f "$idx"; return 1; }
+  keep="$idx.keep"; cur="$idx.cur"
+  GIT_INDEX_FILE="$idx" git -C "$dir" -c core.quotepath=off ls-files -- . 2> /dev/null | LC_ALL=C sort > "$keep" || true
+  git -C "$dir" -c core.quotepath=off ls-files -co --exclude-standard -- . 2> /dev/null | LC_ALL=C sort -u > "$cur" || true
+  LC_ALL=C comm -23 "$cur" "$keep" | while IFS= read -r f; do
+    if [[ -n "$f" ]]; then rm -f -- "$dir/$f"; fi
+  done
+  GIT_INDEX_FILE="$idx" git -C "$dir" ls-files -z -- . 2> /dev/null \
+    | GIT_INDEX_FILE="$idx" git -C "$dir" checkout-index -f -z --stdin > /dev/null 2>&1 || { rm -f "$idx" "$keep" "$cur"; return 1; }
+  rm -f "$idx" "$keep" "$cur"
+  return 0
+}

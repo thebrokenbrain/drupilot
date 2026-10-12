@@ -583,6 +583,20 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     rationale. A manifest golden pins the generator on the lab's
     `legacy_widgets` port.
 
+- **The pipeline's stage contract** (T-M4-12, AR-07, ADR 0028).
+  `scripts/ai/pipeline.sh` runs `upgrade`, `php` (a placeholder until M5),
+  `validate` and `report` in catalog order.
+  - Before each stage it records a git checkpoint of the module
+    (`refs/drupilot/stages/<run>/<stage>`; the index and HEAD untouched). A
+    failed stage puts the tree back at its checkpoint and stops the run.
+  - The records are `stages.json`, with input and output digests (plan,
+    lock, sources). A stage whose output is the current state is not run
+    again, so an interrupted port resumes where it stopped.
+  - A plan with no hop skips `upgrade` (`same-major`). A raw report under
+    another stage number fails the stage.
+  - `/drupilot-port` applies the official Rector pass through the `upgrade`
+    stage, and checks the fixpoint, writes the manifest and renders the
+    report through the last three stages.
 - **The fixpoint gate** (T-M4-11, AR-16, 05-R9, DET-8).
   `scripts/analysis/fixpoint.sh` runs at the end of a port or a refactor. It
   extracts again and checks that Rector, the codemods and the processed

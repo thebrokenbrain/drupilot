@@ -220,9 +220,18 @@ reads for the manifest's `rector_rules` (Step 9). Undo or rewrite any applied hu
 ```bash
 # Review what it would change:
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "$1"
-# Then apply:
-!bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "$1" --apply
+# Then apply it as the pipeline's upgrade stage (ADR 0028): the official pass,
+# the extraction and the deterministic codemods, with a checkpoint first:
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/pipeline.sh" --subject "$1" --stages upgrade --json
 ```
+
+`pipeline.sh` needs the module in a git repository (its checkpoints are refs
+under `refs/drupilot/stages/`; the real index and HEAD are never touched).
+Without one, apply with `run-rector.sh --subject "$1" --apply` as before. A
+plan with no hop (a same-major port) skips the stage (`same-major`). Its exit 3
+means the stage failed and the tree is back at its checkpoint:
+`<state_dir>/stages.json` and `<state_dir>/upgrade-rector.json` (the Rector
+`--json`) say why.
 
 **Exit 3 means the official Rector pass or the compat pass after it crashed** (`[ERROR] Could not detect twig set.`, a PHP fatal,
 per-file errors; `errors[].pass` is `1` for the official pass, `3` for the compat
@@ -628,7 +637,8 @@ Summarize in English:
   optionally `/drupilot-refactor`.
 
 **The fixpoint gate.** Before the report card, check that the deterministic
-lanes have nothing left:
+lanes have nothing left. The pipeline's validate stage runs it (below); on its
+own:
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/fixpoint.sh" --subject <path> --json
@@ -659,9 +669,14 @@ port ran you should have **tee'd** the official Rector output, the digests pass
 output and the final validate-loop PHPStan deprecation report into
 `<state_dir>/change-log.txt` (under `$HOME`, never in the project tree);
 `port-report.sh` pipes it through `explain-deprecations.sh` for the "changes,
-explained" section. Then generate the manifest and render:
+explained" section. Then run the pipeline's last stages, which check the
+fixpoint, generate the manifest and render the report (with a git repository;
+without one, run `fixpoint.sh`, `manifest.sh` and `port-report.sh` in that
+order, as their lines below show):
 
 ```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/pipeline.sh" --subject <path> --stages php,validate,report --rationale <state_dir>/rationale.json --json
+# Without a git repository:
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/manifest.sh" --subject <path> --phase port --rationale <state_dir>/rationale.json --json
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" --subject "$1" --manifest "<state_dir>/port-manifest.json" --changes-log "<state_dir>/change-log.txt"
 ```

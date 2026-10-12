@@ -110,4 +110,5 @@ nav:
           - contributing/adr/0025-assess-rubric-from-findings.md
           - contributing/adr/0026-digests-rules-the-official-pass-applies.md
           - contributing/adr/0027-generated-port-manifest.md
+          - contributing/adr/0028-pipeline-stage-contract.md
   - Changelog: changelog.md
