@@ -840,24 +840,36 @@ symmetric questions at once:
      authoritative proof of "runs on the target" is still the test suite, which
      drupilot runs inside DDEV on the target PHP version.)
 
-This is a HEURISTIC syntactic scan (a curated list of well-known 8.2/8.3/8.4
-language constructs and function additions), NOT a full static analysis. It is
+This is a HEURISTIC syntactic scan (a curated list of well-known 8.2 to 8.5
+language constructs and function additions; the 8.5 ones read on php.net's
+migration85 pages), NOT a full static analysis, and a FALLBACK: the php
+stage's php -l on every PHP of the window and the test suite are the
+authoritative checks. It is
 deliberately CONSERVATIVE: it reports the highest version whose constructs it
 finds, and only reports 8.1 when it finds none. A missed construct could lower
 the floor wrongly (a D10 + low-PHP site would then install and fatal at runtime)
 or miss a target incompatibility, so callers acting on the result MUST still
 rely on the test suite / PHPCompatibility for the authoritative answer.
+With --range, a function a symfony/polyfill-phpXY package defines does not
+raise the floor when every core the range admits provides that package
+(core_range_polyfills, scripts/lib/plan.sh): its signal is kept, marked
+polyfilled.
 
 Usage:
-  detect-php-floor.sh [--subject DIR] [--json] [-h|--help]
+  detect-php-floor.sh [--subject DIR] [--range CONSTRAINT] [--json] [-h|--help]
 
   --subject DIR   module/theme directory (default: current directory).
+  --range C       the declared core range (e.g. '^11.3'): the polyfills every
+                  core of C provides are taken into account.
   --json          print only the JSON payload (suppress the human line).
 
 Output (stdout): JSON
-  { floor: "8.1".."8.4", target: "8.3", target_compatible: true|false,
+  { floor: "8.1".."8.5", target: "8.3", target_compatible: true|false,
     method: "heuristic-scan", signals: [ {version, pattern, location} ... ],
     scanned_files: N }
+  With --range, also range and polyfills (the packages every core of the
+  range provides); a signal whose every hit calls a polyfilled function
+  carries polyfilled: true and does not count.
 Read-only and ungated.
 
 Exit codes: 0 ok · 1 usage/error.
@@ -2187,8 +2199,10 @@ Vocabulary (AR-01):
                  0.9 names d11-only and keep-d10 are aliases); keep-current
                  is a resolved output only, never an input
   L              PHP floor: max(php_min(F), the code's floor
-                 (detect-php-floor.sh), the subject's require.php); L = P
-                 with DRUPILOT_REQUIRE_PHP_FLOOR=target
+                 (detect-php-floor.sh --range C: a function every core of C
+                 provides through a polyfill does not raise it), the
+                 subject's require.php); L = P with
+                 DRUPILOT_REQUIRE_PHP_FLOOR=target
   P              PHP final: DRUPILOT_PHP_TARGET, else targets/T.json
                  .php_defaults.env; it must be a PHP M supports, M the
                  newest released minor of T or its pre-release minor in
@@ -4306,7 +4320,8 @@ Check drupilot's version data and catalogs (a developer/CI tool: no command,
 skill or hook calls it; scripts/dev/check.sh runs it as its `data` gate):
   schema      every $ref of the schemas resolves (whatever the data);
               config/targets/<major>.json (schemas/target.schema.json),
-              config/php/versions.json and rules.json, config/paths/eras.json
+              config/php/versions.json, rules.json and polyfills.json,
+              config/paths/eras.json
               and graph.json, and every config/catalog/*.json validate
               against their schema (the jq validator, scripts/dev/
               jsonschema.jq); the eight core files (targets/10, 11 and 12,
@@ -4551,8 +4566,10 @@ Refresh the generated fields of the version data (a developer tool: no
 command, skill, hook or port ever runs it). For every minor of
 config/targets/<major>.json it reads, at that minor's newest tag:
   - repo.packagist.org/p2/drupal/core.json: the newest tag of the minor
-    (stable only; alpha/beta/rc too for a pre-release major) and the date of
-    its .0 release
+    (stable only; alpha/beta/rc too for a pre-release major), the date of
+    its .0 release, and polyfills: the symfony/polyfill-phpXY packages that
+    EVERY tag of the minor requires directly (what a module declaring the
+    minor can count on; a transitive requirement is no guarantee)
   - git.drupalcode.org/project/drupal/-/raw/<tag>/: core/composer.json
     (require.php -> php_min, symfony/http-kernel -> symfony_major,
     twig/twig -> twig_major), composer/Metapackage/DevDependencies/

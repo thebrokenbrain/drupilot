@@ -70,6 +70,7 @@ SPECS="$(printf '%s\t%s\t%s\n' \
   target.schema.json config/targets/12.json . \
   php-versions.schema.json config/php/versions.json . \
   php-rules.schema.json config/php/rules.json . \
+  php-polyfills.schema.json config/php/polyfills.json . \
   paths.schema.json config/paths/eras.json . \
   paths.schema.json config/paths/graph.json . \
   toolchain.schema.json config/toolchain-reference.json . \

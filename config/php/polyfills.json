@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-10-12",
+  "_comment": "The functions a symfony/polyfill-phpXY package defines on every PHP below its version, at the lowest version a Drupal core release requires (packagist p2 drupal/core: ^1.32 for php84 and php85, ^1.37 for php86). A function the bootstrap defines only with an extension core does not require (ext-mbstring, ext-intl) is listed under conditional and is never counted on. Read with core_range_polyfills (scripts/lib/plan.sh); the packages a core minor requires are config/targets/<major>.json minors[].polyfills.",
+  "packages": {
+    "symfony/polyfill-php84": {
+      "php": "8.4",
+      "min_version": "1.32.0",
+      "functions": ["array_all", "array_any", "array_find", "array_find_key", "fpow"],
+      "conditional": {"ext-mbstring": ["mb_lcfirst", "mb_ltrim", "mb_rtrim", "mb_trim", "mb_ucfirst"]},
+      "src": "https://raw.githubusercontent.com/symfony/polyfill-php84/v1.32.0/bootstrap.php ; https://repo.packagist.org/p2/drupal/core.json",
+      "verified": true
+    },
+    "symfony/polyfill-php85": {
+      "php": "8.5",
+      "min_version": "1.32.0",
+      "functions": ["get_error_handler", "get_exception_handler"],
+      "conditional": {},
+      "src": "https://raw.githubusercontent.com/symfony/polyfill-php85/v1.32.0/bootstrap.php ; https://repo.packagist.org/p2/drupal/core.json",
+      "verified": true
+    },
+    "symfony/polyfill-php86": {
+      "php": "8.6",
+      "min_version": "1.37.0",
+      "functions": ["clamp"],
+      "conditional": {"ext-intl": ["grapheme_strrev"]},
+      "src": "https://raw.githubusercontent.com/symfony/polyfill-php86/v1.37.0/bootstrap.php ; https://raw.githubusercontent.com/symfony/polyfill-php86/v1.37.0/bootstrap80.php ; https://repo.packagist.org/p2/drupal/core.json",
+      "verified": true
+    }
+  }
+}

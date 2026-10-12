@@ -5,8 +5,10 @@
 # command, skill, hook or port ever runs it). For every minor of
 # config/targets/<major>.json it reads, at that minor's newest tag:
 #   - repo.packagist.org/p2/drupal/core.json: the newest tag of the minor
-#     (stable only; alpha/beta/rc too for a pre-release major) and the date of
-#     its .0 release
+#     (stable only; alpha/beta/rc too for a pre-release major), the date of
+#     its .0 release, and polyfills: the symfony/polyfill-phpXY packages that
+#     EVERY tag of the minor requires directly (what a module declaring the
+#     minor can count on; a transitive requirement is no guarantee)
 #   - git.drupalcode.org/project/drupal/-/raw/<tag>/: core/composer.json
 #     (require.php -> php_min, symfony/http-kernel -> symfony_major,
 #     twig/twig -> twig_major), composer/Metapackage/DevDependencies/
@@ -123,12 +125,20 @@ mismatch() {
   return 0
 }
 
-# Every tag of drupal/core: {version, date, key} (key orders alpha < beta < rc < release).
+# Every tag of drupal/core: {version, date, key, polyfills} (key orders alpha <
+# beta < rc < release; polyfills: the symfony/polyfill-phpXY packages its
+# require names). p2 metadata is minified: an entry without require inherits
+# the previous entry's, "__unset" clears it.
 fetch https://repo.packagist.org/p2/drupal/core.json packagist/drupal-core.json; P2="$FETCHED"
-jq -c '[.packages["drupal/core"][]
+jq -c '.packages["drupal/core"] as $all
+       | [reduce range(0; $all | length) as $i ({req: {}, out: []};
+            (if ($all[$i] | has("require")) then (if $all[$i].require == "__unset" then {} else $all[$i].require end) else .req end) as $r
+            | .req = $r
+            | .out += [$all[$i] + {polyfills: (($r // {}) | keys | map(select(test("^symfony/polyfill-php[0-9]+$"))) | sort)}])
+          | .out[]
         | select(.version | test("^[0-9]+\\.[0-9]+\\.[0-9]+(-(alpha|beta|rc)[0-9]+)?$"))
         | (.version | capture("^(?<a>[0-9]+)\\.(?<b>[0-9]+)\\.(?<c>[0-9]+)(-(?<s>alpha|beta|rc)(?<n>[0-9]+))?$")) as $m
-        | {version, date: ((.time // "")[0:10]),
+        | {version, date: ((.time // "")[0:10]), polyfills,
            key: [($m.a | tonumber), ($m.b | tonumber), ($m.c | tonumber),
                  ({"alpha": 0, "beta": 1, "rc": 2}[$m.s // "-"] // 3), (($m.n // "0") | tonumber)]}]' \
   "$P2" > "$TMP/tags.json" || die "could not read the drupal/core versions from packagist" 1
@@ -169,6 +179,14 @@ infolist() {
 # libkeys FILE -> the top-level keys of a core.libraries.yml, sorted.
 libkeys() { sed -n 's/^\([A-Za-z0-9_.-][A-Za-z0-9_.-]*\):[[:space:]]*$/\1/p' "$1" | LC_ALL=C sort -u; }
 
+# minor_polyfills MINOR ALLOW_PRE -> the symfony/polyfill-phpXY packages every
+# tag of MINOR requires (the tags newest_tag picks from), as a JSON array.
+minor_polyfills() {
+  jq -c --arg m "$1." --argjson pre "$2" \
+    '[.[] | select(.version | startswith($m)) | select($pre or .key[3] == 3) | .polyfills]
+     | if length == 0 then [] else reduce .[1:][] as $p (.[0]; . - (. - $p)) end | sort' "$TMP/tags.json"
+}
+
 # generated MINOR TAG -> GEN: the generated fields of MINOR at TAG, as JSON.
 generated() {
   local minor="$1" tag="$2" core dev drupal rec released
@@ -178,6 +196,7 @@ generated() {
   rec="$(sed -n "s/^[[:space:]]*const RECOMMENDED_PHP = '\\([0-9][0-9]*\\.[0-9][0-9]*\\).*/\\1/p" "$drupal" | sed -n '1p')"
   released="$(jq -r --arg v "$minor.0" '.[] | select(.version == $v) | .date' "$TMP/tags.json")"
   GEN="$(jq -n -c --slurpfile core "$core" --slurpfile dev "$dev" --arg latest "$tag" --arg released "$released" \
+    --argjson poly "$(minor_polyfills "$minor" "$pre")" \
     --arg rec "$rec" --arg src "$RAW/$tag/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json" '
     def mm: if . == null then null else (capture("(?<v>[0-9]+\\.[0-9]+)") | .v) end;
     def major: if . == null then null else (capture("(?<v>[0-9]+)") | .v | tonumber) end;
@@ -192,11 +211,12 @@ generated() {
        coder_constraint: ($d["drupal/coder"] // null),
        phpstan_constraint: ($d["phpstan/phpstan"] // null),
        phpstan_drupal_constraint: ($d["mglaman/phpstan-drupal"] // null),
+       polyfills: $poly,
        src: $src}')" || die "could not read the core files at $tag" 1
   return 0
 }
 
-GEN_KEYS='["latest","released","php_min","php_recommended","symfony_major","twig_major","phpunit_constraint","coder_constraint","phpstan_constraint","phpstan_drupal_constraint","src"]'
+GEN_KEYS='["latest","released","php_min","php_recommended","symfony_major","twig_major","phpunit_constraint","coder_constraint","phpstan_constraint","phpstan_drupal_constraint","polyfills","src"]'
 mkdir -p "$TMP/out"
 for file in "$DATA"/targets/*.json; do
   [[ -f "$file" ]] || continue
@@ -220,7 +240,7 @@ for file in "$DATA"/targets/*.json; do
        php_supported: ($o.php_supported // null), php_unsupported: ($o.php_unsupported // null),
        symfony_major: $g.symfony_major, twig_major: $g.twig_major, phpunit_constraint: $g.phpunit_constraint,
        coder_constraint: $g.coder_constraint, phpstan_constraint: $g.phpstan_constraint,
-       phpstan_drupal_constraint: $g.phpstan_drupal_constraint, src: $g.src, php_src: ($o.php_src // null),
+       phpstan_drupal_constraint: $g.phpstan_drupal_constraint, polyfills: $g.polyfills, src: $g.src, php_src: ($o.php_src // null),
        verified: (if $o | has("verified") then $o.verified else true end), checked_at: ($o.checked_at // $asof)}')"
     diffs="$(jq -n -c --argjson o "$old" --argjson n "$new" --argjson k "$GEN_KEYS" --arg f "$rel" --arg m "$minor" \
       '$k[] | select(($o[.] // null) != $n[.]) | {file: $f, path: ".minors[\"\($m)\"].\(.)", from: ($o[.] // null), to: $n[.]}')"

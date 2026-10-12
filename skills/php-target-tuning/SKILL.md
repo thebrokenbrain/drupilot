@@ -15,9 +15,12 @@ allowed-tools: Bash, Read, Edit
 
 # PHP target tuning
 
-`DRUPILOT_PHP_TARGET` is the one knob that decides every PHP-version-dependent
-setting. Resolve it once, then derive everything from it. **Default is `8.3`** —
-the absolute minimum across the entire Drupal 11 series, so it is always safe.
+The PHP target P (`DRUPILOT_PHP_TARGET`) is the one knob behind every
+PHP-version-dependent setting. The upgrade plan turns it into the **PHP window**:
+every PHP from the floor L to P that the ported code must run on. This skill
+reads the window from the plan and never restates a version itself: every
+version below comes from the plan block or from the version data
+(`config/targets/<major>.json`, `config/php/*.json`).
 
 **The upgrade plan.** Every version this procedure needs (target major, test-bed
 core, declared range, PHP floor and target, Rector sets, names) comes from it,
@@ -28,197 +31,140 @@ names no module, or a module other than the subject, run `plan show --subject <s
 
 If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show
 
-## 1. Resolve the target
+## 1. Read the window from the plan
 
-Use the shared helper (env var wins over `config/defaults.json`):
+The plan's `php` block holds:
 
-```bash
-TARGET="$(resolve_php_target)"     # default 8.3
-```
+| Field | What it is |
+|---|---|
+| `floor` (L) | the lowest PHP the declared core range admits, raised to what the code needs (see 5) |
+| `final` (P) | the PHP target |
+| `window` | every PHP minor from L to P |
+| `require_php` | the composer `require.php` the port declares (`>=L` when the range keeps a previous major, else none) |
+| `phpstan_phpversion` | PHPStan's `phpVersion {min, max}`, the window as `PHP_VERSION_ID`s |
+| `phpcompat_testversion` | `L-P`, for PHPCompatibility |
 
-Or get the full picture, including the host and DDEV PHP versions:
+A plan that is not frozen yet is a draft: `/drupilot-setup` resolves it, and
+`upgrade-path.sh --subject <path> --phase draft --root <drupal_root> --json`
+shows it without freezing.
+
+## 2. Resolve and check the target
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/detect-php.sh" --json
 # -> {host_php, ddev_php, target, supported, unconfirmed}
 ```
 
-`supported` and `unconfirmed` come from `php_support` in `defaults.json`
-(`supported: ["8.3","8.4"]`, `unconfirmed: ["8.5"]`). The matching helpers are
-`php_target_supported VER` and `php_target_unconfirmed VER`; which core minor
-runs which PHP is `php_supported_for MINOR VER` (`yes`, `no` or `unknown`).
+The shell helpers (from `scripts/lib/common.sh`) answer the rest:
 
-## 2. The PHP 8.5 caveat (critical)
+- `resolve_php_target`: P (the environment wins over `.drupilot.json` and the
+  defaults); `resolve_php_target_for T`: the default of target major T
+  (`php_defaults` in `config/targets/<T>.json`).
+- `php_supported_for MINOR VER`: `yes`, `no` or `unknown` for a core minor,
+  from drupal.org's PHP requirements as the version data records them. An
+  unlisted minor is `unknown`: never assume it.
+- `target_get T '.minors["<minor>"].php_supported'`: the whole list of a minor.
+- `php_target_unconfirmed VER`: true for a PHP whose Rector level set is not
+  assumed (`rector_php_set_arg` then falls back to the highest confirmed set,
+  with a warning).
 
-PHP support per Drupal 11 branch (drupal.org PHP requirements, read through
-`https://www.drupal.org/api-d7/node.json?nid=2891690` on 2026-10-03):
+**The PHP 8.5 caveat.** Drupal supports PHP 8.5 only from the core minor whose
+`php_supported` lists it: check with `php_supported_for`, never from memory. When
+the target is 8.5, say so: `ddev-up.sh` warns when the pinned or installed core is
+older, and no Rector `php85` set is assumed. Never emit a set or image the data
+does not confirm; detect it at runtime and degrade.
 
-| D11 branch | PHP min | PHP 8.5 |
-|---|---|---|
-| 11.0 | 8.3 | No |
-| 11.1 | 8.3 | No |
-| 11.2 | 8.3 | No |
-| 11.3 | 8.3 | Yes |
-| 11.4 | 8.3 | Yes |
+## 3. How the window flows into each tool
 
-- **Minimum across the whole 11.x series: PHP 8.3.** drupilot recommends 8.4
-  (`php_support.recommended`).
-- **PHP 8.5 needs Drupal 11.3 or later.** `php_supported_for "$MINOR" 8.5` says
-  `no` for 11.2 and earlier; an unlisted minor is `unknown` — never assume it.
-- **No Rector `php85` set is assumed.** `php_target_unconfirmed "$TARGET"` is true
-  for 8.5: `rector_php_set_arg` then uses `php84` with a warning. Never emit a
-  `php85`/`UP_TO_PHP_85` set or assume a DDEV 8.5 image exists — detect them at
-  runtime and degrade gracefully, so an 8.5 target never breaks the flow.
-- When the target is 8.5, say so and check the core: `ddev-up.sh` warns, when it
-  creates the project, if the lock-pinned core (else the lowest minor the Drupal
-  target admits; a dev branch or stability flag is not guessed) is older than
-  11.3, and again when the installed core is older. Without a lock-pinned core,
-  Composer installs the newest core the target admits, so that first warning is
-  about the declared range; a lock-pinned core is installed as is
-  (`DRUPILOT_DETERMINISTIC=false` or `lock_clear` resolves it fresh).
+### Rector — the floor, not the target (`rector.php`, ADR 0002, ADR 0019)
 
-## 3. How the target flows into each tool
+The ported code must keep running on L, so the main pass targets L:
+`->withPhpVersion(PhpVersion::PHP_<L>)` and `->withPhpSets(php<L>: true)`
+(`rector_floor_tokens`). Rector drops every version-bound rule above L, and the
+level sets stop there. A deprecation fix whose output still runs on L (the
+implicitly nullable parameter) runs in a second, narrow pass, `rector-compat.php`,
+when L is below the PHP that deprecates it and the window reaches it
+(`rector_compat_needed`; its rules are `RECTOR_COMPAT_RULES`). The rules that
+would break Drupal (the `deny` rows of `config/php/rules.json`: first-class
+callables in Form API callbacks, `readonly`, `#[\Override]` while the range spans
+a previous major, `__sleep` → `__serialize`) are skipped by the template. The
+Drupal sets come from the plan's `rector` block. Render the configs only through
+`scripts/env/render-templates.sh` (or let `run-rector.sh` do it): an untouched
+render follows the plan, a hand-edited one is kept with a warning.
 
-Resolve `TARGET` first, then:
+### PHPStan — `phpstan.neon` (ADR 0020)
 
-### Rector — the PHP floor, not the target (`rector.php`, ADR 0002)
+The template renders `phpVersion: {min, max}` from `php.phpstan_phpversion`, so
+PHPStan judges the code for every PHP of the window. The level is
+`DRUPILOT_PHPSTAN_LEVEL` in Phase 1 and `DRUPILOT_PHPSTAN_LEVEL_REFACTOR` in Phase
+2 (the refactor profile).
 
-Rector does not follow the target directly. The ported code must keep running on
-the lowest PHP its declarations admit, so the main pass targets the **PHP floor
-L** (`rector_php_bounds`): the highest of the lowest PHP the core range
-`core-strategy.sh` recommends supports (from `config/targets/<major>.json`) and
-the floor of the composer `require.php` it will enforce (only when the subject
-has a `composer.json`), never above the target. For `^10 || ^11` with the
-default `DRUPILOT_REQUIRE_PHP_FLOOR=detect` that is usually 8.1 (8.2 when the
-code already needs 8.2; the target with `=target`); for `^11` it is 8.3. A range
-leg the data does not hold (a Drupal 9 leg kept as-is) leaves the floor to the
-enforced `require.php`, else the lowest PHP in `config/php/versions.json`, with
-a warning. The ceiling U is max(target, the highest PHP of the range's known
-legs). `rector.php`
-renders `->withPhpVersion(PhpVersion::PHP_<L>)` and `->withPhpSets(php<L>: true)`:
-Rector drops every version-bound rule above L, and the level sets (cumulative,
-one per run) stop at L. A floor of 8.5 uses the `php84` sets (no `php85` set is
-assumed). PHP deprecation fixes whose output still runs on L (`Foo $x = NULL` ->
-`?Foo $x = NULL`, deprecated in 8.4) run in a second, narrow pass,
-`rector-compat.php`, rendered and run only when L < 8.4 and the range reaches
-8.4 (`rector_compat_needed`).
+### PHPCS — `testVersion`
 
-The Drupal sets (the plan's `rector.drupal_sets` and `rector.breaking_sets`: each hop's set family per minor up to the test-bed's minor, plus the edge's always and breaking sets (ADR 0019; for a port from Drupal 10 to 11, `DRUPAL_100` to `DRUPAL_103`): read them from the plan block) are independent of the PHP target. The PHP level set is applied minus the
-rules the template skips (`ArrayToFirstClassCallableRector`,
-`AddOverrideAttributeToOverriddenMethodsRector`, `ReadOnlyPropertyRector`,
-`ReadOnlyClassRector`, `NullToStrictStringFuncCallArgRector`,
-`SleepToSerializeRector`, `WakeupToUnserializeRector`,
-`AddOverrideAttributeToOverriddenPropertiesRector`): they are not compatibility
-fixes, they break Form API callbacks / serialization / Drupal 10, and the
-`#[\Override]` and `readonly` they add would also raise the PHP floor
-`detect-php-floor.sh` reports. The `rector.php.tmpl` template encodes this;
-`scripts/env/render-templates.sh` (and `run-rector.sh` when it writes a missing
-`rector.php`) fills in the floor (`rector_floor_tokens`: `8.1` → `PHP_81` /
-`php81`) — never edit it by hand. An untouched render is regenerated when the
-floor moves (the core target chosen at port time differs from the one setup
-assumed); a hand-edited one is kept, with a warning. (The digests complementary
-pass runs separately via `--config`, see the `minimal-port` skill.)
-
-### PHPStan — level and expectations (`phpstan.neon`)
-
-`DRUPILOT_PHPSTAN_LEVEL` (default `2`) is the base level for Phase 1 deprecation
-detection; Phase 2 raises it to 5–6 via `DRUPILOT_PHPSTAN_LEVEL_REFACTOR`
-(default `6`). The PHP target itself does not change the level number, but it
-changes which language-level findings are valid — analyze against the same PHP
-the code will run on. `render-templates.sh` substitutes `{{PHPSTAN_LEVEL}}` in
-`phpstan.neon.tmpl` (or pass `--set PHPSTAN_LEVEL=N`).
-
-### PHPCS — sniffs (`phpcs.xml.dist`)
-
-`run-phpcs.sh` uses the subject's own ruleset when it ships a loadable one
-(`DRUPILOT_PHPCS_RULESET=auto`, the default), else `Drupal,DrupalPractice`
-(`DRUPILOT_PHPCS_RULESET=drupilot` forces the latter). The PHP target reaches
-PHPCompatibility through `--runtime-set testVersion <target>-`, passed on every
-run (override with `DRUPILOT_PHPCS_TEST_VERSION`, e.g. `8.1-` while Drupal 10 is
-kept); a ruleset's own `<config name="testVersion">` is never overridden, and a
-testVersion wrongly declared as a `<property>` inside a `<rule>` is passed
-through, which avoids PHPCompatibility's "trim(): Passing null" failure. The
-coder branch is chosen by
-`DRUPILOT_CODER_CONSTRAINT` (default `^8.3` → PHPCS 3.x; `^9.0` → PHPCS 4.x), not
-by the PHP target — but a higher PHP target can surface additional sniff results
-(e.g. new syntax). Keep coder and the PHP target consistent so sniffs match the
-runtime.
+`run-phpcs.sh` passes `--runtime-set testVersion <P>-` (override with
+`DRUPILOT_PHPCS_TEST_VERSION`), which only matters to a ruleset that references
+PHPCompatibility; a ruleset's own `<config name="testVersion">` is never
+overridden. The subject's own ruleset wins when it loads
+(`DRUPILOT_PHPCS_RULESET=auto`).
 
 ### DDEV — `php_version`
 
-```bash
-ddev config --project-type="$(bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; target_ddev_type')" --docroot=web --php-version="$(resolve_php_target)"
-```
+`ddev-up.sh` configures the test-bed with `--php-version=$(resolve_php_target)`:
+the test suite runs on P. A reconfigure needs `ddev restart`.
 
-`ddev-up.sh` already passes `--php-version=$(resolve_php_target)`. With 8.5 it
-warns that the DDEV image may be missing (and when the core is older than 11.3);
-fall back to `8.3` rather than failing `ddev start`.
+## 4. The php stage: the whole window, checked
 
-## 4. Changing the target
+The pipeline's `php` stage (`docs/concepts/php-and-core-target.md`) checks every
+PHP of the window, not only the test-bed's:
 
-To retarget, set the env var (it overrides `defaults.json`):
+- `scripts/analysis/php-target.sh` finds, in the code only (comments and
+  strings blanked), the constructs of `config/php/rules.json` a PHP of the window
+  removed or deprecated (`removed-blocking`, `report-only`);
+- `scripts/analysis/php-lint-window.sh` runs `php -l` on each PHP of the window,
+  in throwaway `php:X.Y-cli` containers (skipped without Docker);
+- they become `human` worklist items: `removed-in-target-php` and
+  `does-not-compile` block (and a file the floor's PHP does not compile), while
+  `fix-needs-php-above-floor` and `deprecated-no-rule` are reported.
+  `port-summary.sh --strict` exits 3 while a blocking one is open.
 
-```bash
-export DRUPILOT_PHP_TARGET=8.4
-```
+Never rewrite a removed construct on your own: tell the developer, who fixes it
+or raises the floor.
 
-Then re-derive: re-run `detect-php.sh --json`, re-plan for the new target
-(`upgrade-path.sh --subject <path> --phase draft --root <drupal_root> --freeze
---json` with `DRUPILOT_PHP_TARGET=8.4` exported, or re-run `/drupilot-setup`: the
-templates follow the frozen plan's PHP range, and a final plan refuses another
-PHP target with `final-changes-frozen`), regenerate `rector.php`, `phpstan.neon`
-and `phpcs.xml.dist` from the templates (`render-templates.sh --root
-<drupal_root> --subject-path <path> --force`; the Rector floor follows the
-declared core range and never exceeds the target), and reconfigure DDEV (`ddev
-config --php-version=8.4` then `ddev restart`). Keep all four in lockstep — a mismatch between the Rector PHP
-set, PHPStan, PHPCS and the DDEV runtime produces confusing, inconsistent
-findings.
-
-## 5. Cross-reference: the core target and `require.php`
-
-The PHP target is also the **floor of the port**. The Drupal core-target decision
-itself lives in `scripts/analysis/core-strategy.sh` (helper `recommend_core_target`),
-not here — but the two meet at one rule: when a port **keeps Drupal 10**
-(`core_version_requirement: ^10 || ^11`) it declares composer
-`require.php: ">=<floor>"`, because Drupal 10's own minimum is PHP 8.1 while the
-port requires at least the target (>= 8.3). A `^11`-only target needs no
-`require.php` (core enforces it). The strategy is set by
-`DRUPILOT_CORE_TARGET_STRATEGY` (default `auto`). This skill stays the source of
-truth for the PHP target itself; it does **not** duplicate the core-target / SemVer
-logic.
-
-### 5.1 Two PHP-version questions — floor vs. target compatibility
+## 5. The floor: what the code needs
 
 `scripts/analysis/detect-php-floor.sh` is a heuristic scan of the code for
-PHP 8.2/8.3/8.4 constructs and answers both directions, controlled by
-`DRUPILOT_REQUIRE_PHP_FLOOR` (`detect` default | `target` conservative):
+constructs newer than the floor (a fallback: the `php -l` legs and the test
+suite are the authoritative checks). `DRUPILOT_REQUIRE_PHP_FLOOR` decides how it
+is used: `detect` (default) widens `require.php` down to what the code needs
+when the port keeps a previous major; `target` keeps it at P.
 
-- **Floor (look down).** The lowest PHP the code can run on. With `detect`, this
-  *widens* `require.php` below the target when honest (e.g. `>=8.1` when the code
-  uses no 8.2+ constructs), for genuine Drupal 10 support. Lowering is best-effort
-  — surface the "confirm with PHPCompatibility" warning. (Note: Rector's
-  `->withPhpSets(php8X)` can *raise* the floor by modernizing syntax, which is the
-  tension with keeping Drupal 10 on PHP 8.1.)
-- **Target compatibility (look up).** `php_floor_target_compatible` is false when
-  the code uses a construct **newer than the target** (e.g. an 8.4 feature with
-  target 8.3) — that fatals on Drupal 11/PHP 8.3, so raise `DRUPILOT_PHP_TARGET`
-  or remove the construct. Within one PHP major, higher minors are backwards
-  compatible (8.4 runs 8.3 code bar non-fatal deprecations), so a floor ≤ target
-  means OK.
+**Polyfills (ADR 0029).** A function a newer PHP adds does not raise the floor
+when every core the range admits ships the `symfony/polyfill-phpXY` package that
+defines it: `core_range_polyfills '<range>'` lists those packages and functions,
+and `detect-php-floor.sh --subject <path> --range '<range>' --json` marks such a
+signal `polyfilled`. A range that still admits a core without the polyfill (a
+previous major, an early minor) gets none: the floor rises, which is right.
 
-This scan is a cheap static signal, **not** the authoritative answer: the real
-proof that the port runs on the target is the **test suite executing on the target
-PHP version inside DDEV** (the preservation gate). Report target compatibility as
-verified by tests, or "not verified" when there are no tests.
+**Target compatibility.** `target_compatible` is false when the code uses a
+construct newer than P: it fatals on the test-bed. Raise P or remove the
+construct.
+
+## 6. Changing the target
+
+The setup froze P in the plan; the port never changes it (a different
+`--php X.Y` on `/drupilot-port` is refused with `final-changes-frozen`). To
+retarget, re-plan: `/drupilot-setup <path> --php X.Y` (or `upgrade-path.sh
+--phase draft --freeze` with `DRUPILOT_PHP_TARGET=X.Y` exported). The templates
+follow the frozen plan (`render-templates.sh --root <drupal_root>
+--subject-path <path> --force` re-renders untouched copies), and DDEV needs
+`ddev config --php-version=X.Y` then `ddev restart`. Keep the four in lockstep:
+a mismatch between Rector's floor, PHPStan's window, PHPCS and the runtime gives
+inconsistent findings.
 
 ## Gotchas
 
-- **One PHP version per run.** Do not stack `php83` + `php84` Rector sets; the
-  main pass uses the floor's set only.
-- **Never hardcode 8.5 anywhere.** Go through `php_target_unconfirmed` and
-  `php_supported_for`, and detect the concrete capability (Rector constant, DDEV
-  image) at runtime.
-- A reconfigure (`ddev config --php-version=...`) needs `ddev restart` to take
-  effect.
-- `defaults.json` is the fallback; an exported `DRUPILOT_PHP_TARGET` always wins —
-  check the env when a target seems "wrong".
+- **One PHP level set per run.** The main pass uses the floor's set only.
+- **Never hardcode a PHP version** in a prompt, a config or a report: read the
+  plan, `php_supported_for`, `php_target_unconfirmed` and the version data.
+- An exported `DRUPILOT_PHP_TARGET` always wins over `.drupilot.json` and the
+  defaults: check the environment when a target seems wrong.

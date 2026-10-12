@@ -52,7 +52,7 @@ Generate a .patch of the port WITHOUT contributing — offline, no push, no reba
 
 Phase 1 minimal port of a Drupal 9/10 module/theme to Drupal 11 — apply official drupal-rector, then the version-filtered digests layer, then ad-hoc rules, plus the minimal manual changes (core_version_requirement etc.), and validate with phpcbf/phpcs/phpstan. Use when the user wants the subject to run on D11 with its original behavior intact, without architectural refactoring.
 
-- **Arguments:** `[module-or-theme-path]`
+- **Arguments:** `[module-or-theme-path] [--php X.Y]`
 - **Allowed tools:** Bash, Read, Write, Edit, Glob, Grep, Task, Skill, AskUserQuestion
 
 ## /drupilot-refactor

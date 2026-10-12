@@ -1,6 +1,6 @@
 ---
 description: Phase 1 minimal port of a Drupal 9/10 module/theme to Drupal 11 — apply official drupal-rector, then the version-filtered digests layer, then ad-hoc rules, plus the minimal manual changes (core_version_requirement etc.), and validate with phpcbf/phpcs/phpstan. Use when the user wants the subject to run on D11 with its original behavior intact, without architectural refactoring.
-argument-hint: "[module-or-theme-path]"
+argument-hint: "[module-or-theme-path] [--php X.Y]"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, Skill, AskUserQuestion
 ---
 
@@ -11,7 +11,12 @@ functionality**, with the *minimum* changes. This is **not** a refactor — no
 architecture changes, no API modernization for its own sake. Anything beyond
 mechanical compatibility is explicitly deferred to Phase 2 (`/drupilot-refactor`).
 
-Subject path argument: `$1` (fallback: the current working directory).
+Subject path argument: `$1` (fallback: the current working directory). A
+`--php X.Y` in `$ARGUMENTS` names the PHP target the port expects. The setup froze
+it in the plan, and the port never changes it: pass the value to the final plan
+below as `DRUPILOT_PHP_TARGET=<X.Y>`. A different value is refused there
+(`final-changes-frozen`, field `php.final`): tell the developer to re-plan with
+`/drupilot-setup <path> --php X.Y`.
 
 **Decision log — throughout the port.** The moment you revert or hand-edit a
 change Rector made, ignore or override a script's verdict (port-safety,
@@ -111,7 +116,8 @@ PHP floor, so a choice that is not persisted ports to the floor of `auto`.
 
 **Resolve and freeze the final upgrade plan (AR-06, ADR 0018).** The setup froze
 a draft plan in the root's lock; the port resolves the final one over it with
-the answered strategy (add `--auto` in an autonomous run):
+the answered strategy (add `--auto` in an autonomous run, and prefix
+`DRUPILOT_PHP_TARGET=<X.Y>` when `--php X.Y` was given):
 
 ```bash
 DRUPILOT_CORE_TARGET_STRATEGY=<auto|keep-d10|d11-only> bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "$1" --phase final --root "<drupal_root>" --freeze --json

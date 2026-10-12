@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Core polyfills (T-M5-08, ADR 0029) and detect-php-floor.sh's 8.5 row:
+# - core_range_polyfills: the symfony/polyfill-phpXY packages every core minor
+#   of a range provides (required by every tag of the minor, or native at the
+#   minor's minimum PHP) and their unconditional functions: none for
+#   ^10.3 || ^11, php84 from ^11.2, php84 and php85 for ^11.3 || ^12 (12.0
+#   needs PHP 8.5: native there), php86 too for ^12; a range with no data
+#   minor gives none;
+# - detect-php-floor.sh: without --range its output keeps the 0.9 shape; with
+#   --range, a polyfilled function's signal is kept, marked polyfilled, and
+#   does not raise the floor, while one no polyfill provides does; the mb_*
+#   functions (polyfilled only with ext-mbstring) always count;
+# - the 8.5 row: the pipe operator, #[\NoDiscard], the (void) cast and
+#   array_first(); a || operator is no pipe. Docker-free.
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
+t_isolate
+# shellcheck source=../../scripts/lib/common.sh
+. "$T_LIB"
+
+p() { core_range_polyfills "$1" | jq -c '.packages'; }
+assert_eq "^10.3 || ^11: no polyfill every core requires" "$(p '^10.3 || ^11')" '[]'
+assert_eq "^11.2: php84" "$(p '^11.2')" '["symfony/polyfill-php84"]'
+assert_eq "^11.3 || ^12: php84 and php85 (native on 12.0's PHP 8.5)" "$(p '^11.3 || ^12')" '["symfony/polyfill-php84","symfony/polyfill-php85"]'
+assert_eq "^12: php86 too" "$(p '^12')" '["symfony/polyfill-php84","symfony/polyfill-php85","symfony/polyfill-php86"]'
+assert_eq "^9 (no data minor): none" "$(core_range_polyfills '^9')" '{"functions":[],"packages":[]}'
+assert_eq "^11.2: the unconditional functions only (no mb_*)" "$(core_range_polyfills '^11.2' | jq -c '.functions')" \
+  '["array_all","array_any","array_find","array_find_key","fpow"]'
+
+S="$T_TMP/m"; mkdir -p "$S"
+printf 'name: M\ntype: module\n' > "$S/m.info.yml"
+printf '<?php\nfunction m_f(array $a) { return array_find($a, fn ($x) => $x > 1); }\n' > "$S/m.module"
+df() { t_run "$T_SH" "$T_REPO/scripts/analysis/detect-php-floor.sh" --subject "$S" --json "$@"; }
+df
+assert_eq "no --range: array_find() raises the floor to 8.4, the 0.9 keys only" \
+  "$T_RC|$(jq -c '[.floor, (keys | sort), [.signals[] | keys | sort]]' "$T_OUT")" \
+  '0|["8.4",["floor","method","scanned_files","signals","target","target_compatible"],[["location","pattern","version"]]]'
+df --range '^11.2'
+assert_eq "^11.2: array_find() is polyfilled: floor 8.1, the signal kept and marked" \
+  "$(jq -c '[.floor, .range, .polyfills, [.signals[] | [.version, .location, .polyfilled]]]' "$T_OUT")" \
+  '["8.1","^11.2",["symfony/polyfill-php84"],[["8.4","m.module:2",true]]]'
+df --range '^10.3 || ^11'
+assert_eq "^10.3 || ^11: no polyfill, floor 8.4" "$(jq -r '.floor' "$T_OUT")" "8.4"
+printf '<?php\nfunction m_t(string $s) { return mb_trim($s); }\n' > "$S/t.php"
+df --range '^11.2'
+assert_eq "mb_trim() (polyfilled only with ext-mbstring) still counts: floor 8.4 at t.php" \
+  "$(jq -c '[.floor, [.signals[] | select(.version == "8.4") | [.location, (.polyfilled // false)]]]' "$T_OUT")" \
+  '["8.4",[["t.php:2",false]]]'
+rm -f "$S/t.php"
+
+# The 8.5 row.
+printf '<?php\n$ok = $a || $b;\n' > "$S/or.php"
+df
+assert_eq "a || operator is no pipe operator" "$(jq -r '.floor' "$T_OUT")" "8.4"
+for c in '$n = "x" |> strlen(...);' '#[\NoDiscard]' '(void) m_f([]);' '$f = array_first([1]);'; do
+  printf '<?php\n%s\n' "$c" > "$S/n.php"
+  df --range '^11.3'
+  assert_eq "8.5: $c" "$(jq -c '[.floor, ([.signals[] | select(.version == "8.5") | .location] | length)]' "$T_OUT")" '["8.5",1]'
+done
+printf '<?php\nset_error_handler(fn () => true);\n$h = get_error_handler();\n' > "$S/n.php"
+df --range '^11.3'
+assert_eq "get_error_handler() on ^11.3 (polyfill-php85): no 8.5 floor" "$(jq -c '[.floor, [.signals[] | select(.version == "8.5") | .polyfilled]]' "$T_OUT")" '["8.1",[true]]'
+t_done

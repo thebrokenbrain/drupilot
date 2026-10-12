@@ -5,7 +5,8 @@
 # skill or hook calls it; scripts/dev/check.sh runs it as its `data` gate):
 #   schema      every $ref of the schemas resolves (whatever the data);
 #               config/targets/<major>.json (schemas/target.schema.json),
-#               config/php/versions.json and rules.json, config/paths/eras.json
+#               config/php/versions.json, rules.json and polyfills.json,
+#               config/paths/eras.json
 #               and graph.json, and every config/catalog/*.json validate
 #               against their schema (the jq validator, scripts/dev/
 #               jsonschema.jq); the eight core files (targets/10, 11 and 12,
@@ -91,6 +92,7 @@ for f in "$ROOT"/config/targets/*.json; do
 "
 done
 for p in "php/versions.json	php-versions.schema.json" "php/rules.json	php-rules.schema.json" \
+         "php/polyfills.json	php-polyfills.schema.json" \
          "paths/eras.json	paths.schema.json" "paths/graph.json	paths.schema.json" \
          "toolchain-reference.json	toolchain.schema.json"; do
   f="${p%%	*}"
@@ -183,6 +185,16 @@ if [[ -f "$RULES" ]]; then
     (.rules[] | select(.kind == "removed-no-rule" and .verified == true and ((.src // "") | test("php\\.net") | not)) | "\(.id): a verified removed-no-rule rule must cite php.net"),
     (.rules[] | select(.kind == "removed-no-rule" and .rule != null) | "\(.id): a removed-no-rule rule has no Rector rule")' "$RULES" 2>&1 || true)"
   report coherence config/php/rules.json "$errs"
+fi
+# Every polyfill a core minor requires is described in php/polyfills.json.
+POLY="$ROOT/config/php/polyfills.json"
+if [[ -f "$POLY" ]]; then
+  errs="$(for f in "$ROOT"/config/targets/*.json; do
+      jq -r --slurpfile p "$POLY" --arg f "targets/${f##*/}" '.minors | to_entries[] | .key as $m
+        | ((.value.polyfills // [])[] | . as $x | select(($p[0].packages | has($x)) | not)
+           | "\($f) \($m) requires \(.), which php/polyfills.json does not describe")' "$f" 2>&1 || true
+    done)"
+  report coherence config/php/polyfills.json "$errs"
 fi
 # tpl_rules FILE VAR -> the rule classes of a Rector template's VAR list, one
 # per line, as written in the PHP source ('Rector\\Php81\\...').

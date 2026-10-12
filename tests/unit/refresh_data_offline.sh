@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # scripts/dev/refresh-data.sh --offline (T-M2-05) on tests/fixtures/
 # refresh-data: two runs on the same input give byte-identical files and
-# output; the generated fields come from the cache while the hand fields stay;
+# output; the generated fields come from the cache (the polyfills every tag of
+# a minor requires, through p2's minified inheritance) while the hand fields
+# stay;
 # a second run changes nothing; a supported major ignores pre-release tags;
 # --dry-run writes nothing; a hand-set verified:false is kept; a removal the
 # tree contradicts, an extension or library that disappears unlisted and a
@@ -32,10 +34,12 @@ assert_eq "generated: latest, released, php_min, php_recommended" \
 assert_eq "generated: the dev constraints" \
   "$(jq -c '.minors["11.3"] | [.phpunit_constraint, .coder_constraint, .phpstan_constraint, .phpstan_drupal_constraint]' "$T11")" \
   '["^11.5.50","^8.3.30","^1.12.27 || ^2.1.26","^1.3.9 || ^2.0.9"]'
+assert_eq "generated: the polyfills every tag of the minor requires (11.3.0 inherits 11.3.18's require)" \
+  "$(jq -c '.minors["11.3"].polyfills' "$T11")" '["symfony/polyfill-php84","symfony/polyfill-php85"]'
 assert_eq "hand fields kept" "$(jq -c '.minors["11.3"] | [.php_supported, .php_unsupported, .verified]' "$T11")" '[["8.3","8.4","8.5"],["8.1","8.2","8.6"],true]'
 assert_eq "changed minor and file are stamped" "$(jq -c '[.minors["11.3"].checked_at, .as_of]' "$T11")" '["2026-10-04","2026-10-04"]'
 assert_eq "a supported major ignores 11.5.0-beta1: 11.5 stays detect" "$(jq -c '.minors["11.5"]' "$T11")" '{"status":"detect"}'
-assert_eq "the changes are listed" "$(jq -c '[.changed[].path] | length' "$T_TMP/a.out")" "11"
+assert_eq "the changes are listed" "$(jq -c '[.changed[].path] | length' "$T_TMP/a.out")" "12"
 cp "$T11" "$T_TMP/a.json"
 run "$T_TMP/a" > "$T_TMP/a2.out"
 assert_eq "a second run changes nothing" "$(jq -c '.changed' "$T_TMP/a2.out")" "[]"
@@ -43,7 +47,7 @@ assert_eq "and leaves the file as it was" "$(cmp "$T11" "$T_TMP/a.json" && echo 
 
 fresh c
 run "$T_TMP/c" --dry-run > "$T_TMP/c.out"
-assert_eq "--dry-run reports the changes" "$(jq -c '[.dry_run, (.changed | length)]' "$T_TMP/c.out")" "[true,11]"
+assert_eq "--dry-run reports the changes" "$(jq -c '[.dry_run, (.changed | length)]' "$T_TMP/c.out")" "[true,12]"
 assert_eq "--dry-run writes nothing" "$(cmp "$T_TMP/c/targets/11.json" "$FX/data/targets/11.json" && echo same)" "same"
 
 fresh d

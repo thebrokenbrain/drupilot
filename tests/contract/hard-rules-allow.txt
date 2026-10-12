@@ -22,7 +22,7 @@ H4 scripts/analysis/classify-deprecations.sh 6
 H4 scripts/analysis/convert-attributes.sh 3
 H4 scripts/analysis/core-strategy.sh 1
 H4 scripts/analysis/deps-status.sh 3
-H4 scripts/analysis/detect-php-floor.sh 19
+H4 scripts/analysis/detect-php-floor.sh 24  # the curated PHP construct table (its 8.5 rows read on php.net migration85, T-M5-08): a fallback heuristic whose versions are its data
 H4 scripts/analysis/layer-report.sh 2
 H4 scripts/analysis/lint-extension-metadata.sh 2
 H4 scripts/analysis/port-report.sh 12

@@ -189,6 +189,7 @@
         "phpunit_constraint": {"type": ["string", "null"]},
         "coder_constraint": {"type": ["string", "null"]},
         "phpstan_constraint": {"type": ["string", "null"]},
+        "polyfills": {"description": "Generated: the symfony/polyfill-phpXY packages every tag of this minor requires directly (from its Packagist metadata), sorted: what a module declaring this minor can count on. Absent until refresh-data.sh derived it.", "type": "array", "items": {"type": "string", "pattern": "^symfony/polyfill-php[0-9]+$"}},
         "phpstan_drupal_constraint": {"type": ["string", "null"]},
         "src": {"description": "Generated: where the generated fields come from.", "$ref": "#/$defs/src"},
         "php_src": {"description": "Hand: where php_supported/php_unsupported come from (null when both are null).", "type": ["string", "null"]},

@@ -33,8 +33,10 @@
 #                  0.9 names d11-only and keep-d10 are aliases); keep-current
 #                  is a resolved output only, never an input
 #   L              PHP floor: max(php_min(F), the code's floor
-#                  (detect-php-floor.sh), the subject's require.php); L = P
-#                  with DRUPILOT_REQUIRE_PHP_FLOOR=target
+#                  (detect-php-floor.sh --range C: a function every core of C
+#                  provides through a polyfill does not raise it), the
+#                  subject's require.php); L = P with
+#                  DRUPILOT_REQUIRE_PHP_FLOOR=target
 #   P              PHP final: DRUPILOT_PHP_TARGET, else targets/T.json
 #                  .php_defaults.env; it must be a PHP M supports, M the
 #                  newest released minor of T or its pre-release minor in
@@ -432,7 +434,15 @@ if [[ "$FLOOR_STRATEGY" == "target" ]]; then
 else
   L=""
   _max_php "$(php_min_at "$F")"
-  _max_php "$DETECTED"
+  # The code's floor once the range is known: a function every core of C
+  # provides through a polyfill does not raise it (detect-php-floor.sh --range).
+  DETECTED_L="$DETECTED"
+  if [[ -n "$DETECTED" ]]; then
+    DETECTED_L="$("$BASH" "$(plugin_root)/scripts/analysis/detect-php-floor.sh" --subject "$SUBJECT_ABS" --range "$C" --json 2> /dev/null \
+      | jq -r '.floor // empty' 2> /dev/null || true)"
+    [[ -n "$DETECTED_L" ]] || DETECTED_L="$DETECTED"
+  fi
+  _max_php "$DETECTED_L"
   [[ ! -f "$SUBJECT_ABS/composer.json" ]] || _max_php "$(php_constraint_floor "$(jq -r '.require.php // empty' "$SUBJECT_ABS/composer.json" 2> /dev/null || true)")"
   [[ -n "$L" ]] || L="$PHP"
 fi
