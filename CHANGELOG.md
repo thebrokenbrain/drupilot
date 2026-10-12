@@ -532,8 +532,9 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   - It fails closed: an `all.php` it cannot read whole stops the digests
     pass (exit 4) rather than drop a rule silently. Once the module has
     verdicts, an `--apply` needs a dry-run of the same sources and digests
-    rules with a verdict on every rule it changed files with (exit 4
-    otherwise, with the remedy).
+    rules with a verdict on every rule it changed files with, and runs no
+    rule that dry-run did not (exit 4 otherwise). A refusal prints its own
+    remedy, never the crash advice.
   - `scripts/analysis/digests-decisions.sh` records each verdict, keyed by
     the rule, the digests SHA and the module's sources, in the hidden
     `digests-decisions.json`.

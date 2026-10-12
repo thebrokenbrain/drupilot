@@ -215,7 +215,20 @@ rr --apply
 assert_eq "an --apply with rules the dry-run changed files with and no verdict: refused (exit 4)" \
   "$T_RC|$(j '.digests_status')|$(grep -c 'drupilot/digests' "$R/calls" || true)" '4|"error"|0'
 assert_match "  it names them" "$(tr '\n' ' ' < "$T_ERR")" "no verdict \(CRuleRector,DRuleRector,ERuleRector\)"
+assert_eq "  a refusal is not reported as a crash" "$(grep -c 'CRASHED' "$T_ERR" || true)|$(grep -c 'The digests pass did not run' "$T_ERR" || true)" "0|1"
+cp "$(project_state_dir "$R/$S")/rector-dryrun.json" "$T_TMP/rec.keep"
+jq '.digests_review.rules = "x"' "$T_TMP/rec.keep" > "$(project_state_dir "$R/$S")/rector-dryrun.json"
+rr --apply
+assert_eq "  a dry-run record the gate cannot read: refused, never applied" "$T_RC|$(grep -c 'drupilot/digests' "$R/calls" || true)" "4|0"
+cp "$T_TMP/rec.keep" "$(project_state_dir "$R/$S")/rector-dryrun.json"
 dd --accept CRuleRector,ERuleRector --reject DRuleRector
+cp "$R/rector.php" "$T_TMP/rector.keep"
+sed "s/'DrupalRector.*DRUPAL_100', //" "$T_TMP/rector.keep" > "$R/rector.php"
+rr --apply
+assert_eq "  rector.php no longer loads a set: the apply would run rules the dry-run did not, refused" \
+  "$T_RC|$(grep -c 'drupilot/digests' "$R/calls" || true)" "4|0"
+assert_match "  it names them" "$(tr '\n' ' ' < "$T_ERR")" "did not \(ARuleRector,FRuleRector\)"
+cp "$T_TMP/rector.keep" "$R/rector.php"
 rr --apply
 assert_eq "  every rule decided: applied" "$T_RC|$(j '.rule_hits.digests | keys')" '0|["BRuleRector","CRuleRector","ERuleRector"]'
 # A re-port of the ported sources where no digests rule changes anything any
@@ -306,6 +319,9 @@ assert_eq "clean.sh: the digests verdicts are forgotten, the state kept" \
 # The helpers on their own.
 assert_eq "digests_rules: file, registered class and nid of each rule (not the code sample's class)" \
   "$(digests_rules "$DG/rector" | awk -F'\t' '{ printf "%s:%s ", $2, $3 }')" "ARuleRector:111 BRuleRector:222 CRuleRector:333 DRuleRector:444 ERuleRector:555 FRuleRector:666 "
+printf '%s\n' '<?php' "\$u = 'https://x'; /* not yet:" "  'DrupalRector\\\\Set\\\\Drupal11SetList::DRUPAL_110'," '*/' "->withSkip(['*/tests/*'])" "->withSets([\\DrupalRector\\Set\\Drupal10SetList::DRUPAL_100]);" > "$T_TMP/strings.php"
+assert_eq "_digests_php_code: a URL or a glob in a string is not a comment; a block after one still is" \
+  "$(_digests_php_code "$T_TMP/strings.php" | grep -oE 'Drupal[0-9]+SetList::[A-Z0-9_]+' | tr '\n' ' ')" "Drupal10SetList::DRUPAL_100 "
 assert_eq "digests_official_classes: the classes of the sets rector.php loads, nested includes followed, comments left out" \
   "$(digests_official_classes "$R" "$R/rector.php" | tr '\n' ' ')" "ImplementedRector OtherLoadedRector "
 printf 'digests:\n  '"'"'9'"'"':\n    status: implemented\n    class: [ImplementedRector, OtherLoadedRector]\n  '"'"'8'"'"':\n    status: implemented\n    class: [ImplementedRector, ElevenRector]\n' > "$T_TMP/y.yml"

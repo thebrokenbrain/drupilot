@@ -613,6 +613,7 @@ TMP_DIGESTS_SKIPS="$(mktemp "${TMPDIR:-/tmp}/drupilot-digests-skips.XXXXXX")"
 TMP_DIGESTS_OFFICIAL="$(mktemp "${TMPDIR:-/tmp}/drupilot-digests-official.XXXXXX")"
 trap 'rm -f "$TMP_DIGESTS_RULES" "$TMP_DIGESTS_SKIPS" "$TMP_DIGESTS_OFFICIAL" 2> /dev/null || true' EXIT
 DIGESTS_RULESET='null'
+DIGESTS_REFUSED=""
 # A verdict an autonomous run recorded (digests-decisions.sh: by "auto") is
 # its safe default, not the developer's review: only an autonomous run
 # replays it.
@@ -775,6 +776,7 @@ elif [[ "$USE_DIGESTS" == "1" ]]; then
     fi
     if [[ "$_ymlok" == "0" ]]; then
       _m="The implemented-digests.yml frozen in the lock cannot be read again (offline and not cached, or changed upstream): the digests pass would not apply the frozen rules. Retry online, or refresh the lock (DRUPILOT_DETERMINISTIC=false, or lock-sync.sh --refresh)."
+      DIGESTS_REFUSED="$_m"
       log_err "$_m"
       FAILED_PASSES="$FAILED_PASSES 2"; DIGESTS_STATUS="error"; CONFIG_PATH=""
       ERRORS_JSON="$(printf '%s' "$ERRORS_JSON" | jq -c --arg m "$_m" '. + [{pass: 2, exit_code: 2, message: $m}]')"
@@ -808,12 +810,12 @@ elif [[ "$USE_DIGESTS" == "1" ]]; then
             elif ($r.digests_review.digests_sha // "") != $sha then "rules"
             else ([($r.digests_review.rules // [])[] | .rule]
                   - [$v[] | select(.digests_sha == $sha and .input_hash == $inp) | .rule]) as $p
-                 | if ($p | length) > 0 then "pending:" + ($p | join(",")) else "" end end' 2> /dev/null || true)"
+                 | if ($p | length) > 0 then "pending:" + ($p | join(",")) else "" end end' 2> /dev/null || printf 'sources')"
       fi
       if [[ -n "$_unread" ]]; then
         _m="The digests all.php has a layout drupilot cannot filter safely ($_unread): the digests pass did not run. Update drupilot, or turn the digests layer off (DRUPILOT_USE_DIGESTS_RULES=false)."
       elif [[ "$_moved" == "sources" ]]; then
-        _m="No digests dry-run of these sources finished (the module changed since, or the dry-run's digests pass failed): the verdicts belong to other sources, so the digests pass did not run. Run the dry-run again (run-rector.sh --digests --json), review its pending rules (digests-decisions.sh), then --apply; digests-decisions.sh --clear forgets every verdict."
+        _m="No digests dry-run of these sources finished (the module changed since, the last dry-run ran without --digests, or its digests pass failed): the verdicts belong to other sources, so the digests pass did not run. Run the dry-run again (run-rector.sh --digests --json), review its pending rules (digests-decisions.sh), then --apply; digests-decisions.sh --clear forgets every verdict."
       elif [[ "$_moved" == "rules" ]]; then
         _m="The digests rules changed since the last dry-run (another digests SHA): the digests pass did not run. Run the dry-run again, review its pending rules, then --apply."
       elif [[ "$_moved" == pending:* ]]; then
@@ -822,6 +824,7 @@ elif [[ "$USE_DIGESTS" == "1" ]]; then
         _m=""
       fi
       if [[ -n "$_m" ]]; then
+        DIGESTS_REFUSED="$_m"
         log_err "$_m"
         FAILED_PASSES="$FAILED_PASSES 2"; DIGESTS_STATUS="error"; CONFIG_PATH=""
         ERRORS_JSON="$(printf '%s' "$ERRORS_JSON" | jq -c --arg m "$_m" '. + [{pass: 2, exit_code: 2, message: $m}]')"
@@ -855,6 +858,20 @@ elif [[ "$USE_DIGESTS" == "1" ]]; then
       DIGESTS_FILTER="$(jq -c '.kept = (.kept | length)' <<< "$DIGESTS_FILTER")"
       log_info "Digests rules: $DIGESTS_KEPT kept ($(jq '.implemented_not_loaded | length' <<< "$DIGESTS_FILTER") implemented by drupal-rector in a set this port does not load, $(jq '.config_only | length' <<< "$DIGESTS_FILTER") config-only); $(jq '.skipped_implemented | length' <<< "$DIGESTS_FILTER") skipped (the official pass applies them), $(jq '.rejected | length' <<< "$DIGESTS_FILTER") rejected for this module."
       CONFIG_PATH="$(dirname "$CONFIG_PATH")/all.drupilot.php"
+      # Once there are verdicts, an --apply runs only rules the reviewed dry-run
+      # ran (a set rector.php no longer loads, or verdicts of another mode,
+      # would otherwise add rules nobody reviewed).
+      if [[ "$APPLY" == "1" ]]; then
+        _extra="$(jq -r -n --slurpfile dd "$_df" --slurpfile rec "$_rf" --argjson ks "$DIGESTS_RULESET" --argjson auto "$DIGESTS_AUTO" '
+          ([($dd[0].decisions // [])[] | select((.by // "developer") != "auto" or $auto)] | length) as $n
+          | if $n == 0 then "" else ($ks - ($rec[0].digests_ruleset // []) | join(",")) end' 2> /dev/null || printf 'unknown')"
+        if [[ -n "$_extra" ]]; then
+          _m="The --apply would run digests rules the last dry-run did not ($_extra): the digests pass did not run. Run the dry-run again, review its pending rules, then --apply."
+          DIGESTS_REFUSED="$_m"; log_err "$_m"
+          FAILED_PASSES="$FAILED_PASSES 2"; DIGESTS_STATUS="error"; CONFIG_PATH=""; DIGESTS_KEPT=""
+          ERRORS_JSON="$(printf '%s' "$ERRORS_JSON" | jq -c --arg m "$_m" '. + [{pass: 2, exit_code: 2, message: $m}]')"
+        fi
+      fi
       if [[ "$DIGESTS_KEPT" == "0" ]]; then
         log_info "No digests rule left to run."
         CONFIG_PATH=""; DIGESTS_STATUS="ok"
@@ -986,6 +1003,10 @@ if [[ "$FAILED" == "1" ]]; then
   [[ "$COUNT" != "0" ]] && log_warn "$COUNT file(s) were reported before the failure (partial result)."
   toolchain_diagnostics "$DRUPAL_ROOT"
   log_plain "   Check the installed toolchain:  bash \"$(plugin_root)/scripts/env/install-toolchain.sh\" --dir \"$DRUPAL_ROOT\" --smoke-only"
+elif [[ "$PARTIAL" == "1" && -n "$DIGESTS_REFUSED" ]]; then
+  log_ok "Official pass complete: $(printf '%s\n' "$PASS1_FILES" | grep -c . || true) file(s) $([[ "$APPLY" == "1" ]] && echo changed || echo 'would change') (this verdict stands)."
+  log_err "The digests pass did not run: $DIGESTS_REFUSED"
+  log_plain "   Nothing is broken: follow that remedy, then run the digests pass again."
 elif [[ "$PARTIAL" == "1" ]]; then
   log_ok "Official pass complete: $(printf '%s\n' "$PASS1_FILES" | grep -c . || true) file(s) $([[ "$APPLY" == "1" ]] && echo changed || echo 'would change') (this verdict stands)."
   if [[ -n "$DIGESTS_CONFIG" ]]; then
