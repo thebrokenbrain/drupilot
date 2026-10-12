@@ -97,8 +97,10 @@ bash -c '. "$1/scripts/lib/common.sh"; subject_project_root "$2"' _ "$ROOT" "$SU
 ```
 
 When the subject is not under that root, `/drupilot-setup` placed a copy at
-`<root>/web/{modules,themes,profiles}/custom/<machine_name>` (the original may
-be gone, moved): assess that path. With no root, run `/drupilot-setup` first. The subject's identity
+`<root>/web/{modules,themes,profiles}/custom/<machine_name>` (the machine name
+of its `*.info.yml`, not the checkout's directory name; the original may be
+gone, moved, and then its directory name is all that is left): assess that
+path. With no root, run `/drupilot-setup` first. The subject's identity
 (`machine_name`, `type`, `current_core_version_requirement`, `php_target`,
 `drupal_target`) is in `assess.json`; do not compute it by hand.
 

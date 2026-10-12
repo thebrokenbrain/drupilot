@@ -403,8 +403,9 @@ constraint_top_major() {
 # open-ended `>=X` / `>X` / `*` with X <= N, or a `^X` / `~X` / bare X with
 # X == N; 1 otherwise. '>=9.5' and '^10 || ^11' admit 11; '^10' and
 # '>=10 <11' do not. A space after an operator is allowed ('>= 9.5'), a
-# hyphen range 'A - B' is read as '>=A <=B', and the highest lower bound of an
-# alternative wins ('>=9 >=12' does not admit 11).
+# hyphen range 'A - B' is read as '>=A <=B', the highest lower bound of an
+# alternative wins ('>=9 >=12' does not admit 11), and a '^X', '~X' or bare X
+# bounds it above at major X ('>=10.3 ^10' admits 10 only).
 constraint_admits_major() {
   local n="${2:-}"
   [[ "$n" =~ ^[0-9]+$ ]] || return 1
@@ -426,12 +427,13 @@ constraint_admits_major() {
         o = (p ~ /^>/); sub(/^(\^|~|>=|>|==|=|v)+/, "", p)
         if (p == "*") { if (lo < 0) { lo = 0; open = 1 }; continue }
         if (p !~ /^[0-9]+/) continue
-        split(p, v, "."); if (v[1] + 0 > lo) { lo = v[1] + 0; open = o }
+        split(p, v, "."); m = v[1] + 0
+        if (m > lo) { lo = m; open = o }
+        if (!o && (hi < 0 || m < hi)) hi = m
       }
       if (lo < 0) next
       if (hi >= 0) { if (n + 0 >= lo && n + 0 <= hi) ok = 1 }
-      else if (open) { if (n + 0 >= lo) ok = 1 }
-      else if (n + 0 == lo) ok = 1 }
+      else if (n + 0 >= lo) ok = 1 }
     END { if (ok) print "yes" }' | grep_q -x yes
 }
 

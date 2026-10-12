@@ -39,8 +39,9 @@ then stop with no side effects.
   echo "core_requirement=$(subject_core_requirement "$SUBJECT" 2>/dev/null || echo "<missing>")"; \
   ROOT="$(subject_project_root "$SUBJECT" 2>/dev/null || true)"; IN=no; \
   if [[ -n "$ROOT" && "$SUBJECT/" == "$ROOT"/* ]]; then IN=yes; fi; \
+  MN="$(subject_machine_name "$SUBJECT" 2>/dev/null || basename "$SUBJECT")"; \
   PLACED=""; if [[ -n "$ROOT" && "$IN" == no ]]; then for t in modules themes profiles; do \
-    if [[ -d "$ROOT/web/$t/custom/$(basename "$SUBJECT")" ]]; then PLACED="$ROOT/web/$t/custom/$(basename "$SUBJECT")"; fi; done; fi; \
+    if [[ -d "$ROOT/web/$t/custom/$MN" ]]; then PLACED="$ROOT/web/$t/custom/$MN"; fi; done; fi; \
   echo "drupal_root=${ROOT:-<none>}"; echo "subject_in_root=$IN"; echo "placed=${PLACED:-<none>}"; \
   echo "php_target=$(resolve_php_target)"; echo "drupal_target=$(resolve_drupal_target)"; \
   [[ "$IN" == yes ]] || ROOT=""; \

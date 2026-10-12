@@ -175,7 +175,7 @@ assert_eq "an open-ended >=9.5 admits 11; an info submodule finding keeps the su
 assert_eq "  a warning one does not" "$(jq -c '.info_yml.submodules_d11_compatible' "$T_OUT")" 'false'
 printf "name: M\ntype: module\ncore_version_requirement: ^10\n" > "$SUB/m.info.yml"
 assert_eq "constraint_admits_major" \
-  "$(for c in '^10' '^10 || ^11' '>=10 <11' '>=10.3 <12' '*' '~11.1' '>=10 < 11' '>= 9.5' '10.3 - 11.1' '>=9 >=12' '10.*'; do constraint_admits_major "$c" 11 && printf y || printf n; done)" "nynyyynyynn"
+  "$(for c in '^10' '^10 || ^11' '>=10 <11' '>=10.3 <12' '*' '~11.1' '>=10 < 11' '>= 9.5' '10.3 - 11.1' '>=9 >=12' '10.*' '>=10.3 ^10' '^10 >=11'; do constraint_admits_major "$c" 11 && printf y || printf n; done)" "nynyyynyynnnn"
 
 # The settings come from the subject's Drupal root, wherever it runs from.
 DR="$T_TMP/site"; mkdir -p "$DR/web/core/lib" "$DR/web/modules/custom"
