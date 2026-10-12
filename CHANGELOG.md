@@ -13,6 +13,8 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+## [1.0.0-alpha.1] - 2026-10-12
+
 ### Added
 - **The canonical-artifact helpers** (`scripts/lib/canon.sh`, AR-13,
   T-M4-02), the base of the deterministic pipeline:
@@ -3303,7 +3305,8 @@ verdict, what-changed report card, frozen lock), and new insight tools
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.2...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.1...HEAD
+[1.0.0-alpha.1]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.2...v1.0.0-alpha.1
 [0.9.2]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.4...v0.9.0
