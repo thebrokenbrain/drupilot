@@ -41,6 +41,19 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   defines itself as a global function (in its code, in a file with no
   namespace) is provided. `core-strategy.sh` judges the floor with the
   polyfills of the range it recommends, as the plan does.
+- **The test legs run** (T-M5-11, AR-06, CC-14). `run-phpunit.sh --leg
+  PHP_LOW` runs the Unit and Kernel groups again on the window's lowest PHP the
+  bed core supports, the plan's `test_matrix` `PHP_LOW` leg, through that PHP's
+  binary in the DDEV web container (`/usr/bin/phpX.Y`, no restart).
+  - `last-test.json` keeps each leg's own verdict under `legs` (`CURRENT`,
+    `PHP_LOW`; `schemas/last-test.schema.json`).
+  - The top-level `preservation` is their aggregate, with the 0.9 values only:
+    a `PHP_LOW` failure is a regression, and a blocked leg over a verified
+    suite is `verified-partial`.
+  - A `CURRENT` run keeps a `PHP_LOW` leg of the same sources and drops a
+    stale one.
+  - `/drupilot-test`, the test-engineer agent and `port-report.md` show the
+    legs.
 - **`/drupilot-port --php X.Y`** (T-M5-09). The setup froze the PHP target.
   The port checks X.Y against the frozen plan's `php.final`, and a mismatch,
   or no frozen plan, stops it and sends the developer to

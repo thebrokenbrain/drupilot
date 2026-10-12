@@ -49,6 +49,24 @@
     }
   },
   "properties": {
+    "legs": {
+      "description": "The test legs of the upgrade plan's test_matrix this record holds (run-phpunit.sh --leg, T-M5-11): CURRENT (this record's own run) and PHP_LOW (the Unit and Kernel groups on the window's lowest PHP the bed core supports). The top-level preservation is their aggregate.",
+      "type": "object",
+      "propertyNames": {"enum": ["CURRENT", "PHP_LOW"]},
+      "additionalProperties": {
+        "type": "object",
+        "required": ["leg", "preservation", "status"],
+        "properties": {
+          "leg": {"enum": ["CURRENT", "PHP_LOW"]},
+          "core": {"type": ["string", "null"]},
+          "php": {"type": ["string", "null"]},
+          "preservation": {"enum": ["verified", "verified-partial", "regression", "not-verified-blocked", "not-verified-no-tests", "pre-existing-failures", "not-verified-unbaselined"]},
+          "status": {"type": "string"},
+          "groups": {"type": "array", "items": {"type": "string"}},
+          "tests_failed": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
     "type": {
       "description": "The --type of the run.",
       "enum": ["unit", "kernel", "functional", "js", "all"]

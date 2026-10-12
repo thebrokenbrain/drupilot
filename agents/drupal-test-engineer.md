@@ -145,7 +145,14 @@ reinvent their logic.
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject <DIR> --type functional
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject <DIR> --type js
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject <DIR> --type all
+   # Then the floor's PHP, when the upgrade plan has a PHP_LOW leg (a no-op otherwise):
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject <DIR> --type all --leg PHP_LOW
    ```
+   The `PHP_LOW` leg runs the Unit and Kernel groups on the window's lowest PHP
+   the bed core supports (the container's `/usr/bin/phpX.Y`); `last-test.json`
+   keeps each leg's verdict under `legs`, and the top-level `preservation` is
+   their aggregate. A failure there is a regression on the declared floor: fix it
+   in the code.
    Use `--filter X` to isolate a single failing test while iterating. For `js`, the
    script ensures Selenium is present; if it is not, it skips JS with a clear message
    — surface that, do not pretend the suite is fully green. **Exit 2 with "PHPUnit

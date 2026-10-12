@@ -38,6 +38,8 @@ A verdict is only shown as current while the module's sources are the ones it wa
 
 drupilot 1.0 computes algorithm 2, which added Twig, JS and CSS. Every digest recorded by drupilot 0.9 (algorithm 1, no `digest_algo`) differs from it, so after an upgrade those records show as stale once (`stale_reason: "digest-algorithm"`, next to `fresh: false`; a record on changed sources has `"sources-changed"`): re-run the step to refresh them. Until then the next step after a green 0.9 test run is `/drupilot-test`, and a failing 0.9 verdict (a regression, a failed core matrix) keeps blocking `port-summary --strict`, because drupilot cannot tell whether its sources changed; a verdict on sources that did change is reported but never blocks.
 
+`last-test.json` also keeps the **test legs** of the upgrade plan (`legs`). `CURRENT` is the run on the test-bed's PHP. `PHP_LOW` is the Unit and Kernel groups run again on the window's lowest PHP the bed core supports (`run-phpunit.sh --leg PHP_LOW`). The top-level `preservation` is their aggregate, with the same values as before: a failure on the low PHP makes it a regression, and a leg that could not run turns a verified suite into `verified-partial`. A test run on other sources drops a stale `PHP_LOW` leg.
+
 Records that are compared or hashed between runs keep their timestamps under a top-level `meta` object, so two runs that compute the same result write the same bytes outside it: `rector-rules.json` keeps `meta.generated_at`, and `last-test.json` keeps when each negative control ran in `meta.negative_controls` (`recorded_at` stays where 0.9 put it).
 
 ## Raw reports and findings

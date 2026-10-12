@@ -112,6 +112,16 @@ operator, the `(void)` cast, `array_first()`), searched in the code only. For
 syntax, the `php -l` legs are the real check. A function missing on the floor is
 caught only by this scan and by your tests run on the floor's PHP.
 
+## Tests on the floor's PHP
+
+Your test suite runs on the test-bed's PHP. When the window starts lower (the
+plan's `PHP_LOW` leg: the lowest PHP of the window the test-bed's core supports),
+`/drupilot-test` runs the Unit and Kernel groups again on that PHP, with the PHP
+binary the DDEV container already has. A failure there means the port breaks on
+the PHP it declares; it counts as a regression. Functional tests are not part of
+that leg: their site is served by the test-bed's own PHP. A previous major (a
+kept Drupal 10) is checked statically by the core matrix.
+
 ## Choosing the PHP target
 
 `/drupilot-setup` asks for the PHP target, or takes it from `--php X.Y`, and
@@ -125,6 +135,5 @@ re-plan.
 These arrive in a later 1.0 pre-release:
 
 - the PHPCompatibility check (ADR 0003);
-- the test run on the floor PHP (the `PHP_LOW` leg);
 - the audit of Rector's PHP rules (which fills `apply-modernize`);
 - the polyfill list given to Rector's main pass (03-R2).

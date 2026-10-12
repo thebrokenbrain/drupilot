@@ -3904,7 +3904,7 @@ Usage:
                  [--type unit|kernel|functional|js|all]
                  [--coverage] [--filter EXPR]
                  [--baseline | --baseline-from-last | --no-baseline]
-                 [--no-record] [--result-file FILE]
+                 [--no-record] [--result-file FILE] [--leg CURRENT|PHP_LOW]
 
   --baseline           record this run as the PRE-PORT test baseline
                        (test-baseline.json in the subject's state dir) instead
@@ -3920,6 +3920,22 @@ Usage:
                        clobbers the real preservation verdict).
   --result-file FILE   also write this run's JSON record to FILE (works with
                        --no-record).
+  --leg L              the test leg of the upgrade plan's test_matrix (AR-06,
+                       T-M5-11): CURRENT (default) is the run above, on the
+                       test-bed's PHP. PHP_LOW runs the Unit and Kernel
+                       groups (a Functional test's site is served by the
+                       bed's own PHP) with the leg's lower PHP, through that
+                       PHP's binary in the DDEV web container
+                       (/usr/bin/phpX.Y); a plan without the leg is a no-op.
+                       Its record goes to last-test.json's legs.PHP_LOW, and
+                       the top-level preservation becomes the aggregate of
+                       the legs: a PHP_LOW regression, unbaselined or
+                       pre-existing failure, or a blocked PHP_LOW over a
+                       verified CURRENT (verified-partial), changes it; the
+                       CURRENT verdict stays in legs.CURRENT. A CURRENT run
+                       keeps a PHP_LOW leg of the same sources and drops a
+                       stale one. PREVIOUS_MAJOR is static:
+                       verify-core-matrix.sh checks it.
 
 Output:
   The PHPUnit output streams through to STDOUT/STDERR unmodified, followed by

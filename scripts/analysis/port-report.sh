@@ -222,6 +222,19 @@ fi
 if [[ -n "$TEST_STALE" ]]; then
   PRES_LINE="$PRES_LINE _(stale: ${TEST_STALE}; re-run /drupilot-test.)_"
 fi
+# The test legs (last-test.json legs, T-M5-11): each leg's own verdict under
+# the aggregate, when the record holds more than the CURRENT one.
+TEST_LEGS="$(printf '%s' "$TEST" | jq -r '(.legs // {}) | if (type == "object" and (keys | length) > 1)
+  then (to_entries | map("- \(.key)\(if .value.php != null then " (PHP \(.value.php))" else "" end): \(.value.preservation)"
+         + (if ((.value.tests_failed // []) | length) > 0 then " — failing: \(.value.tests_failed | join(", "))" else "" end)) | join("\n"))
+  else empty end' 2>/dev/null || true)"
+if [[ -n "$TEST_LEGS" ]]; then
+  PRES_LINE="$PRES_LINE
+
+**Test legs** (the verdict above is their aggregate):
+
+$TEST_LEGS"
+fi
 # Lenient dependencies the run used (last-test.json lenient[], AR-28): named
 # next to the verdict, never folded into it.
 TEST_LENIENT="$(printf '%s' "$TEST" | jq -r '(.lenient // []) | if type == "array" then join(", ") else empty end' 2>/dev/null || true)"
