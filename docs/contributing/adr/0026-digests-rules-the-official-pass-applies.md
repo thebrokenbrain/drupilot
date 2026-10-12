@@ -35,12 +35,21 @@ lacks (ADR 0019). 112 of the 174 digests rules were then applied by neither pass
   - `all.php` has a directive other than `withFileExtensions` and `withRules`.
 
   The filtered copy would otherwise drop a rule or a directive without saying so.
-- **Verdicts belong to the sources they were given on.** An `--apply` refuses the digests pass when this
-  digests SHA has verdicts for other sources and none for the current ones. Otherwise every rejected rule
-  would run unreviewed. `digests-decisions.sh` refuses to record verdicts on sources changed since the
-  dry-run.
+- **Verdicts belong to the sources and the rules they were given on.** Once the module has verdicts, an
+  `--apply` runs the digests pass only when the last dry-run was of the same sources and the same digests
+  SHA, and every rule that dry-run changed files with has a verdict. Otherwise it stops with exit 4 and
+  names the remedy: a new dry-run, or the pending verdicts. An upstream move between the review and the
+  apply, or a change of the sources, would otherwise run rules rejected for other sources. A dry-run with
+  nothing to review lets the apply run, so a re-port of ported code does not get stuck. A module with no
+  verdict keeps the 0.9 behaviour. `digests-decisions.sh` refuses to record verdicts on sources changed
+  since the dry-run.
 - **An autonomous run's verdicts are its defaults, not the developer's.** They are recorded with
-  `by: "auto"`, and only an autonomous run replays them. A guided port asks the developer again (G5).
+  `by: "auto"` (`digests-decisions.sh --auto`, or `DRUPILOT_AUTONOMOUS` true), and only an autonomous run
+  replays them (`run-rector.sh --auto`, or the same setting). A guided port asks the developer again, since
+  the developer owns the review of these unlicensed, AI-generated rules (05-R6). This narrows 05-R6's
+  "a second port asks nothing" to verdicts recorded in the same mode, or by the developer.
+- **The digests SHA is frozen only after a digests pass ran** (INV6), never on a run where every rule was
+  filtered out.
 
 ## Consequences
 
