@@ -36,6 +36,15 @@ assert_eq "generated: the dev constraints" \
   '["^11.5.50","^8.3.30","^1.12.27 || ^2.1.26","^1.3.9 || ^2.0.9"]'
 assert_eq "generated: the polyfills every tag of the minor requires (11.3.0 inherits 11.3.18's require)" \
   "$(jq -c '.minors["11.3"].polyfills' "$T11")" '["symfony/polyfill-php84","symfony/polyfill-php85"]'
+# A stable 11.3 tag after the "__unset" entry inherits the cleared require:
+# every tag of 11.3 no longer requires php84 and php85.
+jq '.packages["drupal/core"] += [{"version": "11.3.1", "time": "2025-12-20T12:00:00+00:00"}]' \
+  "$T_TMP/cache/packagist/drupal-core.json" > "$T_TMP/p2.json"
+mkdir -p "$T_TMP/cache-u/packagist"; cp -R "$T_TMP/cache/." "$T_TMP/cache-u/"; cp "$T_TMP/p2.json" "$T_TMP/cache-u/packagist/drupal-core.json"
+fresh u
+"$T_SH" "$RD" --offline --cache "$T_TMP/cache-u" --data-dir "$T_TMP/u" --as-of 2026-10-04 --json > /dev/null 2>&1
+assert_eq "  a tag after \"__unset\" inherits the cleared require: 11.3 requires no polyfill in every tag" \
+  "$(jq -c '.minors["11.3"].polyfills' "$T_TMP/u/targets/11.json")" '[]'
 assert_eq "hand fields kept" "$(jq -c '.minors["11.3"] | [.php_supported, .php_unsupported, .verified]' "$T11")" '[["8.3","8.4","8.5"],["8.1","8.2","8.6"],true]'
 assert_eq "changed minor and file are stamped" "$(jq -c '[.minors["11.3"].checked_at, .as_of]' "$T11")" '["2026-10-04","2026-10-04"]'
 assert_eq "a supported major ignores 11.5.0-beta1: 11.5 stays detect" "$(jq -c '.minors["11.5"]' "$T11")" '{"status":"detect"}'

@@ -30,14 +30,20 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   through a polyfill keeps its signal, marked `polyfilled`, but no longer raises
   the floor. `upgrade-path.sh` computes the PHP floor L with the range it
   decided. Without `--range`, the output keeps its 0.9 shape.
-- **`detect-php-floor.sh` knows PHP 8.5**, from php.net's migration85 pages: the
-  pipe operator, `#[\NoDiscard]` / `#[\DelayedTargetValidation]`, the `(void)`
-  cast, `array_first()` / `array_last()` and `get_error_handler()` /
-  `get_exception_handler()`. The script is documented as a fallback to the
-  `php -l` legs and the test suite.
-- **`/drupilot-port --php X.Y`** (T-M5-09). The setup froze the PHP target;
-  a different value is refused (`final-changes-frozen`) and the developer is
-  sent back to `/drupilot-setup --php X.Y`.
+- **`detect-php-floor.sh` knows PHP 8.5**, from php.net's migration85 pages:
+  the pipe operator and the `(void)` cast, searched in the code only
+  (`php_code_lines`: a regex, a string or a comment is no signal),
+  `array_first()` / `array_last()` and `get_error_handler()` /
+  `get_exception_handler()`. The 8.5 attributes are no signal: an older PHP
+  ignores them.
+- **`detect-php-floor.sh` reads calls only**: a method call, a static call or
+  a function's own definition no longer counts, and a function the module
+  defines itself is provided. `core-strategy.sh` judges the floor with the
+  polyfills of the range it recommends, as the plan does.
+- **`/drupilot-port --php X.Y`** (T-M5-09). The setup froze the PHP target.
+  The port checks X.Y against the frozen plan's `php.final`, and a mismatch,
+  or no frozen plan, stops it and sends the developer to
+  `/drupilot-setup --php X.Y`.
 
 ### Changed
 - **The `php-target-tuning` skill is a view over the plan** (T-M5-10). It reads
@@ -48,6 +54,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   goldens keep their data snapshots: none of their outputs depends on the
   polyfills, since a snapshot without `php/polyfills.json` gives the empty,
   conservative intersection.
+
+### Fixed
+- `detect-php-floor.sh`: `mb_str_pad()` is a PHP 8.3 function (php.net), not
+  8.4.
 
 ## [1.0.0-alpha.2] - 2026-10-12
 

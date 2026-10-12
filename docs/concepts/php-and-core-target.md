@@ -108,15 +108,17 @@ declared range provides it: Drupal 11.2 and later ship `polyfill-php84`, but no
 Drupal 10 minor does. So `array_find()` raises the floor to 8.4 for
 `^10.3 || ^11`, and not for `^11.2`. The heuristic scan that finds such
 constructs, `detect-php-floor.sh`, also knows the PHP 8.5 additions (the pipe
-operator, `#[\NoDiscard]`, the `(void)` cast, `array_first()`). It is a
-fallback: the `php -l` legs and your test suite are the real checks.
+operator, the `(void)` cast, `array_first()`), searched in the code only. For
+syntax, the `php -l` legs are the real check. A function missing on the floor is
+caught only by this scan and by your tests run on the floor's PHP.
 
 ## Choosing the PHP target
 
 `/drupilot-setup` asks for the PHP target, or takes it from `--php X.Y`, and
 freezes it in the plan. `/drupilot-port` accepts `--php X.Y` too, but only to
-check it: the port never changes the PHP target, and a different one sends you
-back to the setup to re-plan.
+check it against the frozen plan: the port never changes the PHP target, and a
+different one (or no frozen plan) stops it and sends you back to the setup to
+re-plan.
 
 ## Not yet in this pre-release
 

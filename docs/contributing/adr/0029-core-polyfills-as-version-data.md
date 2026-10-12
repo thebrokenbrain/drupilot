@@ -39,12 +39,14 @@ The plan's own fact F-D5 placed `polyfill-php84` at 11.3; Packagist shows it in 
 - `config/php/polyfills.json` lists, for each package, the functions its `bootstrap.php` defines
   unconditionally, at the lowest version a core release requires. That is `^1.32` for `-php84` and `-php85`,
   and `^1.37` for `-php86`. A function defined only when an extension core does not require is loaded is
-  listed as conditional and never counted on: `mb_trim()` needs `ext-mbstring`, `grapheme_strrev()` needs
-  `ext-intl`.
+  listed as conditional and never counted on: `mb_trim()` needs `ext-mbstring`. (`-php86` defines
+  `grapheme_strrev()` on PHP 8 only from 1.43.0, with `ext-intl`: not at the 1.37.0 core requires.)
 - `core_range_polyfills C` (`scripts/lib/plan.sh`) intersects, over every verified minor C admits, the
   packages the minor **provides**: those it requires, plus those whose PHP is at or below the minor's own
-  minimum PHP (native there). A minor without the data provides none, and an empty intersection is the
-  conservative answer.
+  minimum PHP (native there). A verified minor without the data provides none, and a major C reaches
+  with no data file at all (Drupal 9) makes the intersection empty: the conservative answer. A minor not
+  released yet (an unverified `detect` entry) is left out: a later release of a major only adds
+  polyfills or raises its minimum PHP.
 - `detect-php-floor.sh --range C` keeps the signal of a polyfilled function, marked `polyfilled: true`, but
   it does not raise the floor. `upgrade-path.sh` computes L with the range it decided. Its strategy decision
   still uses the plain floor.
@@ -58,5 +60,5 @@ The plan's own fact F-D5 placed `polyfill-php84` at 11.3; Packagist shows it in 
 - `^11.2` and above keep L at 8.3 for those functions.
 - The Rector main pass gets the same list through `polyfillPackages()` (03-R2) when the compat-list
   generation lands (T-M5-03, T-M5-04).
-- A new core minor's polyfills arrive with the next `refresh-data.sh` run. Until then the minor has no data
-  and the intersection stays conservative.
+- A new core minor's polyfills arrive with the next `refresh-data.sh` run. Until then the minor is a
+  `detect` entry, which the intersection leaves out.

@@ -133,8 +133,9 @@ or raises the floor.
 ## 5. The floor: what the code needs
 
 `scripts/analysis/detect-php-floor.sh` is a heuristic scan of the code for
-constructs newer than the floor (a fallback: the `php -l` legs and the test
-suite are the authoritative checks). `DRUPILOT_REQUIRE_PHP_FLOOR` decides how it
+constructs newer than the floor. For syntax the `php -l` legs are authoritative;
+a function missing on the floor is caught only by this scan and by the test suite
+on the floor's PHP (the `PHP_LOW` leg). `DRUPILOT_REQUIRE_PHP_FLOOR` decides how it
 is used: `detect` (default) widens `require.php` down to what the code needs
 when the port keeps a previous major; `target` keeps it at P.
 
@@ -146,13 +147,14 @@ signal `polyfilled`. A range that still admits a core without the polyfill (a
 previous major, an early minor) gets none: the floor rises, which is right.
 
 **Target compatibility.** `target_compatible` is false when the code uses a
-construct newer than P: it fatals on the test-bed. Raise P or remove the
-construct.
+construct newer than P and no polyfill of the declared range provides it: it
+fatals on the test-bed. Raise P or remove the construct. `core-strategy.sh` and
+the plan both judge it with the range's polyfills.
 
 ## 6. Changing the target
 
-The setup froze P in the plan; the port never changes it (a different
-`--php X.Y` on `/drupilot-port` is refused with `final-changes-frozen`). To
+The setup froze P in the plan; the port never changes it (`/drupilot-port --php
+X.Y` checks X.Y against the plan's `php.final` and stops on a mismatch). To
 retarget, re-plan: `/drupilot-setup <path> --php X.Y` (or `upgrade-path.sh
 --phase draft --freeze` with `DRUPILOT_PHP_TARGET=X.Y` exported). The templates
 follow the frozen plan (`render-templates.sh --root <drupal_root>

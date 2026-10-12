@@ -23,8 +23,8 @@
       "php": "8.6",
       "min_version": "1.37.0",
       "functions": ["clamp"],
-      "conditional": {"ext-intl": ["grapheme_strrev"]},
-      "src": "https://raw.githubusercontent.com/symfony/polyfill-php86/v1.37.0/bootstrap.php ; https://raw.githubusercontent.com/symfony/polyfill-php86/v1.37.0/bootstrap80.php ; https://repo.packagist.org/p2/drupal/core.json",
+      "conditional": {},
+      "src": "https://raw.githubusercontent.com/symfony/polyfill-php86/v1.37.0/bootstrap.php ; https://raw.githubusercontent.com/symfony/polyfill-php86/v1.37.0/bootstrap80.php (on PHP 8 only clamp(); grapheme_strrev() joins it, with ext-intl, at 1.43.0) ; https://repo.packagist.org/p2/drupal/core.json",
       "verified": true
     }
   }

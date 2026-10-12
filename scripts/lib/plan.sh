@@ -271,12 +271,18 @@ core_range_minors() {
 # minor provides a package when it requires it (targets/<N>.json
 # minors[].polyfills) or when its own minimum PHP is at or above the package's
 # PHP, where those functions are native (Drupal 12 drops polyfill-php84: it
-# needs PHP 8.5). A minor without polyfills data provides none. Empty lists
+# needs PHP 8.5). The minors are the verified ones (core_range_minors): a
+# minor not released yet (a detect entry) is left out. A verified minor
+# without polyfills data provides none, and so does a major CONSTRAINT
+# reaches with no targets/<N>.json (Drupal 9): then both lists are empty, as
 # when CONSTRAINT admits no data minor or the data cannot be read.
 core_range_polyfills() {
-  local c="${1:-}" dir m mj rows=""
+  local c="${1:-}" dir m mj rows="" known=1
   dir="$(version_data_dir)"
-  if [[ -n "$c" && -r "$dir/php/polyfills.json" ]] && have_cmd jq; then
+  for mj in $(range_majors "$c"); do
+    [[ -r "$dir/targets/$mj.json" ]] || known=0
+  done
+  if [[ "$known" == "1" && -n "$c" && -r "$dir/php/polyfills.json" ]] && have_cmd jq; then
     for m in $(core_range_minors "$c" 999); do
       mj="${m%%.*}"
       rows="$rows$(target_get "$mj" ".minors[\"$m\"] | {minor: \"$m\", polyfills: (.polyfills // null), php_min: (.php_min // null)} | tojson")

@@ -11,12 +11,16 @@ functionality**, with the *minimum* changes. This is **not** a refactor — no
 architecture changes, no API modernization for its own sake. Anything beyond
 mechanical compatibility is explicitly deferred to Phase 2 (`/drupilot-refactor`).
 
-Subject path argument: `$1` (fallback: the current working directory). A
-`--php X.Y` in `$ARGUMENTS` names the PHP target the port expects. The setup froze
-it in the plan, and the port never changes it: pass the value to the final plan
-below as `DRUPILOT_PHP_TARGET=<X.Y>`. A different value is refused there
-(`final-changes-frozen`, field `php.final`): tell the developer to re-plan with
-`/drupilot-setup <path> --php X.Y`.
+Subject path argument: `$1` when it is a directory (fallback: the current working
+directory). When the first argument is a flag (`/drupilot-port --php 8.4`), the
+subject is the current working directory: use that path wherever `$1` appears
+below. A `--php X.Y` in `$ARGUMENTS` names the PHP target the port expects. The
+setup froze it in the plan, and the port never changes it: once the Drupal root is
+known, read the frozen value with
+`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; DRUPILOT_PROJECT_DIR=<drupal_root> plan_get .php.final'`.
+If it differs from X.Y (or there is no frozen plan), stop before changing any file
+and tell the developer to re-plan with `/drupilot-setup <path> --php X.Y`. If it
+matches, go on as usual.
 
 **Decision log — throughout the port.** The moment you revert or hand-edit a
 change Rector made, ignore or override a script's verdict (port-safety,
@@ -116,8 +120,7 @@ PHP floor, so a choice that is not persisted ports to the floor of `auto`.
 
 **Resolve and freeze the final upgrade plan (AR-06, ADR 0018).** The setup froze
 a draft plan in the root's lock; the port resolves the final one over it with
-the answered strategy (add `--auto` in an autonomous run, and prefix
-`DRUPILOT_PHP_TARGET=<X.Y>` when `--php X.Y` was given):
+the answered strategy (add `--auto` in an autonomous run):
 
 ```bash
 DRUPILOT_CORE_TARGET_STRATEGY=<auto|keep-d10|d11-only> bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "$1" --phase final --root "<drupal_root>" --freeze --json

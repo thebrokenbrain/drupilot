@@ -22,9 +22,10 @@
 #
 # This is a HEURISTIC syntactic scan (a curated list of well-known 8.2 to 8.5
 # language constructs and function additions; the 8.5 ones read on php.net's
-# migration85 pages), NOT a full static analysis, and a FALLBACK: the php
-# stage's php -l on every PHP of the window and the test suite are the
-# authoritative checks. It is
+# migration85 pages), NOT a full static analysis. For syntax it is a fallback:
+# the php stage runs php -l on every PHP of the window. A function's
+# availability on the floor is checked only by this scan and by the test
+# suite on the floor's PHP (the PHP_LOW test leg). It is
 # deliberately CONSERVATIVE: it reports the highest version whose constructs it
 # finds, and only reports 8.1 when it finds none. A missed construct could lower
 # the floor wrongly (a D10 + low-PHP site would then install and fatal at runtime)
@@ -58,6 +59,8 @@ set -euo pipefail
 
 # shellcheck source=../lib/common.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+# shellcheck source=../lib/php-scan.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/php-scan.sh"
 
 SUBJECT=""
 JSON_ONLY=0
@@ -127,26 +130,55 @@ _signal() {
     '. + [{version: $v, pattern: $p, location: $l} + (if $pf then {polyfilled: true} else {} end)]')"
   return 0
 }
-# scan_funcs VERSION LABEL FUNC... -> scan_for for calls of the FUNCs: the
-# first hit (path order, then line) that calls a FUNC no polyfill of --range
-# provides is the signal (return 0); when every hit calls a polyfilled one,
-# the first is kept, marked polyfilled, and does not count (return 1).
+# scan_funcs VERSION LABEL FUNC... -> scan_for for calls of the FUNCs (not a
+# method call, a static call or the function's own definition; a FUNC the
+# module defines itself is provided): the first hit (path order, then line)
+# that calls a FUNC no polyfill of --range provides is the signal (return 0);
+# when every hit calls a polyfilled one, the first is kept, marked
+# polyfilled, and does not count (return 1).
 scan_funcs() {
-  local ver="$1" label="$2" alt hits hit code n first=""
+  local ver="$1" label="$2" alt hits hit code n first="" defined
   shift 2
   alt="$(IFS='|'; printf '%s' "$*")"
-  hits="$(grep_sources -HInE -e "\\b($alt)[[:space:]]*\\(" | LC_ALL=C sort -t: -k1,1 -k2,2n || true)"
+  defined=" $(grep_sources -ohE -e "function[[:space:]]+&?($alt)[[:space:]]*\\(" | sed 's/^function[[:space:]]*&*//; s/[[:space:]]*($//' | LC_ALL=C sort -u | tr '\n' ' ') "
+  hits="$(grep_sources -HInE -e "(^|[^A-Za-z0-9_>:\$])($alt)[[:space:]]*\\(" | LC_ALL=C sort -t: -k1,1 -k2,2n || true)"
   [[ -n "$hits" ]] || return 1
   while IFS= read -r hit; do
     [[ -n "$hit" ]] || continue
-    [[ -n "$first" ]] || first="$hit"
     code="${hit#*:}"; code="${code#*:}"
-    for n in $(printf '%s\n' "$code" | grep -oE "\\b($alt)[[:space:]]*\\(" | sed 's/[[:space:]]*($//' || true); do
+    for n in $(printf '%s\n' "$code" | grep -oE "(^|[^A-Za-z0-9_>:\$])($alt)[[:space:]]*\\(" | sed 's/^[^A-Za-z_]*//; s/[[:space:]]*($//' || true); do
+      case "$defined" in *" $n "*) continue;; esac
+      if printf '%s\n' "$code" | grep_q -E "function[[:space:]]+&?${n}[[:space:]]*\\("; then continue; fi
+      [[ -n "$first" ]] || first="$hit"
       case "$POLY_FUNCS" in *" $n "*) ;; *) _signal "$ver" "$label" "$hit" false; return 0;; esac
     done
   done <<< "$hits"
+  [[ -n "$first" ]] || return 1
   _signal "$ver" "$label" "$first" true
   return 1
+}
+# scan_code VERSION ERE LABEL -> scan_for on the code only: comments, string
+# contents, heredocs and inline HTML blanked first (php_code_lines), so a
+# regex or a docblock is no signal. The blanked copies are made once.
+CODE_DIR=""
+trap '[[ -z "$CODE_DIR" ]] || rm -rf "$CODE_DIR" 2> /dev/null || true' EXIT
+scan_code() {
+  local ver="$1" ere="$2" label="$3" f k=0 hit idx
+  if [[ -z "$CODE_DIR" ]]; then
+    CODE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-php-floor.XXXXXX")"
+    find "$SUBJECT_ABS" -type f \( -name '*.php' -o -name '*.module' -o -name '*.inc' \
+      -o -name '*.install' -o -name '*.theme' -o -name '*.profile' -o -name '*.engine' \) -print 2> /dev/null \
+      | LC_ALL=C sort > "$CODE_DIR/files"
+    while IFS= read -r f; do
+      k=$((k + 1)); php_code_lines "$f" > "$CODE_DIR/$k"
+    done < "$CODE_DIR/files"
+  fi
+  hit="$( (cd "$CODE_DIR" && LC_ALL=C find . -type f ! -name files -exec grep -nHE -e "$ere" {} + 2> /dev/null) \
+    | sed 's#^\./##' | LC_ALL=C sort -t: -k1,1n -k2,2n | sed -n '1p' || true)"
+  [[ -n "$hit" ]] || return 1
+  idx="${hit%%:*}"
+  _signal "$ver" "$label" "$(sed -n "${idx}p" "$CODE_DIR/files"):${hit#*:}" false
+  return 0
 }
 
 # Curated, low-false-positive signals scanned directly (no delimiter packing —
@@ -155,20 +187,22 @@ found_82=0 found_83=0 found_84=0 found_85=0
 
 # PHP 8.5-only language / stdlib additions (php.net migration85.new-features
 # and migration85.new-functions).
-scan_for 8.5 '(^|[^|])\|>'                                'pipe operator (|>)'            && found_85=1 || true
-scan_for 8.5 '#\[\\?(NoDiscard|DelayedTargetValidation)\b' '#[\NoDiscard] / #[\DelayedTargetValidation] attribute' && found_85=1 || true
-scan_for 8.5 '\(void\)[[:space:]]*[$A-Za-z_\\]'           '(void) cast'                   && found_85=1 || true
+# The syntax is searched in the code only (a regex or a comment is no pipe);
+# the 8.5 attributes are no signal: an older PHP ignores an attribute.
+scan_code 8.5 '(^|[^|])\|>[[:space:]]*([A-Za-z_\\$(]|$)'   'pipe operator (|>)'            && found_85=1 || true
+scan_code 8.5 '\(void\)[[:space:]]*[$A-Za-z_\\]'          '(void) cast'                   && found_85=1 || true
 scan_funcs 8.5 '8.5 stdlib function' array_first array_last get_error_handler get_exception_handler && found_85=1 || true
 
 # PHP 8.4-only language / stdlib additions.
 scan_for 8.4 '\b(public|protected|private)\(set\)'        'asymmetric visibility (private(set))' && found_84=1 || true
 scan_for 8.4 '#\[\\Deprecated\b'                          '#[\Deprecated] attribute'      && found_84=1 || true
-scan_funcs 8.4 '8.4 stdlib function' array_find array_any array_all array_find_key mb_trim mb_ltrim mb_rtrim mb_str_pad request_parse_body && found_84=1 || true
+scan_funcs 8.4 '8.4 stdlib function' array_find array_any array_all array_find_key mb_trim mb_ltrim mb_rtrim request_parse_body && found_84=1 || true
 
 # PHP 8.3-only language / stdlib additions.
 scan_for 8.3 '#\[\\?Override\]'                            '#[\Override] attribute'        && found_83=1 || true
 scan_for 8.3 '\bjson_validate[[:space:]]*\('              'json_validate()'               && found_83=1 || true
 scan_for 8.3 '\bstr_(increment|decrement)[[:space:]]*\(' 'str_increment()/str_decrement()' && found_83=1 || true
+scan_funcs 8.3 'mb_str_pad()' mb_str_pad && found_83=1 || true
 scan_for 8.3 '\bconst[[:space:]]+\??(int|float|string|bool|array|iterable|object|mixed|self|static|parent)[[:space:]]+[A-Za-z_]' 'typed class constant' && found_83=1 || true
 
 # PHP 8.2-only language / stdlib additions.

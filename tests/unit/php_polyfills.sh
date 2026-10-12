@@ -10,8 +10,11 @@
 #   --range, a polyfilled function's signal is kept, marked polyfilled, and
 #   does not raise the floor, while one no polyfill provides does; the mb_*
 #   functions (polyfilled only with ext-mbstring) always count;
-# - the 8.5 row: the pipe operator, #[\NoDiscard], the (void) cast and
-#   array_first(); a || operator is no pipe. Docker-free.
+# - the 8.5 row: the pipe operator and the (void) cast in the code only (a
+#   regex, a string or a comment is no signal), array_first(); an attribute
+#   (an older PHP ignores it), a method call, a static call, a definition and a
+#   function the module defines itself are no signal; mb_str_pad() is 8.3.
+#   Docker-free.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
 # shellcheck source=../../scripts/lib/common.sh
@@ -23,6 +26,7 @@ assert_eq "^11.2: php84" "$(p '^11.2')" '["symfony/polyfill-php84"]'
 assert_eq "^11.3 || ^12: php84 and php85 (native on 12.0's PHP 8.5)" "$(p '^11.3 || ^12')" '["symfony/polyfill-php84","symfony/polyfill-php85"]'
 assert_eq "^12: php86 too" "$(p '^12')" '["symfony/polyfill-php84","symfony/polyfill-php85","symfony/polyfill-php86"]'
 assert_eq "^9 (no data minor): none" "$(core_range_polyfills '^9')" '{"functions":[],"packages":[]}'
+assert_eq "^9.5 || ^11.2 (a major with no data): none" "$(core_range_polyfills '^9.5 || ^11.2')" '{"functions":[],"packages":[]}'
 assert_eq "^11.2: the unconditional functions only (no mb_*)" "$(core_range_polyfills '^11.2' | jq -c '.functions')" \
   '["array_all","array_any","array_find","array_find_key","fpow"]'
 
@@ -47,15 +51,29 @@ assert_eq "mb_trim() (polyfilled only with ext-mbstring) still counts: floor 8.4
   '["8.4",[["t.php:2",false]]]'
 rm -f "$S/t.php"
 
-# The 8.5 row.
+# The 8.5 row: the syntax in the code only; an attribute, a method call, a
+# definition and a function the module defines are no signal; mb_str_pad()
+# is PHP 8.3.
 printf '<?php\n$ok = $a || $b;\n' > "$S/or.php"
 df
 assert_eq "a || operator is no pipe operator" "$(jq -r '.floor' "$T_OUT")" "8.4"
-for c in '$n = "x" |> strlen(...);' '#[\NoDiscard]' '(void) m_f([]);' '$f = array_first([1]);'; do
+for c in '$n = "x" |> strlen(...);' '(void) m_f([]);' '$f = array_first([1]);'; do
   printf '<?php\n%s\n' "$c" > "$S/n.php"
   df --range '^11.3'
   assert_eq "8.5: $c" "$(jq -c '[.floor, ([.signals[] | select(.version == "8.5") | .location] | length)]' "$T_OUT")" '["8.5",1]'
 done
+for c in '$re = "/(\\s|>)|>=/";' '// a |> b in a comment' "\$t = 'x |> y';" '/** (void) nothing to return */' \
+         '#[\NoDiscard]' '$o->array_first([1]);' 'Foo::array_last([1]);'; do
+  printf '<?php\n%s\n' "$c" > "$S/n.php"
+  df --range '^11.3'
+  assert_eq "no 8.5 signal: $c" "$(jq -c '[.floor, ([.signals[] | select(.version == "8.5")] | length)]' "$T_OUT")" '["8.1",0]'
+done
+printf '<?php\nfunction array_first(array $a) { return $a[0] ?? null; }\n$x = array_first([1]);\n' > "$S/n.php"
+df --range '^11.3'
+assert_eq "a function the module defines itself provides it" "$(jq -c '[.floor, ([.signals[] | select(.version == "8.5")] | length)]' "$T_OUT")" '["8.1",0]'
+printf '<?php\n$p = mb_str_pad("x", 3);\n' > "$S/n.php"
+df --range '^11.3'
+assert_eq "mb_str_pad() is PHP 8.3" "$(jq -c '[.floor, [.signals[] | select(.pattern == "mb_str_pad()") | .version]]' "$T_OUT")" '["8.3",["8.3"]]'
 printf '<?php\nset_error_handler(fn () => true);\n$h = get_error_handler();\n' > "$S/n.php"
 df --range '^11.3'
 assert_eq "get_error_handler() on ^11.3 (polyfill-php85): no 8.5 floor" "$(jq -c '[.floor, [.signals[] | select(.version == "8.5") | .polyfilled]]' "$T_OUT")" '["8.1",[true]]'

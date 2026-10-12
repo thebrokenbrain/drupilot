@@ -842,9 +842,10 @@ symmetric questions at once:
 
 This is a HEURISTIC syntactic scan (a curated list of well-known 8.2 to 8.5
 language constructs and function additions; the 8.5 ones read on php.net's
-migration85 pages), NOT a full static analysis, and a FALLBACK: the php
-stage's php -l on every PHP of the window and the test suite are the
-authoritative checks. It is
+migration85 pages), NOT a full static analysis. For syntax it is a fallback:
+the php stage runs php -l on every PHP of the window. A function's
+availability on the floor is checked only by this scan and by the test
+suite on the floor's PHP (the PHP_LOW test leg). It is
 deliberately CONSERVATIVE: it reports the highest version whose constructs it
 finds, and only reports 8.1 when it finds none. A missed construct could lower
 the floor wrongly (a D10 + low-PHP site would then install and fatal at runtime)
