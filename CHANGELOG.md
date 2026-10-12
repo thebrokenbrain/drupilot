@@ -38,7 +38,8 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   ignores them.
 - **`detect-php-floor.sh` reads calls only**: a method call, a static call or
   a function's own definition no longer counts, and a function the module
-  defines itself is provided. `core-strategy.sh` judges the floor with the
+  defines itself as a global function (in its code, in a file with no
+  namespace) is provided. `core-strategy.sh` judges the floor with the
   polyfills of the range it recommends, as the plan does.
 - **`/drupilot-port --php X.Y`** (T-M5-09). The setup froze the PHP target.
   The port checks X.Y against the frozen plan's `php.final`, and a mismatch,
@@ -57,7 +58,7 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ### Fixed
 - `detect-php-floor.sh`: `mb_str_pad()` is a PHP 8.3 function (php.net), not
-  8.4.
+  8.4; `fpow()`, `mb_ucfirst()` and `mb_lcfirst()` (PHP 8.4) were missing.
 
 ## [1.0.0-alpha.2] - 2026-10-12
 

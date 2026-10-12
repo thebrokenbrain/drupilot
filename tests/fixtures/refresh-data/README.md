@@ -15,6 +15,7 @@ entries holds only the PHP and `symfony/polyfill-*` packages (11.3.18's and
 does, and 11.x-dev clears it with `"__unset"`), to prove the `polyfills`
 derivation: what every tag of a minor requires. The made-up `11.3.0-rc1`
 requires no polyfill: a supported major ignores its pre-release tags, so 11.3
-keeps php84 and php85. The test then appends a stable 11.3 tag after the
-`"__unset"` entry, which inherits the cleared require and empties 11.3's
+keeps php84 and php85. The test then appends a stable 11.3 tag requiring them,
+an `"__unset"` entry and a stable 11.3 tag with no require: that last tag
+inherits the cleared require (not the one before it), which empties 11.3's
 intersection.

@@ -36,9 +36,12 @@ assert_eq "generated: the dev constraints" \
   '["^11.5.50","^8.3.30","^1.12.27 || ^2.1.26","^1.3.9 || ^2.0.9"]'
 assert_eq "generated: the polyfills every tag of the minor requires (11.3.0 inherits 11.3.18's require)" \
   "$(jq -c '.minors["11.3"].polyfills' "$T11")" '["symfony/polyfill-php84","symfony/polyfill-php85"]'
-# A stable 11.3 tag after the "__unset" entry inherits the cleared require:
-# every tag of 11.3 no longer requires php84 and php85.
-jq '.packages["drupal/core"] += [{"version": "11.3.1", "time": "2025-12-20T12:00:00+00:00"}]' \
+# A stable 11.3 tag right after an "__unset" entry inherits the cleared
+# require, not the php84/php85 of the entry before it: every tag of 11.3 no
+# longer requires them.
+jq '.packages["drupal/core"] += [{"version": "11.3.2", "time": "2025-12-21T12:00:00+00:00", "require": {"symfony/polyfill-php84": "^1.32", "symfony/polyfill-php85": "^1.32"}},
+                                  {"version": "11.x-dev", "time": "2025-12-21T12:00:00+00:00", "require": "__unset"},
+                                  {"version": "11.3.1", "time": "2025-12-20T12:00:00+00:00"}]' \
   "$T_TMP/cache/packagist/drupal-core.json" > "$T_TMP/p2.json"
 mkdir -p "$T_TMP/cache-u/packagist"; cp -R "$T_TMP/cache/." "$T_TMP/cache-u/"; cp "$T_TMP/p2.json" "$T_TMP/cache-u/packagist/drupal-core.json"
 fresh u

@@ -11,10 +11,10 @@ functionality**, with the *minimum* changes. This is **not** a refactor — no
 architecture changes, no API modernization for its own sake. Anything beyond
 mechanical compatibility is explicitly deferred to Phase 2 (`/drupilot-refactor`).
 
-Subject path argument: `$1` when it is a directory (fallback: the current working
-directory). When the first argument is a flag (`/drupilot-port --php 8.4`), the
-subject is the current working directory: use that path wherever `$1` appears
-below. A `--php X.Y` in `$ARGUMENTS` names the PHP target the port expects. The
+Subject path argument: the first argument of `$ARGUMENTS` that is neither a flag
+nor a flag's value (`--php 8.4`), when it is a directory; else the current
+working directory. When it is not `$1` (`/drupilot-port --php 8.4 <path>`, or no
+path), use that path wherever `$1` appears below. A `--php X.Y` in `$ARGUMENTS` names the PHP target the port expects. The
 setup froze it in the plan, and the port never changes it: once the Drupal root is
 known, read the frozen value with
 `bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; DRUPILOT_PROJECT_DIR=<drupal_root> plan_get .php.final'`.

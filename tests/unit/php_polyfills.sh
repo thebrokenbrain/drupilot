@@ -71,6 +71,24 @@ done
 printf '<?php\nfunction array_first(array $a) { return $a[0] ?? null; }\n$x = array_first([1]);\n' > "$S/n.php"
 df --range '^11.3'
 assert_eq "a function the module defines itself provides it" "$(jq -c '[.floor, ([.signals[] | select(.version == "8.5")] | length)]' "$T_OUT")" '["8.1",0]'
+# Not hidden: a docblock naming the function, a class method of the same
+# name; counted: a call after => or a ternary colon; fpow() and mb_ucfirst()
+# are 8.4; a pipe into a string or an array callable is 8.5.
+rm -f "$S/n.php" "$S/or.php"
+printf '<?php\n/**\n * Finds the first item, with the PHP 8.4 function array_find().\n */\nclass U { public function array_find(array $a, $c) { return \\array_find($a, $c); } }\n' > "$S/u.php"
+df --range '^10.3 || ^11'
+assert_eq "a docblock and a class method of the same name hide no call: floor 8.4" "$(jq -r '.floor' "$T_OUT")" "8.4"
+rm -f "$S/u.php"; printf '<?php\n$f = 1;\n' > "$S/m.module"
+for c in "\$x = ['k'=>array_find(\$a, fn (\$v) => \$v)];" '$y = $c ?: array_any($a, fn ($v) => $v);' '$z = fpow(2, 3);' '$w = mb_ucfirst("a");'; do
+  printf '<?php\n%s\n' "$c" > "$S/n.php"
+  df --range '^10.3 || ^11'
+  assert_eq "8.4: $c" "$(jq -r '.floor' "$T_OUT")" "8.4"
+done
+for c in "\$r = \"Hello\" |> 'strtoupper';" '$r = $s |> [$this, "m"];'; do
+  printf '<?php\n%s\n' "$c" > "$S/n.php"
+  df --range '^11.3'
+  assert_eq "8.5: $c" "$(jq -r '.floor' "$T_OUT")" "8.5"
+done
 printf '<?php\n$p = mb_str_pad("x", 3);\n' > "$S/n.php"
 df --range '^11.3'
 assert_eq "mb_str_pad() is PHP 8.3" "$(jq -c '[.floor, [.signals[] | select(.pattern == "mb_str_pad()") | .version]]' "$T_OUT")" '["8.3",["8.3"]]'
