@@ -593,7 +593,8 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     patches, the local-environment residue); paths keep their non-ASCII
     names. The applying Rector runs of one port add up in rector-rules.json
     (its new `port_base`), so a digests apply no longer hides the official
-    pass's files.
+    pass's files. The actions log's hash leaves out each record's
+    time, so the same actions give the same manifest.
   - `port-report.sh` renders the lane × status table, the codemods and the
     rationale. A manifest golden pins the generator on the lab's
     `legacy_widgets` port.

@@ -165,13 +165,19 @@ RAT_NEW='{}'; [[ -z "$RATIONALE" ]] || RAT_NEW="$(jq -c . "$RATIONALE")"
 COMPOSER_PHP="$(jq -r '.require.php // empty' "$SUBJECT/composer.json" 2> /dev/null || true)"
 SUBREL="$(jq -r '.subject.path // ""' "$F")"
 
+# The actions log's hash, without each record's time ("at"): the same
+# actions give the same hash on every run.
+ACTH=""
+if [[ -s "$SD/actions.jsonl" ]]; then
+  ACTH="$(jq -R -c 'fromjson? // empty | del(.at)' "$SD/actions.jsonl" 2> /dev/null | json_hash || true)"
+fi
 DOC="$TMP/manifest.json"
 jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile at "$AT" --slurpfile dd "$DD" --slurpfile asj "$AS" \
   --slurpfile acts "$TMP/acts.json" --slurpfile dec "$TMP/dec.json" --slurpfile ps "$TMP/ps.json" --slurpfile sig "$TMP/sig.json" \
   --slurpfile md "$TMP/meta.json" --slurpfile soft "$TMP/soft.json" --rawfile files "$TMP/files.tsv" \
   --argjson ratprev "$RAT_PREV" --argjson ratnew "$RAT_NEW" --arg phase "$PHASE" --arg mn "$MN" --arg type "$TYPE" \
   --arg req "$REQ" --arg rphp "$COMPOSER_PHP" --arg pt "$(resolve_php_target)" --arg d10 "$D10" --arg patch "$PATCH" \
-  --arg base "$BASE_SHA" --arg subrel "$SUBREL" --arg acth "$(file_hash "$SD/actions.jsonl" 2> /dev/null || true)" '
+  --arg base "$BASE_SHA" --arg subrel "$SUBREL" --arg acth "$ACTH" '
   $f[0] as $F | $w[0] as $W | $rr[0] as $RR | $asj[0] as $A | $acts[0] as $ST
   | def occ: ([(.sources // [])[] | select(.tool == "phpstan")] | length) as $n | if $n > 0 then $n else 1 end;
     def nz: if . == "" then null else . end;
