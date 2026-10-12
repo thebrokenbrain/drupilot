@@ -627,25 +627,10 @@ fi
 # lint_floor <php X.Y> -> lint JSON on that PHP via Docker. Called in a command
 # substitution, so the per-PHP cache is a file, not a variable.
 lint_floor() {
-  local php="$1" image="php:$1-cli" cache="$TMP/lint-floor-$1.json"
+  local php="$1" cache="$TMP/lint-floor-$1.json" res st
   [[ -s "$cache" ]] && { cat "$cache"; return 0; }
-  local res st="ran"
-  : > "$TMP/lint-$php.tsv"
-  if ! docker image inspect "$image" </dev/null >/dev/null 2>&1; then
-    log_info "Pulling $image for the PHP $php lint (once)."
-    run_with_timeout 300 docker pull -q "$image" </dev/null >/dev/null 2>&1 || st="skipped"
-  fi
-  if [[ "$st" == "ran" ]]; then
-    cp "$MATRIX_DIR/lint.sh" "$TMP/.drupilot-lint.sh"
-    # The tree is streamed in (no bind mount: nothing on the host is relabelled
-    # or written).
-    if ! ( cd "$SUBJECT_PHYS" && tar -cf - --exclude=.git --exclude=vendor --exclude=node_modules . -C "$TMP" .drupilot-lint.sh ) \
-         | run_with_timeout 300 docker run --rm -i --network none "$image" \
-             sh -c 'mkdir -p /s && cd /s && tar -xf - && sh ./.drupilot-lint.sh .' > "$TMP/lint-$php.tsv" 2>/dev/null; then
-      st="error"
-    fi
-  fi
-  res="$(lint_json "$php" "docker $image" "$st" "$TMP/lint-$php.tsv")"
+  st="$(php_lint_docker "$php" "$SUBJECT_PHYS" "$MATRIX_DIR/lint.sh" "$TMP/lint-$php.tsv")"
+  res="$(lint_json "$php" "docker $(php_cli_image "$php")" "$st" "$TMP/lint-$php.tsv")"
   [[ "$st" == "skipped" ]] && res="$(printf '%s' "$res" | jq -c '. + {reason: "the PHP image could not be pulled (network unavailable?)"}')"
   printf '%s' "$res" > "$cache"
   printf '%s' "$res"

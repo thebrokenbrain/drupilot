@@ -42,7 +42,7 @@ parameters:
   # Deterministic, project-local result cache, one directory per upgrade plan
   # (the first 12 hex digits of its hash): a run never reuses results cached for
   # another PHP range or plan. Safe to delete; .phpstan-cache/ is gitignored.
-  tmpDir: .phpstan-cache/9193c412a820
+  tmpDir: .phpstan-cache/ed9bee5a87e4
 
   # Profile compat (ADR 0020).
   # phpstan-drupal's opinion rules are off: a minimal port makes no change

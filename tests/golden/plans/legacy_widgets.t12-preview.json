@@ -5,7 +5,7 @@
     "OPT_IN_TEST_PREVIOUS_MAJOR": 1
   },
   "core_removals": null,
-  "data_hash": "sha256:b967dc04dc59646e99bca648bb267ff1a76ea65993d62d5af159d19ff50cbc5d",
+  "data_hash": "sha256:ae3ca627268988567255f71e96ff587186438a661868b8cc70d8ca9789efe8cb",
   "detectors": [
     "removed-ext-11",
     "signature-changes",

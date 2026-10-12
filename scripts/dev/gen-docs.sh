@@ -382,7 +382,7 @@ gen_version_matrix() {
     def cell: if . == null then "" else tostring end;
     def short: if . == null then "" else split("\\") | last end;
     "\n## PHP rules\n",
-    "As of \(.as_of); rule classes read in rector-src \(.rector_version). compat: a deprecation fix whose output runs on the PHP floor; deny: never applied, also inside a level set; report-only: reported, never rewritten; removed-no-rule: a removed construct no rule fixes.\n",
+    "As of \(.as_of); rule classes read in rector-src \(.rector_version). compat: a deprecation fix whose output runs on the PHP floor; deny: never applied, also inside a level set; report-only: reported, never rewritten; removed-no-rule: a removed construct no compat rule fixes (the Rector level sets rewrite some of its forms; php-target.sh reports what is left).\n",
     "| Id | Kind | Rector rule | Deprecated in | Removed in | Output needs PHP | Drupal-safe | Verified |",
     "|---|---|---|---|---|---|---|---|",
     (.rules[] | "| `\(.id)` | \(.kind) | \(if .rule then "`\(.rule | short)`" else "" end) | \(.deprecated_in | cell) | \(.removed_in | cell) | \(.output_min_php | cell) | \(.drupal_safe | cell) | \(if .verified then "yes" else "no" end) |"),

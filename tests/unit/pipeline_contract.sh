@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # The stage contract of scripts/ai/pipeline.sh (T-M4-12, AR-07, ADR 0028),
 # with stub tools in a copy of the plugin:
-# - upgrade -> php -> validate -> report run in catalog order; php is a
-#   placeholder (skipped); the records keep the input and output digests;
+# - upgrade -> php -> validate -> report run in catalog order; php extracts,
+#   normalizes and classifies at stage php, and fails when a PHP-window
+#   finding is in no worklist item; the records keep the input and output
+#   digests;
 #   a checkpoint ref per stage, the real index and HEAD untouched;
 # - a re-run on the same tree, plan and lock: every stage up to date, no tool
 #   runs; --force runs them again; a plan with hops [] skips upgrade
@@ -26,9 +28,12 @@ stub() {  # stub PATH BODY
 stub analysis/run-rector.sh 'printf "// rector\n" >> "$STUB_SUBJECT/src/A.php"; exit "${STUB_RECTOR_RC:-0}"'
 stub ai/extract.sh 'st=""; prev=""; for a in "$@"; do [ "$prev" = "--stage" ] && st="$a"; prev="$a"; done
 nn="${STUB_NN:-$(printf "%02d" "$(jq -r --arg s "$st" "[.stages[].id] | index(\$s) + 1" "$STUB_CAT")")}"
-mkdir -p "$STUB_SD/raw"; printf "{}\n" > "$STUB_SD/raw/$nn-$st-phpstan.json"; exit 0'
-stub ai/normalize-findings.sh 'exit 0'
-stub ai/classify.sh 'exit 0'
+mkdir -p "$STUB_SD/raw"; printf "{}\n" > "$STUB_SD/raw/$nn-$st-phpstan.json"; exit "${STUB_EXTRACT_RC:-0}"'
+# The findings and the worklist: one PHP-window finding, in an item unless
+# STUB_PHP_GAP is set.
+stub ai/normalize-findings.sh 'printf "%s\n" "{\"tools\":{\"php-lint\":\"${STUB_LINT:-ok}\"},\"findings\":[{\"id\":\"F-1\",\"tool\":\"catalog\",\"class\":\"php-target\"}]}" > "$STUB_SD/findings.json"; exit 0'
+stub ai/classify.sh 'if [ -n "${STUB_PHP_GAP:-}" ]; then ids=""; else ids="\"F-1\""; fi
+printf "%s\n" "{\"items\":[{\"lane\":\"human\",\"status\":\"open\",\"blocking\":true,\"reason\":\"removed-in-target-php\",\"finding_ids\":[$ids]}]}" > "$STUB_SD/worklist.json"; exit 0'
 stub ai/apply-recipes.sh 'exit 0'
 stub analysis/fixpoint.sh 'if [ "${STUB_FIXPOINT_RC:-0}" != 0 ]; then printf "broken\n" >> "$STUB_SUBJECT/src/A.php"; printf "x\n" > "$STUB_SUBJECT/src/New.php"; fi; exit "${STUB_FIXPOINT_RC:-0}"'
 stub ai/manifest.sh 'exit 0'
@@ -57,24 +62,27 @@ st() { jq -r --arg s "$1" '.stages[$s] | "\(.status)|\(.reason // "-")"' "$SD/st
 
 pl --run r1 --json
 assert_eq "upgrade, php, validate and report in catalog order: exit 0" "$T_RC|$(calls)" \
-  "0|run-rector,extract,normalize-findings,classify,apply-recipes,fixpoint,manifest,port-report"
-assert_eq "  the extraction ran at stage upgrade, the fixpoint at stage validate" \
-  "$(grep -c -- '^extract .*--stage upgrade' "$LOG")|$(grep -c -- '^fixpoint .*--stage validate' "$LOG")" "1|1"
-assert_eq "  the records: done, placeholder skipped" "$(st upgrade) $(st php) $(st validate) $(st report)" "done|- skipped|placeholder done|- done|-"
+  "0|run-rector,extract,normalize-findings,classify,apply-recipes,extract,normalize-findings,classify,fixpoint,manifest,port-report"
+assert_eq "  the extraction ran at stages upgrade and php, the fixpoint at stage validate" \
+  "$(grep -c -- '^extract .*--stage upgrade' "$LOG")|$(grep -c -- '^extract .*--stage php' "$LOG")|$(grep -c -- '^fixpoint .*--stage validate' "$LOG")" "1|1|1"
+assert_eq "  the records: done" "$(st upgrade) $(st php) $(st validate) $(st report)" "done|- done|- done|- done|-"
 assert_eq "  upgrade changed the tree: its output digest is not its input's; validate's input is upgrade's output" \
   "$(jq -r '[.stages.upgrade.input_digest != .stages.upgrade.output_digest, .stages.validate.input_digest == .stages.upgrade.output_digest] | @csv' "$SD/stages.json")" "true,true"
-assert_eq "  the --json summary" "$(jq -c '[.run_id, [.stages[] | .status]]' "$T_OUT")" '["r1",["done","skipped","done","done"]]'
+assert_eq "  the --json summary" "$(jq -c '[.run_id, [.stages[] | .status]]' "$T_OUT")" '["r1",["done","done","done","done"]]'
 assert_eq "  a checkpoint ref per stage; HEAD and the real index untouched" \
   "$(g for-each-ref --format='%(refname)' refs/drupilot/stages/r1 | tr '\n' ' ')|$(g rev-parse HEAD)|$(g diff --cached --name-only | wc -l | tr -d ' ')" \
   "refs/drupilot/stages/r1/php refs/drupilot/stages/r1/report refs/drupilot/stages/r1/upgrade refs/drupilot/stages/r1/validate |$HEAD0|0"
 assert_eq "  the run is recorded" "$(jq -r '.tool' "$SD"/runs/*/run-manifest.json | sort -u)" "pipeline"
-assert_eq "  the raw report under the stage's own NN" "$(ls "$SD/raw")" "07-upgrade-phpstan.json"
+assert_eq "  the raw reports under each stage's own NN" "$(ls "$SD/raw" | tr '\n' ' ')" "07-upgrade-phpstan.json 08-php-phpstan.json "
 
 # A re-run on the same tree, plan and lock: nothing runs.
 pl --json
 assert_eq "a re-run: every stage up to date, no tool runs" "$T_RC|$(calls)|$(jq -c '[.stages[].status] | unique' "$T_OUT")" '0||["up-to-date"]'
+STUB_LINT=skipped pl --stages php --force
+pl
+assert_eq "a stage that runs (php, its php -l skipped before) runs the ones after it" "$T_RC|$(calls)" "0|extract,normalize-findings,classify,fixpoint,manifest,port-report"
 pl --force
-assert_eq "  --force runs them again" "$T_RC|$(calls)" "0|run-rector,extract,normalize-findings,classify,apply-recipes,fixpoint,manifest,port-report"
+assert_eq "  --force runs them again" "$T_RC|$(calls)" "0|run-rector,extract,normalize-findings,classify,apply-recipes,extract,normalize-findings,classify,fixpoint,manifest,port-report"
 # A tree rolled back to before upgrade runs it again.
 g checkout -q -- src/A.php
 pl
@@ -83,7 +91,8 @@ assert_eq "a tree rolled back to before upgrade: upgrade runs again" "$T_RC|$(ca
 # A same-major plan: upgrade is skipped.
 setplan '[]'
 pl
-assert_eq "hops []: upgrade skipped (same-major), the other stages run" "$T_RC|$(st upgrade)|$(calls)" "0|skipped|same-major|fixpoint,manifest,port-report"
+assert_eq "hops []: upgrade skipped (same-major), the other stages run (php too)" "$T_RC|$(st upgrade)|$(calls)" \
+  "0|skipped|same-major|extract,normalize-findings,classify,fixpoint,manifest,port-report"
 setplan '["10-11"]'
 
 # A raw report under another NN fails the stage, and its changes go back.
@@ -98,12 +107,31 @@ rm -f "$SD/raw/99-upgrade-phpstan.json"
 pl --stages upgrade
 cp "$S/src/A.php" "$T_TMP/A.validate"
 STUB_FIXPOINT_RC=3 pl --run r9
-assert_eq "an injected failure in validate: exit 3, report not run" "$T_RC|$(calls)|$(st validate)" "3|fixpoint|failed|exit 3"
+assert_eq "an injected failure in validate: exit 3, report not run" "$T_RC|$(calls)|$(st validate)" "3|extract,normalize-findings,classify,fixpoint|failed|exit 3"
 assert_eq "  the tree back at validate's checkpoint: its edit undone, its new file removed" \
   "$(cmp -s "$S/src/A.php" "$T_TMP/A.validate" && echo restored)|$([[ -e "$S/src/New.php" ]] && echo left || echo removed)" "restored|removed"
 assert_eq "  HEAD and the real index still untouched" "$(g rev-parse HEAD)|$(g diff --cached --name-only | wc -l | tr -d ' ')" "$HEAD0|0"
 pl
 assert_eq "  the next run resumes at validate (upgrade is up to date)" "$T_RC|$(calls)" "0|fixpoint,manifest,port-report"
+
+# The php stage: Rector's or PHPStan's missing verdict (extract exit 3) is
+# validate's to judge; a php -l that did not run on every leg, or a placeholder
+# record of 1.0.0-alpha.1, is never up to date.
+STUB_EXTRACT_RC=3 pl --stages php --force
+assert_eq "extract.sh exit 3 in php: warned, the stage done" "$T_RC|$(st php)|$(calls)" "0|done|-|extract,normalize-findings,classify"
+STUB_LINT=skipped pl --stages php --force
+assert_eq "php -l skipped: done, its reason recorded" "$T_RC|$(st php)" "0|done|php-lint-skipped"
+STUB_LINT=skipped pl --stages php
+assert_eq "  so the stage is not up to date: it runs again" "$T_RC|$(calls)" "0|extract,normalize-findings,classify"
+jq '.stages.php.status = "skipped" | .stages.php.reason = "placeholder"' "$SD/stages.json" > "$T_TMP/st" && mv "$T_TMP/st" "$SD/stages.json"
+pl --stages php
+assert_eq "an alpha.1 placeholder record on the same tree: the stage runs" "$T_RC|$(calls)|$(st php)" "0|extract,normalize-findings,classify|done|-"
+pl --stages php
+assert_eq "  then it is up to date" "$T_RC|$(calls)" "0|"
+
+# The php gate: a PHP-window finding in no worklist item fails the stage.
+STUB_PHP_GAP=1 pl --stages php --force
+assert_eq "a PHP-window finding in no item: php failed (exit 3)" "$T_RC|$(st php)" "3|failed|exit 1"
 
 # Usage errors.
 mkdir -p "$T_TMP/nogit"; printf 'name: N\ntype: module\n' > "$T_TMP/nogit/nogit.info.yml"

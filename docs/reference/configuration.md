@@ -14,6 +14,7 @@ Allow a target major that has no stable release yet (Drupal 12 before its 12.0.0
 
 - **Default:** `false`
 - **Type:** bool
+- **See:** [concepts/php-and-core-target.md](../concepts/php-and-core-target.md)
 
 ### `DRUPILOT_ARTIFACTS_DIR`
 
@@ -84,6 +85,7 @@ Core compatibility decision: `auto` (keep `^10 || ^11` while backwards-compatibl
 
 - **Default:** `auto`
 - **Type:** enum — one of `auto`, `d11-only`, `keep-d10`, `target-only`, `keep-previous`, `widest`
+- **See:** [concepts/php-and-core-target.md](../concepts/php-and-core-target.md)
 
 ### `DRUPILOT_DDEV_CREATE_TIMEOUT`
 
@@ -112,6 +114,7 @@ Target core range.
 
 - **Default:** `^11`
 - **Type:** string
+- **See:** [concepts/php-and-core-target.md](../concepts/php-and-core-target.md)
 
 ### `DRUPILOT_FIXPOINT`
 
@@ -239,6 +242,7 @@ Target PHP version (drives PHPStan / PHPCS / DDEV, and caps Rector's PHP floor: 
 
 - **Default:** `8.3`
 - **Type:** string
+- **See:** [concepts/php-and-core-target.md](../concepts/php-and-core-target.md)
 
 ### `DRUPILOT_PLACEMENT`
 
@@ -260,6 +264,7 @@ When keeping `^10 || ^11`, how to set composer `require.php`: `detect` derives t
 
 - **Default:** `detect`
 - **Type:** enum — one of `detect`, `target`
+- **See:** [concepts/php-and-core-target.md](../concepts/php-and-core-target.md)
 
 ### `DRUPILOT_RUNS_KEEP`
 
@@ -296,6 +301,7 @@ The Drupal major the port targets (T): 11 for all of 1.0.x. The upgrade plan (sc
 
 - **Default:** `11`
 - **Type:** string
+- **See:** [concepts/php-and-core-target.md](../concepts/php-and-core-target.md)
 
 ### `DRUPILOT_TOOLCHAIN_SOURCE`
 
@@ -317,6 +323,7 @@ Which cores `verify-core-matrix.sh` checks statically (PHPStan + `php -l`): `aut
 
 - **Default:** `auto`
 - **Type:** string
+- **See:** [concepts/php-and-core-target.md](../concepts/php-and-core-target.md)
 
 ### `DRUPILOT_VIABILITY_THRESHOLD`
 
@@ -371,6 +378,7 @@ Legacy boolean (`true` → keep D10, `false` → D11-only), honored only while `
 
 - **Default:** none
 - **Type:** bool
+- **See:** [concepts/php-and-core-target.md](../concepts/php-and-core-target.md)
 
 ### `DRUPILOT_NONINTERACTIVE`
 

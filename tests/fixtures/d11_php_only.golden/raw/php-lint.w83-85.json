@@ -1,0 +1,56 @@
+{
+  "legs": [
+    {
+      "deprecations": 0,
+      "errors": 0,
+      "image": "php:8.3-cli",
+      "messages": [],
+      "php": "8.3",
+      "status": "pass"
+    },
+    {
+      "deprecations": 1,
+      "errors": 0,
+      "image": "php:8.4-cli",
+      "messages": [
+        {
+          "file": "src/Greeter.php",
+          "kind": "deprecated",
+          "line": 15,
+          "message": "Drupal\\d11_php_only\\Greeter::greet(): Implicitly marking parameter $name as nullable is deprecated, the explicit nullable type must be used instead"
+        }
+      ],
+      "php": "8.4",
+      "status": "pass"
+    },
+    {
+      "deprecations": 1,
+      "errors": 0,
+      "image": "php:8.5-cli",
+      "messages": [
+        {
+          "file": "src/Greeter.php",
+          "kind": "deprecated",
+          "line": 15,
+          "message": "Drupal\\d11_php_only\\Greeter::greet(): Implicitly marking parameter $name as nullable is deprecated, the explicit nullable type must be used instead"
+        }
+      ],
+      "php": "8.5",
+      "status": "pass"
+    }
+  ],
+  "meta": {
+    "php_versions": {
+      "8.3": "8.3.35",
+      "8.4": "8.4.26",
+      "8.5": "8.5.11"
+    }
+  },
+  "status": "pass",
+  "tool": "php-lint",
+  "window": [
+    "8.3",
+    "8.4",
+    "8.5"
+  ]
+}

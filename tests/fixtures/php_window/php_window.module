@@ -1,0 +1,22 @@
+<?php
+
+/**
+ * @file
+ * A Drupal 10-era module whose code meets the edges of the PHP window.
+ */
+
+/**
+ * Counts a value with the old cast name (deprecated in PHP 8.5).
+ */
+function php_window_count(mixed $value): int {
+  return (integer) $value;
+}
+
+/**
+ * The first even number, with PHP 8.4's array_find().
+ *
+ * Below PHP 8.4 only a polyfill provides it.
+ */
+function php_window_first_even(array $numbers): ?int {
+  return array_find($numbers, static fn (int $n): bool => $n % 2 === 0);
+}

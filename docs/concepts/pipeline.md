@@ -25,7 +25,9 @@ In order, for a port of a Drupal 10 module to Drupal 11:
 5. **plan-final**: the core range is chosen, and the plan is frozen.
 6. **upgrade**: the official Rector pass, the codemods, and the digests rules
    you reviewed.
-7. **php**: the PHP-target rules (a placeholder in this pre-release).
+7. **php**: the PHP window: the constructs a PHP of the window removed or
+   deprecated, and `php -l` on each of its PHP versions (see
+   [PHP and the core target](php-and-core-target.md)).
 8. **residual**: the AI fixes what the tools left (arrives in a later 1.0
    pre-release; until then the port command drives these fixes).
 9. **validate**: the checks, ending with the fixpoint gate.

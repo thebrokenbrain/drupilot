@@ -4,3 +4,13 @@
  * @file
  * D11 PHP-only module.
  */
+
+/**
+ * Returns the first key and value of a list.
+ *
+ * each() was removed in PHP 8.0: no Rector rule rewrites it, a person must.
+ */
+function d11_php_only_first(array $list): array {
+  reset($list);
+  return each($list) ?: [];
+}

@@ -8,7 +8,8 @@
 #      the subject's digest at the stage start;
 #   2. a stage whose last record is done (or skipped) with an output digest
 #      equal to that digest is up to date: it is not run again (a tree rolled
-#      back to before the stage runs it again);
+#      back to before the stage runs it again), unless a stage before it ran
+#      in this run;
 #   3. a checkpoint of the subject's tree, refs/drupilot/stages/<run>/<stage>
 #      (git_stage_checkpoint: a throwaway GIT_INDEX_FILE, the real index and
 #      HEAD untouched);
@@ -28,8 +29,17 @@
 #             --reextract: S6, S7); skipped, reason same-major, when the
 #             plan's hops are [] (the digests layer, which the developer
 #             reviews, stays in /drupilot-port)
-#   php       a placeholder until the PHP-target engine (M5): skipped, reason
-#             placeholder
+#   php       the extraction at stage php (with the PHP-window tools:
+#             php-target.sh's removed and deprecated constructs, the php -l
+#             legs of php-lint-window.sh), normalize-findings.sh and
+#             classify.sh: the PHP-window findings become human worklist
+#             items (removed-in-target-php blocks); a finding in no item
+#             fails the stage. It runs on every plan, a same-major one too.
+#             Rector's or PHPStan's missing verdict (extract.sh exit 3) is
+#             warned about (validate's fixpoint judges it); a php -l that
+#             did not run on every leg is recorded as the reason
+#             php-lint-skipped|partial|failed, and such a record (like a
+#             skipped "placeholder" one of 1.0.0-alpha.1) is never up to date
 #   validate  the fixpoint gate (fixpoint.sh: the extraction again, the
 #             codemods in dry-run); its exit 3 (DRUPILOT_FIXPOINT=enforce)
 #             fails the stage
@@ -145,7 +155,29 @@ stage_upgrade() {
   bash "$S/ai/apply-recipes.sh" --subject "$SUBJECT" --reextract < /dev/null || return $?
   return 0
 }
-stage_php() { SKIP_REASON="placeholder"; return 0; }
+stage_php() {
+  local nf nw rc=0 lv
+  # Rector's or PHPStan's missing verdict (extract exit 3) is validate's to
+  # judge (the fixpoint gate); the PHP-window tools carry their own.
+  bash "$S/ai/extract.sh" --subject "$SUBJECT" --stage php < /dev/null || rc=$?
+  case "$rc" in
+    0) ;;
+    3) log_warn "pipeline: php: Rector or PHPStan gave no verdict; the PHP-window tools have their own (findings.json), and validate's fixpoint judges the rest.";;
+    *) return "$rc";;
+  esac
+  bash "$S/ai/normalize-findings.sh" --subject "$SUBJECT" --stage php < /dev/null || return $?
+  bash "$S/ai/classify.sh" --subject "$SUBJECT" < /dev/null || return $?
+  # The gate: every PHP-window finding is in a worklist item.
+  nf="$(jq -r '[.findings[] | select(.class == "php-target" and .tool == "catalog") | .id] | sort | join(",")' "$SD/findings.json" 2> /dev/null || printf 'x')"
+  nw="$(jq -r --slurpfile f "$SD/findings.json" '([$f[0].findings[] | select(.class == "php-target" and .tool == "catalog") | .id]) as $p
+    | [.items[].finding_ids[] | select(. as $i | $p | index($i))] | sort | join(",")' "$(worklist_file "$SUBJECT")" 2> /dev/null || printf 'y')"
+  if [[ "$nf" != "$nw" ]]; then log_err "pipeline: php: a PHP-window finding is in no worklist item."; return 1; fi
+  # A php -l that did not run on every leg leaves the stage to run again.
+  lv="$(jq -r '.tools["php-lint"] // empty' "$SD/findings.json" 2> /dev/null || true)"
+  case "$lv" in skipped|partial|failed) DONE_REASON="php-lint-$lv";; esac
+  log_info "pipeline: php: $(jq -r --arg re "$PHP_WINDOW_REASONS_ERE" '[.items[] | select(.status == "open" and .lane == "human" and ((.reason // "") | test($re)))] | "\(length) open PHP-window item(s), \([.[] | select(.blocking)] | length) blocking"' "$(worklist_file "$SUBJECT")")."
+  return 0
+}
 stage_validate() {
   bash "$S/analysis/fixpoint.sh" --subject "$SUBJECT" --stage validate < /dev/null || return $?
   return 0
@@ -161,11 +193,14 @@ stage_report() {
 STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 D0="$(digest_now)"
 [[ -n "$RUN" ]] || RUN="$(printf '%s' "$STARTED" | tr -d ':-')-$(printf '%s' "${D0#sha256:}" | cut -c1-6)"
-RC=0; OUT='[]'
+# RAN: a stage before ran (done) in this run, so the ones after it run too
+# (their records describe what came before).
+RC=0; OUT='[]'; RAN=0
 for s in $ORDER; do
   D="$(digest_now)"
   last="$(jq -c --arg s "$s" '.stages[$s] // {}' "$REC" 2> /dev/null || printf '{}')"
-  if [[ "$FORCE" != "1" ]] && jq -e --arg d "$D" '(.status == "done" or .status == "skipped") and .output_digest == $d' <<< "$last" > /dev/null 2>&1; then
+  if [[ "$FORCE" != "1" && "$RAN" != "1" ]] && jq -e --arg d "$D" '(.status == "done" or .status == "skipped") and .output_digest == $d
+       and (((.reason // "") == "placeholder" or ((.reason // "") | startswith("php-lint-"))) | not)' <<< "$last" > /dev/null 2>&1; then
     log_info "pipeline: $s is up to date (its output digest is the current one)."
     OUT="$(jq -c --arg s "$s" --arg d "$D" '. + [{id: $s, status: "up-to-date", reason: null, input_digest: $d, output_digest: $d, rc: 0}]' <<< "$OUT")"
     continue
@@ -173,7 +208,7 @@ for s in $ORDER; do
   ref="refs/drupilot/stages/$RUN/$s"
   git_stage_checkpoint "$SUBJECT" "$ref" > /dev/null || die "Could not record the checkpoint $ref of $SUBJECT." 1
   log_step "pipeline: $s (run $RUN)"
-  SKIP_REASON=""; rc=0
+  SKIP_REASON=""; DONE_REASON=""; rc=0
   "stage_$s" || rc=$?
   # Its raw reports carry the stage's own NN.
   nn="$(nn_of "$s")"
@@ -188,9 +223,10 @@ for s in $ORDER; do
   fi
   D2="$(digest_now)"
   st="done"; [[ -z "$SKIP_REASON" ]] || st="skipped"
-  record "$s" "$st" "$SKIP_REASON" "$D" "$D2" 0
+  [[ "$st" != "done" ]] || RAN=1
+  record "$s" "$st" "${SKIP_REASON:-$DONE_REASON}" "$D" "$D2" 0
   [[ -z "$SKIP_REASON" ]] || log_info "pipeline: $s skipped ($SKIP_REASON)."
-  OUT="$(jq -c --arg s "$s" --arg st "$st" --arg r "$SKIP_REASON" --arg d "$D" --arg o "$D2" \
+  OUT="$(jq -c --arg s "$s" --arg st "$st" --arg r "${SKIP_REASON:-$DONE_REASON}" --arg d "$D" --arg o "$D2" \
     '. + [{id: $s, status: $st, reason: (if $r == "" then null else $r end), input_digest: $d, output_digest: $o, rc: 0}]' <<< "$OUT")"
 done
 run_manifest_record "$SUBJECT" pipeline "$STARTED" \

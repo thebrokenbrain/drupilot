@@ -295,6 +295,7 @@
     {
       "id": "p85-cast-names",
       "rule": null,
+      "detect": "ere-i:\\([[:space:]]*(boolean|integer|double|binary)[[:space:]]*\\)",
       "kind": "report-only",
       "deprecated_in": "8.5",
       "removed_in": null,
@@ -308,6 +309,7 @@
     {
       "id": "p85-noop-close",
       "rule": null,
+      "detect": "ere-i:(^|[^A-Za-z0-9_>:$])curl_close[[:space:]]*\\(",
       "kind": "report-only",
       "deprecated_in": "8.5",
       "removed_in": null,
@@ -321,32 +323,35 @@
     {
       "id": "p85-pdo-mysql-constants",
       "rule": null,
+      "detect": "ere-i:PDO::MYSQL_ATTR_[A-Z_]+",
       "kind": "report-only",
       "deprecated_in": "8.5",
       "removed_in": null,
       "output_min_php": "8.4",
       "drupal_safe": true,
-      "src": "https://www.php.net/manual/en/migration85.deprecated.php",
+      "src": "https://www.php.net/manual/en/migration85.deprecated.php ; output_min_php: https://www.php.net/manual/en/class.pdo-mysql.php",
       "verified": false,
       "construct": "PDO::MYSQL_ATTR_* constants (use Pdo\\Mysql::ATTR_*)",
-      "note": "output_min_php 8.4 (the Pdo\\Mysql driver subclass) is not verified."
+      "note": "output_min_php 8.4: the Pdo\\Mysql class and its ATTR_* constants are PHP 8 >= 8.4.0 (php.net, read 2026-10-12)."
     },
     {
       "id": "p85-http-response-header",
       "rule": null,
+      "detect": "ere:\\$http_response_header([^A-Za-z0-9_]|$)",
       "kind": "report-only",
       "deprecated_in": "8.5",
       "removed_in": null,
-      "output_min_php": null,
+      "output_min_php": "8.4",
       "drupal_safe": true,
-      "src": "https://www.php.net/manual/en/migration85.deprecated.php",
+      "src": "https://www.php.net/manual/en/migration85.deprecated.php ; output_min_php: https://www.php.net/manual/en/function.http-get-last-response-headers.php",
       "verified": false,
       "construct": "the $http_response_header variable (use http_get_last_response_headers())",
-      "note": "The PHP version that added http_get_last_response_headers() is not verified."
+      "note": "output_min_php 8.4: http_get_last_response_headers() is PHP 8 >= 8.4.0 (php.net, read 2026-10-12)."
     },
     {
       "id": "p81-strftime",
       "rule": null,
+      "detect": "ere-i:(^|[^A-Za-z0-9_>:$])(gm)?strftime[[:space:]]*\\(",
       "kind": "report-only",
       "deprecated_in": "8.1",
       "removed_in": null,
@@ -359,6 +364,7 @@
     {
       "id": "p81-filter-sanitize-string",
       "rule": null,
+      "detect": "ere:FILTER_SANITIZE_STRI(NG|PPED)([^A-Za-z0-9_]|$)",
       "kind": "report-only",
       "deprecated_in": "8.1",
       "removed_in": null,
@@ -371,6 +377,7 @@
     {
       "id": "p84-e-strict",
       "rule": null,
+      "detect": "ere:(^|[^A-Za-z0-9_])E_STRICT([^A-Za-z0-9_]|$)",
       "kind": "report-only",
       "deprecated_in": "8.4",
       "removed_in": null,
@@ -383,6 +390,7 @@
     {
       "id": "p84-lcg-value",
       "rule": null,
+      "detect": "ere-i:(^|[^A-Za-z0-9_>:$])lcg_value[[:space:]]*\\(",
       "kind": "report-only",
       "deprecated_in": "8.4",
       "removed_in": null,
@@ -403,8 +411,8 @@
       "src": "https://www.php.net/manual/en/migration70.removed-exts-sapis.php",
       "verified": true,
       "construct": "the mysql extension (mysql_* functions)",
-      "detect": "ere:(^|[^A-Za-z0-9_>:$])mysql_[a-z_]+[[:space:]]*\\(",
-      "exclude": "ere:function[[:space:]]+&?mysql_[a-z_]+[[:space:]]*\\("
+      "detect": "ere-i:(^|[^A-Za-z0-9_>:$])mysql_[a-z_]+[[:space:]]*\\(",
+      "exclude": "ere:(function|new)[[:space:]]+&?mysql_[a-z_]+[[:space:]]*\\("
     },
     {
       "id": "removed-ereg-ext",
@@ -417,8 +425,8 @@
       "src": "https://www.php.net/manual/en/migration70.removed-exts-sapis.php",
       "verified": true,
       "construct": "the ereg extension (ereg(), eregi(), ereg_replace(), eregi_replace(), split(), spliti())",
-      "detect": "ere:(^|[^A-Za-z0-9_>:$])(eregi?|eregi?_replace|spliti?)[[:space:]]*\\(",
-      "exclude": "ere:function[[:space:]]+&?(eregi?|eregi?_replace|spliti?)[[:space:]]*\\("
+      "detect": "ere-i:(^|[^A-Za-z0-9_>:$])(eregi?|eregi?_replace|spliti?)[[:space:]]*\\(",
+      "exclude": "ere:(function|new)[[:space:]]+&?(eregi?|eregi?_replace|spliti?)[[:space:]]*\\("
     },
     {
       "id": "removed-each",
@@ -431,8 +439,8 @@
       "src": "https://www.php.net/manual/en/migration72.deprecated.php ; https://www.php.net/manual/en/migration80.incompatible.php",
       "verified": true,
       "construct": "each()",
-      "detect": "ere:(^|[^A-Za-z0-9_>:$])each[[:space:]]*\\(",
-      "exclude": "ere:function[[:space:]]+&?each[[:space:]]*\\("
+      "detect": "ere-i:(^|[^A-Za-z0-9_>:$])each[[:space:]]*\\(",
+      "exclude": "ere:(function|new)[[:space:]]+&?each[[:space:]]*\\("
     },
     {
       "id": "removed-create-function",
@@ -445,8 +453,8 @@
       "src": "https://www.php.net/manual/en/migration72.deprecated.php ; https://www.php.net/manual/en/migration80.incompatible.php",
       "verified": true,
       "construct": "create_function()",
-      "detect": "ere:(^|[^A-Za-z0-9_>:$])create_function[[:space:]]*\\(",
-      "exclude": "ere:function[[:space:]]+&?create_function[[:space:]]*\\("
+      "detect": "ere-i:(^|[^A-Za-z0-9_>:$])create_function[[:space:]]*\\(",
+      "exclude": "ere:(function|new)[[:space:]]+&?create_function[[:space:]]*\\("
     }
   ]
 }

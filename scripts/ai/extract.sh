@@ -8,7 +8,10 @@
 #
 # NN is the stage's place in config/pipeline.json. The tools are run-rector.sh
 # (a dry-run), run-phpstan.sh, run-phpcs.sh, check-port-safety.sh,
-# scan-signature-changes.sh and lint-extension-metadata.sh, each with --json;
+# scan-signature-changes.sh, lint-extension-metadata.sh, php-target.sh (the
+# PHP window's removed and deprecated constructs) and php-lint-window.sh
+# (php -l on each PHP minor of the window, in Docker; its legs skipped
+# without a Docker daemon), each with --json;
 # every report goes through canon_json with the Drupal root (root-relative
 # paths, sorted keys; its own timestamps moved under meta: DET-2). Then the
 # anchor of every (file, line) the reports name in a PHP file is computed
@@ -66,7 +69,7 @@ mkdir -p "$RAW" || die "Cannot create $RAW." 2
 # The stage's previous raw files, whatever NN they were written with (the
 # stage may have moved in config/pipeline.json); each tool's name exactly, so
 # another stage whose id starts with this one is never touched.
-TOOL_FILES="index rector phpstan phpcs port-safety signatures metadata anchors"
+TOOL_FILES="index rector phpstan phpcs port-safety signatures metadata php-target php-lint anchors"
 for t in $TOOL_FILES; do for f in "$RAW"/[0-9][0-9]-"$STAGE"-"$t".json; do [[ -f "$f" ]] && rm -f "$f"; done; done
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-extract.XXXXXX")"
@@ -98,13 +101,16 @@ extract phpcs bash "$S/analysis/run-phpcs.sh" --subject "$SUBJECT_REL" --json
 extract port-safety bash "$S/analysis/check-port-safety.sh" --subject "$SUBJECT_REL" --no-diff --json
 extract signatures bash "$S/analysis/scan-signature-changes.sh" --subject "$SUBJECT_REL" --json
 extract metadata bash "$S/analysis/lint-extension-metadata.sh" --subject "$SUBJECT_REL" --json
+extract php-target bash "$S/analysis/php-target.sh" --subject "$SUBJECT_REL" --json
+extract php-lint bash "$S/analysis/php-lint-window.sh" --subject "$SUBJECT_REL" --json
 
 # The anchors of every (file, line) the reports name in a PHP file.
 log_step "extract: anchors"
 jq -n -c --arg sp "$SUBJECT_REL" \
   --slurpfile rector "$RAW/$NN-$STAGE-rector.json" --slurpfile stan "$RAW/$NN-$STAGE-phpstan.json" \
   --slurpfile cs "$RAW/$NN-$STAGE-phpcs.json" --slurpfile safety "$RAW/$NN-$STAGE-port-safety.json" \
-  --slurpfile sig "$RAW/$NN-$STAGE-signatures.json" --slurpfile meta "$RAW/$NN-$STAGE-metadata.json" '
+  --slurpfile sig "$RAW/$NN-$STAGE-signatures.json" --slurpfile meta "$RAW/$NN-$STAGE-metadata.json" \
+  --slurpfile phpt "$RAW/$NN-$STAGE-php-target.json" --slurpfile lint "$RAW/$NN-$STAGE-php-lint.json" '
   def rootrel: if startswith($sp + "/") then . else $sp + "/" + . end;
   def hunk_lines: split("\n") as $l
     | reduce range(0; $l | length) as $i ({out: [], start: null, ctx: 0, found: true};
@@ -117,7 +123,9 @@ jq -n -c --arg sp "$SUBJECT_REL" \
   [ (($rector[0].file_diffs // [])[] | .file as $f | ((.diff // "") | hunk_lines)[] | {file: ($f | rootrel), line: .}),
     (($stan[0].files // {}) | to_entries[] | (.key | sub(" \\(in context of (class [^ ()]+|anonymous class|[^ /()]*@anonymous/.*)\\)$"; "")) as $f | (.value.messages // [])[] | {file: ($f | rootrel), line}),
     (($cs[0].files // {}) | to_entries[] | .key as $f | (.value.messages // [])[] | {file: ($f | rootrel), line}),
-    (($safety[0].findings // [])[], ($sig[0].findings // [])[], ($meta[0].findings // [])[] | {file: (.file | rootrel), line}) ]
+    (($safety[0].findings // [])[], ($sig[0].findings // [])[], ($meta[0].findings // [])[], ($phpt[0].findings // [])[],
+     ([($lint[0].legs // [])[] | (.messages // [])[]] | .[])
+      | {file: (.file | rootrel), line}) ]
   | map(select((.line | type) == "number" and (.file | test("\\.(php|module|inc|install|theme|profile|engine)$"))))
   | unique' > "$TMP/anchor-req.json"
 ANCH="$RAW/$NN-$STAGE-anchors.json"

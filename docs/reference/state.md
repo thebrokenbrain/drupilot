@@ -42,7 +42,7 @@ Records that are compared or hashed between runs keep their timestamps under a t
 
 ## Raw reports and findings
 
-drupilot 1.0 does not hand the analyzers' output to the model as it is. A stage first runs its deterministic tools and keeps their reports in the same hidden state dir, under `raw/`. `scripts/ai/extract.sh --subject DIR [--stage S]` writes one file per tool, `raw/<NN>-<stage>-<tool>.json`, where `NN` is the stage's place in [the pipeline](pipeline.md). The tools are Rector (a dry-run), PHPStan, PHPCS, the port-safety checks, the signature-change scan and the metadata lint. Each report is canonical: the Drupal root and the container path are stripped from its paths, its keys are sorted, and its timestamps are moved under `meta`. (The analyzers name files from the Drupal root; the port-safety, signature and metadata reports name them from the module.) Two more files complete the stage:
+drupilot 1.0 does not hand the analyzers' output to the model as it is. A stage first runs its deterministic tools and keeps their reports in the same hidden state dir, under `raw/`. `scripts/ai/extract.sh --subject DIR [--stage S]` writes one file per tool, `raw/<NN>-<stage>-<tool>.json`, where `NN` is the stage's place in [the pipeline](pipeline.md). The tools are Rector (a dry-run), PHPStan, PHPCS, the port-safety checks, the signature-change scan, the metadata lint, and the two PHP-window tools: the construct scan (`php-target`) and `php -l` on each PHP of the window (`php-lint`, skipped without a Docker daemon; see [PHP and the core target](../concepts/php-and-core-target.md)). Each report is canonical: the Drupal root and the container path are stripped from its paths, its keys are sorted, and its timestamps are moved under `meta`. (The analyzers name files from the Drupal root; the port-safety, signature, metadata and PHP-window reports name them from the module.) Two more files complete the stage:
 
 - `<NN>-<stage>-anchors.json` holds the anchor of every line the reports name in a PHP file, computed once in the test-bed.
 - `<NN>-<stage>-index.json` names the subject, the target major and each tool's exit code.
@@ -52,7 +52,7 @@ drupilot 1.0 does not hand the analyzers' output to the model as it is. A stage 
 - `scope` is `current`, or `next-major` for a soft deprecation under the `report` or `defer` policy (`DRUPILOT_SOFT_DEPRECATIONS`).
 - `class` is a deprecation's `hard`, `soft` or `unknown`, else `analysis`, `safety`, `signature`, `metadata`, `style`, `php-target` or `rector`.
 
-The id never includes the line number, so moving code keeps its findings' ids. Findings of different tools about the same symbol at the same anchor are merged, and `sources[]` lists each tool. `findings.json` also records each tool's verdict in `tools` (`ok`, `partial`, `failed` or `missing`), so a run where PHPStan crashed never reads like a clean one. It is a pure function of the raw files, the target major and the soft policy: the same raw files give the same bytes outside `meta`, which records the raw files' hashes and `findings_hash`.
+The id never includes the line number, so moving code keeps its findings' ids. Findings of different tools about the same symbol at the same anchor are merged, and `sources[]` lists each tool. `findings.json` also records each tool's verdict in `tools` (`ok`, `partial`, `failed` or `missing`; `php-lint` is also `skipped` when no leg could run), so a run where PHPStan crashed never reads like a clean one. A PHP-window finding has the class `php-target` and the rule `php-removed:<id>`, `php-report:<id>` (its fix needs a PHP above the floor) or `php-manual:<id>` (its fix runs on the floor; a row of `config/php/rules.json`), or, from a failed `php -l` leg on PHP X.Y, `php-floor:X.Y` (a higher PHP of the window compiles the file), `php-removed-syntax:X.Y` (only a lower one does) or `php-lint:X.Y` (none does). It is a pure function of the raw files, the target major and the soft policy: the same raw files give the same bytes outside `meta`, which records the raw files' hashes and `findings_hash`.
 
 ## Worklist
 
@@ -64,7 +64,7 @@ The id never includes the line number, so moving code keeps its findings' ids. F
 - `ai-templated`: the AI fixes it following a recipe's text.
 - `ai-free`: an error no recipe covers.
 - `test-adapt`: either of the two above in a file under a `tests/` directory.
-- `human`: a person decides.
+- `human`: a person decides. The PHP window's items carry a reason: `removed-in-target-php`, `does-not-compile`, `fix-needs-php-above-floor` or `deprecated-no-rule` (see [PHP and the core target](../concepts/php-and-core-target.md)).
 - `deferred`: nothing to do in this port: a deprecation removed only in a later major, an info finding, or a style finding (Phase 1 keeps the diff minimal).
 
 A recipe applies only when its conditions hold, its required core included: never above the declared floor. An item lists its findings, their recipes and templates, the files it may change, and whether it blocks the stage (an error finding outside `deferred`). Its status is `open`, `applied` or `deferred`.
@@ -113,6 +113,6 @@ Each run is recorded in `runs/<run_id>/run-manifest.json` (schema `schemas/run-m
 
 ## Pipeline stages
 
-`scripts/ai/pipeline.sh --subject DIR [--stages ...]` runs the standard track's deterministic stages in the order of [the pipeline](pipeline.md): `upgrade`, `php` (a placeholder until M5), `validate` (the fixpoint gate) and `report` (the manifest and the report). See [ADR 0028](../contributing/adr/0028-pipeline-stage-contract.md). Before each stage it records a checkpoint of the module's tree, a ref under `refs/drupilot/stages/<run>/<stage>` that never touches your index or HEAD. A stage that fails puts the tree back at that checkpoint and stops the run.
+`scripts/ai/pipeline.sh --subject DIR [--stages ...]` runs the standard track's deterministic stages in the order of [the pipeline](pipeline.md): `upgrade`, `php` (the extraction with the PHP-window tools, normalized and classified), `validate` (the fixpoint gate) and `report` (the manifest and the report). See [ADR 0028](../contributing/adr/0028-pipeline-stage-contract.md). Before each stage it records a checkpoint of the module's tree, a ref under `refs/drupilot/stages/<run>/<stage>` that never touches your index or HEAD. A stage that fails puts the tree back at that checkpoint and stops the run.
 
 The records are `stages.json` in the hidden state dir: each stage's status, reason, and input and output digests. A digest is the hash of the plan, the lock and the module's sources. A stage whose output digest is the current one is up to date and is not run again, so an interrupted port resumes at the stage that did not finish. A plan with no hop skips `upgrade` with reason `same-major`.
