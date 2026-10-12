@@ -11,10 +11,10 @@
     "mode": {"description": "DRUPILOT_FIXPOINT when it ran.", "enum": ["enforce", "warn"]},
     "stage": {"type": "string", "minLength": 1},
     "processed_lanes": {"type": "array", "items": {"type": "string"}},
-    "no_verdict": {"description": "True when Rector or PHPStan gave no verdict (the gate cannot converge).", "type": "boolean"},
+    "no_verdict": {"description": "True when Rector, PHPStan or a scan feeding the codemod lane (port-safety, signatures, metadata) gave no verdict: the gate cannot converge.", "type": "boolean"},
     "converged": {"type": "boolean"},
     "rector": {
-      "description": "The Rector findings still there (a digests rule the developer rejected left out).",
+      "description": "The Rector findings still there (the official dry-run: the digests rules never count).",
       "type": "array",
       "items": {"type": "object", "required": ["id", "rule", "file"], "properties": {"id": {"type": "string"}, "rule": {"type": "string"}, "file": {"type": "string"}, "anchor": {"type": ["string", "null"]}}}
     },

@@ -906,8 +906,9 @@ refactor, run the extraction again on the tree as it is (extract.sh with
 its Rector dry-run, normalize-findings.sh, classify.sh) and the codemods in
 dry-run (apply-recipes.sh --dry-run), and check that nothing is left for the
 deterministic lanes:
-  rector     no Rector finding (the dry-run would change nothing); a
-             digests rule the developer rejected never counts
+  rector     no Rector finding (the official dry-run would change nothing;
+             the extraction runs no digests pass, so the digests rules,
+             which the developer reviews in /drupilot-port, never count)
   codemods   no codemod that would still change a file
   open       no open item in a processed lane (rector, rector-custom,
              codemod; the AI lanes join when their executor does)
@@ -929,9 +930,12 @@ Usage:
                     codemod dry-run
     --json          print fixpoint.json on STDOUT
 
+A tool with no verdict (Rector, PHPStan, or the port-safety, signature and
+metadata scans that feed the codemod lane) means not converged.
+
 Exit codes: 0 converged, or not converged in warn mode, or off · 1 usage
-error, or the extraction failed · 3 not converged in enforce mode, or the
-extraction gave no verdict (Rector or PHPStan).
+error, or the extraction failed · 3 not converged in enforce mode (a tool
+with no verdict included).
 ```
 
 ### analysis/layer-report.sh

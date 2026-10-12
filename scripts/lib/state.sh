@@ -794,7 +794,8 @@ run_manifest_record() {
   # Its default is defaults.json's; a value that is not a positive integer
   # keeps every run.
   keep="$(config_get DRUPILOT_RUNS_KEEP "")"
-  if [[ "$keep" =~ ^[0-9]+$ ]]; then keep=$((10#$keep)); else keep=0; fi
+  if [[ "$keep" =~ ^[0-9]+$ ]]; then keep="$(printf '%s' "$keep" | sed 's/^0*//')"; else keep=""; fi
+  [[ -n "$keep" ]] || keep=0
   [[ "$keep" -ge 1 ]] || keep=999999
   for n in "$d"/*; do
     if [[ -d "$n" ]]; then printf '%s\n' "${n##*/}"; fi

@@ -704,6 +704,8 @@ the extraction runs again, and Rector, the codemods and the processed lanes
 (`rector`, `rector-custom`, `codemod`) must have nothing left
 (`<state_dir>/fixpoint.json` lists what they still have). `DRUPILOT_FIXPOINT=warn`
 (the default) reports and goes on; `enforce` exits 3, and the port is not done
+(after fixing the items, run the validation loop and `make-patch.sh --local`
+again)
 until the listed items are fixed.
 
 **Write the report card (trust + teaching artifact).** While the passes ran you

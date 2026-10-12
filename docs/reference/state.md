@@ -102,7 +102,7 @@ Soft deprecations and next-major findings never count. When Rector, PHPStan, the
 
 ## Fixpoint and runs
 
-`scripts/analysis/fixpoint.sh --subject DIR [--stage S]` is the gate at the end of a port or a refactor. It runs the extraction again on the tree as it is, then the codemods in dry-run, and writes `fixpoint.json` (schema `schemas/fixpoint.schema.json`). The file lists the Rector changes still proposed, the codemods that would still apply, and the open items of the processed lanes. Those lanes are `rector`, `rector-custom` and `codemod`; the AI lanes join when their executor does. A digests rule you rejected never counts. The gate converges only when the three lists are empty and every tool gave a verdict.
+`scripts/analysis/fixpoint.sh --subject DIR [--stage S]` is the gate at the end of a port or a refactor. It runs the extraction again on the tree as it is, then the codemods in dry-run, and writes `fixpoint.json` (schema `schemas/fixpoint.schema.json`). The file lists the Rector changes still proposed, the codemods that would still apply, and the open items of the processed lanes. Those lanes are `rector`, `rector-custom` and `codemod`; the AI lanes join when their executor does. The Rector dry-run is the official pass: the digests rules, which you review during the port, never count. The gate converges only when the three lists are empty and every tool gave a verdict: Rector, PHPStan, and the port-safety, signature and metadata scans that feed the codemod lane.
 
 `DRUPILOT_FIXPOINT` decides what a failure does:
 - `warn`, the default through the 1.0 betas, reports it;

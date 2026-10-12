@@ -640,11 +640,13 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/fixpoint.sh" --subject <path> --jso
 
 It runs the extraction again on the tree as it is, then the codemods in
 dry-run, and writes `<state_dir>/fixpoint.json`: the Rector changes still
-proposed (a digests rule the developer rejected never counts), the codemods
+proposed by the official dry-run (the digests rules never count), the codemods
 that would still apply, and the open items of the processed lanes (`rector`,
 `rector-custom`, `codemod`). Under `DRUPILOT_FIXPOINT=warn` (the default) a
 failure is reported and the port goes on: name the items in the summary. Under
-`enforce` it exits 3 and the port is not done: fix the items and run it again.
+`enforce` it exits 3 and the port is not done: fix the items, run the validation
+loop again, then `make-patch.sh --local` again (the local patch was written
+before) and the gate once more.
 
 **Write the port report card (the trust + teaching artifact).** The manifest is
 generated, never written by hand: `scripts/ai/manifest.sh` builds

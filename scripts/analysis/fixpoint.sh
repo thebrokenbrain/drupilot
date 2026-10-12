@@ -6,8 +6,9 @@
 # its Rector dry-run, normalize-findings.sh, classify.sh) and the codemods in
 # dry-run (apply-recipes.sh --dry-run), and check that nothing is left for the
 # deterministic lanes:
-#   rector     no Rector finding (the dry-run would change nothing); a
-#              digests rule the developer rejected never counts
+#   rector     no Rector finding (the official dry-run would change nothing;
+#              the extraction runs no digests pass, so the digests rules,
+#              which the developer reviews in /drupilot-port, never count)
 #   codemods   no codemod that would still change a file
 #   open       no open item in a processed lane (rector, rector-custom,
 #              codemod; the AI lanes join when their executor does)
@@ -29,9 +30,12 @@
 #                     codemod dry-run
 #     --json          print fixpoint.json on STDOUT
 #
+# A tool with no verdict (Rector, PHPStan, or the port-safety, signature and
+# metadata scans that feed the codemod lane) means not converged.
+#
 # Exit codes: 0 converged, or not converged in warn mode, or off · 1 usage
-# error, or the extraction failed · 3 not converged in enforce mode, or the
-# extraction gave no verdict (Rector or PHPStan).
+# error, or the extraction failed · 3 not converged in enforce mode (a tool
+# with no verdict included).
 # =============================================================================
 set -euo pipefail
 # shellcheck source=../lib/common.sh
@@ -83,19 +87,14 @@ if [[ -z "$FINDINGS" ]]; then
 fi
 jq -e '.schema == 1 and (.findings | type) == "array"' "$FINDINGS" > /dev/null 2>&1 || die "$FINDINGS is not a findings.json." 1
 jq -e '.schema == 1 and (.items | type) == "array"' "$WORKLIST" > /dev/null 2>&1 || die "$WORKLIST is not a worklist.json." 1
-jq -e '[.tools.rector, .tools.phpstan] | any(. != "ok" and . != "partial")' "$FINDINGS" > /dev/null 2>&1 && NOVERDICT=1
+jq -e '[.tools.rector, .tools.phpstan, .tools["port-safety"], .tools.signatures, .tools.metadata] | any(. != "ok" and . != "partial")' "$FINDINGS" > /dev/null 2>&1 && NOVERDICT=1
 
-# The digests rules the developer rejected never count.
-DD="$(digests_decisions_file "$SUBJECT")"
-[[ -f "$DD" ]] && jq -e 'type == "object"' "$DD" > /dev/null 2>&1 || { printf '{"decisions": []}\n' > "$TMP/dd.json"; DD="$TMP/dd.json"; }
 DOC="$TMP/fixpoint.json"
-jq -n -c --slurpfile f "$FINDINGS" --slurpfile w "$WORKLIST" --slurpfile a "$TMP/apply.json" --slurpfile dd "$DD" \
+jq -n -c --slurpfile f "$FINDINGS" --slurpfile w "$WORKLIST" --slurpfile a "$TMP/apply.json" \
   --arg mode "$MODE" --arg stage "$STAGE" --argjson nov "$NOVERDICT" '
   $f[0] as $F | $w[0] as $W
-  | ([($dd[0].decisions // [])[] | select(.verdict == "reject") | .rule] | unique) as $rej
   | ["rector", "rector-custom", "codemod"] as $processed
   | ([$F.findings[] | select(.tool == "rector" and .scope == "current")
-      | select(((.rule // "") | split("\\") | last) as $r | $rej | index($r) | not)
       | {id, rule, file, anchor}] | sort_by([.file, .anchor, .rule])) as $rx
   | ([$a[0].applications[] | select(.status == "would-apply") | {item_id, recipe, file}] | sort_by([.file, .recipe])) as $cm
   | ([$W.items[] | select(.status == "open" and (.lane as $l | $processed | index($l))) | {id, lane, file, anchor}]
