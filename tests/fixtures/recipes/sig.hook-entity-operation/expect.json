@@ -1,0 +1,106 @@
+{
+  "cases": [
+    {
+      "name": "a required second parameter becomes optional",
+      "before": "before",
+      "after": "after",
+      "file": "m.module",
+      "line": 14,
+      "severity": "error",
+      "status": "applied"
+    },
+    {
+      "name": "a fully qualified type",
+      "before": "fqcn/before",
+      "after": "fqcn/after",
+      "file": "m.module",
+      "line": 14,
+      "severity": "error",
+      "status": "applied"
+    },
+    {
+      "name": "parameters over several lines: no-match (the AI lane takes it)",
+      "before": "multi-line/before",
+      "after": "multi-line/before",
+      "file": "m.module",
+      "line": 14,
+      "severity": "error",
+      "status": "no-match"
+    },
+    {
+      "name": "already optional: no-match",
+      "before": "optional/before",
+      "after": "optional/before",
+      "file": "m.module",
+      "line": 14,
+      "severity": "error",
+      "status": "no-match"
+    },
+    {
+      "name": "an info finding (the one-parameter form works): not-applicable",
+      "before": "before",
+      "after": "before",
+      "file": "m.module",
+      "line": 14,
+      "severity": "info",
+      "status": "not-applicable"
+    },
+    {
+      "name": "the body uses the parameter: rejected (it would be NULL on older cores), nothing written",
+      "before": "uses-param/before",
+      "after": "uses-param/before",
+      "file": "m.module",
+      "line": 14,
+      "severity": "error",
+      "status": "rejected",
+      "exit_code": 3
+    },
+    {
+      "name": "a heredoc body whose line looks like a function declaration does not end the body; the parameter is used after it: rejected",
+      "before": "heredoc-function/before",
+      "after": "heredoc-function/before",
+      "file": "m.module",
+      "line": 14,
+      "severity": "error",
+      "status": "rejected",
+      "exit_code": 3
+    },
+    {
+      "name": "a continued line starting with * is code, not a comment: the parameter is used, rejected",
+      "before": "star-line/before",
+      "after": "star-line/before",
+      "file": "m.module",
+      "line": 14,
+      "severity": "error",
+      "status": "rejected",
+      "exit_code": 3
+    },
+    {
+      "name": "only the docblock names the parameter: applied",
+      "before": "docblock/before",
+      "after": "docblock/after",
+      "file": "m.module",
+      "line": 17,
+      "severity": "error",
+      "status": "applied"
+    },
+    {
+      "name": "two hooks, the finding on the second: only its line changes",
+      "before": "two-hooks/before",
+      "after": "two-hooks/after",
+      "file": "m.module",
+      "line": 21,
+      "severity": "error",
+      "status": "applied"
+    },
+    {
+      "name": "another function uses the same variable name: only this function's body counts, applied",
+      "before": "same-var/before",
+      "after": "same-var/after",
+      "file": "m.module",
+      "line": 14,
+      "severity": "error",
+      "status": "applied"
+    }
+  ]
+}

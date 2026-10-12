@@ -13,7 +13,7 @@
 # tools end to end.
 #
 # Tests (names are what --only takes):
-#   help           every scripts/{analysis,contrib,env,tests,dev}/*.sh --help
+#   help           every scripts/{ai,analysis,contrib,env,tests,dev}/*.sh --help
 #                  exits 0 and prints a Usage section on STDOUT
 #   preflight      preflight.sh --profile analyze --json: one JSON object, exit
 #                  0 or 2 consistent with .ready.analyze, a passing bash row;
@@ -325,8 +325,8 @@ finish() {
 # --- Tests ----------------------------------------------------------------------
 test_help() {
   local f n=0
-  for f in "$REPO"/scripts/*.sh "$REPO"/scripts/analysis/*.sh "$REPO"/scripts/contrib/*.sh "$REPO"/scripts/env/*.sh \
-           "$REPO"/scripts/tests/*.sh "$REPO"/scripts/dev/*.sh; do
+  for f in "$REPO"/scripts/*.sh "$REPO"/scripts/ai/*.sh "$REPO"/scripts/analysis/*.sh "$REPO"/scripts/contrib/*.sh \
+           "$REPO"/scripts/env/*.sh "$REPO"/scripts/tests/*.sh "$REPO"/scripts/dev/*.sh; do
     [[ -f "$f" ]] || continue
     n=$((n + 1))
     run help "$SH" "$f" --help

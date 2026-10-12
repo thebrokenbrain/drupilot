@@ -1,0 +1,1253 @@
+{
+  "anchors": "php",
+  "counts": {
+    "by_class": {
+      "analysis": 30,
+      "metadata": 10,
+      "rector": 1,
+      "safety": 3,
+      "signature": 5,
+      "soft": 8
+    },
+    "by_tool": {
+      "catalog": 18,
+      "phpstan": 38,
+      "rector": 1
+    },
+    "current": 49,
+    "next_major": 8,
+    "total": 57
+  },
+  "findings": [
+    {
+      "anchor": "{file}",
+      "class": "metadata",
+      "file": "config/install/legacy_widgets.settings.yml",
+      "id": "F-bb6453fe8bb8",
+      "line": 1,
+      "message": "Config 'legacy_widgets.settings' has no schema in config/schema/*.schema.yml: strict config schema checks (Kernel/Functional tests, config inspector) fail on it and its values are not typed or translatable.",
+      "occurrence": 0,
+      "rule": "metadata:config-schema",
+      "scope": "current",
+      "severity": "warning",
+      "sources": [
+        {
+          "line": 1,
+          "rule": "metadata:config-schema",
+          "tool": "catalog"
+        }
+      ],
+      "symbol": null,
+      "tool": "catalog"
+    },
+    {
+      "anchor": "{file}",
+      "class": "metadata",
+      "file": "legacy_widgets.info.yml",
+      "id": "F-013f8ad4a1b9",
+      "line": 6,
+      "message": "configure: 'legacy_widgets.settings' names a route that no *.routing.yml of the extension defines: core drops the Configure link from /admin/modules silently (unless a route subscriber or another module provides it).",
+      "occurrence": 0,
+      "rule": "metadata:configure-route",
+      "scope": "current",
+      "severity": "warning",
+      "sources": [
+        {
+          "line": 6,
+          "rule": "metadata:configure-route",
+          "tool": "catalog"
+        }
+      ],
+      "symbol": null,
+      "tool": "catalog"
+    },
+    {
+      "anchor": "legacy_widgets_entity_operation",
+      "class": "signature",
+      "file": "legacy_widgets.module",
+      "id": "F-15b9d1a1ff5a",
+      "line": 24,
+      "message": "legacy_widgets_entity_operation() implements hook_entity_operation(), which core invokes with 2 argument(s) from Drupal 11.3; the current 1-parameter form works on every core. If you accept the new parameter, keep it optional while the floor (10.0) is below 11.3.",
+      "occurrence": 0,
+      "rule": "signature:hook-entity-operation",
+      "scope": "current",
+      "severity": "info",
+      "sources": [
+        {
+          "line": 24,
+          "rule": "signature:hook-entity-operation",
+          "tool": "catalog"
+        }
+      ],
+      "symbol": "hook_entity_operation",
+      "tool": "catalog"
+    },
+    {
+      "anchor": "legacy_widgets_entity_operation",
+      "class": "analysis",
+      "file": "legacy_widgets.module",
+      "id": "F-22878748cc8b",
+      "line": 24,
+      "message": "Function legacy_widgets_entity_operation() implements hook_entity_operation but is missing the CacheableMetadata parameter added in Drupal 11.3. Update the signature to: legacy_widgets_entity_operation(\\Drupal\\Core\\Entity\\EntityInterface $entity, \\Drupal\\Core\\Cache\\CacheableMetadata $cacheability).",
+      "occurrence": 0,
+      "rule": "drupal.proceduralHookEntityOperationMissingCacheabilityParameter",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 24,
+          "rule": "drupal.proceduralHookEntityOperationMissingCacheabilityParameter",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "legacy_widgets_find_account",
+      "class": "soft",
+      "file": "legacy_widgets.module",
+      "id": "F-5350d83a6040",
+      "line": 58,
+      "message": "Call to deprecated function user_load_by_mail(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties() instead.",
+      "occurrence": 0,
+      "rule": "function.deprecated",
+      "scope": "next-major",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 58,
+          "rule": "function.deprecated",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": "user_load_by_mail",
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "legacy_widgets_find_account",
+      "class": "soft",
+      "file": "legacy_widgets.module",
+      "id": "F-6b1452d09fa9",
+      "line": 60,
+      "message": "Call to deprecated function user_load_by_name(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties() instead.",
+      "occurrence": 0,
+      "rule": "function.deprecated",
+      "scope": "next-major",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 60,
+          "rule": "function.deprecated",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": "user_load_by_name",
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "legacy_widgets_summarize",
+      "class": "soft",
+      "file": "legacy_widgets.module",
+      "id": "F-04f1758703a8",
+      "line": 75,
+      "message": "Call to deprecated function text_summary(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::service(TextSummary::class)->generate() instead.",
+      "occurrence": 0,
+      "rule": "function.deprecated",
+      "scope": "next-major",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 75,
+          "rule": "function.deprecated",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": "text_summary",
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "{file}",
+      "class": "metadata",
+      "file": "legacy_widgets.services.yml",
+      "id": "F-8b08def7e638",
+      "line": 8,
+      "message": "Service 'legacy_widgets.lookup' class Drupal\\legacy_widgets\\WidgetLookUp differs in letter case from the real file src/WidgetLookup.php: the autoloader fails on case-sensitive filesystems (Linux servers, DDEV).",
+      "occurrence": 0,
+      "rule": "metadata:services-class",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 8,
+          "rule": "metadata:services-class",
+          "tool": "catalog"
+        }
+      ],
+      "symbol": null,
+      "tool": "catalog"
+    },
+    {
+      "anchor": "{file}",
+      "class": "safety",
+      "file": "legacy_widgets.services.yml",
+      "id": "F-bd872bc1b2d9",
+      "line": 9,
+      "message": "'Drupal\\legacy_widgets\\WidgetLookUp' does not match the real file 'src/WidgetLookup.php' (case differs): works on a case-insensitive filesystem, fatals on Linux.",
+      "occurrence": 0,
+      "rule": "port-safety:class-case",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 9,
+          "rule": "port-safety:class-case",
+          "tool": "catalog"
+        }
+      ],
+      "symbol": null,
+      "tool": "catalog"
+    },
+    {
+      "anchor": "{file}",
+      "class": "metadata",
+      "file": "legacy_widgets.services.yml",
+      "id": "F-bed48f8ac01f",
+      "line": 3,
+      "message": "Service 'legacy_widgets.counter' passes 3 argument(s) but Drupal\\legacy_widgets\\WidgetCounter::__construct() takes 2: PHP silently ignores the extra one(s) (a stale argument, or a constructor that lost a parameter).",
+      "occurrence": 0,
+      "rule": "metadata:services-arity",
+      "scope": "current",
+      "severity": "warning",
+      "sources": [
+        {
+          "line": 3,
+          "rule": "metadata:services-arity",
+          "tool": "catalog"
+        }
+      ],
+      "symbol": null,
+      "tool": "catalog"
+    },
+    {
+      "anchor": "{file}",
+      "class": "metadata",
+      "file": "legacy_widgets.services.yml",
+      "id": "F-ecd41a63c031",
+      "line": 13,
+      "message": "Service 'legacy_widgets.legacy_exporter' points at class Drupal\\legacy_widgets\\Export\\LegacyExporter, but src/Export/LegacyExporter.php does not exist (orphan service): fetching it is a fatal error.",
+      "occurrence": 0,
+      "rule": "metadata:services-class",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 13,
+          "rule": "metadata:services-class",
+          "tool": "catalog"
+        }
+      ],
+      "symbol": null,
+      "tool": "catalog"
+    },
+    {
+      "anchor": "{file}",
+      "class": "metadata",
+      "file": "modules/legacy_widgets_extra/legacy_widgets_extra.info.yml",
+      "id": "F-72cf26239434",
+      "line": 5,
+      "message": "Submodule 'legacy_widgets_extra' declares core_version_requirement: ^8.8 || ^9 || ^10, which does not admit Drupal 11: core marks it incompatible and it cannot be installed.",
+      "occurrence": 0,
+      "rule": "metadata:submodule-core-req",
+      "scope": "current",
+      "severity": "warning",
+      "sources": [
+        {
+          "line": 5,
+          "rule": "metadata:submodule-core-req",
+          "tool": "catalog"
+        }
+      ],
+      "symbol": null,
+      "tool": "catalog"
+    },
+    {
+      "anchor": "legacy_widgets_extra_legacy_widget_presave",
+      "class": "signature",
+      "file": "modules/legacy_widgets_extra/legacy_widgets_extra.module",
+      "id": "F-6d3d4482d958",
+      "line": 15,
+      "message": "EntityInterface::getOriginal()/setOriginal() exists only from Drupal 11.2, below the core floor (10.0): a fatal on older cores unless the receiver is the module's own class. Guard it (DeprecationHelper::backwardsCompatibleCall) or raise the floor to ^11.2.",
+      "occurrence": 0,
+      "rule": "signature:entity-original-accessors-call",
+      "scope": "current",
+      "severity": "warning",
+      "sources": [
+        {
+          "line": 15,
+          "rule": "signature:entity-original-accessors-call",
+          "tool": "catalog"
+        }
+      ],
+      "symbol": "EntityInterface::getOriginal()/setOriginal()",
+      "tool": "catalog"
+    },
+    {
+      "anchor": "{file}",
+      "class": "metadata",
+      "file": "modules/legacy_widgets_extra/legacy_widgets_extra.module",
+      "id": "F-37b272b1a0e3",
+      "line": 8,
+      "message": "'legacy_widgets_extra' uses project module 'legacy_widgets' (class,service) without declaring it in legacy_widgets_extra.info.yml dependencies: installing 'legacy_widgets_extra' alone fails or breaks at runtime.",
+      "occurrence": 0,
+      "rule": "metadata:undeclared-deps",
+      "scope": "current",
+      "severity": "warning",
+      "sources": [
+        {
+          "line": 8,
+          "rule": "metadata:undeclared-deps",
+          "tool": "catalog"
+        }
+      ],
+      "symbol": null,
+      "tool": "catalog"
+    },
+    {
+      "anchor": "{file}",
+      "class": "metadata",
+      "file": "modules/legacy_widgets_extra/legacy_widgets_extra.module",
+      "id": "F-6f7ab1d035de",
+      "line": 9,
+      "message": "'legacy_widgets_extra' uses core module 'node' (class) without declaring it in legacy_widgets_extra.info.yml dependencies: installing 'legacy_widgets_extra' alone fails or breaks at runtime.",
+      "occurrence": 0,
+      "rule": "metadata:undeclared-deps",
+      "scope": "current",
+      "severity": "warning",
+      "sources": [
+        {
+          "line": 9,
+          "rule": "metadata:undeclared-deps",
+          "tool": "catalog"
+        }
+      ],
+      "symbol": null,
+      "tool": "catalog"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Controller\\WidgetStatusController::create",
+      "class": "analysis",
+      "file": "src/Controller/WidgetStatusController.php",
+      "id": "F-dc2f4886a05f",
+      "line": 36,
+      "message": "Unsafe usage of new static().",
+      "occurrence": 0,
+      "rule": "new.static",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 36,
+          "rule": "new.static",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Entity\\LegacyWidget::getOriginal",
+      "class": "signature",
+      "file": "src/Entity/LegacyWidget.php",
+      "id": "F-b66d2f8d2b41",
+      "line": 57,
+      "message": "LegacyWidget::getOriginal() collides with core's EntityInterface::getOriginal() added in Drupal 11.2 and is incompatible (return type 'none' (core: ?static or static)): a fatal 'Declaration must be compatible' when the class loads on 11.2+.",
+      "occurrence": 0,
+      "rule": "signature:entity-get-original",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 57,
+          "rule": "signature:entity-get-original",
+          "tool": "catalog"
+        }
+      ],
+      "symbol": "getOriginal",
+      "tool": "catalog"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Entity\\LegacyWidget::getOriginal",
+      "class": "analysis",
+      "file": "src/Entity/LegacyWidget.php",
+      "id": "F-c21a3d80dac5",
+      "line": 57,
+      "message": "Return type mixed of method Drupal\\legacy_widgets\\Entity\\LegacyWidget::getOriginal() is not covariant with return type static(Drupal\\Core\\Entity\\EntityBase)|null of method Drupal\\Core\\Entity\\EntityBase::getOriginal().",
+      "occurrence": 0,
+      "rule": "method.childReturnType",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 57,
+          "rule": "method.childReturnType",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Form\\SettingsForm::__construct",
+      "class": "analysis",
+      "file": "src/Form/SettingsForm.php",
+      "id": "F-5f96e612736e",
+      "line": 32,
+      "message": "Method Drupal\\Core\\Form\\ConfigFormBase::__construct() invoked with 1 parameter, 2 required.",
+      "occurrence": 0,
+      "rule": "arguments.count",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 32,
+          "rule": "arguments.count",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Form\\SettingsForm::__construct",
+      "class": "signature",
+      "file": "src/Form/SettingsForm.php",
+      "id": "F-ca091c3456b8",
+      "line": 32,
+      "message": "SettingsForm::__construct() passes 1 argument(s) to ConfigFormBase::__construct(), which requires 2 from Drupal 11.0: ArgumentCountError on Drupal 11.",
+      "occurrence": 0,
+      "rule": "signature:config-form-base-ctor",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 32,
+          "rule": "signature:config-form-base-ctor",
+          "tool": "catalog"
+        }
+      ],
+      "symbol": "__construct",
+      "tool": "catalog"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Form\\SettingsForm::create",
+      "class": "analysis",
+      "file": "src/Form/SettingsForm.php",
+      "id": "F-4e63669fcce4",
+      "line": 40,
+      "message": "Unsafe usage of new static().",
+      "occurrence": 0,
+      "rule": "new.static",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 40,
+          "rule": "new.static",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::__construct",
+      "class": "safety",
+      "file": "src/Form/WidgetImportForm.php",
+      "id": "F-05d7edc34f76",
+      "line": 21,
+      "message": "WidgetImportForm::$loggerFactory is a private readonly promoted property in a class using DependencySerializationTrait - readonly: __wakeup() cannot re-initialize it ('Cannot initialize readonly property'); private: __sleep() runs in the base-class scope and drops it ('must not be accessed before initialization' after unserialize). Use protected, non-readonly.",
+      "occurrence": 0,
+      "rule": "port-safety:serialization",
+      "scope": "current",
+      "severity": "warning",
+      "sources": [
+        {
+          "line": 21,
+          "rule": "port-safety:serialization",
+          "tool": "catalog"
+        }
+      ],
+      "symbol": null,
+      "tool": "catalog"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::__construct",
+      "class": "analysis",
+      "file": "src/Form/WidgetImportForm.php",
+      "id": "F-0bb09c8bbbd9",
+      "line": 21,
+      "message": "Read-only properties are incompatible with Drupal\\Core\\DependencyInjection\\DependencySerializationTrait when the trait is used by a parent class on PHP < 8.4.",
+      "occurrence": 1,
+      "rule": "dependencySerializationTraitProperty.unsupportedReadOnlyProperty",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 21,
+          "rule": "dependencySerializationTraitProperty.unsupportedReadOnlyProperty",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::__construct",
+      "class": "analysis",
+      "file": "src/Form/WidgetImportForm.php",
+      "id": "F-15a47c89772f",
+      "line": 21,
+      "message": "Property Drupal\\legacy_widgets\\Form\\WidgetImportForm::$loggerFactory (Drupal\\Core\\Logger\\LoggerChannelFactoryInterface) overriding property Drupal\\Core\\Form\\FormBase::$loggerFactory should not have a native type.",
+      "occurrence": 0,
+      "rule": "property.extraNativeType",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 21,
+          "rule": "property.extraNativeType",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::__construct",
+      "class": "analysis",
+      "file": "src/Form/WidgetImportForm.php",
+      "id": "F-5337170096ea",
+      "line": 21,
+      "message": "Drupal\\Core\\DependencyInjection\\DependencySerializationTrait does not support private properties.",
+      "occurrence": 1,
+      "rule": "dependencySerializationTraitProperty.unsupportedPrivateProperty",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 21,
+          "rule": "dependencySerializationTraitProperty.unsupportedPrivateProperty",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::__construct",
+      "class": "safety",
+      "file": "src/Form/WidgetImportForm.php",
+      "id": "F-58075dd2ffb9",
+      "line": 20,
+      "message": "WidgetImportForm::$entityTypeManager is a private readonly promoted property in a class using DependencySerializationTrait - readonly: __wakeup() cannot re-initialize it ('Cannot initialize readonly property'); private: __sleep() runs in the base-class scope and drops it ('must not be accessed before initialization' after unserialize). Use protected, non-readonly.",
+      "occurrence": 0,
+      "rule": "port-safety:serialization",
+      "scope": "current",
+      "severity": "warning",
+      "sources": [
+        {
+          "line": 20,
+          "rule": "port-safety:serialization",
+          "tool": "catalog"
+        }
+      ],
+      "symbol": null,
+      "tool": "catalog"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::__construct",
+      "class": "analysis",
+      "file": "src/Form/WidgetImportForm.php",
+      "id": "F-7f4536e30153",
+      "line": 21,
+      "message": "Private property Drupal\\legacy_widgets\\Form\\WidgetImportForm::$loggerFactory overriding protected property Drupal\\Core\\Form\\FormBase::$loggerFactory should be protected or public.",
+      "occurrence": 0,
+      "rule": "property.visibility",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 21,
+          "rule": "property.visibility",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::__construct",
+      "class": "analysis",
+      "file": "src/Form/WidgetImportForm.php",
+      "id": "F-aee0abbd870b",
+      "line": 20,
+      "message": "Read-only properties are incompatible with Drupal\\Core\\DependencyInjection\\DependencySerializationTrait when the trait is used by a parent class on PHP < 8.4.",
+      "occurrence": 0,
+      "rule": "dependencySerializationTraitProperty.unsupportedReadOnlyProperty",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 20,
+          "rule": "dependencySerializationTraitProperty.unsupportedReadOnlyProperty",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::__construct",
+      "class": "analysis",
+      "file": "src/Form/WidgetImportForm.php",
+      "id": "F-bc8b7b83d8fd",
+      "line": 20,
+      "message": "Drupal\\Core\\DependencyInjection\\DependencySerializationTrait does not support private properties.",
+      "occurrence": 0,
+      "rule": "dependencySerializationTraitProperty.unsupportedPrivateProperty",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 20,
+          "rule": "dependencySerializationTraitProperty.unsupportedPrivateProperty",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::__construct",
+      "class": "analysis",
+      "file": "src/Form/WidgetImportForm.php",
+      "id": "F-d61fd4363c06",
+      "line": 21,
+      "message": "Readonly property Drupal\\legacy_widgets\\Form\\WidgetImportForm::$loggerFactory overrides readwrite property Drupal\\Core\\Form\\FormBase::$loggerFactory.",
+      "occurrence": 0,
+      "rule": "property.readOnly",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 21,
+          "rule": "property.readOnly",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::create",
+      "class": "analysis",
+      "file": "src/Form/WidgetImportForm.php",
+      "id": "F-b18210f4ea43",
+      "line": 28,
+      "message": "Unsafe usage of new static().",
+      "occurrence": 0,
+      "rule": "new.static",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 28,
+          "rule": "new.static",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::submitForm",
+      "class": "rector",
+      "file": "src/Form/WidgetImportForm.php",
+      "id": "F-b283a14aba1d",
+      "line": 64,
+      "message": "FunctionFirstClassCallableRector",
+      "occurrence": 0,
+      "rule": "Rector\\CodingStyle\\Rector\\FuncCall\\FunctionFirstClassCallableRector",
+      "scope": "current",
+      "severity": "info",
+      "sources": [
+        {
+          "line": 64,
+          "rule": "Rector\\CodingStyle\\Rector\\FuncCall\\FunctionFirstClassCallableRector",
+          "tool": "rector"
+        }
+      ],
+      "symbol": null,
+      "tool": "rector"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\LegacyWidgetStorage::buildRevisionCacheId",
+      "class": "signature",
+      "file": "src/LegacyWidgetStorage.php",
+      "id": "F-f86abdabcd86",
+      "line": 24,
+      "message": "LegacyWidgetStorage::buildRevisionCacheId() is a module method below Drupal 11.3 and silently OVERRIDES core's ContentEntityStorageBase::buildRevisionCacheId() from 11.3 (core calls it). Rename it unless that override is intended; never mark it with the Override attribute while the floor (10.0) is below 11.3.",
+      "occurrence": 0,
+      "rule": "signature:revision-cache-id",
+      "scope": "current",
+      "severity": "warning",
+      "sources": [
+        {
+          "line": 24,
+          "rule": "signature:revision-cache-id",
+          "tool": "catalog"
+        }
+      ],
+      "symbol": "buildRevisionCacheId",
+      "tool": "catalog"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Plugin\\Block\\WidgetSummaryBlock::build",
+      "class": "soft",
+      "file": "src/Plugin/Block/WidgetSummaryBlock.php",
+      "id": "F-2686679ebebe",
+      "line": 63,
+      "message": "Call to deprecated function check_markup(): in drupal:11.4.0 and is removed from drupal:13.0.0. There is no direct replacement. It's recommended to always return a renderable array without flattening as markup to pass the cacheability metadata.",
+      "occurrence": 0,
+      "rule": "function.deprecated",
+      "scope": "next-major",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 63,
+          "rule": "function.deprecated",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": "check_markup",
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Plugin\\Block\\WidgetSummaryBlock::build",
+      "class": "soft",
+      "file": "src/Plugin/Block/WidgetSummaryBlock.php",
+      "id": "F-d8262ed5beb1",
+      "line": 64,
+      "message": "Call to deprecated function user_load_by_mail(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties() instead.",
+      "occurrence": 0,
+      "rule": "function.deprecated",
+      "scope": "next-major",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 64,
+          "rule": "function.deprecated",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": "user_load_by_mail",
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Plugin\\Block\\WidgetSummaryBlock::create",
+      "class": "analysis",
+      "file": "src/Plugin/Block/WidgetSummaryBlock.php",
+      "id": "F-d4acef739b62",
+      "line": 49,
+      "message": "Unsafe usage of new static().",
+      "occurrence": 0,
+      "rule": "new.static",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 49,
+          "rule": "new.static",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Plugin\\Condition\\WidgetsEnabledCondition::create",
+      "class": "analysis",
+      "file": "src/Plugin/Condition/WidgetsEnabledCondition.php",
+      "id": "F-068e3078dfc1",
+      "line": 40,
+      "message": "Unsafe usage of new static().",
+      "occurrence": 0,
+      "rule": "new.static",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 40,
+          "rule": "new.static",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "{file}",
+      "class": "metadata",
+      "file": "src/Plugin/Condition/WidgetsEnabledCondition.php",
+      "id": "F-e5e0c81071e8",
+      "line": 1,
+      "message": "Condition plugin 'legacy_widgets_enabled' has its own settings but no 'condition.plugin.legacy_widgets_enabled' schema: only core's generic 'condition.plugin.*' covers it, so its extra settings fail strict config schema checks.",
+      "occurrence": 0,
+      "rule": "metadata:plugin-schema",
+      "scope": "current",
+      "severity": "warning",
+      "sources": [
+        {
+          "line": 1,
+          "rule": "metadata:plugin-schema",
+          "tool": "catalog"
+        }
+      ],
+      "symbol": null,
+      "tool": "catalog"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Plugin\\Filter\\WidgetSummaryFilter::create",
+      "class": "analysis",
+      "file": "src/Plugin/Filter/WidgetSummaryFilter.php",
+      "id": "F-95efa5a31b0a",
+      "line": 44,
+      "message": "Unsafe usage of new static().",
+      "occurrence": 0,
+      "rule": "new.static",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 44,
+          "rule": "new.static",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Plugin\\Filter\\WidgetSummaryFilter::process",
+      "class": "soft",
+      "file": "src/Plugin/Filter/WidgetSummaryFilter.php",
+      "id": "F-36c6b6c781b3",
+      "line": 59,
+      "message": "Call to deprecated function text_summary(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::service(TextSummary::class)->generate() instead.",
+      "occurrence": 0,
+      "rule": "function.deprecated",
+      "scope": "next-major",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 59,
+          "rule": "function.deprecated",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": "text_summary",
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "{file}",
+      "class": "metadata",
+      "file": "src/Plugin/Filter/WidgetSummaryFilter.php",
+      "id": "F-23216872c0d5",
+      "line": 1,
+      "message": "Filter plugin 'legacy_widgets_summary' has its own settings but no 'filter_settings.legacy_widgets_summary' schema: only core's generic 'filter_settings.*' covers it, so its extra settings fail strict config schema checks.",
+      "occurrence": 0,
+      "rule": "metadata:plugin-schema",
+      "scope": "current",
+      "severity": "warning",
+      "sources": [
+        {
+          "line": 1,
+          "rule": "metadata:plugin-schema",
+          "tool": "catalog"
+        }
+      ],
+      "symbol": null,
+      "tool": "catalog"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Plugin\\QueueWorker\\WidgetReindexWorker::create",
+      "class": "analysis",
+      "file": "src/Plugin/QueueWorker/WidgetReindexWorker.php",
+      "id": "F-108ee93f2968",
+      "line": 49,
+      "message": "Unsafe usage of new static().",
+      "occurrence": 0,
+      "rule": "new.static",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 49,
+          "rule": "new.static",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Plugin\\QueueWorker\\WidgetReindexWorker::processItem",
+      "class": "soft",
+      "file": "src/Plugin/QueueWorker/WidgetReindexWorker.php",
+      "id": "F-10f0cc90b0e9",
+      "line": 67,
+      "message": "Call to deprecated function user_load_by_name(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties() instead.",
+      "occurrence": 0,
+      "rule": "function.deprecated",
+      "scope": "next-major",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 67,
+          "rule": "function.deprecated",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": "user_load_by_name",
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Plugin\\QueueWorker\\WidgetReindexWorker::processItem",
+      "class": "analysis",
+      "file": "src/Plugin/QueueWorker/WidgetReindexWorker.php",
+      "id": "F-5b583b655f32",
+      "line": 68,
+      "message": "Call to an undefined method Drupal\\Core\\Entity\\EntityInterface::set().",
+      "occurrence": 0,
+      "rule": "method.notFound",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 68,
+          "rule": "method.notFound",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\Plugin\\QueueWorker\\WidgetReindexWorker::processItem",
+      "class": "analysis",
+      "file": "src/Plugin/QueueWorker/WidgetReindexWorker.php",
+      "id": "F-5f0e17a1522c",
+      "line": 69,
+      "message": "Call to an undefined method Drupal\\Core\\Entity\\EntityInterface::incrementHits().",
+      "occurrence": 0,
+      "rule": "method.notFound",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 69,
+          "rule": "method.notFound",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\legacy_widgets\\WidgetLookup::findOwnerByMail",
+      "class": "soft",
+      "file": "src/WidgetLookup.php",
+      "id": "F-fafb9932bd81",
+      "line": 39,
+      "message": "Call to deprecated function user_load_by_mail(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties() instead.",
+      "occurrence": 0,
+      "rule": "function.deprecated",
+      "scope": "next-major",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 39,
+          "rule": "function.deprecated",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": "user_load_by_mail",
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testCounterService",
+      "class": "analysis",
+      "file": "tests/src/Kernel/LegacyWidgetsKernelTest.php",
+      "id": "F-0171c1d6cbc2",
+      "line": 79,
+      "message": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::assertSame().",
+      "occurrence": 0,
+      "rule": "method.notFound",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 79,
+          "rule": "method.notFound",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testEntityOperationWithDrupal10Arguments",
+      "class": "analysis",
+      "file": "tests/src/Kernel/LegacyWidgetsKernelTest.php",
+      "id": "F-d1fb6381fef0",
+      "line": 69,
+      "message": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::assertArrayHasKey().",
+      "occurrence": 0,
+      "rule": "method.notFound",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 69,
+          "rule": "method.notFound",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testFilterProducesSummary",
+      "class": "analysis",
+      "file": "tests/src/Kernel/LegacyWidgetsKernelTest.php",
+      "id": "F-ace3d9ea173d",
+      "line": 57,
+      "message": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::assertSame().",
+      "occurrence": 0,
+      "rule": "method.notFound",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 57,
+          "rule": "method.notFound",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testFindAccount",
+      "class": "analysis",
+      "file": "tests/src/Kernel/LegacyWidgetsKernelTest.php",
+      "id": "F-4bf578aeff41",
+      "line": 88,
+      "message": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::assertSame().",
+      "occurrence": 0,
+      "rule": "method.notFound",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 88,
+          "rule": "method.notFound",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testFindAccount",
+      "class": "analysis",
+      "file": "tests/src/Kernel/LegacyWidgetsKernelTest.php",
+      "id": "F-689a98fd3169",
+      "line": 89,
+      "message": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::assertSame().",
+      "occurrence": 1,
+      "rule": "method.notFound",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 89,
+          "rule": "method.notFound",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testQueueWorkerProcessesItem",
+      "class": "analysis",
+      "file": "tests/src/Kernel/LegacyWidgetsKernelTest.php",
+      "id": "F-24fd6461d551",
+      "line": 45,
+      "message": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::assertSame().",
+      "occurrence": 0,
+      "rule": "method.notFound",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 45,
+          "rule": "method.notFound",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testQueueWorkerProcessesItem",
+      "class": "analysis",
+      "file": "tests/src/Kernel/LegacyWidgetsKernelTest.php",
+      "id": "F-7ea41912a796",
+      "line": 45,
+      "message": "Call to an undefined method Drupal\\Core\\Entity\\EntityInterface::get().",
+      "occurrence": 0,
+      "rule": "method.notFound",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 45,
+          "rule": "method.notFound",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testQueueWorkerProcessesItem",
+      "class": "analysis",
+      "file": "tests/src/Kernel/LegacyWidgetsKernelTest.php",
+      "id": "F-d472633b3456",
+      "line": 46,
+      "message": "Call to an undefined method Drupal\\Core\\Entity\\EntityInterface::get().",
+      "occurrence": 1,
+      "rule": "method.notFound",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 46,
+          "rule": "method.notFound",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testQueueWorkerProcessesItem",
+      "class": "analysis",
+      "file": "tests/src/Kernel/LegacyWidgetsKernelTest.php",
+      "id": "F-ed1224a2de45",
+      "line": 46,
+      "message": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::assertSame().",
+      "occurrence": 1,
+      "rule": "method.notFound",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 46,
+          "rule": "method.notFound",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\Tests\\legacy_widgets\\Unit\\WidgetCounterTest::testBucket",
+      "class": "analysis",
+      "file": "tests/src/Unit/WidgetCounterTest.php",
+      "id": "F-096b23ad92d5",
+      "line": 24,
+      "message": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Unit\\WidgetCounterTest::assertSame().",
+      "occurrence": 0,
+      "rule": "method.notFound",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 24,
+          "rule": "method.notFound",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\Tests\\legacy_widgets\\Unit\\WidgetCounterTest::testBucket",
+      "class": "analysis",
+      "file": "tests/src/Unit/WidgetCounterTest.php",
+      "id": "F-75efc48c5371",
+      "line": 23,
+      "message": "Call to an undefined method Drupal\\Tests\\legacy_widgets\\Unit\\WidgetCounterTest::createMock().",
+      "occurrence": 0,
+      "rule": "method.notFound",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 23,
+          "rule": "method.notFound",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    }
+  ],
+  "meta": {
+    "findings_hash": "sha256:5a28c923ad4d3f0429cc4c31945171332527c3e4b826b3eff9c194b361d1b4f8",
+    "raw": {
+      "04-assess-anchors.json": "sha256:c75b139f57d63e56e390eac229cb2f59e4b057c1a70d51535749b4792fc37dae",
+      "04-assess-index.json": "sha256:4661c71d45f31009cacf8bead61541827d5ad19c562b26d3f97dace05afd08ee",
+      "04-assess-metadata.json": "sha256:238f8900df835f1eb00534ca001369e8a427bad0c2898a99532aac622ba7e1fa",
+      "04-assess-phpcs.json": "sha256:5da7b4b1b2cbc382d0e0c1946f50d4ab5328d77270edf287c7312de7bb4dbcaa",
+      "04-assess-phpstan.json": "sha256:fe482dbfb1ec44859402f4fbccfab6215a5bf1ccfc5567d905a83f0447578ef4",
+      "04-assess-port-safety.json": "sha256:7ed6f930d2b387f3d485f1bba2fe35453751f214b15c586c0c76249aa395f774",
+      "04-assess-rector.json": "sha256:9c382349de1b2e8522fb3f66592c1a20817dd7c5aad76d4de8f93ecf5df967f5",
+      "04-assess-signatures.json": "sha256:bf46b9cc447266f4d72c9f6c00dd671ded5345016845fde3a6af959ac2158450"
+    }
+  },
+  "schema": 1,
+  "stage": "assess",
+  "subject": {
+    "machine_name": "legacy_widgets",
+    "path": "web/modules/custom/legacy_widgets"
+  },
+  "target": {
+    "major": 11,
+    "php_version": "8.3.33",
+    "runner": "ddev",
+    "soft_policy": "report"
+  },
+  "tools": {
+    "metadata": "ok",
+    "phpcs": "ok",
+    "phpstan": "ok",
+    "port-safety": "ok",
+    "rector": "ok",
+    "signatures": "ok"
+  }
+}

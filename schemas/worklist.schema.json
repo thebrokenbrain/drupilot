@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thebrokenbrain.github.io/drupilot/schemas/worklist.schema.json",
+  "title": "drupilot worklist (<state>/worklist.json)",
+  "description": "The work of one stage (AR-10, ADR 0024), written by scripts/ai/classify.sh from findings.json and the recipes: the findings of one file, anchor and lane make one item. The AI acts only on open items of the ai-templated, ai-free and test-adapt lanes, and only on their allowed_files (DET-3). Everything outside meta is a pure function of findings.json, the recipes, the floor and the actions log (DET-2).",
+  "type": "object",
+  "required": ["schema", "stage", "subject", "target", "floor", "counts", "items", "meta"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {"const": 1},
+    "stage": {"type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"},
+    "subject": {"type": "object"},
+    "target": {"type": "object"},
+    "floor": {"description": "The declared core floor F the recipes were checked against (applies_when.core_min), or null when unknown.", "anyOf": [{"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"}, {"type": "null"}]},
+    "counts": {
+      "type": "object",
+      "required": ["items", "open", "blocking", "by_lane"],
+      "additionalProperties": false,
+      "properties": {
+        "items": {"type": "integer", "minimum": 0},
+        "open": {"type": "integer", "minimum": 0},
+        "blocking": {"type": "integer", "minimum": 0},
+        "by_lane": {"type": "object", "propertyNames": {"$ref": "#/$defs/lane"}, "additionalProperties": {"type": "integer", "minimum": 1}}
+      }
+    },
+    "items": {"description": "Sorted by lane (priority order), file and anchor.", "type": "array", "items": {"$ref": "#/$defs/item"}},
+    "meta": {
+      "type": "object",
+      "required": ["worklist_hash", "recipes_hash"],
+      "properties": {
+        "worklist_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "findings_hash": {"anyOf": [{"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, {"type": "null"}]},
+        "recipes_hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "generated_at": {"type": "string"}
+      }
+    }
+  },
+  "$defs": {
+    "lane": {"enum": ["rector", "rector-custom", "codemod", "ai-templated", "ai-free", "test-adapt", "human", "deferred"]},
+    "item": {
+      "type": "object",
+      "required": ["id", "lane", "file", "anchor", "finding_ids", "recipes", "recipe_of", "templates", "allowed_files", "era", "category", "explanation", "change_record_search_url", "blocking", "reason", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"description": "W- + the first 12 hex of sha256(file, anchor, lane) joined by 0x1f.", "type": "string", "pattern": "^W-[0-9a-f]{12}$"},
+        "lane": {"$ref": "#/$defs/lane"},
+        "file": {"type": "string", "minLength": 1},
+        "anchor": {"type": "string", "minLength": 1},
+        "finding_ids": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^F-[0-9a-f]{12}$"}},
+        "recipes": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "recipe_of": {"description": "Each finding's recipe (null: none).", "type": "object", "propertyNames": {"pattern": "^F-[0-9a-f]{12}$"}, "additionalProperties": {"anyOf": [{"type": "string"}, {"type": "null"}]}},
+        "templates": {"type": "object", "additionalProperties": {"type": "object"}},
+        "allowed_files": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+        "era": {"anyOf": [{"type": "string", "pattern": "^d[0-9]+$"}, {"type": "null"}]},
+        "category": {"type": "string"},
+        "explanation": {"type": "string"},
+        "change_record_search_url": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "blocking": {"type": "boolean"},
+        "reason": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        "status": {"enum": ["open", "applied", "deferred"]}
+      }
+    }
+  }
+}

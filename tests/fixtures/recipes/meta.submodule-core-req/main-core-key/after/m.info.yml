@@ -1,0 +1,6 @@
+name: M
+type: module
+description: 'Recipe fixture: a module with a submodule.'
+package: Fixtures
+core: 8.x
+core_version_requirement: ^10 || ^11

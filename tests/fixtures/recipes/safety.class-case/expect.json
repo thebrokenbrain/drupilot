@@ -1,0 +1,64 @@
+{
+  "cases": [
+    {
+      "name": "a services.yml class gets the case of its file",
+      "before": "before",
+      "after": "after",
+      "file": "m.services.yml",
+      "line": 3,
+      "severity": "error",
+      "message": "'Drupal\\m\\WidgetLookUp' does not match the real file 'src/WidgetLookup.php' (case differs): works on a case-insensitive filesystem, fatals on Linux.",
+      "status": "applied"
+    },
+    {
+      "name": "a routing.yml controller, namespace segment included",
+      "before": "routing/before",
+      "after": "routing/after",
+      "file": "m.routing.yml",
+      "line": 4,
+      "severity": "error",
+      "message": "'Drupal\\m\\controller\\statusController' does not match the real file 'src/Controller/StatusController.php' (case differs): works on a case-insensitive filesystem, fatals on Linux.",
+      "status": "applied"
+    },
+    {
+      "name": "a PHP file: not-applicable (renaming a class or file is not a line edit)",
+      "before": "before",
+      "after": "before",
+      "file": "src/WidgetLookup.php",
+      "line": 8,
+      "severity": "error",
+      "message": "'Drupal\\m\\WidgetLookUp' does not match the real file 'src/WidgetLookup.php' (case differs): works on a case-insensitive filesystem, fatals on Linux.",
+      "status": "not-applicable"
+    },
+    {
+      "name": "another class name, not only a case: no-match",
+      "before": "before",
+      "after": "before",
+      "file": "m.services.yml",
+      "line": 3,
+      "severity": "error",
+      "message": "'Drupal\\m\\WidgetLookUp' does not match the real file 'src/OtherLookup.php' (case differs): works on a case-insensitive filesystem, fatals on Linux.",
+      "status": "no-match"
+    },
+    {
+      "name": "the same class on two lines, the finding on the first: only its line changes",
+      "before": "two-lines/before",
+      "after": "two-lines/after",
+      "file": "m.services.yml",
+      "line": 3,
+      "severity": "error",
+      "message": "'Drupal\\m\\WidgetLookUp' does not match the real file 'src/WidgetLookup.php' (case differs): works on a case-insensitive filesystem, fatals on Linux.",
+      "status": "applied"
+    },
+    {
+      "name": "a file without a final newline keeps none",
+      "before": "no-newline/before",
+      "after": "no-newline/after",
+      "file": "m.services.yml",
+      "line": 3,
+      "severity": "error",
+      "message": "'Drupal\\m\\WidgetLookUp' does not match the real file 'src/WidgetLookup.php' (case differs): works on a case-insensitive filesystem, fatals on Linux.",
+      "status": "applied"
+    }
+  ]
+}

@@ -1,0 +1,114 @@
+{
+  "anchors": "php",
+  "counts": {
+    "by_class": {
+      "analysis": 1,
+      "style": 2
+    },
+    "by_tool": {
+      "phpcs": 2,
+      "phpstan": 1
+    },
+    "current": 3,
+    "next_major": 0,
+    "total": 3
+  },
+  "findings": [
+    {
+      "anchor": "Drupal\\acme_core\\AcmeFormatter::__construct",
+      "class": "style",
+      "file": "src/AcmeFormatter.php",
+      "id": "F-9e652fe68e47",
+      "line": 12,
+      "message": "Parameter $configFactory is not described in comment",
+      "occurrence": 0,
+      "rule": "Drupal.Commenting.FunctionComment.ParamMissingDefinition",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 12,
+          "rule": "Drupal.Commenting.FunctionComment.ParamMissingDefinition",
+          "tool": "phpcs"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpcs"
+    },
+    {
+      "anchor": "Drupal\\acme_core\\AcmeFormatter::__construct",
+      "class": "style",
+      "file": "src/AcmeFormatter.php",
+      "id": "F-ad8c7fc8b52f",
+      "line": 15,
+      "message": "Doc comment for parameter $config_factory does not match actual variable name $prefix",
+      "occurrence": 0,
+      "rule": "Drupal.Commenting.FunctionComment.ParamNameNoMatch",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 15,
+          "rule": "Drupal.Commenting.FunctionComment.ParamNameNoMatch",
+          "tool": "phpcs"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpcs"
+    },
+    {
+      "anchor": "Drupal\\acme_core\\AcmeFormatter::__construct",
+      "class": "analysis",
+      "file": "src/AcmeFormatter.php",
+      "id": "F-d1e003f0ecc8",
+      "line": 20,
+      "message": "PHPDoc tag @param references unknown parameter: $config_factory",
+      "occurrence": 0,
+      "rule": "parameter.notFound",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 20,
+          "rule": "parameter.notFound",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    }
+  ],
+  "meta": {
+    "findings_hash": "sha256:7ae0922d32c50405a02714b54995a5cdc7639a37ad71fdbb095c3b84a5c44138",
+    "raw": {
+      "04-assess-anchors.json": "sha256:cfaf3210e1b796990c45a23e5454166d6037d918b3bdb0c1afca14429d994c79",
+      "04-assess-index.json": "sha256:76ea22957c4fd4d4ed56b7824efbd938cbe2c759bc2d8e61ffc9cf901fdaaddd",
+      "04-assess-metadata.json": "sha256:c3b9552a8c2b0dbfc253337044c55df528c684f2dde71197f8961681921e3d1f",
+      "04-assess-phpcs.json": "sha256:1653157b79ebb235ee222d72c6029180cbbd6f20c452ddac727dc6255d585c1d",
+      "04-assess-phpstan.json": "sha256:88f03794285e69fe1b102b913673c125e0c74b377adab5b0eaf2073054568091",
+      "04-assess-port-safety.json": "sha256:41d58bc89831655558c623480e8ef1b36a34a2db0fb13bef767f2ab3a3719609",
+      "04-assess-rector.json": "sha256:ddea1a996781f3fee827ee319674121505d6f2788abcabf95b43078b44ef5ede",
+      "04-assess-signatures.json": "sha256:00ad61d8a58afb3cc1a6306d3ade52b9807b434466fa1795e469a245f2a4e3a3"
+    }
+  },
+  "schema": 1,
+  "stage": "assess",
+  "subject": {
+    "machine_name": "acme_core",
+    "path": "web/modules/custom/acme_core"
+  },
+  "target": {
+    "major": 11,
+    "php_version": "8.3.33",
+    "runner": "ddev",
+    "soft_policy": "report"
+  },
+  "tools": {
+    "metadata": "ok",
+    "phpcs": "ok",
+    "phpstan": "ok",
+    "port-safety": "ok",
+    "rector": "ok",
+    "signatures": "ok"
+  }
+}

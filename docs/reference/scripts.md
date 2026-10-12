@@ -30,6 +30,267 @@ Output: the block (or the JSON) on STDOUT; logs on STDERR.
 Exit codes: 0 ok, also when no plan resolves · 1 usage error.
 ```
 
+## ai
+
+### ai/apply-recipe.sh
+
+```text
+drupilot — scripts/ai/apply-recipe.sh
+Apply one codemod recipe of config/recipes.json (AR-11, ADR 0023) to one
+finding: the primitive scripts/ai/apply-recipes.sh runs per worklist item,
+and the recipe fixtures (tests/fixtures/recipes/<id>/) run on their own. The
+Docker-free engines:
+  ere-replace  a `sed -E` substitution (params.search -> params.replace,
+               back-references \1..\9) on the finding's line (scope line) or
+               on every line of the file (scope file)
+  yaml-edit    op replace-on-line: on the finding's line, the fixed string
+               `from` becomes `to`; each is a capture (the first group of an
+               ERE on the finding's message) or, for `to`, a transform of
+               one (class-from-file: Drupal\<extension>\ plus the class's
+               path under src/, for a class name whose case differs)
+  info-yml     scripts/analysis/set-core-requirement.sh, on a copy of the
+               subject's physical tree, with params.requirement
+               (plan:<path> reads the subject's own frozen upgrade plan,
+               e.g. plan:range.constraint; --param overrides it); only the
+               finding's file is written, and a requirement whose floor is
+               above the main info.yml's (the declared floor) is
+               not-applicable
+params.captures ({name: ERE}, matched on the finding's line before the
+change) give {name} to the postconditions, e.g. "the parameter made optional
+is not used elsewhere in the file". The change is written only when it is
+exact and every postcondition holds on the result (absent-ere / absent-fixed
+/ present-fixed on the line, the file, the file's code lines but the
+finding's (file-except-line), or the body of the function the finding's line
+declares (function-body); comment lines are not code there. An unresolved
+{placeholder} or an empty capture fails the postcondition. rescan is
+left to apply-recipes.sh's re-extraction). A file without a final newline
+keeps none. A replacement that does not apply is `no-match`, and nothing
+changes: the item falls to its next lane. applies_when is honored: file_ere,
+severity (with --severity) and core_min (with --core-floor, else the
+subject's own plan's range.floor).
+
+Usage:
+  apply-recipe.sh --recipe ID --subject DIR --file REL [--line N]
+                  [--message TEXT] [--severity S] [--core-floor X.Y]
+                  [--param KEY=VALUE]... [--recipes FILE] [--dry-run]
+                  [--json] [-h|--help]
+    --recipe ID      a recipe id of config/recipes.json (or --recipes FILE)
+    --subject DIR    the module/theme; --file is relative to it
+    --line N         the finding's line (scope line, yaml-edit)
+    --message TEXT   the finding's message (yaml-edit captures)
+    --severity S     the finding's severity (applies_when.severity)
+    --core-floor X.Y the declared core floor (applies_when.core_min)
+    --param K=V      override params.K (a fixture's requirement, ...)
+    --dry-run        report would-apply; write nothing
+    --json           {recipe, version, engine, file, line, status, changed,
+                      input_hash, output_hash, from, to, reason} on STDOUT
+                      (status: applied | would-apply | no-match |
+                      not-applicable | rejected)
+
+Exit codes: 0 a status was reached (applied, would-apply, no-match or
+not-applicable) · 1 usage error, an unknown recipe or an engine without an
+executor (attributes, php-script, rector-rule: no v1 recipe uses them) · 3
+rejected: the change was computed but a postcondition fails on it, so
+nothing is written.
+```
+
+### ai/apply-recipes.sh
+
+```text
+drupilot — scripts/ai/apply-recipes.sh
+Pipeline steps S6 and S7 (T-M4-07, 05-R6, ADR 0024): apply every open codemod
+item of the subject's worklist.json, finding by finding, with
+scripts/ai/apply-recipe.sh, then classify again so the result shows in the
+worklist; with --reextract, run the re-extraction first (extract.sh,
+normalize-findings.sh, classify.sh on the new tree): the residual worklist.
+
+Each application is one line of the subject's actions log,
+<state>/actions.jsonl (DET-9; the machine record of what the recipes and,
+later, the AI did, kept apart from the human decisions.jsonl of
+log-decision.sh): {schema, kind: "recipe-apply", item_id, finding_id,
+recipe, version, file, line, status, input_hash, output_hash,
+findings_hash, at}; a crash of apply-recipe.sh is status error, and after the
+re-extraction a codemod applied now whose finding is still there gets a
+not-cleared line. classify.sh reads it: a codemod that gave no change,
+failed or did not clear its finding moves the finding to ai-templated, and
+an item whose codemods were all applied on the current findings (their
+output still in the file) is `applied`. The recipes are the plugin's with
+the project overlay (<root>/.drupilot/recipes.json), as classify.sh uses
+them; an application already in effect is not run again.
+
+Usage:
+  apply-recipes.sh --subject DIR [--reextract] [--dry-run] [--json]
+                   [-h|--help]
+    --subject DIR   the module/theme (inside its Drupal root)
+    --reextract     S7: re-run extract.sh (the worklist's stage),
+                    normalize-findings.sh and classify.sh after applying
+    --dry-run       report what each codemod would change; write nothing,
+                    log nothing
+    --json          {subject, stage, dry_run, applications: [{item_id,
+                     finding_id, recipe, file, line, status}], applied,
+                     not_applied, reextracted, worklist: {counts}} on STDOUT
+
+Exit codes: 0 done · 1 usage error, no worklist.json or findings.json, a
+recipe catalog that is not one, or a re-extraction step that failed · 3 a
+codemod was rejected (a postcondition failed: that file is unchanged), or the
+re-extraction gave no verdict (extract.sh exit 3).
+```
+
+### ai/classify.sh
+
+```text
+drupilot — scripts/ai/classify.sh
+Turn findings.json into worklist.json (pipeline step S4; T-M4-07, AR-10, ADR
+0024): every finding gets a lane, and the findings of one file, anchor and
+lane become one item. The lanes, in priority order: rector > rector-custom >
+codemod > ai-templated > ai-free > test-adapt > human > deferred.
+
+  deferred      a next-major finding (it never reaches an AI lane: X18), an
+                info one (nothing to change), a PHPCS style one (Phase 1
+                keeps the diff minimal: phpcbf only touches changed lines)
+  rector        a Rector finding (its pass applies it)
+  <recipe lane> the first recipe of config/recipes.json (plus the project
+                overlay <root>/.drupilot/recipes.json, whose ids replace
+                the plugin's) that matches the finding — by rule, then
+                symbol, then message, then id — and whose applies_when
+                holds (file, severity, core_min against the declared floor
+                F, read from the subject's own frozen plan: a recipe never
+                applies above F). A codemod that does not apply, or whose
+                last action on this finding (the actions log of
+                scripts/ai/apply-recipes.sh) changed nothing, failed, was
+                found not to clear it (not-cleared, S7) or was applied on
+                an earlier extraction with the finding still there, falls
+                to ai-templated with its template. A codemod applied on
+                these very findings whose output is still in the file makes
+                its item `applied` until the re-extraction; one whose output
+                is gone (a revert) is tried again. (Without --subject, the
+                files are not read: every applied action counts as in
+                effect.)
+  ai-free       an analysis error or deprecation no recipe matches
+  human         a catalog finding no recipe matches
+  test-adapt    an ai-templated or ai-free finding in a file under a tests/
+                directory (the module's or a submodule's)
+
+Idempotent: the same findings.json, recipes, floor and actions give the same
+worklist.json outside meta (DET-2).
+
+Usage:
+  classify.sh (--subject DIR | --findings FILE) [--recipes FILE]
+              [--overlay FILE] [--core-floor X.Y] [--actions FILE]
+              [--out FILE] [--json] [-h|--help]
+    --subject DIR     the module/theme: findings.json, actions.jsonl and
+                      worklist.json in its hidden state dir; the floor from
+                      its upgrade plan (range.floor); the overlay from its
+                      Drupal root
+    --findings FILE   classify this findings.json (a golden's); with no
+                      --subject, nothing is written unless --out is given
+    --recipes FILE    default config/recipes.json
+    --overlay FILE    a project overlay (same shape); default
+                      <root>/.drupilot/recipes.json when it exists
+    --core-floor X.Y  the declared core floor F (default: the plan's)
+    --actions FILE    the actions log (default <state>/actions.jsonl)
+    --out FILE        where to write worklist.json
+    --json            print worklist.json on STDOUT
+
+Exit codes: 0 written (or printed) · 1 usage error, no findings.json, or a
+recipes file that is not a recipe catalog · 2 jq or a sha256 tool missing.
+```
+
+### ai/extract.sh
+
+```text
+drupilot — scripts/ai/extract.sh
+Run a stage's deterministic extractors on a module/theme and keep their
+reports as canonical raw files (T-M4-05, AR-07, AR-10, 05-R3, ADR 0022):
+
+  <state>/raw/<NN>-<stage>-<tool>.json
+
+NN is the stage's place in config/pipeline.json. The tools are run-rector.sh
+(a dry-run), run-phpstan.sh, run-phpcs.sh, check-port-safety.sh,
+scan-signature-changes.sh and lint-extension-metadata.sh, each with --json;
+every report goes through canon_json with the Drupal root (root-relative
+paths, sorted keys; its own timestamps moved under meta: DET-2). Then the
+anchor of every (file, line) the reports name in a PHP file is computed
+once, in the bed, by the staged
+scripts/php/anchor.php (stage_runtime) and kept as <NN>-<stage>-anchors.json
+(without a PHP runner: {"unavailable": true}), so scripts/ai/
+normalize-findings.sh needs no PHP. An index, <NN>-<stage>-index.json, names
+the subject, the target major and each tool's file and exit code. A stage's
+previous raw files (its tool files, whatever NN they were written with) are
+replaced; other stages' are kept. A PHPStan error in a trait ("<file> (in
+context of class X)") is anchored in the trait's file.
+
+Usage:
+  extract.sh --subject DIR [--stage S] [--json] [-h|--help]
+    --subject DIR  the module/theme (inside its Drupal root or test-bed)
+    --stage S      the stage id of config/pipeline.json (default assess)
+    --json         print the index on STDOUT
+
+Gate: the tools' own (the `analyze` profile). Exit codes: 0 every report
+written · 1 usage error · 2 no Drupal root or jq missing · 3 Rector or
+PHPStan gave no verdict (a crash, a DET-1 refusal, or no report at all: see
+their raw file); the other reports are still written.
+```
+
+### ai/normalize-findings.sh
+
+```text
+drupilot — scripts/ai/normalize-findings.sh
+Turn one stage's raw tool reports into findings.json (T-M4-05, AR-10, 05 §2.4,
+ADR 0022): every finding with its stable id, subject-relative file, anchor,
+symbol, normalized message, occurrence, severity, scope and class; findings
+of different tools about the same symbol at the same anchor merged (the
+precedence rector > phpstan > catalog > phpcs keeps its record, sources[]
+lists every tool); sorted by file, anchor and id. A pure function of the raw
+files, the target major and the soft-deprecation policy: no tool runs, no
+PHP, so the result is the same on every platform (DET-2).
+
+Reads <raw-dir>/<NN>-<stage>-{index,rector,phpstan,phpcs,port-safety,
+signatures,metadata,anchors}.json as scripts/ai/extract.sh writes them (any
+but the index may be missing).
+
+  id      "F-" + the first 12 hex of sha256(tool␟rule␟file␟anchor␟symbol␟
+          message␟occurrence) (␟ = 0x1f); the line is not part of it
+  rule    Rector's FQCN; PHPStan's identifier (phpstan:untyped:<8 hex of the
+          message's sha256> without one); PHPCS's source;
+          port-safety:<check>, signature:<id>, metadata:<check>
+  anchor  the innermost Namespace\Class::method or function of the line,
+          the Namespace\ClassLike for a line in a class-like body outside
+          its methods (the raw anchors file, scripts/php/anchor.php), else
+          {file}
+  scope   current, or next-major for a soft deprecation under the report or
+          defer policy (DRUPILOT_SOFT_DEPRECATIONS)
+  class   hard | soft | unknown (classify-deprecations.sh) | analysis |
+          safety | signature | metadata | style | php-target | rector
+
+Usage:
+  normalize-findings.sh (--subject DIR | --raw-dir DIR) [--stage S]
+                        [--target-major N] [--soft-policy P] [--out FILE]
+                        [--json] [-h|--help]
+    --subject DIR      the module/theme: its raw dir and findings.json are in
+                       its hidden state dir
+    --raw-dir DIR      read these raw files instead (a golden's); with no
+                       --subject, nothing is written unless --out is given
+    --stage S          the stage whose raw files to read (default assess)
+    --target-major N   default: the upgrade plan's, else DRUPILOT_TARGET_MAJOR
+    --soft-policy P    report | defer | fix (default DRUPILOT_SOFT_DEPRECATIONS)
+    --out FILE         where to write findings.json (default: the subject's
+                       state dir)
+    --json             print findings.json on STDOUT
+
+findings.json also records each tool's verdict (tools: ok | partial |
+failed | missing; a raw file that is not one JSON object is failed), so a run
+where a tool crashed never hashes like a clean one; an error PHPStan reports
+in a trait once per class that uses it is kept in the trait's file as many
+times as the class context with the most copies.
+
+Exit codes: 0 written (or printed) · 1 usage error, no raw index for the
+stage, several, or one that is not a JSON object with a subject {path,
+machine_name} of strings · 2 jq or a sha256 tool missing · 3
+classify-deprecations.sh could not classify the PHPStan report (nothing is
+written).
+```
+
 ## analysis
 
 ### analysis/check-port-safety.sh
@@ -3610,7 +3871,8 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
                 config/targets|php|paths and config/catalog/*.json match
                 their schema, every value names its source, every node a
                 hard gate reads is verified and never "announced", and the
-                files agree with each other
+                files agree with each other; and config/recipes.json is what
+                scripts/dev/gen-recipes.sh generates from the catalogs
   - unit        the unit tests (scripts/dev/unit.sh: tests/lib/selftest.sh and
                 tests/unit/*.sh, run with this same bash; a test skipped
                 until its milestone is not a failure)
@@ -3801,7 +4063,7 @@ Generate the reference pages of the docs site from their sources of truth
 (a developer/CI tool: no command, skill or hook calls it; the `docs` gate of
 scripts/dev/check.sh runs --check). Each page starts with a GENERATED
 comment and is never edited by hand:
-  reference/scripts.md            every scripts/{analysis,contrib,env,tests,dev}/*.sh
+  reference/scripts.md            every scripts/{ai,analysis,contrib,env,tests,dev}/*.sh
                                   header (print_usage; no script is run)
   reference/commands.md           commands/*.md frontmatter
   reference/skills-and-agents.md  skills/*/SKILL.md and agents/*.md frontmatter
@@ -3810,6 +4072,8 @@ comment and is never edited by hand:
   reference/pipeline.md           config/pipeline.json (the stage catalog)
   reference/toolchain.md          config/toolchain-reference.json
   reference/deprecations.md       config/deprecations.json (Drupal's deprecations)
+  reference/recipes.md            config/recipes.json (the recipe catalog,
+                                  itself generated from the catalogs)
   reference/version-matrix.md     config/targets/*.json, config/php/*.json and
                                   config/paths/*.json (every value with its
                                   as_of, source, verified and verified_as)
@@ -3826,6 +4090,46 @@ Usage:
 
 Requires bash >= 3.2 and jq. Exit codes: 0 generated / no drift · 1 drift
 (--check) or a usage error.
+```
+
+### dev/gen-recipes.sh
+
+```text
+drupilot — scripts/dev/gen-recipes.sh
+Generate config/recipes.json (drupilot.recipes/1, AR-11, ADR 0023) from the
+catalogs, the one source of truth (CC-33): config/deprecations.json
+(deprecations, signature_changes, lifecycle), config/port-checks.json
+(checks) and config/metadata-checks.json (checks). A developer tool: the
+`data` gate of scripts/dev/check.sh runs --check, so the generated file is
+never edited by hand.
+
+  dep.<slug>     a deprecations entry (not a [tag] explainer): ai-templated,
+                 matches its pattern (case-insensitive ERE) and the symbols
+                 of the lifecycle entries the pattern matches
+  sig.<id>       a signature_changes entry: matches rule signature:<id>
+  safety.<check> a port-checks check: matches rule port-safety:<check>; its
+                 template is the [<check>] explainer of deprecations.json
+  meta.<check>   a metadata check: matches rule metadata:<check>
+  life.<symbol>  a lifecycle entry no deprecations pattern matches
+
+An entry's optional `recipe` block sets the lane, the engine (ere-replace,
+yaml-edit, info-yml, attributes, php-script, rector-rule; default template),
+its params, applies_when and postconditions. `version` is the first 12 hex
+of the sha256 of the recipe without version, source and fixtures, so it
+changes exactly when the recipe does. A codemod of a Docker-free engine
+must have its fixtures in tests/fixtures/recipes/<id>/ (expect.json,
+before/, after/).
+
+Usage:
+  scripts/dev/gen-recipes.sh [--check | --write] [--json] [-h|--help]
+    --check   compare config/recipes.json with a fresh generation (the
+              default); write nothing
+    --write   (re)write config/recipes.json
+    --json    {ok, mode, drift, recipes, by_lane, by_engine, problems} on
+              STDOUT
+
+Requires bash >= 3.2, jq and sha256sum or shasum. Exit codes: 0 generated or
+no drift · 1 drift, an invalid catalog entry or a usage error.
 ```
 
 ### dev/golden.sh
@@ -4000,7 +4304,8 @@ runs it as its `schemas` gate). Each schema is checked against the
 instances listed below: the 0.9 captures of tests/baseline/v0.9.0/, the lab
 samples of tests/baseline/v0.9.0/samples/, a live `preflight.sh --json`, the
 version data of config/targets|php|paths, the stage catalog
-config/pipeline.json and an example catalog (the data
+config/pipeline.json, the recipes config/recipes.json, the findings and
+worklist goldens of tests/golden/{findings,worklist}/ and an example catalog (the data
 gate, scripts/dev/data-check.sh, also checks their provenance). Two engines:
   jq         always available: the structural validator of
              scripts/dev/jsonschema.jq, reading the same schemas (only the
@@ -4039,7 +4344,7 @@ Every script is run with the SAME bash that runs this file ($BASH), so
 tools end to end.
 
 Tests (names are what --only takes):
-  help           every scripts/{analysis,contrib,env,tests,dev}/*.sh --help
+  help           every scripts/{ai,analysis,contrib,env,tests,dev}/*.sh --help
                  exits 0 and prints a Usage section on STDOUT
   preflight      preflight.sh --profile analyze --json: one JSON object, exit
                  0 or 2 consistent with .ready.analyze, a passing bash row;

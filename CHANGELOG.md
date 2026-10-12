@@ -437,6 +437,85 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     (`.lenient_packages`), in `install-toolchain.sh --json` and in
     `last-test.json` (`lenient`). The port report names it next to the
     preservation verdict, which it never changes (CC-14).
+- **Raw tool reports and `findings.json`** (T-M4-05, AR-10, ADR 0022).
+  - `scripts/ai/extract.sh --subject DIR [--stage S]` runs a stage's
+    deterministic tools and keeps each report as
+    `<state>/raw/<NN>-<stage>-<tool>.json`. The tools are Rector (a dry-run),
+    PHPStan, PHPCS, port-safety, the signature scan and the metadata lint.
+    Each report has root-relative paths, sorted keys and its timestamps under
+    `meta`. The anchor of every reported line is computed once in the bed
+    (`anchor.php`) and kept as one more raw file.
+  - `scripts/ai/normalize-findings.sh` makes `findings.json` from them. Each
+    finding has a stable id that never includes the line, a subject-relative
+    file, an anchor, a symbol, a normalized message, an occurrence, a
+    severity, a `scope` (`current` or `next-major`) and a `class`. Findings of
+    different tools about the same symbol at the same anchor are merged into
+    one, with `sources[]`. An error PHPStan reports in a trait (once per class
+    that uses it) is kept in the trait's file, as many times as the class
+    context with the most copies. `tools` records each
+    tool's verdict (`ok`, `partial`, `failed`, `missing`), so a crashed tool
+    never reads like a clean run, and a failing `classify-deprecations.sh`
+    stops the script (exit 3) instead of losing the deprecation classes. The
+    script needs only jq and a sha256 tool, so the goldens run on every CI
+    leg; thousands of findings take seconds.
+  - `schemas/findings.schema.json` is the contract (the `schemas` gate).
+    `tests/golden/findings/` holds the lab recordings of `legacy_widgets`
+    and the monorepo's `acme_core` and `acme_api`. Two recordings of the same
+    tree gave the same bytes outside `meta`.
+  - `docs/reference/state.md` documents the raw files and the findings.
+- **The recipe catalog `config/recipes.json`** (T-M4-06, AR-11, ADR 0023):
+  what drupilot does with each kind of finding.
+  - `scripts/dev/gen-recipes.sh` generates it from the catalogs, the one
+    source of truth (CC-33): `config/deprecations.json`,
+    `config/port-checks.json` and the new `config/metadata-checks.json`.
+    The `data` gate runs `--check`, so it is never edited by hand.
+  - A catalog entry may carry a `recipe` block that turns it into a
+    deterministic codemod or changes its lane. The scripts that read the
+    catalogs ignore the block, so their outputs are unchanged.
+  - 42 recipes: 30 for the AI, with the catalog's text as their template; 8
+    for a person; 4 codemods.
+  - The codemods:
+    - a required `CacheableMetadata` hook parameter made optional
+      (`hook_entity_operation`, `_alter`), only when the body does not use it;
+    - a class name in a `.yml` file given the case of its file;
+    - a submodule's `core_version_requirement` set to the module's own
+      plan's range, never above the declared floor.
+  - `scripts/ai/apply-recipe.sh` applies one codemod to one finding with the
+    `ere-replace`, `yaml-edit` and `info-yml` engines. It writes only an
+    exact change whose postconditions hold; anything else is `no-match`, and
+    nothing changes.
+  - A postcondition on the function's body reads it whole: a heredoc or a
+    `/* */` block never ends it early, and a line starting with `*` outside
+    a comment is code.
+  - Every codemod has `before/`, `after/` and `expect.json` fixtures in
+    `tests/fixtures/recipes/`. `schemas/recipes.schema.json` validates the
+    catalog, and `docs/reference/recipes.md` is generated from it.
+- **The worklist** (T-M4-07, AR-10, ADR 0024). `scripts/ai/classify.sh`
+  turns `findings.json` into `worklist.json`: every finding gets a lane, and
+  the findings of one file, anchor and lane make one item.
+  - The lanes, in priority order: `rector`, `rector-custom`, `codemod`,
+    `ai-templated`, `ai-free`, `test-adapt` (a file under a `tests/`
+    directory), `human` and `deferred`.
+    `deferred` holds the next-major deprecations, which never reach an AI
+    lane, plus info and style findings.
+  - The recipe of a finding is the first that matches (rule, symbol,
+    message) and whose conditions hold, its required core against the
+    declared floor included. A codemod that cannot apply hands its finding to
+    `ai-templated` with its text.
+  - `scripts/ai/apply-recipes.sh` applies the open codemods (step S6) and,
+    with `--reextract`, re-runs the tools on the new tree (S7).
+  - Each application is a line of the hidden `actions.jsonl`, with the
+    file's hash before and after. The classifier reads it: a codemod that
+    changed nothing, failed or did not clear its finding is not tried again,
+    and one whose change was reverted is.
+  - A project overlay (`<root>/.drupilot/recipes.json`) is checked before
+    use: a recipe in an unknown lane, without a 12-hex version or a kind, or
+    with a `message_ere`/`file_ere` that does not compile makes `classify.sh`
+    exit 1.
+  - `schemas/worklist.schema.json` is the contract. Worklist goldens for
+    `legacy_widgets`, `acme_core` and `acme_api` are computed Docker-free
+    from the findings goldens, and a test keeps next-major findings out of
+    the AI lanes.
 
 - **The digests pass remembers your verdicts and skips what drupal-rector
   already does** (T-M4-08, 03-R17, 05-R6).
@@ -709,6 +788,15 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   - `preflight.sh`'s strategy check accepts both vocabularies.
 
 ### Fixed
+- **A PHPStan run whose parallel worker died is a crash, not a clean run.**
+  When a worker reaches its memory limit, fails or times out, PHPStan drops
+  that worker's file errors and still exits 1. `run-phpstan.sh` (and
+  `verify-core-matrix.sh`) recorded such a run as `findings`, so
+  `findings.json` showed PHPStan `ok` with its findings missing, and the
+  result depended on the machine's memory. A report naming "Child process
+  error", "Child process timed out", "PHPStan process crashed" or "Result is
+  incomplete" (`phpstan_crash_ere`, verified in PHPStan 2.x's source) is now
+  `crashed`, exit 3.
 - **Intermittent wrong results and exit 141 under load** (the baseline-0.9
   flakes of PRs #11, #20 and #22): a pipeline ending in `head`, `grep -q` or
   an awk `exit` stops reading early, and under `pipefail` a producer still
@@ -731,6 +819,11 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   Drupal 10.3 code without qualification: `WidgetImportForm` redeclares
   `FormBase`'s `$loggerFactory` as `private readonly` and typed, a fatal error
   when the class loads. The fixture is unchanged (part of H12).
+- **`classify-deprecations.sh` no longer fails on a large PHPStan report.**
+  It passed every message to jq as one argument. Linux caps an argument at
+  128 KiB, so a module with a few hundred PHPStan errors stopped the script
+  with "Argument list too long". The records now go through a file; the
+  output is unchanged.
 - **`run-rector.sh` now re-renders `rector-compat.php` for the module it
   runs on** (found by the T-M4-05 lab). On a test-bed shared by several
   modules, the compat pass kept the config rendered for the previous module,

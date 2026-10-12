@@ -1,0 +1,13 @@
+{
+  "cases": [
+    {
+      "name": "a required third parameter becomes optional",
+      "before": "before",
+      "after": "after",
+      "file": "m.module",
+      "line": 14,
+      "severity": "error",
+      "status": "applied"
+    }
+  ]
+}

@@ -39,3 +39,40 @@ A verdict is only shown as current while the module's sources are the ones it wa
 drupilot 1.0 computes algorithm 2, which added Twig, JS and CSS. Every digest recorded by drupilot 0.9 (algorithm 1, no `digest_algo`) differs from it, so after an upgrade those records show as stale once (`stale_reason: "digest-algorithm"`, next to `fresh: false`; a record on changed sources has `"sources-changed"`): re-run the step to refresh them. Until then the next step after a green 0.9 test run is `/drupilot-test`, and a failing 0.9 verdict (a regression, a failed core matrix) keeps blocking `port-summary --strict`, because drupilot cannot tell whether its sources changed; a verdict on sources that did change is reported but never blocks.
 
 Records that are compared or hashed between runs keep their timestamps under a top-level `meta` object, so two runs that compute the same result write the same bytes outside it: `rector-rules.json` keeps `meta.generated_at`, and `last-test.json` keeps when each negative control ran in `meta.negative_controls` (`recorded_at` stays where 0.9 put it).
+
+## Raw reports and findings
+
+drupilot 1.0 does not hand the analyzers' output to the model as it is. A stage first runs its deterministic tools and keeps their reports in the same hidden state dir, under `raw/`. `scripts/ai/extract.sh --subject DIR [--stage S]` writes one file per tool, `raw/<NN>-<stage>-<tool>.json`, where `NN` is the stage's place in [the pipeline](pipeline.md). The tools are Rector (a dry-run), PHPStan, PHPCS, the port-safety checks, the signature-change scan and the metadata lint. Each report is canonical: the Drupal root and the container path are stripped from its paths, its keys are sorted, and its timestamps are moved under `meta`. (The analyzers name files from the Drupal root; the port-safety, signature and metadata reports name them from the module.) Two more files complete the stage:
+
+- `<NN>-<stage>-anchors.json` holds the anchor of every line the reports name in a PHP file, computed once in the test-bed.
+- `<NN>-<stage>-index.json` names the subject, the target major and each tool's exit code.
+
+`scripts/ai/normalize-findings.sh` then turns a stage's raw files into `findings.json` (schema `schemas/findings.schema.json`, [ADR 0022](../contributing/adr/0022-findings-shape.md)). Each finding has a stable id, its file relative to the module, its anchor (the innermost `Namespace\Class::method` or function, the class for a line in a class body outside its methods, else `{file}`), its symbol, a normalized message and its occurrence. It also carries a severity, a `scope` and a `class`:
+
+- `scope` is `current`, or `next-major` for a soft deprecation under the `report` or `defer` policy (`DRUPILOT_SOFT_DEPRECATIONS`).
+- `class` is a deprecation's `hard`, `soft` or `unknown`, else `analysis`, `safety`, `signature`, `metadata`, `style`, `php-target` or `rector`.
+
+The id never includes the line number, so moving code keeps its findings' ids. Findings of different tools about the same symbol at the same anchor are merged, and `sources[]` lists each tool. `findings.json` also records each tool's verdict in `tools` (`ok`, `partial`, `failed` or `missing`), so a run where PHPStan crashed never reads like a clean one. It is a pure function of the raw files, the target major and the soft policy: the same raw files give the same bytes outside `meta`, which records the raw files' hashes and `findings_hash`.
+
+## Worklist
+
+`scripts/ai/classify.sh` turns `findings.json` into `worklist.json`, in the same hidden state dir (schema `schemas/worklist.schema.json`, [ADR 0024](../contributing/adr/0024-worklist-and-actions.md)). Each finding gets a lane, and the findings of one file, anchor and lane make one item. The lanes are, in priority order:
+
+- `rector`: a Rector change, applied by its pass.
+- `rector-custom`: a single Rector rule a recipe names (no recipe uses it yet).
+- `codemod`: a deterministic fix from [the recipes](recipes.md).
+- `ai-templated`: the AI fixes it following a recipe's text.
+- `ai-free`: an error no recipe covers.
+- `test-adapt`: either of the two above in a file under a `tests/` directory.
+- `human`: a person decides.
+- `deferred`: nothing to do in this port: a deprecation removed only in a later major, an info finding, or a style finding (Phase 1 keeps the diff minimal).
+
+A recipe applies only when its conditions hold, its required core included: never above the declared floor. An item lists its findings, their recipes and templates, the files it may change, and whether it blocks the stage (an error finding outside `deferred`). Its status is `open`, `applied` or `deferred`.
+
+`scripts/ai/apply-recipes.sh --subject DIR [--reextract]` applies the open codemods (pipeline step S6). Each application is one line of `actions.jsonl`, the machine record of what the recipes did: the finding, the recipe and its version, the outcome, and the file's hash before and after. Your `decisions.jsonl` of divergences is a separate file. The worklist is then classified again:
+
+- a codemod that changed nothing, or failed, hands its finding to `ai-templated`;
+- with `--reextract` (step S7), the tools run again on the new tree, and a finding a codemod could not clear goes to `ai-templated` too;
+- a codemod whose change is no longer in the file (you reverted it) is tried again.
+
+The same findings, recipes and actions always give the same worklist outside `meta`.
