@@ -599,6 +599,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     rationale. A manifest golden pins the generator on the lab's
     `legacy_widgets` port.
 
+- **Concept pages for the deterministic core:** `docs/concepts/pipeline.md`
+  (the stages, the findings-to-changes loop, the stage contract, the
+  fixpoint gate) and `docs/concepts/determinism-and-replay.md` (pinned
+  inputs, canonical artifacts, the fixpoint check, run records).
 - **The pipeline's stage contract** (T-M4-12, AR-07, ADR 0028).
   `scripts/ai/pipeline.sh` runs `upgrade`, `php` (a placeholder until M5),
   `validate` and `report` in catalog order.

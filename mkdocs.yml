@@ -65,6 +65,8 @@ nav:
   - Home: index.md
   - Concepts:
       - concepts/upgrade-paths.md
+      - concepts/pipeline.md
+      - concepts/determinism-and-replay.md
   - Reference:
       - reference/commands.md
       - reference/configuration.md
