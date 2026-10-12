@@ -76,3 +76,43 @@ A recipe applies only when its conditions hold, its required core included: neve
 - a codemod whose change is no longer in the file (you reverted it) is tried again.
 
 The same findings, recipes and actions always give the same worklist outside `meta`.
+
+## Assessment
+
+`scripts/analysis/assess.sh --subject DIR` computes the viability verdict ([ADR 0025](../contributing/adr/0025-assess-rubric-from-findings.md)). It runs the assess stage (extraction, findings and worklist), the core-target decision and the dependency check, then writes `assess.json` to the same hidden state dir (schema `schemas/assess.schema.json`) and `viability-report.md` to the visible `.drupilot/` folder. The verdict comes from three counts:
+
+- `manual`: each call of a current hard or unknown deprecation that no Drupal Rector rule changes in the same function or method, plus the signature and port-safety findings of severity `error`. Each finding is listed in `manual_items` with its finding id and its number of calls. The digests layer is not part of the assessment.
+- `hard_breaks`: the categories of `config/catalog/hard-breaks.json` (Twig 3, CKEditor 5, jQuery UI, Symfony 7) that match at least one file of the module.
+- `blocking_deps`: the `drupal/*` dependencies with no Drupal 11 release on drupal.org. Offline, a dependency is `unknown` and does not block.
+
+The first rule that matches wins, and `rubric.rule` keeps it:
+
+| Verdict | Rule |
+|---|---|
+| XL | `blocking_deps >= 1` or `hard_breaks >= 3` or `manual > 40` |
+| L | `hard_breaks == 2` or `manual > 15` |
+| M | `hard_breaks == 1` or `manual >= 5` |
+| S | otherwise |
+
+Soft deprecations and next-major findings never count. When Rector, PHPStan, the port-safety checks or the signature scan gave no verdict, the result is provisional: it goes to `assess-provisional.json` instead of `assess.json`, the stage is not recorded and the script exits 3. The script needs the test-bed's Drupal root and reads its settings there. `assess.json` also keeps `findings_hash`, `worklist_hash` and the module's digest, so the same tree, lock and drupal.org answers give the same document outside `meta`, which holds its time. The script records the `assessed` stage with the verdict as `effort`.
+
+## Port manifest
+
+`scripts/ai/manifest.sh --subject DIR [--phase port|refactor] [--rationale FILE]` writes `port-manifest.json` to the same hidden state dir (schema `schemas/port-manifest.schema.json`, [ADR 0027](../contributing/adr/0027-generated-port-manifest.md)). It is built from what the scripts recorded, never from memory: the worklist by lane and status, the codemods still in effect, the Rector rules and files of the applying run, the digests verdicts, the decision log, and the git diff against the port's base. A manual edit is a file the diff shows that neither Rector nor a codemod changed. The only input the model gives is the rationale, `{"<worklist item id>": "why"}`. An unknown id is refused, and a later run keeps the rationale of the items still in the worklist. `port-report.sh` renders the manifest with the decision log and the verification records of the state dir. The same records and tree give the same manifest outside `meta`.
+
+## Fixpoint and runs
+
+`scripts/analysis/fixpoint.sh --subject DIR [--stage S]` is the gate at the end of a port or a refactor. It runs the extraction again on the tree as it is, then the codemods in dry-run, and writes `fixpoint.json` (schema `schemas/fixpoint.schema.json`). The file lists the Rector changes still proposed, the codemods that would still apply, and the open items of the processed lanes. Those lanes are `rector`, `rector-custom` and `codemod`; the AI lanes join when their executor does. The Rector dry-run is the official pass: the digests rules, which you review during the port, never count. The gate converges only when the three lists are empty and every tool gave a verdict: Rector, PHPStan, and the port-safety, signature and metadata scans that feed the codemod lane.
+
+`DRUPILOT_FIXPOINT` decides what a failure does:
+- `warn`, the default through the 1.0 betas, reports it;
+- `enforce`, the default from 1.0.0-rc.1, exits 3, so the stage is not done;
+- `off` skips the gate.
+
+Each run is recorded in `runs/<run_id>/run-manifest.json` (schema `schemas/run-manifest.schema.json`), with the hashes it started from and the ones it produced. The run id is the UTC start time and the first hex digits of the inputs' hash. `DRUPILOT_RUNS_KEEP` (default 10) runs are kept per module.
+
+## Pipeline stages
+
+`scripts/ai/pipeline.sh --subject DIR [--stages ...]` runs the standard track's deterministic stages in the order of [the pipeline](pipeline.md): `upgrade`, `php` (a placeholder until M5), `validate` (the fixpoint gate) and `report` (the manifest and the report). See [ADR 0028](../contributing/adr/0028-pipeline-stage-contract.md). Before each stage it records a checkpoint of the module's tree, a ref under `refs/drupilot/stages/<run>/<stage>` that never touches your index or HEAD. A stage that fails puts the tree back at that checkpoint and stops the run.
+
+The records are `stages.json` in the hidden state dir: each stage's status, reason, and input and output digests. A digest is the hash of the plan, the lock and the module's sources. A stage whose output digest is the current one is up to date and is not run again, so an interrupted port resumes at the stage that did not finish. A plan with no hop skips `upgrade` with reason `same-major`.

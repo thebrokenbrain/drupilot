@@ -92,7 +92,10 @@
 #   attribute_floor: the highest `since` among the converted types (the core
 #   floor the result needs for static analysis; also the runtime floor for the
 #   stripped types). floor_ok: declared_floor >= attribute_floor.
-#   rule_hits merges into the port manifest's rector_rules.
+#   An --apply that converts files also keeps {tool, changed_files, files,
+#   rule_hits, meta} in the subject's state dir (attributes-rules.json), which
+#   scripts/ai/manifest.sh merges into the manifest's rector_rules (and never
+#   counts as manual edits).
 #
 # Gate: `analyze` profile. Exit codes: 0 ok (including nothing to convert) ·
 # 1 usage error · 2 gate (requirements, Drupal root, vendor/bin/rector or the
@@ -734,6 +737,13 @@ if [[ -n "$ATTR_FLOOR" ]]; then
   fi
 fi
 
+if [[ "$APPLY" == "1" && "${COUNT:-0}" != "0" && -n "$SUBJECT_ABS" ]]; then
+  jq -n --arg fl "$CHANGED" --argjson n "$COUNT" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg s "$SUBJECT_ABS" \
+    '{tool: "attributes", changed_files: $n, files: ($fl | split("\n") | map(select(length > 0)) | sort),
+      rule_hits: {attributes: {AnnotationToAttributeRector: $n}}, meta: {generated_at: $at, subject: $s}}' \
+    > "$(project_state_dir "$SUBJECT_ABS")/attributes-rules.json" 2> /dev/null \
+    || log_warn "Could not record the attribute conversion in the state dir."
+fi
 if [[ "$AS_JSON" == "1" ]]; then
   emit_json ok "$CHANGED" "$COUNT" "$RESTORED_JSON" "$QUALIFIED" "$RAISED" '[]'
 elif [[ -n "$CHANGED" ]]; then

@@ -227,9 +227,10 @@ cannot complete in this context: run `git-hooks.sh --subject "$SUBJECT"
 with `--with-tests`, through DDEV), fix every failure, and commit with
 `--no-verify` only when `all_green` is true. The PreToolUse guard asks the
 developer to confirm such a commit (`DRUPILOT_HOOKS_GUARD=ask`, in every mode),
-so autonomous mode never skips a hook. State in the MR/issue comment and in the
-port report (`verification.commit_hooks`) which validations replaced the hook
-and which tasks had no equivalent (`uncovered`); never claim the hook passed.
+so autonomous mode never skips a hook. State in the MR/issue comment which
+validations replaced the hook and which tasks had no equivalent (`uncovered`);
+`--run-equivalents` keeps them in `hooks-substitution.json`, which
+`port-report.sh` reads for the port report. Never claim the hook passed.
 
 ### Open the MR
 

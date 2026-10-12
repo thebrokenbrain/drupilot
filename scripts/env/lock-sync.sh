@@ -20,7 +20,8 @@
 #     git build when drupilot runs from a checkout)
 #
 # It does NOT touch digests.{ref,sha} (run-rector.sh owns those), except that
-# --refresh drops digests.sha so the next Rector run re-resolves the live ref.
+# --refresh drops digests.sha (and the frozen implemented-digests.yml hash)
+# so the next Rector run re-resolves the live ref.
 #
 # Fail-safe: if there is no composer.lock yet (setup not run) or DDEV is down,
 # it records what it can and exits 0 — it never blocks a flow.
@@ -171,7 +172,7 @@ fi
 # --- Refresh: drop the frozen digests SHA so the next run re-resolves ------
 if [[ "$DO_REFRESH" == "1" && "$DRY_RUN" != "1" && -f "$LOCKFILE" ]]; then
   tmp="$(mktemp "${LOCKFILE}.XXXXXX" 2>/dev/null)" || tmp=""
-  if [[ -n "$tmp" ]] && jq 'del(.digests.sha)' "$LOCKFILE" > "$tmp" 2>/dev/null; then
+  if [[ -n "$tmp" ]] && jq 'del(.digests.sha, .digests.implemented_yml_sha256, .digests.implemented_yml_ref)' "$LOCKFILE" > "$tmp" 2>/dev/null; then
     mv -f "$tmp" "$LOCKFILE"
     log_info "Refresh: dropped the frozen digests SHA (next Rector run re-resolves the live ref)."
   else

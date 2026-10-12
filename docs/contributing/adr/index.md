@@ -32,6 +32,10 @@ behaviour.
 | [0022](0022-findings-shape.md) | The shape of findings.json |
 | [0023](0023-recipe-catalog.md) | The recipe catalog v1 |
 | [0024](0024-worklist-and-actions.md) | The worklist and the actions log |
+| [0025](0025-assess-rubric-from-findings.md) | The assessment rubric from findings |
+| [0026](0026-digests-rules-the-official-pass-applies.md) | Digests rules the official pass already applies |
+| [0027](0027-generated-port-manifest.md) | The generated port manifest |
+| [0028](0028-pipeline-stage-contract.md) | The pipeline's stage contract |
 
 A new ADR takes the next free number, gets a line here and a nav line in
 `mkdocs.yml` in the same change (the `docs` gate rejects an orphan page).

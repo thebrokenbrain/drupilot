@@ -2,20 +2,45 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://thebrokenbrain.github.io/drupilot/schemas/port-manifest.schema.json",
   "title": "drupilot port manifest (port-manifest.json)",
-  "description": "The record of what a port or refactor did, in the subject's hidden state dir (<state_dir>/port-manifest.json, project_state_dir, under drupilot's data dir; never in the project tree). The model writes it with the Write tool at the end of a port (commands/drupilot-port.md, skills/minimal-port/SKILL.md section 8) and rewrites it after a refactor (commands/drupilot-refactor.md, skills/full-refactor/SKILL.md), pasting the --json output of several scripts into it; scripts/tests/negative-control.sh --manifest FILE is the only script that writes into it (verification.negative_controls). It is read by scripts/analysis/port-report.sh (every field optional, rendered n/a when absent), common.sh port_record_json / state_snapshot_json / port_manifest_stage, port-summary.sh and layer-report.sh. Only phase is required: it is the one field every instruction names (readers still default it to port). Model-written values are described leniently: list items may be strings or objects, and the embedded script outputs are typed as their scripts print them, with no required keys (the model may paste them in part).",
+  "description": "The record of what a port or refactor did, in the subject's hidden state dir (<state_dir>/port-manifest.json, project_state_dir, under drupilot's data dir; never in the project tree). From 1.0, scripts/ai/manifest.sh generates it (schema 1, ADR 0027) from findings.json, worklist.json, actions.jsonl, rector-rules.json, the digests verdicts, the decision log and the git diff; the model writes only the rationale, keyed by worklist item id, and the same inputs give the same document outside meta. A 0.9 file has no schema key: the model wrote it with the Write tool, pasting the --json output of several scripts into it, so its values are described leniently (list items may be strings or objects, the embedded script outputs have no required keys). scripts/tests/negative-control.sh --manifest FILE writes verification.negative_controls into it. It is read by scripts/analysis/port-report.sh (every field optional, rendered n/a when absent), common.sh port_record_json / state_snapshot_json / port_manifest_stage, port-summary.sh and layer-report.sh. Only phase is required.",
   "type": "object",
   "required": ["phase"],
   "properties": {
+    "schema": {"description": "1 for a manifest manifest.sh generated; absent in a 0.9 file.", "const": 1},
+    "tool": {"type": "string"},
+    "subject": {"description": "The subject's path relative to the Drupal root (findings.json subject.path).", "type": ["string", "null"]},
+    "codemods": {
+      "description": "The codemods applied and still in effect (actions.jsonl).",
+      "type": "array",
+      "items": {"type": "object", "properties": {"recipe": {"type": "string"}, "version": {"type": "string"}, "file": {"type": "string"}, "finding_id": {"type": "string"}}}
+    },
+    "worklist": {
+      "description": "The worklist at manifest time: the item count per lane and status, and every item (with its rationale when the model gave one).",
+      "type": "object",
+      "properties": {
+        "by_lane_status": {"type": "object"},
+        "items": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string"}, "lane": {"type": "string"}, "status": {"type": "string"}, "rationale": {"type": "string"}}}}
+      }
+    },
+    "rationale": {"description": "The model's only input: {worklist item id: why}.", "type": "object", "additionalProperties": {"type": "string"}},
+    "files": {
+      "description": "The files the port changed against its git base, relative to the subject: {status (git's letter), path}.",
+      "type": "array",
+      "items": {"type": "object", "properties": {"status": {"type": "string"}, "path": {"type": "string"}}}
+    },
+    "decisions": {"description": "The decision log of the subject: the entry count, per kind (port-report.sh merges the entries).", "type": "object"},
+    "inputs": {"description": "What the manifest was built from: findings_hash, findings_stage, worklist_hash, actions_hash, base (the git base commit).", "type": "object"},
+    "meta": {"description": "What changes between two runs: generated_at and the drupilot version.", "type": "object"},
     "phase": {
       "description": "\"port\" (Phase 1) or \"refactor\" (Phase 2) as instructed; readers also accept ported / refactored in any case.",
       "type": "string"
     },
     "machine_name": {"type": "string"},
     "type": {"description": "module, theme or profile.", "type": "string"},
-    "generated_at": {"description": "When the manifest was written (state_snapshot_json reads it, else recorded_at).", "type": "string"},
+    "generated_at": {"description": "When a 0.9 manifest was written (state_snapshot_json reads it, else recorded_at, else meta.generated_at).", "type": "string"},
     "recorded_at": {"type": "string"},
     "core_strategy": {"description": "The core target strategy used, possibly with a note on how it was resolved.", "type": "string"},
-    "core_version_requirement": {"description": "The info.yml core_version_requirement after the port.", "type": "string"},
+    "core_version_requirement": {"description": "The info.yml core_version_requirement after the port.", "type": ["string", "null"]},
     "require_php": {"description": "composer.json require.php after the port.", "type": ["string", "null"]},
     "php_target": {"type": "string"},
     "version_bump": {"description": "The SemVer bump the core target implies.", "type": ["string", "null"]},
@@ -77,7 +102,7 @@
     },
     "rector_rules": {
       "description": "Rector rule hits: run-rector.sh --json .rule_hits ({official: {Rule: n}, compat: {...}, digests: {...}}), {Rule: n}, [Rule, ...] or [{rule, hits?, pass?}] (common.sh _rules normalizes them).",
-      "type": ["object", "array"]
+      "type": ["object", "array", "null"]
     },
     "rector_reversions": {
       "description": "Rector changes undone by hand: [{rule, file?, why}] (a plain string is accepted as the rule).",

@@ -99,6 +99,15 @@
         "sha": {
           "description": "The commit the ref resolved to.",
           "type": "string"
+        },
+        "implemented_yml_sha256": {
+          "description": "The file_hash of drupal-rector's docs/implemented-digests.yml at the installed version, the digests rules drupal-rector already implements (03-R17), frozen by run-rector.sh at the first digests pass.",
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "implemented_yml_ref": {
+          "description": "The drupal-rector version (git tag) that yml was fetched at.",
+          "type": "string"
         }
       }
     },

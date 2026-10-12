@@ -139,8 +139,9 @@ fi
 # The index.
 TARGET="$(plan_get .target.major "$ROOT" 2> /dev/null || true)"
 [[ "$TARGET" =~ ^[0-9]+$ ]] || TARGET="$(DRUPILOT_PROJECT_DIR="$ROOT" resolve_target_major)"
-jq -R -s --arg st "$STAGE" --arg mn "$MACHINE" --arg sp "$SUBJECT_REL" --argjson t "$TARGET" '
-  {stage: $st, subject: {machine_name: $mn, path: $sp}, target_major: $t,
+jq -R -s --arg st "$STAGE" --arg mn "$MACHINE" --arg sp "$SUBJECT_REL" --argjson t "$TARGET" \
+  --arg sd "$(subject_digest "$SUBJECT")" --argjson da "$(subject_digest_algo)" '
+  {stage: $st, subject: {machine_name: $mn, path: $sp}, target_major: $t, subject_digest: $sd, digest_algo: $da,
    tools: (split("\n") | map(select(length > 0) | split("\t") | {tool: .[0], file: .[1], exit_code: (.[2] | tonumber)}))}' \
   "$TOOLS_TSV" | canon_json > "$RAW/$NN-$STAGE-index.json"
 log_ok "extract: $(grep -c . "$TOOLS_TSV") report(s) and the anchors in $RAW ($NN-$STAGE-*)"

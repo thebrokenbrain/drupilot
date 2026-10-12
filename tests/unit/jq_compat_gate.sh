@@ -3,7 +3,7 @@
 # (drupilot's jq_min) rejects a jq keyword used as a --arg name, an `as $x`
 # binding, a shorthand object key or a `def` parameter (upgrade-path.sh's
 # refusals once died on `def c($id; $label; ...)`), and an object value
-# joined with and/or outside parentheses. Each of them turns the gate red; the
+# joined with and/or, or with //, outside parentheses. Each of them turns the gate red; the
 # safe spellings and a `# jq-compat-ok` line keep it green.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
@@ -20,7 +20,7 @@ f="$r/scripts/lib/zz.sh"
 # The cases spell each keyword as @KW so this file does not trip the gate.
 while IFS='|' read -r kw line; do
   [[ -n "$line" ]] || continue
-  line="$(printf '%s' "$line" | sed "s/@KW/$kw/g")"
+  line="$(printf '%s' "$line" | sed "s#@KW#$kw#g")"
   printf '#!/usr/bin/env bash\n%s\n' "$line" > "$f"
   assert_eq "red: $line" "$(gate)" "fail|1"
 done <<'EOF'
@@ -30,8 +30,9 @@ module|jq '{@KW, scope}'
 label|jq -n 'def c($id; $@KW; $tab): {id: $id}; c(1; 2; 3)'
 if|jq -n 'def f($@KW): $@KW; f(1)'
 and|jq -n '{ok: (.a) @KW (.b)}'
+//|jq -n '{k: .a @KW "x", v: 1}'
 EOF
 printf '%s\n' '#!/usr/bin/env bash' "jq -n 'def c(\$id; \$lbl; \$tab): {id: \$id, label: \$lbl}; c(1; 2; 3)'" \
-  "jq '{label: .label, ok: ((.a) and (.b))}'" "jq -n --arg label x '.'  # jq-compat-ok: a test of the gate" > "$f"
+  "jq '{label: .label, ok: ((.a) and (.b)), k: (.a // \"x\"), url: \"https://x\"}'" "jq -n --arg label x '.'  # jq-compat-ok: a test of the gate" > "$f"
 assert_eq "the safe spellings and an opt-out are green" "$(gate)" "pass|0"
 t_done

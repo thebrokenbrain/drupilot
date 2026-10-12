@@ -516,8 +516,132 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     `legacy_widgets`, `acme_core` and `acme_api` are computed Docker-free
     from the findings goldens, and a test keeps next-major findings out of
     the AI lanes.
+- **The viability verdict is computed** (T-M4-09, 07-R4, AR-10, ADR 0025).
+  `scripts/analysis/assess.sh` runs the assess stage and writes
+  `assess.json` and `viability-report.md`; the skill only narrates them.
+  - The three rubric counts come from `findings.json`:
+    - `manual`: each call of a current hard or unknown deprecation that no
+      Drupal Rector rule changes in the same function, plus the signature and
+      port-safety errors;
+    - `hard_breaks`: the categories of the new
+      `config/catalog/hard-breaks.json`, the 0.9 greps with each fact verified
+      in core;
+    - `blocking_deps`: `deps-status.sh`'s blockers.
+  - The digests layer is no longer part of the assessment, so a deprecation
+    only a digests rule fixes now counts as manual.
+  - When Rector, PHPStan, the port-safety checks or the signature scan gave
+    no verdict, the verdict is `provisional`: it goes to
+    `assess-provisional.json` (never `assess.json`), the stage is not
+    recorded, and the exit code is 3.
+  - It needs the test-bed's Drupal root, and reads the settings there.
+  - The S/M/L/XL table is the 0.9 one, first match wins, and `rubric.rule`
+    keeps the rule that matched. Soft and next-major findings never count.
+  - `assess.json` gains `schema: 1`, `tools`, `worklist`, `findings_hash`,
+    `worklist_hash`, `subject_digest` and `meta`; the same tree, lock and
+    drupal.org answers give the same document outside `meta`. Assess goldens
+    for `legacy_widgets`, `acme_core` and `acme_api` are computed Docker-free
+    from the findings and worklist goldens.
+
+- **The digests pass remembers your verdicts and skips what drupal-rector
+  already does** (T-M4-08, 03-R17, 05-R6).
+  - `run-rector.sh --digests` runs a filtered `all.php` (ADR 0026). It
+    leaves out the rules the official pass already applies, from
+    drupal-rector's `docs/implemented-digests.yml` at the installed version:
+    fetched, cached, and its hash frozen in the lock
+    (`.digests.implemented_yml_*`). An entry counts only when every class it
+    names is registered in a set your `rector.php` loads. drupal-rector
+    implements most of them in its Drupal 11 sets, which a port to 11 does
+    not load, so those still run in the digests pass, and so do the
+    config-only entries (the file names no class for them).
+  - It also leaves out the rules you rejected for the module.
+  - It fails closed: an `all.php` it cannot read whole stops the digests
+    pass (exit 4) rather than drop a rule silently. Once the module has
+    verdicts, an `--apply` needs a dry-run of the same sources and digests
+    rules with a verdict on every rule it changed files with, and runs no
+    rule that dry-run did not (exit 4 otherwise). A refusal prints its own
+    remedy, never the crash advice.
+  - `scripts/analysis/digests-decisions.sh` records each verdict, keyed by
+    the rule, the digests SHA and the module's sources, in the hidden
+    `digests-decisions.json`.
+  - `run-rector.sh --json` reports `digests_filter` and `digests_review`.
+    `/drupilot-port` asks only about the pending rules: a second port of the
+    same sources asks nothing. An autonomous run's recorded defaults
+    (`digests-decisions.sh --auto`) are replayed only by another autonomous
+    run (`run-rector.sh --auto`).
+  - `/drupilot-clean` (or `digests-decisions.sh --clear`) forgets the
+    verdicts. `lock-sync.sh --refresh` and `DRUPILOT_DETERMINISTIC=false`
+    fetch the yml again and freeze its new hash.
+
+- **The port manifest is generated** (T-M4-10, AR-10, 01-R9, ADR 0027).
+  `scripts/ai/manifest.sh` builds `port-manifest.json` (schema 1) from what
+  the scripts recorded, never from memory:
+  - the worklist, by lane and status, and the codemods still in effect;
+  - the Rector rules and files of the applying run (`rector-rules.json` now
+    lists the files) and of the attribute pass (`convert-attributes.sh
+    --apply` now keeps `attributes-rules.json`);
+  - the digests verdicts and the decision log;
+  - the git diff against the port's base: files changed, and the manual
+    edits (the files neither Rector nor a codemod changed).
+  - The model's only input is the rationale, keyed by worklist item id: an
+    unknown id is refused, and an earlier rationale is kept for the items
+    still there.
+  - It refuses scans of other sources than the module now (the extraction
+    index records the sources' digest), so the assess stage's pre-port
+    reports are never taken for the port's. A tool that printed no report is
+    left out, never shown as "0 errors".
+  - The files left out are make-patch.sh --local's (drupilot's files, the
+    patches, the local-environment residue); paths keep their non-ASCII
+    names. The applying Rector runs of one port add up in rector-rules.json
+    (its new `port_base`), so a digests apply no longer hides the official
+    pass's files. The actions log's hash leaves out each record's
+    time, so the same actions give the same manifest.
+  - `port-report.sh` renders the lane × status table, the codemods and the
+    rationale. A manifest golden pins the generator on the lab's
+    `legacy_widgets` port.
+
+- **Concept pages for the deterministic core:** `docs/concepts/pipeline.md`
+  (the stages, the findings-to-changes loop, the stage contract, the
+  fixpoint gate) and `docs/concepts/determinism-and-replay.md` (pinned
+  inputs, canonical artifacts, the fixpoint check, run records).
+- **The pipeline's stage contract** (T-M4-12, AR-07, ADR 0028).
+  `scripts/ai/pipeline.sh` runs `upgrade`, `php` (a placeholder until M5),
+  `validate` and `report` in catalog order.
+  - Before each stage it records a git checkpoint of the module
+    (`refs/drupilot/stages/<run>/<stage>`; the index and HEAD untouched). A
+    failed stage puts the tree back at its checkpoint and stops the run.
+  - The records are `stages.json`, with input and output digests (plan,
+    lock, sources). A stage whose output is the current state is not run
+    again, so an interrupted port resumes where it stopped.
+  - A plan with no hop skips `upgrade` (`same-major`). A raw report under
+    another stage number fails the stage.
+  - `/drupilot-port` applies the official Rector pass through the `upgrade`
+    stage, and checks the fixpoint, writes the manifest and renders the
+    report through the last three stages.
+- **The fixpoint gate** (T-M4-11, AR-16, 05-R9, DET-8).
+  `scripts/analysis/fixpoint.sh` runs at the end of a port or a refactor. It
+  extracts again and checks that Rector, the codemods and the processed
+  lanes (`rector`, `rector-custom`, `codemod`) have nothing left. The
+  dry-run is the official pass, so the digests rules never count, and a scan
+  with no verdict (Rector, PHPStan, port-safety, signatures, metadata) is
+  never a convergence.
+  - It writes `fixpoint.json` with the exact items left.
+  - `DRUPILOT_FIXPOINT`: `warn` (the default through the betas) reports,
+    `enforce` exits 3, `off` skips.
+  - Every run is recorded in `runs/<run_id>/run-manifest.json` with its
+    input and output hashes (the run id and times under `meta`), and
+    `DRUPILOT_RUNS_KEEP` (default 10) are kept.
+  - New schemas: `fixpoint.schema.json`, `run-manifest.schema.json`.
 
 ### Changed
+- **`/drupilot-port` and `/drupilot-refactor` run `manifest.sh`** instead of
+  writing the manifest. Divergences stay in the decision log, the
+  verification records in their state files, and the learned patterns in
+  the catalog; the free-text `validation` list is gone.
+- **`/drupilot-assess` and the `viability-assessment` skill** no longer run
+  the analyzers one by one, grep for hard breaks or apply the rubric: they
+  run `assess.sh` and narrate `assess.json` (the skill has no `grep` left).
+  `state.json`'s snapshot reads the assessment time from `meta.generated_at`
+  too.
 - **`scripts/dev/unit.sh` runs the tests in parallel** (`--jobs N`, default
   the CPUs, at most 8): the unit gate went from 12 minutes to under 2 on a
   developer machine, and the macOS CI leg, which runs the whole gate twice,

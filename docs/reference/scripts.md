@@ -232,6 +232,56 @@ PHPStan gave no verdict (a crash, a DET-1 refusal, or no report at all: see
 their raw file); the other reports are still written.
 ```
 
+### ai/manifest.sh
+
+```text
+drupilot — scripts/ai/manifest.sh
+The port manifest, generated (T-M4-10, AR-10, 01-R9, ADR 0027): what a port
+or a refactor did, as port-manifest.json (schema 1) in the subject's hidden
+state dir. It is built from what the scripts recorded, never from memory:
+  findings.json      the last extraction: deprecations_remaining (the
+                     current hard and unknown PHPStan occurrences),
+                     deferred_to_phase2 (the next-major symbols), and the
+                     stage's raw reports: port_safety, signature_changes,
+                     metadata_lint (the scripts' --json, canonical) and
+                     soft_deprecations (classify-deprecations.sh --json on
+                     the raw PHPStan report)
+  worklist.json      the lane x status table and every item
+  actions.jsonl      the codemods applied and still in effect
+  rector-rules.json  the rules and files of the applying Rector run, and
+                     attributes-rules.json those of the attribute pass
+                     (convert-attributes.sh --apply)
+  digests verdicts   digests-decisions.json: the rules rejected
+  decision log       log-decision.sh: the count per kind (port-report.sh
+                     merges the entries themselves)
+  the git diff       against the port's base (git_port_base_ref, the base
+                     make-patch.sh --local uses): files_changed, files, and
+                     manual_edits (the files neither Rector nor a codemod
+                     changed)
+  info.yml, composer.json, assess.json, core-matrix.json: the requirement,
+                     require.php, the SemVer bump, d10_support.
+The model writes only the rationale: --rationale FILE, a JSON object
+{"<worklist item id>": "why"}. An id the worklist does not have is refused;
+a previous manifest's rationale is kept for the ids still in the worklist.
+The same inputs give the same document outside meta; inputs records the
+hashes it was built from. port-report.sh renders it.
+
+Usage:
+  manifest.sh --subject DIR [--phase port|refactor] [--rationale FILE]
+              [--base REF] [--no-write] [--json] [-h|--help]
+    --subject DIR      the module/theme
+    --phase P          port (default) or refactor
+    --rationale FILE   {item id: text}, the model's only input
+    --base REF         the port's git base (default: git_port_base_ref)
+    --no-write         do not write port-manifest.json (with --json: a dry
+                       run)
+    --json             print the manifest on STDOUT
+
+Exit codes: 0 done · 1 usage error, no findings.json or worklist.json for
+the subject (run the pipeline first), or a rationale id the worklist does
+not have · 2 jq missing.
+```
+
 ### ai/normalize-findings.sh
 
 ```text
@@ -291,7 +341,125 @@ classify-deprecations.sh could not classify the PHPStan report (nothing is
 written).
 ```
 
+### ai/pipeline.sh
+
+```text
+drupilot — scripts/ai/pipeline.sh
+The stage contract (T-M4-12, AR-07, ADR 0028) for the deterministic stages
+of the standard track: upgrade -> php -> validate -> report, in the order of
+config/pipeline.json. For each stage:
+  1. its digest: the sha256 of the frozen plan's hash, the lock's hash and
+     the subject's digest at the stage start;
+  2. a stage whose last record is done (or skipped) with an output digest
+     equal to that digest is up to date: it is not run again (a tree rolled
+     back to before the stage runs it again);
+  3. a checkpoint of the subject's tree, refs/drupilot/stages/<run>/<stage>
+     (git_stage_checkpoint: a throwaway GIT_INDEX_FILE, the real index and
+     HEAD untouched);
+  4. the stage itself; its raw tool reports are <NN>-<stage>-<tool>.json in
+     the state dir's raw/ (NN: the stage's place in config/pipeline.json),
+     and a raw file of the stage under another NN fails the stage;
+  5. done: the record keeps the input and output digests; failed: the tree
+     goes back to the stage's own checkpoint (git_stage_restore) and the
+     pipeline stops.
+The records are <state>/stages.json; each run is recorded in
+runs/<run_id>/run-manifest.json (run_manifest_record). Progress reporting
+arrives in M7.
+
+The stages:
+  upgrade   the official Rector pass (run-rector.sh --apply), the
+            extraction at stage upgrade, and the codemods (apply-recipes.sh
+            --reextract: S6, S7); skipped, reason same-major, when the
+            plan's hops are [] (the digests layer, which the developer
+            reviews, stays in /drupilot-port)
+  php       a placeholder until the PHP-target engine (M5): skipped, reason
+            placeholder
+  validate  the fixpoint gate (fixpoint.sh: the extraction again, the
+            codemods in dry-run); its exit 3 (DRUPILOT_FIXPOINT=enforce)
+            fails the stage
+  report    the generated manifest (manifest.sh, with --rationale when
+            given) and port-report.sh
+
+Usage:
+  pipeline.sh --subject DIR [--stages S1,S2,...] [--phase port|refactor]
+              [--rationale FILE] [--run ID] [--force] [--json] [-h|--help]
+    --subject DIR      the module/theme, inside its Drupal root and a git
+                       repository (the checkpoints need one)
+    --stages LIST      the stages to run, in their catalog order (default:
+                       upgrade,php,validate,report)
+    --phase P          port (default) or refactor: the manifest's phase
+    --rationale FILE   passed to manifest.sh (report)
+    --run ID           the run id (default: the UTC time and a hash)
+    --force            run every stage, even an up-to-date one
+    --json             {run_id, stages: [{id, status, reason, input_digest,
+                       output_digest, rc}]} on STDOUT
+
+Exit codes: 0 every stage done, skipped or up to date · 1 usage error, an
+unknown stage, no git repository, or a checkpoint that cannot be made ·
+3 a stage failed (the tree is back at its checkpoint; see stages.json).
+```
+
 ## analysis
+
+### analysis/assess.sh
+
+```text
+drupilot — scripts/analysis/assess.sh
+The viability assessment, computed (07-R4, AR-10, ADR 0025): the S/M/L/XL
+verdict from three counts, the threshold rule that matched, and everything
+the viability report shows, as assess.json; the viability-assessment skill
+only narrates it.
+
+  manual         the occurrences of scope-current PHPStan deprecations of
+                 class hard or unknown that no Drupal Rector rule changes in
+                 the same function or method (a DrupalRector\ rule, or the
+                 Renaming/Transform/Arguments/Removing rules drupal-rector
+                 configures, at the same (file, anchor); a file-level anchor,
+                 or anchors unavailable, never counts as covered), plus the
+                 signature and port-safety findings of severity error
+                 (manual_items, each with its occurrences)
+  hard_breaks    the categories of config/catalog/hard-breaks.json with at
+                 least one matching file of the subject
+  blocking_deps  deps-status.sh's blockers (no Drupal 11 release on
+                 drupal.org; offline every contrib dependency is unknown)
+
+  XL  blocking_deps >= 1 or hard_breaks >= 3 or manual > 40
+  L   hard_breaks == 2 or manual > 15
+  M   hard_breaks == 1 or manual >= 5
+  S   otherwise                                     (first match wins)
+
+It runs the assess stage itself (scripts/ai/extract.sh, normalize-findings.sh,
+classify.sh), scripts/analysis/core-strategy.sh and deps-status.sh, writes
+assess.json (schema 1: the counts, the rule, the core-target decision, the
+hard-break files, the hygiene totals, findings_hash, worklist_hash and
+subject_digest; its time under meta) to the subject's hidden state dir,
+renders viability-report.md from templates/viability-report.md.tmpl into
+the visible .drupilot/ dir, and records the assessed stage with its effort.
+Next-major findings never count (X18). The settings are read from the
+subject's Drupal root (DRUPILOT_PROJECT_DIR), wherever it is run from. When
+Rector, PHPStan, the port-safety checks or the signature scan gave no
+verdict (findings.json tools: failed or missing), the verdict is
+provisional: it goes to assess-provisional.json, never to assess.json (which
+readers take as an assessment), the stage is not recorded, the report says
+so, and the exit code is 3. The digests layer is not part of the assessment, so
+a deprecation only a digests rule fixes counts as manual.
+
+Usage:
+  assess.sh --subject DIR [--findings FILE --worklist FILE] [--deps FILE]
+            [--offline] [--no-record] [--json] [-h|--help]
+    --subject DIR      the module/theme (default: the current directory)
+    --findings FILE    read this findings.json and --worklist FILE instead of
+                       running the assess stage (a golden's; no Docker)
+    --deps FILE        read this deps-status.sh --json instead of running it
+    --offline          deps-status.sh without the network
+    --no-record        do not record the stage in state.json
+    --json             print assess.json on STDOUT
+
+Exit codes: 0 assessed · 1 usage error, not a Drupal extension (no
+<machine_name>.info.yml), no Drupal root to run the assess stage in (run
+/drupilot-setup first), or no findings to assess · 2 jq missing · 3 assessed,
+but a tool gave no verdict (assess-provisional.json: provisional, tools).
+```
 
 ### analysis/check-port-safety.sh
 
@@ -538,7 +706,10 @@ Output: logs on STDERR; on STDOUT the changed files (one per line), or with
   attribute_floor: the highest `since` among the converted types (the core
   floor the result needs for static analysis; also the runtime floor for the
   stripped types). floor_ok: declared_floor >= attribute_floor.
-  rule_hits merges into the port manifest's rector_rules.
+  An --apply that converts files also keeps {tool, changed_files, files,
+  rule_hits, meta} in the subject's state dir (attributes-rules.json), which
+  scripts/ai/manifest.sh merges into the manifest's rector_rules (and never
+  counts as manual edits).
 
 Gate: `analyze` profile. Exit codes: 0 ok (including nothing to convert) ·
 1 usage error · 2 gate (requirements, Drupal root, vendor/bin/rector or the
@@ -723,6 +894,44 @@ Exit codes: 0 ok · 1 usage error, or the directory holds no .info.yml and
 no Drupal 7 .info.
 ```
 
+### analysis/digests-decisions.sh
+
+```text
+drupilot — scripts/analysis/digests-decisions.sh
+Record the developer's verdict on each dbuytaert/drupal-digests rule of a
+port (05-R6, T-M4-08), so a later port of the same module replays them and
+asks nothing: digests-decisions.json in the subject's hidden state dir, one
+verdict (accept | reject) per rule, keyed by the rule, the digests SHA and
+the subject's digest before the passes. The key comes from the last digests
+dry-run of run-rector.sh (its record, rector-dryrun.json): run
+`run-rector.sh --subject DIR --digests --json` first. A rejected rule is left
+out of the digests config of every later run with that key; a rule with no
+verdict is pending (run-rector.sh --json, digests_review.pending). A verdict
+recorded in an autonomous run (DRUPILOT_AUTONOMOUS=true) is kept with
+by: "auto": it is that run's safe default, not the developer's review, so
+only an autonomous run replays it (a guided port asks again). Verdicts are
+recorded only for the sources the dry-run saw: a module changed since then
+needs a new dry-run first.
+
+Usage:
+  digests-decisions.sh --subject DIR --list [--json]
+  digests-decisions.sh --subject DIR [--accept R[,R...]]... [--reject R[,R...]]...
+                       [--auto] [--json]
+  digests-decisions.sh --subject DIR --clear
+    --list     the rules of the last digests dry-run with their verdicts
+    --accept   rules to apply (short class names, as digests_review names them)
+    --reject   rules to leave out
+    --auto     record them as an autonomous run's defaults (by "auto"), as
+               DRUPILOT_AUTONOMOUS=true does; only an autonomous run
+               (run-rector.sh --auto) replays them
+    --clear    forget every verdict of the subject (/drupilot-clean does it too)
+    --json     {digests_sha, input_hash, rules: [{rule, verdict, by}],
+               pending: [...]} on STDOUT
+
+Exit codes: 0 done · 1 usage error, no digests dry-run to key the verdicts
+on, a module changed since that dry-run, or a rule it did not name.
+```
+
 ### analysis/explain-deprecations.sh
 
 ```text
@@ -744,6 +953,47 @@ Usage:
 
 Output: a human explainer on STDOUT (or JSON with --json). Logging on STDERR.
 Exit codes: 0 ok (matches or not) · 1 usage/error. Read-only.
+```
+
+### analysis/fixpoint.sh
+
+```text
+drupilot — scripts/analysis/fixpoint.sh
+The fixpoint gate (T-M4-11, AR-16, 05-R9, DET-8): at the end of a port or a
+refactor, run the extraction again on the tree as it is (extract.sh with
+its Rector dry-run, normalize-findings.sh, classify.sh) and the codemods in
+dry-run (apply-recipes.sh --dry-run), and check that nothing is left for the
+deterministic lanes:
+  rector     no Rector finding (the official dry-run would change nothing;
+             the extraction runs no digests pass, so the digests rules,
+             which the developer reviews in /drupilot-port, never count)
+  codemods   no codemod that would still change a file
+  open       no open item in a processed lane (rector, rector-custom,
+             codemod; the AI lanes join when their executor does)
+It writes <state>/fixpoint.json (converged, the exact items of each list)
+and records the run in <state>/runs/<run_id>/run-manifest.json (its input
+and output hashes; DRUPILOT_RUNS_KEEP runs are kept).
+
+DRUPILOT_FIXPOINT: warn (default through the betas): a failure is reported
+and the exit code stays 0 · enforce: a failure exits 3, the stage is not
+done · off: nothing runs.
+
+Usage:
+  fixpoint.sh --subject DIR [--stage S] [--findings F --worklist W]
+              [--json] [-h|--help]
+    --subject DIR   the module/theme (inside its Drupal root)
+    --stage S       the extraction's stage (default: validate)
+    --findings F    read this findings.json and --worklist W instead of
+                    extracting again (a test's; no Docker), and skip the
+                    codemod dry-run
+    --json          print fixpoint.json on STDOUT
+
+A tool with no verdict (Rector, PHPStan, or the port-safety, signature and
+metadata scans that feed the codemod lane) means not converged.
+
+Exit codes: 0 converged, or not converged in warn mode, or off · 1 usage
+error, or the extraction failed · 3 not converged in enforce mode (a tool
+with no verdict included).
 ```
 
 ### analysis/layer-report.sh
@@ -1492,8 +1742,21 @@ Passes, in this order:
                    output still runs on L (`Foo $x = NULL` -> `?Foo $x =
                    NULL`). Errors and the dry-run record call it pass 3.
   Pass 2 (--digests): the COMPLEMENTARY, AI-generated `dbuytaert/drupal-digests`
-                   rules, cloned at runtime into the plugin cache and run via
-                   `--config <cache>/rector/all.php`.
+                   rules, cloned at runtime into the plugin cache, staged
+                   under <root>/.drupilot/digests/<sha>/ and run with a
+                   filtered all.php (all.drupilot.php, T-M4-08, ADR 0026):
+                   without the rules the official pass already applies
+                   (03-R17: drupal-rector's docs/implemented-digests.yml at
+                   the installed version, fetched, cached and frozen in the
+                   lock as .digests.implemented_yml_sha256 / _ref; an entry
+                   counts when every class it names is registered in a set
+                   rector.php loads) and without the rules rejected for this
+                   module (digests-decisions.json, 05-R6: per rule, digests
+                   SHA and the subject's digest before the passes; record
+                   them with scripts/analysis/digests-decisions.sh). A frozen
+                   yml that cannot be read again, an all.php drupilot cannot
+                   read whole, and an --apply on sources changed since the
+                   reviewed dry-run are digests errors (exit 4).
 
 Default is DRY-RUN (no files are modified). Use --apply to write changes.
 
@@ -1510,6 +1773,9 @@ Options:
   --subject DIR      Path to the module/theme to process (relative to the
                      Drupal root or absolute). Required.
   --apply            Actually write changes (default is --dry-run).
+  --auto             An autonomous run (as DRUPILOT_AUTONOMOUS=true): the
+                     digests verdicts an autonomous run recorded are replayed
+                     (a guided run asks again for them).
   --digests          Run the complementary dbuytaert/drupal-digests pass after
                      the official pass.
   --digests-ref REF  Git ref (tag/branch/commit) of the digests repo to use
@@ -1541,13 +1807,27 @@ Options:
                      rule_hits counts them per pass, {official: {Rule: n},
                      compat: {Rule: n}, digests: {Rule: n}} (n = files the
                      rule changed; the compat and digests keys only when that
-                     pass changed something) —
-                     copy it into the port manifest's rector_rules. An
+                     pass changed something). An
                      --apply that changes files also keeps it in the
                      subject's state dir (rector-rules.json: {tool,
-                     changed_files, digests_sha, rule_hits, meta:
-                     {generated_at, subject}}), the fallback
+                     changed_files, files (root-relative, sorted),
+                     port_base, digests_sha, rule_hits, meta:
+                     {generated_at, subject}}; the applying runs on one
+                     git base add up), the fallback
                      port-report.sh / layer-report.sh read.
+                     digests_filter: {implemented_yml: {ref, sha256} | null,
+                     skipped_implemented (drupal-rector implements them in
+                     a set rector.php loads), implemented_not_loaded and
+                     config_only (kept: drupal-rector has them in a set this
+                     port does not load, or the yml names no class),
+                     rejected: [rules], kept: n} and digests_review:
+                     {digests_sha, input_hash, rules: [{rule, files,
+                     verdict: accept | reject | pending}], rejected,
+                     pending: [rules]} (null without the digests pass, or
+                     when it did not finish: nothing to review); a dry-run
+                     keeps the review in its record for
+                     digests-decisions.sh. A verdict an autonomous run
+                     recorded counts only in an autonomous run.
   --attributes       Run ONLY the optional annotation -> PHP 8 attribute pass
                      instead of the official/digests passes: forwards every
                      other argument to scripts/analysis/convert-attributes.sh
@@ -1625,8 +1905,12 @@ compat pass crashed or reported errors (toolchain/config broken, or a broken
 rector-compat.php; the diagnostic lists the
 installed vs known-good versions from config/toolchain-reference.json), or a
 DET-1 violation (an unplanned host run, a tool version the lock does not pin) ·
-4 only the digests pass crashed (the official result stands; fix with
---digests-ref <known-good commit> or DRUPILOT_USE_DIGESTS_RULES=false).
+4 only the digests pass crashed or was refused (the official result stands;
+for a crash, --digests-ref <known-good commit> or
+DRUPILOT_USE_DIGESTS_RULES=false; a refusal names its own remedy: an
+implemented-digests.yml that cannot be read again, an all.php drupilot
+cannot read whole, or an --apply on sources or digests rules other than
+the ones the last dry-run reviewed).
 ```
 
 ### analysis/run-upgrade-status.sh
@@ -2441,7 +2725,8 @@ module/theme under */custom that has no recorded origin, is refused.
 
 Afterwards every module of the root gets `.environment = {status: "removed",
 level, at}` in its state.json, so next-step.sh recommends /drupilot-setup
-until ddev-up.sh / place-subject.sh rebuild it.
+until ddev-up.sh / place-subject.sh rebuild it, and its digests verdicts
+(digests-decisions.json, scripts/analysis/digests-decisions.sh) are reset.
 
 Usage:
   clean.sh [--subject DIR | --root DIR | --all [--scan DIR]...]
@@ -2806,7 +3091,8 @@ This script reads what is actually installed and records it:
     git build when drupilot runs from a checkout)
 
 It does NOT touch digests.{ref,sha} (run-rector.sh owns those), except that
---refresh drops digests.sha so the next Rector run re-resolves the live ref.
+--refresh drops digests.sha (and the frozen implemented-digests.yml hash)
+so the next Rector run re-resolves the live ref.
 
 Fail-safe: if there is no composer.lock yet (setup not run) or DDEV is down,
 it records what it can and exits 0 — it never blocks a flow.
@@ -3737,7 +4023,8 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
                 accepts it. `{label: .x}` and `.label` are fine everywhere.
                 It also rejects an object value joined with and/or outside
                 parentheses (`{ok: (a) and (b)}`, a jq 1.6 syntax error;
-                write `{ok: ((a) and (b))}`).
+                write `{ok: ((a) and (b))}`), and one with an unparenthesized
+                `//` (`{k: .a // "x"}`; write `{k: (.a // "x")}`).
                 A line can opt out with a trailing `# jq-compat-ok` and a reason
   - lib-defs    the shared library is split into domain libs (scripts/lib/*.sh):
                 every function is defined in exactly one lib, common.sh only
