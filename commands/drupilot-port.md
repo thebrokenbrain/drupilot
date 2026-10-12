@@ -281,13 +281,17 @@ answer before applying:
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/digests-decisions.sh" --subject <path> --accept <Rule,...> --reject <Rule,...>
 ```
 
-(an autonomous run records its safe default the same way: unflagged rules
-accepted, flagged ones rejected; those verdicts are marked as the autonomous
-run's, and a later guided port asks the developer again). Then re-run the
-dry-run (the rejected rules leave the config, and the apply checks its result
-against that dry-run) and apply. Record the verdicts on the sources the dry-run
-saw: when the module changed since, `digests-decisions.sh` refuses (exit 1) and
-an `--apply` does not run the digests pass (exit 4): run the dry-run again.
+(an autonomous run records its safe default the same way, with `--auto`:
+unflagged rules accepted, flagged ones rejected; and it passes `--auto` to every
+`run-rector.sh --digests` call too. Those verdicts are marked as the autonomous
+run's, so a later guided port asks the developer again). Then re-run the dry-run
+(the rejected rules leave the config, and the apply checks its result against
+that dry-run) and apply. Once the module has verdicts, an `--apply` runs the
+digests pass only after a dry-run of these same sources and digests rules, with
+a verdict on every rule that dry-run changed files with; otherwise it refuses
+(exit 4) and says why: run the dry-run again and record the pending rules.
+`digests-decisions.sh` refuses (exit 1) to record verdicts on sources changed
+since the dry-run.
 
 **Decision point — the developer owns the digests pass (G5).** Read the dry-run
 diff and, for each change, note the **rule** and the **API/min-version** it
@@ -329,7 +333,7 @@ with `make-patch.sh --local` instead. Then apply the accepted subset:
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "$1" --digests --apply
 ```
 
-**Exit 4 means only the digests pass crashed** (`status: "partial"`, `digests_status: "error"` with `--json`; e.g. a broken upstream rule file): the official result stands, the toolchain is fine — do **not** reinstall it. Pin a known-good digests commit (`--digests-ref <sha>` / `DRUPILOT_DIGESTS_REF`) or skip the layer (`DRUPILOT_USE_DIGESTS_RULES=false`); the broken SHA is never frozen in the lockfile.
+**Exit 4 means only the digests pass crashed or was refused** (`status: "partial"`, `digests_status: "error"` with `--json`): the official result stands, the toolchain is fine — do **not** reinstall it. A refusal's message names its remedy (a new dry-run and the pending verdicts; an `all.php` drupilot cannot read whole; a frozen `implemented-digests.yml` it cannot read again). A crash (e.g. a broken upstream rule file): pin a known-good digests commit (`--digests-ref <sha>` / `DRUPILOT_DIGESTS_REF`) or skip the layer (`DRUPILOT_USE_DIGESTS_RULES=false`); the broken SHA is never frozen in the lockfile.
 
 A rule the developer did not keep is recorded as rejected, so the filtered
 config leaves it out of the apply — never silently apply a flagged rule they did
@@ -416,8 +420,8 @@ Then mirror the new floor in `composer.json` (`require.drupal/core`) when the
 module declares one, record the choice (`log-decision.sh --kind manual-override
 --what "Added plugin attributes (keep mode), core floor raised to <req>" --why
 "<the developer's reason>"`), and report the JSON's `rule_hits` in the Step 9
-summary (the pass keeps no state file; that decision-log entry is its record in
-the report). `restored_files` lists files the pass put back
+summary (`--apply` keeps its rules and files in `attributes-rules.json`, which
+`manifest.sh` reads; the decision-log entry carries the why). `restored_files` lists files the pass put back
 (duplicate attribute or `php -l` failure) and `skipped_files` those already
 half-converted by hand: report both. Step 7 validates the result (and Step 7b
 checks the new floor when `^10` is still declared).
@@ -662,6 +666,10 @@ output and the final validate-loop PHPStan deprecation report into
 explained" section. Then generate the manifest and render:
 
 ```bash
+# The extraction of the ported tree first: the manifest refuses scans of other sources.
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/extract.sh" --subject <path> --stage validate
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/normalize-findings.sh" --subject <path> --stage validate
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/classify.sh" --subject <path>
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/manifest.sh" --subject <path> --phase port --rationale <state_dir>/rationale.json --json
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" --subject "$1" --manifest "<state_dir>/port-manifest.json" --changes-log "<state_dir>/change-log.txt"
 ```

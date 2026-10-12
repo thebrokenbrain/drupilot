@@ -273,9 +273,10 @@ pending ones; record every answer with
 A later port of the same module with the same digests SHA has no pending rule
 and asks nothing; `digests-decisions.sh --clear` (or `/drupilot-clean`)
 forgets the verdicts. An autonomous run's recorded defaults are replayed only
-by another autonomous run. Record the verdicts before the module changes: an
-`--apply` on changed sources refuses the digests pass (exit 4) until a new
-dry-run.
+by another autonomous run (it records with `digests-decisions.sh --auto` and
+runs `run-rector.sh --digests --auto`). Once the module has verdicts, an
+`--apply` refuses the digests pass (exit 4) until a dry-run of the same sources
+and digests rules has a verdict on every rule it changed files with.
 
 **Mandatory handling (PROMPT §2.1.1) — these are non-negotiable:**
 
@@ -293,7 +294,7 @@ dry-run.
    applying a rule that would lift the floor above what the project promises.
 4. **Order** → official `drupal-rector` first, digests second.
 
-**Exit 4 means only the digests pass crashed** (`status: "partial"`, `digests_status: "error"` with `--json`; e.g. a broken upstream rule file): the official result stands, the toolchain is fine — do **not** reinstall it. Pin a known-good digests commit (`--digests-ref <sha>` / `DRUPILOT_DIGESTS_REF`) or skip the layer (`DRUPILOT_USE_DIGESTS_RULES=false`); the broken SHA is never frozen in the lockfile.
+**Exit 4 means only the digests pass crashed or was refused (its message names the remedy)** (`status: "partial"`, `digests_status: "error"` with `--json`; e.g. a broken upstream rule file): the official result stands, the toolchain is fine — do **not** reinstall it. Pin a known-good digests commit (`--digests-ref <sha>` / `DRUPILOT_DIGESTS_REF`) or skip the layer (`DRUPILOT_USE_DIGESTS_RULES=false`); the broken SHA is never frozen in the lockfile.
 
 The `issues/*.md` summaries in the repo explain *why* an API changed — useful
 context when reviewing a diff, but they are not rules.
@@ -723,6 +724,10 @@ ruleset, hook substitution, negative controls) come from the state files the
 scripts write. Generate the manifest and render the report:
 
 ```bash
+# The extraction of the ported tree first (the manifest refuses scans of other sources):
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/extract.sh" --subject "<path>" --stage validate
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/normalize-findings.sh" --subject "<path>" --stage validate
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/classify.sh" --subject "<path>"
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/manifest.sh" --subject "<path>" --phase port \
   --rationale "<state_dir>/rationale.json" --json
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" \

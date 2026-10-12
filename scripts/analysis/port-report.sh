@@ -366,7 +366,12 @@ printf '%s' "$PREC" | jq -e 'type == "object"' >/dev/null 2>&1 || PREC=""
   fi
 
   printf '### Manual edits\n\n'
-  # Items may be a plain string or an object {edit, why?, change_record?}.
+  # Items may be a plain string or an object {edit, why?, change_record?}; a
+  # generated manifest says null when it cannot tell (no git history, or a
+  # Rector record without its files).
+  if [[ "$(printf '%s' "$M" | jq -r 'has("manual_edits") and .manual_edits == null' 2>/dev/null)" == "true" ]]; then
+    printf '_Unknown: no git history to compare with, or a Rector record that does not list its files._\n'
+  else
   printf '%s' "$M" | jq -r '
     (.manual_edits // []) | .[]? |
     if type == "string" then "- " + .
@@ -375,6 +380,7 @@ printf '%s' "$PREC" | jq -e 'type == "object"' >/dev/null 2>&1 || PREC=""
          + (if (.change_record // "") != "" then " ([change record](" + .change_record + "))" else "" end)
     end
   ' 2>/dev/null | { grep . || printf '_none_\n'; }
+  fi
   printf '\n'
   printf '### Remaining deprecations\n\n%s\n\n' "$DEPR"
 

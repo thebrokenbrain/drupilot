@@ -529,8 +529,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     - `blocking_deps`: `deps-status.sh`'s blockers.
   - The digests layer is no longer part of the assessment, so a deprecation
     only a digests rule fixes now counts as manual.
-  - When Rector or PHPStan gave no verdict, the verdict is `provisional`:
-    exit 3, and the stage is not recorded.
+  - When Rector, PHPStan, the port-safety checks or the signature scan gave
+    no verdict, the verdict is `provisional`: it goes to
+    `assess-provisional.json` (never `assess.json`), the stage is not
+    recorded, and the exit code is 3.
   - It needs the test-bed's Drupal root, and reads the settings there.
   - The S/M/L/XL table is the 0.9 one, first match wins, and `rubric.rule`
     keeps the rule that matched. Soft and next-major findings never count.
@@ -552,16 +554,20 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     not load, so those still run in the digests pass, and so do the
     config-only entries (the file names no class for them).
   - It also leaves out the rules you rejected for the module.
-  - It fails closed: an `all.php` it cannot read whole, or an `--apply` on
-    sources changed since the reviewed dry-run, stops the digests pass
-    (exit 4) rather than run rules nobody reviewed.
+  - It fails closed: an `all.php` it cannot read whole stops the digests
+    pass (exit 4) rather than drop a rule silently. Once the module has
+    verdicts, an `--apply` needs a dry-run of the same sources and digests
+    rules with a verdict on every rule it changed files with, and runs no
+    rule that dry-run did not (exit 4 otherwise). A refusal prints its own
+    remedy, never the crash advice.
   - `scripts/analysis/digests-decisions.sh` records each verdict, keyed by
     the rule, the digests SHA and the module's sources, in the hidden
     `digests-decisions.json`.
   - `run-rector.sh --json` reports `digests_filter` and `digests_review`.
     `/drupilot-port` asks only about the pending rules: a second port of the
-    same sources asks nothing. An autonomous run's recorded defaults are
-    marked as such and replayed only by another autonomous run.
+    same sources asks nothing. An autonomous run's recorded defaults
+    (`digests-decisions.sh --auto`) are replayed only by another autonomous
+    run (`run-rector.sh --auto`).
   - `/drupilot-clean` (or `digests-decisions.sh --clear`) forgets the
     verdicts. `lock-sync.sh --refresh` and `DRUPILOT_DETERMINISTIC=false`
     fetch the yml again and freeze its new hash.
@@ -579,6 +585,15 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   - The model's only input is the rationale, keyed by worklist item id: an
     unknown id is refused, and an earlier rationale is kept for the items
     still there.
+  - It refuses scans of other sources than the module now (the extraction
+    index records the sources' digest), so the assess stage's pre-port
+    reports are never taken for the port's. A tool that printed no report is
+    left out, never shown as "0 errors".
+  - The files left out are make-patch.sh --local's (drupilot's files, the
+    patches, the local-environment residue); paths keep their non-ASCII
+    names. The applying Rector runs of one port add up in rector-rules.json
+    (its new `port_base`), so a digests apply no longer hides the official
+    pass's files.
   - `port-report.sh` renders the lane × status table, the codemods and the
     rationale. A manifest golden pins the generator on the lab's
     `legacy_widgets` port.

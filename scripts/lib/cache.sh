@@ -100,10 +100,30 @@ digests_rules() {
   return 0
 }
 
-# _digests_php_code FILE -> FILE without its comment lines (//, #, /* and *
-# lines) and trailing // comments, for the set and class scans.
+# _digests_php_code FILE -> FILE without its comments, for the set and class
+# scans: /* ... */ blocks across lines, and the // or # tail of a line (not a
+# #[ attribute). Single- and double-quoted strings on a line are skipped over
+# (backslash escapes honored), so a '*/tests/*' glob or an 'https://' URL is
+# not taken for a comment. A string never spans lines here.
 _digests_php_code() {
-  sed -e '/^[[:space:]]*\/\//d' -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*\/\*/d' -e '/^[[:space:]]*\*/d' -e 's#[[:space:]]//.*$##' "$1" 2> /dev/null || true
+  awk -v sq="'" '
+    { line = $0; out = ""; n = length(line); i = 1; q = ""
+      while (i <= n) {
+        c = substr(line, i, 1); c2 = substr(line, i, 2)
+        if (inc) { if (c2 == "*/") { inc = 0; i += 2 } else i++; continue }
+        if (q != "") {
+          out = out c
+          if (c == "\\") { out = out substr(line, i + 1, 1); i += 2; continue }
+          if (c == q) q = ""
+          i++; continue
+        }
+        if (c == sq || c == "\"") { q = c; out = out c; i++; continue }
+        if (c2 == "/*") { inc = 1; i += 2; continue }
+        if (c2 == "//") break
+        if (c == "#" && substr(line, i + 1, 1) != "[") break
+        out = out c; i++
+      }
+      print out }' "$1" 2> /dev/null || true
   return 0
 }
 

@@ -379,15 +379,17 @@ renders viability-report.md from templates/viability-report.md.tmpl into
 the visible .drupilot/ dir, and records the assessed stage with its effort.
 Next-major findings never count (X18). The settings are read from the
 subject's Drupal root (DRUPILOT_PROJECT_DIR), wherever it is run from. When
-Rector or PHPStan gave no verdict (findings.json tools: failed or missing)
-the verdict is provisional: assess.json says so, the stage is not recorded,
-and the exit code is 3. The digests layer is not part of the assessment, so
+Rector, PHPStan, the port-safety checks or the signature scan gave no
+verdict (findings.json tools: failed or missing), the verdict is
+provisional: it goes to assess-provisional.json, never to assess.json (which
+readers take as an assessment), the stage is not recorded, the report says
+so, and the exit code is 3. The digests layer is not part of the assessment, so
 a deprecation only a digests rule fixes counts as manual.
 
 Usage:
   assess.sh --subject DIR [--findings FILE --worklist FILE] [--deps FILE]
             [--offline] [--no-record] [--json] [-h|--help]
-    --subject DIR      the module/theme
+    --subject DIR      the module/theme (default: the current directory)
     --findings FILE    read this findings.json and --worklist FILE instead of
                        running the assess stage (a golden's; no Docker)
     --deps FILE        read this deps-status.sh --json instead of running it
@@ -398,7 +400,7 @@ Usage:
 Exit codes: 0 assessed · 1 usage error, not a Drupal extension (no
 <machine_name>.info.yml), no Drupal root to run the assess stage in (run
 /drupilot-setup first), or no findings to assess · 2 jq missing · 3 assessed,
-but Rector or PHPStan gave no verdict (assess.json: provisional, tools).
+but a tool gave no verdict (assess-provisional.json: provisional, tools).
 ```
 
 ### analysis/check-port-safety.sh
@@ -856,11 +858,14 @@ needs a new dry-run first.
 Usage:
   digests-decisions.sh --subject DIR --list [--json]
   digests-decisions.sh --subject DIR [--accept R[,R...]]... [--reject R[,R...]]...
-                       [--json]
+                       [--auto] [--json]
   digests-decisions.sh --subject DIR --clear
     --list     the rules of the last digests dry-run with their verdicts
     --accept   rules to apply (short class names, as digests_review names them)
     --reject   rules to leave out
+    --auto     record them as an autonomous run's defaults (by "auto"), as
+               DRUPILOT_AUTONOMOUS=true does; only an autonomous run
+               (run-rector.sh --auto) replays them
     --clear    forget every verdict of the subject (/drupilot-clean does it too)
     --json     {digests_sha, input_hash, rules: [{rule, verdict, by}],
                pending: [...]} on STDOUT
@@ -1706,6 +1711,9 @@ Options:
   --subject DIR      Path to the module/theme to process (relative to the
                      Drupal root or absolute). Required.
   --apply            Actually write changes (default is --dry-run).
+  --auto             An autonomous run (as DRUPILOT_AUTONOMOUS=true): the
+                     digests verdicts an autonomous run recorded are replayed
+                     (a guided run asks again for them).
   --digests          Run the complementary dbuytaert/drupal-digests pass after
                      the official pass.
   --digests-ref REF  Git ref (tag/branch/commit) of the digests repo to use
@@ -1741,8 +1749,9 @@ Options:
                      --apply that changes files also keeps it in the
                      subject's state dir (rector-rules.json: {tool,
                      changed_files, files (root-relative, sorted),
-                     digests_sha, rule_hits, meta: {generated_at,
-                     subject}}), the fallback
+                     port_base, digests_sha, rule_hits, meta:
+                     {generated_at, subject}}; the applying runs on one
+                     git base add up), the fallback
                      port-report.sh / layer-report.sh read.
                      digests_filter: {implemented_yml: {ref, sha256} | null,
                      skipped_implemented (drupal-rector implements them in
@@ -1834,8 +1843,12 @@ compat pass crashed or reported errors (toolchain/config broken, or a broken
 rector-compat.php; the diagnostic lists the
 installed vs known-good versions from config/toolchain-reference.json), or a
 DET-1 violation (an unplanned host run, a tool version the lock does not pin) ·
-4 only the digests pass crashed (the official result stands; fix with
---digests-ref <known-good commit> or DRUPILOT_USE_DIGESTS_RULES=false).
+4 only the digests pass crashed or was refused (the official result stands;
+for a crash, --digests-ref <known-good commit> or
+DRUPILOT_USE_DIGESTS_RULES=false; a refusal names its own remedy: an
+implemented-digests.yml that cannot be read again, an all.php drupilot
+cannot read whole, or an --apply on sources or digests rules other than
+the ones the last dry-run reviewed).
 ```
 
 ### analysis/run-upgrade-status.sh
