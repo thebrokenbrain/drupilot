@@ -33,7 +33,7 @@ case "\$1" in
     fi
     case "\$1" in
       /usr/bin/php*) v="\${1#/usr/bin/php}"; shift
-        if [ "\$1" = -r ]; then [ -n "\$STUB_NO_AUTOLOAD" ] && { echo "Composer detected issues in your platform"; exit 255; }; echo ok; exit 0; fi
+        if [ "\$2" = --version ]; then [ -n "\$STUB_NO_AUTOLOAD" ] && { echo "Composer detected issues in your platform"; exit 255; }; echo "PHPUnit 11.5.50"; exit 0; fi
         STUB_PHP="\$v" exec "\$@";;
       sh) exec "\$@";;
       *) STUB_PHP="\${STUB_PHP:-8.4}" exec "\$@";;
@@ -103,7 +103,11 @@ assert_eq "  a CURRENT run on other sources keeps the leg, marked stale: verifie
 rp --type all --leg PHP_LOW
 assert_eq "  the leg run again on these sources: fresh and verified" "$T_RC|$(jq -r .preservation "$LT")|$(jq -c '.legs.PHP_LOW.stale' "$LT")" '0|verified|null'
 rp --type unit --leg PHP_LOW
-assert_eq "  a narrowed PHP_LOW run (--type unit) is verified-partial at best" "$T_RC|$(jq -r .preservation "$LT")|$(jq -r '.legs.PHP_LOW.type' "$LT")" '0|verified-partial|unit'
+assert_eq "  a narrowed PHP_LOW run never replaces a whole leg of the same sources" "$T_RC|$(jq -r .preservation "$LT")|$(jq -r '.legs.PHP_LOW.type' "$LT")" '0|verified|all'
+STUB_FAIL="8.3:Kernel" rp --type all --leg PHP_LOW
+rp --filter NoSuchTest --leg PHP_LOW
+assert_eq "  a --filter matching nothing keeps the failing whole leg: still regression" "$(jq -r .preservation "$LT")" "regression"
+rp --type all --leg PHP_LOW
 rp --type all --leg PHP_LOW
 STUB_NO_AUTOLOAD=1 rp --type all --leg PHP_LOW
 assert_eq "a PHP that cannot load the vendor tree: blocked (exit 2), not a red group" \
@@ -132,6 +136,10 @@ rp --type all
 STUB_PHPS="8.4" rp --type all --leg PHP_LOW
 t_run env CLAUDE_PLUGIN_ROOT="$T_REPO" "$T_SH" "$T_REPO/scripts/analysis/port-report.sh" --subject "$S"
 assert_match "port-report.sh: each leg's verdict under the aggregate" "$(cat "$(cat "$T_OUT")")" 'PHP_LOW \(PHP 8\.3\): not-verified-blocked'
+rp --type js
+STUB_PHPS="8.4" rp --type all --leg PHP_LOW
+assert_eq "no test run on CURRENT and a blocked PHP_LOW: still not-verified-no-tests, never verified-partial" \
+  "$(jq -c '[.legs.CURRENT.preservation, .legs.PHP_LOW.preservation, .preservation]' "$LT")" '["not-verified-no-tests","not-verified-blocked","not-verified-no-tests"]'
 plan '[{"leg": "CURRENT", "core": "11.4.8", "php": "8.3", "mode": "run"}]'
 rp --type all --leg PHP_LOW
 assert_eq "a plan without a PHP_LOW leg: nothing runs" "$T_RC|$(calls)" "0|"

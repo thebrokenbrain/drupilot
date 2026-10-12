@@ -267,9 +267,10 @@ if [[ "$LEG" == "PHP_LOW" ]]; then
   # The leg's PHP must load the bed's vendor tree (Composer's platform check,
   # the extensions): else the leg is blocked, never a crashed (red) group.
   if [[ -z "$LEG_BLOCK" ]]; then
-    _probe="$(${RUNNER[@]+"${RUNNER[@]}"} "${PHPUNIT[0]}" -r 'require "vendor/autoload.php"; echo "ok";' < /dev/null 2>&1 || true)"
+    # (Arguments with no space or quote: an older ddev exec joins them.)
+    _probe="$(${RUNNER[@]+"${RUNNER[@]}"} "${PHPUNIT[0]}" vendor/bin/phpunit --version < /dev/null 2>&1 || true)"
     case "$_probe" in
-      *ok) : ;;
+      *PHPUnit*) : ;;
       *) LEG_BLOCK="PHP $LEG_PHP cannot load the test-bed's vendor tree ($(printf '%s' "$_probe" | tr '\n' ' ' | cut -c1-200))";;
     esac
   fi
@@ -861,14 +862,20 @@ else
                  "not-verified-blocked": 4, "not-verified-unbaselined": 5, "regression": 6}[.] // 0;
       # What a PHP_LOW leg adds: a blocked, stale or narrowed leg is at most
       # verified-partial; a leg with nothing to run adds nothing.
+      def narrowed($l): (($l.type // "all") != "all") or (($l.filter // null) != null);
       def lowv($l):
         if $l == null then null
         elif ($l.stale // false) or $l.preservation == "not-verified-blocked" then "verified-partial"
+        elif ($l.preservation | IN("verified", "not-verified-no-tests")) and narrowed($l) then "verified-partial"
         elif $l.preservation == "not-verified-no-tests" then "verified"
-        elif $l.preservation == "verified" and ((($l.type // "all") != "all") or ($l.filter // null) != null) then "verified-partial"
         else $l.preservation end;
-      # The aggregate: the stronger of the CURRENT verdict and the PHP_LOW one.
-      def agg($cur; $l): lowv($l) as $lv | if $lv == null or ($lv | rank) <= ($cur | rank) then $cur else $lv end;
+      # The aggregate: the stronger of the CURRENT verdict and the PHP_LOW one
+      # (a leg that ran nothing never makes a CURRENT run that ran nothing
+      # look partially verified).
+      def agg($cur; $l): lowv($l) as $lv
+        | if $lv == null or ($lv | rank) <= ($cur | rank) then $cur
+          elif $lv == "verified-partial" and ($cur | IN("not-verified-no-tests", "not-verified-blocked")) then $cur
+          else $lv end;
       # A red aggregate is a failed record, whatever the CURRENT run gave.
       def agg_status($st; $p): if ($p | IN("regression", "pre-existing-failures", "not-verified-unbaselined")) then "failed" else $st end;'
     if [[ "$LEG" == "CURRENT" ]]; then
@@ -898,6 +905,11 @@ else
         log_warn "No CURRENT run is recorded yet (last-test.json): run the suite first, then the PHP_LOW leg. This leg is not recorded."
       elif [[ "$(jq -r '.subject_digest // empty' "$STATE_DIR/last-test.json" 2>/dev/null || true)" != "$DIGEST" ]]; then
         log_warn "The recorded CURRENT run is of other sources: run the suite (the CURRENT leg) on these sources first, then the PHP_LOW leg. This leg is not recorded."
+      elif [[ ( "$TYPE" != "all" || -n "$FILTER" ) ]] \
+           && jq -e --arg d "$DIGEST" '(.legs.PHP_LOW // null) as $l | $l != null and ($l.subject_digest // "") == $d
+                and (($l.type // "all") == "all") and (($l.filter // null) == null) and (($l.stale // false) | not)' \
+                "$STATE_DIR/last-test.json" > /dev/null 2>&1; then
+        log_warn "A whole PHP_LOW leg of these sources is recorded: this narrowed run (--type $TYPE${FILTER:+, --filter $FILTER}) does not replace it. Run --type all --leg PHP_LOW to record the leg again."
       else
         FINAL_JSON="$(printf '%s' "$RECORD_JSON" | jq -c --slurpfile last "$STATE_DIR/last-test.json" \
             --arg core "$LEG_CORE" --arg php "$LEG_PHP" "$LEGS_JQ"'

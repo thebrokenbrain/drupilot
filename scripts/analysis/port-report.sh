@@ -349,6 +349,9 @@ printf '%s' "$PREC" | jq -e 'type == "object"' >/dev/null 2>&1 || PREC=""
 
   printf '## Preservation gate\n\n%s\n\n' "$PRES_LINE"
   if [[ -n "$T_BASE" ]]; then
+    # With test legs, this comparison is the CURRENT leg's (each leg's own
+    # classes are listed under the legs above).
+    [[ -z "$TEST_LEGS" ]] || printf '_The baseline comparison below is the CURRENT leg\x27s (the bed\x27s PHP)._\n\n'
     printf '%s' "$T_BASE" | jq -r '
       "Compared with the pre-port baseline (`run-phpunit.sh --baseline`, taken \(.taken_at // "?")): **\(.regressions | length)** regression(s), **\(.not_baselined // [] | length)** not baselined, **\(.pre_existing | length)** pre-existing failure(s), **\(.fixed | length)** test(s) fixed by the port."
         + (if .same_code then " _The baseline was taken on the current code, so it cannot show what the port changed._" else "" end) + "\n",
