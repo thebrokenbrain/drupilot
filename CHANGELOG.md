@@ -579,6 +579,15 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   - The model's only input is the rationale, keyed by worklist item id: an
     unknown id is refused, and an earlier rationale is kept for the items
     still there.
+  - It refuses scans of other sources than the module now (the extraction
+    index records the sources' digest), so the assess stage's pre-port
+    reports are never taken for the port's. A tool that printed no report is
+    left out, never shown as "0 errors".
+  - The files left out are make-patch.sh --local's (drupilot's files, the
+    patches, the local-environment residue); paths keep their non-ASCII
+    names. The applying Rector runs of one port add up in rector-rules.json
+    (its new `port_base`), so a digests apply no longer hides the official
+    pass's files.
   - `port-report.sh` renders the lane × status table, the codemods and the
     rationale. A manifest golden pins the generator on the lab's
     `legacy_widgets` port.

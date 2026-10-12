@@ -416,8 +416,8 @@ Then mirror the new floor in `composer.json` (`require.drupal/core`) when the
 module declares one, record the choice (`log-decision.sh --kind manual-override
 --what "Added plugin attributes (keep mode), core floor raised to <req>" --why
 "<the developer's reason>"`), and report the JSON's `rule_hits` in the Step 9
-summary (the pass keeps no state file; that decision-log entry is its record in
-the report). `restored_files` lists files the pass put back
+summary (`--apply` keeps its rules and files in `attributes-rules.json`, which
+`manifest.sh` reads; the decision-log entry carries the why). `restored_files` lists files the pass put back
 (duplicate attribute or `php -l` failure) and `skipped_files` those already
 half-converted by hand: report both. Step 7 validates the result (and Step 7b
 checks the new floor when `^10` is still declared).
@@ -647,6 +647,10 @@ output and the final validate-loop PHPStan deprecation report into
 explained" section. Then generate the manifest and render:
 
 ```bash
+# The extraction of the ported tree first: the manifest refuses scans of other sources.
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/extract.sh" --subject <path> --stage validate
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/normalize-findings.sh" --subject <path> --stage validate
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/classify.sh" --subject <path>
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/manifest.sh" --subject <path> --phase port --rationale <state_dir>/rationale.json --json
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" --subject "$1" --manifest "<state_dir>/port-manifest.json" --changes-log "<state_dir>/change-log.txt"
 ```

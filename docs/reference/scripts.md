@@ -1704,8 +1704,9 @@ Options:
                      --apply that changes files also keeps it in the
                      subject's state dir (rector-rules.json: {tool,
                      changed_files, files (root-relative, sorted),
-                     digests_sha, rule_hits, meta: {generated_at,
-                     subject}}), the fallback
+                     port_base, digests_sha, rule_hits, meta:
+                     {generated_at, subject}}; the applying runs on one
+                     git base add up), the fallback
                      port-report.sh / layer-report.sh read.
                      digests_filter: {implemented_yml: {ref, sha256} | null,
                      skipped_implemented (drupal-rector implements them in

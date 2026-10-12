@@ -72,6 +72,10 @@ SD="$(project_state_path "$SUBJECT")"
 F="$SD/findings.json"; W="$(worklist_file "$SUBJECT")"
 jq -e '.schema == 1 and (.findings | type) == "array"' "$F" > /dev/null 2>&1 || die "No findings.json for $SUBJECT: run the pipeline first." 1
 jq -e '.schema == 1 and (.items | type) == "array"' "$W" > /dev/null 2>&1 || die "No worklist.json for $SUBJECT: run the pipeline first." 1
+if [[ -n "$RATIONALE" && ! -f "$RATIONALE" ]]; then
+  log_warn "$RATIONALE does not exist: no rationale given this time (an earlier one is kept)."
+  RATIONALE=""
+fi
 if [[ -n "$RATIONALE" ]]; then
   jq -e 'type == "object" and all(.[]; type == "string")' "$RATIONALE" > /dev/null 2>&1 \
     || die "$RATIONALE is not a JSON object of item id -> text." 1
@@ -89,12 +93,25 @@ json_or() {  # json_or FILE DEFAULT -> FILE when it holds one JSON value, else a
   else printf '%s\n' "$2" > "$TMP/d.$(printf '%s' "$1" | cksum | cut -d' ' -f1)"; printf '%s' "$TMP/d.$(printf '%s' "$1" | cksum | cut -d' ' -f1)"; fi
 }
 
-# The raw reports of the stage findings.json was extracted at.
+# The raw reports of the stage findings.json was extracted at. They must be
+# of the tree as it is: an extraction of other sources (the assess stage's,
+# before the port) would report the module as it was.
 STAGE="$(jq -r '.stage // ""' "$F")"
-raw() {  # raw TOOL -> the stage's raw report of TOOL without meta, or {} (none)
+IDX="$(find "$SD/raw" -name "[0-9][0-9]-$STAGE-index.json" 2> /dev/null | LC_ALL=C sort | sed -n '$p' || true)"
+XD="$(jq -r '.subject_digest // empty' "$IDX" 2> /dev/null || true)"
+if [[ -n "$XD" && "$XD" != "$(subject_digest "$SUBJECT")" ]]; then
+  die "findings.json is of other sources than the module now (stage $STAGE): extract on the ported tree first (fixpoint.sh, or extract.sh --stage validate, normalize-findings.sh --stage validate and classify.sh)." 1
+fi
+[[ -n "$XD" ]] || log_warn "The $STAGE extraction does not record the sources it saw: its reports are taken as the module's now."
+raw() {  # raw TOOL -> the stage's raw report of TOOL without meta, or null (none, or the tool printed no report)
   local r
-  r="$(find "$SD/raw" -name "[0-9][0-9]-$STAGE-$1.json" 2> /dev/null | LC_ALL=C sort | sed -n '$p')"
-  if [[ -n "$r" ]] && jq -e 'type == "object"' "$r" > /dev/null 2>&1; then jq -c 'del(.meta)' "$r"; else printf 'null'; fi
+  r="$(find "$SD/raw" -name "[0-9][0-9]-$STAGE-$1.json" 2> /dev/null | LC_ALL=C sort | sed -n '$p' || true)"
+  if [[ -n "$r" ]] && jq -e 'type == "object" and ((has("error") and has("exit_code")
+       and ((has("findings") or has("files") or has("file_diffs")) | not)) | not)' "$r" > /dev/null 2>&1; then
+    jq -c 'del(.meta)' "$r"
+  else
+    printf 'null'
+  fi
   return 0
 }
 raw port-safety > "$TMP/ps.json"; raw signatures > "$TMP/sig.json"; raw metadata > "$TMP/meta.json"
@@ -102,7 +119,7 @@ REQ="$(sed -n 's/^core_version_requirement[[:space:]]*:[[:space:]]*//p' "$SUBJEC
 TMAJ="$(jq -r '.target.major // empty' "$F")"; [[ -n "$TMAJ" ]] || TMAJ="$(resolve_target_major)"
 POLICY="$(jq -r '.target.soft_policy // empty' "$F")"; [[ -n "$POLICY" ]] || POLICY="$(config_get DRUPILOT_SOFT_DEPRECATIONS report)"
 printf 'null\n' > "$TMP/soft.json"
-_rp="$(find "$SD/raw" -name "[0-9][0-9]-$STAGE-phpstan.json" 2> /dev/null | LC_ALL=C sort | sed -n '$p')"
+_rp="$(find "$SD/raw" -name "[0-9][0-9]-$STAGE-phpstan.json" 2> /dev/null | LC_ALL=C sort | sed -n '$p' || true)"
 if [[ -n "$_rp" ]]; then
   bash "$(plugin_root)/scripts/analysis/classify-deprecations.sh" --file "$_rp" --subject "$SUBJECT" --target-major "$TMAJ" \
     --policy "$POLICY" --phase "$PHASE" --json < /dev/null > "$TMP/soft.raw" 2> /dev/null || true
@@ -123,12 +140,15 @@ if git -C "$SUBJECT" rev-parse --git-dir > /dev/null 2>&1; then
   REF="$(git_port_base_ref "$SUBJECT" "$BASE" 2> /dev/null || true)"
   [[ -n "$REF" ]] || die "The base '$BASE' does not exist in $SUBJECT's repository." 1
   BASE_SHA="$(git -C "$SUBJECT" rev-parse --verify --quiet "$REF^{commit}" 2> /dev/null || true)"
-  PFX="$(git -C "$SUBJECT" rev-parse --show-prefix 2> /dev/null || true)"
+  # The paths make-patch.sh --local leaves out: drupilot's own files, the
+  # patches, and the local-environment residue.
+  set -- . ':(exclude).drupilot' ':(exclude).drupilot.json' ':(exclude)drupilot-lock.json' ':(exclude).ddev' \
+    ':(exclude)vendor' ':(exclude).phpstan-cache' ':(exclude,glob)**/node_modules/**' ':(exclude,glob)**/*.patch' \
+    ':(exclude,glob)**/*.orig' ':(exclude,glob)**/*.rej'
   {
-    git -C "$SUBJECT" diff --no-renames --name-status "$REF" -- . 2> /dev/null || true
-    git -C "$SUBJECT" ls-files --others --exclude-standard -- . 2> /dev/null | sed 's/^/A\t/' || true
-  } | awk -F'\t' -v p="$PFX" 'NF >= 2 { f = $2; if (p != "" && index(f, p) == 1) f = substr(f, length(p) + 1); print substr($1, 1, 1) "\t" f }' \
-    | grep -vE $'\t''(\.drupilot|.*\.patch$|.*\.orig$|.*\.rej$)' | LC_ALL=C sort -u -t "$(printf '\t')" -k2,2 > "$TMP/files.tsv" || true
+    git -C "$SUBJECT" -c core.quotepath=false diff --relative --no-renames --name-status "$REF" -- "$@" 2> /dev/null || true
+    git -C "$SUBJECT" -c core.quotepath=false ls-files --others --exclude-standard -- "$@" 2> /dev/null | sed 's/^/A\t/' || true
+  } | awk -F'\t' 'NF >= 2 { print substr($1, 1, 1) "\t" $2 }' | LC_ALL=C sort -u -t "$(printf '\t')" -k2,2 > "$TMP/files.tsv" || true
 fi
 PATCH=""; _pn="$MN-$(target_patch_desc "$TMAJ").patch"; [[ -f "$SUBJECT/$_pn" ]] && PATCH="$_pn"
 
@@ -159,6 +179,8 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
   # The files of the Rector run and of the attribute pass, relative to the
   # subject (they name them from the root).
   | ((($RR.files // []) + ($at[0].files // [])) | map(if $subrel != "" and startswith($subrel + "/") then .[($subrel | length) + 1:] else . end)) as $rfiles
+  # A Rector record without its files (drupilot 0.9) cannot tell manual edits apart.
+  | (($RR | length) > 0 and ($RR | has("files") | not)) as $rfunknown
   # The codemods in effect: the last applied action of each, while its file
   # still holds its output.
   | ([$ST.last[] | select(.status == "applied" and (.file | type) == "string"
@@ -167,7 +189,7 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
   | ($codemods | map(.file) | unique) as $cfiles
   | ([$W.items[] | {lane, status}] | group_by(.lane) | map({key: .[0].lane, value: (group_by(.status) | map({key: .[0].status, value: length}) | from_entries)}) | from_entries) as $ls
   | (($ratprev | with_entries(select(.key as $k | [$W.items[].id] | index($k)))) + $ratnew) as $rat
-  | ([($dd[0].decisions // [])[] | select(.verdict == "reject" and ($RR.digests_sha == null or .digests_sha == $RR.digests_sha)) | .rule] | unique) as $drej
+  | ([($dd[0].decisions // [])[] | select(.verdict == "reject" and ($RR.digests_sha == null or .digests_sha == $RR.digests_sha)) | {rule, by: (.by // "developer")}] | unique_by(.rule)) as $drej
   | {schema: 1, tool: "manifest", phase: $phase, machine_name: $mn, type: $type, subject: (if $subrel == "" then null else $subrel end),
      core_version_requirement: ($req | nz), require_php: ($rphp | nz), php_target: $pt,
      version_bump: (if ($A.recommended_core_version_requirement // null) == $req then ($A.version_bump // null) else null end),
@@ -175,10 +197,11 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
      rector_official_files: ($RR.changed_files // null),
      rector_rules: (if ($RR.rule_hits // null) == null and ($at[0].rule_hits // null) == null then null
                     else ($RR.rule_hits // {}) + ($at[0].rule_hits // {}) end),
-     digests: {applied: (($RR.rule_hits.digests // {}) | keys), rejected: [$drej[] | {rule: ., reason: "rejected by the developer"}],
+     digests: {applied: (($RR.rule_hits.digests // {}) | keys), rejected: [$drej[] | {rule: .rule, reason: (if .by == "auto" then "rejected by an autonomous run (its safe default)" else "rejected by the developer" end)}],
                skipped: ((($RR.rule_hits.digests // {}) | length) == 0 and ($drej | length) == 0)},
      codemods: $codemods,
-     manual_edits: [$diff[] | select(.path as $p | ($rfiles | index($p) | not) and ($cfiles | index($p) | not)) | {edit: .path, why: null, change_record: null}],
+     manual_edits: (if $base == "" or $rfunknown then null
+                    else [$diff[] | select(.path as $p | ($rfiles | index($p) | not) and ($cfiles | index($p) | not)) | {edit: .path, why: null, change_record: null}] end),
      worklist: {by_lane_status: $ls,
                 items: [$W.items[] | {id, lane, status, file, anchor, blocking, recipes: (.recipes // []), findings: (.finding_ids | length)}
                         + (if $rat[.id] then {rationale: $rat[.id]} else {} end)]},
@@ -192,7 +215,7 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
      decisions: {count: ($dec[0] | length), by_kind: ($dec[0] | group_by(.kind // "?") | map({key: (.[0].kind // "?"), value: length}) | from_entries)},
      inputs: {findings_hash: ($F.meta.findings_hash // null), findings_stage: ($F.stage // null), worklist_hash: ($W.meta.worklist_hash // null),
               actions_hash: ($acth | nz), base: ($base | nz)}}
-  | with_entries(select(.value != null or (.key | IN("core_version_requirement", "require_php", "version_bump", "rector_official_files", "rector_rules", "files_changed", "patch", "subject"))))' \
+  | with_entries(select(.value != null or (.key | IN("core_version_requirement", "require_php", "version_bump", "rector_official_files", "rector_rules", "files_changed", "patch", "subject", "manual_edits"))))' \
   | canon_json > "$DOC"
 jq -e '.schema == 1' "$DOC" > /dev/null 2>&1 || die "Could not build the manifest." 1
 jq --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg v "$(plugin_version 2> /dev/null || true)" \

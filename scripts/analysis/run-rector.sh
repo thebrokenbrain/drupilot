@@ -85,8 +85,9 @@
 #                      --apply that changes files also keeps it in the
 #                      subject's state dir (rector-rules.json: {tool,
 #                      changed_files, files (root-relative, sorted),
-#                      digests_sha, rule_hits, meta: {generated_at,
-#                      subject}}), the fallback
+#                      port_base, digests_sha, rule_hits, meta:
+#                      {generated_at, subject}}; the applying runs on one
+#                      git base add up), the fallback
 #                      port-report.sh / layer-report.sh read.
 #                      digests_filter: {implemented_yml: {ref, sha256} | null,
 #                      skipped_implemented (drupal-rector implements them in
@@ -992,12 +993,27 @@ fi
 # crashed after the official pass had written its changes. A later apply that
 # changes nothing (a re-run on ported code) keeps the record of the real port.
 # Its time and the host path of the subject are under meta (AR-13).
+# The applying runs of one port (the same git base: the official pass, then
+# the digests pass, ...) accumulate: their files and their rule counts per
+# pass add up; a run on another base starts a new record.
 if [[ "$APPLY" == "1" && "$PASS1_RAN_OK" == "1" && "$COUNT" != "0" ]] && have_cmd jq; then
+  _pb=""
+  if git -C "$SUBJECT_ABS" rev-parse --git-dir > /dev/null 2>&1; then
+    _pb="$(git -C "$SUBJECT_ABS" rev-parse --verify --quiet "$(git_port_base_ref "$SUBJECT_ABS" 2> /dev/null || printf HEAD)^{commit}" 2> /dev/null || true)"
+  fi
+  _prev='{}'; _rrf="$(rector_rules_file "$SUBJECT_ABS")"
+  if [[ -n "$_pb" && -f "$_rrf" ]] && jq -e --arg b "$_pb" 'type == "object" and .port_base == $b and (.files | type) == "array"' "$_rrf" > /dev/null 2>&1; then
+    _prev="$(jq -c . "$_rrf")"
+  fi
   jq -n --arg s "$SUBJECT_ABS" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson h "$RULE_HITS" \
-    --arg dsha "$DIGESTS_SHA" --argjson n "$COUNT" --arg fl "$CHANGED" \
-    '{tool: "run-rector", changed_files: $n, files: ($fl | split("\n") | map(select(length > 0)) | sort),
-      digests_sha: (if $dsha == "" then null else $dsha end), rule_hits: $h,
-      meta: {generated_at: $at, subject: $s}}' \
+    --arg dsha "$DIGESTS_SHA" --arg fl "$CHANGED" --arg pb "$_pb" --argjson p "$_prev" \
+    '(($fl | split("\n") | map(select(length > 0))) + ($p.files // []) | unique) as $files
+     | (reduce (($p.rule_hits // {}), $h) as $r ({}; reduce ($r | to_entries[]) as $pass (.;
+          reduce ($pass.value | to_entries[]) as $rule (.; .[$pass.key][$rule.key] += $rule.value)))) as $hits
+     | {tool: "run-rector", changed_files: ($files | length), files: $files,
+        port_base: (if $pb == "" then null else $pb end),
+        digests_sha: (if $dsha == "" then ($p.digests_sha // null) else $dsha end), rule_hits: $hits,
+        meta: {generated_at: $at, subject: $s}}' \
     > "$(project_state_dir "$SUBJECT_ABS")/rector-rules.json" 2>/dev/null \
     || log_warn "Could not record the applied Rector rules in $(rector_rules_file "$SUBJECT_ABS")."
 fi

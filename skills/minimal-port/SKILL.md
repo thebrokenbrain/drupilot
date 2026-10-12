@@ -715,6 +715,10 @@ ruleset, hook substitution, negative controls) come from the state files the
 scripts write. Generate the manifest and render the report:
 
 ```bash
+# The extraction of the ported tree first (the manifest refuses scans of other sources):
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/extract.sh" --subject "<path>" --stage validate
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/normalize-findings.sh" --subject "<path>" --stage validate
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/classify.sh" --subject "<path>"
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/manifest.sh" --subject "<path>" --phase port \
   --rationale "<state_dir>/rationale.json" --json
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" \
