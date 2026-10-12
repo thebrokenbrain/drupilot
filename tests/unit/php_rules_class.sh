@@ -20,9 +20,16 @@ assert_eq "removed-no-rule removed above P: not-applicable" "$(c '{"kind":"remov
 assert_eq "modernize at or below L: apply-modernize" "$(c '{"kind":"modernize","php_level":"8.1"}' 8.1 8.5)" "apply-modernize"
 assert_eq "modernize above L: not-applicable" "$(c '{"kind":"modernize","php_level":"8.2"}' 8.1 8.5)" "not-applicable"
 assert_eq "compat deprecated above P: not-applicable" "$(c '{"kind":"compat","deprecated_in":"8.4","drupal_safe":true}' 8.1 8.3)" "not-applicable"
-assert_eq "compat in the window, output runs on L, safe: apply-compat" \
-  "$(c '{"kind":"compat","deprecated_in":"8.4","output_min_php":"7.1","drupal_safe":true}' 8.1 8.4)" "apply-compat"
-assert_eq "compat with no output_min_php runs anywhere" "$(c '{"kind":"compat","deprecated_in":"8.2","drupal_safe":true}' 8.1 8.3)" "apply-compat"
+NULLABLE='"rule":"Rector\\Php84\\Rector\\Param\\ExplicitNullableParamTypeRector"'
+assert_eq "compat in the window, safe, its rule in the compat pass: apply-compat" \
+  "$(c '{"kind":"compat",'"$NULLABLE"',"deprecated_in":"8.4","output_min_php":"7.1","drupal_safe":true}' 8.1 8.4)" "apply-compat"
+assert_eq "compat deprecated above L, its rule in no pass: report-only" \
+  "$(c '{"kind":"compat","rule":"Rector\\X","deprecated_in":"8.4","output_min_php":"7.1","drupal_safe":true}' 8.1 8.4)" "report-only"
+assert_eq "compat deprecated at or below L (the level set runs it; no output_min_php runs anywhere)" \
+  "$(c '{"kind":"compat","rule":"Rector\\X","deprecated_in":"8.2","drupal_safe":true}' 8.2 8.3)" "apply-compat"
+assert_eq "RECTOR_COMPAT_RULES is the list templates/rector-compat.php.tmpl runs" \
+  "$(sed -n '/^\$drupilotCompatRules = /,/class_exists/p' "$T_REPO/templates/rector-compat.php.tmpl" | sed -n "s/^ *'\(.*\)',\$/\1/p" | sed 's/\\\\/\\/g')" \
+  "$RECTOR_COMPAT_RULES"
 assert_eq "compat whose fix needs a PHP above L: report-only" \
   "$(c '{"kind":"compat","deprecated_in":"8.4","output_min_php":"8.4","drupal_safe":true}' 8.1 8.5)" "report-only"
 assert_eq "compat not safe for Drupal: report-only" \
@@ -108,6 +115,39 @@ assert_eq "fix_at_floor: the PDO constants' fix needs 8.4, above the floor 8.1; 
 pt --floor 8.4 --target 8.5 --json
 assert_eq "  on the floor 8.4 the PDO constants' fix runs" "$(jq -c '[.findings[] | select(.id == "p85-pdo-mysql-constants") | .fix_at_floor]' "$T_OUT")" '[true]'
 rm -f "$S/src/Pdo.php"
+# Only the code is searched: a block comment, a string (inline JS, UI text), a
+# trailing comment, a heredoc and inline HTML hide nothing; PHP function and
+# cast names match regardless of case; a path with ':' and a Latin-1 byte on
+# the line change nothing; the rows without a pattern are listed.
+Q="$T_TMP/q"; mkdir -p "$Q/src/a:b"
+cat > "$Q/q.module" <<'PHP'
+<?php
+/*
+ Old D6 implementation:
+ while (list($k, $v) = each($items)) {
+*/
+$a = ['#markup' => '<script>jQuery(".q").each(function () {});</script>'];
+$b = t('Set a value for each (enabled) language.'); // each($x)
+$c = <<<EOT
+ heredoc each(
+ EOT;
+$d = Each($list);
+$e = ( INTEGER ) $v;
+?>
+<p>each( in HTML</p>
+PHP
+printf '<?php
+$y = each($x);
+' > "$Q/src/a:b/c.php"
+printf '<?php
+$t = each($a); // año
+' > "$Q/src/latin1.php"
+t_run "$T_SH" "$T_REPO/scripts/analysis/php-target.sh" --subject "$Q" --floor 8.1 --target 8.5 --json
+assert_eq "the code only: Each( and ( INTEGER ) in code, a ':' path, a Latin-1 line" \
+  "$T_RC|$(jq -r '[.findings[] | "\(.file):\(.line):\(.id)"] | join(" ")' "$T_OUT")" \
+  "0|q.module:11:removed-each q.module:12:p85-cast-names src/a:b/c.php:2:removed-each src/latin1.php:2:removed-each"
+assert_eq "the rows without a pattern are listed as unsearched" \
+  "$(jq -c '[(.unsearched | index("p84-csv-escape") != null), (.unsearched | index("removed-each"))]' "$T_OUT")" '[true,null]'
 E="$T_TMP/empty"; mkdir -p "$E"
 t_run "$T_SH" "$T_REPO/scripts/analysis/php-target.sh" --subject "$E" --floor 8.1 --target 8.5 --json
 assert_eq "a module with no PHP file: no finding" "$T_RC|$(jq -c '.findings' "$T_OUT")" "0|[]"

@@ -61,11 +61,10 @@
 #                  floor and run the suite; when it says failed, an item to fix the reported
 #                  Drupal 10 incompatibilities (or drop '^10') is added even
 #                  without this flag.
-#                  With --subject, each open PHP-window item of a worklist
-#                  extracted from the current sources (a construct removed in
-#                  the target PHP, a file a window PHP does not compile, a
-#                  deprecation whose fix needs a PHP above the floor) adds a
-#                  task too.
+#                  With --subject, each open PHP-window item of the worklist
+#                  (a construct removed in the target PHP, a file a window PHP
+#                  does not compile, a deprecation to fix by hand) adds a task
+#                  too, marked for a re-check when its file changed since.
 #   --core-matrix FILE  the verify-core-matrix.sh --json result to read
 #                  (default: the subject's persisted core-matrix.json when
 #                  --subject is given).
@@ -293,7 +292,8 @@ fi
 # extraction saw the current sources: php_window_items): one task each.
 if [[ -n "$SUBJECT" && -d "$SUBJECT" ]] && have_cmd jq; then
   _pw="$(php_window_items "$(cd "$SUBJECT" && pwd)" | jq -r '.[]
-    | "- [ ] \(if .blocking then "Fix" else "Review" end) `\(.file)` for the PHP window (\(.reason)): \((.messages | unique | join("; ")) // "")"' 2> /dev/null || true)"
+    | "- [ ] \(if .blocking then "Fix" else "Review" end) `\(.file)` for the PHP window (\(.reason)): \((.messages | unique | join("; ")) // "")"
+      + (if .fresh then "" else " (found before the file last changed: re-check it)" end)' 2> /dev/null || true)"
   if [[ -n "$_pw" ]]; then
     REMAINING="$REMAINING
 $_pw"

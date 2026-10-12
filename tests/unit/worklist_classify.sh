@@ -127,6 +127,12 @@ printf '{"recipes": [{"id": "meta.services-arity", "lane": "ai-free", "kind": "t
 t_run "$T_SH" "$CL" --findings "$T_TMP/f.json" --overlay "$T_TMP/ov.json" --core-floor 10.3 --json
 assert_eq "the project overlay replaces a recipe by id" "$(lane F-00000000000a)" "ai-free|meta.services-arity|-|open"
 assert_eq "  and keeps the plugin's other recipes" "$(lane F-000000000002)" "codemod|sig.hook-entity-operation|-|open"
+# A recipe whose message pattern matches a PHP-window finding's message does
+# not claim it (only an exact rule would).
+printf '{"recipes": [{"id": "x.msg", "lane": "ai-free", "kind": "template", "engine": "template", "matches": {"message_ere": "a message"}, "applies_when": {}, "template": {"why": "w"}, "postconditions": [{"type": "rescan"}], "version": "000000000000"}]}\n' > "$T_TMP/ov-msg.json"
+t_run "$T_SH" "$CL" --findings "$T_TMP/f.json" --overlay "$T_TMP/ov-msg.json" --core-floor 10.3 --json
+assert_eq "a message pattern never claims a PHP-window finding" "$(lane F-00000000000f)" "human|-|removed-in-target-php|open"
+assert_eq "  it still claims another finding with that message" "$(lane F-000000000009 | cut -d'|' -f1-2)" "ai-free|x.msg"
 printf '{"recipes": [{"id": "x", "lane": "nowhere", "kind": "template", "version": "000000000000", "matches": {}, "template": {"why": "w"}}]}\n' > "$T_TMP/ov-bad.json"
 t_run "$T_SH" "$CL" --findings "$T_TMP/f.json" --overlay "$T_TMP/ov-bad.json"
 assert_eq "an overlay recipe in an unknown lane: exit 1" "$T_RC" "1"

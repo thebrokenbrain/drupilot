@@ -338,11 +338,19 @@ jq -c --slurpfile idsf "$TMP/ids.json" --slurpfile ix "$INDEX" --slurpfile recto
              signatures: ($sig[0] | obj | verdict("signatures"; false)),
              metadata: ($meta[0] | obj | verdict("metadata"; false))}
             + (if ($expected | split(" ") | index("php-target")) then {"php-target": ($phpt[0] | obj | verdict("php-target"; false))} else {} end)
-            # php-lint: skipped when no leg could run (no Docker), partial when some could not.
+            # php-lint, from its legs: skipped when every leg was skipped (no
+            # Docker), failed when none ran and a run failed, partial when some
+            # did not run.
             + (if ($expected | split(" ") | index("php-lint")) then
                  {"php-lint": ($lint[0] | obj | verdict("php-lint"; false)
-                               | if . == "ok" then (($lint[0] | obj | .status) as $ls
-                                   | if $ls == "skipped" then "skipped" elif $ls == "partial" then "partial" else "ok" end)
+                               | if . == "ok" then
+                                   ([($lint[0] | obj | .legs | if type == "array" then . else [] end)[] | objects | .status]) as $ls
+                                   | ([$ls[] | select(. == "pass" or . == "fail")] | length) as $ran
+                                   | if ($ls | length) == 0 then "failed"
+                                     elif all($ls[]; . == "skipped") then "skipped"
+                                     elif $ran == 0 then "failed"
+                                     elif $ran < ($ls | length) then "partial"
+                                     else "ok" end
                                  else . end)}
                else {} end)),
      counts: {total: ($f | length),

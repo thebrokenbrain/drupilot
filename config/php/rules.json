@@ -295,7 +295,7 @@
     {
       "id": "p85-cast-names",
       "rule": null,
-      "detect": "ere:\\((boolean|integer|double|binary)\\)",
+      "detect": "ere-i:\\([[:space:]]*(boolean|integer|double|binary)[[:space:]]*\\)",
       "kind": "report-only",
       "deprecated_in": "8.5",
       "removed_in": null,
@@ -309,7 +309,7 @@
     {
       "id": "p85-noop-close",
       "rule": null,
-      "detect": "ere:(^|[^A-Za-z0-9_>:$])curl_close[[:space:]]*\\(",
+      "detect": "ere-i:(^|[^A-Za-z0-9_>:$])curl_close[[:space:]]*\\(",
       "kind": "report-only",
       "deprecated_in": "8.5",
       "removed_in": null,
@@ -323,7 +323,7 @@
     {
       "id": "p85-pdo-mysql-constants",
       "rule": null,
-      "detect": "ere:PDO::MYSQL_ATTR_[A-Z_]+",
+      "detect": "ere-i:PDO::MYSQL_ATTR_[A-Z_]+",
       "kind": "report-only",
       "deprecated_in": "8.5",
       "removed_in": null,
@@ -351,7 +351,7 @@
     {
       "id": "p81-strftime",
       "rule": null,
-      "detect": "ere:(^|[^A-Za-z0-9_>:$])(gm)?strftime[[:space:]]*\\(",
+      "detect": "ere-i:(^|[^A-Za-z0-9_>:$])(gm)?strftime[[:space:]]*\\(",
       "kind": "report-only",
       "deprecated_in": "8.1",
       "removed_in": null,
@@ -390,7 +390,7 @@
     {
       "id": "p84-lcg-value",
       "rule": null,
-      "detect": "ere:(^|[^A-Za-z0-9_>:$])lcg_value[[:space:]]*\\(",
+      "detect": "ere-i:(^|[^A-Za-z0-9_>:$])lcg_value[[:space:]]*\\(",
       "kind": "report-only",
       "deprecated_in": "8.4",
       "removed_in": null,
@@ -411,7 +411,7 @@
       "src": "https://www.php.net/manual/en/migration70.removed-exts-sapis.php",
       "verified": true,
       "construct": "the mysql extension (mysql_* functions)",
-      "detect": "ere:(^|[^A-Za-z0-9_>:$])mysql_[a-z_]+[[:space:]]*\\(",
+      "detect": "ere-i:(^|[^A-Za-z0-9_>:$])mysql_[a-z_]+[[:space:]]*\\(",
       "exclude": "ere:function[[:space:]]+&?mysql_[a-z_]+[[:space:]]*\\("
     },
     {
@@ -425,7 +425,7 @@
       "src": "https://www.php.net/manual/en/migration70.removed-exts-sapis.php",
       "verified": true,
       "construct": "the ereg extension (ereg(), eregi(), ereg_replace(), eregi_replace(), split(), spliti())",
-      "detect": "ere:(^|[^A-Za-z0-9_>:$])(eregi?|eregi?_replace|spliti?)[[:space:]]*\\(",
+      "detect": "ere-i:(^|[^A-Za-z0-9_>:$])(eregi?|eregi?_replace|spliti?)[[:space:]]*\\(",
       "exclude": "ere:function[[:space:]]+&?(eregi?|eregi?_replace|spliti?)[[:space:]]*\\("
     },
     {
@@ -439,7 +439,7 @@
       "src": "https://www.php.net/manual/en/migration72.deprecated.php ; https://www.php.net/manual/en/migration80.incompatible.php",
       "verified": true,
       "construct": "each()",
-      "detect": "ere:(^|[^A-Za-z0-9_>:$])each[[:space:]]*\\(",
+      "detect": "ere-i:(^|[^A-Za-z0-9_>:$])each[[:space:]]*\\(",
       "exclude": "ere:function[[:space:]]+&?each[[:space:]]*\\("
     },
     {
@@ -453,7 +453,7 @@
       "src": "https://www.php.net/manual/en/migration72.deprecated.php ; https://www.php.net/manual/en/migration80.incompatible.php",
       "verified": true,
       "construct": "create_function()",
-      "detect": "ere:(^|[^A-Za-z0-9_>:$])create_function[[:space:]]*\\(",
+      "detect": "ere-i:(^|[^A-Za-z0-9_>:$])create_function[[:space:]]*\\(",
       "exclude": "ere:function[[:space:]]+&?create_function[[:space:]]*\\("
     }
   ]

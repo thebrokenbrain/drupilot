@@ -421,11 +421,15 @@ printf '%s' "$PREC" | jq -e 'type == "object"' >/dev/null 2>&1 || PREC=""
         + (if ($p.window // null) != null then ", window `\($p.window | join(", "))`." else "." end) + "\n",
         (if $p.lint == null then "_php -l was not run on the window._\n"
          elif $p.lint.status == "skipped" then "_php -l was not run on the window (no Docker daemon, or no PHP image could be pulled)._\n"
-         else ( "| PHP | php -l | Errors | Deprecations |", "|---|---|---:|---:|",
+         else ( (if $p.lint.status == "error" then "**php -l could not run on the window** (every run failed or timed out).\n" else empty end),
+                "| PHP | php -l | Errors | Deprecations |", "|---|---|---:|---:|",
                 ($p.lint.legs[] | "| \(.php) | \(.status) | \(.errors // 0) | \(.deprecations // 0) |"), "" ) end),
         (if (($p.lint.deprecations // []) | length) > 0
          then ("**Compile-time deprecations:**\n",
                ($p.lint.deprecations[] | "- PHP \(.php) `\(.file):\(.line // "-")` — \(.message)"), "")
+         else empty end),
+        (if (($p.unsearched // []) | length) > 0
+         then "Not searched for (no pattern; `php -l` and PHPStan may still report them): \([$p.unsearched[] | "`\(.)`"] | join(", ")).\n"
          else empty end),
         (if (($p.items // []) | length) == 0 then "No construct of the window is left for a person.\n"
          else ("**Left for a person:**\n",

@@ -5,18 +5,24 @@
 # row is classified for the PHP floor L and the window's top P
 # (php_rule_class: deny, removed-blocking, apply-modernize, apply-compat,
 # report-only, not-applicable), and the module's PHP files are searched for
-# the constructs no Rector rule fixes:
+# the constructs of two classes still in the code (Rector's level sets fix
+# some forms of a few of them during the upgrade stage; what is left is
+# reported here):
 #   removed-blocking  removed at or below P: the code fatals on P; a blocking
 #                     finding (severity error) for a person
 #   report-only       deprecated at or below P, its fix needs a PHP above L or
 #                     no rule makes it: a warning for a person (fix_at_floor:
 #                     whether the fix runs on L, its output_min_php at or
 #                     below L or none)
-# A row is searched only when it has a `detect` ERE; its `exclude` ERE drops
-# the lines it matches (a method of the same name being declared). Comment
-# lines (//, #, * and /* starts) are not code. vendor/, node_modules/ and .git/
-# are left out. L and P are --floor / --target, else the module's own frozen
-# plan (php.floor and php.final), else the PHP target.
+# A row is searched only when it has a `detect` ERE (`ere:`, or `ere-i:` for
+# a case-insensitive one: PHP function and cast names); its `exclude` ERE
+# drops the lines it matches (a method of the same name being declared). The
+# rows of those classes without a pattern are listed in `unsearched`. Only the
+# code is searched: comments, string contents, heredocs and inline HTML are
+# blanked first (php_code_lines, scripts/lib/php-scan.sh), the line numbers
+# kept. vendor/, node_modules/ and .git/ are left out. L and P are --floor /
+# --target, else the module's own frozen plan (php.floor and php.final), else
+# the PHP target.
 #
 # Usage:
 #   php-target.sh --subject DIR [--floor X.Y] [--target X.Y] [--json]
@@ -26,8 +32,8 @@
 #     --target X.Y     the window's top P (default: the plan's php.final)
 #     --json           {tool, floor, target, classes: {class: [ids]},
 #                     findings: [{id, class, severity, file, line, construct,
-#                     deprecated_in, removed_in, fix_at_floor}], counts} on
-#                     STDOUT
+#                     deprecated_in, removed_in, fix_at_floor}], unsearched:
+#                     [ids], counts} on STDOUT
 #
 # Exit codes: 0 scanned (findings or not) · 1 usage error, or a bound that is
 # not X.Y.
@@ -35,6 +41,8 @@
 set -euo pipefail
 # shellcheck source=../lib/common.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+# shellcheck source=../lib/php-scan.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/php-scan.sh"
 
 SUBJECT=""; L=""; P=""; AS_JSON=0
 usage() { print_usage "${BASH_SOURCE[0]}"; }
@@ -60,29 +68,37 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-php-target.XXXXXX")"
 trap 'rm -rf "$TMP" 2> /dev/null || true' EXIT
 
 php_rules_classified "$L" "$P" > "$TMP/rules.json"
-# One grep per searched row over the module's PHP files: FILE:LINE:CODE lines
-# (no match is not an error). A comment line, and a line the row's exclude
-# matches, are dropped; a `#[` attribute is code.
-php_target_grep() {
-  ( cd "$SUBJECT" && find . \( -name vendor -o -name node_modules -o -name .git \) -prune -o -type f \
-      \( -name '*.php' -o -name '*.module' -o -name '*.inc' -o -name '*.install' -o -name '*.theme' \
-         -o -name '*.profile' -o -name '*.engine' \) -exec grep -nHE -- "$1" {} + 2> /dev/null ) || true
-  return 0
-}
+# The module's PHP files, each blanked to its code as $TMP/m/<n> (a name with
+# no ':' whatever the source path; line N of the source is line N of <n>).
+mkdir -p "$TMP/m"
+( cd "$SUBJECT" && find . \( -name vendor -o -name node_modules -o -name .git \) -prune -o -type f \
+    \( -name '*.php' -o -name '*.module' -o -name '*.inc' -o -name '*.install' -o -name '*.theme' \
+       -o -name '*.profile' -o -name '*.engine' \) -print 2> /dev/null || true ) | sed 's#^\./##' | LC_ALL=C sort > "$TMP/files"
+k=0
+while IFS= read -r f; do
+  k=$((k + 1))
+  php_code_lines "$SUBJECT/$f" > "$TMP/m/$k"
+done < "$TMP/files"
 : > "$TMP/hits.tsv"
 US="$(printf '\037')"
 jq -r '.[] | select((.class == "removed-blocking" or .class == "report-only") and .detect != null)
-       | [.id, .class, (.detect | sub("^ere:"; "")), ((.exclude // "") | sub("^ere:"; ""))] | join("\u001f")' "$TMP/rules.json" > "$TMP/searched"
-while IFS="$US" read -r id cls ere exc; do
+       | [.id, .class, .detect, ((.exclude // "") | sub("^ere(-i)?:"; ""))] | join("\u001f")' "$TMP/rules.json" > "$TMP/searched"
+# One grep per searched row over the blanked files: "./<n>:LINE:CODE" (no
+# match is not an error), the row's exclude applied, <n> mapped back to its path.
+while IFS="$US" read -r id cls det exc; do
   [[ -n "$id" ]] || continue
-  php_target_grep "$ere" > "$TMP/raw"
-  { grep -vE '^[^:]+:[0-9]+:[[:space:]]*(//|\*|/\*|#$|#[^[])' "$TMP/raw" || true; } > "$TMP/code"
+  gopt=(-E); ere="${det#ere:}"
+  case "$det" in ere-i:*) gopt=(-i -E); ere="${det#ere-i:}";; esac
+  { ( cd "$TMP/m" && LC_ALL=C find . -type f -exec grep -nH "${gopt[@]}" -- "$ere" {} + 2> /dev/null ) || true; } > "$TMP/raw"
   if [[ -n "$exc" ]]; then
-    { grep -vE -- "$exc" "$TMP/code" || true; } > "$TMP/kept"
+    { LC_ALL=C grep -v "${gopt[@]}" -- "$exc" "$TMP/raw" || true; } > "$TMP/kept"
   else
-    cp "$TMP/code" "$TMP/kept"
+    cp "$TMP/raw" "$TMP/kept"
   fi
-  awk -F: -v id="$id" -v cls="$cls" '{ f = $1; sub(/^\.\//, "", f); printf "%s\t%s\t%s\t%s\n", id, cls, f, $2 }' "$TMP/kept" >> "$TMP/hits.tsv"
+  LC_ALL=C awk -v id="$id" -v cls="$cls" 'NR == FNR { path[FNR] = $0; next }
+    { p = index($0, ":"); n = substr($0, 3, p - 3); r = substr($0, p + 1); q = index(r, ":")
+      ln = substr(r, 1, q - 1)
+      if ((n in path) && ln ~ /^[0-9]+$/) printf "%s\t%s\t%s\t%s\n", id, cls, path[n], ln }' "$TMP/files" "$TMP/kept" >> "$TMP/hits.tsv"
 done < "$TMP/searched"
 OUT="$(jq -R -s -c --slurpfile r "$TMP/rules.json" --arg L "$L" --arg P "$P" '
   def vn: split(".") | map(tonumber? // 0);
@@ -96,6 +112,7 @@ OUT="$(jq -R -s -c --slurpfile r "$TMP/rules.json" --arg L "$L" --arg P "$P" '
   | {tool: "php-target", floor: $L, target: $P,
      classes: ($r[0] | group_by(.class) | map({key: .[0].class, value: [.[].id]}) | from_entries),
      findings: $f,
+     unsearched: ([$r[0][] | select((.class == "removed-blocking" or .class == "report-only") and .detect == null) | .id] | sort),
      counts: {removed_blocking: ([$f[] | select(.class == "removed-blocking")] | length),
               report_only: ([$f[] | select(.class == "report-only")] | length)}}' "$TMP/hits.tsv")"
 if [[ "$AS_JSON" == "1" ]]; then

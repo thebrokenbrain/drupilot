@@ -301,6 +301,13 @@ jq '.status = "skipped" | .legs |= map(.status = "skipped" | .messages = [])' "$
 nf --raw-dir "$RP" --target-major 11 --soft-policy report --json
 assert_eq "php-lint: no Docker, the legs skipped: verdict skipped, no finding" \
   "$(j '[.tools["php-lint"], ([.findings[] | select(.rule | test("^php-(floor|removed-syntax|lint):"))] | length)]')" '["skipped",0]'
+jq '.status = "error" | .legs |= map(.status = "error")' "$RP/04-assess-php-lint.json" > "$RP/l" && mv "$RP/l" "$RP/04-assess-php-lint.json"
+nf --raw-dir "$RP" --target-major 11 --soft-policy report --json
+assert_eq "php-lint: no leg ran, a run failed: verdict failed" "$(j '.tools["php-lint"]')" '"failed"'
+jq '.status = "fail" | .legs[0].status = "fail" | .legs[0].messages = [{kind: "parse-error", file: "src/A.php", line: 20, message: "syntax error"}]' "$RP/04-assess-php-lint.json" > "$RP/l" && mv "$RP/l" "$RP/04-assess-php-lint.json"
+nf --raw-dir "$RP" --target-major 11 --soft-policy report --json
+assert_eq "php-lint: a leg failed, the others did not run: verdict partial, the finding kept" \
+  "$(j '[.tools["php-lint"], [.findings[] | select(.rule | test("^php-(floor|removed-syntax|lint):")) | .rule]]')" '["partial",["php-lint:8.1"]]'
 
 # The raw index: exactly one per stage, a JSON object.
 RI="$T_TMP/rawi"; mkraw "$RI" 0; printf '{"stage": ' > "$RI/04-assess-index.json"

@@ -38,6 +38,12 @@ rector_php_set_arg() {
 # ExplicitNullableParamTypeRector, deprecated in PHP 8.4), run right after the
 # official pass. M5 generates the compat list from config/php/rules.json.
 RECTOR_COMPAT_FROM_PHP="8.4"
+# The rules templates/rector-compat.php.tmpl lists, one FQCN per line (its
+# $drupilotCompatRules; tests/unit/php_rules_class.sh keeps them equal).
+# php_rule_class counts a compat row as applied only when it is one of these
+# or its deprecation is at or below L (the main pass's level set holds it).
+# shellcheck disable=SC2034  # read by plan.sh (_php_compat_rules_json)
+RECTOR_COMPAT_RULES='Rector\Php84\Rector\Param\ExplicitNullableParamTypeRector'
 
 # _rector_range_legs RANGE -> one caret leg per alternative of a core range,
 # one per line ("^10.3"), or "?" for an alternative it cannot read. ^X.Y,
@@ -228,11 +234,11 @@ php_cli_image() {
 # DIR in a throwaway container of php_cli_image X.Y (pulled once; the pull and
 # the run bounded by 300 s each), with no network. The tree is streamed in with
 # tar, .git, vendor and node_modules left out (no bind mount: nothing on the
-# host is relabelled or written). SCRIPT's STDOUT goes to OUT, its STDERR to
+# host is relabelled or written), the script passed as an argument. SCRIPT's STDOUT goes to OUT, its STDERR to
 # ERR (default: dropped). Prints the status: ran; skipped (no Docker daemon,
 # or the image could not be pulled); error (the run failed).
 php_lint_docker() {
-  local php="${1:-}" dir="${2:-}" script="${3:-}" out="${4:-}" err="${5:-/dev/null}" image tmp st="ran"
+  local php="${1:-}" dir="${2:-}" script="${3:-}" out="${4:-}" err="${5:-/dev/null}" image st="ran"
   [[ -n "$out" ]] && : > "$out"
   image="$(php_cli_image "$php")" && [[ -d "$dir" && -r "$script" && -n "$out" ]] || { printf 'error'; return 0; }
   docker_daemon_up || { printf 'skipped'; return 0; }
@@ -240,12 +246,12 @@ php_lint_docker() {
     log_info "Pulling $image for the PHP $php lint (once)."
     run_with_timeout 300 docker pull -q "$image" < /dev/null > /dev/null 2>&1 || { printf 'skipped'; return 0; }
   fi
-  tmp="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-lint.XXXXXX")" || { printf 'error'; return 0; }
-  cp "$script" "$tmp/.drupilot-lint.sh"
-  ( cd "$dir" && tar -cf - --exclude=.git --exclude=vendor --exclude=node_modules . -C "$tmp" .drupilot-lint.sh ) \
+  # The script travels as an argument, not in the archive: a `-C` between
+  # members is not portable (BusyBox tar applies it to the whole list).
+  ( cd "$dir" && tar -cf - --exclude=.git --exclude=vendor --exclude=node_modules . ) \
     | run_with_timeout 300 docker run --rm -i --network none "$image" \
-        sh -c 'mkdir -p /s && cd /s && tar -xf - && sh ./.drupilot-lint.sh .' > "$out" 2> "$err" || st="error"
-  rm -rf "$tmp" 2> /dev/null || true
+        sh -c 'mkdir -p /s && cd /s && tar -xf - && printf "%s\n" "$1" > /tmp/.drupilot-lint.sh && sh /tmp/.drupilot-lint.sh .' \
+        sh "$(cat "$script")" > "$out" 2> "$err" || st="error"
   printf '%s' "$st"
   return 0
 }

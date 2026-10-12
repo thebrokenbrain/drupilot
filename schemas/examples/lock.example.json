@@ -1,5 +1,5 @@
 {
-  "data_hash": "sha256:ffea79ce3e6eeb6773d2503207f0738dd292e8752251a7c93c288f253bc41ce9",
+  "data_hash": "sha256:f9b420ca312c25b92d63c4bd5c089228d6aa75cf2794e6c26a0f038e80d64670",
   "drupal": {
     "core": "11.4.8"
   },
@@ -14,7 +14,7 @@
       "OPT_IN_TEST_PREVIOUS_MAJOR": 1
     },
     "core_removals": null,
-    "data_hash": "sha256:ffea79ce3e6eeb6773d2503207f0738dd292e8752251a7c93c288f253bc41ce9",
+    "data_hash": "sha256:f9b420ca312c25b92d63c4bd5c089228d6aa75cf2794e6c26a0f038e80d64670",
     "detectors": [
       "removed-ext-11",
       "signature-changes"
@@ -117,6 +117,6 @@
     "toolchain_cell": "11",
     "workspace_suffix": "-d11"
   },
-  "upgrade_plan_hash": "sha256:94fd47d6c34a01d56dca46566d82842fd348ea752554eaad579392a083e0bef0",
+  "upgrade_plan_hash": "sha256:c68340aa14fbd190fb5d73714ab6f60282dccd6a02adbfefc91b008499af5f2e",
   "upgrade_plan_phase": "final"
 }

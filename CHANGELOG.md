@@ -25,11 +25,13 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     `apply-modernize`, `apply-compat`, `report-only` or `not-applicable`.
   - `scripts/analysis/php-target.sh --subject DIR [--floor X.Y] [--target
     X.Y] --json`: the module's PHP files searched for the `removed-blocking`
-    and `report-only` constructs no Rector rule fixes (`each()`,
+    and `report-only` constructs still in the code (`each()`,
     `create_function()`, `mysql_*`, `ereg*`, the old cast names,
-    `PDO::MYSQL_ATTR_*`, `strftime()`, ...); comment lines, a row's
-    `exclude` and `vendor/` left out; the bounds from the module's own frozen
-    plan.
+    `PDO::MYSQL_ATTR_*`, `strftime()`, ...), the rows without a pattern
+    listed as `unsearched`; only the code is searched (`php_code_lines` in
+    `scripts/lib/php-scan.sh` blanks comments, string contents, heredocs and
+    inline HTML, the line numbers kept), a row's `exclude` and `vendor/` left
+    out; the bounds from the module's own frozen plan.
   - `scripts/analysis/php-lint-window.sh --subject DIR [--window "X.Y ..."]
     --json`: `php -l` on every PHP minor of the window, each in a throwaway
     official `php:X.Y-cli` container (the image of `config/php/versions.json`,
@@ -51,9 +53,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     compile-time deprecations, the items); `port-report.md` has a **PHP
     window** section; `make-issue.sh --subject` adds a remaining task per
     open item; `port-summary.sh` reports a `php-target` blocker, and
-    `--strict` exits 3, while an open blocking item of the window remains in
-    a worklist extracted from the current sources (`worklist_fresh`,
-    `php_window_items` in `scripts/lib/canon.sh`).
+    `--strict` exits 3, while an open blocking item of the window remains and
+    its file is the one it was found in (`file_hash` on the item;
+    `worklist_fresh`, `php_window_items` in `scripts/lib/canon.sh`). A
+    PHP-window finding takes a recipe only by its exact rule.
 - **The `php_window` fixture** and the completed `d11_php_only` fixture
   (T-M5-01), with the goldens `tests/golden/php-window/` (the scans of both
   windows of the plan) and the lab recordings of their `php -l` legs
@@ -64,11 +67,19 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   classes, the php stage and where its items show.
 
 ### Changed
-- `config/php/rules.json`: the `report-only` rows carry a `detect` pattern
-  (the data snapshot `ffea79ce…` is vendored). The goldens `plans`,
-  `templates`, `core-strategy` and `detect-source` are pinned to it and
-  re-recorded: outside `d11_php_only`, only the plans' `data_hash` and the
-  PHPStan cache directory derived from the plan hash changed.
+- `config/php/rules.json`: the `report-only` rows carry a `detect` pattern,
+  and the patterns of PHP function and cast names match regardless of case
+  (`ere-i:`, `schemas/php-rules.schema.json`).
+- `php_rule_class` counts a compat row as `apply-compat` only when a pass
+  runs its rule: the main pass's level set at L, or the compat pass
+  (`RECTOR_COMPAT_RULES` in `scripts/lib/toolchain.sh`); the other compat
+  rows of the window are `report-only`.
+- The version data changed (the patterns above and the `output_min_php`
+  values of Fixed): the data snapshot `f9b420ca…` is vendored, and the
+  goldens `plans`, `templates`, `core-strategy` and `detect-source` are
+  pinned to it and re-recorded. Outside `d11_php_only`, only the plans'
+  `data_hash` and the PHPStan cache directory derived from the plan hash
+  changed.
 - `tests/fixtures/d11_php_only` declares `^11.3` and has an implicitly
   nullable parameter and an `each()` call; its rows of the goldens above are
   re-recorded.

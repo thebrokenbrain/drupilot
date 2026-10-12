@@ -153,7 +153,10 @@ jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile asf "$TMP/actions.json" --a
         elif $f.severity == "info" then {lane: "deferred", recipe: null, reason: "info"}
         elif $f.class == "style" then {lane: "deferred", recipe: null, reason: "style"}
         else
-          ([$recipes[] | {r: ., k: rank($f)} | select(.k < 9)] | sort_by([.k, .r.id]) | map(.r)) as $cands
+          # A PHP-window finding takes a recipe only by its exact rule: its
+          # message quotes the code, so a message pattern could claim it.
+          ($f.tool == "catalog" and ($f.rule | test("^php-(removed|removed-syntax|report|manual|floor|lint):"))) as $phpw
+          | ([$recipes[] | {r: ., k: rank($f)} | select(.k < (if $phpw then 1 else 9 end))] | sort_by([.k, .r.id]) | map(.r)) as $cands
           | [$cands[] | select(applies($f) and (failed($f) | not))] as $ok
           | if ($ok | length) > 0 then {lane: $ok[0].lane, recipe: $ok[0].id, reason: null, applied: ($ok[0] | applied($f))}
             elif ($cands | length) > 0 then
@@ -195,6 +198,24 @@ jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile asf "$TMP/actions.json" --a
          reason: ([$g[] | .c.reason | select(. != null)] | unique | if length == 0 then null else join("; ") end),
          status: (if $h.c.lane == "deferred" then "deferred" elif all($g[]; .c.applied == true) then "applied" else "open" end)})
   | sort_by([(.lane as $l | $order | index($l)), .file, .anchor])' "$FINDINGS" > "$TMP/items.json"
+
+# A PHP-window item keeps the hash of its file as classified (--subject only):
+# a later edit of another file leaves it current (php_window_items).
+if [[ -n "$SUBJECT" ]]; then
+  jq -r --arg re "$PHP_WINDOW_REASONS_ERE" '.[] | select(.lane == "human" and ((.reason // "") | test($re))) | .file' "$TMP/items.json" \
+    | LC_ALL=C sort -u > "$TMP/phpw-files"
+  : > "$TMP/phpw-hashes.tsv"
+  while IFS= read -r pf; do
+    [[ -n "$pf" && -f "$SUBJECT/$pf" ]] || continue
+    printf '%s\t%s\n' "$pf" "$(file_hash "$SUBJECT/$pf")" >> "$TMP/phpw-hashes.tsv"
+  done < "$TMP/phpw-files"
+  if [[ -s "$TMP/phpw-hashes.tsv" ]]; then
+    jq -c --rawfile h "$TMP/phpw-hashes.tsv" --arg re "$PHP_WINDOW_REASONS_ERE" '
+      ($h | split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: .[1]}) | from_entries) as $fh
+      | map(if .lane == "human" and ((.reason // "") | test($re)) and $fh[.file] != null then . + {file_hash: $fh[.file]} else . end)' \
+      "$TMP/items.json" > "$TMP/items2.json" && mv -f "$TMP/items2.json" "$TMP/items.json"
+  fi
+fi
 
 # Item ids: "W-" + 12 hex of sha256(file 0x1f anchor 0x1f lane), one hasher run.
 SEP="$(printf '\037')"

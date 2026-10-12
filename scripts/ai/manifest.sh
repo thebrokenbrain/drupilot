@@ -221,6 +221,7 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
      php_window: (if $phpt[0] == null and $lint[0] == null then null
                   else {floor: ($phpt[0].floor // null), target: ($phpt[0].target // null),
                         window: ($lint[0].window // null),
+                        unsearched: ($phpt[0].unsearched // []),
                         lint: (if $lint[0] == null then null
                                else {status: $lint[0].status,
                                      legs: [($lint[0].legs // [])[] | {php, status, errors, deprecations}],

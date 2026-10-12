@@ -248,36 +248,51 @@ worklist_set() {
 
 # worklist_fresh [SUBJECT] -> 0 when the subject's worklist comes from an
 # extraction of its current sources: the raw index of the worklist's stage
-# records the subject_digest the subject has now. 1 otherwise (no worklist,
-# no index, an older extraction, or sources changed since).
+# records the subject_digest the subject has now, findings.json was built from
+# that very index (its meta.raw hash) and the worklist from that findings.json
+# (meta.findings_hash). 1 otherwise (no worklist, no index, an older
+# extraction, or sources changed since).
 worklist_fresh() {
-  local s="${1:-$PWD}" sd st ix="" f d
-  sd="$(project_state_path "$s")"
-  st="$(jq -r '.stage // empty' "$(worklist_file "$s")" 2> /dev/null || true)"
+  local s="${1:-$PWD}" sd w st ix="" f d
+  sd="$(project_state_path "$s")"; w="$(worklist_file "$s")"
+  st="$(jq -r '.stage // empty' "$w" 2> /dev/null || true)"
   [[ "$st" =~ ^[a-z0-9-]+$ ]] || return 1
   for f in "$sd"/raw/[0-9][0-9]-"$st"-index.json; do [[ -f "$f" ]] && ix="$f"; done
-  [[ -n "$ix" ]] || return 1
+  [[ -n "$ix" && -r "$sd/findings.json" ]] || return 1
   d="$(jq -r '.subject_digest // empty' "$ix" 2> /dev/null || true)"
-  [[ -n "$d" && "$d" == "$(subject_digest "$s")" ]]
+  [[ -n "$d" && "$d" == "$(subject_digest "$s")" ]] || return 1
+  jq -e --arg ix "${ix##*/}" --arg h "$(canon_json_hashable < "$ix" | json_hash)" --slurpfile w "$w" \
+    '(.meta.raw[$ix] // "") == $h and (.meta.findings_hash // "") != "" and (.meta.findings_hash == ($w[0].meta.findings_hash // ""))' \
+    "$sd/findings.json" > /dev/null 2>&1
 }
 
 # The worklist reasons of the PHP window's items (classify.sh), as one ERE.
 PHP_WINDOW_REASONS_ERE='removed-in-target-php|does-not-compile|fix-needs-php-above-floor|deprecated-no-rule'
 
 # php_window_items [SUBJECT] -> the open human worklist items of the PHP window
-# (a reason of PHP_WINDOW_REASONS_ERE), as one JSON array of {file, reason, blocking, messages}
-# (messages: the items' findings, from findings.json); [] when there is no
-# worklist or it is not fresh (worklist_fresh).
+# (a reason of PHP_WINDOW_REASONS_ERE), as one JSON array of {file, reason,
+# blocking, fresh, messages} (messages: the items' findings, from
+# findings.json). An item is fresh while its file still has the hash it was
+# classified with (file_hash), else while the whole worklist is fresh
+# (worklist_fresh); [] when there is no worklist.
 php_window_items() {
-  local s="${1:-$PWD}" w f
+  local s="${1:-$PWD}" w f wf=false hashes='{}' pf
   w="$(worklist_file "$s")"; f="$(project_state_path "$s")/findings.json"
-  if [[ ! -r "$w" ]] || ! worklist_fresh "$s"; then printf '[]\n'; return 0; fi
+  [[ -r "$w" ]] || { printf '[]\n'; return 0; }
+  worklist_fresh "$s" && wf=true
   [[ -r "$f" ]] || f=/dev/null
-  jq -c --slurpfile fd "$f" --arg re "$PHP_WINDOW_REASONS_ERE" '
+  # The current hash of every file a PHP-window item names.
+  hashes="$(jq -r --arg re "$PHP_WINDOW_REASONS_ERE" '[(.items // [])[] | select(.lane == "human" and ((.reason // "") | test($re))) | .file] | unique[]' "$w" 2> /dev/null \
+    | while IFS= read -r pf; do
+        if [[ -n "$pf" && -f "$s/$pf" ]]; then printf '%s\t%s\n' "$pf" "$(file_hash "$s/$pf")"; fi
+      done | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: .[1]}) | from_entries' 2> /dev/null || printf '{}')"
+  [[ -n "$hashes" ]] || hashes='{}'
+  jq -c --slurpfile fd "$f" --arg re "$PHP_WINDOW_REASONS_ERE" --argjson wf "$wf" --argjson now "$hashes" '
     (($fd[0] // {}).findings // []) as $F
     | [(.items // [])[] | select(.status == "open" and .lane == "human" and ((.reason // "") | test($re)))
        | . as $i
        | {file, reason, blocking: (.blocking == true),
+          fresh: (if (.file_hash // null) != null then ($now[.file] // null) == .file_hash else $wf end),
           messages: [$F[] | select(.id as $x | ($i.finding_ids // []) | index($x)) | .message]}]' "$w" 2> /dev/null || printf '[]\n'
   return 0
 }

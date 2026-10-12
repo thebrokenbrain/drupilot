@@ -28,10 +28,10 @@ stub() {  # stub PATH BODY
 stub analysis/run-rector.sh 'printf "// rector\n" >> "$STUB_SUBJECT/src/A.php"; exit "${STUB_RECTOR_RC:-0}"'
 stub ai/extract.sh 'st=""; prev=""; for a in "$@"; do [ "$prev" = "--stage" ] && st="$a"; prev="$a"; done
 nn="${STUB_NN:-$(printf "%02d" "$(jq -r --arg s "$st" "[.stages[].id] | index(\$s) + 1" "$STUB_CAT")")}"
-mkdir -p "$STUB_SD/raw"; printf "{}\n" > "$STUB_SD/raw/$nn-$st-phpstan.json"; exit 0'
+mkdir -p "$STUB_SD/raw"; printf "{}\n" > "$STUB_SD/raw/$nn-$st-phpstan.json"; exit "${STUB_EXTRACT_RC:-0}"'
 # The findings and the worklist: one PHP-window finding, in an item unless
 # STUB_PHP_GAP is set.
-stub ai/normalize-findings.sh 'printf "%s\n" "{\"findings\":[{\"id\":\"F-1\",\"tool\":\"catalog\",\"class\":\"php-target\"}]}" > "$STUB_SD/findings.json"; exit 0'
+stub ai/normalize-findings.sh 'printf "%s\n" "{\"tools\":{\"php-lint\":\"${STUB_LINT:-ok}\"},\"findings\":[{\"id\":\"F-1\",\"tool\":\"catalog\",\"class\":\"php-target\"}]}" > "$STUB_SD/findings.json"; exit 0'
 stub ai/classify.sh 'if [ -n "${STUB_PHP_GAP:-}" ]; then ids=""; else ids="\"F-1\""; fi
 printf "%s\n" "{\"items\":[{\"lane\":\"human\",\"status\":\"open\",\"blocking\":true,\"reason\":\"removed-in-target-php\",\"finding_ids\":[$ids]}]}" > "$STUB_SD/worklist.json"; exit 0'
 stub ai/apply-recipes.sh 'exit 0'
@@ -110,6 +110,21 @@ assert_eq "  the tree back at validate's checkpoint: its edit undone, its new fi
 assert_eq "  HEAD and the real index still untouched" "$(g rev-parse HEAD)|$(g diff --cached --name-only | wc -l | tr -d ' ')" "$HEAD0|0"
 pl
 assert_eq "  the next run resumes at validate (upgrade is up to date)" "$T_RC|$(calls)" "0|fixpoint,manifest,port-report"
+
+# The php stage: Rector's or PHPStan's missing verdict (extract exit 3) is
+# validate's to judge; a php -l that did not run on every leg, or a placeholder
+# record of 1.0.0-alpha.1, is never up to date.
+STUB_EXTRACT_RC=3 pl --stages php --force
+assert_eq "extract.sh exit 3 in php: warned, the stage done" "$T_RC|$(st php)|$(calls)" "0|done|-|extract,normalize-findings,classify"
+STUB_LINT=skipped pl --stages php --force
+assert_eq "php -l skipped: done, its reason recorded" "$T_RC|$(st php)" "0|done|php-lint-skipped"
+STUB_LINT=skipped pl --stages php
+assert_eq "  so the stage is not up to date: it runs again" "$T_RC|$(calls)" "0|extract,normalize-findings,classify"
+jq '.stages.php.status = "skipped" | .stages.php.reason = "placeholder"' "$SD/stages.json" > "$T_TMP/st" && mv "$T_TMP/st" "$SD/stages.json"
+pl --stages php
+assert_eq "an alpha.1 placeholder record on the same tree: the stage runs" "$T_RC|$(calls)|$(st php)" "0|extract,normalize-findings,classify|done|-"
+pl --stages php
+assert_eq "  then it is up to date" "$T_RC|$(calls)" "0|"
 
 # The php gate: a PHP-window finding in no worklist item fails the stage.
 STUB_PHP_GAP=1 pl --stages php --force

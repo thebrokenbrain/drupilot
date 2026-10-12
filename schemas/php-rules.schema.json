@@ -32,7 +32,7 @@
         "removed_in": {"$ref": "#/$defs/php_or_null"},
         "output_min_php": {"description": "The lowest PHP the fixed code runs on.", "$ref": "#/$defs/php_or_null"},
         "drupal_safe": {"description": "Whether the rewrite keeps Drupal behaviour (false for __sleep/__wakeup, see DependencySerializationTrait).", "type": ["boolean", "null"]},
-        "detect": {"description": "For a construct no rule fixes: a POSIX ERE (prefixed ere:) that finds it.", "type": "string", "pattern": "^ere:"},
+        "detect": {"description": "A POSIX ERE that finds the construct in the code (comments and string contents are blanked first): prefixed ere:, or ere-i: when it matches regardless of case (PHP function and cast names).", "type": "string", "pattern": "^ere(-i)?:"},
         "exclude": {"description": "A POSIX ERE (prefixed ere:) for the lines a detect match must not count, such as a method of the same name being declared (ERE has no lookbehind).", "type": "string", "pattern": "^ere:"},
         "construct": {"type": "string"},
         "reason": {"type": "string"},

@@ -537,3 +537,66 @@ php_annotation_keys() {
     }' "$1"
   return 0
 }
+
+# php_code_lines FILE -> FILE's lines with only the PHP code left: comments
+# (/* */ across lines, //, and # but not a #[ attribute), the contents of
+# '...', "..." and `...` literals (the quotes kept, multi-line ones too), the
+# bodies of heredocs and nowdocs, and the inline HTML outside <?php ... ?>
+# replaced by spaces. One output line per input line, so a grep on the output
+# gives the source's line numbers. A line-oriented tokenizer, not a parser: an
+# expression interpolated into a double-quoted string is blanked with it.
+# Byte semantics (LC_ALL=C), whatever the file's encoding. Never fails.
+php_code_lines() {
+  local f="${1:-}"
+  [[ -f "$f" ]] || return 0
+  LC_ALL=C awk '
+function blank(s,   t) { t = s; gsub(/[^\t]/, " ", t); return t }
+BEGIN { st = "html"; lbl = "" }
+{
+  line = $0; n = length(line); i = 1; out = ""
+  if (st == "here") {
+    t = line; sub(/^[ \t]+/, "", t); k = length(lbl)
+    if (substr(t, 1, k) == lbl && (length(t) == k || substr(t, k + 1, 1) !~ /[A-Za-z0-9_]/)) {
+      i = n - length(t) + k + 1; out = blank(substr(line, 1, i - 1)); st = "code"
+    } else { print ""; next }
+  }
+  while (i <= n) {
+    c = substr(line, i, 1); c2 = substr(line, i, 2)
+    if (st == "html") {
+      if (c2 == "<?") {
+        if (tolower(substr(line, i, 5)) == "<?php") { out = out "     "; i += 5 }
+        else if (substr(line, i, 3) == "<?=") { out = out "   "; i += 3 }
+        else { out = out "  "; i += 2 }
+        st = "code"; continue
+      }
+      out = out " "; i++; continue
+    }
+    if (st == "block") {
+      if (c2 == "*/") { out = out "  "; i += 2; st = "code" } else { out = out " "; i++ }
+      continue
+    }
+    if (st == "sq" || st == "dq" || st == "bt") {
+      q = (st == "sq" ? "\047" : (st == "dq" ? "\"" : "`"))
+      if (c == "\\") { out = out "  "; i += 2; continue }
+      if (c == q) { out = out c; st = "code" } else { out = out " " }
+      i++; continue
+    }
+    if (c2 == "/*") { out = out "  "; i += 2; st = "block"; continue }
+    if (c2 == "//" || (c == "#" && substr(line, i + 1, 1) != "[")) break
+    if (c2 == "?>") { out = out "  "; i += 2; st = "html"; continue }
+    if (c == "\047") { out = out c; i++; st = "sq"; continue }
+    if (c == "\"") { out = out c; i++; st = "dq"; continue }
+    if (c == "`") { out = out c; i++; st = "bt"; continue }
+    if (substr(line, i, 3) == "<<<") {
+      r = substr(line, i + 3)
+      if (match(r, /^[ \t]*["\047]?[A-Za-z_][A-Za-z0-9_]*/)) {
+        lbl = substr(r, RSTART, RLENGTH); gsub(/[ \t"\047]/, "", lbl)
+        out = out "<<<"; st = "here"; break
+      }
+    }
+    out = out c; i++
+  }
+  print out
+}' "$f" 2> /dev/null || true
+  return 0
+}

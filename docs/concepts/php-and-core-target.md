@@ -32,8 +32,8 @@ exactly one class, in this order:
 | `deny` | A rule that would break Drupal | Rector never runs it (the `withSkip()` of `rector.php`) |
 | `removed-blocking` | Removed at or below P, and no safe fix runs on L | A blocking item for a person |
 | `apply-modernize` | A modernizing rule whose PHP is at or below L | Rector's PHP level set at L |
-| `apply-compat` | Deprecated or removed at or below P, its fix is safe for Drupal and runs on L | The Rector compat pass (ADR 0002) |
-| `report-only` | Deprecated at or below P, but its fix needs a PHP above L or no rule makes it | Reported for a person |
+| `apply-compat` | Deprecated or removed at or below P, its fix is safe for Drupal and runs on L, and a pass runs it | Rector: the level set at L, or the compat pass (ADR 0002) |
+| `report-only` | Deprecated at or below P, but its fix needs a PHP above L or no pass runs a rule for it | Reported for a person |
 | `not-applicable` | Deprecated and removed above P | Nothing |
 
 `php_rule_class` in `scripts/lib/plan.sh` computes the class. The same row can
@@ -48,16 +48,21 @@ PHP-window tools besides the analyzers:
 
 - **The construct scan** (`scripts/analysis/php-target.sh`). It searches the
   module's PHP files for the `removed-blocking` and `report-only` constructs
-  that no Rector rule fixes: `each()`, `create_function()`, the `mysql_*` and
-  `ereg*` functions, the old cast names, the `PDO::MYSQL_ATTR_*` constants,
-  `strftime()`, and the others the data lists with a pattern. Comment lines
-  and `vendor/` are left out.
+  still in the code: `each()`, `create_function()`, the `mysql_*` and `ereg*`
+  functions, the old cast names, the `PDO::MYSQL_ATTR_*` constants,
+  `strftime()`, and the others the data has a pattern for. Rector's level
+  sets rewrite some forms of a few of them during `upgrade`; whatever is left
+  is reported here. Only the code is searched: comments, the contents of
+  strings, heredocs and inline HTML are blanked first, and `vendor/` is left
+  out. The rules of those classes without a pattern are listed as not
+  searched in the report.
 - **`php -l` on each PHP of the window** (`scripts/analysis/php-lint-window.sh`).
   Each minor runs in a throwaway official `php:X.Y-cli` container. The module
   is streamed in with no network and no bind mount. A file one of those PHPs
   does not compile fails that leg. The compiler's deprecations are reported,
   such as an implicitly nullable parameter from PHP 8.4. Without a Docker
-  daemon the legs are skipped, and the report says so.
+  daemon the legs are skipped, and the report says so; a stage whose legs did
+  not all run is run again next time.
 
 Their findings reach the [worklist](../reference/state.md#worklist) as
 `human` items, each with a reason:
@@ -65,7 +70,7 @@ Their findings reach the [worklist](../reference/state.md#worklist) as
 | Reason | Found by | Blocks |
 |---|---|---|
 | `removed-in-target-php` | the scan (a removed construct), or a leg that fails only on the higher PHP | yes |
-| `does-not-compile` | no PHP of the window compiles the file | yes |
+| `does-not-compile` | no PHP of the window that ran compiles the file | yes |
 | `fix-needs-php-above-floor` | the scan (a deprecated construct whose fix needs a PHP above L) | no |
 | `deprecated-no-rule` | the scan (a deprecated construct whose fix runs on L, but no Rector rule makes it) | no |
 | `fix-needs-php-above-floor` | a leg that fails on the floor while a higher PHP compiles it | yes |
@@ -80,9 +85,11 @@ dropped silently.
   the items left for a person.
 - **`port-summary.sh --strict`** exits 3 while an open blocking item of the
   window remains, with a `php-target` blocker. This applies only once the
-  module is ported and while the worklist describes the current sources.
+  module is ported, and only while the item's file is still the one it was
+  found in: an edited file is reported with a warning until the `php` stage
+  runs again.
 - **The issue text** (`make-issue.sh`) lists each open item as a remaining
-  task.
+  task, and marks one whose file changed since for a re-check.
 
 ## Not yet in this pre-release
 

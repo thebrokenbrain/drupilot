@@ -2,9 +2,6 @@
   "classes": {
     "apply-compat": [
       "p84-implicit-nullable",
-      "p82-interpolation",
-      "p83-get-class-no-args",
-      "p84-csv-escape",
       "p74-implode-order"
     ],
     "deny": [
@@ -37,7 +34,10 @@
       "removed-create-function"
     ],
     "report-only": [
+      "p82-interpolation",
       "p82-utf8-encode",
+      "p83-get-class-no-args",
+      "p84-csv-escape",
       "p80-optional-before-required",
       "p81-strftime",
       "p81-filter-sanitize-string",
@@ -52,5 +52,12 @@
   "findings": [],
   "floor": "8.1",
   "target": "8.4",
-  "tool": "php-target"
+  "tool": "php-target",
+  "unsearched": [
+    "p80-optional-before-required",
+    "p82-interpolation",
+    "p82-utf8-encode",
+    "p83-get-class-no-args",
+    "p84-csv-escape"
+  ]
 }

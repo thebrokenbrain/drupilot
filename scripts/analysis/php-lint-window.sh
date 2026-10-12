@@ -24,12 +24,12 @@
 #                     line, message}]}], meta: {php_versions}} on STDOUT
 #
 # status: pass (every leg ran and compiled), fail (a leg did not compile),
-# skipped (no leg ran: no Docker daemon, or no image could be pulled) or
-# partial (some legs could not run, none failed). A leg is pass, fail, skipped
-# or error.
+# skipped (every leg skipped: no Docker daemon, or no image could be pulled),
+# error (no leg ran, and a run failed or timed out) or partial (some legs ran
+# and compiled, others could not run). A leg is pass, fail, skipped or error.
 #
 # Exit codes: 0 linted (whatever the legs found; see status) · 1 usage error,
-# or a window minor that is not X.Y.
+# an empty window, or a window minor that is not X.Y.
 # =============================================================================
 set -euo pipefail
 # shellcheck source=../lib/common.sh
@@ -55,6 +55,7 @@ WINDOW="$(printf '%s' "$WINDOW" | tr ',' ' ')"
 for v in $WINDOW; do
   [[ "$v" =~ ^[0-9]+\.[0-9]+$ ]] || die "A window minor is a PHP version X.Y (got '$v')." 1
 done
+[[ -n "$(printf '%s' "$WINDOW" | tr -d ' ')" ]] || die "The window holds no PHP version." 1
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-php-lint.XXXXXX")"
 trap 'rm -rf "$TMP" 2> /dev/null || true' EXIT
 
@@ -72,7 +73,15 @@ find . \( -name .git -o -name vendor -o -name node_modules \) -prune -o -type f 
 while IFS= read -r f; do
   out="$(php -d display_errors=1 -d log_errors=0 -d html_errors=0 -d error_reporting=-1 -l "$f" 2>&1)"
   rc=$?
-  printf '%s\n' "$out" | sed -n 's/^\(PHP \)\{0,1\}\([A-Z][A-Za-z ]*\): *\(.*\) in \(.*\) on line \([0-9][0-9]*\)$/M\t\2\t\4\t\5\t\3/p'
+  # Each "<Kind>: <message> in <f> on line <N>" line, cut at the file php -l
+  # was given (a path may itself contain " in ").
+  printf '%s\n' "$out" | awk -v f="$f" '{
+    pat = " in " f " on line "; p = index($0, pat); if (p == 0) next
+    n = substr($0, p + length(pat)); if (n !~ /^[0-9]+$/) next
+    m = substr($0, 1, p - 1); sub(/^PHP /, "", m); q = index(m, ": "); if (q == 0) next
+    k = substr(m, 1, q - 1); if (k !~ /^[A-Z][A-Za-z ]*$/) next
+    msg = substr(m, q + 2); sub(/^ +/, "", msg)
+    printf "M\t%s\t%s\t%s\t%s\n", k, f, n, msg }'
   [ "$rc" -eq 0 ] || printf 'X\t%s\t%s\n' "$f" "$rc"
 done
 exit 0
@@ -104,8 +113,9 @@ OUT="$(jq -s -c --arg w "$WINDOW" '
   {tool: "php-lint", window: ($w | split(" ") | map(select(length > 0))),
    status: (if any(.[]; .status == "fail") then "fail"
             elif all(.[]; .status == "pass") then "pass"
+            elif all(.[]; .status == "skipped") then "skipped"
             elif any(.[]; .status == "pass") then "partial"
-            else "skipped" end),
+            else "error" end),
    legs: map(del(.version)),
    meta: {php_versions: (map(select(.version != null) | {key: .php, value: .version}) | from_entries)}}' "$LEGS")"
 if [[ "$AS_JSON" == "1" ]]; then

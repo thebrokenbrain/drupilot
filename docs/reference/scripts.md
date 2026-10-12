@@ -402,7 +402,12 @@ The stages:
             legs of php-lint-window.sh), normalize-findings.sh and
             classify.sh: the PHP-window findings become human worklist
             items (removed-in-target-php blocks); a finding in no item
-            fails the stage. It runs on every plan, a same-major one too
+            fails the stage. It runs on every plan, a same-major one too.
+            Rector's or PHPStan's missing verdict (extract.sh exit 3) is
+            warned about (validate's fixpoint judges it); a php -l that
+            did not run on every leg is recorded as the reason
+            php-lint-skipped|partial|failed, and such a record (like a
+            skipped "placeholder" one of 1.0.0-alpha.1) is never up to date
   validate  the fixpoint gate (fixpoint.sh: the extraction again, the
             codemods in dry-run); its exit 3 (DRUPILOT_FIXPOINT=enforce)
             fails the stage
@@ -1439,12 +1444,12 @@ Usage:
                     line, message}]}], meta: {php_versions}} on STDOUT
 
 status: pass (every leg ran and compiled), fail (a leg did not compile),
-skipped (no leg ran: no Docker daemon, or no image could be pulled) or
-partial (some legs could not run, none failed). A leg is pass, fail, skipped
-or error.
+skipped (every leg skipped: no Docker daemon, or no image could be pulled),
+error (no leg ran, and a run failed or timed out) or partial (some legs ran
+and compiled, others could not run). A leg is pass, fail, skipped or error.
 
 Exit codes: 0 linted (whatever the legs found; see status) · 1 usage error,
-or a window minor that is not X.Y.
+an empty window, or a window minor that is not X.Y.
 ```
 
 ### analysis/php-target.sh
@@ -1455,18 +1460,24 @@ The PHP-window scan (T-M5-02, T-M5-07, AR-03): every config/php/rules.json
 row is classified for the PHP floor L and the window's top P
 (php_rule_class: deny, removed-blocking, apply-modernize, apply-compat,
 report-only, not-applicable), and the module's PHP files are searched for
-the constructs no Rector rule fixes:
+the constructs of two classes still in the code (Rector's level sets fix
+some forms of a few of them during the upgrade stage; what is left is
+reported here):
   removed-blocking  removed at or below P: the code fatals on P; a blocking
                     finding (severity error) for a person
   report-only       deprecated at or below P, its fix needs a PHP above L or
                     no rule makes it: a warning for a person (fix_at_floor:
                     whether the fix runs on L, its output_min_php at or
                     below L or none)
-A row is searched only when it has a `detect` ERE; its `exclude` ERE drops
-the lines it matches (a method of the same name being declared). Comment
-lines (//, #, * and /* starts) are not code. vendor/, node_modules/ and .git/
-are left out. L and P are --floor / --target, else the module's own frozen
-plan (php.floor and php.final), else the PHP target.
+A row is searched only when it has a `detect` ERE (`ere:`, or `ere-i:` for
+a case-insensitive one: PHP function and cast names); its `exclude` ERE
+drops the lines it matches (a method of the same name being declared). The
+rows of those classes without a pattern are listed in `unsearched`. Only the
+code is searched: comments, string contents, heredocs and inline HTML are
+blanked first (php_code_lines, scripts/lib/php-scan.sh), the line numbers
+kept. vendor/, node_modules/ and .git/ are left out. L and P are --floor /
+--target, else the module's own frozen plan (php.floor and php.final), else
+the PHP target.
 
 Usage:
   php-target.sh --subject DIR [--floor X.Y] [--target X.Y] [--json]
@@ -1476,8 +1487,8 @@ Usage:
     --target X.Y     the window's top P (default: the plan's php.final)
     --json           {tool, floor, target, classes: {class: [ids]},
                     findings: [{id, class, severity, file, line, construct,
-                    deprecated_in, removed_in, fix_at_floor}], counts} on
-                    STDOUT
+                    deprecated_in, removed_in, fix_at_floor}], unsearched:
+                    [ids], counts} on STDOUT
 
 Exit codes: 0 scanned (findings or not) · 1 usage error, or a bound that is
 not X.Y.
@@ -1666,10 +1677,11 @@ status is derived deterministically: the stage, except "blocked" once the
 subject is ported and one of these holds — the last test run (on the current
 sources, or of unknown freshness) is regression / not-verified-blocked /
 not-verified-unbaselined; a fresh core matrix failed; the manifest's
-port-safety or signature-change scan recorded errors; the worklist, extracted
-from the current sources, has an open blocking item of the PHP window (a
-construct removed in the target PHP, a file a window PHP does not compile:
-scripts/analysis/php-target.sh, php-lint-window.sh). A result computed on
+port-safety or signature-change scan recorded errors; the worklist has an
+open blocking item of the PHP window (a construct removed in the target PHP,
+a file a window PHP does not compile: scripts/analysis/php-target.sh,
+php-lint-window.sh) whose file is still as it was found (php_window_items).
+A result computed on
 sources that changed since (fresh: false) is reported but never blocks; one
 recorded with another subject_digest algorithm (drupilot 0.9) is stale too,
 but keeps blocking until it is re-run, since its sources may be the same.
@@ -2587,11 +2599,10 @@ Usage:
                  floor and run the suite; when it says failed, an item to fix the reported
                  Drupal 10 incompatibilities (or drop '^10') is added even
                  without this flag.
-                 With --subject, each open PHP-window item of a worklist
-                 extracted from the current sources (a construct removed in
-                 the target PHP, a file a window PHP does not compile, a
-                 deprecation whose fix needs a PHP above the floor) adds a
-                 task too.
+                 With --subject, each open PHP-window item of the worklist
+                 (a construct removed in the target PHP, a file a window PHP
+                 does not compile, a deprecation to fix by hand) adds a task
+                 too, marked for a re-check when its file changed since.
   --core-matrix FILE  the verify-core-matrix.sh --json result to read
                  (default: the subject's persisted core-matrix.json when
                  --subject is given).

@@ -30,8 +30,9 @@
         "floor": {"type": ["string", "null"]},
         "target": {"type": ["string", "null"]},
         "window": {"type": ["array", "null"], "items": {"type": "string"}},
+        "unsearched": {"description": "The removed-blocking and report-only rules of the window the scan has no pattern for.", "type": "array", "items": {"type": "string"}},
         "lint": {"type": ["object", "null"], "properties": {
-          "status": {"enum": ["pass", "fail", "partial", "skipped"]},
+          "status": {"enum": ["pass", "fail", "partial", "skipped", "error"]},
           "legs": {"type": "array", "items": {"type": "object", "required": ["php", "status"], "properties": {"php": {"type": "string"}, "status": {"enum": ["pass", "fail", "skipped", "error"]}}}},
           "deprecations": {"type": "array", "items": {"type": "object"}}}},
         "items": {"type": "array", "items": {"type": "object", "required": ["id", "file", "status", "blocking", "reason"], "properties": {"id": {"type": "string"}, "blocking": {"type": "boolean"}, "reason": {"type": "string"}, "findings": {"type": "array"}}}}
