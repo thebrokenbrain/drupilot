@@ -210,6 +210,46 @@ EOF
   return 0
 }
 
+# php_cli_image X.Y -> the official php CLI image of a PHP minor
+# (config/php/versions.json docker_cli_image), else php:X.Y-cli; nothing
+# (return 1) when X.Y is not a minor.
+php_cli_image() {
+  local v="${1:-}" f img=""
+  [[ "$v" =~ ^[0-9]+\.[0-9]+$ ]] || return 1
+  f="$(version_data_dir)/php/versions.json"
+  if [[ -r "$f" ]] && have_cmd jq; then
+    img="$(jq -r --arg v "$v" '.versions[$v].docker_cli_image // empty' "$f" 2> /dev/null || true)"
+  fi
+  printf '%s' "${img:-php:$v-cli}"
+  return 0
+}
+
+# php_lint_docker X.Y DIR SCRIPT OUT [ERR] -> run the POSIX sh lint SCRIPT over
+# DIR in a throwaway container of php_cli_image X.Y (pulled once; the pull and
+# the run bounded by 300 s each), with no network. The tree is streamed in with
+# tar, .git, vendor and node_modules left out (no bind mount: nothing on the
+# host is relabelled or written). SCRIPT's STDOUT goes to OUT, its STDERR to
+# ERR (default: dropped). Prints the status: ran; skipped (no Docker daemon,
+# or the image could not be pulled); error (the run failed).
+php_lint_docker() {
+  local php="${1:-}" dir="${2:-}" script="${3:-}" out="${4:-}" err="${5:-/dev/null}" image tmp st="ran"
+  [[ -n "$out" ]] && : > "$out"
+  image="$(php_cli_image "$php")" && [[ -d "$dir" && -r "$script" && -n "$out" ]] || { printf 'error'; return 0; }
+  docker_daemon_up || { printf 'skipped'; return 0; }
+  if ! docker image inspect "$image" < /dev/null > /dev/null 2>&1; then
+    log_info "Pulling $image for the PHP $php lint (once)."
+    run_with_timeout 300 docker pull -q "$image" < /dev/null > /dev/null 2>&1 || { printf 'skipped'; return 0; }
+  fi
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-lint.XXXXXX")" || { printf 'error'; return 0; }
+  cp "$script" "$tmp/.drupilot-lint.sh"
+  ( cd "$dir" && tar -cf - --exclude=.git --exclude=vendor --exclude=node_modules . -C "$tmp" .drupilot-lint.sh ) \
+    | run_with_timeout 300 docker run --rm -i --network none "$image" \
+        sh -c 'mkdir -p /s && cd /s && tar -xf - && sh ./.drupilot-lint.sh .' > "$out" 2> "$err" || st="error"
+  rm -rf "$tmp" 2> /dev/null || true
+  printf '%s' "$st"
+  return 0
+}
+
 # php_version_id X.Y -> PHP's PHP_VERSION_ID of a minor (8.1 -> 80100), as
 # PHPStan's phpVersion takes it; nothing (return 1) when X.Y is not a minor.
 php_version_id() {

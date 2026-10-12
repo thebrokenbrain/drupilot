@@ -8,7 +8,9 @@
 # - the lanes: rector, a codemod, a codemod that does not apply (ai-templated
 #   with its template), core_min against the floor, a test file
 #   (test-adapt), info / style / next-major (deferred), a catalog finding
-#   without a recipe (human), the project overlay;
+#   without a recipe (human), a PHP-window construct (human, with the
+#   reason removed-in-target-php or fix-needs-php-above-floor), the project
+#   overlay;
 # - apply-recipes.sh applies the open codemods, logs each in actions.jsonl,
 #   and the worklist shows an applied item as applied and a codemod that gave
 #   no change as ai-templated; after a re-extraction (a new findings_hash) a
@@ -69,6 +71,12 @@ fnd() {  # fnd ID TOOL RULE FILE LINE SEVERITY SCOPE CLASS [SYMBOL] [MESSAGE]
   fnd F-00000000000c phpstan function.deprecated tests/src/Unit/T.php 12 error next-major soft user_load_by_mail
   fnd F-00000000000d phpstan method.notFound modules/sub/tests/src/Kernel/S.php 13 error current analysis
   fnd F-00000000000e phpcs PHPCompatibility.FunctionUse.X src/A.php 15 error current php-target
+  fnd F-00000000000f catalog php-removed:removed-each src/A.php 16 error current php-target
+  fnd F-000000000010 catalog php-report:p81-strftime m.module 17 warning current php-target
+  fnd F-000000000011 catalog php-floor:8.1 src/C.php 3 error current php-target
+  fnd F-000000000012 catalog php-removed-syntax:8.5 src/D.php 4 error current php-target
+  fnd F-000000000013 catalog php-lint:8.3 src/E.php 5 error current php-target
+  fnd F-000000000014 catalog php-manual:p85-cast-names src/F.php 6 warning current php-target
 } | jq -s . | mkf "$T_TMP/f.json"
 t_run "$T_SH" "$CL" --findings "$T_TMP/f.json" --core-floor 10.3 --json
 lane() { jq -r --arg id "$1" '.items[] | select(.finding_ids | index($id)) | "\(.lane)|\(.recipe_of[$id] // "-")|\(.reason // "-")|\(.status)"' "$T_OUT"; }
@@ -88,9 +96,15 @@ assert_eq "a message matched by a recipe's pattern" "$(lane F-00000000000b)" "ai
 assert_eq "a next-major finding under tests/: deferred, never test-adapt" "$(lane F-00000000000c)" "deferred|-|next-major|deferred"
 assert_eq "a submodule's tests/: test-adapt" "$(lane F-00000000000d)" "test-adapt|-|-|open"
 assert_eq "a PHP target finding: ai-free" "$(lane F-00000000000e)" "ai-free|-|-|open"
+assert_eq "a construct removed in the window's PHP: human, removed-in-target-php" "$(lane F-00000000000f)" "human|-|removed-in-target-php|open"
+assert_eq "a deprecated construct with no fix at the floor: human, fix-needs-php-above-floor" "$(lane F-000000000010)" "human|-|fix-needs-php-above-floor|open"
+assert_eq "a file the floor PHP does not compile: fix-needs-php-above-floor" "$(lane F-000000000011)" "human|-|fix-needs-php-above-floor|open"
+assert_eq "syntax only the higher PHP rejects: removed-in-target-php" "$(lane F-000000000012)" "human|-|removed-in-target-php|open"
+assert_eq "a file no window PHP compiles: does-not-compile" "$(lane F-000000000013)" "human|-|does-not-compile|open"
+assert_eq "a deprecation whose fix runs on the floor, no rule: deprecated-no-rule" "$(lane F-000000000014)" "human|-|deprecated-no-rule|open"
 assert_eq "blocking: the items with an error finding outside deferred (the metadata warning is not)" \
   "$(jq -c '[.items[] | select(.blocking) | .lane] | sort' "$T_OUT")" \
-  '["ai-free","ai-free","ai-templated","ai-templated","ai-templated","codemod","test-adapt","test-adapt"]'
+  '["ai-free","ai-free","ai-templated","ai-templated","ai-templated","codemod","human","human","human","human","test-adapt","test-adapt"]'
 assert_eq "items sorted by lane priority, then file and anchor" \
   "$(jq -c '["rector","rector-custom","codemod","ai-templated","ai-free","test-adapt","human","deferred"] as $o
      | [.items[] | [(.lane as $l | $o | index($l)), .file, .anchor]] | . == sort' "$T_OUT")" "true"

@@ -13,6 +13,75 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+### Added
+- **The PHP window is checked** (M5: T-M5-02, T-M5-06, T-M5-07). The stage
+  `php` of `scripts/ai/pipeline.sh` is no longer a placeholder: it extracts
+  again with two PHP-window tools, normalizes and classifies, and fails when a
+  PHP-window finding is in no worklist item. It runs on every plan, a
+  same-major one included.
+  - `php_rule_class ROW L P` and `php_rules_classified L P`
+    (`scripts/lib/plan.sh`): every `config/php/rules.json` row in exactly one
+    class for the window [L..P]: `deny`, `removed-blocking`,
+    `apply-modernize`, `apply-compat`, `report-only` or `not-applicable`.
+  - `scripts/analysis/php-target.sh --subject DIR [--floor X.Y] [--target
+    X.Y] --json`: the module's PHP files searched for the `removed-blocking`
+    and `report-only` constructs no Rector rule fixes (`each()`,
+    `create_function()`, `mysql_*`, `ereg*`, the old cast names,
+    `PDO::MYSQL_ATTR_*`, `strftime()`, ...); comment lines, a row's
+    `exclude` and `vendor/` left out; the bounds from the module's own frozen
+    plan.
+  - `scripts/analysis/php-lint-window.sh --subject DIR [--window "X.Y ..."]
+    --json`: `php -l` on every PHP minor of the window, each in a throwaway
+    official `php:X.Y-cli` container (the image of `config/php/versions.json`,
+    the tree streamed in, no network): a leg per minor, the compiler's errors
+    and deprecations per file; skipped without a Docker daemon. The shared
+    mechanism is `php_lint_docker` / `php_cli_image`
+    (`scripts/lib/toolchain.sh`), which `verify-core-matrix.sh` now uses for
+    its floor lint too.
+  - `extract.sh` runs both as the tools `php-target` and `php-lint`;
+    `normalize-findings.sh` turns them into findings of class `php-target`
+    (rules `php-removed:<id>`, `php-report:<id>`, `php-manual:<id>`,
+    `php-floor:X.Y`, `php-removed-syntax:X.Y`, `php-lint:X.Y`) and records
+    their verdicts (only when the raw index names them, so an older raw set
+    reads as before); `classify.sh` puts them in the `human` lane with the
+    reason `removed-in-target-php`, `does-not-compile`,
+    `fix-needs-php-above-floor` (the fix needs a PHP above the floor) or
+    `deprecated-no-rule` (the fix runs on the floor, but no rule makes it).
+  - `manifest.sh` records `php_window` (the bounds, the legs, the
+    compile-time deprecations, the items); `port-report.md` has a **PHP
+    window** section; `make-issue.sh --subject` adds a remaining task per
+    open item; `port-summary.sh` reports a `php-target` blocker, and
+    `--strict` exits 3, while an open blocking item of the window remains in
+    a worklist extracted from the current sources (`worklist_fresh`,
+    `php_window_items` in `scripts/lib/canon.sh`).
+- **The `php_window` fixture** and the completed `d11_php_only` fixture
+  (T-M5-01), with the goldens `tests/golden/php-window/` (the scans of both
+  windows of the plan) and the lab recordings of their `php -l` legs
+  (`tests/fixtures/{php_window,d11_php_only}.golden/`);
+  `tests/unit/php_window_golden.sh` takes `d11_php_only` through
+  normalize, classify and `port-summary --strict` (exit 3) without Docker.
+- **`docs/concepts/php-and-core-target.md`**: the PHP window, the rule
+  classes, the php stage and where its items show.
+
+### Changed
+- `config/php/rules.json`: the `report-only` rows carry a `detect` pattern
+  (the data snapshot `ffea79ce…` is vendored). The goldens `plans`,
+  `templates`, `core-strategy` and `detect-source` are pinned to it and
+  re-recorded: outside `d11_php_only`, only the plans' `data_hash` and the
+  PHPStan cache directory derived from the plan hash changed.
+- `tests/fixtures/d11_php_only` declares `^11.3` and has an implicitly
+  nullable parameter and an `each()` call; its rows of the goldens above are
+  re-recorded.
+- `/drupilot-port` tells the developer about the blocking PHP-window items
+  and never rewrites a removed construct on its own.
+
+### Fixed
+- `config/php/rules.json`: `p85-http-response-header` had no
+  `output_min_php`; its replacement `http_get_last_response_headers()` is
+  PHP 8.4 or later, as is the `Pdo\Mysql` class `p85-pdo-mysql-constants`
+  points to (both read on php.net, sources added). Below a floor of 8.4 the
+  fix of either needs a higher PHP.
+
 ## [1.0.0-alpha.1] - 2026-10-12
 
 ### Added

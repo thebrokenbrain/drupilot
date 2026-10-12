@@ -9,5 +9,5 @@ carries; `tests/golden/detect-source/<name>.json` pins its full output.
 | `d7_minimal` | `core = 7.x` (`.info`) | `extends DrupalWebTestCase` (`.test`) | 7 | d7-assisted | high |
 | `d8_legacy` | `core: 8.x`, no `core_version_requirement` | `extends WebTestBase` (`src/Tests/`) | 8 | standard | high |
 | `d9_module` | `^9` | none | 9 | standard | medium |
-| `d11_php_only` | `^11` | none (S = T = 11: no hop, PHP work only; M5 completes it) | 11 | standard | medium |
+| `d11_php_only` | `^11.3` | none (S = T = 11: no hop, PHP work only: an implicitly nullable parameter and an `each()` call; see `php-window.EXPECTED.md`) | 11 | standard | medium |
 | `keep_current` | `^10.3 \|\| ^11 \|\| ^12` | none (core-strategy keeps the declaration, CC-36) | 10 | standard | medium |

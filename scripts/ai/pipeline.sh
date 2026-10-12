@@ -28,8 +28,12 @@
 #             --reextract: S6, S7); skipped, reason same-major, when the
 #             plan's hops are [] (the digests layer, which the developer
 #             reviews, stays in /drupilot-port)
-#   php       a placeholder until the PHP-target engine (M5): skipped, reason
-#             placeholder
+#   php       the extraction at stage php (with the PHP-window tools:
+#             php-target.sh's removed and deprecated constructs, the php -l
+#             legs of php-lint-window.sh), normalize-findings.sh and
+#             classify.sh: the PHP-window findings become human worklist
+#             items (removed-in-target-php blocks); a finding in no item
+#             fails the stage. It runs on every plan, a same-major one too
 #   validate  the fixpoint gate (fixpoint.sh: the extraction again, the
 #             codemods in dry-run); its exit 3 (DRUPILOT_FIXPOINT=enforce)
 #             fails the stage
@@ -145,7 +149,19 @@ stage_upgrade() {
   bash "$S/ai/apply-recipes.sh" --subject "$SUBJECT" --reextract < /dev/null || return $?
   return 0
 }
-stage_php() { SKIP_REASON="placeholder"; return 0; }
+stage_php() {
+  local nf nw
+  bash "$S/ai/extract.sh" --subject "$SUBJECT" --stage php < /dev/null || return $?
+  bash "$S/ai/normalize-findings.sh" --subject "$SUBJECT" --stage php < /dev/null || return $?
+  bash "$S/ai/classify.sh" --subject "$SUBJECT" < /dev/null || return $?
+  # The gate: every PHP-window finding is in a worklist item.
+  nf="$(jq -r '[.findings[] | select(.class == "php-target" and .tool == "catalog") | .id] | sort | join(",")' "$SD/findings.json" 2> /dev/null || printf 'x')"
+  nw="$(jq -r --slurpfile f "$SD/findings.json" '([$f[0].findings[] | select(.class == "php-target" and .tool == "catalog") | .id]) as $p
+    | [.items[].finding_ids[] | select(. as $i | $p | index($i))] | sort | join(",")' "$(worklist_file "$SUBJECT")" 2> /dev/null || printf 'y')"
+  if [[ "$nf" != "$nw" ]]; then log_err "pipeline: php: a PHP-window finding is in no worklist item."; return 1; fi
+  log_info "pipeline: php: $(jq -r --arg re "$PHP_WINDOW_REASONS_ERE" '[.items[] | select(.status == "open" and .lane == "human" and ((.reason // "") | test($re)))] | "\(length) open PHP-window item(s), \([.[] | select(.blocking)] | length) blocking"' "$(worklist_file "$SUBJECT")")."
+  return 0
+}
 stage_validate() {
   bash "$S/analysis/fixpoint.sh" --subject "$SUBJECT" --stage validate < /dev/null || return $?
   return 0

@@ -61,6 +61,11 @@
 #                  floor and run the suite; when it says failed, an item to fix the reported
 #                  Drupal 10 incompatibilities (or drop '^10') is added even
 #                  without this flag.
+#                  With --subject, each open PHP-window item of a worklist
+#                  extracted from the current sources (a construct removed in
+#                  the target PHP, a file a window PHP does not compile, a
+#                  deprecation whose fix needs a PHP above the floor) adds a
+#                  task too.
 #   --core-matrix FILE  the verify-core-matrix.sh --json result to read
 #                  (default: the subject's persisted core-matrix.json when
 #                  --subject is given).
@@ -282,6 +287,17 @@ elif [[ "$D10_UNVERIFIED" == "1" && "$D10_MATRIX" == "verified-static" ]]; then
 elif [[ "$D10_UNVERIFIED" == "1" ]]; then
   REMAINING="$REMAINING
 - [ ] Verify Drupal 10 compatibility (install on a Drupal 10 site, or run the suite against Drupal 10) — the '^10 || ^11' support is declared but not verified."
+fi
+
+# The PHP window's constructs left for a person (the worklist, when its
+# extraction saw the current sources: php_window_items): one task each.
+if [[ -n "$SUBJECT" && -d "$SUBJECT" ]] && have_cmd jq; then
+  _pw="$(php_window_items "$(cd "$SUBJECT" && pwd)" | jq -r '.[]
+    | "- [ ] \(if .blocking then "Fix" else "Review" end) `\(.file)` for the PHP window (\(.reason)): \((.messages | unique | join("; ")) // "")"' 2> /dev/null || true)"
+  if [[ -n "$_pw" ]]; then
+    REMAINING="$REMAINING
+$_pw"
+  fi
 fi
 
 [[ -n "$SUMMARY" ]] || SUMMARY="It applies the automated \`drupal-rector\` fixes plus the minimal manual changes required for Drupal 11, and updates \`core_version_requirement\` accordingly."

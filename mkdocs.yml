@@ -67,6 +67,7 @@ nav:
       - concepts/upgrade-paths.md
       - concepts/pipeline.md
       - concepts/determinism-and-replay.md
+      - concepts/php-and-core-target.md
   - Reference:
       - reference/commands.md
       - reference/configuration.md

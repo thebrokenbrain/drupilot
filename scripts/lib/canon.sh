@@ -246,6 +246,42 @@ worklist_set() {
   return 1
 }
 
+# worklist_fresh [SUBJECT] -> 0 when the subject's worklist comes from an
+# extraction of its current sources: the raw index of the worklist's stage
+# records the subject_digest the subject has now. 1 otherwise (no worklist,
+# no index, an older extraction, or sources changed since).
+worklist_fresh() {
+  local s="${1:-$PWD}" sd st ix="" f d
+  sd="$(project_state_path "$s")"
+  st="$(jq -r '.stage // empty' "$(worklist_file "$s")" 2> /dev/null || true)"
+  [[ "$st" =~ ^[a-z0-9-]+$ ]] || return 1
+  for f in "$sd"/raw/[0-9][0-9]-"$st"-index.json; do [[ -f "$f" ]] && ix="$f"; done
+  [[ -n "$ix" ]] || return 1
+  d="$(jq -r '.subject_digest // empty' "$ix" 2> /dev/null || true)"
+  [[ -n "$d" && "$d" == "$(subject_digest "$s")" ]]
+}
+
+# The worklist reasons of the PHP window's items (classify.sh), as one ERE.
+PHP_WINDOW_REASONS_ERE='removed-in-target-php|does-not-compile|fix-needs-php-above-floor|deprecated-no-rule'
+
+# php_window_items [SUBJECT] -> the open human worklist items of the PHP window
+# (a reason of PHP_WINDOW_REASONS_ERE), as one JSON array of {file, reason, blocking, messages}
+# (messages: the items' findings, from findings.json); [] when there is no
+# worklist or it is not fresh (worklist_fresh).
+php_window_items() {
+  local s="${1:-$PWD}" w f
+  w="$(worklist_file "$s")"; f="$(project_state_path "$s")/findings.json"
+  if [[ ! -r "$w" ]] || ! worklist_fresh "$s"; then printf '[]\n'; return 0; fi
+  [[ -r "$f" ]] || f=/dev/null
+  jq -c --slurpfile fd "$f" --arg re "$PHP_WINDOW_REASONS_ERE" '
+    (($fd[0] // {}).findings // []) as $F
+    | [(.items // [])[] | select(.status == "open" and .lane == "human" and ((.reason // "") | test($re)))
+       | . as $i
+       | {file, reason, blocking: (.blocking == true),
+          messages: [$F[] | select(.id as $x | ($i.finding_ids // []) | index($x)) | .message]}]' "$w" 2> /dev/null || printf '[]\n'
+  return 0
+}
+
 # recipes_effective BASE OVERLAY OUT -> writes to OUT the recipes in effect
 # (ADR 0024): BASE (config/recipes.json), with the recipes of OVERLAY (a
 # project's <root>/.drupilot/recipes.json; empty: none) replacing BASE's by

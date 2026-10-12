@@ -5,7 +5,7 @@
     "OPT_IN_TEST_PREVIOUS_MAJOR": 1
   },
   "core_removals": null,
-  "data_hash": "sha256:b967dc04dc59646e99bca648bb267ff1a76ea65993d62d5af159d19ff50cbc5d",
+  "data_hash": "sha256:ffea79ce3e6eeb6773d2503207f0738dd292e8752251a7c93c288f253bc41ce9",
   "detectors": [],
   "hard_breaks": null,
   "hops": [

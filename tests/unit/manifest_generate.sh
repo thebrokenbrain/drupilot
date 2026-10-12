@@ -11,6 +11,8 @@
 # - a codemod in effect is listed and is not a manual edit;
 # - port-report.sh renders the lane x status table and the rationale; the
 #   state snapshot reads the time from meta;
+# - php_window from the php-target and php-lint reports, and its section
+#   in port-report.md;
 # - the usage errors. Docker-free.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
@@ -135,6 +137,36 @@ assert_match "port-report.sh: the lane x status table" "$REP" '\| `ai-free` \| 0
 assert_match "  the rationale" "$REP" "Rector rewrote the callback"
 assert_eq "the state snapshot reads the manifest's time from meta" \
   "$(state_snapshot_json "$S" | jq -c --slurpfile m "$SD/port-manifest.json" '.port_at == $m[0].meta.generated_at')" "true"
+
+# The PHP window: the stage's php-target and php-lint reports and the human
+# items of its constructs; port-report.sh renders them.
+jq -n '{tool: "php-target", floor: "8.1", target: "8.4", findings: [{id: "removed-each", class: "removed-blocking", file: "legacy_widgets.module", line: 3}]}' > "$SD/raw/04-assess-php-target.json"
+jq -n '{tool: "php-lint", window: ["8.1", "8.4"], status: "pass", legs: [
+  {php: "8.1", image: "php:8.1-cli", status: "pass", errors: 0, deprecations: 0, messages: []},
+  {php: "8.4", image: "php:8.4-cli", status: "pass", errors: 0, deprecations: 1,
+   messages: [{kind: "deprecated", file: "src/A.php", line: 5, message: "Implicitly marking parameter $x as nullable is deprecated"}]}]}' > "$SD/raw/04-assess-php-lint.json"
+cp "$SD/findings.json" "$T_TMP/f.keep"; cp "$SD/worklist.json" "$T_TMP/w.keep"
+jq '.findings += [{id: "F-0000000000p1", tool: "catalog", rule: "php-removed:removed-each", file: "legacy_widgets.module", line: 3,
+      anchor: "{file}", symbol: null, message: "each() is removed in PHP 8.0", occurrence: 0, severity: "error", scope: "current",
+      class: "php-target", sources: []}]' "$T_TMP/f.keep" > "$SD/findings.json"
+jq '.items += [{id: "W-0000000000p1", lane: "human", file: "legacy_widgets.module", anchor: "{file}", finding_ids: ["F-0000000000p1"],
+      recipes: [], blocking: true, reason: "removed-in-target-php", status: "open"}]' "$T_TMP/w.keep" > "$SD/worklist.json"
+mf --no-write --json
+assert_eq "php_window: the bounds, the legs, the deprecations and the item" \
+  "$(jq -c '.php_window | [.floor, .target, .window, [.lint.legs[] | [.php, .status]], (.lint.deprecations | length), [.items[] | [.id, .blocking, .reason, .findings[0].rule]]]' "$T_OUT")" \
+  '["8.1","8.4",["8.1","8.4"],[["8.1","pass"],["8.4","pass"]],1,[["W-0000000000p1",true,"removed-in-target-php","php-removed:removed-each"]]]'
+assert_eq "  it validates against the schema" "$(valid "$T_OUT")" ""
+cp "$T_OUT" "$T_TMP/pw-manifest.json"
+t_run "$T_SH" "$T_REPO/scripts/analysis/port-report.sh" --subject "$S" --manifest "$T_TMP/pw-manifest.json"
+REP="$(cat "$(t_out)" 2> /dev/null || true)"
+assert_match "port-report.sh: the PHP window section" "$REP" '### PHP window'
+assert_match "  the legs" "$REP" '\| 8\.4 \| pass \| 0 \| 1 \|'
+assert_match "  the blocking item with its finding" "$REP" '\*\*blocking\*\* `legacy_widgets.module` \(removed-in-target-php; open\)'
+assert_match "  the compile-time deprecation" "$REP" 'PHP 8\.4 `src/A.php:5`'
+rm -f "$SD/raw/04-assess-php-target.json" "$SD/raw/04-assess-php-lint.json"
+cp "$T_TMP/f.keep" "$SD/findings.json"; cp "$T_TMP/w.keep" "$SD/worklist.json"
+mf --no-write --json
+assert_eq "  no PHP-window report: no php_window" "$(jq -c 'has("php_window")' "$T_OUT")" "false"
 
 # Usage errors.
 mkdir -p "$T_TMP/empty"; printf 'name: E\ntype: module\n' > "$T_TMP/empty/empty.info.yml"

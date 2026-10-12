@@ -63,7 +63,7 @@
         "required": ["source", "reason"],
         "additionalProperties": false,
         "properties": {
-          "source": {"enum": ["tests", "core-matrix", "port-safety", "signature-changes"]},
+          "source": {"enum": ["tests", "core-matrix", "port-safety", "signature-changes", "php-target"]},
           "reason": {"type": "string"}
         }
       }

@@ -458,6 +458,69 @@ plan_rector_skip() {
   return 0
 }
 
+# The class of a php/rules.json row for the PHP floor L and target P (AR-03,
+# T-M5-02), as jq definitions: php_rule_class($L; $P) on the row. Each row
+# lands in exactly one class, tried in this order:
+#   deny              a deny row: always skipped (rector.php withSkip)
+#   removed-blocking  removed at or below P with no safe Rector fix at or
+#                     below L (a removed-no-rule row, or a compat or
+#                     report-only row removed by P that cannot be applied):
+#                     a blocking item for a person
+#   apply-modernize   a modernize row whose level is at or below L
+#   apply-compat      a compat row deprecated or removed at or below P, safe
+#                     for Drupal, whose output runs on L: the compat pass
+#   report-only       deprecated at or below P, but its fix needs a PHP above
+#                     L, is not safe to apply, or no rule makes it
+#   not-applicable    outside the window: deprecated and removed above P
+# A version left out (null) never counts as at or below a bound, except
+# output_min_php: none means the fix runs on any PHP.
+_PHP_RULE_CLASS_JQ='
+def _pv: split(".") | map(tonumber? // 0);
+def _le($a; $b): ($a != null) and (($a | _pv) <= ($b | _pv));
+def php_rule_class($L; $P):
+  . as $r
+  | (_le($r.deprecated_in; $P)) as $dep
+  | (_le($r.removed_in; $P)) as $rem
+  | (($r.output_min_php == null) or _le($r.output_min_php; $L)) as $runs
+  | if $r.kind == "deny" then "deny"
+    elif $r.kind == "removed-no-rule" then (if $rem then "removed-blocking" else "not-applicable" end)
+    elif $r.kind == "modernize" then (if _le($r.php_level // $r.output_min_php; $L) then "apply-modernize" else "not-applicable" end)
+    elif $r.kind == "compat" then
+      (if ($dep or $rem) | not then "not-applicable"
+       elif $runs and $r.drupal_safe == true then "apply-compat"
+       elif $rem then "removed-blocking"
+       else "report-only" end)
+    elif $r.kind == "report-only" then
+      (if $rem then "removed-blocking" elif $dep then "report-only" else "not-applicable" end)
+    else "not-applicable" end;
+'
+
+# php_rule_class ROW_JSON L P -> the class of one php/rules.json row (see
+# _PHP_RULE_CLASS_JQ). Prints nothing, and returns 1, on a row that is not an
+# object or a bound that is not X.Y.
+php_rule_class() {
+  local row="${1:-}" l="${2:-}" p="${3:-}"
+  [[ "$l" =~ ^[0-9]+\.[0-9]+$ && "$p" =~ ^[0-9]+\.[0-9]+$ ]] && have_cmd jq || return 1
+  printf '%s' "$row" | jq -r --arg L "$l" --arg P "$p" "$_PHP_RULE_CLASS_JQ"' if type == "object" then php_rule_class($L; $P) else error("not a row") end' 2> /dev/null || return 1
+  return 0
+}
+
+# php_rules_classified L P -> every php/rules.json row with its class for the
+# window [L..P], as one JSON array ({id, rule, kind, class, detect, exclude,
+# construct, deprecated_in, removed_in, output_min_php, verified}), in the
+# file's order; [] when the data cannot be read.
+php_rules_classified() {
+  local l="${1:-}" p="${2:-}" f
+  f="$(version_data_dir)/php/rules.json"
+  [[ -r "$f" && "$l" =~ ^[0-9]+\.[0-9]+$ && "$p" =~ ^[0-9]+\.[0-9]+$ ]] && have_cmd jq || { printf '[]'; return 0; }
+  jq -c --arg L "$l" --arg P "$p" "$_PHP_RULE_CLASS_JQ"'
+    [.rules[] | {id: (.id // .rule), rule, kind, class: php_rule_class($L; $P), detect: (.detect // null),
+                 exclude: (.exclude // null), construct: (.construct // null), deprecated_in: (.deprecated_in // null),
+                 removed_in: (.removed_in // null), output_min_php: (.output_min_php // null), verified: (.verified // false)}]' \
+    "$f" 2> /dev/null || printf '[]'
+  return 0
+}
+
 # plan_rector_bc CONSTRAINT F -> {enabled, min_core}: drupal-rector's
 # backwards-compatible rewrites (DeprecationHelper) are on when CONSTRAINT
 # admits more than one minor (a data minor, F's next minor or the next major

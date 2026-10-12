@@ -12,6 +12,9 @@
 #                      soft_deprecations (classify-deprecations.sh --json on
 #                      the raw PHPStan report)
 #   worklist.json      the lane x status table and every item
+#   the stage's php-target and php-lint raw reports: php_window (the window,
+#                      the php -l legs, the compile-time deprecations, and
+#                      the human items of the PHP window with their findings)
 #   actions.jsonl      the codemods applied and still in effect
 #   rector-rules.json  the rules and files of the applying Rector run, and
 #                      attributes-rules.json those of the attribute pass
@@ -115,6 +118,7 @@ raw() {  # raw TOOL -> the stage's raw report of TOOL without meta, or null (non
   return 0
 }
 raw port-safety > "$TMP/ps.json"; raw signatures > "$TMP/sig.json"; raw metadata > "$TMP/meta.json"
+raw php-target > "$TMP/phpt.json"; raw php-lint > "$TMP/lint.json"
 REQ="$(sed -n 's/^core_version_requirement[[:space:]]*:[[:space:]]*//p' "$SUBJECT/$MN.info.yml" 2> /dev/null | sed -n '1p' | tr -d "'\"" | sed 's/[[:space:]]*#.*$//; s/[[:space:]]*$//' || true)"
 TMAJ="$(jq -r '.target.major // empty' "$F")"; [[ -n "$TMAJ" ]] || TMAJ="$(resolve_target_major)"
 POLICY="$(jq -r '.target.soft_policy // empty' "$F")"; [[ -n "$POLICY" ]] || POLICY="$(config_get DRUPILOT_SOFT_DEPRECATIONS report)"
@@ -175,6 +179,7 @@ DOC="$TMP/manifest.json"
 jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile at "$AT" --slurpfile dd "$DD" --slurpfile asj "$AS" \
   --slurpfile acts "$TMP/acts.json" --slurpfile dec "$TMP/dec.json" --slurpfile ps "$TMP/ps.json" --slurpfile sig "$TMP/sig.json" \
   --slurpfile md "$TMP/meta.json" --slurpfile soft "$TMP/soft.json" --rawfile files "$TMP/files.tsv" \
+  --slurpfile phpt "$TMP/phpt.json" --slurpfile lint "$TMP/lint.json" --arg phpre "$PHP_WINDOW_REASONS_ERE" \
   --argjson ratprev "$RAT_PREV" --argjson ratnew "$RAT_NEW" --arg phase "$PHASE" --arg mn "$MN" --arg type "$TYPE" \
   --arg req "$REQ" --arg rphp "$COMPOSER_PHP" --arg pt "$(resolve_php_target)" --arg d10 "$D10" --arg patch "$PATCH" \
   --arg base "$BASE_SHA" --arg subrel "$SUBREL" --arg acth "$ACTH" '
@@ -212,6 +217,20 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
                 items: [$W.items[] | {id, lane, status, file, anchor, blocking, recipes: (.recipes // []), findings: (.finding_ids | length)}
                         + (if $rat[.id] then {rationale: $rat[.id]} else {} end)]},
      rationale: $rat,
+     # The PHP window: the php -l legs and the human items of its constructs.
+     php_window: (if $phpt[0] == null and $lint[0] == null then null
+                  else {floor: ($phpt[0].floor // null), target: ($phpt[0].target // null),
+                        window: ($lint[0].window // null),
+                        lint: (if $lint[0] == null then null
+                               else {status: $lint[0].status,
+                                     legs: [($lint[0].legs // [])[] | {php, status, errors, deprecations}],
+                                     deprecations: ([($lint[0].legs // [])[] | .php as $v | (.messages // [])[]
+                                                     | select(.kind == "deprecated") | {php: $v, file, line, message}]
+                                                    | sort_by([.file, (.line // 0), .php]))} end),
+                        items: [$W.items[] | select(.lane == "human" and ((.reason // "") | test($phpre)))
+                                | . as $i
+                                | {id, file, anchor, status, blocking, reason,
+                                   findings: [$F.findings[] | select(.id as $x | $i.finding_ids | index($x)) | {rule, line, message}]}]} end),
      deprecations_remaining: ([$F.findings[] | select(.scope == "current" and .tool == "phpstan" and (.class == "hard" or .class == "unknown")) | occ] | add // 0),
      deferred_to_phase2: ([$F.findings[] | select(.scope == "next-major") | (.symbol // empty)] | unique),
      files_changed: (if $base == "" then null else ($diff | length) end),

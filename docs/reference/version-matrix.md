@@ -304,7 +304,7 @@ As of 2026-10-04; rule classes read in rector-src 2.5.2. compat: a deprecation f
 | `p85-cast-names` | report-only |  | 8.5 |  |  | true | yes |
 | `p85-noop-close` | report-only |  | 8.5 |  |  | true | yes |
 | `p85-pdo-mysql-constants` | report-only |  | 8.5 |  | 8.4 | true | no |
-| `p85-http-response-header` | report-only |  | 8.5 |  |  | true | no |
+| `p85-http-response-header` | report-only |  | 8.5 |  | 8.4 | true | no |
 | `p81-strftime` | report-only |  | 8.1 |  |  |  | yes |
 | `p81-filter-sanitize-string` | report-only |  | 8.1 |  |  |  | yes |
 | `p84-e-strict` | report-only |  | 8.4 |  |  |  | yes |
@@ -340,8 +340,8 @@ Sources:
 - `deny-override-on-properties`: https://github.com/rectorphp/rector-src/blob/2.5.2/config/set/php85.php (in the php85 level set) Adds #[\Override] to properties, valid only on PHP 8.5; it collides with the override-attribute port-safety check while the core range spans an older PHP.
 - `p85-cast-names`: https://www.php.net/manual/en/migration85.deprecated.php Rector fixes it only through a configured RenameCastRector (php85 set), so it is not in the compat pass.
 - `p85-noop-close`: https://www.php.net/manual/en/migration85.deprecated.php Rector fixes it only through a configured RemoveFuncCallRector (php85 set). Only curl_close() was read on php.net; the other functions of 02-F9 are unverified.
-- `p85-pdo-mysql-constants`: https://www.php.net/manual/en/migration85.deprecated.php output_min_php 8.4 (the Pdo\Mysql driver subclass) is not verified.
-- `p85-http-response-header`: https://www.php.net/manual/en/migration85.deprecated.php The PHP version that added http_get_last_response_headers() is not verified.
+- `p85-pdo-mysql-constants`: https://www.php.net/manual/en/migration85.deprecated.php ; output_min_php: https://www.php.net/manual/en/class.pdo-mysql.php output_min_php 8.4: the Pdo\Mysql class and its ATTR_* constants are PHP 8 &gt;= 8.4.0 (php.net, read 2026-10-12).
+- `p85-http-response-header`: https://www.php.net/manual/en/migration85.deprecated.php ; output_min_php: https://www.php.net/manual/en/function.http-get-last-response-headers.php output_min_php 8.4: http_get_last_response_headers() is PHP 8 &gt;= 8.4.0 (php.net, read 2026-10-12).
 - `p81-strftime`: https://www.php.net/manual/en/migration81.deprecated.php
 - `p81-filter-sanitize-string`: https://www.php.net/manual/en/migration81.deprecated.php
 - `p84-e-strict`: https://www.php.net/manual/en/migration84.deprecated.php

@@ -167,7 +167,16 @@ codemod > ai-templated > ai-free > test-adapt > human > deferred.
                 files are not read: every applied action counts as in
                 effect.)
   ai-free       an analysis error or deprecation no recipe matches
-  human         a catalog finding no recipe matches
+  human         a catalog finding no recipe matches; the PHP window's are
+                too, with a reason: removed-in-target-php (a construct
+                php-target.sh finds removed, or syntax a php -l leg rejects
+                on the higher PHP only: an error, the item blocks),
+                fix-needs-php-above-floor (a deprecation whose fix needs a
+                PHP above the floor: a warning; or a file the floor's php -l
+                rejects and a higher PHP compiles: an error),
+                deprecated-no-rule (a deprecation whose fix runs on the
+                floor, but no rule makes it: a warning) or
+                does-not-compile (no window PHP compiles the file)
   test-adapt    an ai-templated or ai-free finding in a file under a tests/
                 directory (the module's or a submodule's)
 
@@ -207,7 +216,10 @@ reports as canonical raw files (T-M4-05, AR-07, AR-10, 05-R3, ADR 0022):
 
 NN is the stage's place in config/pipeline.json. The tools are run-rector.sh
 (a dry-run), run-phpstan.sh, run-phpcs.sh, check-port-safety.sh,
-scan-signature-changes.sh and lint-extension-metadata.sh, each with --json;
+scan-signature-changes.sh, lint-extension-metadata.sh, php-target.sh (the
+PHP window's removed and deprecated constructs) and php-lint-window.sh
+(php -l on each PHP minor of the window, in Docker; its legs skipped
+without a Docker daemon), each with --json;
 every report goes through canon_json with the Drupal root (root-relative
 paths, sorted keys; its own timestamps moved under meta: DET-2). Then the
 anchor of every (file, line) the reports name in a PHP file is computed
@@ -247,6 +259,9 @@ state dir. It is built from what the scripts recorded, never from memory:
                      soft_deprecations (classify-deprecations.sh --json on
                      the raw PHPStan report)
   worklist.json      the lane x status table and every item
+  the stage's php-target and php-lint raw reports: php_window (the window,
+                     the php -l legs, the compile-time deprecations, and
+                     the human items of the PHP window with their findings)
   actions.jsonl      the codemods applied and still in effect
   rector-rules.json  the rules and files of the applying Rector run, and
                      attributes-rules.json those of the attribute pass
@@ -296,14 +311,24 @@ files, the target major and the soft-deprecation policy: no tool runs, no
 PHP, so the result is the same on every platform (DET-2).
 
 Reads <raw-dir>/<NN>-<stage>-{index,rector,phpstan,phpcs,port-safety,
-signatures,metadata,anchors}.json as scripts/ai/extract.sh writes them (any
-but the index may be missing).
+signatures,metadata,php-target,php-lint,anchors}.json as scripts/ai/extract.sh
+writes them (any but the index may be missing; php-target and php-lint are
+expected, and have a verdict, only when the index names them or their file
+exists).
 
   id      "F-" + the first 12 hex of sha256(tool␟rule␟file␟anchor␟symbol␟
           message␟occurrence) (␟ = 0x1f); the line is not part of it
   rule    Rector's FQCN; PHPStan's identifier (phpstan:untyped:<8 hex of the
           message's sha256> without one); PHPCS's source;
-          port-safety:<check>, signature:<id>, metadata:<check>
+          port-safety:<check>, signature:<id>, metadata:<check>;
+          php-removed:<id> (a construct removed at or below the window's
+          top PHP), php-report:<id> (deprecated in the window, its fix needs
+          a PHP above the floor) and php-manual:<id> (deprecated, its fix
+          runs on the floor but no rule makes it) from
+          scripts/analysis/php-target.sh; from a php -l leg
+          of php-lint-window.sh that failed on PHP X.Y: php-floor:X.Y (the
+          file compiles on a higher PHP of the window), php-removed-syntax:
+          X.Y (it compiles on a lower one only) or php-lint:X.Y (on none)
   anchor  the innermost Namespace\Class::method or function of the line,
           the Namespace\ClassLike for a line in a class-like body outside
           its methods (the raw anchors file, scripts/php/anchor.php), else
@@ -372,8 +397,12 @@ The stages:
             --reextract: S6, S7); skipped, reason same-major, when the
             plan's hops are [] (the digests layer, which the developer
             reviews, stays in /drupilot-port)
-  php       a placeholder until the PHP-target engine (M5): skipped, reason
-            placeholder
+  php       the extraction at stage php (with the PHP-window tools:
+            php-target.sh's removed and deprecated constructs, the php -l
+            legs of php-lint-window.sh), normalize-findings.sh and
+            classify.sh: the PHP-window findings become human worklist
+            items (removed-in-target-php blocks); a finding in no item
+            fails the stage. It runs on every plan, a same-major one too
   validate  the fixpoint gate (fixpoint.sh: the extraction again, the
             codemods in dry-run); its exit 3 (DRUPILOT_FIXPOINT=enforce)
             fails the stage
@@ -1383,6 +1412,77 @@ Exit codes: 0 ok (hits are data, never a failure) · 1 usage error, jq
 missing, invalid catalog or write error.
 ```
 
+### analysis/php-lint-window.sh
+
+```text
+drupilot — scripts/analysis/php-lint-window.sh
+`php -l` on every PHP minor of the window W (T-M5-06, AR-03): one leg per
+minor, each in a throwaway official php CLI container (php_lint_docker: the
+image of config/php/versions.json, the tree streamed in, no network), so a
+module is compiled by the PHP it claims to run on, not only by the test-bed's.
+A leg records the compiler's messages per file:
+  parse-error, fatal-error  the file does not compile on that PHP: the leg
+                            fails
+  deprecated, warning, notice  compile-time messages (an implicitly nullable
+                            parameter on 8.4, ...): reported, never a failure
+W is --window, else the module's own frozen plan (php.window), else the PHP
+target alone. The PHP patch release each image ran is kept under meta (it
+changes with the image, not with the module: DET-2).
+
+Usage:
+  php-lint-window.sh --subject DIR [--window "X.Y X.Y ..."] [--json]
+                     [-h|--help]
+    --subject DIR    the module/theme
+    --window LIST    the PHP minors to lint (space- or comma-separated)
+    --json           {tool: "php-lint", window, status, legs: [{php, image,
+                    status, errors, deprecations, messages: [{kind, file,
+                    line, message}]}], meta: {php_versions}} on STDOUT
+
+status: pass (every leg ran and compiled), fail (a leg did not compile),
+skipped (no leg ran: no Docker daemon, or no image could be pulled) or
+partial (some legs could not run, none failed). A leg is pass, fail, skipped
+or error.
+
+Exit codes: 0 linted (whatever the legs found; see status) · 1 usage error,
+or a window minor that is not X.Y.
+```
+
+### analysis/php-target.sh
+
+```text
+drupilot — scripts/analysis/php-target.sh
+The PHP-window scan (T-M5-02, T-M5-07, AR-03): every config/php/rules.json
+row is classified for the PHP floor L and the window's top P
+(php_rule_class: deny, removed-blocking, apply-modernize, apply-compat,
+report-only, not-applicable), and the module's PHP files are searched for
+the constructs no Rector rule fixes:
+  removed-blocking  removed at or below P: the code fatals on P; a blocking
+                    finding (severity error) for a person
+  report-only       deprecated at or below P, its fix needs a PHP above L or
+                    no rule makes it: a warning for a person (fix_at_floor:
+                    whether the fix runs on L, its output_min_php at or
+                    below L or none)
+A row is searched only when it has a `detect` ERE; its `exclude` ERE drops
+the lines it matches (a method of the same name being declared). Comment
+lines (//, #, * and /* starts) are not code. vendor/, node_modules/ and .git/
+are left out. L and P are --floor / --target, else the module's own frozen
+plan (php.floor and php.final), else the PHP target.
+
+Usage:
+  php-target.sh --subject DIR [--floor X.Y] [--target X.Y] [--json]
+                [-h|--help]
+    --subject DIR    the module/theme
+    --floor X.Y      the PHP floor L (default: the plan's)
+    --target X.Y     the window's top P (default: the plan's php.final)
+    --json           {tool, floor, target, classes: {class: [ids]},
+                    findings: [{id, class, severity, file, line, construct,
+                    deprecated_in, removed_in, fix_at_floor}], counts} on
+                    STDOUT
+
+Exit codes: 0 scanned (findings or not) · 1 usage error, or a bound that is
+not X.Y.
+```
+
 ### analysis/port-report.sh
 
 ```text
@@ -1566,7 +1666,10 @@ status is derived deterministically: the stage, except "blocked" once the
 subject is ported and one of these holds — the last test run (on the current
 sources, or of unknown freshness) is regression / not-verified-blocked /
 not-verified-unbaselined; a fresh core matrix failed; the manifest's
-port-safety or signature-change scan recorded errors. A result computed on
+port-safety or signature-change scan recorded errors; the worklist, extracted
+from the current sources, has an open blocking item of the PHP window (a
+construct removed in the target PHP, a file a window PHP does not compile:
+scripts/analysis/php-target.sh, php-lint-window.sh). A result computed on
 sources that changed since (fresh: false) is reported but never blocks; one
 recorded with another subject_digest algorithm (drupilot 0.9) is stale too,
 but keeps blocking until it is re-run, since its sources may be the same.
@@ -2484,6 +2587,11 @@ Usage:
                  floor and run the suite; when it says failed, an item to fix the reported
                  Drupal 10 incompatibilities (or drop '^10') is added even
                  without this flag.
+                 With --subject, each open PHP-window item of a worklist
+                 extracted from the current sources (a construct removed in
+                 the target PHP, a file a window PHP does not compile, a
+                 deprecation whose fix needs a PHP above the floor) adds a
+                 task too.
   --core-matrix FILE  the verify-core-matrix.sh --json result to read
                  (default: the subject's persisted core-matrix.json when
                  --subject is given).

@@ -23,6 +23,20 @@
       }
     },
     "rationale": {"description": "The model's only input: {worklist item id: why}.", "type": "object", "additionalProperties": {"type": "string"}},
+    "php_window": {
+      "description": "The PHP window (manifest.sh, from the stage's php-target and php-lint raw reports): floor and target, the php -l legs and their compile-time deprecations, and the human worklist items of the window's constructs (removed-in-target-php, fix-needs-php-above-floor, does-not-compile).",
+      "type": "object",
+      "properties": {
+        "floor": {"type": ["string", "null"]},
+        "target": {"type": ["string", "null"]},
+        "window": {"type": ["array", "null"], "items": {"type": "string"}},
+        "lint": {"type": ["object", "null"], "properties": {
+          "status": {"enum": ["pass", "fail", "partial", "skipped"]},
+          "legs": {"type": "array", "items": {"type": "object", "required": ["php", "status"], "properties": {"php": {"type": "string"}, "status": {"enum": ["pass", "fail", "skipped", "error"]}}}},
+          "deprecations": {"type": "array", "items": {"type": "object"}}}},
+        "items": {"type": "array", "items": {"type": "object", "required": ["id", "file", "status", "blocking", "reason"], "properties": {"id": {"type": "string"}, "blocking": {"type": "boolean"}, "reason": {"type": "string"}, "findings": {"type": "array"}}}}
+      }
+    },
     "files": {
       "description": "The files the port changed against its git base, relative to the subject: {status (git's letter), path}.",
       "type": "array",

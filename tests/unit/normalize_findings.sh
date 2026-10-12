@@ -8,7 +8,8 @@
 # id's formula, the order, a line shift that keeps every id, anchors
 # unavailable, a Rector report without diffs (the other tools' findings stay),
 # the meta (raw hashes outside each raw file's meta, findings_hash), the
-# --subject/--out modes and the usage errors. Docker-free, PHP-free.
+# --subject/--out modes, the php-target scan's findings and verdict, and the
+# usage errors. Docker-free, PHP-free.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
 # shellcheck source=../../scripts/lib/common.sh
@@ -259,6 +260,47 @@ nf --raw-dir "$RX" --target-major 11 --soft-policy report --json
 assert_eq "a NUL in a message: dropped" \
   "$(j '[.findings[] | select(.tool == "phpcs") | .message | explode | index([0])] | unique')|$(j '[.findings[] | select(.tool == "phpcs") | .message] | unique')" \
   '[null]|["Missing comment","Missing function doc comment"]'
+
+# The PHP-window scan (php-target.sh): expected only when the index names it
+# or its file exists; a removed construct is an error, a deprecated one a
+# warning (php-report when its fix needs a PHP above the floor, php-manual when
+# it runs on the floor), all class php-target.
+RP="$T_TMP/rawp"; mkraw "$RP" 0
+assert_eq "an index without php-target and no file: no php-target verdict" "$(jq -c '.tools | has("php-target")' "$T_TMP/f0.json")" "false"
+jq '.tools = [{tool: "php-target", file: "04-assess-php-target.json", exit_code: 0}]' "$RP/04-assess-index.json" > "$RP/i" && mv "$RP/i" "$RP/04-assess-index.json"
+nf --raw-dir "$RP" --target-major 11 --soft-policy report --json
+assert_eq "an index naming php-target without its file: missing" "$(j '.tools["php-target"]')" '"missing"'
+jq -n '{tool: "php-target", floor: "8.1", target: "8.5", findings: [
+  {id: "removed-each", class: "removed-blocking", severity: "error", file: "src/A.php", line: 30, construct: "each()", deprecated_in: "7.2", removed_in: "8.0"},
+  {id: "p81-strftime", class: "report-only", severity: "warning", file: "m.module", line: 4, construct: "strftime()/gmstrftime()", deprecated_in: "8.1", removed_in: null},
+  {id: "p85-cast-names", class: "report-only", severity: "warning", file: "m.module", line: 9, construct: "(integer) casts", deprecated_in: "8.5", removed_in: null, fix_at_floor: true}]}' \
+  > "$RP/04-assess-php-target.json"
+nf --raw-dir "$RP" --target-major 11 --soft-policy report --json
+assert_eq "php-target: its verdict" "$(j '.tools["php-target"]')" '"ok"'
+assert_eq "php-target: removed is an error, deprecated a warning, class php-target" \
+  "$(j '[.findings[] | select(.class == "php-target") | [.tool, .rule, .file, .line, .severity, .message]] | sort')" \
+  '[["catalog","php-manual:p85-cast-names","m.module",9,"warning","(integer) casts is deprecated in PHP 8.5"],["catalog","php-removed:removed-each","src/A.php",30,"error","each() is removed in PHP 8.0"],["catalog","php-report:p81-strftime","m.module",4,"warning","strftime()/gmstrftime() is deprecated in PHP 8.1"]]'
+assert_eq "php-target: anchored like the other tools" "$(j '[.findings[] | select(.rule == "php-removed:removed-each") | .anchor]')" '["M\\A::other"]'
+assert_eq "php-target: its raw file is in meta.raw" "$(j '.meta.raw | has("04-assess-php-target.json")')" "true"
+# The php -l legs: a file 8.1 rejects and 8.3 compiles is a floor violation;
+# one only 8.5 rejects, removed syntax; one no leg compiles, does not compile.
+jq -n '{tool: "php-lint", window: ["8.1", "8.3", "8.5"], status: "fail", legs: [
+  {php: "8.1", status: "fail", messages: [{kind: "parse-error", file: "src/A.php", line: 20, message: "syntax error, unexpected identifier"},
+                                          {kind: "parse-error", file: "src/C.php", line: 3, message: "syntax error"}]},
+  {php: "8.3", status: "fail", messages: [{kind: "deprecated", file: "src/A.php", line: 12, message: "x is deprecated"},
+                                          {kind: "parse-error", file: "src/C.php", line: 3, message: "syntax error"}]},
+  {php: "8.5", status: "fail", messages: [{kind: "fatal-error", file: "m.module", line: 7, message: "Cannot use x"},
+                                          {kind: "parse-error", file: "src/C.php", line: 3, message: "syntax error"}]}]}' > "$RP/04-assess-php-lint.json"
+nf --raw-dir "$RP" --target-major 11 --soft-policy report --json
+assert_eq "php-lint: its verdict" "$(j '.tools["php-lint"]')" '"ok"'
+assert_eq "php-lint: floor, removed syntax and does-not-compile; a deprecation is no finding" \
+  "$(j '[.findings[] | select(.rule | test("^php-(floor|removed-syntax|lint):")) | [.rule, .file, .line, .severity]] | sort')" \
+  '[["php-floor:8.1","src/A.php",20,"error"],["php-lint:8.1","src/C.php",3,"error"],["php-lint:8.3","src/C.php",3,"error"],["php-lint:8.5","src/C.php",3,"error"],["php-removed-syntax:8.5","m.module",7,"error"]]'
+assert_eq "php-lint: the message names the PHP" "$(j '[.findings[] | select(.rule == "php-floor:8.1") | .message]')" '["does not compile on PHP 8.1: syntax error, unexpected identifier"]'
+jq '.status = "skipped" | .legs |= map(.status = "skipped" | .messages = [])' "$RP/04-assess-php-lint.json" > "$RP/l" && mv "$RP/l" "$RP/04-assess-php-lint.json"
+nf --raw-dir "$RP" --target-major 11 --soft-policy report --json
+assert_eq "php-lint: no Docker, the legs skipped: verdict skipped, no finding" \
+  "$(j '[.tools["php-lint"], ([.findings[] | select(.rule | test("^php-(floor|removed-syntax|lint):"))] | length)]')" '["skipped",0]'
 
 # The raw index: exactly one per stage, a JSON object.
 RI="$T_TMP/rawi"; mkraw "$RI" 0; printf '{"stage": ' > "$RI/04-assess-index.json"

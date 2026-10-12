@@ -1,0 +1,56 @@
+{
+  "classes": {
+    "apply-compat": [
+      "p84-implicit-nullable",
+      "p82-interpolation",
+      "p83-get-class-no-args",
+      "p84-csv-escape",
+      "p74-implode-order"
+    ],
+    "deny": [
+      "deny-array-first-class-callable",
+      "deny-override-on-methods",
+      "deny-readonly-property",
+      "deny-readonly-class",
+      "p81-null-to-internal",
+      "deny-sleep-to-serialize",
+      "deny-wakeup-to-unserialize",
+      "deny-override-on-properties"
+    ],
+    "not-applicable": [
+      "p85-backtick",
+      "p85-case-semicolon",
+      "p85-set-accessible",
+      "p85-null-offset",
+      "p85-debuginfo-null",
+      "p85-chr-range",
+      "p85-ord-single-byte",
+      "p85-cast-names",
+      "p85-noop-close",
+      "p85-pdo-mysql-constants",
+      "p85-http-response-header"
+    ],
+    "removed-blocking": [
+      "removed-mysql-ext",
+      "removed-ereg-ext",
+      "removed-each",
+      "removed-create-function"
+    ],
+    "report-only": [
+      "p82-utf8-encode",
+      "p80-optional-before-required",
+      "p81-strftime",
+      "p81-filter-sanitize-string",
+      "p84-e-strict",
+      "p84-lcg-value"
+    ]
+  },
+  "counts": {
+    "removed_blocking": 0,
+    "report_only": 0
+  },
+  "findings": [],
+  "floor": "8.1",
+  "target": "8.4",
+  "tool": "php-target"
+}

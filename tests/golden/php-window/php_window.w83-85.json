@@ -1,0 +1,77 @@
+{
+  "classes": {
+    "apply-compat": [
+      "p84-implicit-nullable",
+      "p82-interpolation",
+      "p83-get-class-no-args",
+      "p84-csv-escape",
+      "p85-backtick",
+      "p85-case-semicolon",
+      "p85-set-accessible",
+      "p85-null-offset",
+      "p85-debuginfo-null",
+      "p85-chr-range",
+      "p85-ord-single-byte",
+      "p74-implode-order"
+    ],
+    "deny": [
+      "deny-array-first-class-callable",
+      "deny-override-on-methods",
+      "deny-readonly-property",
+      "deny-readonly-class",
+      "p81-null-to-internal",
+      "deny-sleep-to-serialize",
+      "deny-wakeup-to-unserialize",
+      "deny-override-on-properties"
+    ],
+    "removed-blocking": [
+      "removed-mysql-ext",
+      "removed-ereg-ext",
+      "removed-each",
+      "removed-create-function"
+    ],
+    "report-only": [
+      "p82-utf8-encode",
+      "p80-optional-before-required",
+      "p85-cast-names",
+      "p85-noop-close",
+      "p85-pdo-mysql-constants",
+      "p85-http-response-header",
+      "p81-strftime",
+      "p81-filter-sanitize-string",
+      "p84-e-strict",
+      "p84-lcg-value"
+    ]
+  },
+  "counts": {
+    "removed_blocking": 0,
+    "report_only": 2
+  },
+  "findings": [
+    {
+      "class": "report-only",
+      "construct": "(boolean), (integer), (double) and (binary) casts",
+      "deprecated_in": "8.5",
+      "file": "php_window.module",
+      "fix_at_floor": true,
+      "id": "p85-cast-names",
+      "line": 12,
+      "removed_in": null,
+      "severity": "warning"
+    },
+    {
+      "class": "report-only",
+      "construct": "PDO::MYSQL_ATTR_* constants (use Pdo\\Mysql::ATTR_*)",
+      "deprecated_in": "8.5",
+      "file": "src/Connection.php",
+      "fix_at_floor": false,
+      "id": "p85-pdo-mysql-constants",
+      "line": 14,
+      "removed_in": null,
+      "severity": "warning"
+    }
+  ],
+  "floor": "8.3",
+  "target": "8.5",
+  "tool": "php-target"
+}

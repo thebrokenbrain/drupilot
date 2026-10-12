@@ -694,6 +694,16 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/manifest.sh" --subject <path> --phase por
 (Leave `--rationale` out when no item needs one; an earlier rationale is kept for
 the items still in the worklist.)
 
+The `php` stage checks the PHP window (every PHP from the plan's floor to its
+target): the constructs a PHP of the window removed or deprecated, and `php -l`
+on each of those PHP versions. They become `human` worklist items with a reason:
+`removed-in-target-php` and `does-not-compile` block, and so does
+`fix-needs-php-above-floor` when the floor's PHP does not compile the file.
+Tell the developer about each blocking one and the file it is in. It is theirs
+to fix (or the floor theirs to raise): never rewrite a removed construct on
+your own, and never drop one from the report. `port-summary.sh --strict` exits 3
+while one is open.
+
 It writes `port-report.md` into the visible `.drupilot/` artifacts dir at the
 Drupal root (and pulls the `preservation` verdict — with the baseline
 comparison: regressions, pre-existing failures, tests the port fixed — from

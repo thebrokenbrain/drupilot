@@ -28,7 +28,16 @@
 #                 files are not read: every applied action counts as in
 #                 effect.)
 #   ai-free       an analysis error or deprecation no recipe matches
-#   human         a catalog finding no recipe matches
+#   human         a catalog finding no recipe matches; the PHP window's are
+#                 too, with a reason: removed-in-target-php (a construct
+#                 php-target.sh finds removed, or syntax a php -l leg rejects
+#                 on the higher PHP only: an error, the item blocks),
+#                 fix-needs-php-above-floor (a deprecation whose fix needs a
+#                 PHP above the floor: a warning; or a file the floor's php -l
+#                 rejects and a higher PHP compiles: an error),
+#                 deprecated-no-rule (a deprecation whose fix runs on the
+#                 floor, but no rule makes it: a warning) or
+#                 does-not-compile (no window PHP compiles the file)
 #   test-adapt    an ai-templated or ai-free finding in a file under a tests/
 #                 directory (the module's or a submodule's)
 #
@@ -155,7 +164,13 @@ jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile asf "$TMP/actions.json" --a
                               elif $astat == "error" then "the codemod failed"
                               else "the codemod gave no change" end)
                           else "the recipe'"'"'s conditions do not hold" end)}
-            elif $f.tool == "catalog" then {lane: "human", recipe: null, reason: "no recipe"}
+            elif $f.tool == "catalog" then
+              {lane: "human", recipe: null,
+               reason: (if ($f.rule | test("^php-removed(-syntax)?:")) then "removed-in-target-php"
+                        elif ($f.rule | test("^php-(report|floor):")) then "fix-needs-php-above-floor"
+                        elif ($f.rule | startswith("php-lint:")) then "does-not-compile"
+                        elif ($f.rule | startswith("php-manual:")) then "deprecated-no-rule"
+                        else "no recipe" end)}
             else {lane: "ai-free", recipe: null, reason: null} end
         end
       | if (.lane == "ai-templated" or .lane == "ai-free") and ($f.file | test("(^|/)tests/")) then .lane = "test-adapt" else . end;

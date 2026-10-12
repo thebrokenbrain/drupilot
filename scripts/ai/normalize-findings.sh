@@ -11,14 +11,24 @@
 # PHP, so the result is the same on every platform (DET-2).
 #
 # Reads <raw-dir>/<NN>-<stage>-{index,rector,phpstan,phpcs,port-safety,
-# signatures,metadata,anchors}.json as scripts/ai/extract.sh writes them (any
-# but the index may be missing).
+# signatures,metadata,php-target,php-lint,anchors}.json as scripts/ai/extract.sh
+# writes them (any but the index may be missing; php-target and php-lint are
+# expected, and have a verdict, only when the index names them or their file
+# exists).
 #
 #   id      "F-" + the first 12 hex of sha256(tool␟rule␟file␟anchor␟symbol␟
 #           message␟occurrence) (␟ = 0x1f); the line is not part of it
 #   rule    Rector's FQCN; PHPStan's identifier (phpstan:untyped:<8 hex of the
 #           message's sha256> without one); PHPCS's source;
-#           port-safety:<check>, signature:<id>, metadata:<check>
+#           port-safety:<check>, signature:<id>, metadata:<check>;
+#           php-removed:<id> (a construct removed at or below the window's
+#           top PHP), php-report:<id> (deprecated in the window, its fix needs
+#           a PHP above the floor) and php-manual:<id> (deprecated, its fix
+#           runs on the floor but no rule makes it) from
+#           scripts/analysis/php-target.sh; from a php -l leg
+#           of php-lint-window.sh that failed on PHP X.Y: php-floor:X.Y (the
+#           file compiles on a higher PHP of the window), php-removed-syntax:
+#           X.Y (it compiles on a lower one only) or php-lint:X.Y (on none)
 #   anchor  the innermost Namespace\Class::method or function of the line,
 #           the Namespace\ClassLike for a line in a class-like body outside
 #           its methods (the raw anchors file, scripts/php/anchor.php), else
@@ -131,10 +141,20 @@ F_PHPCS="$(json_or "$(raw phpcs)" '{}')"
 F_SAFETY="$(json_or "$(raw port-safety)" '{}')"
 F_SIG="$(json_or "$(raw signatures)" '{}')"
 F_META="$(json_or "$(raw metadata)" '{}')"
+F_PHPT="$(json_or "$(raw php-target)" '{}')"
+F_LINT="$(json_or "$(raw php-lint)" '{}')"
 F_ANCH="$(json_or "$(raw anchors)" '{"unavailable": true}' 'array,object')"
-MISSING="$(for t in rector phpstan phpcs port-safety signatures metadata; do [[ -n "$(raw "$t")" ]] || printf '%s ' "$t"; done)"
+# The PHP-window tools arrived after the others: a raw set whose index does
+# not name one, and that has no file of it, does not expect it.
+EXPECTED="rector phpstan phpcs port-safety signatures metadata"
+for t in php-target php-lint; do
+  if [[ -n "$(raw "$t")" ]] || jq -e --arg t "$t" '[(.tools // [])[]? | objects | .tool] | index($t) != null' "$INDEX" > /dev/null 2>&1; then
+    EXPECTED="$EXPECTED $t"
+  fi
+done
+MISSING="$(for t in $EXPECTED; do [[ -n "$(raw "$t")" ]] || printf '%s ' "$t"; done)"
 # A raw file that exists but is not one JSON object counts as a failed tool.
-BROKEN="$(for t in rector phpstan phpcs port-safety signatures metadata; do f="$(raw "$t")"; [[ -n "$f" ]] || continue
+BROKEN="$(for t in $EXPECTED; do f="$(raw "$t")"; [[ -n "$f" ]] || continue
   jq -e -s 'length == 1 and (.[0] | type == "object")' "$f" > /dev/null 2>&1 || printf '%s ' "$t"; done)"
 # The deprecations' class and symbol: classify-deprecations.sh on the PHPStan
 # report. Without it every deprecation would read as a plain analysis error:
@@ -155,7 +175,7 @@ fi
 PRE="$TMP/pre.json"
 jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan "$F_PHPSTAN" \
   --slurpfile cs "$F_PHPCS" --slurpfile safety "$F_SAFETY" --slurpfile sig "$F_SIG" --slurpfile meta "$F_META" \
-  --slurpfile anch "$F_ANCH" --slurpfile cls "$F_CLASS" --arg policy "$POLICY" \
+  --slurpfile phpt "$F_PHPT" --slurpfile lint "$F_LINT" --slurpfile anch "$F_ANCH" --slurpfile cls "$F_CLASS" --arg policy "$POLICY" \
   "$(canon_jq_defs)"'
   ($ix[0].subject.path // "") as $sp
   | (if $sp == "" then "" else $sp + "/" end) as $pre
@@ -224,7 +244,28 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
            symbol: (.member | S), message: (.message | finding_norm_message), severity: ((.severity | S // "error") | sev), scope: "current", class: "signature"}),
       (($meta[0] | O | .findings | A | map(O | select((.file | type) == "string" and (.message | type) == "string" and (.check | type) == "string")))[]
         | {tool: "catalog", rule: "metadata:\(.check)", rf: (.file | rootrel), line: (.line | N),
-           symbol: null, message: (.message | finding_norm_message), severity: ((.severity | S // "error") | sev), scope: "current", class: "metadata"})
+           symbol: null, message: (.message | finding_norm_message), severity: ((.severity | S // "error") | sev), scope: "current", class: "metadata"}),
+      # The PHP-window scan: a removed construct blocks, a deprecated one is reported.
+      (($phpt[0] | O | .findings | A | map(O | select((.file | type) == "string" and (.id | type) == "string" and (.class | type) == "string")))[]
+        | (.class == "removed-blocking") as $rm
+        | {tool: "catalog", rule: ((if $rm then "php-removed:" elif .fix_at_floor == true then "php-manual:" else "php-report:" end) + .id),
+           rf: (.file | rootrel), line: (.line | N),
+           symbol: null,
+           message: (((.construct | S) // .id) + (if $rm then " is removed in PHP \((.removed_in | S) // "?")" else " is deprecated in PHP \((.deprecated_in | S) // "?")" end)
+                     | finding_norm_message),
+           severity: (if $rm then "error" else "warning" end), scope: "current", class: "php-target"}),
+      # The php -l legs: a file a window PHP does not compile.
+      (($lint[0] | O | .legs | A | map(O | select((.php | type) == "string"))) as $legs
+        | def vn: split(".") | map(tonumber? // 0);
+          def errs($l): [$l.messages | A | .[] | O | select((.kind | IN("parse-error", "fatal-error", "lint-error")) and (.file | type) == "string")];
+          ([$legs[] | select(.status == "pass" or .status == "fail") | {php, bad: (errs(.) | map(.file) | unique)}]) as $ran
+        | $legs[] | select(.status == "fail") | .php as $v | errs(.)[]
+        | .file as $f
+        | ([$ran[] | select(.php != $v and (.bad | index($f) | not)) | .php]) as $ok
+        | (if any($ok[]; (vn) > ($v | vn)) then "php-floor" elif ($ok | length) > 0 then "php-removed-syntax" else "php-lint" end) as $k
+        | {tool: "catalog", rule: "\($k):\($v)", rf: ($f | rootrel), line: (.line | N), symbol: null,
+           message: ("does not compile on PHP \($v): \((.message | S) // "php -l rejected the file")" | finding_norm_message),
+           severity: "error", scope: "current", class: "php-target"})
     ]
   # A trait error comes once per class context: keep as many copies as the
   # context with the most (two identical errors on one line stay two).
@@ -260,7 +301,8 @@ sha256_lines "$TMP/tuples.txt" "$TMP/h2" \
 DOC="$TMP/findings.json"
 jq -c --slurpfile idsf "$TMP/ids.json" --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile anch "$F_ANCH" \
   --slurpfile stan "$F_PHPSTAN" --slurpfile cs "$F_PHPCS" --slurpfile safety "$F_SAFETY" --slurpfile sig "$F_SIG" --slurpfile meta "$F_META" \
-  --arg stage "$STAGE" --argjson target "$TARGET" --arg policy "$POLICY" --arg missing "$MISSING" --arg broken "$BROKEN" '
+  --slurpfile phpt "$F_PHPT" --slurpfile lint "$F_LINT" --arg stage "$STAGE" --argjson target "$TARGET" --arg policy "$POLICY" --arg missing "$MISSING" \
+  --arg broken "$BROKEN" --arg expected "$EXPECTED" '
   def prec: {"rector": 0, "phpstan": 1, "catalog": 2, "phpcs": 3}[.] // 9;
   # A tool that gave no verdict: its raw file is missing, the error record
   # extract.sh writes, or the report of a crash.
@@ -289,12 +331,20 @@ jq -c --slurpfile idsf "$TMP/ids.json" --slurpfile ix "$INDEX" --slurpfile recto
               php_version: ($rector[0] | obj | .runner | obj | .php_version | if type == "string" then . else null end)},
      anchors: (if ($anch[0] | type == "array" and all(.[]; type == "object" and (.file | type) == "string" and (.anchor | type) == "string"))
                then "php" else "unavailable" end),
-     tools: {rector: ($rector[0] | obj | verdict("rector"; .status == "error")),
+     tools: ({rector: ($rector[0] | obj | verdict("rector"; .status == "error")),
              phpstan: ($stan[0] | obj | verdict("phpstan"; (.drupilot | obj | .status) == "crashed")),
              phpcs: ($cs[0] | obj | verdict("phpcs"; ((.drupilot | obj | .error) // null) != null)),
              "port-safety": ($safety[0] | obj | verdict("port-safety"; false)),
              signatures: ($sig[0] | obj | verdict("signatures"; false)),
-             metadata: ($meta[0] | obj | verdict("metadata"; false))},
+             metadata: ($meta[0] | obj | verdict("metadata"; false))}
+            + (if ($expected | split(" ") | index("php-target")) then {"php-target": ($phpt[0] | obj | verdict("php-target"; false))} else {} end)
+            # php-lint: skipped when no leg could run (no Docker), partial when some could not.
+            + (if ($expected | split(" ") | index("php-lint")) then
+                 {"php-lint": ($lint[0] | obj | verdict("php-lint"; false)
+                               | if . == "ok" then (($lint[0] | obj | .status) as $ls
+                                   | if $ls == "skipped" then "skipped" elif $ls == "partial" then "partial" else "ok" end)
+                                 else . end)}
+               else {} end)),
      counts: {total: ($f | length),
               current: ([$f[] | select(.scope == "current")] | length),
               next_major: ([$f[] | select(.scope == "next-major")] | length),
@@ -307,7 +357,7 @@ jq -e '.schema == 1' "$DOC" > /dev/null 2>&1 || die "Could not build findings.js
 # Each raw file is named by the hash of its content outside its own meta, so
 # two runs of the same tree record the same raw hashes.
 HASH="$(canon_json_hashable < "$DOC" | json_hash)"
-RAWS="$(for t in index rector phpstan phpcs port-safety signatures metadata anchors; do f="$RAW_DIR/$NN-$STAGE-$t.json"; [[ -f "$f" ]] || continue; printf '%s\t%s\n' "$(basename "$f")" "$(canon_json_hashable < "$f" | json_hash)"; done \
+RAWS="$(for t in index rector phpstan phpcs port-safety signatures metadata php-target php-lint anchors; do f="$RAW_DIR/$NN-$STAGE-$t.json"; [[ -f "$f" ]] || continue; printf '%s\t%s\n' "$(basename "$f")" "$(canon_json_hashable < "$f" | json_hash)"; done \
   | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: .[1]}) | from_entries')"
 jq --arg h "$HASH" --argjson raws "$RAWS" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   '. + {meta: {findings_hash: $h, raw: $raws, generated_at: $at}}' "$DOC" | canon_json > "$DOC.meta"

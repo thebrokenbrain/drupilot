@@ -1,0 +1,62 @@
+{
+  "legs": [
+    {
+      "deprecations": 0,
+      "errors": 0,
+      "image": "php:8.3-cli",
+      "messages": [],
+      "php": "8.3",
+      "status": "pass"
+    },
+    {
+      "deprecations": 1,
+      "errors": 0,
+      "image": "php:8.4-cli",
+      "messages": [
+        {
+          "file": "src/Connection.php",
+          "kind": "deprecated",
+          "line": 20,
+          "message": "Drupal\\php_window\\Connection::label(): Implicitly marking parameter $prefix as nullable is deprecated, the explicit nullable type must be used instead"
+        }
+      ],
+      "php": "8.4",
+      "status": "pass"
+    },
+    {
+      "deprecations": 2,
+      "errors": 0,
+      "image": "php:8.5-cli",
+      "messages": [
+        {
+          "file": "php_window.module",
+          "kind": "deprecated",
+          "line": 12,
+          "message": "Non-canonical cast (integer) is deprecated, use the (int) cast instead"
+        },
+        {
+          "file": "src/Connection.php",
+          "kind": "deprecated",
+          "line": 20,
+          "message": "Drupal\\php_window\\Connection::label(): Implicitly marking parameter $prefix as nullable is deprecated, the explicit nullable type must be used instead"
+        }
+      ],
+      "php": "8.5",
+      "status": "pass"
+    }
+  ],
+  "meta": {
+    "php_versions": {
+      "8.3": "8.3.35",
+      "8.4": "8.4.26",
+      "8.5": "8.5.11"
+    }
+  },
+  "status": "pass",
+  "tool": "php-lint",
+  "window": [
+    "8.3",
+    "8.4",
+    "8.5"
+  ]
+}

@@ -5,7 +5,7 @@
     "OPT_IN_TEST_PREVIOUS_MAJOR": 0
   },
   "core_removals": null,
-  "data_hash": "sha256:b967dc04dc59646e99bca648bb267ff1a76ea65993d62d5af159d19ff50cbc5d",
+  "data_hash": "sha256:ffea79ce3e6eeb6773d2503207f0738dd292e8752251a7c93c288f253bc41ce9",
   "detectors": [],
   "hard_breaks": null,
   "hops": [],
@@ -30,8 +30,8 @@
     "profile": "compat"
   },
   "range": {
-    "constraint": "^11",
-    "floor": "11.0",
+    "constraint": "^11.3",
+    "floor": "11.3",
     "resolved_strategy": "keep-current",
     "spans_majors": false,
     "strategy": "auto"
@@ -39,7 +39,7 @@
   "rector": {
     "bc": {
       "enabled": true,
-      "min_core": "11.0"
+      "min_core": "11.3"
     },
     "breaking_sets": [],
     "compat_rules": null,
@@ -61,7 +61,7 @@
   },
   "schema_version": 1,
   "source": {
-    "evidence_hash": "sha256:a97154193177e3786d46d295313c64301b60cc15b0e085a85e823c155b1f1012",
+    "evidence_hash": "sha256:4ec4486d801bd0fecc3b41aab8379f4d66c7ffbe1b6e26ed22efc948fd62690d",
     "major": 11,
     "track": "standard"
   },

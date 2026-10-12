@@ -63,7 +63,10 @@
 # subject is ported and one of these holds — the last test run (on the current
 # sources, or of unknown freshness) is regression / not-verified-blocked /
 # not-verified-unbaselined; a fresh core matrix failed; the manifest's
-# port-safety or signature-change scan recorded errors. A result computed on
+# port-safety or signature-change scan recorded errors; the worklist, extracted
+# from the current sources, has an open blocking item of the PHP window (a
+# construct removed in the target PHP, a file a window PHP does not compile:
+# scripts/analysis/php-target.sh, php-lint-window.sh). A result computed on
 # sources that changed since (fresh: false) is reported but never blocks; one
 # recorded with another subject_digest algorithm (drupilot 0.9) is stale too,
 # but keeps blocking until it is re-run, since its sources may be the same.
@@ -147,8 +150,12 @@ else
   R_SUM="$(report_path "$ART_DIR/port-summary.json")"
 fi
 
+# The worklist's open PHP-window items, when its extraction saw the current
+# sources (php_window_items).
+PHPW="$(php_window_items "$SUBJECT")"
+
 SUMMARY="$(jq -n \
-  --argjson v "$VIEW" --argjson r "$RECORD" --argjson m "$MANIFEST" \
+  --argjson v "$VIEW" --argjson r "$RECORD" --argjson m "$MANIFEST" --argjson pw "$PHPW" \
   --arg subject "$SUBJECT" --arg ver "$(plugin_version)" \
   --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --arg core "$CORE_REQ" --arg php "$REQ_PHP" --arg pfiles "$PATCH_FILES" \
@@ -178,7 +185,10 @@ SUMMARY="$(jq -n \
        (if (($m.port_safety.errors // 0) | num // 0) > 0
         then {source: "port-safety", reason: "\($m.port_safety.errors) error finding(s) recorded by check-port-safety.sh"} else empty end),
        (if (($m.signature_changes.errors // 0) | num // 0) > 0
-        then {source: "signature-changes", reason: "\($m.signature_changes.errors) error finding(s) recorded by scan-signature-changes.sh"} else empty end)
+        then {source: "signature-changes", reason: "\($m.signature_changes.errors) error finding(s) recorded by scan-signature-changes.sh"} else empty end),
+       ([$pw[] | select(.blocking)] as $pb
+        | if ($pb | length) > 0
+          then {source: "php-target", reason: "\($pb | length) open blocking PHP-window item(s): \([$pb[] | "\(.file) (\(.reason))"] | unique | join(", "))"} else empty end)
      ] | if ($stage | srank) >= ("ported" | srank) then . else [] end) as $blockers
   | {schema_version: 1,
      drupilot_version: ($ver | nz),
