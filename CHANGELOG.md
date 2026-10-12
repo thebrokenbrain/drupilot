@@ -69,13 +69,18 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 ### Changed
 - `config/php/rules.json`: the `report-only` rows carry a `detect` pattern,
   and the patterns of PHP function and cast names match regardless of case
-  (`ere-i:`, `schemas/php-rules.schema.json`).
+  (`ere-i:`, `schemas/php-rules.schema.json`); a class instantiated with
+  `new` is not a call of the removed function of the same name.
 - `php_rule_class` counts a compat row as `apply-compat` only when a pass
   runs its rule: the main pass's level set at L, or the compat pass
   (`RECTOR_COMPAT_RULES` in `scripts/lib/toolchain.sh`); the other compat
-  rows of the window are `report-only`.
+  rows of the window are `report-only`. The level set is the one the main
+  pass runs at L (`rector_php_set_arg`: php84 for an unconfirmed 8.5 floor).
+- `pipeline.sh`: a stage that runs (done) also runs the stages after it in
+  the same invocation, so a re-run php stage refreshes the manifest and the
+  report.
 - The version data changed (the patterns above and the `output_min_php`
-  values of Fixed): the data snapshot `f9b420ca…` is vendored, and the
+  values of Fixed): the data snapshot `ae3ca627…` is vendored, and the
   goldens `plans`, `templates`, `core-strategy` and `detect-source` are
   pinned to it and re-recorded. Outside `d11_php_only`, only the plans'
   `data_hash` and the PHPStan cache directory derived from the plan hash

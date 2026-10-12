@@ -26,7 +26,7 @@
       ],
       "properties": {
         "id": {"type": "string", "pattern": "^[a-z0-9-]+$"},
-        "rule": {"description": "The Rector rule class, or null for a construct no rule fixes.", "type": ["string", "null"], "pattern": "^Rector\\\\[A-Za-z0-9_\\\\]+Rector$"},
+        "rule": {"description": "The Rector rule class, or null for a construct no compat rule fixes (a level set may still rewrite some of its forms).", "type": ["string", "null"], "pattern": "^Rector\\\\[A-Za-z0-9_\\\\]+Rector$"},
         "kind": {"enum": ["compat", "deny", "report-only", "removed-no-rule"]},
         "deprecated_in": {"$ref": "#/$defs/php_or_null"},
         "removed_in": {"$ref": "#/$defs/php_or_null"},

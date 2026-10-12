@@ -412,7 +412,7 @@
       "verified": true,
       "construct": "the mysql extension (mysql_* functions)",
       "detect": "ere-i:(^|[^A-Za-z0-9_>:$])mysql_[a-z_]+[[:space:]]*\\(",
-      "exclude": "ere:function[[:space:]]+&?mysql_[a-z_]+[[:space:]]*\\("
+      "exclude": "ere:(function|new)[[:space:]]+&?mysql_[a-z_]+[[:space:]]*\\("
     },
     {
       "id": "removed-ereg-ext",
@@ -426,7 +426,7 @@
       "verified": true,
       "construct": "the ereg extension (ereg(), eregi(), ereg_replace(), eregi_replace(), split(), spliti())",
       "detect": "ere-i:(^|[^A-Za-z0-9_>:$])(eregi?|eregi?_replace|spliti?)[[:space:]]*\\(",
-      "exclude": "ere:function[[:space:]]+&?(eregi?|eregi?_replace|spliti?)[[:space:]]*\\("
+      "exclude": "ere:(function|new)[[:space:]]+&?(eregi?|eregi?_replace|spliti?)[[:space:]]*\\("
     },
     {
       "id": "removed-each",
@@ -440,7 +440,7 @@
       "verified": true,
       "construct": "each()",
       "detect": "ere-i:(^|[^A-Za-z0-9_>:$])each[[:space:]]*\\(",
-      "exclude": "ere:function[[:space:]]+&?each[[:space:]]*\\("
+      "exclude": "ere:(function|new)[[:space:]]+&?each[[:space:]]*\\("
     },
     {
       "id": "removed-create-function",
@@ -454,7 +454,7 @@
       "verified": true,
       "construct": "create_function()",
       "detect": "ere-i:(^|[^A-Za-z0-9_>:$])create_function[[:space:]]*\\(",
-      "exclude": "ere:function[[:space:]]+&?create_function[[:space:]]*\\("
+      "exclude": "ere:(function|new)[[:space:]]+&?create_function[[:space:]]*\\("
     }
   ]
 }

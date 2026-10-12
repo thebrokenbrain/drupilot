@@ -37,7 +37,8 @@
 #                 rejects and a higher PHP compiles: an error),
 #                 deprecated-no-rule (a deprecation whose fix runs on the
 #                 floor, but no rule makes it: a warning) or
-#                 does-not-compile (no window PHP compiles the file)
+#                 does-not-compile (no PHP of the window that ran compiles
+#                 the file)
 #   test-adapt    an ai-templated or ai-free finding in a file under a tests/
 #                 directory (the module's or a submodule's)
 #

@@ -27,6 +27,8 @@ assert_eq "compat deprecated above L, its rule in no pass: report-only" \
   "$(c '{"kind":"compat","rule":"Rector\\X","deprecated_in":"8.4","output_min_php":"7.1","drupal_safe":true}' 8.1 8.4)" "report-only"
 assert_eq "compat deprecated at or below L (the level set runs it; no output_min_php runs anywhere)" \
   "$(c '{"kind":"compat","rule":"Rector\\X","deprecated_in":"8.2","drupal_safe":true}' 8.2 8.3)" "apply-compat"
+assert_eq "L 8.5: the main pass runs php84 (no php85 set assumed), so a PHP 8.5 compat rule is not applied" \
+  "$(c '{"kind":"compat","rule":"Rector\\X","deprecated_in":"8.5","output_min_php":"7.0","drupal_safe":true}' 8.5 8.5)" "report-only"
 assert_eq "RECTOR_COMPAT_RULES is the list templates/rector-compat.php.tmpl runs" \
   "$(sed -n '/^\$drupilotCompatRules = /,/class_exists/p' "$T_REPO/templates/rector-compat.php.tmpl" | sed -n "s/^ *'\(.*\)',\$/\1/p" | sed 's/\\\\/\\/g')" \
   "$RECTOR_COMPAT_RULES"
@@ -136,16 +138,16 @@ $e = ( INTEGER ) $v;
 ?>
 <p>each( in HTML</p>
 PHP
-printf '<?php
-$y = each($x);
-' > "$Q/src/a:b/c.php"
-printf '<?php
-$t = each($a); // año
-' > "$Q/src/latin1.php"
+printf '<?php\n$y = each($x);\n' > "$Q/src/a:b/c.php"
+printf '<?php\n$t = each($a); // a\361o\n' > "$Q/src/latin1.php"
+# A ?> ends a // comment: the HTML after it is not code, the next <?php is.
+printf '<?php // $Id: page.tpl.php,v 1.5 $ ?>\n<div>Don'"'"'t miss it</div>\n<?php while (list($k, $v) = each($items)): ?>\n' > "$Q/page.tpl.php"
+printf '<?php\n$o = new Mysql_Connection();\n$p = new Split($a);\n' > "$Q/src/New.php"
+assert_eq "the Latin-1 fixture holds a byte that is not UTF-8" "$(LC_ALL=C grep -c "$(printf '\361')" "$Q/src/latin1.php")" "1"
 t_run "$T_SH" "$T_REPO/scripts/analysis/php-target.sh" --subject "$Q" --floor 8.1 --target 8.5 --json
-assert_eq "the code only: Each( and ( INTEGER ) in code, a ':' path, a Latin-1 line" \
+assert_eq "the code only: Each( and ( INTEGER ) in code, after a ?> in a comment, a ':' path, a Latin-1 line; no new Split(" \
   "$T_RC|$(jq -r '[.findings[] | "\(.file):\(.line):\(.id)"] | join(" ")' "$T_OUT")" \
-  "0|q.module:11:removed-each q.module:12:p85-cast-names src/a:b/c.php:2:removed-each src/latin1.php:2:removed-each"
+  "0|page.tpl.php:3:removed-each q.module:11:removed-each q.module:12:p85-cast-names src/a:b/c.php:2:removed-each src/latin1.php:2:removed-each"
 assert_eq "the rows without a pattern are listed as unsearched" \
   "$(jq -c '[(.unsearched | index("p84-csv-escape") != null), (.unsearched | index("removed-each"))]' "$T_OUT")" '[true,null]'
 E="$T_TMP/empty"; mkdir -p "$E"

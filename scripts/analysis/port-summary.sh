@@ -156,6 +156,7 @@ fi
 # warned about, like any result computed on sources that changed since.
 PHPW="$(php_window_items "$SUBJECT")"
 _stale="$(printf '%s' "$PHPW" | jq -r '[.[] | select(.blocking and (.fresh | not))] | length' 2>/dev/null || echo 0)"
+case "$(printf '%s' "$VIEW" | jq -r '.stage // ""' 2>/dev/null || true)" in ported|refactored|tested|contributed) ;; *) _stale=0;; esac
 if [[ "$_stale" =~ ^[1-9] ]]; then
   log_warn "$_stale blocking PHP-window item(s) were found in a file that changed since: re-run the pipeline's php stage to check them."
 fi

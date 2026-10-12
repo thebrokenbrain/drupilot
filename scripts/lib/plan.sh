@@ -469,8 +469,10 @@ plan_rector_skip() {
 #   apply-modernize   a modernize row whose level is at or below L
 #   apply-compat      a compat row deprecated or removed at or below P, safe
 #                     for Drupal, whose output runs on L, and that a pass
-#                     runs: the main pass's level set at L (deprecated at or
-#                     below L) or the compat pass (RECTOR_COMPAT_RULES)
+#                     runs: the main pass's level set (deprecated at or below
+#                     the PHP of the set rector_php_set_arg gives for L: 8.4
+#                     for an unconfirmed 8.5) or the compat pass
+#                     (RECTOR_COMPAT_RULES)
 #   report-only       deprecated at or below P, but its fix needs a PHP above
 #                     L, is not safe to apply, or no pass runs its rule
 #   not-applicable    outside the window: deprecated and removed above P
@@ -479,7 +481,7 @@ plan_rector_skip() {
 _PHP_RULE_CLASS_JQ='
 def _pv: split(".") | map(tonumber? // 0);
 def _le($a; $b): ($a != null) and (($a | _pv) <= ($b | _pv));
-def php_rule_class($L; $P; $compat):
+def php_rule_class($L; $P; $compat; $S):
   . as $r
   | (_le($r.deprecated_in; $P)) as $dep
   | (_le($r.removed_in; $P)) as $rem
@@ -489,7 +491,7 @@ def php_rule_class($L; $P; $compat):
     elif $r.kind == "modernize" then (if _le($r.php_level // $r.output_min_php; $L) then "apply-modernize" else "not-applicable" end)
     elif $r.kind == "compat" then
       (if ($dep or $rem) | not then "not-applicable"
-       elif $runs and $r.drupal_safe == true and (_le($r.deprecated_in; $L) or (($compat | index($r.rule)) != null))
+       elif $runs and $r.drupal_safe == true and (_le($r.deprecated_in; $S) or (($compat | index($r.rule)) != null))
        then "apply-compat"
        elif $rem then "removed-blocking"
        else "report-only" end)
@@ -497,6 +499,16 @@ def php_rule_class($L; $P; $compat):
       (if $rem then "removed-blocking" elif $dep then "report-only" else "not-applicable" end)
     else "not-applicable" end;
 '
+
+# _php_level_set_php L -> the PHP of the level set the main Rector pass runs
+# at the floor L (rector_php_set_arg: php84 -> 8.4); L itself when it cannot
+# tell.
+_php_level_set_php() {
+  local s
+  s="$(rector_php_set_arg "${1:-}" 2> /dev/null || true)"
+  if [[ "$s" =~ ^php([0-9])([0-9])$ ]]; then printf '%s.%s' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; else printf '%s' "${1:-}"; fi
+  return 0
+}
 
 # _php_compat_rules_json -> RECTOR_COMPAT_RULES as one JSON array of FQCNs.
 _php_compat_rules_json() {
@@ -510,8 +522,8 @@ _php_compat_rules_json() {
 php_rule_class() {
   local row="${1:-}" l="${2:-}" p="${3:-}"
   [[ "$l" =~ ^[0-9]+\.[0-9]+$ && "$p" =~ ^[0-9]+\.[0-9]+$ ]] && have_cmd jq || return 1
-  printf '%s' "$row" | jq -r --arg L "$l" --arg P "$p" --argjson compat "$(_php_compat_rules_json)" \
-    "$_PHP_RULE_CLASS_JQ"' if type == "object" then php_rule_class($L; $P; $compat) else error("not a row") end' 2> /dev/null || return 1
+  printf '%s' "$row" | jq -r --arg L "$l" --arg P "$p" --argjson compat "$(_php_compat_rules_json)" --arg S "$(_php_level_set_php "$l")" \
+    "$_PHP_RULE_CLASS_JQ"' if type == "object" then php_rule_class($L; $P; $compat; $S) else error("not a row") end' 2> /dev/null || return 1
   return 0
 }
 
@@ -523,8 +535,8 @@ php_rules_classified() {
   local l="${1:-}" p="${2:-}" f
   f="$(version_data_dir)/php/rules.json"
   [[ -r "$f" && "$l" =~ ^[0-9]+\.[0-9]+$ && "$p" =~ ^[0-9]+\.[0-9]+$ ]] && have_cmd jq || { printf '[]'; return 0; }
-  jq -c --arg L "$l" --arg P "$p" --argjson compat "$(_php_compat_rules_json)" "$_PHP_RULE_CLASS_JQ"'
-    [.rules[] | {id: (.id // .rule), rule, kind, class: php_rule_class($L; $P; $compat), detect: (.detect // null),
+  jq -c --arg L "$l" --arg P "$p" --argjson compat "$(_php_compat_rules_json)" --arg S "$(_php_level_set_php "$l")" "$_PHP_RULE_CLASS_JQ"'
+    [.rules[] | {id: (.id // .rule), rule, kind, class: php_rule_class($L; $P; $compat; $S), detect: (.detect // null),
                  exclude: (.exclude // null), construct: (.construct // null), deprecated_in: (.deprecated_in // null),
                  removed_in: (.removed_in // null), output_min_php: (.output_min_php // null), verified: (.verified // false)}]' \
     "$f" 2> /dev/null || printf '[]'

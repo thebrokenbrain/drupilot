@@ -50,20 +50,21 @@ exit 0
 SH
 chmod +x "$B/php" "$B/docker"
 
-S="$T_TMP/m"; mkdir -p "$S/src/x in y"
+S="$T_TMP/m"; mkdir -p "$S/src/x in y" "$S/src/a\\b"
 printf 'name: M\ntype: module\n' > "$S/m.info.yml"
 printf '<?php\nclass A {\n  const string NAME = "x"; // @fail-on 8.1\n}\n' > "$S/src/A.php"
 printf '<?php\n// @fail-on 8.1\n' > "$S/src/x in y/B.php"
+printf '<?php\n\n// @fail-on 8.1\n' > "$S/src/a\\b/C.php"
 printf '<?php\nfunction f(Foo $x = NULL) {} // @deprecated-on 8.4\n' > "$S/m.module"
 pl() { t_run env PATH="$B:$PATH" "$T_SH" "$T_REPO/scripts/analysis/php-lint-window.sh" --subject "$S" --json "$@"; }
 
 pl --window "8.1 8.3 8.4"
 assert_eq "one leg per minor; 8.1 fails, 8.3 and 8.4 pass: status fail" \
   "$T_RC|$(jq -c '[.status, [.legs[] | [.php, .status, .errors, .deprecations]]]' "$T_OUT")" \
-  '0|["fail",[["8.1","fail",2,0],["8.3","pass",0,0],["8.4","pass",0,1]]]'
-assert_eq "  the parse errors, each on the file php -l was given (a path with \" in \")" \
+  '0|["fail",[["8.1","fail",3,0],["8.3","pass",0,0],["8.4","pass",0,1]]]'
+assert_eq "  the parse errors, each on the file php -l was given (a path with \" in \" or a backslash)" \
   "$(jq -c '[.legs[0].messages[] | [.kind, .file, .line]]' "$T_OUT")" \
-  '[["parse-error","src/A.php",3],["parse-error","src/x in y/B.php",2]]'
+  '[["parse-error","src/A.php",3],["parse-error","src/a\\b/C.php",3],["parse-error","src/x in y/B.php",2]]'
 assert_eq "  the deprecation of 8.4, reported" "$(jq -c '[.legs[2].messages[] | [.kind, .file, .line]]' "$T_OUT")" '[["deprecated","m.module",2]]'
 assert_eq "  the PHP release each image ran, under meta" "$(jq -c '.meta.php_versions' "$T_OUT")" '{"8.1":"8.1.99","8.3":"8.3.99","8.4":"8.4.99"}'
 pl --window "8.3,8.4"

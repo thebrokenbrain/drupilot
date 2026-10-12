@@ -8,7 +8,8 @@
 #      the subject's digest at the stage start;
 #   2. a stage whose last record is done (or skipped) with an output digest
 #      equal to that digest is up to date: it is not run again (a tree rolled
-#      back to before the stage runs it again);
+#      back to before the stage runs it again), unless a stage before it ran
+#      in this run;
 #   3. a checkpoint of the subject's tree, refs/drupilot/stages/<run>/<stage>
 #      (git_stage_checkpoint: a throwaway GIT_INDEX_FILE, the real index and
 #      HEAD untouched);
@@ -192,11 +193,13 @@ stage_report() {
 STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 D0="$(digest_now)"
 [[ -n "$RUN" ]] || RUN="$(printf '%s' "$STARTED" | tr -d ':-')-$(printf '%s' "${D0#sha256:}" | cut -c1-6)"
-RC=0; OUT='[]'
+# RAN: a stage before ran (done) in this run, so the ones after it run too
+# (their records describe what came before).
+RC=0; OUT='[]'; RAN=0
 for s in $ORDER; do
   D="$(digest_now)"
   last="$(jq -c --arg s "$s" '.stages[$s] // {}' "$REC" 2> /dev/null || printf '{}')"
-  if [[ "$FORCE" != "1" ]] && jq -e --arg d "$D" '(.status == "done" or .status == "skipped") and .output_digest == $d
+  if [[ "$FORCE" != "1" && "$RAN" != "1" ]] && jq -e --arg d "$D" '(.status == "done" or .status == "skipped") and .output_digest == $d
        and (((.reason // "") == "placeholder" or ((.reason // "") | startswith("php-lint-"))) | not)' <<< "$last" > /dev/null 2>&1; then
     log_info "pipeline: $s is up to date (its output digest is the current one)."
     OUT="$(jq -c --arg s "$s" --arg d "$D" '. + [{id: $s, status: "up-to-date", reason: null, input_digest: $d, output_digest: $d, rc: 0}]' <<< "$OUT")"
@@ -220,6 +223,7 @@ for s in $ORDER; do
   fi
   D2="$(digest_now)"
   st="done"; [[ -z "$SKIP_REASON" ]] || st="skipped"
+  [[ "$st" != "done" ]] || RAN=1
   record "$s" "$st" "${SKIP_REASON:-$DONE_REASON}" "$D" "$D2" 0
   [[ -z "$SKIP_REASON" ]] || log_info "pipeline: $s skipped ($SKIP_REASON)."
   OUT="$(jq -c --arg s "$s" --arg st "$st" --arg r "${SKIP_REASON:-$DONE_REASON}" --arg d "$D" --arg o "$D2" \

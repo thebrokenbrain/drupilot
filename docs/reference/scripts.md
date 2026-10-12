@@ -176,7 +176,8 @@ codemod > ai-templated > ai-free > test-adapt > human > deferred.
                 rejects and a higher PHP compiles: an error),
                 deprecated-no-rule (a deprecation whose fix runs on the
                 floor, but no rule makes it: a warning) or
-                does-not-compile (no window PHP compiles the file)
+                does-not-compile (no PHP of the window that ran compiles
+                the file)
   test-adapt    an ai-templated or ai-free finding in a file under a tests/
                 directory (the module's or a submodule's)
 
@@ -377,7 +378,8 @@ config/pipeline.json. For each stage:
      the subject's digest at the stage start;
   2. a stage whose last record is done (or skipped) with an output digest
      equal to that digest is up to date: it is not run again (a tree rolled
-     back to before the stage runs it again);
+     back to before the stage runs it again), unless a stage before it ran
+     in this run;
   3. a checkpoint of the subject's tree, refs/drupilot/stages/<run>/<stage>
      (git_stage_checkpoint: a throwaway GIT_INDEX_FILE, the real index and
      HEAD untouched);

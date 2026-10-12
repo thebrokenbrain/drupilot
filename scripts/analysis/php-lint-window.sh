@@ -75,8 +75,8 @@ while IFS= read -r f; do
   rc=$?
   # Each "<Kind>: <message> in <f> on line <N>" line, cut at the file php -l
   # was given (a path may itself contain " in ").
-  printf '%s\n' "$out" | awk -v f="$f" '{
-    pat = " in " f " on line "; p = index($0, pat); if (p == 0) next
+  printf '%s\n' "$out" | PHPL_FILE="$f" awk '{
+    f = ENVIRON["PHPL_FILE"]; pat = " in " f " on line "; p = index($0, pat); if (p == 0) next
     n = substr($0, p + length(pat)); if (n !~ /^[0-9]+$/) next
     m = substr($0, 1, p - 1); sub(/^PHP /, "", m); q = index(m, ": "); if (q == 0) next
     k = substr(m, 1, q - 1); if (k !~ /^[A-Z][A-Za-z ]*$/) next

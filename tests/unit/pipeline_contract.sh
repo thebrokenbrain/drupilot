@@ -78,6 +78,9 @@ assert_eq "  the raw reports under each stage's own NN" "$(ls "$SD/raw" | tr '\n
 # A re-run on the same tree, plan and lock: nothing runs.
 pl --json
 assert_eq "a re-run: every stage up to date, no tool runs" "$T_RC|$(calls)|$(jq -c '[.stages[].status] | unique' "$T_OUT")" '0||["up-to-date"]'
+STUB_LINT=skipped pl --stages php --force
+pl
+assert_eq "a stage that runs (php, its php -l skipped before) runs the ones after it" "$T_RC|$(calls)" "0|extract,normalize-findings,classify,fixpoint,manifest,port-report"
 pl --force
 assert_eq "  --force runs them again" "$T_RC|$(calls)" "0|run-rector,extract,normalize-findings,classify,apply-recipes,extract,normalize-findings,classify,fixpoint,manifest,port-report"
 # A tree rolled back to before upgrade runs it again.

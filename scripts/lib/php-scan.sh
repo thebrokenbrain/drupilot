@@ -582,7 +582,12 @@ BEGIN { st = "html"; lbl = "" }
       i++; continue
     }
     if (c2 == "/*") { out = out "  "; i += 2; st = "block"; continue }
-    if (c2 == "//" || (c == "#" && substr(line, i + 1, 1) != "[")) break
+    # A // or # comment runs to the end of the line, or to a ?> (PHP leaves
+    # PHP mode there).
+    if (c2 == "//" || (c == "#" && substr(line, i + 1, 1) != "[")) {
+      p = index(substr(line, i), "?>"); if (p == 0) break
+      out = out blank(substr(line, i, p + 1)); i += p + 1; st = "html"; continue
+    }
     if (c2 == "?>") { out = out "  "; i += 2; st = "html"; continue }
     if (c == "\047") { out = out c; i++; st = "sq"; continue }
     if (c == "\"") { out = out c; i++; st = "dq"; continue }

@@ -41,6 +41,10 @@ index_now; findings; wl open true removed-in-target-php
 assert_eq "worklist_fresh: index, findings and worklist agree" "$(worklist_fresh "$S" && echo fresh)" "fresh"
 ps
 assert_eq "before ported: never blocked" "$T_RC|$(st)" "0|not-started"
+wl open true removed-in-target-php "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+ps
+assert_eq "  a stale item before ported: not even warned about" "$(t_err | grep -c 'blocking PHP-window item' || true)" "0"
+wl open true removed-in-target-php
 phase_record "$S" ported > /dev/null
 ps --strict
 assert_eq "ported, a removed construct open: blocked, --strict exit 3" "$T_RC|$(blk)" \

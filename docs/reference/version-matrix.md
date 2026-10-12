@@ -275,7 +275,7 @@ Sources:
 
 ## PHP rules
 
-As of 2026-10-04; rule classes read in rector-src 2.5.2. compat: a deprecation fix whose output runs on the PHP floor; deny: never applied, also inside a level set; report-only: reported, never rewritten; removed-no-rule: a removed construct no rule fixes.
+As of 2026-10-04; rule classes read in rector-src 2.5.2. compat: a deprecation fix whose output runs on the PHP floor; deny: never applied, also inside a level set; report-only: reported, never rewritten; removed-no-rule: a removed construct no compat rule fixes (the Rector level sets rewrite some of its forms; php-target.sh reports what is left).
 
 | Id | Kind | Rector rule | Deprecated in | Removed in | Output needs PHP | Drupal-safe | Verified |
 |---|---|---|---|---|---|---|---|
