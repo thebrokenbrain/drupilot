@@ -222,6 +222,26 @@ fi
 if [[ -n "$TEST_STALE" ]]; then
   PRES_LINE="$PRES_LINE _(stale: ${TEST_STALE}; re-run /drupilot-test.)_"
 fi
+# The test legs (last-test.json legs, T-M5-11): each leg's own verdict under
+# the aggregate, when the record holds more than the CURRENT one.
+TEST_LEGS="$(printf '%s' "$TEST" | jq -r '(.legs // {}) | if (type == "object" and (keys | length) > 1)
+  then (to_entries | map("- \(.key)\(if .value.php != null then " (PHP \(.value.php))" else "" end): \(.value.preservation)"
+         + (if (.value.stale // false) then " (stale: recorded on other sources)" else "" end)
+         + (if ((.value.tests_failed // []) | length) > 0 then " — failing: \(.value.tests_failed | join(", "))" else "" end)
+         + (if (.value.baseline | type) == "object"
+            then ([(if (.value.baseline.regressions | length) > 0 then "regressions: \(.value.baseline.regressions | join(", "))" else empty end),
+                   (if (.value.baseline.not_baselined | length) > 0 then "not baselined: \(.value.baseline.not_baselined | join(", "))" else empty end),
+                   (if (.value.baseline.pre_existing | length) > 0 then "pre-existing: \(.value.baseline.pre_existing | join(", "))" else empty end)]
+                  | if length > 0 then " (" + join("; ") + ")" else "" end)
+            else "" end)) | join("\n"))
+  else empty end' 2>/dev/null || true)"
+if [[ -n "$TEST_LEGS" ]]; then
+  PRES_LINE="$PRES_LINE
+
+**Test legs** (the verdict above is their aggregate):
+
+$TEST_LEGS"
+fi
 # Lenient dependencies the run used (last-test.json lenient[], AR-28): named
 # next to the verdict, never folded into it.
 TEST_LENIENT="$(printf '%s' "$TEST" | jq -r '(.lenient // []) | if type == "array" then join(", ") else empty end' 2>/dev/null || true)"
@@ -329,6 +349,9 @@ printf '%s' "$PREC" | jq -e 'type == "object"' >/dev/null 2>&1 || PREC=""
 
   printf '## Preservation gate\n\n%s\n\n' "$PRES_LINE"
   if [[ -n "$T_BASE" ]]; then
+    # With test legs, this comparison is the CURRENT leg's (each leg's own
+    # classes are listed under the legs above).
+    [[ -z "$TEST_LEGS" ]] || printf '_The baseline comparison below is the CURRENT leg\x27s (the bed\x27s PHP)._\n\n'
     printf '%s' "$T_BASE" | jq -r '
       "Compared with the pre-port baseline (`run-phpunit.sh --baseline`, taken \(.taken_at // "?")): **\(.regressions | length)** regression(s), **\(.not_baselined // [] | length)** not baselined, **\(.pre_existing | length)** pre-existing failure(s), **\(.fixed | length)** test(s) fixed by the port."
         + (if .same_code then " _The baseline was taken on the current code, so it cannot show what the port changed._" else "" end) + "\n",

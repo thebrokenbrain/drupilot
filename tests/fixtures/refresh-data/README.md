@@ -9,4 +9,13 @@ api-d7 node 2891690), except the `11.5.0-beta1` tag, which is made up to
 prove that a supported major ignores pre-release tags, and the trimmed
 `core.libraries.yml` files and `.info.yml` listings at `10.6.18` and
 `11.0.0` (`git/`), which hold just enough for the completeness check: `book`
-disappears and is listed, nothing else does.
+disappears and is listed, nothing else does. The `require` of the packagist
+entries holds only the PHP and `symfony/polyfill-*` packages (11.3.18's and
+11.0.0's as on packagist; 11.3.0 inherits 11.3.18's, as p2's minified format
+does, and 11.x-dev clears it with `"__unset"`), to prove the `polyfills`
+derivation: what every tag of a minor requires. The made-up `11.3.0-rc1`
+requires no polyfill: a supported major ignores its pre-release tags, so 11.3
+keeps php84 and php85. The test then appends a stable 11.3 tag requiring them,
+an `"__unset"` entry and a stable 11.3 tag with no require: that last tag
+inherits the cleared require (not the one before it), which empties 11.3's
+intersection.

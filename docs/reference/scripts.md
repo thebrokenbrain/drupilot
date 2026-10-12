@@ -840,24 +840,37 @@ symmetric questions at once:
      authoritative proof of "runs on the target" is still the test suite, which
      drupilot runs inside DDEV on the target PHP version.)
 
-This is a HEURISTIC syntactic scan (a curated list of well-known 8.2/8.3/8.4
-language constructs and function additions), NOT a full static analysis. It is
+This is a HEURISTIC syntactic scan (a curated list of well-known 8.2 to 8.5
+language constructs and function additions; the 8.5 ones read on php.net's
+migration85 pages), NOT a full static analysis. For syntax it is a fallback:
+the php stage runs php -l on every PHP of the window. A function's
+availability on the floor is checked only by this scan and by the test
+suite on the floor's PHP (the PHP_LOW test leg). It is
 deliberately CONSERVATIVE: it reports the highest version whose constructs it
 finds, and only reports 8.1 when it finds none. A missed construct could lower
 the floor wrongly (a D10 + low-PHP site would then install and fatal at runtime)
 or miss a target incompatibility, so callers acting on the result MUST still
 rely on the test suite / PHPCompatibility for the authoritative answer.
+With --range, a function a symfony/polyfill-phpXY package defines does not
+raise the floor when every core the range admits provides that package
+(core_range_polyfills, scripts/lib/plan.sh): its signal is kept, marked
+polyfilled.
 
 Usage:
-  detect-php-floor.sh [--subject DIR] [--json] [-h|--help]
+  detect-php-floor.sh [--subject DIR] [--range CONSTRAINT] [--json] [-h|--help]
 
   --subject DIR   module/theme directory (default: current directory).
+  --range C       the declared core range (e.g. '^11.3'): the polyfills every
+                  core of C provides are taken into account.
   --json          print only the JSON payload (suppress the human line).
 
 Output (stdout): JSON
-  { floor: "8.1".."8.4", target: "8.3", target_compatible: true|false,
+  { floor: "8.1".."8.5", target: "8.3", target_compatible: true|false,
     method: "heuristic-scan", signals: [ {version, pattern, location} ... ],
     scanned_files: N }
+  With --range, also range and polyfills (the packages every core of the
+  range provides); a signal whose every hit calls a polyfilled function
+  carries polyfilled: true and does not count.
 Read-only and ungated.
 
 Exit codes: 0 ok · 1 usage/error.
@@ -2187,8 +2200,10 @@ Vocabulary (AR-01):
                  0.9 names d11-only and keep-d10 are aliases); keep-current
                  is a resolved output only, never an input
   L              PHP floor: max(php_min(F), the code's floor
-                 (detect-php-floor.sh), the subject's require.php); L = P
-                 with DRUPILOT_REQUIRE_PHP_FLOOR=target
+                 (detect-php-floor.sh --range C: a function every core of C
+                 provides through a polyfill does not raise it), the
+                 subject's require.php); L = P with
+                 DRUPILOT_REQUIRE_PHP_FLOOR=target
   P              PHP final: DRUPILOT_PHP_TARGET, else targets/T.json
                  .php_defaults.env; it must be a PHP M supports, M the
                  newest released minor of T or its pre-release minor in
@@ -3889,7 +3904,7 @@ Usage:
                  [--type unit|kernel|functional|js|all]
                  [--coverage] [--filter EXPR]
                  [--baseline | --baseline-from-last | --no-baseline]
-                 [--no-record] [--result-file FILE]
+                 [--no-record] [--result-file FILE] [--leg CURRENT|PHP_LOW]
 
   --baseline           record this run as the PRE-PORT test baseline
                        (test-baseline.json in the subject's state dir) instead
@@ -3905,6 +3920,28 @@ Usage:
                        clobbers the real preservation verdict).
   --result-file FILE   also write this run's JSON record to FILE (works with
                        --no-record).
+  --leg L              the test leg of the upgrade plan's test_matrix (AR-06,
+                       T-M5-11): CURRENT (default) is the run above, on the
+                       test-bed's PHP. PHP_LOW runs the Unit and Kernel
+                       groups (a Functional test's site is served by the
+                       bed's own PHP) with the leg's lower PHP, through that
+                       PHP's binary in the DDEV web container
+                       (/usr/bin/phpX.Y); a plan without the leg is a no-op.
+                       Its failures are classified against the baseline like
+                       any other. Its record goes to last-test.json's
+                       legs.PHP_LOW (its time to meta.legs), only over a
+                       CURRENT run of the same sources, and the top-level
+                       preservation becomes the stronger of the two legs'
+                       (regression > not-verified-unbaselined >
+                       pre-existing-failures > verified-partial; a blocked,
+                       stale or narrowed PHP_LOW leg counts as
+                       verified-partial at most), a red one making status
+                       failed; the CURRENT verdict stays in legs.CURRENT. A
+                       CURRENT run keeps the PHP_LOW leg while the plan has
+                       it, marked stale on other sources. A module without a
+                       frozen plan of its own, exit 2; a PHP that cannot
+                       load the bed's vendor tree blocks the leg. PREVIOUS_MAJOR
+                       is static: verify-core-matrix.sh checks it.
 
 Output:
   The PHPUnit output streams through to STDOUT/STDERR unmodified, followed by
@@ -4306,7 +4343,8 @@ Check drupilot's version data and catalogs (a developer/CI tool: no command,
 skill or hook calls it; scripts/dev/check.sh runs it as its `data` gate):
   schema      every $ref of the schemas resolves (whatever the data);
               config/targets/<major>.json (schemas/target.schema.json),
-              config/php/versions.json and rules.json, config/paths/eras.json
+              config/php/versions.json, rules.json and polyfills.json,
+              config/paths/eras.json
               and graph.json, and every config/catalog/*.json validate
               against their schema (the jq validator, scripts/dev/
               jsonschema.jq); the eight core files (targets/10, 11 and 12,
@@ -4551,8 +4589,10 @@ Refresh the generated fields of the version data (a developer tool: no
 command, skill, hook or port ever runs it). For every minor of
 config/targets/<major>.json it reads, at that minor's newest tag:
   - repo.packagist.org/p2/drupal/core.json: the newest tag of the minor
-    (stable only; alpha/beta/rc too for a pre-release major) and the date of
-    its .0 release
+    (stable only; alpha/beta/rc too for a pre-release major), the date of
+    its .0 release, and polyfills: the symfony/polyfill-phpXY packages that
+    EVERY tag of the minor requires directly (what a module declaring the
+    minor can count on; a transitive requirement is no guarantee)
   - git.drupalcode.org/project/drupal/-/raw/<tag>/: core/composer.json
     (require.php -> php_min, symfony/http-kernel -> symfony_major,
     twig/twig -> twig_major), composer/Metapackage/DevDependencies/

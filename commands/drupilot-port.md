@@ -1,6 +1,6 @@
 ---
 description: Phase 1 minimal port of a Drupal 9/10 module/theme to Drupal 11 — apply official drupal-rector, then the version-filtered digests layer, then ad-hoc rules, plus the minimal manual changes (core_version_requirement etc.), and validate with phpcbf/phpcs/phpstan. Use when the user wants the subject to run on D11 with its original behavior intact, without architectural refactoring.
-argument-hint: "[module-or-theme-path]"
+argument-hint: "[module-or-theme-path] [--php X.Y]"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, Skill, AskUserQuestion
 ---
 
@@ -11,7 +11,16 @@ functionality**, with the *minimum* changes. This is **not** a refactor — no
 architecture changes, no API modernization for its own sake. Anything beyond
 mechanical compatibility is explicitly deferred to Phase 2 (`/drupilot-refactor`).
 
-Subject path argument: `$1` (fallback: the current working directory).
+Subject path argument: the first argument of `$ARGUMENTS` that is neither a flag
+nor a flag's value (`--php 8.4`), when it is a directory; else the current
+working directory. When it is not `$1` (`/drupilot-port --php 8.4 <path>`, or no
+path), use that path wherever `$1` appears below. A `--php X.Y` in `$ARGUMENTS` names the PHP target the port expects. The
+setup froze it in the plan, and the port never changes it: once the Drupal root is
+known, read the frozen value with
+`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; DRUPILOT_PROJECT_DIR=<drupal_root> plan_get .php.final'`.
+If it differs from X.Y (or there is no frozen plan), stop before changing any file
+and tell the developer to re-plan with `/drupilot-setup <path> --php X.Y`. If it
+matches, go on as usual.
 
 **Decision log — throughout the port.** The moment you revert or hand-edit a
 change Rector made, ignore or override a script's verdict (port-safety,

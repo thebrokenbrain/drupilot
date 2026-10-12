@@ -59,6 +59,9 @@
       "coder_constraint": "^9.0",
       "phpstan_constraint": "^2.2.14",
       "phpstan_drupal_constraint": "^2.2.1",
+      "polyfills": [
+        "symfony/polyfill-php86"
+      ],
       "src": "https://git.drupalcode.org/project/drupal/-/raw/12.0.0-beta1/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json",
       "php_src": "https://www.drupal.org/api-d7/node.json?nid=2891690 (PHP requirements, changed 2026-08-04)",
       "verified": true,

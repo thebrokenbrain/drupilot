@@ -88,6 +88,19 @@ fi
 
 # --- Compute the recommendation (JSON on stdout from the helper) -----------
 JSON="$(recommend_core_target "$SUBJECT_ABS" "$PHASE" "$BC_OVERRIDE")"
+# The floor of the recommended range (ADR 0029): a function every core of it
+# provides through a polyfill does not raise the floor, as in the upgrade
+# plan. When that lowers the floor this script detected, recompute once.
+if [[ -n "${DF:-}" && -r "${DETECT_SCRIPT:-}" ]]; then
+  REC_REQ="$(printf '%s' "$JSON" | jq -r '.recommended_core_version_requirement // empty' 2>/dev/null || true)"
+  if [[ -n "$REC_REQ" ]]; then
+    DF2="$(bash "$DETECT_SCRIPT" --subject "$SUBJECT_ABS" --range "$REC_REQ" --json 2>/dev/null | jq -r '.floor // empty' 2>/dev/null || true)"
+    if [[ -n "$DF2" && "$DF2" != "$DF" ]]; then
+      export DRUPILOT_DETECTED_PHP_FLOOR="$DF2"
+      JSON="$(recommend_core_target "$SUBJECT_ABS" "$PHASE" "$BC_OVERRIDE")"
+    fi
+  fi
+fi
 
 # --- Human table (stderr) unless --json ------------------------------------
 if [[ "$JSON_ONLY" -eq 0 ]]; then

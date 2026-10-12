@@ -13,6 +13,69 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+### Added
+- **Core polyfills are version data** (T-M5-08, ADR 0029).
+  `config/targets/<major>.json` `minors[].polyfills` lists the
+  `symfony/polyfill-phpXY` packages every release of the minor requires.
+  `scripts/dev/refresh-data.sh` derives it from Packagist's `drupal/core`
+  metadata, through p2's minified inheritance. `config/php/polyfills.json`
+  lists the functions each package defines unconditionally, with their sources
+  (`schemas/php-polyfills.schema.json`; the `data` gate checks every named
+  package is described).
+- `core_range_polyfills C` (`scripts/lib/plan.sh`): the packages every core
+  minor of a range provides, either required or native at the minor's minimum
+  PHP, and their functions. For example, none for `^10.3 || ^11`, and
+  `polyfill-php84` from `^11.2`.
+- **`detect-php-floor.sh --range C`**: a function every core of C provides
+  through a polyfill keeps its signal, marked `polyfilled`, but no longer raises
+  the floor. `upgrade-path.sh` computes the PHP floor L with the range it
+  decided. Without `--range`, the output keeps its 0.9 shape.
+- **`detect-php-floor.sh` knows PHP 8.5**, from php.net's migration85 pages:
+  the pipe operator and the `(void)` cast, searched in the code only
+  (`php_code_lines`: a regex, a string or a comment is no signal),
+  `array_first()` / `array_last()` and `get_error_handler()` /
+  `get_exception_handler()`. The 8.5 attributes are no signal: an older PHP
+  ignores them.
+- **`detect-php-floor.sh` reads calls only**: a method call, a static call or
+  a function's own definition no longer counts, and a function the module
+  defines itself as a global function (in its code, in a file with no
+  namespace) is provided. `core-strategy.sh` judges the floor with the
+  polyfills of the range it recommends, as the plan does.
+- **The test legs run** (T-M5-11, AR-06, CC-14). `run-phpunit.sh --leg
+  PHP_LOW` runs the Unit and Kernel groups again on the window's lowest PHP the
+  bed core supports, the plan's `test_matrix` `PHP_LOW` leg, through that PHP's
+  binary in the DDEV web container (`/usr/bin/phpX.Y`, no restart).
+  - `last-test.json` keeps each leg's own verdict under `legs` (`CURRENT`,
+    `PHP_LOW`; `schemas/last-test.schema.json`).
+  - The top-level `preservation` is the stronger of the two legs', with the
+    0.9 values only, and a red one makes `status` `failed`. A `PHP_LOW`
+    failure is classified against the baseline like any other, while a
+    blocked, stale or narrowed leg counts as `verified-partial` at most.
+  - The leg is recorded only over a `CURRENT` run of the same sources. A
+    `CURRENT` run keeps it, marked `stale` on other sources, while the plan
+    has the leg.
+  - A PHP that cannot load the bed's vendor tree blocks the leg.
+  - `/drupilot-test`, the test-engineer agent and `port-report.md` show the
+    legs.
+- **`/drupilot-port --php X.Y`** (T-M5-09). The setup froze the PHP target.
+  The port checks X.Y against the frozen plan's `php.final`, and a mismatch,
+  or no frozen plan, stops it and sends the developer to
+  `/drupilot-setup --php X.Y`.
+
+### Changed
+- **The `php-target-tuning` skill is a view over the plan** (T-M5-10). It reads
+  the PHP window from the plan block and the support facts from the helpers,
+  with no version tables of its own. It also covers the php stage and the
+  polyfills.
+- `config/targets/{10,11,12}.json`: every minor gains `polyfills`. The
+  goldens keep their data snapshots: none of their outputs depends on the
+  polyfills, since a snapshot without `php/polyfills.json` gives the empty,
+  conservative intersection.
+
+### Fixed
+- `detect-php-floor.sh`: `mb_str_pad()` is a PHP 8.3 function (php.net), not
+  8.4; `fpow()`, `mb_ucfirst()` and `mb_lcfirst()` (PHP 8.4) were missing.
+
 ## [1.0.0-alpha.2] - 2026-10-12
 
 ### Added

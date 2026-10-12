@@ -265,6 +265,43 @@ core_range_minors() {
   return 0
 }
 
+# core_range_polyfills CONSTRAINT -> {packages, functions}, one JSON line: the
+# symfony/polyfill-phpXY packages every verified core minor CONSTRAINT admits
+# provides, and their unconditional functions (config/php/polyfills.json). A
+# minor provides a package when it requires it (targets/<N>.json
+# minors[].polyfills) or when its own minimum PHP is at or above the package's
+# PHP, where those functions are native (Drupal 12 drops polyfill-php84: it
+# needs PHP 8.5). The minors are the verified ones (core_range_minors): a
+# minor not released yet (a detect entry) is left out. A verified minor
+# without polyfills data provides none, and so does a major CONSTRAINT
+# reaches with no targets/<N>.json (Drupal 9): then both lists are empty, as
+# when CONSTRAINT admits no data minor or the data cannot be read.
+core_range_polyfills() {
+  local c="${1:-}" dir m mj rows="" known=1
+  dir="$(version_data_dir)"
+  for mj in $(range_majors "$c"); do
+    [[ -r "$dir/targets/$mj.json" ]] || known=0
+  done
+  if [[ "$known" == "1" && -n "$c" && -r "$dir/php/polyfills.json" ]] && have_cmd jq; then
+    for m in $(core_range_minors "$c" 999); do
+      mj="${m%%.*}"
+      rows="$rows$(target_get "$mj" ".minors[\"$m\"] | {minor: \"$m\", polyfills: (.polyfills // null), php_min: (.php_min // null)} | tojson")
+"
+    done
+  fi
+  if [[ -z "$rows" ]]; then printf '{"functions":[],"packages":[]}\n'; return 0; fi
+  printf '%s' "$rows" | jq -s -c --slurpfile p "$dir/php/polyfills.json" '
+    def vn: split(".") | map(tonumber? // 0);
+    ($p[0].packages // {}) as $pk
+    | map(. as $row | [$pk | to_entries[] | .key as $k | .value.php as $kp
+          | select((($row.polyfills // []) | index($k)) != null
+                   or ($row.php_min != null and ($row.php_min | vn) >= ($kp | vn)))
+          | $k])
+    | (if length == 0 then [] else reduce .[1:][] as $s (.[0]; . - (. - $s)) end | sort) as $pkgs
+    | {functions: ([$pkgs[] | $pk[.].functions[]] | unique), packages: $pkgs}' 2> /dev/null || printf '{"functions":[],"packages":[]}\n'
+  return 0
+}
+
 # range_majors CONSTRAINT -> the majors CONSTRAINT reaches, ascending,
 # space-separated: those its alternatives start at plus those of the data
 # minors it admits ('>=10.2 <11.1.2' -> "10 11"; '>=10' -> "10 11 12" with

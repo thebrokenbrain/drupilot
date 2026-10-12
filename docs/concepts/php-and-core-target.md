@@ -12,7 +12,8 @@
 The [upgrade plan](upgrade-paths.md) gives the window as two bounds:
 
 - **the floor L**: the lowest PHP the declared core range admits, raised to
-  what the code itself needs (for `^10.3 || ^11`, 8.1);
+  what the code itself needs (for `^10.3 || ^11`, 8.1; see
+  [Polyfills](#polyfills));
 - **the target P**: the PHP you port to, set by `DRUPILOT_PHP_TARGET` or the
   setup's PHP tab.
 
@@ -91,13 +92,49 @@ dropped silently.
 - **The issue text** (`make-issue.sh`) lists each open item as a remaining
   task, and marks one whose file changed since for a re-check.
 
+## Polyfills
+
+A function a newer PHP adds, such as `array_find()` (PHP 8.4), does not make
+your module need that PHP when every Drupal core it declares ships a
+`symfony/polyfill-phpXY` package that defines it. drupilot keeps that as
+version data ([ADR 0029](../contributing/adr/0029-core-polyfills-as-version-data.md)):
+
+- which polyfills every release of a core minor requires;
+- which functions each polyfill defines on every PHP, leaving out those that
+  need an extension core does not require, such as `mb_trim()` (ext-mbstring).
+
+The floor counts a function as available only when every core minor of the
+declared range provides it: Drupal 11.2 and later ship `polyfill-php84`, but no
+Drupal 10 minor does. So `array_find()` raises the floor to 8.4 for
+`^10.3 || ^11`, and not for `^11.2`. The heuristic scan that finds such
+constructs, `detect-php-floor.sh`, also knows the PHP 8.5 additions (the pipe
+operator, the `(void)` cast, `array_first()`), searched in the code only. For
+syntax, the `php -l` legs are the real check. A function missing on the floor is
+caught only by this scan and by your tests run on the floor's PHP.
+
+## Tests on the floor's PHP
+
+Your test suite runs on the test-bed's PHP. When the window starts lower (the
+plan's `PHP_LOW` leg: the lowest PHP of the window the test-bed's core supports),
+`/drupilot-test` runs the Unit and Kernel groups again on that PHP, with the PHP
+binary the DDEV container already has. A failure there means the port breaks on
+the PHP it declares: it is compared with the pre-port baseline like any other
+failure, and the suite is never green while it lasts. Functional tests are not part of
+that leg: their site is served by the test-bed's own PHP. A previous major (a
+kept Drupal 10) is checked statically by the core matrix.
+
+## Choosing the PHP target
+
+`/drupilot-setup` asks for the PHP target, or takes it from `--php X.Y`, and
+freezes it in the plan. `/drupilot-port` accepts `--php X.Y` too, but only to
+check it against the frozen plan: the port never changes the PHP target, and a
+different one (or no frozen plan) stops it and sends you back to the setup to
+re-plan.
+
 ## Not yet in this pre-release
 
 These arrive in a later 1.0 pre-release:
 
 - the PHPCompatibility check (ADR 0003);
-- the test run on the floor PHP (the `PHP_LOW` leg);
-- the `--php` flag of the commands;
 - the audit of Rector's PHP rules (which fills `apply-modernize`);
-- the polyfills core ships (a PHP 8.4 function such as `array_find()` on a
-  lower floor).
+- the polyfill list given to Rector's main pass (03-R2).
