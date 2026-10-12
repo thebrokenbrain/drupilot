@@ -126,11 +126,14 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject "$1" --type 
 
 It uses that PHP's binary in the DDEV web container and needs no restart. A plan
 without the leg makes it a no-op. A Functional test is not part of it: its site is
-served by the bed's own PHP. Its verdict goes to `last-test.json` `legs.PHP_LOW`,
-and the top-level `preservation` becomes the aggregate of the legs: a failure on
-the low PHP is a regression of the port on its declared floor, to fix in the code
-like any other. A missing PHP binary blocks the leg (exit `2`) and turns a
-`verified` suite into `verified-partial`: say so, never hide it. The
+served by the bed's own PHP. Its failures are classified against the baseline like
+any other (regression, not baselined, pre-existing), and its verdict goes to
+`last-test.json` `legs.PHP_LOW`; the top-level `preservation` becomes the stronger
+of the two legs'. A failure on the low PHP is the port breaking on its declared
+floor: fix it in the code, never relax the test. A PHP that is missing, or cannot
+load the test-bed's vendor tree, blocks the leg (exit `2`) and turns a `verified`
+suite into `verified-partial`: say so, never hide it. Run the suite on the current
+sources first: the leg is only recorded over a CURRENT run of the same sources. The
 `PREVIOUS_MAJOR` leg is static, checked by the core matrix (`verify-core-matrix.sh`).
 
 ## Step 5 — Coverage (especially in Phase 2)

@@ -256,10 +256,15 @@
       }
     },
     "meta": {
-      "description": "What changes between two runs that record the same result (AR-13), excluded from any hash: when each negative control ran.",
+      "description": "What changes between two runs that record the same result (AR-13), excluded from any hash: when each negative control ran, and when the PHP_LOW test leg was recorded (legs.PHP_LOW.recorded_at; the CURRENT leg's time is the top-level recorded_at).",
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "legs": {
+          "type": "object",
+          "propertyNames": {"enum": ["PHP_LOW"]},
+          "additionalProperties": {"type": "object", "required": ["recorded_at"], "properties": {"recorded_at": {"type": ["string", "null"]}}}
+        },
         "negative_controls": {
           "description": "negative_controls_times: one entry per control of negative_controls, in its order; null when there is none.",
           "type": ["array", "null"],

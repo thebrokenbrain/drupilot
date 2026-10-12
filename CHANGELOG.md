@@ -47,11 +47,14 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   binary in the DDEV web container (`/usr/bin/phpX.Y`, no restart).
   - `last-test.json` keeps each leg's own verdict under `legs` (`CURRENT`,
     `PHP_LOW`; `schemas/last-test.schema.json`).
-  - The top-level `preservation` is their aggregate, with the 0.9 values only:
-    a `PHP_LOW` failure is a regression, and a blocked leg over a verified
-    suite is `verified-partial`.
-  - A `CURRENT` run keeps a `PHP_LOW` leg of the same sources and drops a
-    stale one.
+  - The top-level `preservation` is the stronger of the two legs', with the
+    0.9 values only, and a red one makes `status` `failed`. A `PHP_LOW`
+    failure is classified against the baseline like any other, while a
+    blocked, stale or narrowed leg counts as `verified-partial` at most.
+  - The leg is recorded only over a `CURRENT` run of the same sources. A
+    `CURRENT` run keeps it, marked `stale` on other sources, while the plan
+    has the leg.
+  - A PHP that cannot load the bed's vendor tree blocks the leg.
   - `/drupilot-test`, the test-engineer agent and `port-report.md` show the
     legs.
 - **`/drupilot-port --php X.Y`** (T-M5-09). The setup froze the PHP target.

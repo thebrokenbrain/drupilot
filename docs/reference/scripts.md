@@ -3927,15 +3927,21 @@ Usage:
                        bed's own PHP) with the leg's lower PHP, through that
                        PHP's binary in the DDEV web container
                        (/usr/bin/phpX.Y); a plan without the leg is a no-op.
-                       Its record goes to last-test.json's legs.PHP_LOW, and
-                       the top-level preservation becomes the aggregate of
-                       the legs: a PHP_LOW regression, unbaselined or
-                       pre-existing failure, or a blocked PHP_LOW over a
-                       verified CURRENT (verified-partial), changes it; the
-                       CURRENT verdict stays in legs.CURRENT. A CURRENT run
-                       keeps a PHP_LOW leg of the same sources and drops a
-                       stale one. PREVIOUS_MAJOR is static:
-                       verify-core-matrix.sh checks it.
+                       Its failures are classified against the baseline like
+                       any other. Its record goes to last-test.json's
+                       legs.PHP_LOW (its time to meta.legs), only over a
+                       CURRENT run of the same sources, and the top-level
+                       preservation becomes the stronger of the two legs'
+                       (regression > not-verified-unbaselined >
+                       pre-existing-failures > verified-partial; a blocked,
+                       stale or narrowed PHP_LOW leg counts as
+                       verified-partial at most), a red one making status
+                       failed; the CURRENT verdict stays in legs.CURRENT. A
+                       CURRENT run keeps the PHP_LOW leg while the plan has
+                       it, marked stale on other sources. A module without a
+                       frozen plan of its own, exit 2; a PHP that cannot
+                       load the bed's vendor tree blocks the leg. PREVIOUS_MAJOR
+                       is static: verify-core-matrix.sh checks it.
 
 Output:
   The PHPUnit output streams through to STDOUT/STDERR unmodified, followed by

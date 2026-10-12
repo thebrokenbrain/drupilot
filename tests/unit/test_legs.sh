@@ -32,7 +32,9 @@ case "\$1" in
       v="\${3#/usr/bin/php}"; case " \$STUB_PHPS " in *" \$v "*) exit 0;; *) exit 1;; esac
     fi
     case "\$1" in
-      /usr/bin/php*) v="\${1#/usr/bin/php}"; shift; STUB_PHP="\$v" exec "\$@";;
+      /usr/bin/php*) v="\${1#/usr/bin/php}"; shift
+        if [ "\$1" = -r ]; then [ -n "\$STUB_NO_AUTOLOAD" ] && { echo "Composer detected issues in your platform"; exit 255; }; echo ok; exit 0; fi
+        STUB_PHP="\$v" exec "\$@";;
       sh) exec "\$@";;
       *) STUB_PHP="\${STUB_PHP:-8.4}" exec "\$@";;
     esac;;
@@ -83,15 +85,30 @@ rp --type all --leg PHP_LOW
 assert_eq "PHP_LOW: Unit and Kernel on PHP 8.3, verified, the record's verdict unchanged" \
   "$T_RC|$(calls)|$(leg PHP_LOW)|$(jq -r .preservation "$LT")" '0|8.3 Unit,8.3 Kernel,|["verified","8.3",["Unit","Kernel"]]|verified'
 STUB_FAIL="8.3:Kernel" rp --type all --leg PHP_LOW
-assert_eq "a PHP_LOW regression: exit 3, the aggregate regression, CURRENT still verified" \
-  "$T_RC|$(jq -r .preservation "$LT")|$(leg CURRENT)|$(jq -c '.legs.PHP_LOW.tests_failed' "$LT")" \
-  '3|regression|["verified",null,["Unit","Kernel","Functional"]]|["Drupal\\Tests\\m\\Kernel\\KernelTest::testIt"]'
+assert_eq "a PHP_LOW regression: exit 3, the aggregate regression and a failed status, CURRENT still verified" \
+  "$T_RC|$(jq -r '"\(.preservation) \(.status)"' "$LT")|$(leg CURRENT)|$(jq -c '.legs.PHP_LOW.tests_failed' "$LT")" \
+  '3|regression failed|["verified",null,["Unit","Kernel","Functional"]]|["Drupal\\Tests\\m\\Kernel\\KernelTest::testIt"]'
+assert_eq "  next-step.sh sees red tests, not a green port" \
+  "$(env PATH="$B:$PATH" CLAUDE_PLUGIN_ROOT="$T_REPO" "$T_SH" "$T_REPO/scripts/env/next-step.sh" --subject "$S" --json 2>/dev/null | jq -r '.tests // empty')" "failed"
+assert_eq "  the leg's time is under meta, none outside it" "$(jq -c '[(.meta.legs.PHP_LOW.recorded_at | type), (.legs.PHP_LOW | has("recorded_at"))]' "$LT")" '["string",false]'
 rp --type all
 assert_eq "a CURRENT run on the same sources keeps the PHP_LOW leg and its verdict" \
   "$T_RC|$(jq -r .preservation "$LT")|$(jq -r '.legs.PHP_LOW.preservation' "$LT")" "0|regression|regression"
 printf '<?php\n// changed\n' >> "$S/tests/src/Unit/UnitTest.php"
+rp --leg PHP_LOW --type all
+assert_eq "  a PHP_LOW run over a CURRENT record of other sources is not recorded" "$T_RC|$(jq -r '.legs.PHP_LOW.preservation' "$LT")" "0|regression"
 rp --type all
-assert_eq "  on other sources, the stale PHP_LOW leg is dropped" "$T_RC|$(jq -r .preservation "$LT")|$(jq -c '.legs | keys' "$LT")" '0|verified|["CURRENT"]'
+assert_eq "  a CURRENT run on other sources keeps the leg, marked stale: verified-partial at best" \
+  "$T_RC|$(jq -r .preservation "$LT")|$(jq -c '[.legs.PHP_LOW.stale, .legs.PHP_LOW.preservation]' "$LT")" '0|verified-partial|[true,"regression"]'
+rp --type all --leg PHP_LOW
+assert_eq "  the leg run again on these sources: fresh and verified" "$T_RC|$(jq -r .preservation "$LT")|$(jq -c '.legs.PHP_LOW.stale' "$LT")" '0|verified|null'
+rp --type unit --leg PHP_LOW
+assert_eq "  a narrowed PHP_LOW run (--type unit) is verified-partial at best" "$T_RC|$(jq -r .preservation "$LT")|$(jq -r '.legs.PHP_LOW.type' "$LT")" '0|verified-partial|unit'
+rp --type all --leg PHP_LOW
+STUB_NO_AUTOLOAD=1 rp --type all --leg PHP_LOW
+assert_eq "a PHP that cannot load the vendor tree: blocked (exit 2), not a red group" \
+  "$T_RC|$(jq -r '.legs.PHP_LOW.preservation' "$LT")|$(jq -r .preservation "$LT")" "2|not-verified-blocked|verified-partial"
+rp --type all --leg PHP_LOW
 STUB_PHPS="8.4" rp --type all --leg PHP_LOW
 assert_eq "no /usr/bin/php8.3 in the container: blocked (exit 2), a verified CURRENT becomes verified-partial" \
   "$T_RC|$(jq -r '.legs.PHP_LOW.preservation' "$LT")|$(jq -r .preservation "$LT")|$(jq -r '.legs.PHP_LOW.blocked_reason' "$LT")" \
@@ -100,6 +117,19 @@ assert_eq "the record validates against schemas/last-test.schema.json" \
   "$(jq -r --slurpfile schema "$T_REPO/schemas/last-test.schema.json" "$(cat "$T_REPO/scripts/dev/jsonschema.jq")"' . as $doc | $schema[0] as $root | $doc | chk($root; $root; "$")' "$LT" 2>&1)" ""
 assert_eq "every preservation value is a 0.9 one" \
   "$(jq -c '[.preservation, .legs[].preservation] | map(IN("verified","verified-partial","regression","not-verified-blocked","not-verified-no-tests","pre-existing-failures","not-verified-unbaselined")) | all' "$LT")" "true"
+# Monotonic: a pre-existing CURRENT failure and a PHP_LOW failure the baseline
+# never ran (its Kernel group crashed then) give not-verified-unbaselined.
+BL="$(project_state_path "$S")/test-baseline.json"
+jq -n '{source: "run", tests: [{group: "Unit", id: "Drupal\\Tests\\m\\Unit\\UnitTest::testIt", status: "fail", message: "old"}],
+        group_results: [{group: "Unit", status: "failed"}, {group: "Kernel", status: "crashed"}]}' > "$BL"
+STUB_FAIL="8.4:Unit" rp --type all
+STUB_FAIL="8.3:Unit 8.3:Kernel" rp --type all --leg PHP_LOW
+assert_eq "monotonic: CURRENT pre-existing-failures, PHP_LOW not-verified-unbaselined: the aggregate is the stronger" \
+  "$(jq -c '[.legs.CURRENT.preservation, .legs.PHP_LOW.preservation, .preservation, .status]' "$LT")" \
+  '["pre-existing-failures","not-verified-unbaselined","not-verified-unbaselined","failed"]'
+rm -f "$BL"
+rp --type all
+STUB_PHPS="8.4" rp --type all --leg PHP_LOW
 t_run env CLAUDE_PLUGIN_ROOT="$T_REPO" "$T_SH" "$T_REPO/scripts/analysis/port-report.sh" --subject "$S"
 assert_match "port-report.sh: each leg's verdict under the aggregate" "$(cat "$(cat "$T_OUT")")" 'PHP_LOW \(PHP 8\.3\): not-verified-blocked'
 plan '[{"leg": "CURRENT", "core": "11.4.8", "php": "8.3", "mode": "run"}]'

@@ -41,15 +41,21 @@
 #                        bed's own PHP) with the leg's lower PHP, through that
 #                        PHP's binary in the DDEV web container
 #                        (/usr/bin/phpX.Y); a plan without the leg is a no-op.
-#                        Its record goes to last-test.json's legs.PHP_LOW, and
-#                        the top-level preservation becomes the aggregate of
-#                        the legs: a PHP_LOW regression, unbaselined or
-#                        pre-existing failure, or a blocked PHP_LOW over a
-#                        verified CURRENT (verified-partial), changes it; the
-#                        CURRENT verdict stays in legs.CURRENT. A CURRENT run
-#                        keeps a PHP_LOW leg of the same sources and drops a
-#                        stale one. PREVIOUS_MAJOR is static:
-#                        verify-core-matrix.sh checks it.
+#                        Its failures are classified against the baseline like
+#                        any other. Its record goes to last-test.json's
+#                        legs.PHP_LOW (its time to meta.legs), only over a
+#                        CURRENT run of the same sources, and the top-level
+#                        preservation becomes the stronger of the two legs'
+#                        (regression > not-verified-unbaselined >
+#                        pre-existing-failures > verified-partial; a blocked,
+#                        stale or narrowed PHP_LOW leg counts as
+#                        verified-partial at most), a red one making status
+#                        failed; the CURRENT verdict stays in legs.CURRENT. A
+#                        CURRENT run keeps the PHP_LOW leg while the plan has
+#                        it, marked stale on other sources. A module without a
+#                        frozen plan of its own, exit 2; a PHP that cannot
+#                        load the bed's vendor tree blocks the leg. PREVIOUS_MAJOR
+#                        is static: verify-core-matrix.sh checks it.
 #
 # Output:
 #   The PHPUnit output streams through to STDOUT/STDERR unmodified, followed by
@@ -231,8 +237,16 @@ SUBJECT_REL="${SUBJECT#"$DRUPAL_ROOT"/}"
 # container (or on the host). No such leg in the plan: nothing to run. No
 # binary: the leg is blocked (recorded, exit 2).
 LEG_PHP=""; LEG_CORE=""; LEG_BLOCK=""
+# The plan's PHP_LOW leg (read for a CURRENT run too: a kept leg must still be
+# the plan's). No frozen plan of this module: the leg cannot be resolved.
+PLAN_OWN="$(plan_get_own "$SUBJECT" '.subject.machine_name')"
+PLAN_LOW_PHP=""
+if [[ -n "$PLAN_OWN" ]]; then
+  PLAN_LOW_PHP="$(plan_get_own "$SUBJECT" '[.test_matrix[]? | select(.leg == "PHP_LOW")][0].php // empty')"
+fi
 if [[ "$LEG" == "PHP_LOW" ]]; then
-  LEG_PHP="$(plan_get_own "$SUBJECT" '[.test_matrix[]? | select(.leg == "PHP_LOW")][0].php // empty')"
+  [[ -n "$PLAN_OWN" ]] || die "The PHP_LOW leg comes from this module's frozen upgrade plan, and the Drupal root holds none for it (another module's, or none): run /drupilot-setup for it first." 2
+  LEG_PHP="$PLAN_LOW_PHP"
   LEG_CORE="$(plan_get_own "$SUBJECT" '[.test_matrix[]? | select(.leg == "PHP_LOW")][0].core // empty')"
   if [[ -z "$LEG_PHP" ]]; then
     log_info "The upgrade plan has no PHP_LOW leg (the test-bed's PHP is already the lowest of the window it supports): nothing to run."
@@ -249,6 +263,15 @@ if [[ "$LEG" == "PHP_LOW" ]]; then
     PHPUNIT=( "php$LEG_PHP" vendor/bin/phpunit -c web/core )
   else
     LEG_BLOCK="no php$LEG_PHP on the host (the PHP_LOW leg's PHP)"
+  fi
+  # The leg's PHP must load the bed's vendor tree (Composer's platform check,
+  # the extensions): else the leg is blocked, never a crashed (red) group.
+  if [[ -z "$LEG_BLOCK" ]]; then
+    _probe="$(${RUNNER[@]+"${RUNNER[@]}"} "${PHPUNIT[0]}" -r 'require "vendor/autoload.php"; echo "ok";' < /dev/null 2>&1 || true)"
+    case "$_probe" in
+      *ok) : ;;
+      *) LEG_BLOCK="PHP $LEG_PHP cannot load the test-bed's vendor tree ($(printf '%s' "$_probe" | tr '\n' ' ' | cut -c1-200))";;
+    esac
   fi
   if [[ "$COVERAGE" == "1" ]]; then log_warn "--coverage is ignored on the PHP_LOW leg."; COVERAGE=0; fi
   log_step "Test leg PHP_LOW: PHP $LEG_PHP on core ${LEG_CORE:-?} (Unit and Kernel groups)"
@@ -822,43 +845,75 @@ else
     # (CC-14). A CURRENT run is the record itself, keeping a PHP_LOW leg of
     # the same sources; a PHP_LOW run only adds its leg to the record there.
     LEGS_JQ='
+      # A leg as the record keeps it (its time is under meta.legs).
       def summary($leg; $core; $php):
         {leg: $leg, core: (if $core == "" then null else $core end), php: (if $php == "" then null else $php end),
-         preservation, status, ran, passed, failed, skipped, executed, failed_groups, skipped_groups,
-         blocked_reason, recorded_at, subject_digest, digest_algo,
+         type, filter, preservation, status, ran, passed, failed, skipped, executed, failed_groups, skipped_groups,
+         blocked_reason, subject_digest, digest_algo,
          groups: [(.group_results // [])[] | .group],
-         tests_failed: [(.tests // [])[] | select(.status == "fail" or .status == "error") | .id]};
-      # The aggregate of the CURRENT verdict and the PHP_LOW one.
-      def agg($cur; $low):
-        if $low == null then $cur
-        elif $low == "regression" or $cur == "regression" then "regression"
-        elif ($low | IN("not-verified-unbaselined", "pre-existing-failures"))
-             and ($cur | IN("verified", "verified-partial", "not-verified-no-tests")) then $low
-        elif $low == "not-verified-blocked" and $cur == "verified" then "verified-partial"
-        else $cur end;'
+         tests_failed: [(.tests // [])[] | select(.status == "fail" or .status == "error") | .id],
+         baseline: (if (.baseline | type) == "object"
+                    then {regressions: [(.baseline.regressions // [])[] | (.id // ("group " + .group))],
+                          not_baselined: [(.baseline.not_baselined // [])[] | (.id // ("group " + .group))],
+                          pre_existing: [(.baseline.pre_existing // [])[] | (.id // ("group " + .group))]}
+                    else null end)};
+      def rank: {"verified": 0, "not-verified-no-tests": 1, "verified-partial": 2, "pre-existing-failures": 3,
+                 "not-verified-blocked": 4, "not-verified-unbaselined": 5, "regression": 6}[.] // 0;
+      # What a PHP_LOW leg adds: a blocked, stale or narrowed leg is at most
+      # verified-partial; a leg with nothing to run adds nothing.
+      def lowv($l):
+        if $l == null then null
+        elif ($l.stale // false) or $l.preservation == "not-verified-blocked" then "verified-partial"
+        elif $l.preservation == "not-verified-no-tests" then "verified"
+        elif $l.preservation == "verified" and ((($l.type // "all") != "all") or ($l.filter // null) != null) then "verified-partial"
+        else $l.preservation end;
+      # The aggregate: the stronger of the CURRENT verdict and the PHP_LOW one.
+      def agg($cur; $l): lowv($l) as $lv | if $lv == null or ($lv | rank) <= ($cur | rank) then $cur else $lv end;
+      # A red aggregate is a failed record, whatever the CURRENT run gave.
+      def agg_status($st; $p): if ($p | IN("regression", "pre-existing-failures", "not-verified-unbaselined")) then "failed" else $st end;'
     if [[ "$LEG" == "CURRENT" ]]; then
-      PREV_LOW="null"
-      if [[ -r "$STATE_DIR/last-test.json" ]]; then
-        PREV_LOW="$(jq -c '.legs.PHP_LOW // null' "$STATE_DIR/last-test.json" 2>/dev/null || echo null)"
-      fi
-      FINAL_JSON="$(printf '%s' "$RECORD_JSON" | jq -c --argjson low "${PREV_LOW:-null}" "$LEGS_JQ"'
+      LAST_FILE="$STATE_DIR/last-test.json"; [[ -r "$LAST_FILE" ]] || LAST_FILE=/dev/null
+      # The previous PHP_LOW leg stays while the plan still has that leg (the
+      # same PHP): as it is on the same sources, marked stale on others.
+      FINAL_JSON="$(printf '%s' "$RECORD_JSON" | jq -c --slurpfile last "$LAST_FILE" --arg planlow "$PLAN_LOW_PHP" "$LEGS_JQ"'
         . as $r
         | ($r | summary("CURRENT"; ""; "")) as $cur
-        | (if $low != null and ($low.subject_digest // "") == ($r.subject_digest // "-") then $low else null end) as $keep
+        | (($last[0] // {}) | if type == "object" then . else {} end) as $l
+        | ($l.legs.PHP_LOW // null | if type == "object" then . else null end) as $low
+        | (if $low == null or $planlow == "" or ($low.php // "") != $planlow then null
+           elif ($low.subject_digest // "") == ($r.subject_digest // "-") then $low
+           else $low + {stale: true} end) as $keep
+        | agg($r.preservation; $keep) as $p
         | $r + {legs: ({CURRENT: $cur} + (if $keep then {PHP_LOW: $keep} else {} end)),
-                preservation: agg($r.preservation; ($keep // {}).preservation)}' 2>/dev/null || true)"
+                preservation: $p, status: agg_status($r.status; $p),
+                meta: (($r.meta // {}) + (if $keep and ($l.meta.legs.PHP_LOW // null) != null
+                                          then {legs: {PHP_LOW: $l.meta.legs.PHP_LOW}} else {} end))}' 2>/dev/null || true)"
+      if [[ -z "$FINAL_JSON" ]]; then
+        log_warn "Could not merge the test legs: last-test.json records this run alone (no PHP_LOW leg kept)."
+        FINAL_JSON="$RECORD_JSON"
+      fi
     else
-      FINAL_JSON="$(printf '%s' "$RECORD_JSON" | jq -c --slurpfile last "$STATE_DIR/last-test.json" \
-          --arg core "$LEG_CORE" --arg php "$LEG_PHP" "$LEGS_JQ"'
-        (. | summary("PHP_LOW"; $core; $php)) as $low
-        | ($last[0] // null) as $l
-        | if $l == null or ($l | type) != "object" then null
-          else ($l.legs.CURRENT // ($l | summary("CURRENT"; ""; ""))) as $cur
-               | $l + {legs: (($l.legs // {}) + {CURRENT: $cur, PHP_LOW: $low}),
-                       preservation: agg($cur.preservation; $low.preservation)} end' 2>/dev/null || true)"
-      if [[ -z "$FINAL_JSON" || "$FINAL_JSON" == "null" ]]; then
+      FINAL_JSON=""
+      if [[ ! -r "$STATE_DIR/last-test.json" ]]; then
         log_warn "No CURRENT run is recorded yet (last-test.json): run the suite first, then the PHP_LOW leg. This leg is not recorded."
-        FINAL_JSON=""
+      elif [[ "$(jq -r '.subject_digest // empty' "$STATE_DIR/last-test.json" 2>/dev/null || true)" != "$DIGEST" ]]; then
+        log_warn "The recorded CURRENT run is of other sources: run the suite (the CURRENT leg) on these sources first, then the PHP_LOW leg. This leg is not recorded."
+      else
+        FINAL_JSON="$(printf '%s' "$RECORD_JSON" | jq -c --slurpfile last "$STATE_DIR/last-test.json" \
+            --arg core "$LEG_CORE" --arg php "$LEG_PHP" "$LEGS_JQ"'
+          . as $r
+          | ($r | summary("PHP_LOW"; $core; $php)) as $low
+          | ($last[0] // null) as $l
+          | if $l == null or ($l | type) != "object" then null
+            else ($l.legs.CURRENT // ($l | summary("CURRENT"; ""; ""))) as $cur
+                 | agg($cur.preservation; $low) as $p
+                 | $l + {legs: (($l.legs // {}) + {CURRENT: $cur, PHP_LOW: $low}),
+                         preservation: $p, status: agg_status($cur.status; $p),
+                         meta: (($l.meta // {}) + {legs: ((($l.meta // {}).legs // {}) + {PHP_LOW: {recorded_at: $r.recorded_at}})})} end' 2>/dev/null || true)"
+        if [[ -z "$FINAL_JSON" || "$FINAL_JSON" == "null" ]]; then
+          log_err "Could not merge the PHP_LOW leg into last-test.json: it is not recorded."
+          FINAL_JSON=""; RECORD_FAILED=1
+        fi
       fi
     fi
     if [[ -n "$FINAL_JSON" ]]; then

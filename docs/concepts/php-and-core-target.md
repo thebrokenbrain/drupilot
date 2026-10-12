@@ -118,7 +118,8 @@ Your test suite runs on the test-bed's PHP. When the window starts lower (the
 plan's `PHP_LOW` leg: the lowest PHP of the window the test-bed's core supports),
 `/drupilot-test` runs the Unit and Kernel groups again on that PHP, with the PHP
 binary the DDEV container already has. A failure there means the port breaks on
-the PHP it declares; it counts as a regression. Functional tests are not part of
+the PHP it declares: it is compared with the pre-port baseline like any other
+failure, and the suite is never green while it lasts. Functional tests are not part of
 that leg: their site is served by the test-bed's own PHP. A previous major (a
 kept Drupal 10) is checked statically by the core matrix.
 

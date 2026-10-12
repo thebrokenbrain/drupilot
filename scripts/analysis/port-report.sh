@@ -226,7 +226,14 @@ fi
 # the aggregate, when the record holds more than the CURRENT one.
 TEST_LEGS="$(printf '%s' "$TEST" | jq -r '(.legs // {}) | if (type == "object" and (keys | length) > 1)
   then (to_entries | map("- \(.key)\(if .value.php != null then " (PHP \(.value.php))" else "" end): \(.value.preservation)"
-         + (if ((.value.tests_failed // []) | length) > 0 then " — failing: \(.value.tests_failed | join(", "))" else "" end)) | join("\n"))
+         + (if (.value.stale // false) then " (stale: recorded on other sources)" else "" end)
+         + (if ((.value.tests_failed // []) | length) > 0 then " — failing: \(.value.tests_failed | join(", "))" else "" end)
+         + (if (.value.baseline | type) == "object"
+            then ([(if (.value.baseline.regressions | length) > 0 then "regressions: \(.value.baseline.regressions | join(", "))" else empty end),
+                   (if (.value.baseline.not_baselined | length) > 0 then "not baselined: \(.value.baseline.not_baselined | join(", "))" else empty end),
+                   (if (.value.baseline.pre_existing | length) > 0 then "pre-existing: \(.value.baseline.pre_existing | join(", "))" else empty end)]
+                  | if length > 0 then " (" + join("; ") + ")" else "" end)
+            else "" end)) | join("\n"))
   else empty end' 2>/dev/null || true)"
 if [[ -n "$TEST_LEGS" ]]; then
   PRES_LINE="$PRES_LINE
