@@ -7,7 +7,8 @@
   "required": ["verdict"],
   "properties": {
     "schema": {"description": "1 for a file assess.sh wrote; absent in a 0.9 file.", "const": 1},
-    "provisional": {"description": "True when Rector or PHPStan gave no verdict (tools): the counts are incomplete and the assessed stage was not recorded.", "type": "boolean"},
+    "provisional": {"description": "True when Rector, PHPStan, the port-safety checks or the signature scan gave no verdict: the counts are incomplete, the document is assess-provisional.json (never assess.json) and the assessed stage was not recorded.", "type": "boolean"},
+    "no_verdict": {"description": "The tools that gave no verdict, as \"<tool> <verdict>\".", "type": "array", "items": {"type": "string"}},
     "tools": {"description": "Each extractor's verdict, from findings.json (ok | partial | failed | missing).", "type": "object"},
     "worklist": {"description": "The worklist's item counts (classify.sh).", "type": "object"},
     "findings_hash": {"anyOf": [{"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, {"type": "null"}]},

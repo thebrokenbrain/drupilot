@@ -61,6 +61,7 @@
   },
   "machine_name": "acme_core",
   "manual_items": [],
+  "no_verdict": [],
   "php_target": "8.3",
   "phpcs": {
     "count": 2
