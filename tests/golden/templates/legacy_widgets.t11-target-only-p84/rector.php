@@ -2,7 +2,7 @@
 
 /**
  * drupilot — rector.php
- * drupilot-template-version: 5
+ * drupilot-template-version: 6
  *
  * Self-contained Rector configuration for porting a Drupal module/theme to a
  * newer Drupal major. Modeled on vendor/palantirnet/drupal-rector/rector.php.
@@ -31,7 +31,14 @@
  * 8.5 uses the php84 sets (no php85 set is assumed). PHP deprecation fixes
  * whose output still runs on the floor (an implicitly nullable parameter
  * becoming ?Foo, deprecated in PHP 8.4) run in a second, narrow pass with
- * rector-compat.php, right after this one, when the floor is below 8.4.
+ * rector-compat.php, right after this one, when the window has one this pass
+ * does not run (ADR 0030).
+ *
+ * Polyfills (ADR 0002, ADR 0030): Rector's PHP_POLYFILLS rules (array_find()
+ * for a foreach, ...) run below their PHP only for the symfony/polyfill-phpXY
+ * packages listed at the end, the ones every core of the declared range ships
+ * (the plan's rector.polyfills; none for ^10.3 || ^11). Rector never reads
+ * them from the test-bed's composer.json.
  *
  * The complementary dbuytaert/drupal-digests AI rule layer is NOT wired in
  * here. It runs as a separate, optional pass referenced by its own config:
@@ -59,6 +66,14 @@
  *       plugins and services, into __serialize() / __unserialize().
  *   AddOverrideAttributeToOverriddenPropertiesRector — #[\Override] on a
  *       property needs PHP 8.5 and the parent property on every core declared.
+ *   DeprecatedAnnotationToDeprecatedAttributeRector — turns @deprecated into
+ *       #[\Deprecated], which from PHP 8.4 emits a native deprecation on every
+ *       use, next to the @trigger_error() Drupal's policy already calls.
+ *   OrdSingleByteRector — ord($s) -> ord($s[0]) warns on an empty string.
+ *   RemoveGetClassGetParentClassNoArgsRector — get_parent_class() becomes
+ *       parent::class, a fatal error in a class with no parent.
+ * The list is config/php/rules.json's deny rows and its compat rows that are
+ * not safe for Drupal (the plan's rector.skip).
  * FunctionFirstClassCallableRector is NOT skipped: it only rewrites a string
  * argument passed to a PHP built-in whose parameter is typed `callable`
  * (array_map('trim', ...) -> array_map(trim(...), ...)), so it can never reach
@@ -101,6 +116,8 @@ $drupilotBootstrap = $drupilotSets === [] ? [] : array_values(array_filter([
 // Rules skipped on purpose (see the header). String FQCNs + class_exists keep
 // this config loadable on any Rector 2.x.
 $drupilotRiskySkips = array_values(array_filter([
+  'Rector\\Php83\\Rector\\FuncCall\\RemoveGetClassGetParentClassNoArgsRector',
+  'Rector\\Php85\\Rector\\FuncCall\\OrdSingleByteRector',
   'Rector\\Php81\\Rector\\Array_\\ArrayToFirstClassCallableRector',
   'Rector\\Php83\\Rector\\ClassMethod\\AddOverrideAttributeToOverriddenMethodsRector',
   'Rector\\Php81\\Rector\\Property\\ReadOnlyPropertyRector',
@@ -109,6 +126,7 @@ $drupilotRiskySkips = array_values(array_filter([
   'Rector\\Php85\\Rector\\Class_\\SleepToSerializeRector',
   'Rector\\Php85\\Rector\\Class_\\WakeupToUnserializeRector',
   'Rector\\Php85\\Rector\\Property\\AddOverrideAttributeToOverriddenPropertiesRector',
+  'Rector\\Php84\\Rector\\Class_\\DeprecatedAnnotationToDeprecatedAttributeRector',
 ], 'class_exists'));
 
 $drupilotConfig = RectorConfig::configure()
@@ -151,6 +169,15 @@ $drupilotConfig = static function (RectorConfig $rectorConfig) use ($drupilotCon
     $rectorConfig->singleton(\DrupalRector\Services\DrupalRectorSettings::class, static fn () => (new \DrupalRector\Services\DrupalRectorSettings())
       ->enableBackwardCompatibility()
       ->setMinimumCoreVersionSupported('11.0.0'));
+  }
+};
+// The polyfills every core of the declared range ships (the plan's
+// rector.polyfills): Rector reads them here, never from the composer.json
+// of the test-bed.
+$drupilotConfig = static function (RectorConfig $rectorConfig) use ($drupilotConfig): void {
+  $drupilotConfig($rectorConfig);
+  if (method_exists($rectorConfig, 'polyfillPackages')) {
+    $rectorConfig->polyfillPackages([]);
   }
 };
 return $drupilotConfig;

@@ -240,11 +240,18 @@ lock_resolve() {
 }
 
 # lock_show [project_dir] -> pretty-print the lockfile JSON to STDOUT so the
-# developer can inspect the frozen toolchain. Returns 1 (with a note on stderr)
-# when there is no lock yet. Read-only.
+# developer can inspect the frozen toolchain. The Rector rule audit is shown as
+# its version and its number of rules (scripts/analysis/rector-rule-audit.sh
+# --json prints it whole). Returns 1 (with a note on stderr) when there is no
+# lock yet. Read-only.
 lock_show() {
   local f; f="$(lock_path "${1:-}")"
-  if [[ -r "$f" ]] && have_cmd jq; then jq . "$f" 2>/dev/null || cat "$f"; return 0; fi
+  if [[ -r "$f" ]] && have_cmd jq; then
+    jq 'if (.rector_rule_audit | type) == "object"
+        then .rector_rule_audit = {rector_version: .rector_rule_audit.rector_version, rules: ((.rector_rule_audit.rules // []) | length)}
+        else . end' "$f" 2>/dev/null || cat "$f"
+    return 0
+  fi
   log_info "No lockfile yet at $f."
   return 1
 }

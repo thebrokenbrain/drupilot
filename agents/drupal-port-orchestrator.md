@@ -102,14 +102,16 @@ All output you produce — messages, summaries, plans — is in **English**.
   8.3, check the core minor (`php_supported_for`), never assume a Rector `php85` set.
 - **drupal-rector**: `palantirnet/drupal-rector` **1.1.x** (toolchain cell 11; a project locked by drupilot 0.9 keeps 0.21.x until refreshed; community-maintained;
   the `palantirnet/` namespace is kept, `palantirnet/drupal8-rector` is obsolete).
-  Covers D10.0 -> D11.4 deprecations. drupilot's `rector.php` (template 5)
+  Covers D10.0 -> D11.4 deprecations. drupilot's `rector.php` (template 6)
   uses the upgrade plan's Drupal sets (each hop's set family per minor up to the test-bed's minor, plus the edge's always and breaking sets (ADR 0019; for a port from Drupal 10 to 11, `DRUPAL_100` to `DRUPAL_103`): read them from the plan block) plus the PHP sets up to the
   floor of the declared core range (`->withPhpVersion()`; 8.1 for
-  `^10 || ^11`, a compat pass fixes implicit nullables when it is below 8.4)
+  `^10 || ^11`; a compat pass, `rector-compat.php`, applies the safe PHP
+  deprecation fixes of the window whose output runs on the floor, ADR 0030)
   minus the risky rules it skips (`ArrayToFirstClassCallableRector`,
   `AddOverrideAttributeToOverriddenMethodsRector`, `ReadOnlyPropertyRector`,
   `ReadOnlyClassRector`, `NullToStrictStringFuncCallArgRector`, the `__sleep`/
-  `__wakeup` rewrites, `#[\Override]` on properties);
+  `__wakeup` rewrites, `#[\Override]` on properties, `#[\Deprecated]` from
+  `@deprecated`, and the compat rows not safe for Drupal: `config/php/rules.json`);
   `Drupal11SetList::DRUPAL_11` (D11 deprecations, for a future D12 port) is not
   included.
 - **drupal-digests** (`dbuytaert/drupal-digests`): a complementary, AI-generated

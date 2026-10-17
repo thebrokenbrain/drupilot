@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-10-04",
+  "as_of": "2026-10-17",
   "rector_version": "2.5.2",
   "rules": [
     {
@@ -50,11 +50,12 @@
       "deprecated_in": "8.3",
       "removed_in": null,
       "output_min_php": null,
-      "drupal_safe": true,
+      "drupal_safe": false,
       "src": "https://www.php.net/manual/en/migration83.deprecated.php",
-      "rule_src": "https://github.com/rectorphp/rector-src/tree/2.5.2/rules/Php83/Rector/FuncCall/RemoveGetClassGetParentClassNoArgsRector.php",
+      "rule_src": "https://github.com/rectorphp/rector-src/tree/2.6.1/rules/Php83/Rector/FuncCall/RemoveGetClassGetParentClassNoArgsRector.php",
       "verified": true,
-      "construct": "get_class()/get_parent_class() without arguments"
+      "construct": "get_class()/get_parent_class() without arguments",
+      "reason": "Rewrites get_parent_class() with no argument to parent::class without checking that a parent exists: in a class with no parent that is a compile-time fatal (\"Cannot use \\\"parent\\\" when current class scope has no parent\", PHP 8.4 in the lab), where the call returned false; in a trait it fails at run time. Its get_class() -> self::class half is safe, but the rule is one: reported, not applied (ADR 0030)."
     },
     {
       "id": "p84-csv-escape",
@@ -154,11 +155,12 @@
       "deprecated_in": "8.5",
       "removed_in": null,
       "output_min_php": null,
-      "drupal_safe": true,
+      "drupal_safe": false,
       "src": "https://www.php.net/manual/en/migration85.deprecated.php",
-      "rule_src": "https://github.com/rectorphp/rector-src/tree/2.5.2/rules/Php85/Rector/FuncCall/OrdSingleByteRector.php",
+      "rule_src": "https://github.com/rectorphp/rector-src/tree/2.6.1/rules/Php85/Rector/FuncCall/OrdSingleByteRector.php",
       "verified": true,
-      "construct": "ord() of a string that is not a single byte"
+      "construct": "ord() of a string that is not a single byte",
+      "reason": "Rewrites ord($s) to ord($s[0]) for any string-typed argument: on an empty string $s[0] raises an 'Uninitialized string offset' warning on every PHP, where ord('') returned 0 silently before PHP 8.5 (observed on PHP 8.2, 8.4 and 8.5 in the lab, ADR 0030). Reported, not applied."
     },
     {
       "id": "p80-optional-before-required",
@@ -291,6 +293,19 @@
       "rule_src": "https://github.com/rectorphp/rector-src/tree/2.5.2/rules/Php85/Rector/Property/AddOverrideAttributeToOverriddenPropertiesRector.php",
       "verified": true,
       "reason": "Adds #[\\Override] to properties, valid only on PHP 8.5; it collides with the override-attribute port-safety check while the core range spans an older PHP."
+    },
+    {
+      "id": "deny-deprecated-attribute",
+      "rule": "Rector\\Php84\\Rector\\Class_\\DeprecatedAnnotationToDeprecatedAttributeRector",
+      "kind": "deny",
+      "deprecated_in": null,
+      "removed_in": null,
+      "output_min_php": "8.4",
+      "drupal_safe": false,
+      "src": "https://www.php.net/manual/en/class.deprecated.php",
+      "rule_src": "https://github.com/rectorphp/rector-src/tree/2.6.1/rules/Php84/Rector/Class_/DeprecatedAnnotationToDeprecatedAttributeRector.php",
+      "verified": true,
+      "reason": "Turns an @deprecated docblock on a function, a method or a class constant into #[\\Deprecated]: from PHP 8.4 every use of it then emits a native E_USER_DEPRECATED (php.net), next to the @trigger_error() Drupal's deprecation policy already calls, and Drupal core uses no #[\\Deprecated] (11.4.8: none). It is in the php84 level set and in PHP_POLYFILLS (polyfill-php84), which the plan's polyfills open from ^11.2 (ADR 0030)."
     },
     {
       "id": "p85-cast-names",

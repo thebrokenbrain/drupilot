@@ -1,5 +1,5 @@
 {
-  "data_hash": "sha256:ae3ca627268988567255f71e96ff587186438a661868b8cc70d8ca9789efe8cb",
+  "data_hash": "sha256:56ec4231aedc8d88d7c207106fdb5d058f49aed6910bdc57d290ec4475604118",
   "drupal": {
     "core": "11.4.8"
   },
@@ -14,7 +14,7 @@
       "OPT_IN_TEST_PREVIOUS_MAJOR": 1
     },
     "core_removals": null,
-    "data_hash": "sha256:ae3ca627268988567255f71e96ff587186438a661868b8cc70d8ca9789efe8cb",
+    "data_hash": "sha256:56ec4231aedc8d88d7c207106fdb5d058f49aed6910bdc57d290ec4475604118",
     "detectors": [
       "removed-ext-11",
       "signature-changes"
@@ -23,11 +23,6 @@
     "hops": [
       "10-11"
     ],
-    "meta": {
-      "drupilot_version": "1.0.0-alpha.1",
-      "generated_at": "2026-10-05T10:00:00Z",
-      "phase": "final"
-    },
     "patch_name": "legacy_widgets-port-to-drupal-11.patch",
     "php": {
       "final": "8.3",
@@ -61,7 +56,17 @@
         "min_core": null
       },
       "breaking_sets": [],
-      "compat_rules": null,
+      "compat_rules": [
+        "Rector\\Php84\\Rector\\Param\\ExplicitNullableParamTypeRector",
+        "Rector\\Php82\\Rector\\Encapsed\\VariableInStringInterpolationFixerRector",
+        "Rector\\Php84\\Rector\\FuncCall\\AddEscapeArgumentRector",
+        "Rector\\Php85\\Rector\\ShellExec\\ShellExecFunctionCallOverBackticksRector",
+        "Rector\\Php85\\Rector\\Switch_\\ColonAfterSwitchCaseRector",
+        "Rector\\Php81\\Rector\\MethodCall\\RemoveReflectionSetAccessibleCallsRector",
+        "Rector\\Php85\\Rector\\FuncCall\\ArrayKeyExistsNullToEmptyStringRector",
+        "Rector\\Php85\\Rector\\ClassMethod\\NullDebugInfoReturnRector",
+        "Rector\\Php85\\Rector\\FuncCall\\ChrArgModuloRector"
+      ],
       "drupal_sets": [
         "Drupal10SetList::DRUPAL_100",
         "Drupal10SetList::DRUPAL_101",
@@ -69,9 +74,11 @@
         "Drupal10SetList::DRUPAL_103"
       ],
       "php_level": "PHP_81",
-      "polyfills": null,
+      "polyfills": [],
       "sets_skipped": [],
       "skip": [
+        "Rector\\Php83\\Rector\\FuncCall\\RemoveGetClassGetParentClassNoArgsRector",
+        "Rector\\Php85\\Rector\\FuncCall\\OrdSingleByteRector",
         "Rector\\Php81\\Rector\\Array_\\ArrayToFirstClassCallableRector",
         "Rector\\Php83\\Rector\\ClassMethod\\AddOverrideAttributeToOverriddenMethodsRector",
         "Rector\\Php81\\Rector\\Property\\ReadOnlyPropertyRector",
@@ -79,7 +86,8 @@
         "Rector\\Php81\\Rector\\FuncCall\\NullToStrictStringFuncCallArgRector",
         "Rector\\Php85\\Rector\\Class_\\SleepToSerializeRector",
         "Rector\\Php85\\Rector\\Class_\\WakeupToUnserializeRector",
-        "Rector\\Php85\\Rector\\Property\\AddOverrideAttributeToOverriddenPropertiesRector"
+        "Rector\\Php85\\Rector\\Property\\AddOverrideAttributeToOverriddenPropertiesRector",
+        "Rector\\Php84\\Rector\\Class_\\DeprecatedAnnotationToDeprecatedAttributeRector"
       ],
       "tests_pass": null
     },
@@ -115,8 +123,13 @@
       }
     ],
     "toolchain_cell": "11",
-    "workspace_suffix": "-d11"
+    "workspace_suffix": "-d11",
+    "meta": {
+      "drupilot_version": "1.0.0-alpha.1",
+      "generated_at": "2026-10-05T10:00:00Z",
+      "phase": "final"
+    }
   },
-  "upgrade_plan_hash": "sha256:e6e1f0b3c20231677b21eb88095b0c40083f0a596531fe0d08784308c3a74d26",
+  "upgrade_plan_hash": "sha256:69b3f9ed67dc5362cc4d16f979052c890c12cb8bbc829efddc178a913e531abe",
   "upgrade_plan_phase": "final"
 }

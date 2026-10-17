@@ -33,17 +33,11 @@ rector_php_set_arg() {
 # The PHP floor of the Rector configs (ADR 0002). templates/rector.php.tmpl
 # runs the main pass at the floor L: ->withPhpVersion(PhpVersion::PHP_<L>) and
 # ->withPhpSets(php<L>: true), so no version-bound rule and no level set above
-# L applies. templates/rector-compat.php.tmpl is the narrow compat pass: the
-# PHP deprecation fixes whose output still runs on L (today only
-# ExplicitNullableParamTypeRector, deprecated in PHP 8.4), run right after the
-# official pass. M5 generates the compat list from config/php/rules.json.
-RECTOR_COMPAT_FROM_PHP="8.4"
-# The rules templates/rector-compat.php.tmpl lists, one FQCN per line (its
-# $drupilotCompatRules; tests/unit/php_rules_class.sh keeps them equal).
-# php_rule_class counts a compat row as applied only when it is one of these
-# or its deprecation is at or below L (the main pass's level set holds it).
-# shellcheck disable=SC2034  # read by plan.sh (_php_compat_rules_json)
-RECTOR_COMPAT_RULES='Rector\Php84\Rector\Param\ExplicitNullableParamTypeRector'
+# L applies. templates/rector-compat.php.tmpl is the narrow compat pass, run
+# right after the official one: the PHP deprecation fixes whose output still
+# runs on L, generated from config/php/rules.json (php_compat_pass_rules, the
+# plan's rector.compat_rules) and checked against the installed Rector's rule
+# audit (rector_compat_list, ADR 0030).
 
 # _rector_range_legs RANGE -> one caret leg per alternative of a core range,
 # one per line ("^10.3"), or "?" for an alternative it cannot read. ^X.Y,
@@ -79,6 +73,26 @@ EOF
 
 # _rector_leg_major ^X.Y -> X
 _rector_leg_major() { local l="${1#^}"; printf '%s' "${l%%.*}"; }
+
+# range_php_ceiling CONSTRAINT -> the highest PHP a core minor of CONSTRAINT
+# supports, read leg by leg as rector_php_bounds does (a leg whose minor is
+# not verified yet is bounded by its major's verified minors; a leg the data
+# does not hold adds nothing), so one unknown leg (^9.5) never hides the
+# others; nothing when no leg is known.
+range_php_ceiling() {
+  local leg b hi=""
+  while IFS= read -r leg; do
+    [[ -n "$leg" && "$leg" != "?" ]] || continue
+    b="$(php_bounds_for_range "$leg")"
+    [[ -n "$b" ]] || b="$(php_bounds_for_range "^$(_rector_leg_major "$leg")")"
+    [[ "${b##* }" =~ ^[0-9]+\.[0-9]+$ ]] || continue
+    if [[ -z "$hi" ]] || ! version_ge "$hi" "${b##* }"; then hi="${b##* }"; fi
+  done <<EOF
+$(_rector_range_legs "${1:-}")
+EOF
+  printf '%s' "$hi"
+  return 0
+}
 
 # rector_php_bounds <subject_dir> [php_target] -> "L U".
 # L, the floor, is the highest of the lowest PHP the declared core range
@@ -145,13 +159,11 @@ EOF
   return 0
 }
 
-# rector_compat_needed L U -> 0 when the compat pass has a rule to run: the
-# floor is below the PHP that deprecates it, and the window reaches that PHP
-# (from L >= 8.4 on, the php84 level set of the main pass holds the rule).
+# rector_compat_needed LIST -> 0 when the compat pass has a rule to run: LIST
+# (rector_compat_list's JSON array) is not empty.
 rector_compat_needed() {
-  [[ -n "${1:-}" && -n "${2:-}" ]] || return 1
-  version_ge "$1" "$RECTOR_COMPAT_FROM_PHP" && return 1
-  version_ge "$2" "$RECTOR_COMPAT_FROM_PHP"
+  [[ -n "${1:-}" ]] && have_cmd jq || return 1
+  printf '%s' "$1" | jq -e 'type == "array" and length > 0' > /dev/null 2>&1
 }
 
 # rector_floor_tokens L -> the template tokens of a floor, one KEY=VALUE per
@@ -182,11 +194,16 @@ rector_sets_block() {
   return 0
 }
 
-# rector_skip_block PLAN -> rector.php v5's {{SKIP_RULES}}: the plan's
+# rector_skip_block PLAN -> rector.php's {{SKIP_RULES}}: the plan's
 # rector.skip FQCNs, one quoted, comma-ended PHP string per line, backslashes
 # doubled (  'Rector\\Php81\\Rector\\Array_\\ArrayToFirstClassCallableRector',).
+# The skips of today's data the plan lacks (plan_rector_skip) follow its own:
+# the data's deny list is a floor no frozen plan lowers, so a plan frozen
+# before a rule was found unsafe (or before ADR 0030 opened its polyfills)
+# never runs it.
 rector_skip_block() {
-  printf '%s' "${1:-}" | jq -r '(.rector.skip // [])[] | select(type == "string" and test("^[A-Za-z0-9_\\\\]+$"))
+  printf '%s' "${1:-}" | jq -r --argjson x "$(plan_rector_skip)" '(.rector.skip // []) as $s | ($s + ($x - $s))[]
+    | select(type == "string" and test("^[A-Za-z0-9_\\\\]+$"))
     | "  \u0027" + (split("\\") | join("\\\\")) + "\u0027,"' 2> /dev/null || true
   return 0
 }
@@ -213,6 +230,127 @@ rector_bc_block() {
   }
 };
 EOF
+  return 0
+}
+
+# rector_polyfills_block PLAN -> rector.php's {{POLYFILLS}} (ADR 0002 item 6,
+# ADR 0030): a wrapper that hands Rector the polyfill packages every core of
+# the plan's range ships (plan_polyfills), so the PHP_POLYFILLS rules follow
+# the declared range and never the test-bed's composer.json; an empty list
+# too, which keeps them off. RectorConfig::polyfillPackages() is @internal:
+# a Rector without it keeps reading composer.json.
+rector_polyfills_block() {
+  local list
+  list="$(plan_polyfills "${1:-}" | jq -r '.[] | select(type == "string" and test("^symfony/polyfill-[a-z0-9-]+$"))
+    | "    \u0027" + . + "\u0027,"' 2> /dev/null || true)"
+  printf '\n// The polyfills every core of the declared range ships (the plan'"'"'s\n'
+  printf '// rector.polyfills): Rector reads them here, never from the composer.json\n'
+  printf '// of the test-bed.\n'
+  printf '$drupilotConfig = static function (RectorConfig $rectorConfig) use ($drupilotConfig): void {\n'
+  printf '  $drupilotConfig($rectorConfig);\n'
+  printf '  if (method_exists($rectorConfig, '"'"'polyfillPackages'"'"')) {\n'
+  if [[ -n "$list" ]]; then
+    printf '    $rectorConfig->polyfillPackages([\n%s\n    ]);\n' "$(printf '%s\n' "$list" | sed 's/^/  /')"
+  else
+    printf '    $rectorConfig->polyfillPackages([]);\n'
+  fi
+  printf '  }\n};\n'
+  return 0
+}
+
+# rector_installed_version ROOT -> the version of rector/rector installed in
+# ROOT: composer.lock's, else the PACKAGE_VERSION its VersionResolver declares
+# (a tree installed without a lock); nothing without Rector.
+rector_installed_version() {
+  local root="${1:-}" v
+  v="$(installed_package_version "$root" rector/rector)"
+  [[ -n "$v" ]] || v="$(sed -n "s/.*const PACKAGE_VERSION = '\([^']*\)';.*/\1/p" "$root/vendor/rector/rector/src/Application/VersionResolver.php" 2> /dev/null | sed -n '1p')"
+  printf '%s' "$v"
+  return 0
+}
+
+# rector_audit_cached ROOT -> the rule audit the root's lock keeps for the
+# Rector installed there (.rector_rule_audit, written by
+# scripts/analysis/rector-rule-audit.sh): its rules array, compact; nothing
+# when the lock holds none or one for another Rector version
+# (rector_installed_version).
+rector_audit_cached() {
+  local root="${1:-}" v f
+  [[ -n "$root" ]] && have_cmd jq || return 0
+  v="$(rector_installed_version "$root")"
+  [[ -n "$v" ]] || return 0
+  # Read-only: lock_path never creates or moves a lock (a --dry-run reads it).
+  f="$(lock_path "$root" 2> /dev/null || true)"
+  [[ -n "$f" && -r "$f" ]] || return 0
+  jq -c --arg v "$v" '.rector_rule_audit | select(type == "object" and .rector_version == $v)
+    | .rules | select(type == "array")' "$f" 2> /dev/null || true
+  return 0
+}
+
+# rector_audit_ensure ROOT -> rector_audit_cached ROOT, after running
+# scripts/analysis/rector-rule-audit.sh when the lock holds no audit for the
+# Rector installed there; nothing when there is no Rector or the audit cannot
+# run (no PHP): the compat pass then follows config/php/rules.json alone.
+rector_audit_ensure() {
+  local root="${1:-}" a
+  [[ -n "$root" && -d "$root/vendor/rector/rector" ]] || return 0
+  a="$(rector_audit_cached "$root")"
+  if [[ -z "$a" ]]; then
+    "${BASH:-bash}" "$(plugin_root)/scripts/analysis/rector-rule-audit.sh" --root "$root" < /dev/null > /dev/null 2>&1 || true
+    a="$(rector_audit_cached "$root")"
+    [[ -n "$a" ]] || log_warn "No Rector rule audit for $root (scripts/analysis/rector-rule-audit.sh): the compat pass follows config/php/rules.json alone."
+  fi
+  [[ -z "$a" ]] || printf '%s' "$a"
+  return 0
+}
+
+# rector_compat_list PLAN L U [AUDIT] -> the compat pass's rules, one JSON
+# array: the plan's (plan_compat_rules PLAN L U). With AUDIT (a
+# rector_audit_cached rules array), the rules the installed Rector does not
+# have are left out, and so are those its PHP sets put at or below the floor's
+# level set (the main pass runs them): the audit and the allowlist give the
+# list (AR-11, ADR 0030).
+rector_compat_list() {
+  local rules audit="${4:-}"
+  rules="$(plan_compat_rules "${1:-}" "${2:-}" "${3:-}")"
+  [[ -n "$rules" ]] || rules='[]'
+  if [[ -n "$audit" ]]; then
+    printf '%s' "$rules" | jq -c --argjson a "$audit" --arg S "$(_php_level_set_php "${2:-}")" '
+      def vn: split(".") | map(tonumber? // 0);
+      ([$a[] | {key: .rule, value: [(.sets // [])[] | capture("^PHP_(?<x>[0-9])(?<y>[0-9])$") | "\(.x).\(.y)"]}] | from_entries) as $sets
+      | map(select(. as $r | $sets | has($r)) | select(. as $r | ($S == "") or ([$sets[$r][] | select(vn <= ($S | vn))] | length == 0)))' \
+      2> /dev/null || printf '%s' "$rules"
+  else
+    printf '%s' "$rules"
+  fi
+  return 0
+}
+
+# rector_compat_rules_block LIST -> rector-compat.php's {{COMPAT_RULES}}: one
+# quoted, comma-ended PHP string per rule of LIST, backslashes doubled.
+rector_compat_rules_block() {
+  printf '%s' "${1:-}" | jq -r '.[] | select(type == "string" and test("^[A-Za-z0-9_\\\\]+$"))
+    | "  \u0027" + (split("\\") | join("\\\\")) + "\u0027,"' 2> /dev/null || true
+  return 0
+}
+
+# rector_compat_php_id LIST [AUDIT] -> rector-compat.php's
+# {{COMPAT_PHP_VERSION}}, Rector's PhpVersion constant name (PHP_84): the
+# highest PHP among LIST's rules at which Rector's PhpVersionedFilter keeps
+# them, their audited min_php (AUDIT), else their php/rules.json
+# deprecated_in, else removed_in. Nothing (return 1) when LIST is empty.
+rector_compat_php_id() {
+  local list="${1:-}" audit="${2:-[]}" f v
+  f="$(version_data_dir)/php/rules.json"
+  [[ -n "$list" && -r "$f" ]] && have_cmd jq || return 1
+  [[ -n "$audit" ]] || audit='[]'
+  v="$(jq -r --argjson list "$list" --argjson a "$audit" '
+    def vn: split(".") | map(tonumber? // 0);
+    ([$a[] | {key: .rule, value: .min_php}] | from_entries) as $min
+    | ([.rules[] | select(.rule != null) | {key: .rule, value: (.deprecated_in // .removed_in)}] | from_entries) as $dep
+    | [$list[] | ($min[.] // $dep[.]) | select(type == "string")] | sort_by(vn) | last // empty' "$f" 2> /dev/null || true)"
+  [[ "$v" =~ ^[0-9]+\.[0-9]+$ ]] || return 1
+  printf 'PHP_%s' "${v//./}"
   return 0
 }
 
@@ -350,12 +488,13 @@ EOF
 }
 
 # rector_config_pristine TEMPLATE FILE -> 0 when FILE is exactly what TEMPLATE
-# renders for FILE's own floor and subject path (rector.php, or
-# rector-compat.php, whose only token is the subject: its withPhpVersion is
-# the rules' own and the floor tokens are ignored): a drupilot
+# renders for FILE's own floor and subject path (a template-4 rector.php, or
+# a template-1 rector-compat.php, whose only token is the subject: its
+# withPhpVersion is the rules' own and the floor tokens are ignored): a drupilot
 # render nobody edited, which may be regenerated when its inputs change. A
 # hand edit, another template generation or a file of the developer's own -> 1.
-# A template-5 rector.php never matches (its sets, skips and BC block come from
+# A template-5 or -6 rector.php, or a template-2 rector-compat.php, never
+# matches (their sets, skips, BC block, polyfills and compat rules come from
 # the plan): the sha256 kept in the lock recognizes it (render_sha_matches).
 rector_config_pristine() {
   local tpl="${1:-}" f="${2:-}" fl sp rc=1

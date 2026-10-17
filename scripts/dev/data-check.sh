@@ -30,7 +30,10 @@
 #               cites php.net; a rule templates/rector.php.tmpl skips (the
 #               deny rows it renders through {{SKIP_RULES}}) is
 #               drupal_safe false, and every rule templates/rector-compat.php.tmpl
-#               runs is a drupal_safe compat rule (when the tree has templates/);
+#               lists itself is a drupal_safe compat rule (those it renders
+#               through {{COMPAT_RULES}} are the generated
+#               php_compat_pass_rules, drupal_safe by construction) (when the
+#               tree has templates/);
 #               graph edges are unique, named from-to, join known eras, and
 #               every forbidden route chains from -> to
 #
@@ -215,7 +218,13 @@ if [[ -f "$RULES" && -f "$TPL_MAIN" && -f "$TPL_COMPAT" ]]; then
   else
     SKIPS="$(tpl_rules "$TPL_MAIN" '$drupilotRiskySkips')"
   fi
+  # The rules rector-compat.php lists itself are always read; template 2 also
+  # runs the generated ones ({{COMPAT_RULES}}, php_compat_pass_rules:
+  # drupal_safe compat rows only).
   CRULES="$(tpl_rules "$TPL_COMPAT" '$drupilotCompatRules')"
+  if grep -qF '{{COMPAT_RULES}}' "$TPL_COMPAT" 2> /dev/null; then
+    CRULES="$(printf '%s\n%s\n' "$CRULES" "$(jq -r '.rules[] | select(.kind == "compat" and .drupal_safe == true) | .rule // empty' "$RULES" 2> /dev/null || true)" | sed '/^$/d')"
+  fi
   if [[ -z "$SKIPS" || -z "$CRULES" ]]; then
     errs="could not read the skip list of templates/rector.php.tmpl (or config/php/rules.json holds no deny row) or the rules of templates/rector-compat.php.tmpl"
   else

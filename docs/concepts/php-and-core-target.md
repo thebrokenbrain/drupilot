@@ -33,13 +33,40 @@ exactly one class, in this order:
 | `deny` | A rule that would break Drupal | Rector never runs it (the `withSkip()` of `rector.php`) |
 | `removed-blocking` | Removed at or below P, and no safe fix runs on L | A blocking item for a person |
 | `apply-modernize` | A modernizing rule whose PHP is at or below L | Rector's PHP level set at L |
-| `apply-compat` | Deprecated or removed at or below P, its fix is safe for Drupal and runs on L, and a pass runs it | Rector: the level set at L, or the compat pass (ADR 0002) |
-| `report-only` | Deprecated at or below P, but its fix needs a PHP above L or no pass runs a rule for it | Reported for a person |
+| `apply-compat` | Deprecated or removed at or below P, and its fix is safe for Drupal and runs on L | Rector: the level set at L, or else the compat pass (see [The compat pass](#the-compat-pass)) |
+| `report-only` | Deprecated at or below P, but its fix needs a PHP above L or is not safe for Drupal | Reported for a person |
 | `not-applicable` | Deprecated and removed above P | Nothing |
 
 `php_rule_class` in `scripts/lib/plan.sh` computes the class. The same row can
 change class with the window: the `(integer)` cast, deprecated in PHP 8.5, is
 `not-applicable` up to 8.4 and `report-only` from 8.5 on.
+
+## The compat pass
+
+Rector's main pass stops at the floor L, so a deprecation fix for a newer PHP
+of the window runs in a second, narrow pass, `rector-compat.php`, right after
+it ([ADR 0002](../contributing/adr/0002-rector-compat-pass.md),
+[ADR 0030](../contributing/adr/0030-rule-audit-and-generated-compat-pass.md)).
+It runs only the fixes whose output still runs on L, such as an implicitly
+nullable parameter `Foo $x = NULL` becoming `?Foo $x = NULL`. Its rules come
+from two sides:
+
+- **The plan** (`rector.compat_rules`) lists the compat rows of
+  `config/php/rules.json` that are safe for Drupal, deprecated up to the top of
+  the window, and above the floor's level set. The top of the window is the
+  higher of P and the highest PHP a core of your range supports, because the
+  module must run on every one of them.
+- **The rule audit** (`scripts/analysis/rector-rule-audit.sh`) reflects the
+  PHP sets of the Rector installed in the test-bed. It is run once per Rector
+  version and kept in the lock. It drops the rules that Rector does not have and
+  the rules its floor level set already runs. It also sets the PHP version the
+  pass declares, so that Rector keeps every listed rule.
+
+A row the data marks unsafe for Drupal stays out, after a review of the rule's
+source: `ord($s)` → `ord($s[0])` warns on an empty string, and `get_parent_class()`
+→ `parent::class` is a fatal error in a class with no parent. Both are never
+applied, and are reported when your target reaches their deprecation. Rules that
+would break Drupal (`deny`) are skipped by both passes.
 
 ## The php stage
 
@@ -106,7 +133,12 @@ version data ([ADR 0029](../contributing/adr/0029-core-polyfills-as-version-data
 The floor counts a function as available only when every core minor of the
 declared range provides it: Drupal 11.2 and later ship `polyfill-php84`, but no
 Drupal 10 minor does. So `array_find()` raises the floor to 8.4 for
-`^10.3 || ^11`, and not for `^11.2`. The heuristic scan that finds such
+`^10.3 || ^11`, and not for `^11.2`. Rector's main pass gets the same list
+(`rector.polyfills`, through `polyfillPackages()`): its polyfill rules, such as
+a `foreach` becoming `array_find()`, run below their PHP only for those
+packages, never because of what the test-bed's `composer.json` lists. The one
+that turns `@deprecated` into `#[\Deprecated]` is skipped: from PHP 8.4 it
+makes every call emit a deprecation on top of Drupal's own. The heuristic scan that finds such
 constructs, `detect-php-floor.sh`, also knows the PHP 8.5 additions (the pipe
 operator, the `(void)` cast, `array_first()`), searched in the code only. For
 syntax, the `php -l` legs are the real check. A function missing on the floor is
@@ -135,6 +167,4 @@ re-plan.
 
 These arrive in a later 1.0 pre-release:
 
-- the PHPCompatibility check (ADR 0003);
-- the audit of Rector's PHP rules (which fills `apply-modernize`);
-- the polyfill list given to Rector's main pass (03-R2).
+- the PHPCompatibility check (ADR 0003).

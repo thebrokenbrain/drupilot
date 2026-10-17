@@ -2,11 +2,14 @@
 # T-M2-13/14, ADR 0002: the main Rector config targets the PHP floor L (the
 # lowest PHP the declared core range and the require.php composer enforces
 # admit, never above the PHP target P), and the narrow compat config is
-# rendered only when a compat rule is needed (L < 8.4 <= U, U = max(P, the
-# highest PHP ceiling of the range's known legs)). The rendered files for
-# legacy_widgets (^10 -> ^10 || ^11, require.php >=8.1) are pinned byte for
-# byte in tests/fixtures/rector-render/. The version data is a small synthetic
-# copy (DRUPILOT_VERSION_DATA_DIR), so a data refresh never changes this test.
+# rendered only when its list has a rule (ADR 0030: the safe compat rows of
+# [L..U] above the floor's level set, U = max(P, the highest PHP ceiling of the
+# range's known legs)). The rendered files for legacy_widgets (^10 -> ^10 ||
+# ^11, require.php >=8.1) are pinned byte for byte in
+# tests/fixtures/rector-render/ (capture on purpose:
+# bash tests/unit/rector_php_floor.sh --capture). The version data is a small
+# synthetic copy (DRUPILOT_VERSION_DATA_DIR), so a data refresh never changes
+# this test.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
 # shellcheck source=../../scripts/lib/common.sh
@@ -115,18 +118,20 @@ mv "$D2/10.json" "$D2/targets/"; mv "$D2/versions.json" "$D2/php/"
 printf '%s\n' '{"major":11,"minors":{"11.0":{"verified":true,"php_supported":["8.3"]}}}' > "$D2/targets/11.json"
 assert_eq "P 8.4 above the range's ceiling 8.3: U = P" \
   "$(DRUPILOT_VERSION_DATA_DIR="$D2" bounds rector_php_bounds "$LW" 8.4)" "8.1 8.4"
-cn() { if rector_compat_needed "$1" "$2"; then echo yes; else echo no; fi; }
+# The compat list of the shipped rules (php_compat_pass_rules) decides.
+cn() { if rector_compat_needed "$(DRUPILOT_VERSION_DATA_DIR="$T_REPO/config" php_compat_pass_rules "$1" "$2")"; then echo yes; else echo no; fi; }
 assert_eq "compat needed: 8.1 8.5" "$(cn 8.1 8.5)" "yes"
 assert_eq "compat needed: 8.3 8.4" "$(cn 8.3 8.4)" "yes"
-assert_eq "compat not needed: 8.4 8.5 (the php84 set holds the rule)" "$(cn 8.4 8.5)" "no"
-assert_eq "compat not needed: 8.3 8.3 (no PHP of the window deprecates it)" "$(cn 8.3 8.3)" "no"
+assert_eq "compat needed: 8.4 8.5 (the 8.5 fixes the php84 set lacks)" "$(cn 8.4 8.5)" "yes"
+assert_eq "compat not needed: 8.4 8.4 (the php84 set holds every fix)" "$(cn 8.4 8.4)" "no"
+assert_eq "compat not needed: 8.3 8.3 (no PHP of the window deprecates one above the set)" "$(cn 8.3 8.3)" "no"
 assert_eq "floor tokens 8.1" "$(rector_floor_tokens 8.1 | tr '\n' ' ')" "PHP_FLOOR=8.1 PHP_FLOOR_ID=PHP_81 PHP_FLOOR_SET=php81 PHP_VERSION_L=PHP_81 PHP_SETS_L=php81 "
 assert_eq "floor tokens 7.4" "$(rector_floor_tokens 7.4 | tr '\n' ' ')" "PHP_FLOOR=7.4 PHP_FLOOR_ID=PHP_74 PHP_FLOOR_SET=php74 PHP_VERSION_L=PHP_74 PHP_SETS_L=php74 "
 assert_eq "floor tokens 8.5: no php85 set is assumed" "$(rector_floor_tokens 8.5 2> /dev/null | tr '\n' ' ')" \
   "PHP_FLOOR=8.5 PHP_FLOOR_ID=PHP_85 PHP_FLOOR_SET=php84 PHP_VERSION_L=PHP_85 PHP_SETS_L=php84 "
 
 # --- render-templates.sh --------------------------------------------------------
-# rector.php (template 5) renders from the upgrade plan, which needs the whole
+# rector.php (template 6) renders from the upgrade plan, which needs the whole
 # version data: the snapshot the plan goldens pin, not the small copy above.
 DRUPILOT_VERSION_DATA_DIR="$T_REPO/tests/fixtures/data-snapshots/$(jq -r .data_hash "$T_REPO/tests/golden/plans/golden.json")"
 export DRUPILOT_VERSION_DATA_DIR
@@ -144,12 +149,14 @@ assert_eq "--only rector renders the pair" "$T_RC|$(jq -c '[.files[] | [.name, .
   '0|[["rector","written"],["rector-compat","written"]]'
 assert_eq "... and reports the floor and ceiling" "$(jq -c '[.php_floor, .php_ceiling]' "$T_OUT")" '["8.1","8.5"]'
 GOLD="$T_REPO/tests/fixtures/rector-render/legacy_widgets"
+if [[ "${1:-}" == "--capture" ]]; then cp "$r/rector.php" "$r/rector-compat.php" "$GOLD/"; printf 'captured\n'; exit 0; fi
 assert_file_eq "rector.php matches the golden render" "$r/rector.php" "$GOLD/rector.php"
 assert_file_eq "rector-compat.php matches the golden render" "$r/rector-compat.php" "$GOLD/rector-compat.php"
 has() { if grep -qF -- "$2" "$1"; then echo yes; else echo no; fi; }
 assert_eq "rector.php: withPhpVersion at the floor" "$(has "$r/rector.php" '->withPhpVersion(PhpVersion::PHP_81)')" "yes"
 assert_eq "rector.php: level sets stop at the floor" "$(has "$r/rector.php" '->withPhpSets(php81: true)')" "yes"
-assert_eq "rector.php: template marker 5" "$(has "$r/rector.php" 'drupilot-template-version: 5')" "yes"
+assert_eq "rector.php: template marker 6" "$(has "$r/rector.php" 'drupilot-template-version: 6')" "yes"
+assert_eq "rector.php: an explicit empty polyfill list (^10 || ^11)" "$(has "$r/rector.php" 'polyfillPackages([]);')" "yes"
 assert_eq "rector.php: the plan's per-minor Drupal 10 sets" "$(has "$r/rector.php" "'DrupalRector\\\\Set\\\\Drupal10SetList::DRUPAL_103',")" "yes"
 assert_eq "... rendered from the plan" "$(jq -r .plan "$T_OUT")" "plan"
 assert_eq "... its sha256 kept in the lock" \
@@ -160,8 +167,8 @@ for _rule in 'Php85\\Rector\\Class_\\SleepToSerializeRector' 'Php85\\Rector\\Cla
 done
 assert_eq "rector-compat.php: the implicit-nullable rule through withRules" \
   "$(has "$r/rector-compat.php" "'Rector\\\\Php84\\\\Rector\\\\Param\\\\ExplicitNullableParamTypeRector'")$(has "$r/rector-compat.php" '->withRules($drupilotCompatRules)')" "yesyes"
-assert_eq "rector-compat.php: opens the filter at PHP_84 and loads no set" \
-  "$(has "$r/rector-compat.php" '->withPhpVersion(PhpVersion::PHP_84)')$(has "$r/rector-compat.php" 'withPhpSets')$(has "$r/rector-compat.php" 'withSets')" "yesnono"
+assert_eq "rector-compat.php: opens the filter at PHP_85 (U 8.5, no rule audit) and loads no set" \
+  "$(has "$r/rector-compat.php" '->withPhpVersion(PhpVersion::PHP_85)')$(has "$r/rector-compat.php" 'withPhpSets')$(has "$r/rector-compat.php" 'withSets')" "yesnono"
 rt DRUPILOT_PHP_TARGET=8.3
 assert_eq "a second render: both unchanged" "$T_RC|$(jq -c '[.files[].status]' "$T_OUT")" '0|["unchanged","unchanged"]'
 
@@ -169,7 +176,9 @@ assert_eq "a second render: both unchanged" "$T_RC|$(jq -c '[.files[].status]' "
 # is regenerated without --force, after a backup (a TMPDIR that does not exist
 # does not get in the way).
 rt DRUPILOT_PHP_TARGET=8.3 DRUPILOT_CORE_TARGET_STRATEGY=d11-only TMPDIR="$T_TMP/no-such-dir"
-assert_eq "floor 8.1 -> 8.3: rector.php upgraded, compat unchanged" "$T_RC|$(jq -c '[.files[].status]' "$T_OUT")" '0|["upgraded","unchanged"]'
+assert_eq "floor 8.1 -> 8.3: both upgraded (php83 now runs the 8.2/8.3 fixes)" "$T_RC|$(jq -c '[.files[].status]' "$T_OUT")" '0|["upgraded","upgraded"]'
+assert_eq "... the compat list lost them" \
+  "$(has "$r/rector-compat.php" "VariableInStringInterpolationFixerRector',")$(has "$r/rector-compat.php" "ExplicitNullableParamTypeRector',")" "noyes"
 assert_eq "... now at PHP_83 / php83" \
   "$(has "$r/rector.php" '->withPhpVersion(PhpVersion::PHP_83)')$(has "$r/rector.php" '->withPhpSets(php83: true)')" "yesyes"
 b="$(jq -r '.files[0].backup // empty' "$T_OUT")"
@@ -200,12 +209,13 @@ assert_eq "--only rector-compat writes that file only" \
   "$T_RC|$(jq -c '[.files[] | [.name, .status]]' "$T_OUT")|$([[ -e "$r/rector.php" ]] && echo yes || echo no)" \
   '0|[["rector-compat","written"]]|no'
 
-# L >= 8.4: no compat config.
+# L 8.4 (U 8.5): the compat config holds the 8.5 fixes only.
 r="$T_TMP/root84"; mkroot "$r" "$LW84"
 rt DRUPILOT_PHP_TARGET=8.4 DRUPILOT_CORE_TARGET_STRATEGY=d11-only
-assert_eq "L 8.4: rector-compat skipped" "$T_RC|$(jq -c '[.files[] | [.name, .status]]' "$T_OUT")" \
-  '0|[["rector","written"],["rector-compat","skipped"]]'
-assert_eq "... and not written" "$([[ -e "$r/rector-compat.php" ]] && echo yes || echo no)" "no"
+assert_eq "L 8.4: rector-compat written" "$T_RC|$(jq -c '[.files[] | [.name, .status]]' "$T_OUT")" \
+  '0|[["rector","written"],["rector-compat","written"]]'
+assert_eq "... with the 8.5 fixes, not the 8.4 ones (php84 holds them)" \
+  "$(has "$r/rector-compat.php" "ChrArgModuloRector',")$(has "$r/rector-compat.php" "ExplicitNullableParamTypeRector',")$(has "$r/rector-compat.php" "AddEscapeArgumentRector',")" "yesnono"
 assert_eq "... rector.php at PHP_84 / php84" \
   "$(has "$r/rector.php" '->withPhpVersion(PhpVersion::PHP_84)')$(has "$r/rector.php" '->withPhpSets(php84: true)')" "yesyes"
 

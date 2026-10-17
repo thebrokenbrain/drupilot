@@ -11,6 +11,8 @@
 #   does not raise the floor, while one no polyfill provides does; the mb_*
 #   functions (polyfilled only with ext-mbstring) always count;
 # - core-strategy.sh and the plan's L judge the floor with the range's polyfills;
+# - functions are searched as calls in the code only (a comment or a string
+#   naming one is no call; a path with a colon is kept);
 # - the 8.5 row: the pipe operator and the (void) cast in the code only (a
 #   regex, a string or a comment is no signal), array_first(); an attribute
 #   (an older PHP ignores it), a method call, a static call, a definition and a
@@ -96,6 +98,24 @@ assert_eq "mb_str_pad() is PHP 8.3" "$(jq -c '[.floor, [.signals[] | select(.pat
 printf '<?php\nset_error_handler(fn () => true);\n$h = get_error_handler();\n' > "$S/n.php"
 df --range '^11.3'
 assert_eq "get_error_handler() on ^11.3 (polyfill-php85): no 8.5 floor" "$(jq -c '[.floor, [.signals[] | select(.version == "8.5") | .polyfilled]]' "$T_OUT")" '["8.1",[true]]'
+# A function named in a comment or a string is no call; a path with ':' keeps
+# its calls.
+printf '<?php\n// Finds it with array_find() on PHP 8.4.\n$s = "array_find($a, $f)";\n/* array_any($a, $f) */\n' > "$S/n.php"
+df --range '^10.3 || ^11'
+assert_eq "a comment or a string naming array_find() is no call" "$(jq -c '[.floor, (.signals | length)]' "$T_OUT")" '["8.1",0]'
+printf '<?php\n// Validates it with json_validate() and str_increment() on PHP 8.3.\n$j = "json_validate($s)";\n' > "$S/n.php"
+df --range '^10.3 || ^11'
+assert_eq "  the 8.3/8.2 stdlib rows too (json_validate, str_increment)" "$(jq -c '[.floor, (.signals | length)]' "$T_OUT")" '["8.1",0]'
+mkdir -p "$S/a:b"; printf '<?php\n\n$x = array_find([1], fn ($v) => $v);\n' > "$S/a:b/c.php"
+df --range '^10.3 || ^11'
+assert_eq "a call in a file whose path holds ':'" "$(jq -c '[.floor, [.signals[].location]]' "$T_OUT")" '["8.4",["a:b/c.php:3"]]'
+printf '<?php\n\nreadonly class C {}\n' > "$S/a:b/c.php"
+df
+assert_eq "  a syntax signal there too" "$(jq -c '[.signals[].location]' "$T_OUT")" '["a:b/c.php:3"]'
+printf '<?php\n\n$y = \\Drupal::service("x"); $x = array_find([1], fn ($v) => $v);\n' > "$S/a:b/c.php"
+df
+assert_eq "  a backslash on the line keeps the call" "$(jq -c '[.floor, [.signals[].location]]' "$T_OUT")" '["8.4",["a:b/c.php:3"]]'
+rm -rf "$S/a:b"
 
 # The consumers judge the floor with the range's polyfills: core-strategy.sh
 # (its second scan, with the recommended range) and the plan's L.

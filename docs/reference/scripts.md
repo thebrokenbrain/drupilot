@@ -1706,6 +1706,40 @@ Exit codes: 0 ok · 1 usage error / not a module or theme / jq missing ·
             3 --strict and status is "blocked".
 ```
 
+### analysis/rector-rule-audit.sh
+
+```text
+drupilot — scripts/analysis/rector-rule-audit.sh
+The Rector rule audit (AR-11, T-M5-03, ADR 0030): reflects the PHP sets of
+the Rector installed in a Drupal root (scripts/php/rule-audit.php, staged by
+stage_runtime and run with $(drupal_runner) php) and lists every rule they
+register, with its sets, the PHP Rector's PhpVersionedFilter needs before it
+runs it (min_php), its polyfill package and its Rector interfaces. Together
+with the compat rows of config/php/rules.json (the allowlist) it gives the
+compat pass its rules and its withPhpVersion() (rector_compat_list,
+rector_compat_php_id in scripts/lib/toolchain.sh).
+
+The audit is a function of the Rector version: it is cached in the root's
+lock (.rector_rule_audit: {rector_version, rules}; the version is
+composer.lock's, else the one Rector's VersionResolver declares) and run
+again only for another installed version or with --refresh. Two runs on the same Rector
+print the same bytes.
+
+Usage:
+  rector-rule-audit.sh --root DIR [--refresh] [--json] [-h|--help]
+    --root DIR    the Drupal root (rector/rector in its vendor/)
+    --refresh     audit again even when the lock holds this Rector's audit
+    --json        {tool: "rector-rule-audit", rector_version, rules: [{rule,
+                  sets, min_php, polyfill, interfaces}], missing: [{id, rule,
+                  kind}]} on STDOUT; missing lists the config/php/rules.json
+                  rows whose rule the installed Rector's PHP sets do not
+                  register (renamed, removed, or outside the PHP sets)
+
+Exit codes: 0 audited (or read from the lock) · 1 usage error · 2 no Rector
+installed in the root, no PHP to run the helper (DDEV down and no host
+php), or the helper failed.
+```
+
 ### analysis/run-phpcs.sh
 
 ```text
@@ -1865,12 +1899,16 @@ Passes, in this order:
                    the core range core-strategy.sh recommends and the
                    effective require.php admit, never above the PHP target):
                    ->withPhpVersion() and the level sets stop at L.
-  Compat pass (when the floor is below PHP 8.4 and the range runs on 8.4 or
-                   later, rector_compat_needed): `--config rector-compat.php`
-                   (templates/rector-compat.php.tmpl, ensured at the root
-                   like rector.php), only the PHP deprecation fixes whose
-                   output still runs on L (`Foo $x = NULL` -> `?Foo $x =
-                   NULL`). Errors and the dry-run record call it pass 3.
+  Compat pass (when the window has a deprecation fix the main pass does
+                   not run, rector_compat_needed): `--config
+                   rector-compat.php` (templates/rector-compat.php.tmpl,
+                   ensured at the root like rector.php), only the PHP
+                   deprecation fixes whose output still runs on L (`Foo $x =
+                   NULL` -> `?Foo $x = NULL`): the plan's
+                   rector.compat_rules, checked against the installed
+                   Rector's rule audit (rector-rule-audit.sh, run when the
+                   lock holds none for it; ADR 0030). Errors and the dry-run
+                   record call it pass 3.
   Pass 2 (--digests): the COMPLEMENTARY, AI-generated `dbuytaert/drupal-digests`
                    rules, cloned at runtime into the plugin cache, staged
                    under <root>/.drupilot/digests/<sha>/ and run with a
@@ -2000,7 +2038,7 @@ __sleep/__wakeup) reach projects set up before them. The same happens to an
 untouched render (its sha256 is the one kept in the root's lock, ADR 0019) for
 another plan, PHP floor or subject, and to a template-4 render nobody edited
 (rector_config_pristine) whose floor moved. Any other copy is kept, with a
-warning, and so is a template-5 render whose sha256 the lock no longer keeps
+warning, and so is a template-6 render whose sha256 the lock no longer keeps
 (a cleared or moved lock); its sha256 is kept again while it equals the
 current render. A hand-written rector.php is never
 replaced; a warning is printed when it does not skip
@@ -2008,8 +2046,8 @@ ArrayToFirstClassCallableRector or has no withPhpVersion(). rector-compat.php
 follows the same rules when the compat pass runs: written when missing,
 regenerated from an older marker, and regenerated when it is an untouched
 render (its sha256 kept in the lock, or rector_config_pristine) for another
-subject (its only token), so a test-bed shared by several modules never runs
-the compat pass with the previous module's config. A kept copy whose
+plan or subject, so a test-bed shared by several modules never runs the
+compat pass with the previous module's config. A kept copy whose
 withPaths() names a relative path that does not exist (Rector stops on it)
 gets a warning.
 
@@ -2209,7 +2247,13 @@ Vocabulary (AR-01):
                  newest released minor of T or its pre-release minor in
                  preview
   W = [L..P]     PHP window: PHPStan phpVersion, PHPCompatibility testVersion
-  bed core       the exact core of the test-bed: the lock's when it is a T
+  U              the compat pass's top (ADR 0002): the higher of P and the
+                 highest PHP a core of C supports. rector.compat_rules are
+                 the compat rules for [L..U] the floor's level set does not
+                 run (php_compat_pass_rules), rector.polyfills the
+                 symfony/polyfill-phpXY packages every core of C ships
+                 (core_range_polyfills; ADR 0030)
+  bed core      the exact core of the test-bed: the lock's when it is a T
                  version, else the newest release of M
   hop            one edge of config/paths/graph.json
   track          standard (S 8..12) or d7-assisted (S = 7)
@@ -3520,13 +3564,15 @@ template leaves MINK_DRIVER_ARGS_WEBDRIVER to the Selenium add-on — but
 --set WEBDRIVER_HOST=... is still accepted). Substitution is literal
 (render_template in common.sh), so no path character can break it.
 
-rector.php (template v5) and phpstan.neon (template v3) are rendered from the
+rector.php (template v6) and phpstan.neon (template v3) are rendered from the
 upgrade plan (ADR 0019, ADR 0020): the frozen plan of the subject
 (plan_for_subject), else a fresh draft from scripts/analysis/upgrade-path.sh.
 rector.php's tokens {{RECTOR_SETS}}, {{SKIP_RULES}}, {{BC_BLOCK}},
 {{PHP_VERSION_L}} / {{PHP_SETS_L}} (the plan's php.floor) and {{POLYFILLS}}
-come from rector_sets_block, rector_skip_block, rector_bc_block and
-rector_floor_tokens; phpstan.neon's {{PHPSTAN_PHP_MIN}} / {{PHPSTAN_PHP_MAX}}
+(the plan's rector.polyfills) come from rector_sets_block, rector_skip_block,
+rector_bc_block, rector_floor_tokens and rector_polyfills_block;
+rector-compat.php's {{COMPAT_RULES}} / {{COMPAT_PHP_VERSION}} from
+rector_compat_rules_block and rector_compat_php_id; phpstan.neon's {{PHPSTAN_PHP_MIN}} / {{PHPSTAN_PHP_MAX}}
 (the plan's php.phpstan_phpversion), {{PHPSTAN_PROFILE}} /
 {{PHPSTAN_PROFILE_BLOCK}} (the plan's phpstan.profile, or --profile;
 phpstan_profile_block) and {{PHPSTAN_CACHE_KEY}} (the first 12 hex digits of
@@ -3555,14 +3601,16 @@ what its template renders for its own subject (and, for rector.php, its
 floor) (rector_config_pristine): nobody edited it, and it was rendered for
 another subject of a shared test-bed, or (rector.php) its plan or floor moved
 because the core target changed (0.9 reported that as "differs"). Any other current-generation copy
-that differs counts as hand-edited, a template-5 rector.php whose sha256 the
+that differs counts as hand-edited, a template-6 rector.php whose sha256 the
 lock no longer keeps included (its sha256 is kept again when it is found up
 to date).
 
 rector-compat.php is rendered only when the compat pass has a rule to run
-(rector_compat_needed: the floor is below PHP 8.4 and the core range runs on
-8.4 or later); otherwise its entry is "skipped" and an existing copy is left
-alone (run-rector.sh does not run it).
+(rector_compat_needed: the plan's rector.compat_rules, checked against the
+installed Rector's rule audit, rector_compat_list, ADR 0030); otherwise its
+entry is "skipped" and an existing copy is left alone (run-rector.sh does
+not run it). The audit runs (scripts/analysis/rector-rule-audit.sh) when
+the root's lock holds none for that Rector, never with --dry-run.
 
 Usage:
   render-templates.sh (--root DIR | --subject DIR) [--subject-path REL]
@@ -4368,7 +4416,10 @@ skill or hook calls it; scripts/dev/check.sh runs it as its `data` gate):
               cites php.net; a rule templates/rector.php.tmpl skips (the
               deny rows it renders through {{SKIP_RULES}}) is
               drupal_safe false, and every rule templates/rector-compat.php.tmpl
-              runs is a drupal_safe compat rule (when the tree has templates/);
+              lists itself is a drupal_safe compat rule (those it renders
+              through {{COMPAT_RULES}} are the generated
+              php_compat_pass_rules, drupal_safe by construction) (when the
+              tree has templates/);
               graph edges are unique, named from-to, join known eras, and
               every forbidden route chains from -> to
 

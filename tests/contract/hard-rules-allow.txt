@@ -51,7 +51,7 @@ H4 scripts/lib/core.sh 1
 H4 scripts/lib/php-scan.sh 1
 H4 scripts/lib/plan.sh 5
 H4 scripts/lib/strategy.sh 29
-H4 scripts/lib/toolchain.sh 9
+H4 scripts/lib/toolchain.sh 8
 H4 scripts/tests/run-phpunit.sh 1
 #
 # AR22-FLAG: 0.9 scripts whose frozen CLI (CC-05) skips an unknown flag with a

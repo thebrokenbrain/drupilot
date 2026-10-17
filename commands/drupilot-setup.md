@@ -336,8 +336,9 @@ It renders, validates and writes, at the Drupal root:
 - `templates/rector.php.tmpl` -> `rector.php` (checked with `php -l`), at the PHP
   floor of the core range `core-strategy.sh` recommends (`php_floor` in the JSON)
 - `templates/rector-compat.php.tmpl` -> `rector-compat.php` (checked with
-  `php -l`) when that floor is below PHP 8.4 and the range runs on 8.4 or later;
-  otherwise its entry is `skipped`
+  `php -l`) when the compat pass has a rule to run (the plan's
+  `rector.compat_rules`, checked against the installed Rector's rule audit,
+  ADR 0030); otherwise its entry is `skipped`
 - `templates/phpstan.neon.tmpl` -> `phpstan.neon`
 - `templates/phpcs.xml.dist.tmpl` -> `phpcs.xml.dist` (checked with `xmllint --noout`,
   or `phpcs --standard=<file> -e` when xmllint is absent)

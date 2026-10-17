@@ -4,6 +4,8 @@
 #   floor L and the target P (deny, removed-blocking, apply-modernize,
 #   apply-compat, report-only, not-applicable), versions compared as numbers;
 # - php_rules_classified classifies every row of the shipped data;
+# - php_compat_pass_rules lists the compat rows the compat pass runs: safe,
+#   in the window, above the floor's level set (ADR 0030);
 # - php-target.sh finds the removed-blocking and report-only constructs of the
 #   window, skips comment lines, a row's exclude and vendor/, reads L and P
 #   from the module's own frozen plan, prints the same bytes twice, and
@@ -23,15 +25,12 @@ assert_eq "compat deprecated above P: not-applicable" "$(c '{"kind":"compat","de
 NULLABLE='"rule":"Rector\\Php84\\Rector\\Param\\ExplicitNullableParamTypeRector"'
 assert_eq "compat in the window, safe, its rule in the compat pass: apply-compat" \
   "$(c '{"kind":"compat",'"$NULLABLE"',"deprecated_in":"8.4","output_min_php":"7.1","drupal_safe":true}' 8.1 8.4)" "apply-compat"
-assert_eq "compat deprecated above L, its rule in no pass: report-only" \
-  "$(c '{"kind":"compat","rule":"Rector\\X","deprecated_in":"8.4","output_min_php":"7.1","drupal_safe":true}' 8.1 8.4)" "report-only"
+assert_eq "compat deprecated above L: the compat pass runs it (ADR 0030)" \
+  "$(c '{"kind":"compat","rule":"Rector\\X","deprecated_in":"8.4","output_min_php":"7.1","drupal_safe":true}' 8.1 8.4)" "apply-compat"
 assert_eq "compat deprecated at or below L (the level set runs it; no output_min_php runs anywhere)" \
   "$(c '{"kind":"compat","rule":"Rector\\X","deprecated_in":"8.2","drupal_safe":true}' 8.2 8.3)" "apply-compat"
-assert_eq "L 8.5: the main pass runs php84 (no php85 set assumed), so a PHP 8.5 compat rule is not applied" \
-  "$(c '{"kind":"compat","rule":"Rector\\X","deprecated_in":"8.5","output_min_php":"7.0","drupal_safe":true}' 8.5 8.5)" "report-only"
-assert_eq "RECTOR_COMPAT_RULES is the list templates/rector-compat.php.tmpl runs" \
-  "$(sed -n '/^\$drupilotCompatRules = /,/class_exists/p' "$T_REPO/templates/rector-compat.php.tmpl" | sed -n "s/^ *'\(.*\)',\$/\1/p" | sed 's/\\\\/\\/g')" \
-  "$RECTOR_COMPAT_RULES"
+assert_eq "L 8.5: the main pass runs php84 (no php85 set assumed), so the compat pass runs a PHP 8.5 compat rule" \
+  "$(c '{"kind":"compat","rule":"Rector\\X","deprecated_in":"8.5","output_min_php":"7.0","drupal_safe":true}' 8.5 8.5)" "apply-compat"
 assert_eq "compat whose fix needs a PHP above L: report-only" \
   "$(c '{"kind":"compat","deprecated_in":"8.4","output_min_php":"8.4","drupal_safe":true}' 8.1 8.5)" "report-only"
 assert_eq "compat not safe for Drupal: report-only" \
@@ -58,6 +57,20 @@ assert_eq "8.1..8.3: the 8.5 deprecations are not applicable" \
 assert_eq "8.1..8.5: the 8.5 deprecations are reported" \
   "$(php_rules_classified 8.1 8.5 | jq -r '[.[] | select(.id == "p85-cast-names" or .id == "p85-noop-close") | .class] | unique | join(",")')" "report-only"
 assert_eq "a bad bound classifies nothing" "$(php_rules_classified 8 8.5)" "[]"
+# php_compat_pass_rules (ADR 0030): the apply-compat rows the floor's level
+# set does not run.
+short() { jq -r 'map(split("\\") | last) | join(",")'; }
+assert_eq "compat pass 8.1..8.4: the 8.2-8.4 fixes, no 8.5 one" "$(php_compat_pass_rules 8.1 8.4 | short)" \
+  "ExplicitNullableParamTypeRector,VariableInStringInterpolationFixerRector,AddEscapeArgumentRector"
+assert_eq "compat pass 8.3..8.4: what php83 holds is the main pass's" "$(php_compat_pass_rules 8.3 8.4 | short)" \
+  "ExplicitNullableParamTypeRector,AddEscapeArgumentRector"
+assert_eq "compat pass 8.4..8.4: empty (the php84 level set holds them)" "$(php_compat_pass_rules 8.4 8.4)" "[]"
+assert_eq "compat pass 8.5..8.5: the 8.5 fixes (the floor runs php84), never ord() (not drupal_safe)" \
+  "$(php_compat_pass_rules 8.5 8.5 | short)" \
+  "ShellExecFunctionCallOverBackticksRector,ColonAfterSwitchCaseRector,RemoveReflectionSetAccessibleCallsRector,ArrayKeyExistsNullToEmptyStringRector,NullDebugInfoReturnRector,ChrArgModuloRector"
+assert_eq "every compat-pass rule is apply-compat" \
+  "$(php_rules_classified 8.1 8.5 | jq -c --argjson cp "$(php_compat_pass_rules 8.1 8.5)" '[.[] | select(.rule as $r | $cp | index($r)) | .class] | unique')" '["apply-compat"]'
+assert_eq "a bad bound gives none" "$(php_compat_pass_rules 8 8.5)" "[]"
 
 # A loose module: hits in code, a comment, a declaration the exclude drops, a
 # method call, and vendor/.
@@ -149,7 +162,7 @@ assert_eq "the code only: Each( and ( INTEGER ) in code, after a ?> in a comment
   "$T_RC|$(jq -r '[.findings[] | "\(.file):\(.line):\(.id)"] | join(" ")' "$T_OUT")" \
   "0|page.tpl.php:3:removed-each q.module:11:removed-each q.module:12:p85-cast-names src/a:b/c.php:2:removed-each src/latin1.php:2:removed-each"
 assert_eq "the rows without a pattern are listed as unsearched" \
-  "$(jq -c '[(.unsearched | index("p84-csv-escape") != null), (.unsearched | index("removed-each"))]' "$T_OUT")" '[true,null]'
+  "$(jq -c '[(.unsearched | index("p82-utf8-encode") != null), (.unsearched | index("removed-each"))]' "$T_OUT")" '[true,null]'
 E="$T_TMP/empty"; mkdir -p "$E"
 t_run "$T_SH" "$T_REPO/scripts/analysis/php-target.sh" --subject "$E" --floor 8.1 --target 8.5 --json
 assert_eq "a module with no PHP file: no finding" "$T_RC|$(jq -c '.findings' "$T_OUT")" "0|[]"
