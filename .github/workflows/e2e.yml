@@ -30,6 +30,11 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      # The golden's host had xmllint: render-templates.sh validates
+      # phpcs.xml.dist with it (its phpcs fallback rejects the template's
+      # PHPCompatibility reference when the bed lacks that standard).
+      - name: xmllint
+        run: sudo apt-get update -q && sudo apt-get install -y -q libxml2-utils
       - name: DDEV (the golden's version, no project started)
         uses: ddev/github-action-setup-ddev@v1
         with:

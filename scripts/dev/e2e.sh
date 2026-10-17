@@ -45,7 +45,9 @@ while [[ $# -gt 0 ]]; do
     *) die "Unknown argument: $1 (see --help)" 1;;
   esac
 done
-for c in ddev docker git jq; do have_cmd "$c" || die "e2e needs $c." 1; done
+# xmllint as on the golden's host: render-templates.sh validates phpcs.xml.dist
+# with it.
+for c in ddev docker git jq xmllint; do have_cmd "$c" || die "e2e needs $c." 1; done
 [[ "$NAME" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "--name is a DDEV project name (got '$NAME')." 1
 [[ -n "$WORK" ]] || WORK="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/drupilot-e2e"
 if [[ -e "$WORK" && -n "$(ls -A "$WORK" 2> /dev/null)" ]]; then die "The work dir $WORK is not empty." 1; fi
