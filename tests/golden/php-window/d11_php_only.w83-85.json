@@ -3,7 +3,6 @@
     "apply-compat": [
       "p84-implicit-nullable",
       "p82-interpolation",
-      "p83-get-class-no-args",
       "p84-csv-escape",
       "p85-backtick",
       "p85-case-semicolon",
@@ -32,6 +31,7 @@
     ],
     "report-only": [
       "p82-utf8-encode",
+      "p83-get-class-no-args",
       "p85-ord-single-byte",
       "p80-optional-before-required",
       "p85-cast-names",
@@ -67,6 +67,7 @@
   "unsearched": [
     "p80-optional-before-required",
     "p82-utf8-encode",
+    "p83-get-class-no-args",
     "p85-ord-single-byte"
   ]
 }

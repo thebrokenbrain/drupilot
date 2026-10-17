@@ -74,6 +74,26 @@ EOF
 # _rector_leg_major ^X.Y -> X
 _rector_leg_major() { local l="${1#^}"; printf '%s' "${l%%.*}"; }
 
+# range_php_ceiling CONSTRAINT -> the highest PHP a core minor of CONSTRAINT
+# supports, read leg by leg as rector_php_bounds does (a leg whose minor is
+# not verified yet is bounded by its major's verified minors; a leg the data
+# does not hold adds nothing), so one unknown leg (^9.5) never hides the
+# others; nothing when no leg is known.
+range_php_ceiling() {
+  local leg b hi=""
+  while IFS= read -r leg; do
+    [[ -n "$leg" && "$leg" != "?" ]] || continue
+    b="$(php_bounds_for_range "$leg")"
+    [[ -n "$b" ]] || b="$(php_bounds_for_range "^$(_rector_leg_major "$leg")")"
+    [[ "${b##* }" =~ ^[0-9]+\.[0-9]+$ ]] || continue
+    if [[ -z "$hi" ]] || ! version_ge "$hi" "${b##* }"; then hi="${b##* }"; fi
+  done <<EOF
+$(_rector_range_legs "${1:-}")
+EOF
+  printf '%s' "$hi"
+  return 0
+}
+
 # rector_php_bounds <subject_dir> [php_target] -> "L U".
 # L, the floor, is the highest of the lowest PHP the declared core range
 # supports (core-strategy.sh's recommendation, which honors
@@ -174,11 +194,16 @@ rector_sets_block() {
   return 0
 }
 
-# rector_skip_block PLAN -> rector.php v5's {{SKIP_RULES}}: the plan's
+# rector_skip_block PLAN -> rector.php's {{SKIP_RULES}}: the plan's
 # rector.skip FQCNs, one quoted, comma-ended PHP string per line, backslashes
 # doubled (  'Rector\\Php81\\Rector\\Array_\\ArrayToFirstClassCallableRector',).
+# The skips of today's data the plan lacks (plan_rector_skip) follow its own:
+# the data's deny list is a floor no frozen plan lowers, so a plan frozen
+# before a rule was found unsafe (or before ADR 0030 opened its polyfills)
+# never runs it.
 rector_skip_block() {
-  printf '%s' "${1:-}" | jq -r '(.rector.skip // [])[] | select(type == "string" and test("^[A-Za-z0-9_\\\\]+$"))
+  printf '%s' "${1:-}" | jq -r --argjson x "$(plan_rector_skip)" '(.rector.skip // []) as $s | ($s + ($x - $s))[]
+    | select(type == "string" and test("^[A-Za-z0-9_\\\\]+$"))
     | "  \u0027" + (split("\\") | join("\\\\")) + "\u0027,"' 2> /dev/null || true
   return 0
 }
@@ -233,16 +258,29 @@ rector_polyfills_block() {
   return 0
 }
 
+# rector_installed_version ROOT -> the version of rector/rector installed in
+# ROOT: composer.lock's, else the PACKAGE_VERSION its VersionResolver declares
+# (a tree installed without a lock); nothing without Rector.
+rector_installed_version() {
+  local root="${1:-}" v
+  v="$(installed_package_version "$root" rector/rector)"
+  [[ -n "$v" ]] || v="$(sed -n "s/.*const PACKAGE_VERSION = '\([^']*\)';.*/\1/p" "$root/vendor/rector/rector/src/Application/VersionResolver.php" 2> /dev/null | sed -n '1p')"
+  printf '%s' "$v"
+  return 0
+}
+
 # rector_audit_cached ROOT -> the rule audit the root's lock keeps for the
 # Rector installed there (.rector_rule_audit, written by
 # scripts/analysis/rector-rule-audit.sh): its rules array, compact; nothing
-# when the lock holds none or one for another Rector version.
+# when the lock holds none or one for another Rector version
+# (rector_installed_version).
 rector_audit_cached() {
   local root="${1:-}" v f
   [[ -n "$root" ]] && have_cmd jq || return 0
-  v="$(installed_package_version "$root" rector/rector)"
+  v="$(rector_installed_version "$root")"
   [[ -n "$v" ]] || return 0
-  f="$(DRUPILOT_PROJECT_DIR="$root" drupilot_lock_file 2> /dev/null || true)"
+  # Read-only: lock_path never creates or moves a lock (a --dry-run reads it).
+  f="$(lock_path "$root" 2> /dev/null || true)"
   [[ -n "$f" && -r "$f" ]] || return 0
   jq -c --arg v "$v" '.rector_rule_audit | select(type == "object" and .rector_version == $v)
     | .rules | select(type == "array")' "$f" 2> /dev/null || true

@@ -9,7 +9,7 @@
  * the facts the compat pass is built from:
  *
  *   - rule: the rule class;
- *   - sets: the SetList constants that register it (PHP_53 ... PHP_86, and
+ *   - sets: the SetList constants that register it (PHP_52 ... PHP_86, and
  *     PHP_POLYFILLS);
  *   - min_php: its provideMinPhpVersion() as X.Y (the PHP version Rector's
  *     PhpVersionedFilter needs before it runs the rule), null when the rule
@@ -19,9 +19,11 @@
  *   - interfaces: the Rector interfaces it implements.
  *
  * Each set config is imported into its own RectorConfig, as Rector does, and
- * read back from the rules it registered; no rule is run, and a rule is never
- * constructed (min_php and polyfill are read from an instance made without
- * its constructor: both methods return a constant).
+ * read back from the rules it tagged RectorInterface (every Rector 2.x rule()
+ * call tags its rule; 2.5.2 tags it again per set, hence array_unique); no
+ * rule is run, and a rule is never constructed (min_php and polyfill are read
+ * from an instance made without its constructor: both methods return a
+ * constant). PHP's own notices go to STDERR, so STDOUT stays JSON.
  *
  * Staged into the Drupal root by stage_runtime (scripts/lib/cache.sh) and run
  * there by scripts/analysis/rector-rule-audit.sh:
@@ -35,6 +37,7 @@
 
 declare(strict_types=1);
 
+ini_set('display_errors', 'stderr');
 $autoload = getcwd() . '/vendor/autoload.php';
 if (!is_file($autoload)) {
   fwrite(STDERR, "rule-audit: no vendor/autoload.php in " . getcwd() . "\n");
@@ -67,8 +70,17 @@ foreach ((new ReflectionClass($setList))->getConstants() as $name => $file) {
 }
 ksort($sets);
 
-$registered = new ReflectionProperty($config, 'registeredRectorClasses');
-$registered->setAccessible(TRUE);
+$tag = 'Rector\\Contract\\Rector\\RectorInterface';
+try {
+  $tags = new ReflectionProperty($config, 'tags');
+}
+catch (ReflectionException $e) {
+  fwrite(STDERR, "rule-audit: " . $e->getMessage() . "\n");
+  exit(2);
+}
+if (PHP_VERSION_ID < 80100) {
+  $tags->setAccessible(TRUE);
+}
 $rules = [];
 foreach ($sets as $name => $file) {
   try {
@@ -79,7 +91,7 @@ foreach ($sets as $name => $file) {
     fwrite(STDERR, "rule-audit: set $name: " . $e->getMessage() . "\n");
     exit(2);
   }
-  foreach (array_keys($registered->getValue($rectorConfig)) as $rule) {
+  foreach (array_unique($tags->getValue($rectorConfig)[$tag] ?? []) as $rule) {
     $rules[$rule]['sets'][] = $name;
   }
 }

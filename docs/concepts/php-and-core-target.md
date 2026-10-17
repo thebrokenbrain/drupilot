@@ -62,9 +62,11 @@ from two sides:
   the rules its floor level set already runs. It also sets the PHP version the
   pass declares, so that Rector keeps every listed rule.
 
-A row the audit finds unsafe stays out: `ord($s)` → `ord($s[0])` warns on an
-empty string, so it is reported and never applied. Rules that would break Drupal
-(`deny`) are skipped by both passes.
+A row the data marks unsafe for Drupal stays out, after a review of the rule's
+source: `ord($s)` → `ord($s[0])` warns on an empty string, and `get_parent_class()`
+→ `parent::class` is a fatal error in a class with no parent. Both are never
+applied, and are reported when your target reaches their deprecation. Rules that
+would break Drupal (`deny`) are skipped by both passes.
 
 ## The php stage
 

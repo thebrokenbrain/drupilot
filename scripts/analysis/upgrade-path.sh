@@ -469,7 +469,7 @@ SETS="$(rector_sets_for_plan "$HOPS" "$F" "$BED" "$ROOT")"
 # The compat pass covers the window up to U, the higher of P and the highest
 # PHP a core of C supports (ADR 0002); Rector's polyfill rules follow the
 # packages every core of C ships (ADR 0030).
-_pb="$(php_bounds_for_range "$C")"; U="${_pb##* }"
+U="$(range_php_ceiling "$C")"
 { [[ "$U" =~ ^[0-9]+\.[0-9]+$ ]] && ! version_ge "$PHP" "$U"; } || U="$PHP"
 COMPAT_RULES="$(php_compat_pass_rules "$L" "$U")"
 POLYFILL_PKGS="$(core_range_polyfills "$C" | jq -c '.packages' 2> /dev/null || printf '[]')"

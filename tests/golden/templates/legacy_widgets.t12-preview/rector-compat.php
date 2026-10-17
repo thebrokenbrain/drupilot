@@ -35,6 +35,7 @@ use Rector\ValueObject\PhpVersion;
 // The same skip list as rector.php. String FQCNs + class_exists keep this
 // config loadable on any Rector 2.x.
 $drupilotRiskySkips = array_values(array_filter([
+  'Rector\\Php83\\Rector\\FuncCall\\RemoveGetClassGetParentClassNoArgsRector',
   'Rector\\Php85\\Rector\\FuncCall\\OrdSingleByteRector',
   'Rector\\Php81\\Rector\\Array_\\ArrayToFirstClassCallableRector',
   'Rector\\Php83\\Rector\\ClassMethod\\AddOverrideAttributeToOverriddenMethodsRector',

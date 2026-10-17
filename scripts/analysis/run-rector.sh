@@ -151,7 +151,7 @@
 # untouched render (its sha256 is the one kept in the root's lock, ADR 0019) for
 # another plan, PHP floor or subject, and to a template-4 render nobody edited
 # (rector_config_pristine) whose floor moved. Any other copy is kept, with a
-# warning, and so is a template-5 or -6 render whose sha256 the lock no longer keeps
+# warning, and so is a template-6 render whose sha256 the lock no longer keeps
 # (a cleared or moved lock); its sha256 is kept again while it equals the
 # current render. A hand-written rector.php is never
 # replaced; a warning is printed when it does not skip

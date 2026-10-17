@@ -108,6 +108,10 @@ undo php/rules.json
 sed 's/ExplicitNullableParamTypeRector/SleepToSerializeRector/' "$r/templates/rector-compat.php.tmpl" > "$T_TMP/compat.tmpl"
 cp "$T_TMP/compat.tmpl" "$r/templates/rector-compat.php.tmpl"
 assert_match "a skipped rule in the compat list fails" "$(dc)" '^1\|coherence: .*SleepToSerializeRector'
+# A rule listed next to the token is read too.
+sed "s/^{{COMPAT_RULES}}\$/  'Rector\\\\Php85\\\\Rector\\\\Class_\\\\SleepToSerializeRector',\n{{COMPAT_RULES}}/" "$T_REPO/templates/rector-compat.php.tmpl" > "$r/templates/rector-compat.php.tmpl"
+assert_eq "  the copy keeps its token" "$(grep -c '^{{COMPAT_RULES}}$' "$r/templates/rector-compat.php.tmpl")" "1"
+assert_match "a skipped rule listed next to {{COMPAT_RULES}} fails" "$(dc)" '^1\|coherence: .*SleepToSerializeRector'
 cp "$T_REPO/templates/rector-compat.php.tmpl" "$r/templates/"
 assert_eq "back to green with templates/" "$(dc)" "0|"
 t_done

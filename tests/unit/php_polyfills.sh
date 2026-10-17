@@ -103,9 +103,18 @@ assert_eq "get_error_handler() on ^11.3 (polyfill-php85): no 8.5 floor" "$(jq -c
 printf '<?php\n// Finds it with array_find() on PHP 8.4.\n$s = "array_find($a, $f)";\n/* array_any($a, $f) */\n' > "$S/n.php"
 df --range '^10.3 || ^11'
 assert_eq "a comment or a string naming array_find() is no call" "$(jq -c '[.floor, (.signals | length)]' "$T_OUT")" '["8.1",0]'
+printf '<?php\n// Validates it with json_validate() and str_increment() on PHP 8.3.\n$j = "json_validate($s)";\n' > "$S/n.php"
+df --range '^10.3 || ^11'
+assert_eq "  the 8.3/8.2 stdlib rows too (json_validate, str_increment)" "$(jq -c '[.floor, (.signals | length)]' "$T_OUT")" '["8.1",0]'
 mkdir -p "$S/a:b"; printf '<?php\n\n$x = array_find([1], fn ($v) => $v);\n' > "$S/a:b/c.php"
 df --range '^10.3 || ^11'
 assert_eq "a call in a file whose path holds ':'" "$(jq -c '[.floor, [.signals[].location]]' "$T_OUT")" '["8.4",["a:b/c.php:3"]]'
+printf '<?php\n\nreadonly class C {}\n' > "$S/a:b/c.php"
+df
+assert_eq "  a syntax signal there too" "$(jq -c '[.signals[].location]' "$T_OUT")" '["a:b/c.php:3"]'
+printf '<?php\n\n$y = \\Drupal::service("x"); $x = array_find([1], fn ($v) => $v);\n' > "$S/a:b/c.php"
+df
+assert_eq "  a backslash on the line keeps the call" "$(jq -c '[.floor, [.signals[].location]]' "$T_OUT")" '["8.4",["a:b/c.php:3"]]'
 rm -rf "$S/a:b"
 
 # The consumers judge the floor with the range's polyfills: core-strategy.sh

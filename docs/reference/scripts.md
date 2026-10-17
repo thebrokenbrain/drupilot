@@ -1720,8 +1720,9 @@ compat pass its rules and its withPhpVersion() (rector_compat_list,
 rector_compat_php_id in scripts/lib/toolchain.sh).
 
 The audit is a function of the Rector version: it is cached in the root's
-lock (.rector_rule_audit: {rector_version, rules}) and run again only for
-another installed version or with --refresh. Two runs on the same Rector
+lock (.rector_rule_audit: {rector_version, rules}; the version is
+composer.lock's, else the one Rector's VersionResolver declares) and run
+again only for another installed version or with --refresh. Two runs on the same Rector
 print the same bytes.
 
 Usage:
@@ -2037,7 +2038,7 @@ __sleep/__wakeup) reach projects set up before them. The same happens to an
 untouched render (its sha256 is the one kept in the root's lock, ADR 0019) for
 another plan, PHP floor or subject, and to a template-4 render nobody edited
 (rector_config_pristine) whose floor moved. Any other copy is kept, with a
-warning, and so is a template-5 or -6 render whose sha256 the lock no longer keeps
+warning, and so is a template-6 render whose sha256 the lock no longer keeps
 (a cleared or moved lock); its sha256 is kept again while it equals the
 current render. A hand-written rector.php is never
 replaced; a warning is printed when it does not skip
@@ -3600,7 +3601,7 @@ what its template renders for its own subject (and, for rector.php, its
 floor) (rector_config_pristine): nobody edited it, and it was rendered for
 another subject of a shared test-bed, or (rector.php) its plan or floor moved
 because the core target changed (0.9 reported that as "differs"). Any other current-generation copy
-that differs counts as hand-edited, a template-5 or -6 rector.php whose sha256 the
+that differs counts as hand-edited, a template-6 rector.php whose sha256 the
 lock no longer keeps included (its sha256 is kept again when it is found up
 to date).
 
@@ -4415,10 +4416,10 @@ skill or hook calls it; scripts/dev/check.sh runs it as its `data` gate):
               cites php.net; a rule templates/rector.php.tmpl skips (the
               deny rows it renders through {{SKIP_RULES}}) is
               drupal_safe false, and every rule templates/rector-compat.php.tmpl
-              lists itself is a drupal_safe compat rule (a template that
-              renders them through {{COMPAT_RULES}} takes the generated
-              php_compat_pass_rules, compat rows that are drupal_safe by
-              construction) (when the tree has templates/);
+              lists itself is a drupal_safe compat rule (those it renders
+              through {{COMPAT_RULES}} are the generated
+              php_compat_pass_rules, drupal_safe by construction) (when the
+              tree has templates/);
               graph edges are unique, named from-to, join known eras, and
               every forbidden route chains from -> to
 

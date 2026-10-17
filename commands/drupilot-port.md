@@ -217,9 +217,12 @@ the PHP sets up to the floor of the core range chosen above (`php_floor` in the
 JSON; an untouched `rector.php` rendered for another floor is regenerated),
 minus the risky rules the template skips (Form API callbacks → closures,
 `#[\Override]`, `readonly`, `(string)` casts, `__sleep`/`__wakeup` — see the
-`minimal-port` skill §0). When the floor is below PHP 8.4 a compat pass
-(`rector-compat.php`) runs right after it and fixes implicitly nullable
-parameters only (`compat_status`, `compat_files`). `--json` lists the applied
+`minimal-port` skill §0). A narrow compat pass (`rector-compat.php`) runs
+right after it whenever its list is not empty: the PHP deprecation fixes of the
+window whose output still runs on the floor and that the floor's level set does
+not run (the plan's `rector.compat_rules`, checked against the installed
+Rector's rule audit, ADR 0030), such as an implicitly nullable parameter
+becoming `?Foo` (`compat_status`, `compat_files`). `--json` lists the applied
 rule names in `rules` and counts them per pass in `rule_hits` (`{official:
 {Rule: files}, compat: {...}, digests: {...}}`); an `--apply` that changed
 files keeps it as `rector-rules.json` in the state dir, which `manifest.sh`

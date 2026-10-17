@@ -8,7 +8,8 @@
 # run in ADR 0019 shows identical Rector diffs). Compared statically on
 # legacy_widgets (the H10 subject): tests/fixtures/rector-render/legacy_widgets/
 # rector.v4.php (template 4, as M2 pinned it) vs rector.php (template 6, which
-# only adds two skipped rules, OrdSingleByteRector and
+# only adds three skipped rules, OrdSingleByteRector,
+# RemoveGetClassGetParentClassNoArgsRector and
 # DeprecatedAnnotationToDeprecatedAttributeRector, and an explicit empty
 # polyfill list for ^10 || ^11: ADR 0030).
 # phpstan.neon template 3 (ADR 0020) keeps template 2's level, paths and
@@ -38,10 +39,10 @@ for k in "->withPaths([" '$drupilotRiskySkips = ' "->withFileExtensions(["; do
   assert_eq "read from both: $k" "$(nonempty "$(list "$V5" "$k")")$(nonempty "$(list "$V4" "$k")")" "yesyes"
 done
 assert_eq "the same paths" "$(list "$V5" "->withPaths([")" "$(list "$V4" "->withPaths([")"
-NEW_SKIPS='OrdSingleByteRector|DeprecatedAnnotationToDeprecatedAttributeRector'
-assert_eq "the same skipped rules, in order, but the two template 6 adds" \
+NEW_SKIPS='OrdSingleByteRector|DeprecatedAnnotationToDeprecatedAttributeRector|RemoveGetClassGetParentClassNoArgsRector'
+assert_eq "the same skipped rules, in order, but the three template 6 adds" \
   "$(list "$V5" '$drupilotRiskySkips = ' | grep -vE "($NEW_SKIPS)\$" || true)" "$(list "$V4" '$drupilotRiskySkips = ')"
-assert_eq "  the two it adds" "$(list "$V5" '$drupilotRiskySkips = ' | grep -cE "($NEW_SKIPS)\$")" "2"
+assert_eq "  the three it adds" "$(list "$V5" '$drupilotRiskySkips = ' | grep -cE "($NEW_SKIPS)\$")" "3"
 assert_eq "  and an explicit empty polyfill list" "$(grep -c 'polyfillPackages(\[\]);' "$V5")|$(grep -c 'polyfillPackages' "$V4" || true)" "1|0"
 assert_eq "the same PHP version" "$(call "$V5" withPhpVersion)" "$(call "$V4" withPhpVersion)"
 assert_eq "  (PHP_81)" "$(call "$V5" withPhpVersion)" "PhpVersion::PHP_81"

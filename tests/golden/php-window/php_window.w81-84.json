@@ -3,7 +3,6 @@
     "apply-compat": [
       "p84-implicit-nullable",
       "p82-interpolation",
-      "p83-get-class-no-args",
       "p84-csv-escape",
       "p74-implode-order"
     ],
@@ -39,6 +38,7 @@
     ],
     "report-only": [
       "p82-utf8-encode",
+      "p83-get-class-no-args",
       "p80-optional-before-required",
       "p81-strftime",
       "p81-filter-sanitize-string",
@@ -56,6 +56,7 @@
   "tool": "php-target",
   "unsearched": [
     "p80-optional-before-required",
-    "p82-utf8-encode"
+    "p82-utf8-encode",
+    "p83-get-class-no-args"
   ]
 }

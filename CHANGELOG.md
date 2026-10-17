@@ -40,11 +40,13 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   - Its skip list is the plan's.
   - The compat pass runs whenever that list is not empty, no longer only when
     the floor is below 8.4.
-  - With the default `^10 || ^11` plan it lists ten rules instead of one:
-    besides the implicitly nullable parameter, the 8.2 to 8.5 deprecation fixes
-    whose output runs on the floor (`"${var}"`, `get_class()` with no argument,
-    the CSV escape argument, backticks, `case x;`, `array_key_exists(null, ...)`,
-    a `null` `__debugInfo()`, `chr()` out of range).
+  - With the default `^10 || ^11` plan the plan lists nine rules instead of
+    one: besides the implicitly nullable parameter, the 8.2 to 8.5 deprecation
+    fixes whose output runs on the floor (`"${var}"`, the CSV escape argument,
+    backticks, `case x;`, `array_key_exists(null, ...)`, a `null`
+    `__debugInfo()`, `chr()` out of range, `setAccessible()`). On a test-bed
+    with the rule audit the pass lists eight: Rector's `PHP_81` set, which the
+    main pass runs, already holds the `setAccessible()` fix.
 - **`rector.php` gets the polyfills explicitly** (template 6).
   - `polyfillPackages()` receives the plan's list, so Rector's polyfill rules
     follow the declared range, never the test-bed's `composer.json`.
@@ -60,7 +62,11 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   - `OrdSingleByteRector` is no longer `drupal_safe`. It rewrites `ord($s)` to
     `ord($s[0])`, and on an empty string that raises a warning on every PHP, where
     `ord('')` was silent before 8.5 (checked in the lab on 8.2, 8.4 and 8.5).
-    It is reported, never applied.
+    It is never applied, and is reported when the target is PHP 8.5.
+  - `RemoveGetClassGetParentClassNoArgsRector` is no longer `drupal_safe`.
+    It rewrites `get_parent_class()` to `parent::class` without checking that a
+    parent exists, which is a fatal error in a class with no parent (checked in
+    the lab). It is reported and skipped by both passes.
   - New `deny` row for `DeprecatedAnnotationToDeprecatedAttributeRector`. It
     turns `@deprecated` into `#[\Deprecated]`, which from PHP 8.4 makes every use
     emit a native deprecation on top of Drupal's `@trigger_error()`. Drupal core
@@ -68,11 +74,20 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 - The goldens of the plans and the templates move to a new data snapshot. The
   0.9 baseline allows the new `rector.php` and `phpstan.neon` renders.
 
+- The compat pass's top of the window is read leg by leg
+  (`range_php_ceiling`): a leg the version data does not hold, such as `^9.5`
+  in `^9.5 || ^10 || ^11`, no longer hides the others' PHP 8.4 and 8.5 fixes.
+- A frozen plan's skip list gets today's skips next to its own: the data's deny
+  list is a floor no frozen plan lowers, so a plan frozen before a rule was found
+  unsafe, or before its polyfills were opened, never runs it.
+- `/drupilot-status` shows the rule audit in the lock as its version and rule
+  count.
+
 ### Fixed
 - `detect-php-floor.sh` counted a function named in a comment or a string as a
-  call: a docblock naming `array_find()` raised the floor to 8.4. Function calls
-  are now read in the code only (the same blanked copy as the 8.5 syntax row),
-  and a signal in a file whose path holds `:` keeps its line.
+  call: a docblock naming `array_find()` raised the floor to 8.4. Every function
+  row (8.2 to 8.5) now reads calls in the code only, the same blanked copy as the
+  8.5 syntax row, and every signal in a file whose path holds `:` keeps its line.
 
 ## [1.0.0-alpha.3] - 2026-10-17
 

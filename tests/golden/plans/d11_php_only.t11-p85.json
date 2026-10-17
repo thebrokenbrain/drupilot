@@ -5,7 +5,7 @@
     "OPT_IN_TEST_PREVIOUS_MAJOR": 0
   },
   "core_removals": null,
-  "data_hash": "sha256:597c322efe04127b8babcc6bac1526c28bd1881823e9a362b4fe1732663ef1a5",
+  "data_hash": "sha256:56ec4231aedc8d88d7c207106fdb5d058f49aed6910bdc57d290ec4475604118",
   "detectors": [],
   "hard_breaks": null,
   "hops": [],
@@ -60,6 +60,7 @@
     ],
     "sets_skipped": [],
     "skip": [
+      "Rector\\Php83\\Rector\\FuncCall\\RemoveGetClassGetParentClassNoArgsRector",
       "Rector\\Php85\\Rector\\FuncCall\\OrdSingleByteRector",
       "Rector\\Php81\\Rector\\Array_\\ArrayToFirstClassCallableRector",
       "Rector\\Php83\\Rector\\ClassMethod\\AddOverrideAttributeToOverriddenMethodsRector",

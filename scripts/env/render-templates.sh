@@ -63,7 +63,7 @@
 # floor) (rector_config_pristine): nobody edited it, and it was rendered for
 # another subject of a shared test-bed, or (rector.php) its plan or floor moved
 # because the core target changed (0.9 reported that as "differs"). Any other current-generation copy
-# that differs counts as hand-edited, a template-5 or -6 rector.php whose sha256 the
+# that differs counts as hand-edited, a template-6 rector.php whose sha256 the
 # lock no longer keeps included (its sha256 is kept again when it is found up
 # to date).
 #

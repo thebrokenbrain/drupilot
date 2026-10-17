@@ -596,14 +596,14 @@ php_compat_pass_rules() {
 
 # plan_php_top PLAN -> U, the top of the window the compat pass covers (ADR
 # 0002): the higher of the plan's PHP target and the highest PHP a core minor
-# of its range supports (php_bounds_for_range); the target alone when the
-# range has no data.
+# of its range supports (range_php_ceiling, leg by leg); the target alone when
+# no leg of the range has data.
 plan_php_top() {
-  local plan="${1:-}" p c b hi
+  local plan="${1:-}" p c hi
   p="$(printf '%s' "$plan" | jq -r '.php.final // empty' 2> /dev/null || true)"
   c="$(printf '%s' "$plan" | jq -r '.range.constraint // empty' 2> /dev/null || true)"
   [[ -n "$p" ]] || return 0
-  b="$(php_bounds_for_range "$c")"; hi="${b##* }"
+  hi="$(range_php_ceiling "$c")"
   if [[ "$hi" =~ ^[0-9]+\.[0-9]+$ ]] && ! version_ge "$p" "$hi"; then printf '%s' "$hi"; else printf '%s' "$p"; fi
   return 0
 }

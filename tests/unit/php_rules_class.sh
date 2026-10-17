@@ -61,7 +61,7 @@ assert_eq "a bad bound classifies nothing" "$(php_rules_classified 8 8.5)" "[]"
 # set does not run.
 short() { jq -r 'map(split("\\") | last) | join(",")'; }
 assert_eq "compat pass 8.1..8.4: the 8.2-8.4 fixes, no 8.5 one" "$(php_compat_pass_rules 8.1 8.4 | short)" \
-  "ExplicitNullableParamTypeRector,VariableInStringInterpolationFixerRector,RemoveGetClassGetParentClassNoArgsRector,AddEscapeArgumentRector"
+  "ExplicitNullableParamTypeRector,VariableInStringInterpolationFixerRector,AddEscapeArgumentRector"
 assert_eq "compat pass 8.3..8.4: what php83 holds is the main pass's" "$(php_compat_pass_rules 8.3 8.4 | short)" \
   "ExplicitNullableParamTypeRector,AddEscapeArgumentRector"
 assert_eq "compat pass 8.4..8.4: empty (the php84 level set holds them)" "$(php_compat_pass_rules 8.4 8.4)" "[]"

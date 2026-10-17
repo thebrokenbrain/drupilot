@@ -282,7 +282,7 @@ As of 2026-10-17; rule classes read in rector-src 2.5.2. compat: a deprecation f
 | `p84-implicit-nullable` | compat | `ExplicitNullableParamTypeRector` | 8.4 |  | 7.1 | true | yes |
 | `p82-interpolation` | compat | `VariableInStringInterpolationFixerRector` | 8.2 |  |  | true | yes |
 | `p82-utf8-encode` | compat | `Utf8DecodeEncodeToMbConvertEncodingRector` | 8.2 |  |  |  | yes |
-| `p83-get-class-no-args` | compat | `RemoveGetClassGetParentClassNoArgsRector` | 8.3 |  |  | true | yes |
+| `p83-get-class-no-args` | compat | `RemoveGetClassGetParentClassNoArgsRector` | 8.3 |  |  | false | yes |
 | `p84-csv-escape` | compat | `AddEscapeArgumentRector` | 8.4 |  |  | true | yes |
 | `p85-backtick` | compat | `ShellExecFunctionCallOverBackticksRector` | 8.5 |  |  | true | yes |
 | `p85-case-semicolon` | compat | `ColonAfterSwitchCaseRector` | 8.5 |  |  | true | yes |
@@ -320,7 +320,7 @@ Sources:
 - `p84-implicit-nullable`: https://www.php.net/manual/en/migration84.deprecated.php
 - `p82-interpolation`: https://www.php.net/manual/en/migration82.deprecated.php
 - `p82-utf8-encode`: https://www.php.net/manual/en/migration82.deprecated.php The rewrite calls mb_convert_encoding(): Drupal-safe only where mbstring is guaranteed; unaudited (AR-11).
-- `p83-get-class-no-args`: https://www.php.net/manual/en/migration83.deprecated.php
+- `p83-get-class-no-args`: https://www.php.net/manual/en/migration83.deprecated.php Rewrites get_parent_class() with no argument to parent::class without checking that a parent exists: in a class with no parent that is a compile-time fatal ("Cannot use \"parent\" when current class scope has no parent", PHP 8.4 in the lab), where the call returned false; in a trait it fails at run time. Its get_class() -&gt; self::class half is safe, but the rule is one: reported, not applied (ADR 0030).
 - `p84-csv-escape`: https://www.php.net/manual/en/migration84.deprecated.php
 - `p85-backtick`: https://www.php.net/manual/en/migration85.deprecated.php
 - `p85-case-semicolon`: https://www.php.net/manual/en/migration85.deprecated.php

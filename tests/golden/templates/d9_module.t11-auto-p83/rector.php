@@ -70,6 +70,8 @@
  *       #[\Deprecated], which from PHP 8.4 emits a native deprecation on every
  *       use, next to the @trigger_error() Drupal's policy already calls.
  *   OrdSingleByteRector — ord($s) -> ord($s[0]) warns on an empty string.
+ *   RemoveGetClassGetParentClassNoArgsRector — get_parent_class() becomes
+ *       parent::class, a fatal error in a class with no parent.
  * The list is config/php/rules.json's deny rows and its compat rows that are
  * not safe for Drupal (the plan's rector.skip).
  * FunctionFirstClassCallableRector is NOT skipped: it only rewrites a string
@@ -114,6 +116,7 @@ $drupilotBootstrap = $drupilotSets === [] ? [] : array_values(array_filter([
 // Rules skipped on purpose (see the header). String FQCNs + class_exists keep
 // this config loadable on any Rector 2.x.
 $drupilotRiskySkips = array_values(array_filter([
+  'Rector\\Php83\\Rector\\FuncCall\\RemoveGetClassGetParentClassNoArgsRector',
   'Rector\\Php85\\Rector\\FuncCall\\OrdSingleByteRector',
   'Rector\\Php81\\Rector\\Array_\\ArrayToFirstClassCallableRector',
   'Rector\\Php83\\Rector\\ClassMethod\\AddOverrideAttributeToOverriddenMethodsRector',

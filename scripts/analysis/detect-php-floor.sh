@@ -104,12 +104,7 @@ scan_for() {
   local ver="$1" ere="$2" label="$3" hit
   hit="$(grep_sources -HInE -e "$ere" | LC_ALL=C sort -t: -k1,1 -k2,2n | sed -n '1p' || true)"
   if [[ -n "$hit" ]]; then
-    # location relative to the subject (file:line), trimmed.
-    local loc="${hit%%:*}"; local line; line="$(printf '%s' "$hit" | cut -d: -f2)"
-    loc="${loc#"$SUBJECT_ABS"/}:$line"
-    SIGNALS_JSON="$(printf '%s' "$SIGNALS_JSON" | jq -c \
-      --arg v "$ver" --arg p "$label" --arg l "$loc" \
-      '. + [{version:$v, pattern:$p, location:$l}]')"
+    _signal "$ver" "$label" "$hit" false
     return 0
   fi
   return 1
@@ -124,33 +119,41 @@ POLY_FUNCS=" $(printf '%s' "$POLY" | jq -r '.functions | join(" ")') "
 # (path:line:code), its location relative to the subject.
 _signal() {
   local loc="${3%%:*}" line
-  # The longest scanned path that starts the hit (a ':' in a path is kept).
-  if [[ -n "$CODE_DIR" && -f "$CODE_DIR/files" ]]; then
-    line="$(awk -v h="$3" 'index(h, $0 ":") == 1 && length($0) > m { m = length($0); p = $0 } END { print p }' "$CODE_DIR/files")"
-    [[ -z "$line" ]] || loc="$line"
-  fi
+  # The longest scanned path that starts the hit (a ':' in a path is kept;
+  # the hit reaches awk through the environment, never unescaped by -v).
+  scan_files_list
+  line="$(_HIT="$3" awk 'index(ENVIRON["_HIT"], $0 ":") == 1 && length($0) > m { m = length($0); p = $0 } END { print p }' "$CODE_DIR/files")"
+  [[ -z "$line" ]] || loc="$line"
   line="${3#"$loc":}"; line="${line%%:*}"
   loc="${loc#"$SUBJECT_ABS"/}:$line"
   SIGNALS_JSON="$(printf '%s' "$SIGNALS_JSON" | jq -c --arg v "$1" --arg p "$2" --arg l "$loc" --argjson pf "$4" \
     '. + [{version: $v, pattern: $p, location: $l} + (if $pf then {polyfilled: true} else {} end)]')"
   return 0
 }
-# build_code_dir -> CODE_DIR: each PHP source blanked to its code
+# scan_files_list -> CODE_DIR with $CODE_DIR/files, the scanned sources in
+# path order (made once). build_code_dir -> each of them blanked to its code
 # (php_code_lines: comments, string contents, heredocs and inline HTML), as
-# $CODE_DIR/<n>, line N of the source being line N of <n>; $CODE_DIR/files
-# lists the sources in that order. Made once.
+# $CODE_DIR/<n>, line N of the source being line N of <n>. Made once, and
+# only when a row may hit (a scan that finds nothing never blanks a file).
 CODE_DIR=""
 trap '[[ -z "$CODE_DIR" ]] || rm -rf "$CODE_DIR" 2> /dev/null || true' EXIT
-build_code_dir() {
-  local f k=0
+scan_files_list() {
   [[ -z "$CODE_DIR" ]] || return 0
   CODE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-php-floor.XXXXXX")"
   find "$SUBJECT_ABS" -type f \( -name '*.php' -o -name '*.module' -o -name '*.inc' \
     -o -name '*.install' -o -name '*.theme' -o -name '*.profile' -o -name '*.engine' \) -print 2> /dev/null \
     | LC_ALL=C sort > "$CODE_DIR/files"
+  return 0
+}
+CODE_BLANKED=0
+build_code_dir() {
+  local f k=0
+  scan_files_list
+  [[ "$CODE_BLANKED" == "0" ]] || return 0
   while IFS= read -r f; do
     k=$((k + 1)); php_code_lines "$f" > "$CODE_DIR/$k"
   done < "$CODE_DIR/files"
+  CODE_BLANKED=1
   return 0
 }
 # scan_funcs VERSION LABEL FUNC... -> scan_for for calls of the FUNCs in the
@@ -180,7 +183,7 @@ scan_funcs() {
     [[ -n "$hit" ]] || continue
     # The hit's line in the code mirror (the longest path of the list that
     # starts the hit, so a ':' in a path is kept).
-    k="$(awk -v h="$hit" 'index(h, $0 ":") == 1 && length($0) > m { m = length($0); n = NR } END { if (n) print n }' "$CODE_DIR/files")"
+    k="$(_HIT="$hit" awk 'index(ENVIRON["_HIT"], $0 ":") == 1 && length($0) > m { m = length($0); n = NR } END { if (n) print n }' "$CODE_DIR/files")"
     [[ -n "$k" ]] || continue
     fp="$(sed -n "${k}p" "$CODE_DIR/files")"; ln="${hit#"$fp":}"; ln="${ln%%:*}"
     [[ "$ln" =~ ^[0-9]+$ ]] || continue
@@ -231,15 +234,15 @@ scan_funcs 8.4 '8.4 stdlib function' array_find array_any array_all array_find_k
 
 # PHP 8.3-only language / stdlib additions.
 scan_for 8.3 '#\[\\?Override\]'                            '#[\Override] attribute'        && found_83=1 || true
-scan_for 8.3 '\bjson_validate[[:space:]]*\('              'json_validate()'               && found_83=1 || true
-scan_for 8.3 '\bstr_(increment|decrement)[[:space:]]*\(' 'str_increment()/str_decrement()' && found_83=1 || true
+scan_funcs 8.3 'json_validate()' json_validate && found_83=1 || true
+scan_funcs 8.3 'str_increment()/str_decrement()' str_increment str_decrement && found_83=1 || true
 scan_funcs 8.3 'mb_str_pad()' mb_str_pad && found_83=1 || true
 scan_for 8.3 '\bconst[[:space:]]+\??(int|float|string|bool|array|iterable|object|mixed|self|static|parent)[[:space:]]+[A-Za-z_]' 'typed class constant' && found_83=1 || true
 
 # PHP 8.2-only language / stdlib additions.
 scan_for 8.2 '\breadonly[[:space:]]+class\b'              'readonly class'                && found_82=1 || true
 scan_for 8.2 '#\[\\?AllowDynamicProperties\]'            '#[\AllowDynamicProperties] attribute' && found_82=1 || true
-scan_for 8.2 '\b(mysqli_execute_query|ini_parse_quantity|memory_reset_peak_usage|curl_upkeep)[[:space:]]*\(' '8.2 stdlib function' && found_82=1 || true
+scan_funcs 8.2 '8.2 stdlib function' mysqli_execute_query ini_parse_quantity memory_reset_peak_usage curl_upkeep && found_82=1 || true
 
 if [[ "$found_85" == "1" ]]; then FLOOR="8.5"
 elif [[ "$found_84" == "1" ]]; then FLOOR="8.4"

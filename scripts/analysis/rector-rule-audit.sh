@@ -11,8 +11,9 @@
 # rector_compat_php_id in scripts/lib/toolchain.sh).
 #
 # The audit is a function of the Rector version: it is cached in the root's
-# lock (.rector_rule_audit: {rector_version, rules}) and run again only for
-# another installed version or with --refresh. Two runs on the same Rector
+# lock (.rector_rule_audit: {rector_version, rules}; the version is
+# composer.lock's, else the one Rector's VersionResolver declares) and run
+# again only for another installed version or with --refresh. Two runs on the same Rector
 # print the same bytes.
 #
 # Usage:
@@ -49,7 +50,7 @@ have_cmd jq || die "jq is required (run /drupilot-doctor)." 1
 ROOT="$(cd "$ROOT" && pwd)"
 [[ -d "$ROOT/vendor/rector/rector" ]] \
   || die "rector/rector is not installed in $ROOT (install the toolchain first: scripts/env/install-toolchain.sh --dir \"$ROOT\")." 2
-VERSION="$(installed_package_version "$ROOT" rector/rector)"
+VERSION="$(rector_installed_version "$ROOT")"
 
 AUDIT=""
 if [[ "$REFRESH" == "0" && -n "$VERSION" ]]; then
@@ -66,7 +67,8 @@ if [[ -z "$AUDIT" ]]; then
   # shellcheck disable=SC2086  # RUNNER is a command prefix ("ddev exec" or empty)
   if ! (cd "$ROOT" && $RUNNER php "$RT/rule-audit.php" < /dev/null) > "$TMP/out" 2> "$TMP/err" \
      || ! jq -e '(.rules | type == "array" and length > 0)' "$TMP/out" > /dev/null 2>&1; then
-    log_err "The rule audit failed: $(sed -n '1,3p' "$TMP/err" | tr '\n' ' ')"
+    # PHP prints a fatal error on STDOUT: name it when STDERR is empty.
+    log_err "The rule audit failed: $(cat "$TMP/err" "$TMP/out" 2> /dev/null | sed -n '1,3p' | tr '\n' ' ')"
     exit 2
   fi
   [[ -n "$VERSION" ]] || VERSION="$(jq -r '.rector_version // empty' "$TMP/out")"

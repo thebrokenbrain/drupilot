@@ -82,9 +82,13 @@ The ported code must keep running on L, so the main pass targets L:
 `->withPhpVersion(PhpVersion::PHP_<L>)` and `->withPhpSets(php<L>: true)`
 (`rector_floor_tokens`). Rector drops every version-bound rule above L, and the
 level sets stop there. A deprecation fix whose output still runs on L (the
-implicitly nullable parameter) runs in a second, narrow pass, `rector-compat.php`,
-when L is below the PHP that deprecates it and the window reaches it
-(`rector_compat_needed`; its rules are `RECTOR_COMPAT_RULES`). The rules that
+implicitly nullable parameter, `"${var}"`, backticks, ...) runs in a second,
+narrow pass, `rector-compat.php`, when the plan's `rector.compat_rules`,
+checked against the installed Rector's rule audit
+(`scripts/analysis/rector-rule-audit.sh`, `rector_compat_list`, ADR 0030), is
+not empty (`rector_compat_needed`). The polyfills every core of the range ships
+(the plan's `rector.polyfills`) are handed to the main pass, so its polyfill
+rules never follow the test-bed's `composer.json`. The rules that
 would break Drupal (the `deny` rows of `config/php/rules.json`: first-class
 callables in Form API callbacks, `readonly`, `#[\Override]` while the range spans
 a previous major, `__sleep` → `__serialize`) are skipped by the template. The
