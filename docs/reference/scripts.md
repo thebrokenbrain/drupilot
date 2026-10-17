@@ -4433,6 +4433,39 @@ Requires bash >= 3.2 and jq. Exit codes: 0 every check passes · 1 a check
 failed or a usage error.
 ```
 
+### dev/e2e.sh
+
+```text
+drupilot — scripts/dev/e2e.sh
+The end-to-end port of legacy_widgets (T-M4-14, R-LAB-8; a developer/CI tool:
+no command, skill or hook calls it, and it needs DDEV and Docker). It builds
+a Drupal test-bed with ddev-up.sh, installs the toolchain, places a fresh git
+copy of tests/fixtures/legacy_widgets in it and runs the scripted sequence of
+tests/fixtures/legacy_widgets.golden/README.md ("Exact commands": scripts
+only, no model, so the AI lane stays empty), then byte-compares the
+make-patch.sh --local patch with
+tests/fixtures/legacy_widgets.golden/golden/port-to-drupal-11.patch.
+
+The environment is the golden's: DRUPILOT_DETERMINISTIC=true, digests off,
+PHP target 8.3, Drupal core 11.4.8, every other DRUPILOT_* variable unset,
+a private DRUPILOT_HOME under the work dir. .github/workflows/e2e.yml runs
+it on GitHub Actions after ddev/github-action-setup-ddev.
+
+Usage:
+  scripts/dev/e2e.sh [--work DIR] [--name NAME] [--keep] [-h|--help]
+    --work DIR   where the test-bed and the state go (default:
+                 $RUNNER_TEMP or $TMPDIR, plus drupilot-e2e); it must not
+                 exist yet or be empty
+    --name NAME  the DDEV project name (default dpl-e2e-legwid-d11)
+    --keep       leave the DDEV project running and the work dir in place
+                 (default: `ddev delete -Oy` the project at the end)
+
+Exit codes: 0 the patch equals the golden · 1 usage error, a missing tool,
+or a work dir that is not empty · 2 a step of the sequence failed (its log
+is in the work dir) · 3 the patch differs from the golden (its diff on
+STDERR).
+```
+
 ### dev/evals.sh
 
 ```text

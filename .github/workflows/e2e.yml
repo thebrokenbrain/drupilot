@@ -1,0 +1,48 @@
+name: e2e
+
+# The end-to-end port of legacy_widgets (T-M4-14): DDEV on the runner through
+# ddev/github-action-setup-ddev (its install.sh, the DDEV version the golden
+# was recorded with), then scripts/dev/e2e.sh, which builds the test-bed, runs
+# the scripted R-LAB-8 sequence (no model: the AI lane stays empty) and
+# byte-compares the patch with tests/fixtures/legacy_widgets.golden. Nightly
+# (on the default branch), on demand, and on an integration pull request
+# labelled "e2e". The gate itself stays in ci.yml.
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+  pull_request:
+    branches: ['integration/**']
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  legacy-widgets:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'e2e')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: DDEV (the golden's version, no project started)
+        uses: ddev/github-action-setup-ddev@v1
+        with:
+          autostart: false
+          version: '1.25.4'
+      - name: Port legacy_widgets and compare the patch with the golden
+        run: bash scripts/dev/e2e.sh --work "$RUNNER_TEMP/e2e"
+      - name: Keep the log and the patch
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-legacy-widgets
+          path: |
+            ${{ runner.temp }}/e2e/e2e.log
+            ${{ runner.temp }}/e2e/port-to-drupal-11.patch
+          if-no-files-found: ignore
