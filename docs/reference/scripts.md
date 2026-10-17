@@ -175,9 +175,13 @@ codemod > ai-templated > ai-free > test-adapt > human > deferred.
                 PHP above the floor: a warning; or a file the floor's php -l
                 rejects and a higher PHP compiles: an error),
                 deprecated-no-rule (a deprecation whose fix runs on the
-                floor, but no rule makes it: a warning) or
+                floor, but no rule makes it: a warning),
                 does-not-compile (no PHP of the window that ran compiles
-                the file)
+                the file) or deprecated-in-php-window (a deprecation
+                PHPCompatibility reports that no config/php/rules.json row
+                covers: a warning). PHPCompatibility's own floor and
+                removed findings take fix-needs-php-above-floor and
+                removed-in-target-php, as warnings: they never block
   test-adapt    an ai-templated or ai-free finding in a file under a tests/
                 directory (the module's or a submodule's)
 
@@ -218,9 +222,10 @@ reports as canonical raw files (T-M4-05, AR-07, AR-10, 05-R3, ADR 0022):
 NN is the stage's place in config/pipeline.json. The tools are run-rector.sh
 (a dry-run), run-phpstan.sh, run-phpcs.sh, check-port-safety.sh,
 scan-signature-changes.sh, lint-extension-metadata.sh, php-target.sh (the
-PHP window's removed and deprecated constructs) and php-lint-window.sh
+PHP window's removed and deprecated constructs), php-lint-window.sh
 (php -l on each PHP minor of the window, in Docker; its legs skipped
-without a Docker daemon), each with --json;
+without a Docker daemon) and run-phpcompat.sh (PHPCompatibility over the
+window, report-only: ok, degraded or skipped), each with --json;
 every report goes through canon_json with the Drupal root (root-relative
 paths, sorted keys; its own timestamps moved under meta: DET-2). Then the
 anchor of every (file, line) the reports name in a PHP file is computed
@@ -260,9 +265,11 @@ state dir. It is built from what the scripts recorded, never from memory:
                      soft_deprecations (classify-deprecations.sh --json on
                      the raw PHPStan report)
   worklist.json      the lane x status table and every item
-  the stage's php-target and php-lint raw reports: php_window (the window,
-                     the php -l legs, the compile-time deprecations, and
-                     the human items of the PHP window with their findings)
+  the stage's php-target, php-lint and phpcompat raw reports: php_window
+                     (the window, the php -l legs, the compile-time
+                     deprecations, how PHPCompatibility ran and what it
+                     found, and the human items of the PHP window with
+                     their findings)
   actions.jsonl      the codemods applied and still in effect
   rector-rules.json  the rules and files of the applying Rector run, and
                      attributes-rules.json those of the attribute pass
@@ -312,10 +319,10 @@ files, the target major and the soft-deprecation policy: no tool runs, no
 PHP, so the result is the same on every platform (DET-2).
 
 Reads <raw-dir>/<NN>-<stage>-{index,rector,phpstan,phpcs,port-safety,
-signatures,metadata,php-target,php-lint,anchors}.json as scripts/ai/extract.sh
-writes them (any but the index may be missing; php-target and php-lint are
-expected, and have a verdict, only when the index names them or their file
-exists).
+signatures,metadata,php-target,php-lint,phpcompat,anchors}.json as
+scripts/ai/extract.sh writes them (any but the index may be missing;
+php-target, php-lint and phpcompat are expected, and have a verdict, only
+when the index names them or their file exists).
 
   id      "F-" + the first 12 hex of sha256(tool␟rule␟file␟anchor␟symbol␟
           message␟occurrence) (␟ = 0x1f); the line is not part of it
@@ -329,7 +336,12 @@ exists).
           scripts/analysis/php-target.sh; from a php -l leg
           of php-lint-window.sh that failed on PHP X.Y: php-floor:X.Y (the
           file compiles on a higher PHP of the window), php-removed-syntax:
-          X.Y (it compiles on a lower one only) or php-lint:X.Y (on none)
+          X.Y (it compiles on a lower one only) or php-lint:X.Y (on none);
+          php-compat-floor:<source>, php-compat-removed:<source> and
+          php-compat-deprecated:<source> from run-phpcompat.sh, for its
+          findings no config/php/rules.json row covers (a warning: never
+          blocking; a Syntax.* one on a file every php -l leg compiled is
+          dropped as a false positive)
   anchor  the innermost Namespace\Class::method or function of the line,
           the Namespace\ClassLike for a line in a class-like body outside
           its methods (the raw anchors file, scripts/php/anchor.php), else
@@ -355,7 +367,9 @@ Usage:
     --json             print findings.json on STDOUT
 
 findings.json also records each tool's verdict (tools: ok | partial |
-failed | missing; a raw file that is not one JSON object is failed), so a run
+failed | missing; php-lint and phpcompat can also be skipped, and a
+degraded phpcompat is partial; a raw file that is not one JSON object is
+failed), so a run
 where a tool crashed never hashes like a clean one; an error PHPStan reports
 in a trait once per class that uses it is kept in the trait's file as many
 times as the class context with the most copies.
@@ -1740,6 +1754,63 @@ installed in the root, no PHP to run the helper (DDEV down and no host
 php), or the helper failed.
 ```
 
+### analysis/run-phpcompat.sh
+
+```text
+drupilot — scripts/analysis/run-phpcompat.sh
+PHPCompatibility over the PHP window (T-M5-05, ADR 0003): a separate PHPCS
+run with testVersion L-U and the Symfony polyfill rulesets of the declared
+range, report-only. It never blocks a port and never fails the php stage.
+
+The tree: its own Composer project in <root>/.drupilot/phpcompat (gitignored,
+inside the DDEV mount, outside the test-bed's composer.json), installed on
+first use with the exact pins of config/toolchain-reference.json `phpcompat`
+(phpcompatibility/php-compatibility 10.0.0-alpha2 on PHPCS 4.0.4, ...),
+idempotent: kept while vendor/bin/phpcs exists and its composer.lock holds
+exactly those pins. The pins and the standards used are kept in the root's
+lock (.phpcompat). The project's own ruleset is never read or modified, and
+phpcbf never runs with these standards.
+
+The window: the upgrade plan's floor L to its top U (the higher of P and the
+highest PHP a core of the range supports, plan_php_top; ADR 0002), as the
+testVersion "L-U" of its first and last PHP (php_window); without a plan,
+the floor and ceiling rector_php_bounds gives. The standards: PHPCompatibility
+plus PHPCompatibilitySymfonyPolyfillPHP<xy> for each polyfill package every
+core of the range ships (the plan's rector.polyfills), when the tree lists
+that standard (`phpcs -i`).
+
+Each message is normalized: Internal.NoCodeFound is dropped; the rest is
+deduplicated on (file, line, source) and classed by PHPCompatibility's
+convention: an ERROR from a New* sniff is `floor` (it needs a PHP above L),
+any other ERROR `removed` (removed in a PHP of the window), a WARNING
+`deprecated`. A finding whose source a config/php/rules.json row lists
+(its phpcompat codes) names that row (rule) and is `covered` when the row
+is handled already: Rector applies or denies it over [L..U], or
+php-target.sh reports it for [L..P] (ADR 0003 item 6: it corroborates the
+row's own item and never adds one). counts leave the covered ones out.
+
+Usage:
+  run-phpcompat.sh --subject DIR [--test-version L-U] [--no-install] [--json]
+                   [-h|--help]
+    --subject DIR        the module/theme (under a Drupal root)
+    --test-version L-U   the window to check instead of the plan's
+    --no-install         never install the tree (a missing one degrades)
+    --json               {tool: "phpcompat", status, reason, test_version,
+                         standards, counts: {floor, removed, deprecated,
+                         covered}, findings: [{file, line, source, type,
+                         kind, message, rule, covered}], fallback,
+                         versions, alpha} on STDOUT
+
+status: ok (PHPCS exited 0-3 with a JSON report and no Internal.Exception),
+degraded (the install failed, PHPCS crashed, timed out or printed no
+report: fallback is then detect-php-floor.sh's scan of the module with the
+plan's range), or skipped (an empty window, a DDEV project that cannot be
+started, or no PHP to run it). reason names why when it is not ok.
+
+Exit codes: 0 always once the arguments are valid (whatever the status) ·
+1 usage error, or no Drupal root.
+```
+
 ### analysis/run-phpcs.sh
 
 ```text
@@ -2873,7 +2944,9 @@ Levels (each includes the previous one):
              /drupilot-setup recreates the project.
   vendor     (default) + every Composer-installed tree: vendor/ and the
              composer installer-paths (core, contrib modules/themes/profiles,
-             libraries, recipes, drush contrib) — never a */custom path.
+             libraries, recipes, drush contrib) — never a */custom path —,
+             and the vendor/ of PHPCompatibility's own tree
+             (.drupilot/phpcompat, reinstalled on its next run).
              /drupilot-setup restores them from composer.lock
              (ddev-up.sh runs `ddev composer install` when vendor/ is gone).
   workspace  + the whole test-bed directory. Each placed subject is first put

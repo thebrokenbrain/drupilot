@@ -267,7 +267,7 @@ worklist_fresh() {
 }
 
 # The worklist reasons of the PHP window's items (classify.sh), as one ERE.
-PHP_WINDOW_REASONS_ERE='removed-in-target-php|does-not-compile|fix-needs-php-above-floor|deprecated-no-rule'
+PHP_WINDOW_REASONS_ERE='removed-in-target-php|does-not-compile|fix-needs-php-above-floor|deprecated-no-rule|deprecated-in-php-window'
 
 # php_window_items [SUBJECT] -> the open human worklist items of the PHP window
 # (a reason of PHP_WINDOW_REASONS_ERE), as one JSON array of {file, reason,

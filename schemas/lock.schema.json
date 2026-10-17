@@ -26,6 +26,15 @@
       "description": "The effective DRUPILOT_PHP_TARGET at the last lock-sync.sh run.",
       "type": "string"
     },
+    "phpcompat": {
+      "description": "PHPCompatibility's own Composer tree at <root>/.drupilot/phpcompat (scripts/analysis/run-phpcompat.sh, ADR 0003): its exact pins and the standards the last run used. Its own key, not .toolchain, which holds the test-bed's composer.lock versions.",
+      "type": "object",
+      "required": ["packages", "standards"],
+      "properties": {
+        "packages": {"type": "object", "additionalProperties": {"type": "string"}},
+        "standards": {"type": "array", "items": {"type": "string"}}
+      }
+    },
     "rector_rule_audit": {
       "description": "The rule audit of the Rector installed at the root (scripts/analysis/rector-rule-audit.sh, scripts/php/rule-audit.php; AR-11, ADR 0030): every rule its PHP sets register, with its sets, the PHP Rector's PhpVersionedFilter needs before it runs it, its polyfill package and its Rector interfaces. Read back while rector_version is the composer.lock version of rector/rector; it narrows the compat pass and sets its withPhpVersion().",
       "type": "object",

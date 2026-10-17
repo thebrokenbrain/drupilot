@@ -126,9 +126,15 @@ PHP of the window, not only the test-bed's:
   removed or deprecated (`removed-blocking`, `report-only`);
 - `scripts/analysis/php-lint-window.sh` runs `php -l` on each PHP of the window,
   in throwaway `php:X.Y-cli` containers (skipped without Docker);
+- `scripts/analysis/run-phpcompat.sh` runs PHPCompatibility (an alpha, from its
+  own Composer tree in the test-bed, ADR 0003) with `testVersion` L-U and the
+  polyfill rulesets of the range; a `config/php/rules.json` row covers some of
+  its findings, the rest never block, and when it degrades the heuristic floor
+  scan stands in;
 - they become `human` worklist items: `removed-in-target-php` and
   `does-not-compile` block (and a file the floor's PHP does not compile), while
-  `fix-needs-php-above-floor` and `deprecated-no-rule` are reported.
+  `fix-needs-php-above-floor`, `deprecated-no-rule` and PHPCompatibility's
+  findings (`deprecated-in-php-window` among them) are reported.
   `port-summary.sh --strict` exits 3 while a blocking one is open.
 
 Never rewrite a removed construct on your own: tell the developer, who fixes it

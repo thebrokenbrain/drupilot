@@ -24,7 +24,7 @@
     },
     "rationale": {"description": "The model's only input: {worklist item id: why}.", "type": "object", "additionalProperties": {"type": "string"}},
     "php_window": {
-      "description": "The PHP window (manifest.sh, from the stage's php-target and php-lint raw reports): floor and target, the php -l legs and their compile-time deprecations, and the human worklist items of the window's constructs (removed-in-target-php, fix-needs-php-above-floor, does-not-compile).",
+      "description": "The PHP window (manifest.sh, from the stage's php-target, php-lint and phpcompat raw reports): floor and target, the php -l legs and their compile-time deprecations, how PHPCompatibility ran, and the human worklist items of the window's constructs (removed-in-target-php, fix-needs-php-above-floor, does-not-compile, deprecated-no-rule, deprecated-in-php-window).",
       "type": "object",
       "properties": {
         "floor": {"type": ["string", "null"]},
@@ -35,6 +35,15 @@
           "status": {"enum": ["pass", "fail", "partial", "skipped", "error"]},
           "legs": {"type": "array", "items": {"type": "object", "required": ["php", "status"], "properties": {"php": {"type": "string"}, "status": {"enum": ["pass", "fail", "skipped", "error"]}}}},
           "deprecations": {"type": "array", "items": {"type": "object"}}}},
+        "phpcompat": {"description": "PHPCompatibility (scripts/analysis/run-phpcompat.sh, ADR 0003): its status, why it did not run or degraded, the testVersion and standards, the php-compatibility version (an alpha) and its counts; fallback_floor is detect-php-floor.sh's floor when it degraded.", "type": ["object", "null"], "properties": {
+          "status": {"enum": ["ok", "degraded", "skipped"]},
+          "reason": {"type": ["string", "null"]},
+          "test_version": {"type": ["string", "null"]},
+          "standards": {"type": "array", "items": {"type": "string"}},
+          "version": {"type": ["string", "null"]},
+          "alpha": {"type": "boolean"},
+          "counts": {"type": ["object", "null"]},
+          "fallback_floor": {"type": ["string", "null"]}}},
         "items": {"type": "array", "items": {"type": "object", "required": ["id", "file", "status", "blocking", "reason"], "properties": {"id": {"type": "string"}, "blocking": {"type": "boolean"}, "reason": {"type": "string"}, "findings": {"type": "array"}}}}
       }
     },

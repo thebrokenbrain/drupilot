@@ -38,6 +38,7 @@
         "reason": {"type": "string"},
         "src": {"description": "Where deprecated_in/removed_in come from (php.net migration guides).", "type": "string", "minLength": 1},
         "rule_src": {"description": "Where the rule class was found (the rector-src tree at the tag).", "type": "string"},
+        "phpcompat": {"description": "The PHPCompatibility sources that report this construct (ADR 0003 Evidence): an exact source, or a prefix ending in '*'. A PHPCompatibility finding they match corroborates the row instead of adding an item of its own (scripts/analysis/run-phpcompat.sh).", "type": "array", "items": {"type": "string", "pattern": "^PHPCompatibility\\.[A-Za-z0-9_.]+\\*?$"}},
         "verified": {"type": "boolean"},
         "note": {"type": "string"}
       }

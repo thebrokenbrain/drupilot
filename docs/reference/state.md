@@ -66,7 +66,7 @@ The id never includes the line number, so moving code keeps its findings' ids. F
 - `ai-templated`: the AI fixes it following a recipe's text.
 - `ai-free`: an error no recipe covers.
 - `test-adapt`: either of the two above in a file under a `tests/` directory.
-- `human`: a person decides. The PHP window's items carry a reason: `removed-in-target-php`, `does-not-compile`, `fix-needs-php-above-floor` or `deprecated-no-rule` (see [PHP and the core target](../concepts/php-and-core-target.md)).
+- `human`: a person decides. The PHP window's items carry a reason: `removed-in-target-php`, `does-not-compile`, `fix-needs-php-above-floor`, `deprecated-no-rule` or `deprecated-in-php-window` (see [PHP and the core target](../concepts/php-and-core-target.md)).
 - `deferred`: nothing to do in this port: a deprecation removed only in a later major, an info finding, or a style finding (Phase 1 keeps the diff minimal).
 
 A recipe applies only when its conditions hold, its required core included: never above the declared floor. An item lists its findings, their recipes and templates, the files it may change, and whether it blocks the stage (an error finding outside `deferred`). Its status is `open`, `applied` or `deferred`.

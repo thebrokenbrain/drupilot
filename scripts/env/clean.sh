@@ -15,7 +15,9 @@
 #              /drupilot-setup recreates the project.
 #   vendor     (default) + every Composer-installed tree: vendor/ and the
 #              composer installer-paths (core, contrib modules/themes/profiles,
-#              libraries, recipes, drush contrib) — never a */custom path.
+#              libraries, recipes, drush contrib) — never a */custom path —,
+#              and the vendor/ of PHPCompatibility's own tree
+#              (.drupilot/phpcompat, reinstalled on its next run).
 #              /drupilot-setup restores them from composer.lock
 #              (ddev-up.sh runs `ddev composer install` when vendor/ is gone).
 #   workspace  + the whole test-bed directory. Each placed subject is first put
@@ -390,6 +392,11 @@ plan_root() {
           [[ -n "$p" ]] || continue
           actions="${actions}rm${TAB}${root}/${p}${TAB}composer-managed"$'\n'
         done < <(composer_paths "$root")
+      fi
+      # PHPCompatibility's own Composer tree (run-phpcompat.sh, ADR 0003):
+      # its vendor/ goes too; the next run reinstalls it from the pins.
+      if [[ -d "$root/.drupilot/phpcompat/vendor" ]]; then
+        actions="${actions}rm${TAB}${root}/.drupilot/phpcompat/vendor${TAB}composer-managed"$'\n'
       fi
     fi
     # 3. Workspace: put every placed subject back, then remove the root.

@@ -13,6 +13,39 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+### Added
+- **PHPCompatibility over the PHP window** (T-M5-05, ADR 0003).
+  `scripts/analysis/run-phpcompat.sh --subject DIR [--test-version L-U]
+  [--no-install] [--json]` runs a separate PHPCS with `testVersion` from the
+  plan's floor to the window's top, plus the Symfony polyfill ruleset of each
+  polyfill every core of the range ships (when the tree has one).
+  - It installs its own Composer tree, `<root>/.drupilot/phpcompat`, on first
+    use: the exact `phpcompat` pins of `config/toolchain-reference.json`
+    (php-compatibility 10.0.0-alpha2 on PHPCS 4.0.4), recorded in the root's
+    lock (`.phpcompat`).
+  - It never reads or changes the project's own ruleset and never runs
+    phpcbf.
+  - Its status is `ok`, `degraded` or `skipped`, and it always exits 0.
+    `degraded` covers a failed install, a crash, a timeout, no JSON report or
+    an `Internal.Exception`; `detect-php-floor.sh`'s scan is then the
+    fallback. `skipped` covers an empty window, no DDEV or no PHP.
+  - Each finding is classed `floor`, `removed` or `deprecated`, and is
+    `covered` when a `config/php/rules.json` row already handles it: Rector
+    fixes or denies the row, or `php-target.sh` reports it.
+- `config/php/rules.json` rows list their PHPCompatibility sources
+  (`phpcompat`, from the ADR 0003 spike; schema updated).
+- **The php stage runs it on every extraction.**
+  - Uncovered findings become non-blocking `human` items:
+    `fix-needs-php-above-floor`, `removed-in-target-php`, or the new reason
+    `deprecated-in-php-window`.
+  - A `Syntax` report on a file every `php -l` leg compiled is dropped (the
+    property-hooks false positive).
+  - `findings.json` gains the `phpcompat` tool verdict: `ok`, `partial` when
+    it degraded, or `skipped`.
+  - `port-report.md`'s PHP window section says it ran an alpha, with its
+    `testVersion` and counts, or why it degraded.
+  - `/drupilot-clean --level vendor` also removes the tree's `vendor/`.
+
 ## [1.0.0-alpha.4] - 2026-10-17
 
 ### Added
