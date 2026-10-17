@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ADR 0002 / T-M2-13: run-rector.sh runs the narrow compat pass
-# (`--config rector-compat.php`) right after the official pass when the PHP
-# floor L is below 8.4 and the window reaches 8.4, reports it on its own
+# (`--config rector-compat.php`) right after the official pass when its list
+# (the compat rows of config/php/rules.json for [L..U] above the floor's level
+# set, ADR 0030) is not empty, reports it on its own
 # (compat_status, compat_files, rule_hits.compat), treats its crash like an
 # official-pass crash (but keeps the record of what the official pass
 # applied), holds its --apply to its dry-run, and keeps rector.php at the floor
@@ -16,6 +17,8 @@ D="$T_TMP/data"; mkdir -p "$D/targets" "$D/php"
 printf '%s\n' '{"major":10,"minors":{"10.0":{"verified":true,"php_supported":["8.1","8.2","8.3"]}}}' > "$D/targets/10.json"
 printf '%s\n' '{"major":11,"minors":{"11.0":{"verified":true,"php_supported":["8.3"]},"11.3":{"verified":true,"php_supported":["8.3","8.4","8.5"]}}}' > "$D/targets/11.json"
 printf '%s\n' '{"versions":{"7.4":{},"8.0":{},"8.1":{},"8.2":{},"8.3":{},"8.4":{},"8.5":{}}}' > "$D/php/versions.json"
+# The compat rules come from the shipped rules (ADR 0030).
+cp "$T_REPO/config/php/rules.json" "$D/php/"
 export DRUPILOT_VERSION_DATA_DIR="$D"
 
 mk_bin() { printf '#!/bin/sh\n%s\n' "$2" > "$1"; chmod +x "$1"; }
@@ -140,10 +143,10 @@ assert_eq "digests overlapping the compat pass: no false partial" \
 printf '\n// hand edit\n' >> "$r/rector-compat.php"; cp "$r/rector-compat.php" "$T_TMP/compat-edited.php"
 rr ok DRUPILOT_PHP_TARGET=8.3
 assert_file_eq "a hand-edited rector-compat.php is left alone" "$r/rector-compat.php" "$T_TMP/compat-edited.php"
-sed_inplace "$r/rector-compat.php" 's/drupilot-template-version: 1/drupilot-template-version: 0/'
+sed_inplace "$r/rector-compat.php" 's/drupilot-template-version: 2/drupilot-template-version: 0/'
 rr ok DRUPILOT_PHP_TARGET=8.3
 assert_eq "an older rector-compat.php is regenerated, after a backup" \
-  "$(grep -c 'drupilot-template-version: 1' "$r/rector-compat.php")|$(grep -l 'drupilot-template-version: 0' "$r"/.drupilot/backups/rector-compat.php.* 2> /dev/null | grep -c . || true)" "1|1"
+  "$(grep -c 'drupilot-template-version: 2' "$r/rector-compat.php")|$(grep -l 'drupilot-template-version: 0' "$r"/.drupilot/backups/rector-compat.php.* 2> /dev/null | grep -c . || true)" "1|1"
 
 # A test-bed shared by two modules: the untouched rector-compat.php follows the
 # subject (it named the previous one, whose path may be gone).
@@ -154,19 +157,22 @@ ro() { printf '%s' "$1" > "$r/mode"; : > "$r/calls"
   t_run env PATH="$STUBS:$PATH" DRUPILOT_PHP_TARGET=8.3 "$T_SH" "$T_REPO/scripts/analysis/run-rector.sh" --subject "$r/$2" --json; }
 ro ok "$O"
 assert_eq "another subject on the same root: rector-compat.php regenerated for it, after a backup" \
-  "$T_RC|$(grep -c "'$O'," "$r/rector-compat.php")|$(grep -c "'$S'," "$r/rector-compat.php")|$(grep -l "'$S'," "$r"/.drupilot/backups/rector-compat.php.* 2> /dev/null | xargs grep -l 'drupilot-template-version: 1' | grep -c . || true)" \
+  "$T_RC|$(grep -c "'$O'," "$r/rector-compat.php")|$(grep -c "'$S'," "$r/rector-compat.php")|$(grep -l "'$S'," "$r"/.drupilot/backups/rector-compat.php.* 2> /dev/null | xargs grep -l 'drupilot-template-version: 2' | grep -c . || true)" \
   "0|1|0|1"
-assert_match "... with a warning" "$(tr '\n' ' ' < "$T_ERR")" 'rector-compat\.php was an untouched drupilot render for another subject; regenerated'
+assert_match "... with a warning" "$(tr '\n' ' ' < "$T_ERR")" 'rector-compat\.php was an untouched drupilot render for another plan or subject; regenerated'
 ro ok "$S"
 assert_eq "... and back again" "$T_RC|$(grep -c "'$S'," "$r/rector-compat.php")" "0|1"
-# A render whose sha256 the lock lost (written by drupilot before it kept one:
-# rector_config_pristine) follows the subject too.
+# A template-2 render whose sha256 the lock lost is kept as hand-edited
+# (rector_config_pristine recognizes a template-1 copy only: the compat rules
+# come from the plan); its sha256 is kept again once it equals the render.
 LF="$(lock_path "$r")"
 jq 'del(.templates["rector-compat.php"])' "$LF" > "$T_TMP/lock.json" && cp "$T_TMP/lock.json" "$LF"
 ro ok "$O"
-assert_eq "an untouched render with no sha256 in the lock: regenerated for the subject" \
-  "$T_RC|$(grep -c "'$O'," "$r/rector-compat.php")|$(jq -r '.templates["rector-compat.php"].sha256 // "none"' "$LF" | grep -c '^sha256:' || true)" "0|1|1"
+assert_eq "a template-2 render with no sha256 in the lock: kept" \
+  "$T_RC|$(grep -c "'$S'," "$r/rector-compat.php")|$(jq -r '.templates["rector-compat.php"].sha256 // "none"' "$LF")" "0|1|none"
 ro ok "$S"
+assert_eq "  its sha256 is kept again when it is the current render" \
+  "$T_RC|$(jq -r '.templates["rector-compat.php"].sha256 // "none"' "$LF" | grep -c '^sha256:' || true)" "0|1"
 # A hand-edited copy is kept; a withPaths() path that is gone is named.
 sed_inplace "$r/rector-compat.php" "s#'$S',#'web/modules/custom/gone',#"
 printf '\n// hand edit\n' >> "$r/rector-compat.php"; cp "$r/rector-compat.php" "$T_TMP/compat-gone.php"
@@ -244,20 +250,29 @@ assert_eq "  comments over several lines, without a space before them, and # com
 assert_eq "  a variable in the list is not checked and does not end it" "$(mp "->withPaths([ \$paths['custom'], 'web/gone', ])")" "web/gone "
 assert_eq "  a missing file: nothing, exit 0" "$(rector_config_missing_paths "$r" "$T_TMP/none.php"; echo "rc=$?")" "rc=0"
 
-# L >= 8.4: no compat pass.
+# L 8.4 with a window that stops at 8.4 (no core of the range runs 8.5): the
+# php84 level set holds every fix, no compat pass.
+D84="$T_TMP/data84"; cp -R "$D" "$D84"
+jq '.minors["11.3"].php_supported = ["8.3","8.4"]' "$D/targets/11.json" > "$D84/targets/11.json"
 r84="$T_TMP/root84"; mkroot "$r84"
 jq '.require.php = ">=8.4"' "$r84/$S/composer.json" > "$T_TMP/c.json" && cp "$T_TMP/c.json" "$r84/$S/composer.json"
 r_save="$r"; r="$r84"
+rr ok DRUPILOT_PHP_TARGET=8.4 DRUPILOT_CORE_TARGET_STRATEGY=d11-only DRUPILOT_VERSION_DATA_DIR="$D84"
+assert_eq "L 8.4, U 8.4: compat off, never run, never rendered" \
+  "$T_RC|$(j '[.compat_status, .php_floor, .php_ceiling]')|$(calls_with 'rector-compat.php')|$([[ -e "$r/rector-compat.php" ]] && echo yes || echo no)" \
+  '0|["off","8.4","8.4"]|0|no'
+# L 8.4, U 8.5: the 8.5 fixes only, at PHP_85.
 rr ok DRUPILOT_PHP_TARGET=8.4 DRUPILOT_CORE_TARGET_STRATEGY=d11-only
-assert_eq "L 8.4: compat off, never run, never rendered" \
-  "$T_RC|$(j '[.compat_status, .php_floor]')|$(calls_with 'rector-compat.php')|$([[ -e "$r/rector-compat.php" ]] && echo yes || echo no)" \
-  '0|["off","8.4"]|0|no'
-# L 8.5: PHP_85 with the php84 sets, a warning, no compat pass.
+assert_eq "L 8.4, U 8.5: the compat pass runs the 8.5 fixes, not the 8.4 one" \
+  "$T_RC|$(j '[.compat_status, .php_ceiling]')|$(grep -c 'ChrArgModuloRector' "$r/rector-compat.php")|$(grep -c "ExplicitNullableParamTypeRector'," "$r/rector-compat.php")|$(grep -c 'withPhpVersion(PhpVersion::PHP_85)' "$r/rector-compat.php")" \
+  '0|["ok","8.5"]|1|0|1'
+# L 8.5: PHP_85 with the php84 sets, a warning; the compat pass runs the 8.5
+# fixes the php84 sets lack.
 jq '.require.php = ">=8.5"' "$r84/$S/composer.json" > "$T_TMP/c.json" && cp "$T_TMP/c.json" "$r84/$S/composer.json"
 rr ok DRUPILOT_PHP_TARGET=8.5 DRUPILOT_CORE_TARGET_STRATEGY=d11-only
-assert_eq "L 8.5: PHP_85 with the php84 sets, compat off" \
-  "$T_RC|$(j '[.php_floor, .compat_status]')|$(grep -c 'PhpVersion::PHP_85' "$r/rector.php")|$(grep -c 'withPhpSets(php84: true)' "$r/rector.php")" \
-  '0|["8.5","off"]|1|1'
+assert_eq "L 8.5: PHP_85 with the php84 sets, the 8.5 fixes in the compat pass" \
+  "$T_RC|$(j '[.php_floor, .compat_status]')|$(grep -c 'PhpVersion::PHP_85' "$r/rector.php")|$(grep -c 'withPhpSets(php84: true)' "$r/rector.php")|$(grep -c 'ChrArgModuloRector' "$r/rector-compat.php")" \
+  '0|["8.5","ok"]|1|1|1'
 assert_match "... with the no-php85-set warning" "$(tr '\n' ' ' < "$T_ERR")" 'PHP floor 8\.5 .*no Rector php85 set is assumed'
 r="$r_save"
 

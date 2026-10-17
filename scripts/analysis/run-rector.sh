@@ -12,12 +12,16 @@
 #                    the core range core-strategy.sh recommends and the
 #                    effective require.php admit, never above the PHP target):
 #                    ->withPhpVersion() and the level sets stop at L.
-#   Compat pass (when the floor is below PHP 8.4 and the range runs on 8.4 or
-#                    later, rector_compat_needed): `--config rector-compat.php`
-#                    (templates/rector-compat.php.tmpl, ensured at the root
-#                    like rector.php), only the PHP deprecation fixes whose
-#                    output still runs on L (`Foo $x = NULL` -> `?Foo $x =
-#                    NULL`). Errors and the dry-run record call it pass 3.
+#   Compat pass (when the window has a deprecation fix the main pass does
+#                    not run, rector_compat_needed): `--config
+#                    rector-compat.php` (templates/rector-compat.php.tmpl,
+#                    ensured at the root like rector.php), only the PHP
+#                    deprecation fixes whose output still runs on L (`Foo $x =
+#                    NULL` -> `?Foo $x = NULL`): the plan's
+#                    rector.compat_rules, checked against the installed
+#                    Rector's rule audit (rector-rule-audit.sh, run when the
+#                    lock holds none for it; ADR 0030). Errors and the dry-run
+#                    record call it pass 3.
 #   Pass 2 (--digests): the COMPLEMENTARY, AI-generated `dbuytaert/drupal-digests`
 #                    rules, cloned at runtime into the plugin cache, staged
 #                    under <root>/.drupilot/digests/<sha>/ and run with a
@@ -147,7 +151,7 @@
 # untouched render (its sha256 is the one kept in the root's lock, ADR 0019) for
 # another plan, PHP floor or subject, and to a template-4 render nobody edited
 # (rector_config_pristine) whose floor moved. Any other copy is kept, with a
-# warning, and so is a template-5 render whose sha256 the lock no longer keeps
+# warning, and so is a template-5 or -6 render whose sha256 the lock no longer keeps
 # (a cleared or moved lock); its sha256 is kept again while it equals the
 # current render. A hand-written rector.php is never
 # replaced; a warning is printed when it does not skip
@@ -155,8 +159,8 @@
 # follows the same rules when the compat pass runs: written when missing,
 # regenerated from an older marker, and regenerated when it is an untouched
 # render (its sha256 kept in the lock, or rector_config_pristine) for another
-# subject (its only token), so a test-bed shared by several modules never runs
-# the compat pass with the previous module's config. A kept copy whose
+# plan or subject, so a test-bed shared by several modules never runs the
+# compat pass with the previous module's config. A kept copy whose
 # withPaths() names a relative path that does not exist (Rector stops on it)
 # gets a warning.
 #
@@ -307,9 +311,16 @@ FLOOR_TOKENS=()
 for _t in $(rector_floor_tokens "$PHP_FLOOR" || true); do FLOOR_TOKENS+=("$_t"); done
 [[ "${#FLOOR_TOKENS[@]}" -eq 5 ]] || die "Could not derive the Rector tokens of the PHP floor '$PHP_FLOOR'." 1
 FLOOR_TOKENS+=("RECTOR_SETS=$(rector_sets_block "$PLAN")" "SKIP_RULES=$(rector_skip_block "$PLAN")"
-               "BC_BLOCK=$(rector_bc_block "$PLAN")" "POLYFILLS=")
+               "BC_BLOCK=$(rector_bc_block "$PLAN")" "POLYFILLS=$(rector_polyfills_block "$PLAN")")
+# The compat pass's rules (ADR 0030): the plan's, checked against the rule
+# audit of the installed Rector (scripts/analysis/rector-rule-audit.sh, run
+# when the lock holds none for it).
+RULE_AUDIT="$(rector_audit_ensure "$DRUPAL_ROOT")"
+COMPAT_LIST="$(rector_compat_list "$PLAN" "$PHP_FLOOR" "$PHP_CEIL" "$RULE_AUDIT")"
+COMPAT_TOKENS=("SKIP_RULES=$(rector_skip_block "$PLAN")" "COMPAT_RULES=$(rector_compat_rules_block "$COMPAT_LIST")"
+               "COMPAT_PHP_VERSION=$(rector_compat_php_id "$COMPAT_LIST" "$RULE_AUDIT" || true)")
 COMPAT=0
-if rector_compat_needed "$PHP_FLOOR" "$PHP_CEIL"; then COMPAT=1; fi
+if rector_compat_needed "$COMPAT_LIST"; then COMPAT=1; fi
 
 log_info "Drupal root : $DRUPAL_ROOT"
 log_info "Subject     : $SUBJECT_REL"
@@ -448,7 +459,7 @@ if [[ "$COMPAT" == "1" ]]; then
   # sha256 in the lock), or to STDOUT with "-".
   write_compat_from_template() {
     local to="${1:-$RECTOR_COMPAT_PHP}"
-    render_template "$TEMPLATE_COMPAT" "$to" "SUBJECT_PATH=$SUBJECT_REL" \
+    render_template "$TEMPLATE_COMPAT" "$to" "SUBJECT_PATH=$SUBJECT_REL" "${COMPAT_TOKENS[@]}" \
       || die "Could not render $TEMPLATE_COMPAT into $to." 1
     [[ "$to" == "-" ]] || render_sha_record "$DRUPAL_ROOT" rector-compat.php "$RECTOR_COMPAT_PHP" "$TEMPLATE_COMPAT"
     return 0
@@ -465,11 +476,11 @@ if [[ "$COMPAT" == "1" ]]; then
        && { render_sha_matches "$DRUPAL_ROOT" rector-compat.php "$RECTOR_COMPAT_PHP" \
             || rector_config_pristine "$TEMPLATE_COMPAT" "$RECTOR_COMPAT_PHP"; } \
        && [[ "$(write_compat_from_template - 2> /dev/null | sha256_hex)" != "$(sha256_hex < "$RECTOR_COMPAT_PHP")" ]]; then
-    # An untouched render for another subject (a test-bed shared by several
-    # modules): regenerate it.
+    # An untouched render for another plan or subject (a test-bed shared by
+    # several modules): regenerate it.
     _bk="$(backup_config "$RECTOR_COMPAT_PHP")"
     write_compat_from_template
-    log_warn "rector-compat.php was an untouched drupilot render for another subject; regenerated. Previous copy: ${_bk#"$DRUPAL_ROOT"/}"
+    log_warn "rector-compat.php was an untouched drupilot render for another plan or subject; regenerated. Previous copy: ${_bk#"$DRUPAL_ROOT"/}"
   else
     log_ok "rector-compat.php already present at the Drupal root (left untouched)."
     # Rector processes the subject named on its command line, but stops on a

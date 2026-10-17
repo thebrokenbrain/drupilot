@@ -275,7 +275,7 @@ Sources:
 
 ## PHP rules
 
-As of 2026-10-04; rule classes read in rector-src 2.5.2. compat: a deprecation fix whose output runs on the PHP floor; deny: never applied, also inside a level set; report-only: reported, never rewritten; removed-no-rule: a removed construct no compat rule fixes (the Rector level sets rewrite some of its forms; php-target.sh reports what is left).
+As of 2026-10-17; rule classes read in rector-src 2.5.2. compat: a deprecation fix whose output runs on the PHP floor; deny: never applied, also inside a level set; report-only: reported, never rewritten; removed-no-rule: a removed construct no compat rule fixes (the Rector level sets rewrite some of its forms; php-target.sh reports what is left).
 
 | Id | Kind | Rector rule | Deprecated in | Removed in | Output needs PHP | Drupal-safe | Verified |
 |---|---|---|---|---|---|---|---|
@@ -290,7 +290,7 @@ As of 2026-10-04; rule classes read in rector-src 2.5.2. compat: a deprecation f
 | `p85-null-offset` | compat | `ArrayKeyExistsNullToEmptyStringRector` | 8.5 |  |  | true | yes |
 | `p85-debuginfo-null` | compat | `NullDebugInfoReturnRector` | 8.5 |  |  | true | yes |
 | `p85-chr-range` | compat | `ChrArgModuloRector` | 8.5 |  |  | true | yes |
-| `p85-ord-single-byte` | compat | `OrdSingleByteRector` | 8.5 |  |  | true | yes |
+| `p85-ord-single-byte` | compat | `OrdSingleByteRector` | 8.5 |  |  | false | yes |
 | `p80-optional-before-required` | compat | `OptionalParametersAfterRequiredRector` | 8.0 |  |  |  | yes |
 | `p74-implode-order` | compat | `ConsistentImplodeRector` | 7.4 | 8.0 |  | true | yes |
 | `deny-array-first-class-callable` | deny | `ArrayToFirstClassCallableRector` |  |  | 8.1 | false | yes |
@@ -301,6 +301,7 @@ As of 2026-10-04; rule classes read in rector-src 2.5.2. compat: a deprecation f
 | `deny-sleep-to-serialize` | deny | `SleepToSerializeRector` | 8.5 |  | 7.4 | false | yes |
 | `deny-wakeup-to-unserialize` | deny | `WakeupToUnserializeRector` | 8.5 |  | 7.4 | false | yes |
 | `deny-override-on-properties` | deny | `AddOverrideAttributeToOverriddenPropertiesRector` |  |  | 8.5 | false | yes |
+| `deny-deprecated-attribute` | deny | `DeprecatedAnnotationToDeprecatedAttributeRector` |  |  | 8.4 | false | yes |
 | `p85-cast-names` | report-only |  | 8.5 |  |  | true | yes |
 | `p85-noop-close` | report-only |  | 8.5 |  |  | true | yes |
 | `p85-pdo-mysql-constants` | report-only |  | 8.5 |  | 8.4 | true | no |
@@ -327,7 +328,7 @@ Sources:
 - `p85-null-offset`: https://www.php.net/manual/en/migration85.deprecated.php
 - `p85-debuginfo-null`: https://www.php.net/manual/en/migration85.deprecated.php
 - `p85-chr-range`: https://www.php.net/manual/en/migration85.deprecated.php
-- `p85-ord-single-byte`: https://www.php.net/manual/en/migration85.deprecated.php
+- `p85-ord-single-byte`: https://www.php.net/manual/en/migration85.deprecated.php Rewrites ord($s) to ord($s[0]) for any string-typed argument: on an empty string $s[0] raises an 'Uninitialized string offset' warning on every PHP, where ord('') returned 0 silently before PHP 8.5 (observed on PHP 8.2, 8.4 and 8.5 in the lab, ADR 0030). Reported, not applied.
 - `p80-optional-before-required`: https://www.php.net/manual/en/migration80.deprecated.php May change a public signature; unaudited (AR-11).
 - `p74-implode-order`: https://www.php.net/manual/en/migration74.deprecated.php ; https://www.php.net/manual/en/migration80.incompatible.php
 - `deny-array-first-class-callable`: https://www.php.net/manual/en/functions.first_class_callable_syntax.php Turns Form/Render API callbacks such as '#submit' =&gt; [[$this, 'submitX']] into $this-&gt;submitX(...): a closure is not serializable, so a cached form (#ajax, form state cache) fatals. templates/rector.php.tmpl skips it (S4); check-port-safety.sh flags such a closure.
@@ -338,6 +339,7 @@ Sources:
 - `deny-sleep-to-serialize`: https://www.php.net/manual/en/migration85.deprecated.php DependencySerializationTrait implements __sleep()/__wakeup(): the rewrite breaks the service re-injection drupilot code relies on (03-F-D7). PHP 8.5 only soft-deprecates them (no E_DEPRECATED).
 - `deny-wakeup-to-unserialize`: https://www.php.net/manual/en/migration85.deprecated.php See deny-sleep-to-serialize.
 - `deny-override-on-properties`: https://github.com/rectorphp/rector-src/blob/2.5.2/config/set/php85.php (in the php85 level set) Adds #[\Override] to properties, valid only on PHP 8.5; it collides with the override-attribute port-safety check while the core range spans an older PHP.
+- `deny-deprecated-attribute`: https://www.php.net/manual/en/class.deprecated.php Turns an @deprecated docblock on a function, a method or a class constant into #[\Deprecated]: from PHP 8.4 every use of it then emits a native E_USER_DEPRECATED (php.net), next to the @trigger_error() Drupal's deprecation policy already calls, and Drupal core uses no #[\Deprecated] (11.4.8: none). It is in the php84 level set and in PHP_POLYFILLS (polyfill-php84), which the plan's polyfills open from ^11.2 (ADR 0030).
 - `p85-cast-names`: https://www.php.net/manual/en/migration85.deprecated.php Rector fixes it only through a configured RenameCastRector (php85 set), so it is not in the compat pass.
 - `p85-noop-close`: https://www.php.net/manual/en/migration85.deprecated.php Rector fixes it only through a configured RemoveFuncCallRector (php85 set). Only curl_close() was read on php.net; the other functions of 02-F9 are unverified.
 - `p85-pdo-mysql-constants`: https://www.php.net/manual/en/migration85.deprecated.php ; output_min_php: https://www.php.net/manual/en/class.pdo-mysql.php output_min_php 8.4: the Pdo\Mysql class and its ATTR_* constants are PHP 8 &gt;= 8.4.0 (php.net, read 2026-10-12).

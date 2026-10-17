@@ -42,7 +42,13 @@
 #                  newest released minor of T or its pre-release minor in
 #                  preview
 #   W = [L..P]     PHP window: PHPStan phpVersion, PHPCompatibility testVersion
-#   bed core       the exact core of the test-bed: the lock's when it is a T
+#   U              the compat pass's top (ADR 0002): the higher of P and the
+#                  highest PHP a core of C supports. rector.compat_rules are
+#                  the compat rules for [L..U] the floor's level set does not
+#                  run (php_compat_pass_rules), rector.polyfills the
+#                  symfony/polyfill-phpXY packages every core of C ships
+#                  (core_range_polyfills; ADR 0030)
+#   bed core      the exact core of the test-bed: the lock's when it is a T
 #                  version, else the newest release of M
 #   hop            one edge of config/paths/graph.json
 #   track          standard (S 8..12) or d7-assisted (S = 7)
@@ -460,6 +466,13 @@ HOP_S="$S"
 HOPS_RC=0; HOPS="$(plan_hops "$HOP_S" "$TARGET")" || HOPS_RC=$?
 [[ "$HOPS_RC" == "0" || "$S" -gt "$TARGET" ]] || die "No upgrade path from Drupal $S to Drupal $TARGET in paths/graph.json." 1
 SETS="$(rector_sets_for_plan "$HOPS" "$F" "$BED" "$ROOT")"
+# The compat pass covers the window up to U, the higher of P and the highest
+# PHP a core of C supports (ADR 0002); Rector's polyfill rules follow the
+# packages every core of C ships (ADR 0030).
+_pb="$(php_bounds_for_range "$C")"; U="${_pb##* }"
+{ [[ "$U" =~ ^[0-9]+\.[0-9]+$ ]] && ! version_ge "$PHP" "$U"; } || U="$PHP"
+COMPAT_RULES="$(php_compat_pass_rules "$L" "$U")"
+POLYFILL_PKGS="$(core_range_polyfills "$C" | jq -c '.packages' 2> /dev/null || printf '[]')"
 MATRIX="$(plan_test_matrix "$BED" "$PHP" "$L" "$C" "$TARGET")"
 
 PLAN="$(jq -n -S \
@@ -469,7 +482,7 @@ PLAN="$(jq -n -S \
   --arg strat "$STRATEGY" --arg rs "$RS" --arg c "$C" --arg f "$F" --argjson sp "$SPANS" \
   --argjson php "$PHP_BLOCK" --arg hops "$HOPS" --argjson sets "$SETS" \
   --argjson bc "$(plan_rector_bc "$C" "$F")" --arg lvl "$(php_rector_level "$L")" --argjson skip "$(plan_rector_skip)" \
-  --arg pl "$PHPSTAN_LEVEL" --argjson tm "$MATRIX" \
+  --arg pl "$PHPSTAN_LEVEL" --argjson tm "$MATRIX" --argjson cr "${COMPAT_RULES:-[]}" --argjson pf "${POLYFILL_PKGS:-[]}" \
   --argjson ci "$(plan_ci_flags "$MATRIX" "$PHP" "$BED")" --argjson det "$(plan_detectors $HOPS)" \
   --arg dh "$(version_data_hash)" '
   {schema_version: 1,
@@ -480,7 +493,7 @@ PLAN="$(jq -n -S \
    range: {strategy: $strat, resolved_strategy: $rs, constraint: $c, floor: (if $f == "" then null else $f end), spans_majors: $sp},
    php: $php,
    hops: ($hops | split(" ") | map(select(length > 0))),
-   rector: ($sets + {bc: $bc, php_level: $lvl, skip: $skip, compat_rules: null, polyfills: null, tests_pass: null}),
+   rector: ($sets + {bc: $bc, php_level: $lvl, skip: $skip, compat_rules: $cr, polyfills: $pf, tests_pass: null}),
    phpstan: {profile: "compat", level: ($pl | tonumber? // $pl)},
    toolchain_cell: $tb.toolchain_cell,
    test_matrix: $tm,

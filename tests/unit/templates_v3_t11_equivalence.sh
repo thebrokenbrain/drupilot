@@ -7,7 +7,10 @@
 # registers (drupal-10-all-deprecations.php in drupal-rector 1.1.3; the lab
 # run in ADR 0019 shows identical Rector diffs). Compared statically on
 # legacy_widgets (the H10 subject): tests/fixtures/rector-render/legacy_widgets/
-# rector.v4.php (template 4, as M2 pinned it) vs rector.php (template 5).
+# rector.v4.php (template 4, as M2 pinned it) vs rector.php (template 6, which
+# only adds two skipped rules, OrdSingleByteRector and
+# DeprecatedAnnotationToDeprecatedAttributeRector, and an explicit empty
+# polyfill list for ^10 || ^11: ADR 0030).
 # phpstan.neon template 3 (ADR 0020) keeps template 2's level, paths and
 # excludes, adds the plan's phpVersion range and a per-plan tmpDir under
 # .phpstan-cache/, and its compat profile turns off exactly the four
@@ -23,7 +26,7 @@ export DRUPILOT_VERSION_DATA_DIR
 F="$T_REPO/tests/fixtures/rector-render/legacy_widgets"
 V4="$F/rector.v4.php"; V5="$F/rector.php"
 assert_eq "the v4 fixture is template 4" "$(grep -c 'drupilot-template-version: 4' "$V4")" "1"
-assert_eq "the v5 render is template 5" "$(grep -c 'drupilot-template-version: 5' "$V5")" "1"
+assert_eq "the v5 render is template 6" "$(grep -c 'drupilot-template-version: 6' "$V5")" "1"
 
 # list FILE OPENING -> the quoted strings of a PHP array whose opening line
 # contains the literal OPENING, one per line, up to its closing line.
@@ -35,7 +38,11 @@ for k in "->withPaths([" '$drupilotRiskySkips = ' "->withFileExtensions(["; do
   assert_eq "read from both: $k" "$(nonempty "$(list "$V5" "$k")")$(nonempty "$(list "$V4" "$k")")" "yesyes"
 done
 assert_eq "the same paths" "$(list "$V5" "->withPaths([")" "$(list "$V4" "->withPaths([")"
-assert_eq "the same skipped rules, in order" "$(list "$V5" '$drupilotRiskySkips = ')" "$(list "$V4" '$drupilotRiskySkips = ')"
+NEW_SKIPS='OrdSingleByteRector|DeprecatedAnnotationToDeprecatedAttributeRector'
+assert_eq "the same skipped rules, in order, but the two template 6 adds" \
+  "$(list "$V5" '$drupilotRiskySkips = ' | grep -vE "($NEW_SKIPS)\$" || true)" "$(list "$V4" '$drupilotRiskySkips = ')"
+assert_eq "  the two it adds" "$(list "$V5" '$drupilotRiskySkips = ' | grep -cE "($NEW_SKIPS)\$")" "2"
+assert_eq "  and an explicit empty polyfill list" "$(grep -c 'polyfillPackages(\[\]);' "$V5")|$(grep -c 'polyfillPackages' "$V4" || true)" "1|0"
 assert_eq "the same PHP version" "$(call "$V5" withPhpVersion)" "$(call "$V4" withPhpVersion)"
 assert_eq "  (PHP_81)" "$(call "$V5" withPhpVersion)" "PhpVersion::PHP_81"
 assert_eq "the same PHP level sets" "$(call "$V5" withPhpSets)" "$(call "$V4" withPhpSets)"

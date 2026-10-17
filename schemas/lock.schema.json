@@ -26,6 +26,28 @@
       "description": "The effective DRUPILOT_PHP_TARGET at the last lock-sync.sh run.",
       "type": "string"
     },
+    "rector_rule_audit": {
+      "description": "The rule audit of the Rector installed at the root (scripts/analysis/rector-rule-audit.sh, scripts/php/rule-audit.php; AR-11, ADR 0030): every rule its PHP sets register, with its sets, the PHP Rector's PhpVersionedFilter needs before it runs it, its polyfill package and its Rector interfaces. Read back while rector_version is the composer.lock version of rector/rector; it narrows the compat pass and sets its withPhpVersion().",
+      "type": "object",
+      "required": ["rector_version", "rules"],
+      "properties": {
+        "rector_version": {"type": "string", "minLength": 1},
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["rule", "sets", "min_php", "polyfill", "interfaces"],
+            "properties": {
+              "rule": {"type": "string", "pattern": "^[A-Za-z0-9_\\\\]+$"},
+              "sets": {"type": "array", "items": {"type": "string", "pattern": "^PHP_([0-9]{2}|POLYFILLS)$"}},
+              "min_php": {"type": ["string", "null"], "pattern": "^[0-9]+\\.[0-9]+$"},
+              "polyfill": {"type": ["string", "null"]},
+              "interfaces": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        }
+      }
+    },
     "phpstan_level": {
       "description": "The effective DRUPILOT_PHPSTAN_LEVEL (an int setting), written as raw JSON by lock_set_json.",
       "type": "integer"

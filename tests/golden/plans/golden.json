@@ -1,20 +1,20 @@
 {
-  "data_hash": "ae3ca627268988567255f71e96ff587186438a661868b8cc70d8ca9789efe8cb",
+  "data_hash": "597c322efe04127b8babcc6bac1526c28bd1881823e9a362b4fe1732663ef1a5",
   "files": {
     "acme_api.unsatisfiable.json": "09bf776f6a8d7b65aa4176cfcbf77b04f1acd63ba705dd740b98df57d715aae1",
-    "d11_php_only.t11-p85.json": "8e827df55691e6c33310962022c49f2d8321c5dd22fd38cd29461a90ebaca643",
-    "d7_minimal.t11-draft.json": "66c7c6281759cbb36208e02695d858e86879547582490b259fbc197105828364",
-    "d8_legacy.t11-auto-p83.json": "dd5d3d058348d872ee56f752b133f3d1452d0e60af18d9579e0921dcaf8631b3",
-    "d9_module.t11-auto-p83.json": "5abbf53e0f4c40e02fd620134028d6c25e3c1104fec21de59a2b842f7c32a5f1",
-    "keep_current.t11-auto-p83.json": "d13519c1f50ee904ce96cdd26fa81b46701e1bd24d4d8c85d4cb1891f6d7f6f7",
-    "legacy_widgets.t11-auto-p83.final-phpstan.json": "d3303829be57712d5ee2ed688eb73f68fe989fa82eb14a16ea2fe1ab63c1c21e",
-    "legacy_widgets.t11-auto-p83.json": "228a1c84aca007da0ba8e1d7e7136b55c4481b7f37f2fe27adc685fe182e8ae8",
-    "legacy_widgets.t11-auto-p84.json": "3b3f13af09897cc985df88a60cd5dac5e93564f7097cacab767fdabf21a3943c",
-    "legacy_widgets.t11-keep-previous-p83.json": "ac8802de42a633c360e914b6851b6774ddfb8139c31bf99fadb26f859acac2ec",
-    "legacy_widgets.t11-target-only-p83.json": "a120614b4c906f0e4af16ec0e3f43bb49b9676d1c407e59c3077ae818565e2a1",
-    "legacy_widgets.t11-target-only-p84.json": "c1d226251edf4ee27ff4c4b822e5d012e22a996c5f410211b61833d18cf50828",
+    "d11_php_only.t11-p85.json": "8469e626592e312ee2bd848f7ff3c9d6271bc58e9782d5adc62374f25741eb2f",
+    "d7_minimal.t11-draft.json": "36c4257babd3eb3c155fd173b446bfaf5cff93b17b239b4ce1d782a8f6868c90",
+    "d8_legacy.t11-auto-p83.json": "108a3f49e149aee3b173990d74c49f6d37dad0efe93db50c900027cb8fb2b43d",
+    "d9_module.t11-auto-p83.json": "6743097117c38c7641c772e62c2c667b041610c89da90594890e569aa1862fa0",
+    "keep_current.t11-auto-p83.json": "e2cfa216c4786ba1d2e29432cb988fb6cce0883ff097b5b0b4436365d1f2d314",
+    "legacy_widgets.t11-auto-p83.final-phpstan.json": "1d68c9581373c81de9ae1a5b5f8e24fbc8eb06b9889c129d4f00b8fa5c30d114",
+    "legacy_widgets.t11-auto-p83.json": "f65ba67037f870b2f453d6e1b363b2d2f8e18f7747b5c6d22a0ca8bfa6b2521e",
+    "legacy_widgets.t11-auto-p84.json": "402ff69546304e4cae7cabe9c660f8e0f521e9e74901f70c4ef7eeb19752e0a2",
+    "legacy_widgets.t11-keep-previous-p83.json": "445abb631a8c4742804fd43141eb6db7eb1814b9a9e354bfee5040cfef65ed61",
+    "legacy_widgets.t11-target-only-p83.json": "fc631199744f9f1cdc320002160bb8fd6f98766d716c8dde5c01a3a4b2fb39f7",
+    "legacy_widgets.t11-target-only-p84.json": "1390226cd68d8375fe66f07d495624cc03315bd36ee70acaf92b111c080aa256",
     "legacy_widgets.t12-no-optin.json": "004bfd76b8f9019c845337d908b7d74a313bdd92ed016a457f897e8f65815938",
-    "legacy_widgets.t12-preview.json": "5eb3266d246e2e0b7398626ca4d20c57176a9eb3778e26cab9c4afccac84eca2",
+    "legacy_widgets.t12-preview.json": "df9742e2420ab49814dbc11bfa759ad69f90ba81e121f8125c104b430ae7dc0d",
     "php_floor_signals.t11.json": "2f6e841e4c5c5aabe80c9bb220ca4bd3b210ec5298bf38c967ded3af2bea2862"
   }
 }

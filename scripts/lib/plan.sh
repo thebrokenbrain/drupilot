@@ -508,20 +508,20 @@ plan_rector_skip() {
 #                     a blocking item for a person
 #   apply-modernize   a modernize row whose level is at or below L
 #   apply-compat      a compat row deprecated or removed at or below P, safe
-#                     for Drupal, whose output runs on L, and that a pass
-#                     runs: the main pass's level set (deprecated at or below
-#                     the PHP of the set rector_php_set_arg gives for L: 8.4
-#                     for an unconfirmed 8.5) or the compat pass
-#                     (RECTOR_COMPAT_RULES)
+#                     for Drupal, and whose output runs on L: the main pass's
+#                     level set runs it (deprecated at or below the PHP of the
+#                     set rector_php_set_arg gives for L: 8.4 for an
+#                     unconfirmed 8.5), else the compat pass
+#                     (php_compat_pass_rules, ADR 0030)
 #   report-only       deprecated at or below P, but its fix needs a PHP above
-#                     L, is not safe to apply, or no pass runs its rule
+#                     L or is not safe to apply
 #   not-applicable    outside the window: deprecated and removed above P
 # A version left out (null) never counts as at or below a bound, except
 # output_min_php: none means the fix runs on any PHP.
 _PHP_RULE_CLASS_JQ='
 def _pv: split(".") | map(tonumber? // 0);
 def _le($a; $b): ($a != null) and (($a | _pv) <= ($b | _pv));
-def php_rule_class($L; $P; $compat; $S):
+def php_rule_class($L; $P; $S):
   . as $r
   | (_le($r.deprecated_in; $P)) as $dep
   | (_le($r.removed_in; $P)) as $rem
@@ -531,8 +531,7 @@ def php_rule_class($L; $P; $compat; $S):
     elif $r.kind == "modernize" then (if _le($r.php_level // $r.output_min_php; $L) then "apply-modernize" else "not-applicable" end)
     elif $r.kind == "compat" then
       (if ($dep or $rem) | not then "not-applicable"
-       elif $runs and $r.drupal_safe == true and (_le($r.deprecated_in; $S) or (($compat | index($r.rule)) != null))
-       then "apply-compat"
+       elif $runs and $r.drupal_safe == true then "apply-compat"
        elif $rem then "removed-blocking"
        else "report-only" end)
     elif $r.kind == "report-only" then
@@ -550,11 +549,6 @@ _php_level_set_php() {
   return 0
 }
 
-# _php_compat_rules_json -> RECTOR_COMPAT_RULES as one JSON array of FQCNs.
-_php_compat_rules_json() {
-  printf '%s\n' "${RECTOR_COMPAT_RULES:-}" | jq -R -s -c 'split("\n") | map(select(length > 0))' 2> /dev/null || printf '[]'
-  return 0
-}
 
 # php_rule_class ROW_JSON L P -> the class of one php/rules.json row (see
 # _PHP_RULE_CLASS_JQ). Prints nothing, and returns 1, on a row that is not an
@@ -562,8 +556,8 @@ _php_compat_rules_json() {
 php_rule_class() {
   local row="${1:-}" l="${2:-}" p="${3:-}"
   [[ "$l" =~ ^[0-9]+\.[0-9]+$ && "$p" =~ ^[0-9]+\.[0-9]+$ ]] && have_cmd jq || return 1
-  printf '%s' "$row" | jq -r --arg L "$l" --arg P "$p" --argjson compat "$(_php_compat_rules_json)" --arg S "$(_php_level_set_php "$l")" \
-    "$_PHP_RULE_CLASS_JQ"' if type == "object" then php_rule_class($L; $P; $compat; $S) else error("not a row") end' 2> /dev/null || return 1
+  printf '%s' "$row" | jq -r --arg L "$l" --arg P "$p" --arg S "$(_php_level_set_php "$l")" \
+    "$_PHP_RULE_CLASS_JQ"' if type == "object" then php_rule_class($L; $P; $S) else error("not a row") end' 2> /dev/null || return 1
   return 0
 }
 
@@ -575,11 +569,68 @@ php_rules_classified() {
   local l="${1:-}" p="${2:-}" f
   f="$(version_data_dir)/php/rules.json"
   [[ -r "$f" && "$l" =~ ^[0-9]+\.[0-9]+$ && "$p" =~ ^[0-9]+\.[0-9]+$ ]] && have_cmd jq || { printf '[]'; return 0; }
-  jq -c --arg L "$l" --arg P "$p" --argjson compat "$(_php_compat_rules_json)" --arg S "$(_php_level_set_php "$l")" "$_PHP_RULE_CLASS_JQ"'
-    [.rules[] | {id: (.id // .rule), rule, kind, class: php_rule_class($L; $P; $compat; $S), detect: (.detect // null),
+  jq -c --arg L "$l" --arg P "$p" --arg S "$(_php_level_set_php "$l")" "$_PHP_RULE_CLASS_JQ"'
+    [.rules[] | {id: (.id // .rule), rule, kind, class: php_rule_class($L; $P; $S), detect: (.detect // null),
                  exclude: (.exclude // null), construct: (.construct // null), deprecated_in: (.deprecated_in // null),
                  removed_in: (.removed_in // null), output_min_php: (.output_min_php // null), verified: (.verified // false)}]' \
     "$f" 2> /dev/null || printf '[]'
+  return 0
+}
+
+# php_compat_pass_rules L U -> the rules of the compat pass for the floor L and
+# the window's top U (ADR 0002, ADR 0030), one JSON array of FQCNs in the
+# file's order: every php/rules.json compat row classified apply-compat for
+# [L..U] that the main pass's level set does not run (deprecated above the PHP
+# of the set rector_php_set_arg gives for L, or with no deprecation). [] when
+# the data cannot be read or a bound is not X.Y.
+php_compat_pass_rules() {
+  local l="${1:-}" u="${2:-}" f
+  f="$(version_data_dir)/php/rules.json"
+  [[ -r "$f" && "$l" =~ ^[0-9]+\.[0-9]+$ && "$u" =~ ^[0-9]+\.[0-9]+$ ]] && have_cmd jq || { printf '[]'; return 0; }
+  jq -c --arg L "$l" --arg P "$u" --arg S "$(_php_level_set_php "$l")" "$_PHP_RULE_CLASS_JQ"'
+    [.rules[] | select(.kind == "compat" and (.rule | type) == "string")
+     | select(php_rule_class($L; $P; $S) == "apply-compat" and (_le(.deprecated_in; $S) | not)) | .rule]' \
+    "$f" 2> /dev/null || printf '[]'
+  return 0
+}
+
+# plan_php_top PLAN -> U, the top of the window the compat pass covers (ADR
+# 0002): the higher of the plan's PHP target and the highest PHP a core minor
+# of its range supports (php_bounds_for_range); the target alone when the
+# range has no data.
+plan_php_top() {
+  local plan="${1:-}" p c b hi
+  p="$(printf '%s' "$plan" | jq -r '.php.final // empty' 2> /dev/null || true)"
+  c="$(printf '%s' "$plan" | jq -r '.range.constraint // empty' 2> /dev/null || true)"
+  [[ -n "$p" ]] || return 0
+  b="$(php_bounds_for_range "$c")"; hi="${b##* }"
+  if [[ "$hi" =~ ^[0-9]+\.[0-9]+$ ]] && ! version_ge "$p" "$hi"; then printf '%s' "$hi"; else printf '%s' "$p"; fi
+  return 0
+}
+
+# plan_compat_rules PLAN [L] [U] -> the plan's rector.compat_rules (a JSON
+# array), or, for a plan that predates them (null) or has none (the fallback
+# of plan_render_fallback), php_compat_pass_rules of L (default the plan's
+# floor) and U (default plan_php_top). [] when there is no floor.
+plan_compat_rules() {
+  local plan="${1:-}" l="${2:-}" u="${3:-}" r
+  r="$(printf '%s' "$plan" | jq -c '.rector.compat_rules | select(type == "array")' 2> /dev/null || true)"
+  if [[ -n "$r" ]]; then printf '%s' "$r"; return 0; fi
+  [[ -n "$l" ]] || l="$(printf '%s' "$plan" | jq -r '.php.floor // empty' 2> /dev/null || true)"
+  [[ -n "$u" ]] || u="$(plan_php_top "$plan")"
+  php_compat_pass_rules "$l" "$u"
+  return 0
+}
+
+# plan_polyfills PLAN -> the plan's rector.polyfills (a JSON array of
+# symfony/polyfill-phpXY packages), or, for a plan that predates them (null),
+# core_range_polyfills of its range. [] when neither is known.
+plan_polyfills() {
+  local plan="${1:-}" r c
+  r="$(printf '%s' "$plan" | jq -c '.rector.polyfills | select(type == "array")' 2> /dev/null || true)"
+  if [[ -n "$r" ]]; then printf '%s' "$r"; return 0; fi
+  c="$(printf '%s' "$plan" | jq -r '.range.constraint // empty' 2> /dev/null || true)"
+  if [[ -n "$c" ]]; then core_range_polyfills "$c" | jq -c '.packages' 2> /dev/null || printf '[]'; else printf '[]'; fi
   return 0
 }
 

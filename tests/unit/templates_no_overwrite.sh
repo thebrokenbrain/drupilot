@@ -32,7 +32,7 @@ rt --dry-run
 assert_eq "a dry run writes no file and no lock" "$T_RC|$([[ -e "$r/rector.php" ]] && echo file)|$([[ -e "$(lock_path "$r")" ]] && echo lock)" "0||"
 rt
 assert_eq "written, its sha256 kept" "$T_RC|$(jq -r '.files[0].status' "$T_OUT")|$([[ "$(kept rector.php)" == "$(shaof "$r/rector.php")" ]] && echo kept)" "0|written|kept"
-assert_eq "  with the template's version" "$(DRUPILOT_PROJECT_DIR="$r" lock_get '.templates["rector.php"].template_version')" "5"
+assert_eq "  with the template's version" "$(DRUPILOT_PROJECT_DIR="$r" lock_get '.templates["rector.php"].template_version')" "6"
 assert_eq "  rector-compat.php too" "$([[ "$(kept rector-compat.php)" == "$(shaof "$r/rector-compat.php")" ]] && echo kept)" "kept"
 rt
 assert_eq "the same plan: unchanged" "$T_RC|$(jq -c '[.files[].status]' "$T_OUT")" '0|["unchanged","unchanged"]'

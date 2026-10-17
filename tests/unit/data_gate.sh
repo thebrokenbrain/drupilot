@@ -96,11 +96,17 @@ edit php/rules.json '(.rules[] | select(.id == "p81-null-to-internal") | .drupal
 assert_match "a rule rector.php skips but marked drupal_safe fails" "$(dc)" \
   '^1\|coherence: p81-null-to-internal: templates/rector\.php\.tmpl skips .*NullToStrictStringFuncCallArgRector, so drupal_safe must be false'
 undo php/rules.json
+# rector-compat.php (template 2) takes the generated drupal_safe compat rows
+# ({{COMPAT_RULES}}); a template that lists its own rules is checked.
 edit php/rules.json '(.rules[] | select(.id == "p84-implicit-nullable") | .drupal_safe) = null'
+assert_eq "a generated compat list never holds a rule that is not drupal_safe" "$(dc)" "0|"
+sed "s/^{{COMPAT_RULES}}\$/  'Rector\\\\Php84\\\\Rector\\\\Param\\\\ExplicitNullableParamTypeRector',/" "$T_REPO/templates/rector-compat.php.tmpl" > "$r/templates/rector-compat.php.tmpl"
+assert_eq "  the copy lists its own rule" "$(grep -c "^  'Rector.*ExplicitNullableParamTypeRector',\$" "$r/templates/rector-compat.php.tmpl")" "1"
 assert_match "a compat rule of rector-compat.php that is not drupal_safe fails" "$(dc)" \
   '^1\|coherence: templates/rector-compat\.php\.tmpl runs .*ExplicitNullableParamTypeRector, which is not a drupal_safe compat rule'
 undo php/rules.json
-sed 's/ExplicitNullableParamTypeRector/SleepToSerializeRector/' "$T_REPO/templates/rector-compat.php.tmpl" > "$r/templates/rector-compat.php.tmpl"
+sed 's/ExplicitNullableParamTypeRector/SleepToSerializeRector/' "$r/templates/rector-compat.php.tmpl" > "$T_TMP/compat.tmpl"
+cp "$T_TMP/compat.tmpl" "$r/templates/rector-compat.php.tmpl"
 assert_match "a skipped rule in the compat list fails" "$(dc)" '^1\|coherence: .*SleepToSerializeRector'
 cp "$T_REPO/templates/rector-compat.php.tmpl" "$r/templates/"
 assert_eq "back to green with templates/" "$(dc)" "0|"

@@ -4,6 +4,13 @@
       "p84-implicit-nullable",
       "p82-interpolation",
       "p83-get-class-no-args",
+      "p84-csv-escape",
+      "p85-backtick",
+      "p85-case-semicolon",
+      "p85-set-accessible",
+      "p85-null-offset",
+      "p85-debuginfo-null",
+      "p85-chr-range",
       "p74-implode-order"
     ],
     "deny": [
@@ -14,7 +21,8 @@
       "p81-null-to-internal",
       "deny-sleep-to-serialize",
       "deny-wakeup-to-unserialize",
-      "deny-override-on-properties"
+      "deny-override-on-properties",
+      "deny-deprecated-attribute"
     ],
     "removed-blocking": [
       "removed-mysql-ext",
@@ -24,13 +32,6 @@
     ],
     "report-only": [
       "p82-utf8-encode",
-      "p84-csv-escape",
-      "p85-backtick",
-      "p85-case-semicolon",
-      "p85-set-accessible",
-      "p85-null-offset",
-      "p85-debuginfo-null",
-      "p85-chr-range",
       "p85-ord-single-byte",
       "p80-optional-before-required",
       "p85-cast-names",
@@ -77,13 +78,6 @@
   "unsearched": [
     "p80-optional-before-required",
     "p82-utf8-encode",
-    "p84-csv-escape",
-    "p85-backtick",
-    "p85-case-semicolon",
-    "p85-chr-range",
-    "p85-debuginfo-null",
-    "p85-null-offset",
-    "p85-ord-single-byte",
-    "p85-set-accessible"
+    "p85-ord-single-byte"
   ]
 }

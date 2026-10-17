@@ -124,7 +124,12 @@ POLY_FUNCS=" $(printf '%s' "$POLY" | jq -r '.functions | join(" ")') "
 # (path:line:code), its location relative to the subject.
 _signal() {
   local loc="${3%%:*}" line
-  line="$(printf '%s' "$3" | cut -d: -f2)"
+  # The longest scanned path that starts the hit (a ':' in a path is kept).
+  if [[ -n "$CODE_DIR" && -f "$CODE_DIR/files" ]]; then
+    line="$(awk -v h="$3" 'index(h, $0 ":") == 1 && length($0) > m { m = length($0); p = $0 } END { print p }' "$CODE_DIR/files")"
+    [[ -z "$line" ]] || loc="$line"
+  fi
+  line="${3#"$loc":}"; line="${line%%:*}"
   loc="${loc#"$SUBJECT_ABS"/}:$line"
   SIGNALS_JSON="$(printf '%s' "$SIGNALS_JSON" | jq -c --arg v "$1" --arg p "$2" --arg l "$loc" --argjson pf "$4" \
     '. + [{version: $v, pattern: $p, location: $l} + (if $pf then {polyfilled: true} else {} end)]')"
@@ -148,7 +153,8 @@ build_code_dir() {
   done < "$CODE_DIR/files"
   return 0
 }
-# scan_funcs VERSION LABEL FUNC... -> scan_for for calls of the FUNCs: a
+# scan_funcs VERSION LABEL FUNC... -> scan_for for calls of the FUNCs in the
+# code (build_code_dir: a comment or a string naming one is no call): a
 # method or static call (->f(, ::f() and a definition are no call, and a FUNC
 # the module itself defines as a global function (in its code, in a file with
 # no namespace) is provided. The first hit (path order, then line) that calls
@@ -156,7 +162,7 @@ build_code_dir() {
 # hit calls a polyfilled one, the first is kept, marked polyfilled, and does
 # not count (return 1).
 scan_funcs() {
-  local ver="$1" label="$2" alt hits hit code n first="" defined="" k _f
+  local ver="$1" label="$2" alt hits hit code n first="" defined="" k _f fp ln
   shift 2
   alt="$(IFS='|'; printf '%s' "$*")"
   hits="$(grep_sources -HInE -e "\\b($alt)[[:space:]]*\\(" | LC_ALL=C sort -t: -k1,1 -k2,2n || true)"
@@ -172,7 +178,13 @@ scan_funcs() {
   defined=" $defined "
   while IFS= read -r hit; do
     [[ -n "$hit" ]] || continue
-    code="${hit#*:}"; code="${code#*:}"
+    # The hit's line in the code mirror (the longest path of the list that
+    # starts the hit, so a ':' in a path is kept).
+    k="$(awk -v h="$hit" 'index(h, $0 ":") == 1 && length($0) > m { m = length($0); n = NR } END { if (n) print n }' "$CODE_DIR/files")"
+    [[ -n "$k" ]] || continue
+    fp="$(sed -n "${k}p" "$CODE_DIR/files")"; ln="${hit#"$fp":}"; ln="${ln%%:*}"
+    [[ "$ln" =~ ^[0-9]+$ ]] || continue
+    code="$(sed -n "${ln}p" "$CODE_DIR/$k")"
     # The line without its method and static calls and its definitions.
     code="$(printf '%s\n' "$code" | sed -E 's/(->|::)[[:space:]]*[A-Za-z_][A-Za-z0-9_]*//g; s/function[[:space:]]+&?[A-Za-z_][A-Za-z0-9_]*//g')"
     for n in $(printf '%s\n' "$code" | grep -oE "(^|[^A-Za-z0-9_\$])($alt)[[:space:]]*\\(" | sed 's/^[^A-Za-z_]*//; s/[[:space:]]*($//' || true); do
