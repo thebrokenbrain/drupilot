@@ -13,6 +13,8 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+## [1.0.0-alpha.3] - 2026-10-17
+
 ### Added
 - **Core polyfills are version data** (T-M5-08, ADR 0029).
   `config/targets/<major>.json` `minors[].polyfills` lists the
@@ -3455,7 +3457,8 @@ verdict, what-changed report card, frozen lock), and new insight tools
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.2...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.3...HEAD
+[1.0.0-alpha.3]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.2...v1.0.0-alpha.3
 [1.0.0-alpha.2]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.1...v1.0.0-alpha.2
 [1.0.0-alpha.1]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.2...v1.0.0-alpha.1
 [0.9.2]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.1...v0.9.2
