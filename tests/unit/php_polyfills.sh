@@ -10,6 +10,7 @@
 #   --range, a polyfilled function's signal is kept, marked polyfilled, and
 #   does not raise the floor, while one no polyfill provides does; the mb_*
 #   functions (polyfilled only with ext-mbstring) always count;
+# - core-strategy.sh and the plan's L judge the floor with the range's polyfills;
 # - the 8.5 row: the pipe operator and the (void) cast in the code only (a
 #   regex, a string or a comment is no signal), array_first(); an attribute
 #   (an older PHP ignores it), a method call, a static call, a definition and a
@@ -95,4 +96,20 @@ assert_eq "mb_str_pad() is PHP 8.3" "$(jq -c '[.floor, [.signals[] | select(.pat
 printf '<?php\nset_error_handler(fn () => true);\n$h = get_error_handler();\n' > "$S/n.php"
 df --range '^11.3'
 assert_eq "get_error_handler() on ^11.3 (polyfill-php85): no 8.5 floor" "$(jq -c '[.floor, [.signals[] | select(.version == "8.5") | .polyfilled]]' "$T_OUT")" '["8.1",[true]]'
+
+# The consumers judge the floor with the range's polyfills: core-strategy.sh
+# (its second scan, with the recommended range) and the plan's L.
+P="$T_TMP/p"; mkdir -p "$P"
+printf 'name: P\ntype: module\ncore_version_requirement: ^11.2\n' > "$P/p.info.yml"
+printf '<?php\nfunction p_f(array $a) { return array_find($a, fn ($x) => $x > 1); }\n' > "$P/p.module"
+DRUPILOT_PHP_TARGET=8.3 DRUPILOT_CORE_TARGET_STRATEGY=auto t_run "$T_SH" "$T_REPO/scripts/analysis/core-strategy.sh" --subject "$P" --json
+assert_eq "core-strategy, declared ^11.2: array_find() is polyfilled, PHP 8.3 is compatible" \
+  "$(jq -c '[.recommended_core_version_requirement, .php_floor_detected, .php_floor_target_compatible]' "$T_OUT")" '["^11.2","8.1",true]'
+DRUPILOT_PHP_TARGET=8.3 DRUPILOT_CORE_TARGET_STRATEGY=d11-only t_run "$T_SH" "$T_REPO/scripts/analysis/core-strategy.sh" --subject "$P" --json
+assert_eq "core-strategy, ^11 (11.0 ships no polyfill-php84): floor 8.4, PHP 8.3 is not compatible" \
+  "$(jq -c '[.recommended_core_version_requirement, .php_floor_detected, .php_floor_target_compatible]' "$T_OUT")" '["^11","8.4",false]'
+for r in '^11.2;8.3' '^10.3 || ^11;8.4'; do
+  DRUPILOT_PHP_TARGET=8.4 t_run "$T_SH" "$T_REPO/scripts/analysis/upgrade-path.sh" --subject "$P" --phase draft --range "${r%;*}" --json
+  assert_eq "the plan's L on ${r%;*}: ${r#*;}" "$(jq -r '.php.floor' "$T_OUT")" "${r#*;}"
+done
 t_done

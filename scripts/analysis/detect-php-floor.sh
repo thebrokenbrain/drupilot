@@ -159,6 +159,8 @@ scan_funcs() {
   local ver="$1" label="$2" alt hits hit code n first="" defined="" k _f
   shift 2
   alt="$(IFS='|'; printf '%s' "$*")"
+  hits="$(grep_sources -HInE -e "\\b($alt)[[:space:]]*\\(" | LC_ALL=C sort -t: -k1,1 -k2,2n || true)"
+  [[ -n "$hits" ]] || return 1
   build_code_dir
   k=0
   while IFS= read -r _f; do
@@ -168,8 +170,6 @@ scan_funcs() {
       | sed 's/^[[:space:]]*function[[:space:]]*&*//; s/[[:space:]]*($//' | tr '\n' ' ' || true)"
   done < "$CODE_DIR/files"
   defined=" $defined "
-  hits="$(grep_sources -HInE -e "\\b($alt)[[:space:]]*\\(" | LC_ALL=C sort -t: -k1,1 -k2,2n || true)"
-  [[ -n "$hits" ]] || return 1
   while IFS= read -r hit; do
     [[ -n "$hit" ]] || continue
     code="${hit#*:}"; code="${code#*:}"
@@ -185,10 +185,12 @@ scan_funcs() {
   _signal "$ver" "$label" "$first" true
   return 1
 }
-# scan_code VERSION ERE LABEL -> scan_for on the code only (build_code_dir),
-# so a regex or a docblock is no signal.
+# scan_code VERSION ERE LABEL TOKEN -> scan_for on the code only
+# (build_code_dir), so a regex or a docblock is no signal; a tree with no
+# TOKEN (a fixed string the ERE needs) anywhere is not blanked for it.
 scan_code() {
-  local ver="$1" ere="$2" label="$3" hit idx
+  local ver="$1" ere="$2" label="$3" token="$4" hit idx
+  [[ -n "$(grep_sources -lF -e "$token")" ]] || return 1
   build_code_dir
   hit="$( (cd "$CODE_DIR" && LC_ALL=C find . -type f ! -name files -exec grep -nHE -e "$ere" {} + 2> /dev/null) \
     | sed 's#^\./##' | LC_ALL=C sort -t: -k1,1n -k2,2n | sed -n '1p' || true)"
@@ -206,8 +208,8 @@ found_82=0 found_83=0 found_84=0 found_85=0
 # and migration85.new-functions).
 # The syntax is searched in the code only (a regex or a comment is no pipe);
 # the 8.5 attributes are no signal: an older PHP ignores an attribute.
-scan_code 8.5 "(^|[^|])\\|>[[:space:]]*([A-Za-z_\\\\\$('\"[]|\$)" 'pipe operator (|>)'            && found_85=1 || true
-scan_code 8.5 '\(void\)[[:space:]]*[$A-Za-z_\\]'          '(void) cast'                   && found_85=1 || true
+scan_code 8.5 "(^|[^|])\\|>[[:space:]]*([A-Za-z_\\\\\$('\"[]|\$)" 'pipe operator (|>)' '|>'       && found_85=1 || true
+scan_code 8.5 '\(void\)[[:space:]]*[$A-Za-z_\\]'          '(void) cast' '(void)'          && found_85=1 || true
 scan_funcs 8.5 '8.5 stdlib function' array_first array_last get_error_handler get_exception_handler && found_85=1 || true
 
 # PHP 8.4-only language / stdlib additions.

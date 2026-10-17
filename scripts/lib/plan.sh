@@ -277,28 +277,31 @@ core_range_minors() {
 # reaches with no targets/<N>.json (Drupal 9): then both lists are empty, as
 # when CONSTRAINT admits no data minor or the data cannot be read.
 core_range_polyfills() {
-  local c="${1:-}" dir m mj rows="" known=1
+  local c="${1:-}" dir mj minors="" known=1
+  local files=()
   dir="$(version_data_dir)"
   for mj in $(range_majors "$c"); do
     [[ -r "$dir/targets/$mj.json" ]] || known=0
+    files+=("$dir/targets/$mj.json")
   done
   if [[ "$known" == "1" && -n "$c" && -r "$dir/php/polyfills.json" ]] && have_cmd jq; then
-    for m in $(core_range_minors "$c" 999); do
-      mj="${m%%.*}"
-      rows="$rows$(target_get "$mj" ".minors[\"$m\"] | {minor: \"$m\", polyfills: (.polyfills // null), php_min: (.php_min // null)} | tojson")
-"
-    done
+    minors="$(core_range_minors "$c" 999 | tr '\n' ' ')"
   fi
-  if [[ -z "$rows" ]]; then printf '{"functions":[],"packages":[]}\n'; return 0; fi
-  printf '%s' "$rows" | jq -s -c --slurpfile p "$dir/php/polyfills.json" '
+  if [[ -z "${minors// /}" ]]; then printf '{"functions":[],"packages":[]}\n'; return 0; fi
+  # One jq over the range's target files: a row per minor of the range.
+  jq -n -c --arg ms "$minors" --slurpfile p "$dir/php/polyfills.json" '
     def vn: split(".") | map(tonumber? // 0);
-    ($p[0].packages // {}) as $pk
+    ([inputs | (.minors // {}) | to_entries[]] | from_entries) as $all
+    | ($p[0].packages // {}) as $pk
+    | [$ms | split(" ")[] | select(length > 0) | . as $m | ($all[$m] // {})
+       | {minor: $m, polyfills: (.polyfills // null), php_min: (.php_min // null)}]
     | map(. as $row | [$pk | to_entries[] | .key as $k | .value.php as $kp
           | select((($row.polyfills // []) | index($k)) != null
                    or ($row.php_min != null and ($row.php_min | vn) >= ($kp | vn)))
           | $k])
     | (if length == 0 then [] else reduce .[1:][] as $s (.[0]; . - (. - $s)) end | sort) as $pkgs
-    | {functions: ([$pkgs[] | $pk[.].functions[]] | unique), packages: $pkgs}' 2> /dev/null || printf '{"functions":[],"packages":[]}\n'
+    | {functions: ([$pkgs[] | $pk[.].functions[]] | unique), packages: $pkgs}' ${files[@]+"${files[@]}"} 2> /dev/null \
+    || printf '{"functions":[],"packages":[]}\n'
   return 0
 }
 

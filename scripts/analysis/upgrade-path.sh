@@ -401,10 +401,11 @@ BED="$(printf '%s' "$TB" | jq -r .bed_core)"
 # --- range ----------------------------------------------------------------------
 FLOOR_STRATEGY="$(lc "$(config_get DRUPILOT_REQUIRE_PHP_FLOOR detect)")"
 [[ "$FLOOR_STRATEGY" == "target" ]] || FLOOR_STRATEGY="detect"
-DETECTED=""
+DETECTED=""; DETECTED_SIGNALS=0
 if [[ "$FLOOR_STRATEGY" == "detect" ]]; then
-  DETECTED="$("$BASH" "$(plugin_root)/scripts/analysis/detect-php-floor.sh" --subject "$SUBJECT_ABS" --json 2> /dev/null \
-    | jq -r '.floor // empty' 2> /dev/null || true)"
+  DETECTED_JSON="$("$BASH" "$(plugin_root)/scripts/analysis/detect-php-floor.sh" --subject "$SUBJECT_ABS" --json 2> /dev/null || true)"
+  DETECTED="$(printf '%s' "$DETECTED_JSON" | jq -r '.floor // empty' 2> /dev/null || true)"
+  DETECTED_SIGNALS="$(printf '%s' "$DETECTED_JSON" | jq -r '.signals | length' 2> /dev/null || true)"
 fi
 if [[ "$STRATEGY" == "explicit" ]]; then
   RS="explicit"; C="$RANGE"
@@ -435,9 +436,10 @@ else
   L=""
   _max_php "$(php_min_at "$F")"
   # The code's floor once the range is known: a function every core of C
-  # provides through a polyfill does not raise it (detect-php-floor.sh --range).
+  # provides through a polyfill does not raise it (detect-php-floor.sh --range;
+  # a scan with no signal has nothing a polyfill could lower).
   DETECTED_L="$DETECTED"
-  if [[ -n "$DETECTED" ]]; then
+  if [[ -n "$DETECTED" && "${DETECTED_SIGNALS:-0}" != "0" ]]; then
     DETECTED_L="$("$BASH" "$(plugin_root)/scripts/analysis/detect-php-floor.sh" --subject "$SUBJECT_ABS" --range "$C" --json 2> /dev/null \
       | jq -r '.floor // empty' 2> /dev/null || true)"
     [[ -n "$DETECTED_L" ]] || DETECTED_L="$DETECTED"
