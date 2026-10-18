@@ -268,6 +268,9 @@ worklist_fresh() {
 
 # The worklist reasons of the PHP window's items (classify.sh), as one ERE.
 PHP_WINDOW_REASONS_ERE='removed-in-target-php|does-not-compile|fix-needs-php-above-floor|deprecated-no-rule|deprecated-in-php-window'
+# The worklist reasons of the core removals' items (classify.sh, ADR 0031),
+# as one ERE.
+REMOVAL_REASONS_ERE='base-theme-removed|removed-from-core|removed-dependency-(no-release|unverified|replaceable)'
 
 # php_window_items [SUBJECT] -> the open human worklist items of the PHP window
 # (a reason of PHP_WINDOW_REASONS_ERE), as one JSON array of {file, reason,
@@ -293,6 +296,26 @@ php_window_items() {
        | . as $i
        | {file, reason, blocking: (.blocking == true),
           fresh: (if (.file_hash // null) != null then ($now[.file] // null) == .file_hash else $wf end),
+          messages: [$F[] | select(.id as $x | ($i.finding_ids // []) | index($x)) | .message]}]' "$w" 2> /dev/null || printf '[]\n'
+  return 0
+}
+
+# removal_items [SUBJECT] -> the open human worklist items of the core
+# removals (a reason of REMOVAL_REASONS_ERE, ADR 0031), as one JSON array of
+# {file, reason, blocking, fresh, messages} (messages: the items' findings,
+# from findings.json): fresh while the whole worklist is fresh
+# (worklist_fresh). [] when there is no worklist.
+removal_items() {
+  local s="${1:-$PWD}" w f wf=false
+  w="$(worklist_file "$s")"; f="$(project_state_path "$s")/findings.json"
+  [[ -r "$w" ]] || { printf '[]\n'; return 0; }
+  [[ -r "$f" ]] || f=/dev/null
+  worklist_fresh "$s" && wf=true
+  jq -c --slurpfile fd "$f" --arg re "$REMOVAL_REASONS_ERE" --argjson wf "$wf" '
+    (($fd[0] // {}).findings // []) as $F
+    | [(.items // [])[] | select(.status == "open" and .lane == "human" and ((.reason // "") | test($re)))
+       | . as $i
+       | {file, reason, blocking: (.blocking == true), fresh: $wf,
           messages: [$F[] | select(.id as $x | ($i.finding_ids // []) | index($x)) | .message]}]' "$w" 2> /dev/null || printf '[]\n'
   return 0
 }

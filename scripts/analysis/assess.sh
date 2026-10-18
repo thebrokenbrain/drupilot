@@ -15,9 +15,14 @@
 #                  signature and port-safety findings of severity error
 #                  (manual_items, each with its occurrences)
 #   hard_breaks    the categories of config/catalog/hard-breaks.json with at
-#                  least one matching file of the subject
+#                  least one matching file of the subject, plus the detectors
+#                  of the core removals a person must resolve (a removed base
+#                  theme, a removal with no replacement: scan-removals.sh,
+#                  ADR 0031)
 #   blocking_deps  deps-status.sh's blockers (no Drupal 11 release on
-#                  drupal.org; offline every contrib dependency is unknown)
+#                  drupal.org; offline every contrib dependency is unknown),
+#                  plus each removed core module no release of its contrib
+#                  replacement covers (scan-removals.sh's blocked)
 #
 #   XL  blocking_deps >= 1 or hard_breaks >= 3 or manual > 40
 #   L   hard_breaks == 2 or manual > 15
@@ -159,8 +164,14 @@ jq -n -c --slurpfile f "$FINDINGS" --slurpfile w "$WORKLIST" --slurpfile cs "$TM
                       and ("\(.file)\u001f\(.anchor)" as $k | $rx | index($k) | not)) | . + {n: occ}]
      + [$cur[] | select((.class == "signature" or .class == "safety") and .severity == "error") | . + {n: 1}]
      | sort_by([.file, .line // 0, .id])) as $man
-  | ([$hb | to_entries[] | select((.value | length) > 0) | .key]) as $breaks
-  | ($man | map(.n) | add // 0) as $m | ($breaks | length) as $h | ($D.totals.blockers // 0) as $b
+  # The core removals (ADR 0031): rule removal:<detector>:<action>, the
+  # removed name as the symbol.
+  | ([$cur[] | select(.class == "removal") | . + {det: (.rule | split(":")[1]), act: (.rule | split(":")[2])}]) as $rem
+  | ([$rem[] | select(.act == "decision" or .act == "hard-break")] | group_by(.det)
+     | map({key: .[0].det, value: ([.[].file] | unique)}) | from_entries) as $rhb
+  | ([$hb | to_entries[] | select((.value | length) > 0) | .key] + ($rhb | keys)) as $breaks
+  | ($man | map(.n) | add // 0) as $m | ($breaks | length) as $h
+  | (($D.totals.blockers // 0) + ([$rem[] | select(.act == "blocked") | .symbol] | unique | length)) as $b
   | ([["rector", "phpstan", "port-safety", "signatures"][] | {key: ., value: (($F.tools // {})[.] // "missing")}]
      | map(select(.value != "ok" and .value != "partial"))) as $notok
   | ($notok | length > 0) as $prov
@@ -197,7 +208,9 @@ jq -n -c --slurpfile f "$FINDINGS" --slurpfile w "$WORKLIST" --slurpfile cs "$TM
                       | map({key: .[0].message, value: ([.[].file] | unique | length)}) | from_entries)},
      manual_items: [$man | to_entries[] | {id: "M\(.key + 1)", finding_id: .value.id, file: .value.file, line: .value.line,
                     occurrences: .value.n, source: "\(.value.tool):\(.value.rule)", what: .value.message}],
-     hard_break_categories: $hb, hard_breaks: $breaks,
+     hard_break_categories: ($hb + $rhb), hard_breaks: $breaks,
+     core_removals: ($rem | group_by([.det, .symbol])
+                     | map({detector: .[0].det, name: .[0].symbol, action: .[0].act, severity: .[0].severity, files: ([.[].file] | unique)})),
      hygiene: {error: ([$meta[] | select(.severity == "error")] | length), warn: ([$meta[] | select(.severity == "warning")] | length),
                info: ([$meta[] | select(.severity == "info")] | length)},
      dependencies: {ready: ($D.totals.ready // 0), blockers: $b, unknown: ($D.totals.unknown // 0), offline: (if ($D | has("offline")) then $D.offline else null end),
@@ -247,6 +260,7 @@ render_template "$(plugin_root)/templates/viability-report.md.tmpl" "$ART/viabil
   "SOFT_DEPRECATION_ROWS=$(j '.soft_deprecations | if length == 0 then "| - | - | - | - | - | - |" else map("| `\(.symbol | gsub("\\|"; "\\|"))` | \(.deprecated_in // "?") | \(.removed_in // "?") | \(.effort // "?") | \(.replacement_since // "?") | per policy |") | join("\n") end')" \
   "TWIG3_STATUS=$(hbs twig3)" "TWIG3_NOTES=$(hbn twig3)" "CKEDITOR5_STATUS=$(hbs ckeditor5)" "CKEDITOR5_NOTES=$(hbn ckeditor5)" \
   "JQUERY_STATUS=$(hbs jquery_ui)" "JQUERY_NOTES=$(hbn jquery_ui)" "SYMFONY7_STATUS=$(hbs symfony7)" "SYMFONY7_NOTES=$(hbn symfony7)" \
+  "CORE_REMOVAL_ROWS=$(j '(.core_removals // []) | if length == 0 then "| - | - | - | - |" else map("| `\(.name | gsub("\\|"; "\\|"))` | \(.detector) | \(.action) | \(.files | map("`" + gsub("\\|"; "\\|") + "`") | join(", ")) |") | join("\n") end')" \
   "INFO_YML_STATUS=$(j '.info_yml | "- `core_version_requirement` present: \(.core_version_requirement_present)\n- admits the target major: \(.d11_compatible)\n- every submodule admits it: \(.submodules_d11_compatible)"')" \
   "TARGET_CORE_REQUIREMENT=$(j '.recommended_core_version_requirement // "-"')" \
   "HYGIENE_SUMMARY=$(j '"\(.hygiene.error) error(s), \(.hygiene.warn) warning(s), \(.hygiene.info) info."')" \

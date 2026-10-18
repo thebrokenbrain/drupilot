@@ -13,6 +13,73 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+### Added
+- **The core-removals scanner** (T-M6-04, 04-R14, ADR 0031).
+  `scripts/analysis/scan-removals.sh [--subject DIR] [--target N] [--source S]
+  [--range C] [--root DIR] [--offline] [--json]` reports what a module or theme
+  still takes from Drupal core that a major in (S, T] removes. It is driven by
+  `config/targets/<N>.json` `removed_extensions` and `removed_libraries`.
+  - Detectors:
+    - `dependency-removed`: a `drupal:NAME` or bare `NAME` in a
+      `dependencies:`/`install:` list (`PROJECT:NAME` already names a contrib
+      project);
+    - `migrate-drupal-usage`: a dependency on `migrate_drupal` or
+      `migrate_drupal_ui`, or code that names their namespace;
+    - `base-theme-removed`;
+    - `library-removed`: a list item or a key in a `*.info.yml` or
+      `*.libraries.yml`, or a quoted name in PHP or Twig;
+    - `namespace-move`: an announced note, never a hard break.
+  - Each finding has an action: `rewrite`, `blocked`, `verify`,
+    `composer-required`, `decision`, `hard-break` or `note`.
+    - A removed module with a contrib replacement is checked against
+      drupal.org's release feed (H8). The release must be published, not a
+      `-dev` branch, stable (any release in a preview), and admit every
+      verified core minor of the declared range.
+    - The feed is cached for a day. In deterministic mode the answer is frozen
+      in the root's lock (`.replacements`); `lock-sync.sh --refresh` drops it.
+- **Core removals in the plan, the findings and the assessment** (ADR 0031).
+  - The upgrade plan's `core_removals` and `hard_breaks` are now filled from
+    an offline scan, so the plan stays network-free.
+  - `extract.sh` keeps the scan as the raw tool `removals`.
+    `normalize-findings.sh` makes `class: removal` findings with the rule
+    `removal:<detector>:<action>`.
+  - `classify.sh` sends each finding to `human`, with the reason
+    `base-theme-removed`, `removed-from-core`, `removed-dependency-no-release`,
+    `removed-dependency-unverified` or `removed-dependency-replaceable`.
+  - `assess.sh` counts the removal hard breaks in the rubric's `hard_breaks`
+    and a dependency no release covers in `blocking_deps`. It adds
+    `core_removals` to `assess.json` and a "Core removals" section to
+    `viability-report.md`.
+  - `port-summary.sh` blocks a ported subject while a blocking removal item is
+    open (blocker source `core-removals`), and `make-issue.sh` lists each open
+    item as a remaining task.
+- **The pre-release opt-in tab** (T-M6-07, CC-15).
+  - `/drupilot-setup` asks `ALLOW_PRERELEASE` ("Pre-release": `no`, the
+    default, or `yes`) only when the target major is a pre-release (Drupal 12)
+    without `DRUPILOT_ALLOW_PRERELEASE=true`. It never asks in an autonomous
+    run, where the plan's refusal stops the run with nothing written.
+  - It can be pre-answered with `DRUPILOT_CHOICE_ALLOW_PRERELEASE`. The
+    refusal `prerelease-not-opted-in` now names the tab.
+  - The `/drupilot` router accepts `--target N` and passes it to the setup.
+  - The draft plan's core removals are reported as the Drupal 12 readiness
+    preview.
+- The `d11_for_d12` fixture (T-M6-01): a Drupal 11 module with annotations in
+  its tests, a Claro sub-theme, a `ConstraintValidator`, a
+  `core/internal.backbone` and a `core/js-cookie` dependency, a `contact`
+  dependency and a `migrate_drupal` source plugin. Its goldens are
+  `tests/golden/removals/` and the `d11_for_d12.t12-preview` plan and
+  templates.
+
+### Changed
+- Every upgrade plan carries `core_removals` and `hard_breaks` (`[]` where
+  `null` was). The T=11 plan goldens change that way, and so do the template
+  goldens, through `phpstan.neon`'s `tmpDir`, which the plan hash keys. Every
+  assess golden gains `core_removals: []`. The D10→D11 patch does not change
+  (H10).
+- The router eval accepts consecutive allowed tab insertions before the 0.9
+  tab they name (`ALLOW_PRERELEASE` after `TARGET_MAJOR`, both before
+  `PHP_TARGET`).
+
 ## [1.0.0-alpha.5] - 2026-10-18
 
 ### Added

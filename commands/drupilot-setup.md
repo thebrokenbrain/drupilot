@@ -63,6 +63,33 @@ no tab and say so in one line. Only when `allow_prerelease` is `true`, ask with
 
 Use the answer as T below.
 
+**Decision point — the pre-release opt-in (T-M6-07, CC-15).** Read T's status
+from the version data:
+
+```bash
+bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; target_get "$1" .status' _ <T>
+```
+
+When it is `pre-release` and `allow_prerelease` is not `true`, the plan below would
+refuse T (`prerelease-not-opted-in`). A pre-answer comes first:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key ALLOW_PRERELEASE --subject "<subject_dir>" --json
+```
+
+When its `value` is `yes`, opt in with no tab; when it is `no`, take Drupal 11 as T
+and say so in one line. Otherwise ask with **AskUserQuestion** (header
+"Pre-release", default = the recommended option):
+
+- **No — port to Drupal 11 (recommended)**: the supported major; T becomes 11.
+- **Yes — port to Drupal T as a preview**: its core is a pre-release; drupilot plans
+  the port and reports what the pre-release removes from core.
+
+Never ask it in an autonomous run: resolve the plan as it stands there, and its
+`prerelease-not-opted-in` refusal stops the run with nothing written. After an
+opt-in, pass `DRUPILOT_ALLOW_PRERELEASE=true` to the plan below with the answered
+values.
+
 **Decision point — let the developer pick the PHP target (G4/G5).** The PHP
 version pins the whole toolchain (PHPStan, PHPCS, DDEV `php_version`, and the
 ceiling of Rector's PHP floor). When T is not 11, use the target's own default
@@ -114,9 +141,15 @@ DRUPILOT_TARGET_MAJOR=<T> DRUPILOT_PHP_TARGET=<X.Y> bash "${CLAUDE_PLUGIN_ROOT}/
 - **Exit 0**: the plan is frozen in the root's lock. Report in one line the
   target and its test-bed core (`target.bed_core`), the declared range
   (`range.constraint`), the PHP window (`php.floor`..`php.final`) and the hops.
+  When `core_removals` is not empty, list what the target removes from core that
+  the subject still uses (each `name`, `detector` and `files`), and name the
+  `hard_breaks` a person must resolve (a removed base theme, a removal with no
+  replacement); a removed module with a contrib replacement is checked against
+  drupal.org's release feed in the assessment (ADR 0031).
   - If `.target.major` is not 11, stop here, persisting nothing: say that the
-    draft plan is frozen and that Drupal 12 test-beds arrive with a later drupilot
-    release (T-M3-08); do not run the setup scripts below.
+    draft plan is frozen, relay its core removals as above (the Drupal T readiness
+    preview), and that Drupal 12 test-beds arrive with a later drupilot release
+    (T-M3-08); do not run the setup scripts below.
   - Otherwise persist the answered values (`prefs_set DRUPILOT_TARGET_MAJOR <T>`,
     `prefs_set DRUPILOT_PHP_TARGET <X.Y>`, run with
     `DRUPILOT_PROJECT_DIR=<drupal_root>`): now when `drupal_root_exists` is `true`,

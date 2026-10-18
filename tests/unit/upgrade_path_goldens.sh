@@ -5,7 +5,8 @@
 # golden.json pins: legacy_widgets for T 11 (auto, keep-previous and its
 # keep-d10 alias, target-only and its d11-only alias, P 8.3 / 8.4, the final
 # phase with its recorded PHPStan output) and T 12 (refused without the
-# opt-in, a preview with it), the D9, D8 and D7 fixtures, a PHP-only move
+# opt-in, a preview with it), d11_for_d12 for T 12 (its core removals and
+# hard breaks: T-M6-01, ADR 0031), the D9, D8 and D7 fixtures, a PHP-only move
 # (d11_php_only at 8.5), a kept three-major declaration (keep_current), and
 # the refusals of acme_api (W = {8.5}) and php_floor_signals (L 8.4 > P 8.3).
 # Capture (only on purpose, then golden.sh --update, in its own commit):
@@ -20,7 +21,7 @@ export DRUPILOT_VERSION_DATA_DIR
 # The subjects are copies: no Drupal root (or drupal-rector) above the
 # checkout can leak into a plan.
 F="$T_TMP/fx"; mkdir -p "$F/monorepo/web/modules/custom"
-for d in legacy_widgets d9_module d8_legacy d7_minimal d11_php_only keep_current; do cp -R "$T_REPO/tests/fixtures/$d" "$F/$d"; done
+for d in legacy_widgets d9_module d8_legacy d7_minimal d11_php_only keep_current d11_for_d12; do cp -R "$T_REPO/tests/fixtures/$d" "$F/$d"; done
 cp -R "$T_REPO/tests/fixtures/monorepo/web/modules/custom/acme_api" "$F/monorepo/web/modules/custom/acme_api"
 cp -R "$T_REPO/tests/baseline/inputs/php_floor_signals" "$F/php_floor_signals"
 PHPSTAN="$T_REPO/tests/fixtures/legacy_widgets.golden/raw/phpstan.json"
@@ -34,6 +35,7 @@ legacy_widgets.t11-target-only-p84||legacy_widgets|--strategy target-only --php 
 legacy_widgets.t11-auto-p83.final-phpstan||legacy_widgets|--phase final --phpstan @PHPSTAN
 legacy_widgets.t12-no-optin||legacy_widgets|--target 12
 legacy_widgets.t12-preview|DRUPILOT_ALLOW_PRERELEASE=true|legacy_widgets|--target 12
+d11_for_d12.t12-preview|DRUPILOT_ALLOW_PRERELEASE=true|d11_for_d12|--target 12
 d9_module.t11-auto-p83||d9_module|
 d8_legacy.t11-auto-p83||d8_legacy|
 d7_minimal.t11-draft||d7_minimal|

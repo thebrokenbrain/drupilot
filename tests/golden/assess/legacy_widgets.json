@@ -6,6 +6,7 @@
       "FunctionFirstClassCallableRector": 1
     }
   },
+  "core_removals": [],
   "core_target": {
     "bc_break": false,
     "composer_core_constraint": "^10 || ^11",

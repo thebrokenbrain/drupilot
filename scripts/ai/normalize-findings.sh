@@ -11,10 +11,10 @@
 # PHP, so the result is the same on every platform (DET-2).
 #
 # Reads <raw-dir>/<NN>-<stage>-{index,rector,phpstan,phpcs,port-safety,
-# signatures,metadata,php-target,php-lint,phpcompat,anchors}.json as
+# signatures,metadata,php-target,php-lint,phpcompat,removals,anchors}.json as
 # scripts/ai/extract.sh writes them (any but the index may be missing;
-# php-target, php-lint and phpcompat are expected, and have a verdict, only
-# when the index names them or their file exists).
+# php-target, php-lint, phpcompat and removals are expected, and have a
+# verdict, only when the index names them or their file exists).
 #
 #   id      "F-" + the first 12 hex of sha256(tool␟rule␟file␟anchor␟symbol␟
 #           message␟occurrence) (␟ = 0x1f); the line is not part of it
@@ -34,7 +34,9 @@
 #           findings no config/php/rules.json row covers (a warning: never
 #           blocking; a Syntax.* one is dropped as a false positive when every
 #           php -l leg ran, compiled the file and the legs reach both ends of
-#           its testVersion)
+#           its testVersion); removal:<detector>:<action> from
+#           scan-removals.sh (its symbol the removed extension or library,
+#           its severity the scanner's: ADR 0031)
 #   anchor  the innermost Namespace\Class::method or function of the line,
 #           the Namespace\ClassLike for a line in a class-like body outside
 #           its methods (the raw anchors file, scripts/php/anchor.php), else
@@ -42,7 +44,8 @@
 #   scope   current, or next-major for a soft deprecation under the report or
 #           defer policy (DRUPILOT_SOFT_DEPRECATIONS)
 #   class   hard | soft | unknown (classify-deprecations.sh) | analysis |
-#           safety | signature | metadata | style | php-target | rector
+#           safety | signature | metadata | style | php-target | removal |
+#           rector
 #
 # Usage:
 #   normalize-findings.sh (--subject DIR | --raw-dir DIR) [--stage S]
@@ -152,11 +155,13 @@ F_META="$(json_or "$(raw metadata)" '{}')"
 F_PHPT="$(json_or "$(raw php-target)" '{}')"
 F_LINT="$(json_or "$(raw php-lint)" '{}')"
 F_PCOMP="$(json_or "$(raw phpcompat)" '{}')"
+F_RM="$(json_or "$(raw removals)" '{}')"
 F_ANCH="$(json_or "$(raw anchors)" '{"unavailable": true}' 'array,object')"
-# The PHP-window tools arrived after the others: a raw set whose index does
-# not name one, and that has no file of it, does not expect it.
+# The PHP-window tools and the removals scan arrived after the others: a raw
+# set whose index does not name one, and that has no file of it, does not
+# expect it.
 EXPECTED="rector phpstan phpcs port-safety signatures metadata"
-for t in php-target php-lint phpcompat; do
+for t in php-target php-lint phpcompat removals; do
   if [[ -n "$(raw "$t")" ]] || jq -e --arg t "$t" '[(.tools // [])[]? | objects | .tool] | index($t) != null' "$INDEX" > /dev/null 2>&1; then
     EXPECTED="$EXPECTED $t"
   fi
@@ -184,7 +189,7 @@ fi
 PRE="$TMP/pre.json"
 jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan "$F_PHPSTAN" \
   --slurpfile cs "$F_PHPCS" --slurpfile safety "$F_SAFETY" --slurpfile sig "$F_SIG" --slurpfile meta "$F_META" \
-  --slurpfile phpt "$F_PHPT" --slurpfile lint "$F_LINT" --slurpfile pc "$F_PCOMP" --slurpfile anch "$F_ANCH" --slurpfile cls "$F_CLASS" --arg policy "$POLICY" \
+  --slurpfile phpt "$F_PHPT" --slurpfile lint "$F_LINT" --slurpfile pc "$F_PCOMP" --slurpfile rm "$F_RM" --slurpfile anch "$F_ANCH" --slurpfile cls "$F_CLASS" --arg policy "$POLICY" \
   "$(canon_jq_defs)"'
   ($ix[0].subject.path // "") as $sp
   | (if $sp == "" then "" else $sp + "/" end) as $pre
@@ -290,7 +295,14 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
         | select(.covered != true)
         | select(((.source | split(".") | .[1] // "") == "Syntax" and $allran and (.file as $f | $bad | index($f) | not)) | not)
         | {tool: "phpcompat", rule: ("php-compat-\(.kind):" + .source), rf: (.file | rootrel), line: (.line | N), symbol: null,
-           message: (((.message | S) // .source) | finding_norm_message), severity: "warning", scope: "current", class: "php-target"})
+           message: (((.message | S) // .source) | finding_norm_message), severity: "warning", scope: "current", class: "php-target"}),
+      # The core removals (ADR 0031): the detector and the action in the
+      # rule, the removed name as the symbol, the scanner'"'"'s severity.
+      (($rm[0] | O | .findings | A | map(O | select((.file | type) == "string" and (.detector | type) == "string"
+                                                     and (.action | type) == "string" and (.name | type) == "string")))[]
+        | {tool: "catalog", rule: "removal:\(.detector):\(.action)", rf: (.file | rootrel), line: (.line | N), symbol: .name,
+           message: (((.message | S) // .name) | finding_norm_message), severity: ((.severity | S // "error") | sev),
+           scope: "current", class: "removal"})
     ]
   # A trait error comes once per class context: keep as many copies as the
   # context with the most (two identical errors on one line stay two).
@@ -326,7 +338,7 @@ sha256_lines "$TMP/tuples.txt" "$TMP/h2" \
 DOC="$TMP/findings.json"
 jq -c --slurpfile idsf "$TMP/ids.json" --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile anch "$F_ANCH" \
   --slurpfile stan "$F_PHPSTAN" --slurpfile cs "$F_PHPCS" --slurpfile safety "$F_SAFETY" --slurpfile sig "$F_SIG" --slurpfile meta "$F_META" \
-  --slurpfile phpt "$F_PHPT" --slurpfile lint "$F_LINT" --slurpfile pc "$F_PCOMP" --arg stage "$STAGE" --argjson target "$TARGET" --arg policy "$POLICY" --arg missing "$MISSING" \
+  --slurpfile phpt "$F_PHPT" --slurpfile lint "$F_LINT" --slurpfile pc "$F_PCOMP" --slurpfile rm "$F_RM" --arg stage "$STAGE" --argjson target "$TARGET" --arg policy "$POLICY" --arg missing "$MISSING" \
   --arg broken "$BROKEN" --arg expected "$EXPECTED" '
   def prec: {"rector": 0, "phpstan": 1, "catalog": 2, "phpcompat": 3, "phpcs": 4}[.] // 9;
   # A tool that gave no verdict: its raw file is missing, the error record
@@ -363,6 +375,7 @@ jq -c --slurpfile idsf "$TMP/ids.json" --slurpfile ix "$INDEX" --slurpfile recto
              signatures: ($sig[0] | obj | verdict("signatures"; false)),
              metadata: ($meta[0] | obj | verdict("metadata"; false))}
             + (if ($expected | split(" ") | index("php-target")) then {"php-target": ($phpt[0] | obj | verdict("php-target"; false))} else {} end)
+            + (if ($expected | split(" ") | index("removals")) then {removals: ($rm[0] | obj | verdict("removals"; false))} else {} end)
             # php-lint, from its legs: skipped when every leg was skipped (no
             # Docker), failed when none ran and a run failed, partial when some
             # did not run.
@@ -398,7 +411,7 @@ jq -e '.schema == 1' "$DOC" > /dev/null 2>&1 || die "Could not build findings.js
 # Each raw file is named by the hash of its content outside its own meta, so
 # two runs of the same tree record the same raw hashes.
 HASH="$(canon_json_hashable < "$DOC" | json_hash)"
-RAWS="$(for t in index rector phpstan phpcs port-safety signatures metadata php-target php-lint phpcompat anchors; do f="$RAW_DIR/$NN-$STAGE-$t.json"; [[ -f "$f" ]] || continue; printf '%s\t%s\n' "$(basename "$f")" "$(canon_json_hashable < "$f" | json_hash)"; done \
+RAWS="$(for t in index rector phpstan phpcs port-safety signatures metadata php-target php-lint phpcompat removals anchors; do f="$RAW_DIR/$NN-$STAGE-$t.json"; [[ -f "$f" ]] || continue; printf '%s\t%s\n' "$(basename "$f")" "$(canon_json_hashable < "$f" | json_hash)"; done \
   | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: .[1]}) | from_entries')"
 jq --arg h "$HASH" --argjson raws "$RAWS" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   '. + {meta: {findings_hash: $h, raw: $raws, generated_at: $at}}' "$DOC" | canon_json > "$DOC.meta"

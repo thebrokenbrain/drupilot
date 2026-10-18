@@ -15,8 +15,11 @@ A port is a point on three axes.
   `scripts/analysis/detect-source.sh` reads it from the code: the
   `core_version_requirement`, `.info` files, the APIs it calls (ADR 0016).
 - **Target major (T)**: the Drupal you port to. It is 11 for all of 1.0.x, set
-  by `DRUPILOT_TARGET_MAJOR`. The setup asks for it only when a newer major is
-  opted into as a preview (`DRUPILOT_ALLOW_PRERELEASE`).
+  by `DRUPILOT_TARGET_MAJOR` or `--target N`. The setup asks for it only when a
+  newer major is opted into as a preview (`DRUPILOT_ALLOW_PRERELEASE`). Asking
+  for a pre-release major without the opt-in shows the `ALLOW_PRERELEASE` tab
+  in a guided run (default: no, Drupal 11); an autonomous run never asks it and
+  stops on the refusal.
 - **PHP target (P)**: the PHP the code runs on in the test-bed and on your
   site, set by `DRUPILOT_PHP_TARGET` or the setup's PHP tab.
 
@@ -76,6 +79,37 @@ The lock keeps the frozen plan with its hash (`upgrade_plan`,
 (`DRUPILOT_DETERMINISTIC`, on by default) a later run reuses it while the
 request is the same. A change of drupilot's version data never moves a
 frozen plan.
+
+## Core removals
+
+A major can remove core modules, themes and libraries the code still uses:
+Drupal 11.0 removed `forum` and `book` among others, Drupal 12 removes
+`contact`, `claro`, `migrate_drupal` and Backbone. `scripts/analysis/scan-removals.sh`
+looks for them in every major the port crosses, (S, T], from the version data
+(ADR 0031):
+- a dependency on a removed module, written as core's (`drupal:contact` or
+  `contact`);
+- a dependency on `migrate_drupal` or `migrate_drupal_ui`, or code that uses
+  their namespace;
+- a `base theme:` that names a removed theme;
+- a removed library, in a `*.info.yml`, a `*.libraries.yml`, PHP or Twig.
+
+What happens to each:
+
+| Finding | Action | A hard break? |
+|---|---|---|
+| A removed module whose contrib project has a release that covers the declared range | `rewrite`: depend on `contact:contact` and require `drupal/contact` | no |
+| The same, with no release that covers the range | `blocked`: a blocking dependency, never rewritten (H8) | no, a blocking dependency |
+| The same, with the release feed not read (offline) | `verify`: check by hand | no |
+| A removed base theme | `decision`: pick a new base theme, or require the contrib theme | yes |
+| A removed module with no replacement, `migrate_drupal`, a removed library | `hard-break`: the code must change | yes |
+
+The plan lists them as `core_removals` and `hard_breaks`, from an offline scan,
+so it never depends on the network. The assessment reads drupal.org's release
+feed (cached for a day; in deterministic mode the answer is frozen in the
+lock), counts the hard breaks in its verdict, and lists them in
+`viability-report.md`. Each one is a `human` item of the worklist, and an open
+blocking one keeps a ported module `blocked` in `port-summary.sh`.
 
 ## Refusals
 

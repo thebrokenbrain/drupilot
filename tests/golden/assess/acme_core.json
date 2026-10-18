@@ -4,6 +4,7 @@
     "rector_official_files": 0,
     "rector_official_rules": {}
   },
+  "core_removals": [],
   "core_target": {
     "bc_break": false,
     "composer_core_constraint": "^10.3 || ^11",

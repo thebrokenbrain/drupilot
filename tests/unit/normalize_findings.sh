@@ -8,7 +8,8 @@
 # id's formula, the order, a line shift that keeps every id, anchors
 # unavailable, a Rector report without diffs (the other tools' findings stay),
 # the meta (raw hashes outside each raw file's meta, findings_hash), the
-# --subject/--out modes, the php-target scan's findings and verdict, and the
+# --subject/--out modes, the php-target scan's findings and verdict, the core
+# removals' findings and verdict (and their worklist lane), and the
 # usage errors. Docker-free, PHP-free.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
@@ -361,6 +362,38 @@ done
 rm -f "$RP/04-assess-phpcompat.json"
 nf --raw-dir "$RP" --target-major 11 --soft-policy report --json
 assert_eq "phpcompat: no raw file and an index that does not name it: no verdict" "$(j '.tools | has("phpcompat")')" "false"
+
+# The core removals (scan-removals.sh, ADR 0031): expected only when the index
+# names them or their file exists; one finding per hit, its rule
+# removal:<detector>:<action>, the removed name as its symbol, the scanner's
+# severity, class removal; classify sends each to human with its reason, an
+# info note to deferred.
+RM="$T_TMP/rawr"; mkraw "$RM" 0
+nf --raw-dir "$RM" --target-major 12 --soft-policy report --json
+assert_eq "an index without removals and no file: no removals verdict" "$(j '.tools | has("removals")')" "false"
+jq -n '{tool: "scan-removals", target_major: 12, findings: [
+  {detector: "base-theme-removed", name: "claro", action: "decision", severity: "error", file: "themes/t/t.info.yml", line: 6, message: "the theme claro was removed"},
+  {detector: "dependency-removed", name: "contact", action: "rewrite", severity: "warning", file: "m.info.yml", line: 8, message: "contact was removed"},
+  {detector: "dependency-removed", name: "history", action: "blocked", severity: "error", file: "m.info.yml", line: 9, message: "history was removed"},
+  {detector: "dependency-removed", name: "ban", action: "verify", severity: "warning", file: "m.info.yml", line: 10, message: "ban was removed"},
+  {detector: "migrate-drupal-usage", name: "migrate_drupal", action: "hard-break", severity: "error", file: "src/A.php", line: 30, message: "migrate_drupal was removed"},
+  {detector: "dependency-removed", name: "book", action: "composer-required", severity: "info", file: "m.info.yml", line: 11, message: "book was removed"}]}' \
+  > "$RM/04-assess-removals.json"
+nf --raw-dir "$RM" --target-major 12 --soft-policy report --out "$T_TMP/frm.json"
+assert_eq "removals: its verdict" "$(jq -c '.tools.removals' "$T_TMP/frm.json")" '"ok"'
+assert_eq "removals: rule, symbol, file, line, severity; all class removal" \
+  "$(jq -c '[.findings[] | select(.class == "removal") | [.tool, .rule, .symbol, .file, .line, .severity]] | sort' "$T_TMP/frm.json")" \
+  '[["catalog","removal:base-theme-removed:decision","claro","themes/t/t.info.yml",6,"error"],["catalog","removal:dependency-removed:blocked","history","m.info.yml",9,"error"],["catalog","removal:dependency-removed:composer-required","book","m.info.yml",11,"info"],["catalog","removal:dependency-removed:rewrite","contact","m.info.yml",8,"warning"],["catalog","removal:dependency-removed:verify","ban","m.info.yml",10,"warning"],["catalog","removal:migrate-drupal-usage:hard-break","migrate_drupal","src/A.php",30,"error"]]'
+assert_eq "removals: a PHP file's anchored like the other tools'" \
+  "$(jq -c '[.findings[] | select(.symbol == "migrate_drupal") | .anchor]' "$T_TMP/frm.json")" '["M\\A::other"]'
+assert_eq "removals: its raw file is in meta.raw" "$(jq -c '.meta.raw | has("04-assess-removals.json")' "$T_TMP/frm.json")" "true"
+t_run "$T_SH" "$T_REPO/scripts/ai/classify.sh" --findings "$T_TMP/frm.json" --json
+assert_eq "classify: human items with the removal reasons, blocking on an error" \
+  "$(jq -c '[.items[] | select(.lane == "human" and ((.reason // "") | test("remov"))) | [.file, .reason, .blocking]] | sort' "$T_OUT")" \
+  '[["m.info.yml","removed-dependency-no-release; removed-dependency-replaceable; removed-dependency-unverified",true],["src/A.php","removed-from-core",true],["themes/t/t.info.yml","base-theme-removed",true]]'
+assert_eq "  the info note deferred" \
+  "$(jq -c --slurpfile f "$T_TMP/frm.json" '([$f[0].findings[] | select(.symbol == "book") | .id]) as $b
+     | [.items[] | select(.finding_ids | any(.[]; . as $x | $b | index($x))) | [.lane, .reason]]' "$T_OUT")" '[["deferred","info"]]'
 
 # The raw index: exactly one per stage, a JSON object.
 RI="$T_TMP/rawi"; mkraw "$RI" 0; printf '{"stage": ' > "$RI/04-assess-index.json"

@@ -281,7 +281,7 @@ refuse() {
       | any(.[]; . == $t)) as $t_disjoint |
     [.[] | .id as $i
       | if $i == "prerelease-not-opted-in" then
-          c("allow-prerelease"; "Port to Drupal \($t) as a preview"; null; {DRUPILOT_ALLOW_PRERELEASE: "true"}),
+          c("allow-prerelease"; "Port to Drupal \($t) as a preview"; "ALLOW_PRERELEASE"; {DRUPILOT_ALLOW_PRERELEASE: "true"}),
           c("target-\($prev)"; "Port to Drupal \($prev)"; "TARGET_MAJOR"; {DRUPILOT_TARGET_MAJOR: $prev})
         elif $i == "invalid-target" or $i == "source-above-target" then
           c("target"; "Choose another target major"; "TARGET_MAJOR"; {})
@@ -475,6 +475,16 @@ U="$(range_php_ceiling "$C")"
 COMPAT_RULES="$(php_compat_pass_rules "$L" "$U")"
 POLYFILL_PKGS="$(core_range_polyfills "$C" | jq -c '.packages' 2> /dev/null || printf '[]')"
 MATRIX="$(plan_test_matrix "$BED" "$PHP" "$L" "$C" "$TARGET")"
+# The core removals of the majors in (S, T] (scan-removals.sh, ADR 0031):
+# offline, so the plan never depends on the network; only the network-free
+# facts are kept (the release answer is the assess stage's). null when the
+# scan fails.
+REMOVALS="$("$BASH" "$(plugin_root)/scripts/analysis/scan-removals.sh" --subject "$SUBJECT_ABS" --target "$TARGET" \
+  --source "$S" --range "$C" --offline --json 2> /dev/null < /dev/null \
+  | jq -c '{core_removals: [.core_removals[] | {detector, name, kind, removed_in, rewrite, replacement_project,
+                                                 core_alternative, hard_break, files}],
+            hard_breaks}' 2> /dev/null || true)"
+[[ -n "$REMOVALS" ]] || REMOVALS='{"core_removals":null,"hard_breaks":null}'
 
 PLAN="$(jq -n -S \
   --arg gen "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg ver "$(plugin_version)" --arg ph "$PHASE" \
@@ -484,7 +494,7 @@ PLAN="$(jq -n -S \
   --argjson php "$PHP_BLOCK" --arg hops "$HOPS" --argjson sets "$SETS" \
   --argjson bc "$(plan_rector_bc "$C" "$F")" --arg lvl "$(php_rector_level "$L")" --argjson skip "$(plan_rector_skip)" \
   --arg pl "$PHPSTAN_LEVEL" --argjson tm "$MATRIX" --argjson cr "${COMPAT_RULES:-[]}" --argjson pf "${POLYFILL_PKGS:-[]}" \
-  --argjson ci "$(plan_ci_flags "$MATRIX" "$PHP" "$BED")" --argjson det "$(plan_detectors $HOPS)" \
+  --argjson ci "$(plan_ci_flags "$MATRIX" "$PHP" "$BED")" --argjson det "$(plan_detectors $HOPS)" --argjson rm "$REMOVALS" \
   --arg dh "$(version_data_hash)" '
   {schema_version: 1,
    meta: {generated_at: $gen, drupilot_version: $ver, phase: $ph},
@@ -499,8 +509,8 @@ PLAN="$(jq -n -S \
    toolchain_cell: $tb.toolchain_cell,
    test_matrix: $tm,
    detectors: $det,
-   core_removals: null,
-   hard_breaks: null,
+   core_removals: $rm.core_removals,
+   hard_breaks: $rm.hard_breaks,
    ci_flags: $ci,
    patch_name: "\($mn)-port-to-drupal-\($tb.major).patch",
    workspace_suffix: "-d\($tb.major)",

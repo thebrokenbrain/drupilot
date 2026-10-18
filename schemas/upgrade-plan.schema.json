@@ -147,8 +147,40 @@
       }
     },
     "detectors": {"type": "array", "items": {"type": "string", "pattern": "^[a-z0-9-]+$"}},
-    "core_removals": {"type": ["array", "null"]},
-    "hard_breaks": {"type": ["array", "null"]},
+    "core_removals": {
+      "description": "What the subject takes from Drupal core that a major in (S, T] removes (scripts/analysis/scan-removals.sh, run offline: the network-free facts only; ADR 0031), one object per detector and name. null in a plan frozen before 1.0.0-alpha.6 (not computed).",
+      "type": ["array", "null"],
+      "items": {
+        "type": "object",
+        "required": ["detector", "name", "kind", "removed_in", "rewrite", "replacement_project", "core_alternative", "hard_break", "files"],
+        "additionalProperties": false,
+        "properties": {
+          "detector": {"enum": ["dependency-removed", "migrate-drupal-usage", "base-theme-removed", "library-removed"]},
+          "name": {"type": "string", "minLength": 1},
+          "kind": {"enum": ["module", "theme", "library"]},
+          "removed_in": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+"},
+          "rewrite": {"type": ["string", "null"]},
+          "replacement_project": {"type": ["string", "null"]},
+          "core_alternative": {"type": ["string", "null"]},
+          "hard_break": {"type": "boolean"},
+          "files": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}
+        }
+      }
+    },
+    "hard_breaks": {
+      "description": "The core removals a person must resolve (a removed base theme: a decision; a removal with no replacement): {id: the detector, name, files}. null when not computed.",
+      "type": ["array", "null"],
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "files"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+          "name": {"type": "string", "minLength": 1},
+          "files": {"type": "array", "items": {"type": "string", "minLength": 1}}
+        }
+      }
+    },
     "ci_flags": {
       "type": "object",
       "required": ["OPT_IN_TEST_PREVIOUS_MAJOR", "OPT_IN_TEST_MAX_PHP"],

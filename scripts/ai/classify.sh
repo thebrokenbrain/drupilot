@@ -42,7 +42,16 @@
 #                 PHPCompatibility reports that no config/php/rules.json row
 #                 covers: a warning). PHPCompatibility's own floor and
 #                 removed findings take fix-needs-php-above-floor and
-#                 removed-in-target-php, as warnings: they never block
+#                 removed-in-target-php, as warnings: they never block. A
+#                 core removal (scan-removals.sh, ADR 0031) is human too:
+#                 base-theme-removed (a removed base theme: a decision),
+#                 removed-from-core (no replacement),
+#                 removed-dependency-no-release (no release of the contrib
+#                 replacement covers the range: it blocks),
+#                 removed-dependency-unverified (the release feed was not
+#                 read) or removed-dependency-replaceable (a covering release
+#                 exists: depend on the contrib project); its info notes are
+#                 deferred
 #   test-adapt    an ai-templated or ai-free finding in a file under a tests/
 #                 directory (the module's or a submodule's)
 #
@@ -159,9 +168,9 @@ jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile asf "$TMP/actions.json" --a
         elif $f.class == "style" then {lane: "deferred", recipe: null, reason: "style"}
         else
           # A PHP-window finding (from the catalog scans or PHPCompatibility)
-          # takes a recipe only by its exact rule: its message quotes the
-          # code, so a message pattern could claim it.
-          (($f.tool == "catalog" and ($f.rule | test("^php-(removed|removed-syntax|report|manual|floor|lint):")))
+          # or a core removal takes a recipe only by its exact rule: its
+          # message quotes the code, so a message pattern could claim it.
+          (($f.tool == "catalog" and ($f.rule | test("^(php-(removed|removed-syntax|report|manual|floor|lint)|removal):")))
            or $f.tool == "phpcompat") as $phpw
           | ([$recipes[] | {r: ., k: rank($f)} | select(.k < (if $phpw then 1 else 9 end))] | sort_by([.k, .r.id]) | map(.r)) as $cands
           | [$cands[] | select(applies($f) and (failed($f) | not))] as $ok
@@ -181,6 +190,10 @@ jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile asf "$TMP/actions.json" --a
                         elif ($f.rule | startswith("php-lint:")) then "does-not-compile"
                         elif ($f.rule | startswith("php-manual:")) then "deprecated-no-rule"
                         elif ($f.rule | startswith("php-compat-deprecated:")) then "deprecated-in-php-window"
+                        elif ($f.rule | startswith("removal:")) then
+                          ({"decision": "base-theme-removed", "hard-break": "removed-from-core",
+                            "blocked": "removed-dependency-no-release", "verify": "removed-dependency-unverified",
+                            "rewrite": "removed-dependency-replaceable"}[$f.rule | split(":")[2] // ""] // "no recipe")
                         else "no recipe" end)}
             else {lane: "ai-free", recipe: null, reason: null} end
         end
