@@ -49,7 +49,7 @@ H4 scripts/env/state.sh 3
 H4 scripts/lib/config.sh 6
 H4 scripts/lib/core.sh 1
 H4 scripts/lib/php-scan.sh 1
-H4 scripts/lib/plan.sh 5
+H4 scripts/lib/plan.sh 6  # +1: plan_tests_pass compares PHPUnit majors (attributes from 10, annotations ignored from 12), tool facts (ADR 0032)
 H4 scripts/lib/strategy.sh 29
 H4 scripts/lib/toolchain.sh 8
 H4 scripts/tests/run-phpunit.sh 1

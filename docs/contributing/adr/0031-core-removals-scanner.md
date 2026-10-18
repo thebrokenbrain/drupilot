@@ -135,3 +135,9 @@ So for C = `^11.3 || ^12`, H8 allows rewriting `contact`, `history` and `ban`. I
   findings are the authority for a removed module.
 - A port to Drupal 12 still stops after the draft plan until the Drupal 12 test-bed lands (T-M6-03). The removals
   and the opt-in work now, and the scanner already serves Drupal 11 ports (the 11.0 removals).
+
+## Amendment (2026-10-18): the opt-in is persisted (T-M6-03)
+
+The Drupal 12 test-bed has landed (ADR 0004 amendment). A pre-release setup now goes on past its draft plan.
+It persists the opt-in (`DRUPILOT_ALLOW_PRERELEASE=true`) and the target major, together with the other answers,
+once the draft plan resolves, as `config/choices.json`'s `persist_map` says.

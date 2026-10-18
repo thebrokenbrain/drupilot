@@ -150,13 +150,12 @@ DRUPILOT_TARGET_MAJOR=<T> DRUPILOT_PHP_TARGET=<X.Y> bash "${CLAUDE_PLUGIN_ROOT}/
   (1.0.0-alpha.5 or earlier): for the list, run
   `bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/scan-removals.sh" --subject "<subject_dir>" --offline --json`
   and read its `core_removals` and `hard_breaks` the same way.
-  - If `.target.major` is not 11, stop here, persisting nothing (not even the
-    pre-release opt-in): say that the draft plan is frozen, relay its core
-    removals as above (the Drupal T readiness preview), and that Drupal 12
-    test-beds arrive with a later drupilot release (T-M3-08); do not run the setup
-    scripts below.
-  - Otherwise persist the answered values (`prefs_set DRUPILOT_TARGET_MAJOR <T>`,
-    `prefs_set DRUPILOT_PHP_TARGET <X.Y>`, run with
+  - When `.target.preview` is `true` (a pre-release such as Drupal 12), say so
+    once: the port is a preview on the pre-release core `target.bed_core`, and its
+    core removals above are the Drupal T readiness report.
+  - Persist the answered values (`prefs_set DRUPILOT_TARGET_MAJOR <T>`,
+    `prefs_set DRUPILOT_PHP_TARGET <X.Y>`, and `prefs_set
+    DRUPILOT_ALLOW_PRERELEASE true` after a pre-release opt-in; run with
     `DRUPILOT_PROJECT_DIR=<drupal_root>`): now when `drupal_root_exists` is `true`,
     else right after 3a creates the root, before the subject is placed.
 - **Exit 2 with `.code` `d7-auto`**: stop with its `.message`; nothing was written.

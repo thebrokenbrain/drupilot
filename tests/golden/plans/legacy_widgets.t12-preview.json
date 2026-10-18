@@ -97,7 +97,12 @@
       "Rector\\Php85\\Rector\\Property\\AddOverrideAttributeToOverriddenPropertiesRector",
       "Rector\\Php84\\Rector\\Class_\\DeprecatedAnnotationToDeprecatedAttributeRector"
     ],
-    "tests_pass": null
+    "tests_pass": {
+      "enabled": true,
+      "sets": [
+        "Rector\\PHPUnit\\Set\\PHPUnitSetList::ANNOTATIONS_TO_ATTRIBUTES"
+      ]
+    }
   },
   "schema_version": 1,
   "source": {

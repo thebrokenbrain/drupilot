@@ -134,9 +134,10 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "$1" --p
 ```
 
 - **Exit 0**: the final plan is frozen; it may add hops or raise the core floor
-  over the draft, never change the target, the PHP target or the test-bed. If its
-  `.target.major` is not 11, stop: a port to Drupal 12 needs its test-bed, which
-  arrives with a later drupilot release (T-M3-08); change nothing.
+  over the draft, never change the target, the PHP target or the test-bed. When
+  `.target.preview` is `true`, this is a preview port to a pre-release core: say
+  so in the summary, and treat its `hard_breaks` (core removals) as items a
+  person must resolve.
 - **Exit 2**: nothing was written. Show `.message` and `.choices`; a
   `final-changes-frozen` refusal means the setup's choices no longer hold (for
   example the PHP target changed since): send the developer to

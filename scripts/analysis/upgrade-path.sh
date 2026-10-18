@@ -495,6 +495,7 @@ PLAN="$(jq -n -S \
   --argjson bc "$(plan_rector_bc "$C" "$F")" --arg lvl "$(php_rector_level "$L")" --argjson skip "$(plan_rector_skip)" \
   --arg pl "$PHPSTAN_LEVEL" --argjson tm "$MATRIX" --argjson cr "${COMPAT_RULES:-[]}" --argjson pf "${POLYFILL_PKGS:-[]}" \
   --argjson ci "$(plan_ci_flags "$MATRIX" "$PHP" "$BED")" --argjson det "$(plan_detectors $HOPS)" --argjson rm "$REMOVALS" \
+  --argjson tp "$(plan_tests_pass "$BED" "$F")" \
   --arg dh "$(version_data_hash)" '
   {schema_version: 1,
    meta: {generated_at: $gen, drupilot_version: $ver, phase: $ph},
@@ -504,7 +505,7 @@ PLAN="$(jq -n -S \
    range: {strategy: $strat, resolved_strategy: $rs, constraint: $c, floor: (if $f == "" then null else $f end), spans_majors: $sp},
    php: $php,
    hops: ($hops | split(" ") | map(select(length > 0))),
-   rector: ($sets + {bc: $bc, php_level: $lvl, skip: $skip, compat_rules: $cr, polyfills: $pf, tests_pass: null}),
+   rector: ($sets + {bc: $bc, php_level: $lvl, skip: $skip, compat_rules: $cr, polyfills: $pf, tests_pass: $tp}),
    phpstan: {profile: "compat", level: ($pl | tonumber? // $pl)},
    toolchain_cell: $tb.toolchain_cell,
    test_matrix: $tm,

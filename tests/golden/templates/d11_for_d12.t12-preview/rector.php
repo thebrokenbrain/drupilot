@@ -106,6 +106,7 @@ $drupilotSetNames = [
   'DrupalRector\\Set\\Drupal11SetList::DRUPAL_111_BREAKING',
   'DrupalRector\\Set\\Drupal11SetList::DRUPAL_112_BREAKING',
   'DrupalRector\\Set\\Drupal11SetList::DRUPAL_113_BREAKING',
+  'Rector\\PHPUnit\\Set\\PHPUnitSetList::ANNOTATIONS_TO_ATTRIBUTES',
 ];
 $drupilotSets = array_map('constant', array_values(array_filter($drupilotSetNames, 'defined')));
 if ($drupilotSetNames !== [] && $drupilotSets === []) {

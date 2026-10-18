@@ -2,9 +2,9 @@
   "data_hash": "56ec4231aedc8d88d7c207106fdb5d058f49aed6910bdc57d290ec4475604118",
   "files": {
     "d11_for_d12.t12-preview/phpcs.xml.dist": "fea5ef5e1f1b109e0145ef41fd0f28c4c27ae6255a5cf0d8abb083ad50fa49bf",
-    "d11_for_d12.t12-preview/phpstan.neon": "875cff2b3c1872b17cda17ff4ef17449d6125acbd2c0e4befbcefc7462c543e1",
+    "d11_for_d12.t12-preview/phpstan.neon": "7e5644792d995b8a0088d103b67f567f8e36a7451ece15d6311e32c9baa2c9a1",
     "d11_for_d12.t12-preview/rector-compat.php": "35ffc645ee3ec4c3eec77dacf18ccf2250a76e7db48eda6fd8590acd472c7ce5",
-    "d11_for_d12.t12-preview/rector.php": "8050acd22b646f1d43a6a2e82d723bc1e1d2d8d87015cb9b0bb1fd439b48c1de",
+    "d11_for_d12.t12-preview/rector.php": "1b53e6f3d7d8490cd8114ac45547fa9f367d3ead5117af87fc0347d0447d7e90",
     "d11_php_only.t11-p85/phpcs.xml.dist": "8c211d48f800e833a027b266f1f1e162fba8f8ce46d86497a1a6a52ee35681ff",
     "d11_php_only.t11-p85/phpstan.neon": "c295810f4ba5d22e4bfd2ad81a545e9f2c97da389b8444ac929be116c51d7587",
     "d11_php_only.t11-p85/rector-compat.php": "19c02b7e031d2219bac3a62f35debdfa3139fd59e5b42c5d5f32b5fb0031a0fa",
@@ -50,8 +50,8 @@
     "legacy_widgets.t11-target-only-p84/rector-compat.php": "f4b84a1f58f9aa28e5ac9512946066bb0e126ce0a217b0504c87179c2e2cd631",
     "legacy_widgets.t11-target-only-p84/rector.php": "42653acbc8453a3d560cf168126d9d0909406061c3dd682cd2dbbfcff5eb37c7",
     "legacy_widgets.t12-preview/phpcs.xml.dist": "9f7cddfff05f61ecab2f171b6d3beca8916ae5840a4ad4e205ac5ff11662974b",
-    "legacy_widgets.t12-preview/phpstan.neon": "ff49975dfcc3966b1998efa37df47ea425e32b015abb2eb97889d6f3a833b017",
+    "legacy_widgets.t12-preview/phpstan.neon": "f2a0495999b8486f1f8f5f928813ecbe4ca8af0f80f045faf625f144062a185c",
     "legacy_widgets.t12-preview/rector-compat.php": "f4b84a1f58f9aa28e5ac9512946066bb0e126ce0a217b0504c87179c2e2cd631",
-    "legacy_widgets.t12-preview/rector.php": "9149ef86f5154c7e589c664fe50474ef2873c3910f999eae7791489c940f8d6a"
+    "legacy_widgets.t12-preview/rector.php": "6ee4248760beaacb71c81b115fdaa34bba0e58b724ca7fda8e56f30480ca1aab"
   }
 }

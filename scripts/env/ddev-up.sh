@@ -1,9 +1,22 @@
 #!/usr/bin/env bash
 # =============================================================================
 # drupilot — scripts/env/ddev-up.sh
-# Create (if absent) and start a Drupal 11 DDEV project, parameterized by the
-# effective PHP target (resolve_php_target). Then ensure a Composer project
-# exists (drupal/recommended-project:^11) with Drush ^13.
+# Create (if absent) and start a DDEV project of the target major (the root's
+# frozen upgrade plan, else DRUPILOT_TARGET_MAJOR: Drupal 11 by default),
+# parameterized by the effective PHP target (resolve_php_target). Then ensure a
+# Composer project exists (drupal/recommended-project, DRUPILOT_DRUPAL_TARGET)
+# with Drush ^13.
+#
+# The target's toolchain cell (config/toolchain-reference.json, ADR 0004) can
+# change three things, for a pre-release major such as Drupal 12:
+#   - a pre-release major creates the plan's exact test-bed core
+#     (target.bed_core of the frozen plan), else the newest core at the
+#     stability config/targets/<T>.json gives (composer_stability_while_prerelease);
+#   - a cell that pins drush/drush to null requires no drush (no release
+#     installs there: the bed uses core's vendor/bin/dr);
+#   - a cell with core_install "source" installs drupal/core from source on a
+#     bed it builds, since the dist leaves out the core tests (an existing
+#     project only gets a warning).
 #
 # This script GATES the 'setup' profile via preflight: if a hard requirement
 # (Docker daemon up, DDEV) is missing it prints the report and exits 2 WITHOUT
@@ -244,6 +257,20 @@ fi
 # ---------------------------------------------------------------------------
 DRUPAL_TARGET="$(resolve_drupal_target)"
 DRUSH_CONSTRAINT="$(config_json '.packages.drush' 'drush/drush:^13')"
+# The target major of this root and its toolchain cell (see the header).
+BED_MAJOR="$(DRUPILOT_PROJECT_DIR="$PROJECT_DIR" target_names_major)"
+BED_CELL="$(target_get "$BED_MAJOR" '.toolchain_cell // empty' 2> /dev/null || true)"
+BED_PRERELEASE=0
+[[ "$(target_get "$BED_MAJOR" '.status' 2> /dev/null || true)" == "pre-release" ]] && BED_PRERELEASE=1
+if [[ -n "$BED_CELL" ]] && toolchain_cell_without_drush "$BED_CELL"; then DRUSH_CONSTRAINT=""; fi
+CORE_INSTALL="dist"
+[[ -n "$BED_CELL" ]] && CORE_INSTALL="$(toolchain_cell_core_install "$BED_CELL")"
+# A root whose frozen plan names another major than the configured Drupal
+# target (a Drupal 12 plan while DRUPILOT_TARGET_MAJOR is not set here): the
+# plan's major, unless DRUPILOT_DRUPAL_TARGET pins a core.
+if [[ -z "$(config_get_explicit DRUPILOT_DRUPAL_TARGET)" ]] && ! core_requirement_admits "$DRUPAL_TARGET" "$BED_MAJOR"; then
+  DRUPAL_TARGET="^$BED_MAJOR"
+fi
 CREATE_TIMEOUT="$(config_get DRUPILOT_DDEV_CREATE_TIMEOUT 900)"
 [[ "$CREATE_TIMEOUT" =~ ^[0-9]+$ ]] \
   || die "DRUPILOT_DDEV_CREATE_TIMEOUT must be a number of seconds (got '$CREATE_TIMEOUT')." 1
@@ -265,13 +292,29 @@ CREATE_SPEC="drupal/recommended-project:${DRUPAL_TARGET}"
 LOCKED_CORE=""
 if deterministic_mode && [[ ! -f "$PROJECT_DIR/composer.json" ]]; then
   LOCKED_CORE="$(DRUPILOT_PROJECT_DIR="$PROJECT_DIR" lock_get .drupal.core "")"
-  if [[ ! "$LOCKED_CORE" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+  if [[ ! "$LOCKED_CORE" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc|RC)[0-9]+)?$ ]] \
      || ! core_requirement_admits "$DRUPAL_TARGET" "${LOCKED_CORE%%.*}"; then
     LOCKED_CORE=""
   fi
   if [[ -n "$LOCKED_CORE" ]]; then
     CREATE_SPEC="drupal/recommended-project:${LOCKED_CORE}"
     log_info "Lockfile pins Drupal core $LOCKED_CORE for this root — honoring it (DRUPILOT_DETERMINISTIC=false resolves '$DRUPAL_TARGET' fresh)."
+  fi
+fi
+
+# A pre-release major (Drupal 12 before its release): the frozen plan's exact
+# test-bed core, else the newest core at the data's stability (Composer only
+# creates stable releases by default).
+CREATE_ARGS=()
+if [[ "$BED_PRERELEASE" == "1" && -z "$LOCKED_CORE" && ! -f "$PROJECT_DIR/composer.json" ]]; then
+  _bed="$(plan_get .target.bed_core "$PROJECT_DIR" 2> /dev/null || true)"
+  if [[ "$(plan_get .target.major "$PROJECT_DIR" 2> /dev/null || true)" == "$BED_MAJOR" && -n "$_bed" ]] \
+     && core_requirement_admits "$DRUPAL_TARGET" "${_bed%%.*}"; then
+    CREATE_SPEC="drupal/recommended-project:$_bed"
+    log_info "Drupal $BED_MAJOR is a pre-release: creating the plan's test-bed core $_bed."
+  else
+    _stab="$(target_get "$BED_MAJOR" '.composer_stability_while_prerelease // empty' 2> /dev/null || true)"
+    [[ -n "$_stab" ]] && CREATE_ARGS=(--stability "$_stab")
   fi
 fi
 
@@ -528,7 +571,7 @@ else
   # hung run with a clear error instead of blocking setup indefinitely.
   CREATE_RC=0
   ( cd "$PROJECT_DIR" && run_with_timeout "$CREATE_TIMEOUT" \
-      ddev composer "$CREATE_SUBCMD" --no-interaction "$CREATE_SPEC" </dev/null >&2 ) \
+      ddev composer "$CREATE_SUBCMD" --no-interaction ${CREATE_ARGS[@]+"${CREATE_ARGS[@]}"} "$CREATE_SPEC" </dev/null >&2 ) \
     || CREATE_RC=$?
   if [[ "$CREATE_RC" == "124" ]]; then
     # The limit only killed the host-side client: composer keeps running in
@@ -546,7 +589,8 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Step 5 — ensure Drush ^13 (required by Drupal 11)
+# Step 5 — ensure Drush ^13 (required by Drupal 11; none where the cell pins
+# it to null)
 # ---------------------------------------------------------------------------
 HAS_DRUSH=0
 if [[ -f "$PROJECT_DIR/composer.json" ]] && have_cmd jq; then
@@ -554,12 +598,38 @@ if [[ -f "$PROJECT_DIR/composer.json" ]] && have_cmd jq; then
     HAS_DRUSH=1
   fi
 fi
-if [[ "$HAS_DRUSH" == "1" ]]; then
+if [[ -z "$DRUSH_CONSTRAINT" ]]; then
+  log_info "No drush release installs on Drupal $BED_MAJOR (toolchain cell $BED_CELL): the test-bed requires none and uses core's vendor/bin/dr."
+elif [[ "$HAS_DRUSH" == "1" ]]; then
   log_ok "Drush already required in composer.json — skipping."
 else
   log_step "Requiring Drush ($DRUSH_CONSTRAINT)"
   ( cd "$PROJECT_DIR" && ddev composer require --no-interaction "$DRUSH_CONSTRAINT" >&2 ) \
     || log_warn "Could not require Drush automatically. Run 'ddev composer require $DRUSH_CONSTRAINT' inside $PROJECT_DIR."
+fi
+
+# ---------------------------------------------------------------------------
+# Step 5a — drupal/core from source where the cell says so: its dist leaves
+# out the core tests that PHPStan and PHPUnit need (Drupal 12, ADR 0004)
+# ---------------------------------------------------------------------------
+if [[ "$CORE_INSTALL" == "source" && -f "$PROJECT_DIR/composer.json" && ! -d "$PROJECT_DIR/$DOCROOT/core/tests" ]]; then
+  if [[ "$CORE_SOURCE" == "existing" ]]; then
+    log_warn "drupal/core has no tests here (its dist leaves them out): run 'ddev composer config preferred-install.drupal/core source' and 'ddev composer reinstall drupal/core --prefer-source' in $PROJECT_DIR, or PHPStan and PHPUnit will not find Drupal's test classes."
+  else
+    log_step "Installing drupal/core from source (its dist leaves out the core tests)"
+    ( cd "$PROJECT_DIR" && ddev composer config preferred-install.drupal/core source </dev/null >&2 ) || true
+    _src_rc=0
+    ( cd "$PROJECT_DIR" && run_with_timeout "$CREATE_TIMEOUT" \
+        ddev composer reinstall drupal/core --prefer-source --no-interaction </dev/null >&2 ) || _src_rc=$?
+    if [[ "$_src_rc" == "124" ]]; then
+      ddev_stop_composer "$PROJECT_DIR" || true
+    fi
+    if [[ -d "$PROJECT_DIR/$DOCROOT/core/tests" ]]; then
+      log_ok "drupal/core installed from source, with its tests."
+    else
+      log_warn "Could not install drupal/core from source (exit $_src_rc): PHPStan and PHPUnit will not find Drupal's test classes. Re-run 'ddev composer reinstall drupal/core --prefer-source' in $PROJECT_DIR."
+    fi
+  fi
 fi
 
 # ---------------------------------------------------------------------------
