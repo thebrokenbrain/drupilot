@@ -79,6 +79,18 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 - The router eval accepts consecutive allowed tab insertions before the 0.9
   tab they name (`ALLOW_PRERELEASE` after `TARGET_MAJOR`, both before
   `PHP_TARGET`).
+- **Version data refreshed to Drupal 12.0.0-beta2** (2026-10-14, from the
+  release feed; `scripts/dev/refresh-data.sh`).
+  - The newest patch of each minor: 10.6.19, 11.3.19, 11.4.10 and
+    12.0.0-beta2. A new plan's Drupal 11 test-bed core is therefore 11.4.10,
+    and a Drupal 12 preview's is 12.0.0-beta2.
+  - The beta2 release notes and the core tree add `navigation_top_bar` to the
+    Drupal 12 removals. It is a navigation submodule, obsolete since 11.2.0,
+    removed in 12.0.0-beta2 (#3627057) with no replacement: a hard break for a
+    module that depends on it.
+  - The beta1 release notes changed on 2026-10-14; their removal list and
+    update floor are unchanged.
+  - The existing goldens stay pinned to their data snapshots.
 
 ## [1.0.0-alpha.5] - 2026-10-18
 
