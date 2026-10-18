@@ -46,4 +46,31 @@ CI (`.github/workflows/ci.yml`) runs the gate on Ubuntu and macOS (also under
 the stock `/bin/bash` 3.2), inside the Alpine `bash:3.2` image (BusyBox) and
 `debian:12-slim` (mawk, jq 1.6), and runs `validate` with the Claude Code CLI.
 Anything that needs DDEV or Docker-in-Docker is checked in a lab outside the
-repository, never in CI.
+repository, never in that gate.
+
+## The end-to-end port
+
+`.github/workflows/e2e.yml` ports `legacy_widgets` for real on an Ubuntu runner,
+nightly on the default branch, on demand (`workflow_dispatch`), and on a pull
+request into an `integration/**` branch that carries the `e2e` label.
+
+- It installs DDEV with
+  [`ddev/github-action-setup-ddev`](https://github.com/ddev/github-action-setup-ddev)
+  (DDEV's `install.sh` on the runner, whose Docker is preinstalled), at the DDEV
+  version the golden was recorded with.
+- It runs `scripts/dev/e2e.sh`. The script builds the test-bed (`ddev-up.sh`,
+  `install-toolchain.sh`) and then the scripted sequence of
+  `tests/fixtures/legacy_widgets.golden/README.md`: Rector, PHPStan and PHPCS,
+  the templates, the core range, `--apply`, `--fix`, `make-patch.sh --local`.
+  No model runs, so the AI lane is empty.
+- It byte-compares the patch with the golden: exit 3 and the diff when they
+  differ.
+- The log and the patch are kept as a workflow artifact.
+
+Run it locally the same way, with DDEV and Docker installed:
+`bash scripts/dev/e2e.sh --work <empty dir>`. The `--keep` flag keeps the
+DDEV project, which is deleted otherwise.
+
+GitHub runs a `workflow_dispatch` or `schedule` event only for a workflow that
+is on the default branch. Until 1.0 reaches `main`, the `e2e` label on an
+integration pull request is the way to run it.
