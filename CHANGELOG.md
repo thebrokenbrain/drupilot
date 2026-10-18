@@ -13,6 +13,8 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+## [1.0.0-alpha.5] - 2026-10-18
+
 ### Added
 - **PHPCompatibility over the PHP window** (T-M5-05, ADR 0003).
   `scripts/analysis/run-phpcompat.sh --subject DIR [--test-version L-U]
@@ -3596,7 +3598,8 @@ verdict, what-changed report card, frozen lock), and new insight tools
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.4...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.5...HEAD
+[1.0.0-alpha.5]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.4...v1.0.0-alpha.5
 [1.0.0-alpha.4]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.3...v1.0.0-alpha.4
 [1.0.0-alpha.3]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.2...v1.0.0-alpha.3
 [1.0.0-alpha.2]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.1...v1.0.0-alpha.2
