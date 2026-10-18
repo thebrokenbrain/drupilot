@@ -27,8 +27,10 @@
 # (file, line, source) and classed by PHPCompatibility's convention: a New*
 # sniff is `floor` (it needs a PHP above L; ERROR, or a WARNING such as a new
 # ini directive), any other ERROR `removed` (removed in a PHP of the window),
-# any other WARNING `deprecated`. vendor/, node_modules/ and .git/ are not
-# checked, as the other window tools leave them out. A finding whose source a config/php/rules.json row lists
+# any other WARNING `deprecated`. The files checked are the subject's own,
+# found from inside it as php-target.sh finds them (vendor/, node_modules/
+# and .git/ pruned by exact name, a symlinked subject followed), passed with
+# --file-list. A finding whose source a config/php/rules.json row lists
 # (its phpcompat codes) names that row (rule) and is `covered` when the row
 # is handled already: Rector applies or denies it over [L..U], or
 # php-target.sh reports it for [L..P] (ADR 0003 item 6: it corroborates the
@@ -151,13 +153,17 @@ degrade() {
 }
 
 [[ -n "$TV" ]] || emit skipped empty-php-window
-# PHPCS exits 16 ("No files were checked") when no file matches: a module or
-# theme with no PHP-bearing file (vendor/ and node_modules/ left out, as the
-# run leaves them out) has nothing to check, which is no crash.
-_php1="$(find "$SUBJECT_ABS" \( -name vendor -o -name node_modules -o -name .git \) -prune -o -type f \
-  \( -name '*.php' -o -name '*.module' -o -name '*.inc' -o -name '*.install' -o -name '*.theme' \
-     -o -name '*.profile' -o -name '*.engine' \) -print 2> /dev/null | sed -n '1p' || true)"
-[[ -n "$_php1" ]] || emit skipped no-php-files
+# The files PHPCS checks: the subject's PHP-bearing files, found from inside
+# it as the other window tools find them (a symlinked subject is followed;
+# every vendor/, node_modules/ and .git/ under it is pruned, by exact name),
+# as root-relative paths for --file-list. PHPCS exits 16 ("No files were
+# checked") on none: a module or theme with no PHP file is no crash.
+( cd "$SUBJECT_ABS" && find . \( -name vendor -o -name node_modules -o -name .git \) -prune -o -type f \
+    \( -name '*.php' -o -name '*.module' -o -name '*.inc' -o -name '*.install' -o -name '*.theme' \
+       -o -name '*.profile' -o -name '*.engine' \) -print 2> /dev/null ) | LC_ALL=C sort > "$TMP/found" || true
+: > "$TMP/files"
+while IFS= read -r _f; do [[ -n "$_f" ]] && printf '%s/%s\n' "$SUBJECT_REL" "${_f#./}" >> "$TMP/files"; done < "$TMP/found"
+[[ -s "$TMP/files" ]] || emit skipped no-php-files
 
 # --- Where it runs ------------------------------------------------------------------
 # In the test-bed (DDEV) when the root has a project, on the host otherwise.
@@ -222,17 +228,17 @@ DRUPILOT_PROJECT_DIR="$ROOT" lock_set_json .phpcompat \
   "$(jq -n -c --argjson v "$PINS" --argjson s "$STANDARDS" '{packages: $v, standards: $s}')" > /dev/null 2>&1 || true
 
 # --- The run ------------------------------------------------------------------------------
-log_step "PHPCompatibility: testVersion $TV, $STD"
+# The file list lives in the tree (inside the DDEV mount, gitignored).
+cp "$TMP/files" "$TREE/files.txt" || degrade "no-file-list"
+log_step "PHPCompatibility: testVersion $TV, $STD, $(grep -c . "$TMP/files" || true) file(s)"
 _rc=0
 if [[ -n "$RUNNER" ]]; then
   ddev exec timeout 300 "$TREE_REL/vendor/bin/phpcs" --standard="$STD" --runtime-set testVersion "$TV" \
-    --extensions=php,module,inc,install,theme,profile,engine --ignore=/vendor/,/node_modules/,/.git/ \
-    --report=json -q "$SUBJECT_REL" \
+    --extensions=php,module,inc,install,theme,profile,engine --report=json -q --file-list="$TREE_REL/files.txt" \
     < /dev/null > "$TMP/report.json" 2> "$TMP/err" || _rc=$?
 else
   run_with_timeout 300 "$TREE_REL/vendor/bin/phpcs" --standard="$STD" --runtime-set testVersion "$TV" \
-    --extensions=php,module,inc,install,theme,profile,engine --ignore=/vendor/,/node_modules/,/.git/ \
-    --report=json -q "$SUBJECT_REL" \
+    --extensions=php,module,inc,install,theme,profile,engine --report=json -q --file-list="$TREE_REL/files.txt" \
     < /dev/null > "$TMP/report.json" 2> "$TMP/err" || _rc=$?
 fi
 # PHPCS 4's exit code is a bitmask: 1 fixable, 2 non-fixable findings.
@@ -243,8 +249,12 @@ if jq -e '[.files[] | (.messages // [])[] | select((.source // "") == "Internal.
 fi
 
 # --- Normalize ----------------------------------------------------------------------------
-jq -c --arg root "$ROOT" --arg sp "$SUBJECT_REL" '
-  def rel: ltrimstr("/var/www/html/") | ltrimstr($root + "/") | ltrimstr($sp + "/");
+# PHPCS may name a file by its real path: a symlinked subject's files are
+# brought back under the subject too.
+SUBJECT_REAL="$(cd "$SUBJECT_ABS" && pwd -P)"; ROOT_REAL="$(cd "$ROOT" && pwd -P)"
+SUBJECT_REAL_REL="${SUBJECT_REAL#"$ROOT_REAL"/}"
+jq -c --arg root "$ROOT" --arg sp "$SUBJECT_REL" --arg real "$SUBJECT_REAL" --arg rr "$SUBJECT_REAL_REL" '
+  def rel: ltrimstr($real + "/") | ltrimstr("/var/www/html/") | ltrimstr($root + "/") | ltrimstr($sp + "/") | ltrimstr($rr + "/");
   [.files | to_entries[] | (.key | rel) as $f | (.value.messages // [])[]
    | select((.source // "") | startswith("Internal.") | not)
    | (.source // "") as $s

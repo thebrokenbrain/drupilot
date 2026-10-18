@@ -502,9 +502,12 @@ adjustments, each found while building or reviewing it:
   references stay in the tree's `composer.lock`.
 - **testVersion.** It covers L to U, the window's top (`plan_php_top`), as Decision 4 says. The plan's
   `php.phpcompat_testversion` field (`L-P`) is a record only, and the script does not read it.
-- **What is checked.** PHPCS runs with `--ignore=/vendor/,/node_modules/,/.git/`, like the other window
-  tools. A subject with no PHP-bearing file is `skipped` (`no-php-files`): PHPCS exits 16 with "No files
-  were checked" for it, which is not a crash.
+- **What is checked.** PHPCS gets an exact `--file-list` instead of the subject directory: the
+  subject's PHP-bearing files, found from inside it as `php-target.sh` finds them (`vendor/`,
+  `node_modules/` and `.git/` pruned by exact name, a symlinked subject followed). PHPCS's own `--ignore`
+  patterns are case-insensitive regexes over the whole real path, so they would also drop a `src/Vendor/`
+  directory or every file under an ancestor named `vendor`. A subject with no such file is `skipped`
+  (`no-php-files`): PHPCS exits 16 with "No files were checked" for it, which is not a crash.
 - **Messages.** Every `Internal.*` message is dropped, not only `Internal.NoCodeFound`;
   `Internal.Exception` still degrades the run before that. A `New*` WARNING is `floor`.
 - **Coverage.** A finding is covered when Rector applies or denies its row over [L..U], or when

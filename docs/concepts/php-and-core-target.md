@@ -97,13 +97,16 @@ PHP-window tools besides the analyzers:
   pass covers) and, for each polyfill every core of your range ships, the
   matching Symfony polyfill ruleset. It runs in the test-bed (on the host for
   a root without DDEV) from its own Composer tree, `.drupilot/phpcompat`,
-  installed on first use with exact pins. `vendor/` and `node_modules/` are
-  not checked, and a module with no PHP file is skipped. Your own PHPCS ruleset is never read or changed. drupilot pins an
+  installed on first use with exact pins. It checks the module's own files
+  (`vendor/` and `node_modules/` left out, a symlinked module followed), and a
+  module with no PHP file is skipped. Your own PHPCS ruleset is never read or changed. drupilot pins an
   **alpha** release, so its findings never block:
   - a finding a row of `config/php/rules.json` covers adds nothing: Rector
     fixes or denies that row, or the construct scan already reports it;
-  - a `Syntax` report on a file every `php -l` leg compiled is dropped, a
-    known false positive (property hooks);
+  - a `Syntax` report is dropped as a known false positive (property hooks)
+    when every `php -l` leg ran and compiled the file, and the legs reach both
+    ends of its `testVersion`; the legs usually stop at P, below U, and the
+    report then stays, as a non-blocking item;
   - when it cannot run cleanly (an install without network, a crash, no
     report), it **degrades**: the heuristic floor scan (`detect-php-floor.sh`)
     stands in, and the stage goes on.

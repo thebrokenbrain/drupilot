@@ -340,8 +340,9 @@ when the index names them or their file exists).
           php-compat-floor:<source>, php-compat-removed:<source> and
           php-compat-deprecated:<source> from run-phpcompat.sh, for its
           findings no config/php/rules.json row covers (a warning: never
-          blocking; a Syntax.* one on a file every php -l leg compiled is
-          dropped as a false positive)
+          blocking; a Syntax.* one is dropped as a false positive when every
+          php -l leg ran, compiled the file and the legs reach both ends of
+          its testVersion)
   anchor  the innermost Namespace\Class::method or function of the line,
           the Namespace\ClassLike for a line in a class-like body outside
           its methods (the raw anchors file, scripts/php/anchor.php), else
@@ -1784,8 +1785,10 @@ Each message is normalized: PHPCS's own Internal.* messages are dropped
 (file, line, source) and classed by PHPCompatibility's convention: a New*
 sniff is `floor` (it needs a PHP above L; ERROR, or a WARNING such as a new
 ini directive), any other ERROR `removed` (removed in a PHP of the window),
-any other WARNING `deprecated`. vendor/, node_modules/ and .git/ are not
-checked, as the other window tools leave them out. A finding whose source a config/php/rules.json row lists
+any other WARNING `deprecated`. The files checked are the subject's own,
+found from inside it as php-target.sh finds them (vendor/, node_modules/
+and .git/ pruned by exact name, a symlinked subject followed), passed with
+--file-list. A finding whose source a config/php/rules.json row lists
 (its phpcompat codes) names that row (rule) and is `covered` when the row
 is handled already: Rector applies or denies it over [L..U], or
 php-target.sh reports it for [L..P] (ADR 0003 item 6: it corroborates the

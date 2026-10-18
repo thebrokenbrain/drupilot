@@ -32,8 +32,9 @@
 #           php-compat-floor:<source>, php-compat-removed:<source> and
 #           php-compat-deprecated:<source> from run-phpcompat.sh, for its
 #           findings no config/php/rules.json row covers (a warning: never
-#           blocking; a Syntax.* one on a file every php -l leg compiled is
-#           dropped as a false positive)
+#           blocking; a Syntax.* one is dropped as a false positive when every
+#           php -l leg ran, compiled the file and the legs reach both ends of
+#           its testVersion)
 #   anchor  the innermost Namespace\Class::method or function of the line,
 #           the Namespace\ClassLike for a line in a class-like body outside
 #           its methods (the raw anchors file, scripts/php/anchor.php), else

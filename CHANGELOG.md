@@ -31,8 +31,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     fallback. `skipped` covers an empty window, a module with no PHP-bearing
     file, a DDEV project that cannot start, or no PHP on a root without DDEV
     (where it runs on the host with the host's composer).
-  - `vendor/`, `node_modules/` and `.git/` are not checked, and PHPCS's own
-    `Internal.*` messages are dropped.
+  - PHPCS gets the module's own files (`--file-list`, found as
+    `php-target.sh` finds them: `vendor/`, `node_modules/` and `.git/` pruned
+    by name, a symlinked module followed), and PHPCS's own `Internal.*`
+    messages are dropped.
   - Each finding is classed `floor` (a `New*` sniff), `removed` or
     `deprecated`, and is
     `covered` when a `config/php/rules.json` row already handles it: Rector
@@ -43,8 +45,9 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   - Uncovered findings become non-blocking `human` items:
     `fix-needs-php-above-floor`, `removed-in-target-php`, or the new reason
     `deprecated-in-php-window`.
-  - A `Syntax` report on a file every `php -l` leg compiled is dropped (the
-    property-hooks false positive).
+  - A `Syntax` report is dropped as the property-hooks false positive when
+    every `php -l` leg ran and compiled the file and the legs reach both ends
+    of PHPCompatibility's `testVersion`; otherwise it stays, non-blocking.
   - `findings.json` gains the `phpcompat` tool verdict: `ok`, `partial` when
     it degraded, or `skipped`.
   - `port-report.md`'s PHP window section says it ran an alpha, with its

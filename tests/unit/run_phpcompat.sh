@@ -2,7 +2,8 @@
 # run-phpcompat.sh (T-M5-05, ADR 0003), Docker-free: a host root (no DDEV)
 # with a stub PHPCompatibility tree whose phpcs plays each outcome.
 # - ok: testVersion L-U of the plan's window, PHPCompatibility alone without
-#   polyfills, vendor/ and node_modules/ ignored, findings deduplicated,
+#   polyfills, the subject's own files passed with --file-list (vendor/ and
+#   node_modules/ pruned, a src/Vendor/ kept), findings deduplicated,
 #   PHPCS's Internal.* messages dropped, classed floor (a New* sniff, a
 #   WARNING too)/removed/deprecated, the rules.json row named and covered when
 #   the row is handled already, counts without the covered ones, the same
@@ -13,7 +14,8 @@
 #   that is missing (--no-install), whose install fails (composer exit 100) or
 #   leaves no pinned tree; a working install then runs;
 # - skipped: an empty window, a module with no PHP-bearing file (phpcs never
-#   runs), no PHP on a host root;
+#   runs), no PHP on a host root; a symlinked subject is followed, never
+#   skipped;
 # - usage: --test-version L-U overrides the window, a bad one exits 1.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
@@ -21,11 +23,13 @@ t_isolate
 . "$T_LIB"
 
 R="$T_TMP/root"; S="web/modules/custom/pc"
-mkdir -p "$R/web/core/lib" "$R/$S/src"
+mkdir -p "$R/web/core/lib" "$R/$S/src/Vendor" "$R/$S/vendor/x" "$R/$S/node_modules/y"
 printf '{"name":"x/root"}\n' > "$R/composer.json"
 printf "<?php\nclass Drupal {\n  const VERSION = '11.4.8';\n}\n" > "$R/web/core/lib/Drupal.php"
 printf 'name: PC\ntype: module\ncore_version_requirement: ^10.3 || ^11\n' > "$R/$S/pc.info.yml"
 printf '<?php\nfunction pc_f(string $x = NULL) { trigger_error("x", E_USER_ERROR); }\n' > "$R/$S/pc.module"
+printf '<?php\nnamespace Drupal\\pc\\Vendor;\nclass Payout {}\n' > "$R/$S/src/Vendor/Payout.php"
+printf '<?php\n$v = 1;\n' > "$R/$S/vendor/x/x.php"; printf '<?php\n$n = 1;\n' > "$R/$S/node_modules/y/y.php"
 plan() {  # plan FLOOR FINAL RANGE POLYFILLS_JSON -> the frozen plan of pc
   DRUPILOT_PROJECT_DIR="$R" lock_set_json .upgrade_plan \
     "$(jq -n -c --arg l "$1" --arg p "$2" --arg c "$3" --argjson pf "$4" \
@@ -101,8 +105,10 @@ assert_eq "  the same bytes twice" "$([[ "$(cat "$T_OUT")" == "$first" ]] && ech
 assert_eq "  the pins and standards in the lock" \
   "$(jq -c '[.phpcompat.packages["phpcompatibility/php-compatibility"], .phpcompat.standards]' "$(DRUPILOT_PROJECT_DIR="$R" drupilot_lock_file)")" \
   '["10.0.0-alpha2",["PHPCompatibility"]]'
-assert_eq "  testVersion, the PHP extensions and the ignored dirs on the command line" \
-  "$(grep -c -- '--runtime-set testVersion 8.1-8.5 --extensions=php,module,inc,install,theme,profile,engine --ignore=/vendor/,/node_modules/,/.git/ --report=json' "$R/phpcs-calls")" "2"
+assert_eq "  testVersion, the PHP extensions and the file list on the command line" \
+  "$(grep -c -- '--runtime-set testVersion 8.1-8.5 --extensions=php,module,inc,install,theme,profile,engine --report=json -q --file-list=.drupilot/phpcompat/files.txt' "$R/phpcs-calls")" "2"
+assert_eq "  the list: the subject's own files, src/Vendor/ kept, vendor/ and node_modules/ pruned" \
+  "$(tr '\n' ' ' < "$T/files.txt")" "$S/pc.module $S/src/Vendor/Payout.php "
 
 plan 8.1 8.5 '^10.3 || ^11' '[]'
 pc ok
@@ -136,6 +142,15 @@ touch "$R/composer-good"
 pc ok
 assert_eq "a working install: the run goes on, ok" "$T_RC|$(jq -c '[.status, .counts.floor]' "$T_OUT")" '0|["ok",2]'
 rm -f "$R/composer-ok" "$R/composer-good"
+
+# A symlinked subject (a Composer path repository, --placement symlink) is
+# followed: its files are listed and checked, never skipped.
+mkdir -p "$R/pkgs/lk"; printf 'name: LK\ntype: module\ncore_version_requirement: ^10.3 || ^11\n' > "$R/pkgs/lk/lk.info.yml"
+printf '<?php\n$l = 1;\n' > "$R/pkgs/lk/lk.module"
+ln -s ../../../pkgs/lk "$R/web/modules/custom/lk"
+t_run "$T_SH" "$T_REPO/scripts/analysis/run-phpcompat.sh" --subject "$R/web/modules/custom/lk" --json
+assert_eq "a symlinked subject: checked, its file listed under the subject path" \
+  "$T_RC|$(jq -r '.status' "$T_OUT")|$(tr '\n' ' ' < "$T/files.txt")" "0|ok|web/modules/custom/lk/lk.module "
 
 # Skipped.
 E="web/modules/custom/cfg"; mkdir -p "$R/$E/vendor/x"
