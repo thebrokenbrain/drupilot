@@ -13,6 +13,8 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+## [1.0.0-alpha.6] - 2026-10-18
+
 ### Added
 - **The core-removals scanner** (T-M6-04, 04-R14, ADR 0031).
   `scripts/analysis/scan-removals.sh [--subject DIR] [--target N] [--source S]
@@ -3682,7 +3684,8 @@ verdict, what-changed report card, frozen lock), and new insight tools
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.5...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.6...HEAD
+[1.0.0-alpha.6]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.5...v1.0.0-alpha.6
 [1.0.0-alpha.5]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.4...v1.0.0-alpha.5
 [1.0.0-alpha.4]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.3...v1.0.0-alpha.4
 [1.0.0-alpha.3]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.2...v1.0.0-alpha.3
