@@ -1,0 +1,4 @@
+/* A narrower content column for the fixture's admin pages. */
+.layout-container {
+  max-width: 72rem;
+}

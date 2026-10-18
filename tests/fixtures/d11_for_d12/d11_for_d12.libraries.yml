@@ -1,0 +1,7 @@
+title_counter:
+  js:
+    js/title-counter.js: {}
+  dependencies:
+    - core/drupal
+    - core/once
+    - core/internal.backbone

@@ -1,0 +1,8 @@
+name: 'D11 for D12 migrate'
+type: module
+description: 'A migrate_drupal usage stub: a Drupal 7 source plugin.'
+package: 'drupilot fixtures'
+core_version_requirement: ^11
+dependencies:
+  - drupal:migrate
+  - drupal:migrate_drupal
