@@ -12,6 +12,9 @@
       "output_min_php": "7.1",
       "drupal_safe": true,
       "src": "https://www.php.net/manual/en/migration84.deprecated.php",
+      "phpcompat": [
+        "PHPCompatibility.FunctionDeclarations.RemovedImplicitlyNullableParam.Deprecated"
+      ],
       "rule_src": "https://github.com/rectorphp/rector-src/tree/2.5.2/rules/Php84/Rector/Param/ExplicitNullableParamTypeRector.php",
       "verified": true,
       "construct": "Foo $x = NULL (an implicitly nullable parameter) becomes ?Foo $x = NULL"
@@ -25,6 +28,9 @@
       "output_min_php": null,
       "drupal_safe": true,
       "src": "https://www.php.net/manual/en/migration82.deprecated.php",
+      "phpcompat": [
+        "PHPCompatibility.TextStrings.RemovedDollarBraceStringEmbeds.DeprecatedVariableSyntax"
+      ],
       "rule_src": "https://github.com/rectorphp/rector-src/tree/2.5.2/rules/Php82/Rector/Encapsed/VariableInStringInterpolationFixerRector.php",
       "verified": true,
       "construct": "\"${var}\" interpolation"
@@ -38,6 +44,10 @@
       "output_min_php": null,
       "drupal_safe": null,
       "src": "https://www.php.net/manual/en/migration82.deprecated.php",
+      "phpcompat": [
+        "PHPCompatibility.FunctionUse.RemovedFunctions.utf8_encodeDeprecated",
+        "PHPCompatibility.FunctionUse.RemovedFunctions.utf8_decodeDeprecated"
+      ],
       "rule_src": "https://github.com/rectorphp/rector-src/tree/2.5.2/rules/Php82/Rector/FuncCall/Utf8DecodeEncodeToMbConvertEncodingRector.php",
       "verified": true,
       "construct": "utf8_encode()/utf8_decode()",
@@ -52,6 +62,9 @@
       "output_min_php": null,
       "drupal_safe": false,
       "src": "https://www.php.net/manual/en/migration83.deprecated.php",
+      "phpcompat": [
+        "PHPCompatibility.ParameterValues.RemovedGetClassNoArgs.ArgMissing"
+      ],
       "rule_src": "https://github.com/rectorphp/rector-src/tree/2.6.1/rules/Php83/Rector/FuncCall/RemoveGetClassGetParentClassNoArgsRector.php",
       "verified": true,
       "construct": "get_class()/get_parent_class() without arguments",
@@ -66,6 +79,9 @@
       "output_min_php": null,
       "drupal_safe": true,
       "src": "https://www.php.net/manual/en/migration84.deprecated.php",
+      "phpcompat": [
+        "PHPCompatibility.ParameterValues.RemovedProprietaryCSVEscaping.DeprecatedParamNotPassed"
+      ],
       "rule_src": "https://github.com/rectorphp/rector-src/tree/2.5.2/rules/Php84/Rector/FuncCall/AddEscapeArgumentRector.php",
       "verified": true,
       "construct": "fputcsv()/fgetcsv()/str_getcsv() relying on the default escape argument"
@@ -79,6 +95,9 @@
       "output_min_php": null,
       "drupal_safe": true,
       "src": "https://www.php.net/manual/en/migration85.deprecated.php",
+      "phpcompat": [
+        "PHPCompatibility.LanguageConstructs.RemovedLanguageConstructs.t_backtickDeprecated"
+      ],
       "rule_src": "https://github.com/rectorphp/rector-src/tree/2.5.2/rules/Php85/Rector/ShellExec/ShellExecFunctionCallOverBackticksRector.php",
       "verified": true,
       "construct": "the backtick operator"
@@ -171,6 +190,9 @@
       "output_min_php": null,
       "drupal_safe": null,
       "src": "https://www.php.net/manual/en/migration80.deprecated.php",
+      "phpcompat": [
+        "PHPCompatibility.FunctionDeclarations.RemovedOptionalBeforeRequiredParam.*"
+      ],
       "rule_src": "https://github.com/rectorphp/rector-src/tree/2.5.2/rules/CodeQuality/Rector/ClassMethod/OptionalParametersAfterRequiredRector.php",
       "verified": true,
       "construct": "a parameter with a default value followed by a required one",
@@ -185,6 +207,9 @@
       "output_min_php": null,
       "drupal_safe": true,
       "src": "https://www.php.net/manual/en/migration74.deprecated.php ; https://www.php.net/manual/en/migration80.incompatible.php",
+      "phpcompat": [
+        "PHPCompatibility.ParameterValues.RemovedImplodeFlexibleParamOrder.*"
+      ],
       "rule_src": "https://github.com/rectorphp/rector-src/tree/2.5.2/rules/CodingStyle/Rector/FuncCall/ConsistentImplodeRector.php",
       "verified": true,
       "construct": "implode() with its parameters in the historical order"
@@ -317,6 +342,12 @@
       "output_min_php": null,
       "drupal_safe": true,
       "src": "https://www.php.net/manual/en/migration85.deprecated.php",
+      "phpcompat": [
+        "PHPCompatibility.TypeCasts.RemovedTypeCasts.integerDeprecated",
+        "PHPCompatibility.TypeCasts.RemovedTypeCasts.booleanDeprecated",
+        "PHPCompatibility.TypeCasts.RemovedTypeCasts.doubleDeprecated",
+        "PHPCompatibility.TypeCasts.RemovedTypeCasts.binaryDeprecated"
+      ],
       "verified": true,
       "construct": "(boolean), (integer), (double) and (binary) casts",
       "note": "Rector fixes it only through a configured RenameCastRector (php85 set), so it is not in the compat pass."
@@ -331,6 +362,9 @@
       "output_min_php": null,
       "drupal_safe": true,
       "src": "https://www.php.net/manual/en/migration85.deprecated.php",
+      "phpcompat": [
+        "PHPCompatibility.FunctionUse.RemovedFunctions.curl_closeDeprecated"
+      ],
       "verified": true,
       "construct": "curl_close() and the other no-op close/free functions",
       "note": "Rector fixes it only through a configured RemoveFuncCallRector (php85 set). Only curl_close() was read on php.net; the other functions of 02-F9 are unverified."
@@ -373,6 +407,10 @@
       "output_min_php": null,
       "drupal_safe": null,
       "src": "https://www.php.net/manual/en/migration81.deprecated.php",
+      "phpcompat": [
+        "PHPCompatibility.FunctionUse.RemovedFunctions.strftimeDeprecated",
+        "PHPCompatibility.FunctionUse.RemovedFunctions.gmstrftimeDeprecated"
+      ],
       "verified": true,
       "construct": "strftime()/gmstrftime()"
     },
@@ -386,6 +424,10 @@
       "output_min_php": null,
       "drupal_safe": null,
       "src": "https://www.php.net/manual/en/migration81.deprecated.php",
+      "phpcompat": [
+        "PHPCompatibility.Constants.RemovedConstants.filter_sanitize_stringDeprecated",
+        "PHPCompatibility.Constants.RemovedConstants.filter_sanitize_strippedDeprecated"
+      ],
       "verified": true,
       "construct": "FILTER_SANITIZE_STRING/FILTER_SANITIZE_STRIPPED"
     },
@@ -399,6 +441,9 @@
       "output_min_php": null,
       "drupal_safe": null,
       "src": "https://www.php.net/manual/en/migration84.deprecated.php",
+      "phpcompat": [
+        "PHPCompatibility.Constants.RemovedConstants.e_strictDeprecated"
+      ],
       "verified": true,
       "construct": "the E_STRICT constant"
     },
@@ -412,6 +457,9 @@
       "output_min_php": null,
       "drupal_safe": null,
       "src": "https://www.php.net/manual/en/migration84.deprecated.php",
+      "phpcompat": [
+        "PHPCompatibility.FunctionUse.RemovedFunctions.lcg_valueDeprecated"
+      ],
       "verified": true,
       "construct": "lcg_value()"
     },
@@ -424,6 +472,10 @@
       "output_min_php": null,
       "drupal_safe": null,
       "src": "https://www.php.net/manual/en/migration70.removed-exts-sapis.php",
+      "phpcompat": [
+        "PHPCompatibility.Extensions.RemovedExtensions.mysql_DeprecatedRemoved",
+        "PHPCompatibility.FunctionUse.RemovedFunctions.mysql_*"
+      ],
       "verified": true,
       "construct": "the mysql extension (mysql_* functions)",
       "detect": "ere-i:(^|[^A-Za-z0-9_>:$])mysql_[a-z_]+[[:space:]]*\\(",
@@ -438,6 +490,11 @@
       "output_min_php": null,
       "drupal_safe": null,
       "src": "https://www.php.net/manual/en/migration70.removed-exts-sapis.php",
+      "phpcompat": [
+        "PHPCompatibility.Extensions.RemovedExtensions.eregDeprecatedRemoved",
+        "PHPCompatibility.FunctionUse.RemovedFunctions.ereg*",
+        "PHPCompatibility.FunctionUse.RemovedFunctions.split*"
+      ],
       "verified": true,
       "construct": "the ereg extension (ereg(), eregi(), ereg_replace(), eregi_replace(), split(), spliti())",
       "detect": "ere-i:(^|[^A-Za-z0-9_>:$])(eregi?|eregi?_replace|spliti?)[[:space:]]*\\(",
@@ -452,6 +509,9 @@
       "output_min_php": null,
       "drupal_safe": null,
       "src": "https://www.php.net/manual/en/migration72.deprecated.php ; https://www.php.net/manual/en/migration80.incompatible.php",
+      "phpcompat": [
+        "PHPCompatibility.FunctionUse.RemovedFunctions.eachDeprecatedRemoved"
+      ],
       "verified": true,
       "construct": "each()",
       "detect": "ere-i:(^|[^A-Za-z0-9_>:$])each[[:space:]]*\\(",
@@ -466,6 +526,9 @@
       "output_min_php": null,
       "drupal_safe": null,
       "src": "https://www.php.net/manual/en/migration72.deprecated.php ; https://www.php.net/manual/en/migration80.incompatible.php",
+      "phpcompat": [
+        "PHPCompatibility.FunctionUse.RemovedFunctions.create_functionDeprecatedRemoved"
+      ],
       "verified": true,
       "construct": "create_function()",
       "detect": "ere-i:(^|[^A-Za-z0-9_>:$])create_function[[:space:]]*\\(",

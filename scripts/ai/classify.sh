@@ -36,9 +36,13 @@
 #                 PHP above the floor: a warning; or a file the floor's php -l
 #                 rejects and a higher PHP compiles: an error),
 #                 deprecated-no-rule (a deprecation whose fix runs on the
-#                 floor, but no rule makes it: a warning) or
+#                 floor, but no rule makes it: a warning),
 #                 does-not-compile (no PHP of the window that ran compiles
-#                 the file)
+#                 the file) or deprecated-in-php-window (a deprecation
+#                 PHPCompatibility reports that no config/php/rules.json row
+#                 covers: a warning). PHPCompatibility's own floor and
+#                 removed findings take fix-needs-php-above-floor and
+#                 removed-in-target-php, as warnings: they never block
 #   test-adapt    an ai-templated or ai-free finding in a file under a tests/
 #                 directory (the module's or a submodule's)
 #
@@ -154,9 +158,11 @@ jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile asf "$TMP/actions.json" --a
         elif $f.severity == "info" then {lane: "deferred", recipe: null, reason: "info"}
         elif $f.class == "style" then {lane: "deferred", recipe: null, reason: "style"}
         else
-          # A PHP-window finding takes a recipe only by its exact rule: its
-          # message quotes the code, so a message pattern could claim it.
-          ($f.tool == "catalog" and ($f.rule | test("^php-(removed|removed-syntax|report|manual|floor|lint):"))) as $phpw
+          # A PHP-window finding (from the catalog scans or PHPCompatibility)
+          # takes a recipe only by its exact rule: its message quotes the
+          # code, so a message pattern could claim it.
+          (($f.tool == "catalog" and ($f.rule | test("^php-(removed|removed-syntax|report|manual|floor|lint):")))
+           or $f.tool == "phpcompat") as $phpw
           | ([$recipes[] | {r: ., k: rank($f)} | select(.k < (if $phpw then 1 else 9 end))] | sort_by([.k, .r.id]) | map(.r)) as $cands
           | [$cands[] | select(applies($f) and (failed($f) | not))] as $ok
           | if ($ok | length) > 0 then {lane: $ok[0].lane, recipe: $ok[0].id, reason: null, applied: ($ok[0] | applied($f))}
@@ -168,12 +174,13 @@ jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile asf "$TMP/actions.json" --a
                               elif $astat == "error" then "the codemod failed"
                               else "the codemod gave no change" end)
                           else "the recipe'"'"'s conditions do not hold" end)}
-            elif $f.tool == "catalog" then
+            elif $f.tool == "catalog" or $f.tool == "phpcompat" then
               {lane: "human", recipe: null,
-               reason: (if ($f.rule | test("^php-removed(-syntax)?:")) then "removed-in-target-php"
-                        elif ($f.rule | test("^php-(report|floor):")) then "fix-needs-php-above-floor"
+               reason: (if ($f.rule | test("^php-(removed(-syntax)?|compat-removed):")) then "removed-in-target-php"
+                        elif ($f.rule | test("^php-(report|floor|compat-floor):")) then "fix-needs-php-above-floor"
                         elif ($f.rule | startswith("php-lint:")) then "does-not-compile"
                         elif ($f.rule | startswith("php-manual:")) then "deprecated-no-rule"
+                        elif ($f.rule | startswith("php-compat-deprecated:")) then "deprecated-in-php-window"
                         else "no recipe" end)}
             else {lane: "ai-free", recipe: null, reason: null} end
         end

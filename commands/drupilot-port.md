@@ -707,10 +707,14 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/manifest.sh" --subject <path> --phase por
 the items still in the worklist.)
 
 The `php` stage checks the PHP window (every PHP from the plan's floor to its
-target): the constructs a PHP of the window removed or deprecated, and `php -l`
-on each of those PHP versions. They become `human` worklist items with a reason:
-`removed-in-target-php` and `does-not-compile` block, and so does
-`fix-needs-php-above-floor` when the floor's PHP does not compile the file.
+target): the constructs a PHP of the window removed or deprecated, `php -l`
+on each of those PHP versions, and PHPCompatibility (`run-phpcompat.sh`, an
+alpha, report-only). They become `human` worklist items with a reason:
+`removed-in-target-php` (from the construct scan or a `php -l` leg) and
+`does-not-compile` block, and so does `fix-needs-php-above-floor` when the
+floor's PHP does not compile the file. PHPCompatibility's items
+(`removed-in-target-php`, `fix-needs-php-above-floor`,
+`deprecated-in-php-window`) never block: report them.
 Tell the developer about each blocking one and the file it is in. It is theirs
 to fix (or the floor theirs to raise): never rewrite a removed construct on
 your own, and never drop one from the report. `port-summary.sh --strict` exits 3

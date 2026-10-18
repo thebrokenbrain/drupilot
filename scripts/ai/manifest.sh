@@ -12,9 +12,11 @@
 #                      soft_deprecations (classify-deprecations.sh --json on
 #                      the raw PHPStan report)
 #   worklist.json      the lane x status table and every item
-#   the stage's php-target and php-lint raw reports: php_window (the window,
-#                      the php -l legs, the compile-time deprecations, and
-#                      the human items of the PHP window with their findings)
+#   the stage's php-target, php-lint and phpcompat raw reports: php_window
+#                      (the window, the php -l legs, the compile-time
+#                      deprecations, how PHPCompatibility ran and what it
+#                      found, and the human items of the PHP window with
+#                      their findings)
 #   actions.jsonl      the codemods applied and still in effect
 #   rector-rules.json  the rules and files of the applying Rector run, and
 #                      attributes-rules.json those of the attribute pass
@@ -118,7 +120,7 @@ raw() {  # raw TOOL -> the stage's raw report of TOOL without meta, or null (non
   return 0
 }
 raw port-safety > "$TMP/ps.json"; raw signatures > "$TMP/sig.json"; raw metadata > "$TMP/meta.json"
-raw php-target > "$TMP/phpt.json"; raw php-lint > "$TMP/lint.json"
+raw php-target > "$TMP/phpt.json"; raw php-lint > "$TMP/lint.json"; raw phpcompat > "$TMP/pc.json"
 REQ="$(sed -n 's/^core_version_requirement[[:space:]]*:[[:space:]]*//p' "$SUBJECT/$MN.info.yml" 2> /dev/null | sed -n '1p' | tr -d "'\"" | sed 's/[[:space:]]*#.*$//; s/[[:space:]]*$//' || true)"
 TMAJ="$(jq -r '.target.major // empty' "$F")"; [[ -n "$TMAJ" ]] || TMAJ="$(resolve_target_major)"
 POLICY="$(jq -r '.target.soft_policy // empty' "$F")"; [[ -n "$POLICY" ]] || POLICY="$(config_get DRUPILOT_SOFT_DEPRECATIONS report)"
@@ -179,7 +181,7 @@ DOC="$TMP/manifest.json"
 jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile at "$AT" --slurpfile dd "$DD" --slurpfile asj "$AS" \
   --slurpfile acts "$TMP/acts.json" --slurpfile dec "$TMP/dec.json" --slurpfile ps "$TMP/ps.json" --slurpfile sig "$TMP/sig.json" \
   --slurpfile md "$TMP/meta.json" --slurpfile soft "$TMP/soft.json" --rawfile files "$TMP/files.tsv" \
-  --slurpfile phpt "$TMP/phpt.json" --slurpfile lint "$TMP/lint.json" --arg phpre "$PHP_WINDOW_REASONS_ERE" \
+  --slurpfile phpt "$TMP/phpt.json" --slurpfile lint "$TMP/lint.json" --slurpfile pc "$TMP/pc.json" --arg phpre "$PHP_WINDOW_REASONS_ERE" \
   --argjson ratprev "$RAT_PREV" --argjson ratnew "$RAT_NEW" --arg phase "$PHASE" --arg mn "$MN" --arg type "$TYPE" \
   --arg req "$REQ" --arg rphp "$COMPOSER_PHP" --arg pt "$(resolve_php_target)" --arg d10 "$D10" --arg patch "$PATCH" \
   --arg base "$BASE_SHA" --arg subrel "$SUBREL" --arg acth "$ACTH" '
@@ -218,7 +220,7 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
                         + (if $rat[.id] then {rationale: $rat[.id]} else {} end)]},
      rationale: $rat,
      # The PHP window: the php -l legs and the human items of its constructs.
-     php_window: (if $phpt[0] == null and $lint[0] == null then null
+     php_window: (if $phpt[0] == null and $lint[0] == null and $pc[0] == null then null
                   else {floor: ($phpt[0].floor // null), target: ($phpt[0].target // null),
                         window: ($lint[0].window // null),
                         unsearched: ($phpt[0].unsearched // []),
@@ -228,6 +230,21 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
                                      deprecations: ([($lint[0].legs // [])[] | .php as $v | (.messages // [])[]
                                                      | select(.kind == "deprecated") | {php: $v, file, line, message}]
                                                     | sort_by([.file, (.line // 0), .php]))} end),
+                        # PHPCompatibility: how it ran (an alpha, ADR 0003) and what it found.
+                        phpcompat: (if ($pc[0] | type) != "object" or ($pc[0].tool // "") != "phpcompat" then null
+                                    else {status: $pc[0].status, reason: ($pc[0].reason // null),
+                                          test_version: ($pc[0].test_version // null), standards: ($pc[0].standards // []),
+                                          version: (($pc[0].versions // {})["phpcompatibility/php-compatibility"] // null),
+                                          alpha: ($pc[0].alpha // false),
+                                          # The findings the stage kept (a Syntax false positive dropped), and
+                                          # the ones a catalog row covers.
+                                          counts: (if $pc[0].status != "ok" then null
+                                                   else ([$F.findings[] | select(.tool == "phpcompat") | .rule | capture("^php-compat-(?<k>[a-z]+):").k] as $ks
+                                                         | {floor: ([$ks[] | select(. == "floor")] | length),
+                                                            removed: ([$ks[] | select(. == "removed")] | length),
+                                                            deprecated: ([$ks[] | select(. == "deprecated")] | length),
+                                                            covered: (($pc[0].counts // {}).covered // 0)}) end),
+                                          fallback_floor: (($pc[0].fallback // {}) | .floor // null)} end),
                         items: [$W.items[] | select(.lane == "human" and ((.reason // "") | test($phpre)))
                                 | . as $i
                                 | {id, file, anchor, status, blocking, reason,

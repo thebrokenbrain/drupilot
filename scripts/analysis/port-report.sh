@@ -451,6 +451,18 @@ printf '%s' "$PREC" | jq -e 'type == "object"' >/dev/null 2>&1 || PREC=""
          then ("**Compile-time deprecations:**\n",
                ($p.lint.deprecations[] | "- PHP \(.php) `\(.file):\(.line // "-")` — \(.message)"), "")
          else empty end),
+        (if ($p.phpcompat // null) == null then empty
+         else ($p.phpcompat as $c
+               | "PHPCompatibility" + (if $c.version then " `\($c.version)`" else "" end)
+                 + (if $c.alpha == true then " (an alpha release: its findings never block)" else "" end)
+                 + (if $c.test_version then ", testVersion `\($c.test_version)`" else "" end) + ": "
+                 + (if $c.status == "ok" then
+                      "\($c.counts.floor // 0) above the floor, \($c.counts.removed // 0) removed, \($c.counts.deprecated // 0) deprecated"
+                      + (if ($c.counts.covered // 0) > 0 then " (and \($c.counts.covered) a catalog row already covers)" else "" end) + "."
+                    elif $c.status == "degraded" then
+                      "**degraded** (\($c.reason // "unknown")): the heuristic scan stood in"
+                      + (if $c.fallback_floor then ", floor PHP `\($c.fallback_floor)`." else "." end)
+                    else "not run (\($c.reason // "skipped"))." end) + "\n") end),
         (if (($p.unsearched // []) | length) > 0
          then "Not searched for (no pattern; `php -l` and PHPStan may still report them): \([$p.unsearched[] | "`\(.)`"] | join(", ")).\n"
          else empty end),

@@ -41,7 +41,8 @@
 #                  .php_defaults.env; it must be a PHP M supports, M the
 #                  newest released minor of T or its pre-release minor in
 #                  preview
-#   W = [L..P]     PHP window: PHPStan phpVersion, PHPCompatibility testVersion
+#   W = [L..P]     PHP window: PHPStan phpVersion (php.phpcompat_testversion
+#                  records L-P; PHPCompatibility itself runs L-U, ADR 0003)
 #   U              the compat pass's top (ADR 0002): the higher of P and the
 #                  highest PHP a core of C supports. rector.compat_rules are
 #                  the compat rules for [L..U] the floor's level set does not

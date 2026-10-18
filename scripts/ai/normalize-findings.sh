@@ -11,10 +11,10 @@
 # PHP, so the result is the same on every platform (DET-2).
 #
 # Reads <raw-dir>/<NN>-<stage>-{index,rector,phpstan,phpcs,port-safety,
-# signatures,metadata,php-target,php-lint,anchors}.json as scripts/ai/extract.sh
-# writes them (any but the index may be missing; php-target and php-lint are
-# expected, and have a verdict, only when the index names them or their file
-# exists).
+# signatures,metadata,php-target,php-lint,phpcompat,anchors}.json as
+# scripts/ai/extract.sh writes them (any but the index may be missing;
+# php-target, php-lint and phpcompat are expected, and have a verdict, only
+# when the index names them or their file exists).
 #
 #   id      "F-" + the first 12 hex of sha256(tool␟rule␟file␟anchor␟symbol␟
 #           message␟occurrence) (␟ = 0x1f); the line is not part of it
@@ -28,7 +28,13 @@
 #           scripts/analysis/php-target.sh; from a php -l leg
 #           of php-lint-window.sh that failed on PHP X.Y: php-floor:X.Y (the
 #           file compiles on a higher PHP of the window), php-removed-syntax:
-#           X.Y (it compiles on a lower one only) or php-lint:X.Y (on none)
+#           X.Y (it compiles on a lower one only) or php-lint:X.Y (on none);
+#           php-compat-floor:<source>, php-compat-removed:<source> and
+#           php-compat-deprecated:<source> from run-phpcompat.sh, for its
+#           findings no config/php/rules.json row covers (a warning: never
+#           blocking; a Syntax.* one is dropped as a false positive when every
+#           php -l leg ran, compiled the file and the legs reach both ends of
+#           its testVersion)
 #   anchor  the innermost Namespace\Class::method or function of the line,
 #           the Namespace\ClassLike for a line in a class-like body outside
 #           its methods (the raw anchors file, scripts/php/anchor.php), else
@@ -54,7 +60,9 @@
 #     --json             print findings.json on STDOUT
 #
 # findings.json also records each tool's verdict (tools: ok | partial |
-# failed | missing; a raw file that is not one JSON object is failed), so a run
+# failed | missing; php-lint and phpcompat can also be skipped, and a
+# degraded phpcompat is partial; a raw file that is not one JSON object is
+# failed), so a run
 # where a tool crashed never hashes like a clean one; an error PHPStan reports
 # in a trait once per class that uses it is kept in the trait's file as many
 # times as the class context with the most copies.
@@ -143,11 +151,12 @@ F_SIG="$(json_or "$(raw signatures)" '{}')"
 F_META="$(json_or "$(raw metadata)" '{}')"
 F_PHPT="$(json_or "$(raw php-target)" '{}')"
 F_LINT="$(json_or "$(raw php-lint)" '{}')"
+F_PCOMP="$(json_or "$(raw phpcompat)" '{}')"
 F_ANCH="$(json_or "$(raw anchors)" '{"unavailable": true}' 'array,object')"
 # The PHP-window tools arrived after the others: a raw set whose index does
 # not name one, and that has no file of it, does not expect it.
 EXPECTED="rector phpstan phpcs port-safety signatures metadata"
-for t in php-target php-lint; do
+for t in php-target php-lint phpcompat; do
   if [[ -n "$(raw "$t")" ]] || jq -e --arg t "$t" '[(.tools // [])[]? | objects | .tool] | index($t) != null' "$INDEX" > /dev/null 2>&1; then
     EXPECTED="$EXPECTED $t"
   fi
@@ -175,7 +184,7 @@ fi
 PRE="$TMP/pre.json"
 jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan "$F_PHPSTAN" \
   --slurpfile cs "$F_PHPCS" --slurpfile safety "$F_SAFETY" --slurpfile sig "$F_SIG" --slurpfile meta "$F_META" \
-  --slurpfile phpt "$F_PHPT" --slurpfile lint "$F_LINT" --slurpfile anch "$F_ANCH" --slurpfile cls "$F_CLASS" --arg policy "$POLICY" \
+  --slurpfile phpt "$F_PHPT" --slurpfile lint "$F_LINT" --slurpfile pc "$F_PCOMP" --slurpfile anch "$F_ANCH" --slurpfile cls "$F_CLASS" --arg policy "$POLICY" \
   "$(canon_jq_defs)"'
   ($ix[0].subject.path // "") as $sp
   | (if $sp == "" then "" else $sp + "/" end) as $pre
@@ -265,7 +274,23 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
         | (if any($ok[]; (vn) > ($v | vn)) then "php-floor" elif ($ok | length) > 0 then "php-removed-syntax" else "php-lint" end) as $k
         | {tool: "catalog", rule: "\($k):\($v)", rf: ($f | rootrel), line: (.line | N), symbol: null,
            message: ("does not compile on PHP \($v): \((.message | S) // "php -l rejected the file")" | finding_norm_message),
-           severity: "error", scope: "current", class: "php-target"})
+           severity: "error", scope: "current", class: "php-target"}),
+      # PHPCompatibility (ADR 0003 item 6): what no catalog row covers, never
+      # blocking (an alpha with known false positives): floor, removed and
+      # deprecated. A Syntax.* report on a file every php -l leg compiled is a
+      # tokenizer false positive (property hooks) and is dropped, when the legs
+      # all ran and reach both ends of the testVersion PHPCompatibility used.
+      (($lint[0] | O | .legs | A | map(O)) as $legs
+        | (($pc[0] | O | .test_version | S // "") | split("-")) as $tv
+        | ([$legs[] | .php] as $lp
+           | ([$legs[] | select(.status == "pass" or .status == "fail")] | length == ($legs | length) and length > 0)
+             and ($tv | length) == 2 and ($lp | index($tv[0])) != null and ($lp | index($tv[1])) != null) as $allran
+        | ([$legs[] | (.messages | A)[] | O | select((.kind | IN("parse-error", "fatal-error", "lint-error")) and (.file | type) == "string") | .file] | unique) as $bad
+        | ($pc[0] | O | .findings | A | map(O | select((.file | type) == "string" and (.source | type) == "string" and (.kind | type) == "string")))[]
+        | select(.covered != true)
+        | select(((.source | split(".") | .[1] // "") == "Syntax" and $allran and (.file as $f | $bad | index($f) | not)) | not)
+        | {tool: "phpcompat", rule: ("php-compat-\(.kind):" + .source), rf: (.file | rootrel), line: (.line | N), symbol: null,
+           message: (((.message | S) // .source) | finding_norm_message), severity: "warning", scope: "current", class: "php-target"})
     ]
   # A trait error comes once per class context: keep as many copies as the
   # context with the most (two identical errors on one line stay two).
@@ -301,9 +326,9 @@ sha256_lines "$TMP/tuples.txt" "$TMP/h2" \
 DOC="$TMP/findings.json"
 jq -c --slurpfile idsf "$TMP/ids.json" --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile anch "$F_ANCH" \
   --slurpfile stan "$F_PHPSTAN" --slurpfile cs "$F_PHPCS" --slurpfile safety "$F_SAFETY" --slurpfile sig "$F_SIG" --slurpfile meta "$F_META" \
-  --slurpfile phpt "$F_PHPT" --slurpfile lint "$F_LINT" --arg stage "$STAGE" --argjson target "$TARGET" --arg policy "$POLICY" --arg missing "$MISSING" \
+  --slurpfile phpt "$F_PHPT" --slurpfile lint "$F_LINT" --slurpfile pc "$F_PCOMP" --arg stage "$STAGE" --argjson target "$TARGET" --arg policy "$POLICY" --arg missing "$MISSING" \
   --arg broken "$BROKEN" --arg expected "$EXPECTED" '
-  def prec: {"rector": 0, "phpstan": 1, "catalog": 2, "phpcs": 3}[.] // 9;
+  def prec: {"rector": 0, "phpstan": 1, "catalog": 2, "phpcompat": 3, "phpcs": 4}[.] // 9;
   # A tool that gave no verdict: its raw file is missing, the error record
   # extract.sh writes, or the report of a crash.
   # (The tests read the report defensively: a field of another type is no crash.)
@@ -352,6 +377,14 @@ jq -c --slurpfile idsf "$TMP/ids.json" --slurpfile ix "$INDEX" --slurpfile recto
                                      elif $ran < ($ls | length) then "partial"
                                      else "ok" end
                                  else . end)}
+               else {} end)
+            # PHPCompatibility never fails the stage: degraded is partial,
+            # skipped is skipped.
+            + (if ($expected | split(" ") | index("phpcompat")) then
+                 {phpcompat: ($pc[0] | obj | verdict("phpcompat"; false)
+                              | if . == "ok" then (($pc[0] | obj | .status) as $st
+                                                   | if $st == "degraded" then "partial" elif $st == "skipped" then "skipped" else "ok" end)
+                                else . end)}
                else {} end)),
      counts: {total: ($f | length),
               current: ([$f[] | select(.scope == "current")] | length),
@@ -365,7 +398,7 @@ jq -e '.schema == 1' "$DOC" > /dev/null 2>&1 || die "Could not build findings.js
 # Each raw file is named by the hash of its content outside its own meta, so
 # two runs of the same tree record the same raw hashes.
 HASH="$(canon_json_hashable < "$DOC" | json_hash)"
-RAWS="$(for t in index rector phpstan phpcs port-safety signatures metadata php-target php-lint anchors; do f="$RAW_DIR/$NN-$STAGE-$t.json"; [[ -f "$f" ]] || continue; printf '%s\t%s\n' "$(basename "$f")" "$(canon_json_hashable < "$f" | json_hash)"; done \
+RAWS="$(for t in index rector phpstan phpcs port-safety signatures metadata php-target php-lint phpcompat anchors; do f="$RAW_DIR/$NN-$STAGE-$t.json"; [[ -f "$f" ]] || continue; printf '%s\t%s\n' "$(basename "$f")" "$(canon_json_hashable < "$f" | json_hash)"; done \
   | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: .[1]}) | from_entries')"
 jq --arg h "$HASH" --argjson raws "$RAWS" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   '. + {meta: {findings_hash: $h, raw: $raws, generated_at: $at}}' "$DOC" | canon_json > "$DOC.meta"

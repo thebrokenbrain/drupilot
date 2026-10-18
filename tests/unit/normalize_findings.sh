@@ -309,6 +309,59 @@ nf --raw-dir "$RP" --target-major 11 --soft-policy report --json
 assert_eq "php-lint: a leg failed, the others did not run: verdict partial, the finding kept" \
   "$(j '[.tools["php-lint"], [.findings[] | select(.rule | test("^php-(floor|removed-syntax|lint):")) | .rule]]')" '["partial",["php-lint:8.1"]]'
 
+# PHPCompatibility (run-phpcompat.sh, ADR 0003 item 6): a covered finding adds
+# none; the others are warnings of class php-target (never blocking); a
+# Syntax.* report on a file every php -l leg compiled is dropped; its verdict
+# follows its status. classify.sh gives them their human reasons.
+jq -n '{tool: "php-lint", window: ["8.1", "8.5"], status: "pass", legs: [{php: "8.1", status: "pass", messages: []}, {php: "8.5", status: "pass", messages: []}]}' \
+  > "$RP/04-assess-php-lint.json"
+jq -n '{tool: "phpcompat", status: "ok", test_version: "8.1-8.5", findings: [
+  {file: "src/A.php", line: 11, kind: "deprecated", type: "WARNING", source: "PHPCompatibility.FunctionDeclarations.RemovedImplicitlyNullableParam.Deprecated", message: "Implicitly nullable.", rule: "p84-implicit-nullable", covered: true},
+  {file: "src/A.php", line: 12, kind: "deprecated", type: "WARNING", source: "PHPCompatibility.ParameterValues.RemovedTriggerErrorLevel.Deprecated", message: "Passing E_USER_ERROR is deprecated since 8.4.", rule: null, covered: false},
+  {file: "src/A.php", line: 52, kind: "floor", type: "ERROR", source: "PHPCompatibility.Classes.NewReadonlyClasses.Found", message: "Readonly classes are not present in PHP 8.1.", rule: null, covered: false},
+  {file: "src/A.php", line: 45, kind: "removed", type: "ERROR", source: "PHPCompatibility.ParameterValues.RemovedAssertStringAssertion.Removed", message: "Using a string as the assertion passed to assert() is removed since PHP 8.0. Found: $x instanceof Foo", rule: null, covered: false},
+  {file: "src/A.php", line: 41, kind: "deprecated", type: "WARNING", source: "PHPCompatibility.X.NoMessage.Found", message: 5, rule: null, covered: false},
+  {file: "src/A.php", line: 20, kind: "removed", type: "ERROR", source: "PHPCompatibility.FunctionUse.RemovedFunctions.mysqli_pingDeprecatedRemoved", message: "mysqli_ping() is removed.", rule: null, covered: false},
+  {file: "src/B.php", line: 3, kind: "removed", type: "ERROR", source: "PHPCompatibility.Syntax.RemovedCurlyBraceArrayAccess.Removed", message: "Curly brace array access.", rule: null, covered: false}]}' \
+  > "$RP/04-assess-phpcompat.json"
+nf --raw-dir "$RP" --target-major 11 --soft-policy report --json
+assert_eq "phpcompat: its verdict" "$(j '.tools.phpcompat')" '"ok"'
+assert_eq "phpcompat: the uncovered findings, warnings of class php-target; the covered one and the Syntax false positive dropped" \
+  "$(j '[.findings[] | select(.tool == "phpcompat") | [.rule, .file, .line, .severity, .class]] | sort')" \
+  '[["php-compat-deprecated:PHPCompatibility.ParameterValues.RemovedTriggerErrorLevel.Deprecated","src/A.php",12,"warning","php-target"],["php-compat-deprecated:PHPCompatibility.X.NoMessage.Found","src/A.php",41,"warning","php-target"],["php-compat-floor:PHPCompatibility.Classes.NewReadonlyClasses.Found","src/A.php",52,"warning","php-target"],["php-compat-removed:PHPCompatibility.FunctionUse.RemovedFunctions.mysqli_pingDeprecatedRemoved","src/A.php",20,"warning","php-target"],["php-compat-removed:PHPCompatibility.ParameterValues.RemovedAssertStringAssertion.Removed","src/A.php",45,"warning","php-target"]]'
+assert_eq "phpcompat: a message that is not a string reads as the source" \
+  "$(j '[.findings[] | select(.tool == "phpcompat" and .line == 41) | .message]')" '["PHPCompatibility.X.NoMessage.Found"]'
+assert_eq "phpcompat: anchored like the other tools" "$(j '[.findings[] | select(.tool == "phpcompat" and .line == 20) | .anchor]')" '["M\\A::create"]'
+nf --raw-dir "$RP" --target-major 11 --soft-policy report --out "$T_TMP/fpc.json"
+t_run "$T_SH" "$T_REPO/scripts/ai/classify.sh" --findings "$T_TMP/fpc.json" --json
+assert_eq "classify: each in a human item with its own PHP-window reason (floor and deprecated at different anchors)" \
+  "$(jq -c --slurpfile f "$T_TMP/fpc.json" '. as $w | [$f[0].findings[] | select(.tool == "phpcompat" and (.line | IN(12, 52, 20))) | .id as $id
+     | ($w.items[] | select(.finding_ids | index($id))) as $i | [(.rule | split(":")[0]), $i.lane, ($i.reason | split("; ") | map(select(test("php-window|above-floor|target-php"))))]] | sort' "$T_OUT")" \
+  '[["php-compat-deprecated","human",["deprecated-in-php-window"]],["php-compat-floor","human",["fix-needs-php-above-floor"]],["php-compat-removed","human",["removed-in-target-php"]]]'
+assert_eq "  a recipe never claims one by its message (assert ... instanceof matches dep.assertion)" \
+  "$(jq -c --slurpfile f "$T_TMP/fpc.json" '. as $w | [$f[0].findings[] | select(.tool == "phpcompat" and .line == 45) | .id as $id
+     | ($w.items[] | select(.finding_ids | index($id))) | [.lane, .recipes]]' "$T_OUT")" '[["human",[]]]'
+assert_eq "  an item of PHPCompatibility findings alone never blocks" \
+  "$(jq -c --slurpfile f "$T_TMP/fpc.json" '([$f[0].findings[] | select(.tool == "phpcompat") | .id]) as $pc
+     | [.items[] | select((.finding_ids | length) > 0 and all(.finding_ids[]; . as $x | $pc | index($x))) | .blocking] | [length > 0, unique]' "$T_OUT")" '[true,[false]]'
+jq '.test_version = "8.1-8.4"' "$RP/04-assess-phpcompat.json" > "$RP/p" && mv "$RP/p" "$RP/04-assess-phpcompat.json"
+nf --raw-dir "$RP" --target-major 11 --soft-policy report --json
+assert_eq "phpcompat: a Syntax report is kept when the php -l legs miss an end of its testVersion" \
+  "$(j '[.findings[] | select(.tool == "phpcompat" and .file == "src/B.php") | .rule]')" '["php-compat-removed:PHPCompatibility.Syntax.RemovedCurlyBraceArrayAccess.Removed"]'
+jq '.test_version = "8.1-8.5"' "$RP/04-assess-phpcompat.json" > "$RP/p" && mv "$RP/p" "$RP/04-assess-phpcompat.json"
+jq '.legs[1].status = "skipped"' "$RP/04-assess-php-lint.json" > "$RP/l" && mv "$RP/l" "$RP/04-assess-php-lint.json"
+nf --raw-dir "$RP" --target-major 11 --soft-policy report --json
+assert_eq "phpcompat: a Syntax report is kept while a php -l leg did not run" \
+  "$(j '[.findings[] | select(.tool == "phpcompat" and .file == "src/B.php") | .rule]')" '["php-compat-removed:PHPCompatibility.Syntax.RemovedCurlyBraceArrayAccess.Removed"]'
+for st in "degraded|partial" "skipped|skipped"; do
+  jq --arg s "${st%|*}" '.status = $s | .findings = []' "$RP/04-assess-phpcompat.json" > "$RP/p" && mv "$RP/p" "$RP/04-assess-phpcompat.json"
+  nf --raw-dir "$RP" --target-major 11 --soft-policy report --json
+  assert_eq "phpcompat ${st%|*}: verdict ${st#*|}" "$(j '.tools.phpcompat')" "\"${st#*|}\""
+done
+rm -f "$RP/04-assess-phpcompat.json"
+nf --raw-dir "$RP" --target-major 11 --soft-policy report --json
+assert_eq "phpcompat: no raw file and an index that does not name it: no verdict" "$(j '.tools | has("phpcompat")')" "false"
+
 # The raw index: exactly one per stage, a JSON object.
 RI="$T_TMP/rawi"; mkraw "$RI" 0; printf '{"stage": ' > "$RI/04-assess-index.json"
 nf --raw-dir "$RI"

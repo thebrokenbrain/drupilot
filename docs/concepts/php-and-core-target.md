@@ -71,7 +71,7 @@ would break Drupal (`deny`) are skipped by both passes.
 ## The php stage
 
 The `php` stage of [the pipeline](pipeline.md) runs on every plan, a module
-already on the target major included. It extracts again, with two
+already on the target major included. It extracts again, with three
 PHP-window tools besides the analyzers:
 
 - **The construct scan** (`scripts/analysis/php-target.sh`). It searches the
@@ -91,6 +91,25 @@ PHP-window tools besides the analyzers:
   such as an implicitly nullable parameter from PHP 8.4. Without a Docker
   daemon the legs are skipped, and the report says so; a stage whose legs did
   not all run is run again next time.
+- **PHPCompatibility** (`scripts/analysis/run-phpcompat.sh`,
+  [ADR 0003](../contributing/adr/0003-phpcompatibility.md)). A separate
+  PHPCS run with `testVersion` set to the window (L to the top U the compat
+  pass covers) and, for each polyfill every core of your range ships, the
+  matching Symfony polyfill ruleset. It runs in the test-bed (on the host for
+  a root without DDEV) from its own Composer tree, `.drupilot/phpcompat`,
+  installed on first use with exact pins. It checks the module's own files
+  (`vendor/` and `node_modules/` left out, a symlinked module followed), and a
+  module with no PHP file is skipped. Your own PHPCS ruleset is never read or changed. drupilot pins an
+  **alpha** release, so its findings never block:
+  - a finding a row of `config/php/rules.json` covers adds nothing: Rector
+    fixes or denies that row, or the construct scan already reports it;
+  - a `Syntax` report is dropped as a known false positive (property hooks)
+    when every `php -l` leg ran and compiled the file, and the legs reach both
+    ends of its `testVersion`; the legs usually stop at P, below U, and the
+    report then stays, as a non-blocking item;
+  - when it cannot run cleanly (an install without network, a crash, no
+    report), it **degrades**: the heuristic floor scan (`detect-php-floor.sh`)
+    stands in, and the stage goes on.
 
 Their findings reach the [worklist](../reference/state.md#worklist) as
 `human` items, each with a reason:
@@ -102,6 +121,8 @@ Their findings reach the [worklist](../reference/state.md#worklist) as
 | `fix-needs-php-above-floor` | the scan (a deprecated construct whose fix needs a PHP above L) | no |
 | `deprecated-no-rule` | the scan (a deprecated construct whose fix runs on L, but no Rector rule makes it) | no |
 | `fix-needs-php-above-floor` | a leg that fails on the floor while a higher PHP compiles it | yes |
+| `deprecated-in-php-window` | PHPCompatibility (a deprecation no rules.json row covers) | no |
+| `fix-needs-php-above-floor`, `removed-in-target-php` | PHPCompatibility (a construct above the floor, or removed in the window, that no row covers) | no |
 
 The stage fails when a PHP-window finding is in no worklist item: nothing is
 dropped silently.
@@ -109,8 +130,9 @@ dropped silently.
 ## Where you see them
 
 - **The port report** (`port-report.md`) has a **PHP window** section: the
-  bounds, the result of each `php -l` leg, the compile-time deprecations and
-  the items left for a person.
+  bounds, the result of each `php -l` leg, the compile-time deprecations, how
+  PHPCompatibility ran (its alpha version, `testVersion` and counts, or why
+  it degraded) and the items left for a person.
 - **`port-summary.sh --strict`** exits 3 while an open blocking item of the
   window remains, with a `php-target` blocker. This applies only once the
   module is ported, and only while the item's file is still the one it was
@@ -162,9 +184,3 @@ freezes it in the plan. `/drupilot-port` accepts `--php X.Y` too, but only to
 check it against the frozen plan: the port never changes the PHP target, and a
 different one (or no frozen plan) stops it and sends you back to the setup to
 re-plan.
-
-## Not yet in this pre-release
-
-These arrive in a later 1.0 pre-release:
-
-- the PHPCompatibility check (ADR 0003).

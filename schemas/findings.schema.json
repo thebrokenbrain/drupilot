@@ -31,7 +31,7 @@
     },
     "anchors": {"description": "php: the raw anchors file came from anchor.php; unavailable: no PHP ran it, so every anchor is {file}.", "enum": ["php", "unavailable"]},
     "tools": {
-      "description": "Each tool's verdict: ok, partial (Rector: the digests pass crashed, the official result stands), failed (its raw file is extract.sh's error record or the report of a crash) or missing (no raw file). A tool that did not give a verdict contributes no finding, which this records. php-target (the PHP-window scan, scripts/analysis/php-target.sh) and php-lint (the php -l legs of scripts/analysis/php-lint-window.sh) are here only when the raw index names them or their raw file exists.",
+      "description": "Each tool's verdict: ok, partial (Rector: the digests pass crashed, the official result stands), failed (its raw file is extract.sh's error record or the report of a crash) or missing (no raw file). A tool that did not give a verdict contributes no finding, which this records. php-target (the PHP-window scan, scripts/analysis/php-target.sh), php-lint (the php -l legs of scripts/analysis/php-lint-window.sh) and phpcompat (scripts/analysis/run-phpcompat.sh) are here only when the raw index names them or their raw file exists.",
       "type": "object",
       "required": ["rector", "phpstan", "phpcs", "port-safety", "signatures", "metadata"],
       "additionalProperties": false,
@@ -43,7 +43,8 @@
         "signatures": {"$ref": "#/$defs/verdict"},
         "metadata": {"$ref": "#/$defs/verdict"},
         "php-target": {"$ref": "#/$defs/verdict"},
-        "php-lint": {"description": "skipped: no leg could run (no Docker daemon); partial: some could not.", "enum": ["ok", "partial", "skipped", "failed", "missing"]}
+        "php-lint": {"description": "skipped: no leg could run (no Docker daemon); partial: some could not.", "enum": ["ok", "partial", "skipped", "failed", "missing"]},
+        "phpcompat": {"description": "PHPCompatibility (scripts/analysis/run-phpcompat.sh, ADR 0003): partial when it degraded (its raw file then holds detect-php-floor.sh's fallback, not findings), skipped when it did not run (an empty window, a module with no PHP-bearing file, a DDEV project that cannot start, no PHP on a root without DDEV).", "enum": ["ok", "partial", "skipped", "failed", "missing"]}
       }
     },
     "counts": {
@@ -90,7 +91,7 @@
       "properties": {
         "id": {"description": "F- + the first 12 hex of sha256(tool, rule, file, anchor, symbol, message, occurrence), joined by 0x1f; never the line.", "type": "string", "pattern": "^F-[0-9a-f]{12}$"},
         "tool": {"$ref": "#/$defs/tool"},
-        "rule": {"description": "Rector's FQCN, PHPStan's identifier (phpstan:untyped:<8 hex> without one), PHPCS's source, or port-safety:<check>, signature:<id>, metadata:<check>, php-removed:<id>, php-report:<id> or php-manual:<id> (a config/php/rules.json row), php-floor:<X.Y>, php-removed-syntax:<X.Y> or php-lint:<X.Y> (a php -l leg that failed).", "type": "string", "minLength": 1},
+        "rule": {"description": "Rector's FQCN, PHPStan's identifier (phpstan:untyped:<8 hex> without one), PHPCS's source, or port-safety:<check>, signature:<id>, metadata:<check>, php-removed:<id>, php-report:<id> or php-manual:<id> (a config/php/rules.json row), php-floor:<X.Y>, php-removed-syntax:<X.Y> or php-lint:<X.Y> (a php -l leg that failed), php-compat-floor:<source>, php-compat-removed:<source> or php-compat-deprecated:<source> (a PHPCompatibility finding no config/php/rules.json row covers).", "type": "string", "minLength": 1},
         "file": {"description": "Relative to the subject.", "type": "string", "minLength": 1, "pattern": "^[^/]"},
         "line": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
         "anchor": {"description": "The innermost Namespace\\Class::method or function of the line, the Namespace\\ClassLike for a line in a class-like body outside its methods, else {file}.", "type": "string", "minLength": 1},

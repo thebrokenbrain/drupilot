@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://drupilot.dev/schemas/phpcompat.schema.json",
+  "title": "drupilot PHPCompatibility report (scripts/analysis/run-phpcompat.sh --json, raw/<NN>-<stage>-phpcompat.json)",
+  "description": "PHPCompatibility over the PHP window (ADR 0003): how it ran (ok, degraded with detect-php-floor.sh's scan as the fallback, or skipped), its testVersion and standards, and its findings, each classed floor/removed/deprecated and covered when a config/php/rules.json row already handles it. Report-only: no hard gate reads it.",
+  "type": "object",
+  "required": ["tool", "status", "reason", "test_version", "standards", "counts", "findings", "fallback", "versions", "alpha"],
+  "additionalProperties": false,
+  "properties": {
+    "tool": {"const": "phpcompat"},
+    "status": {"enum": ["ok", "degraded", "skipped"]},
+    "reason": {"type": ["string", "null"]},
+    "test_version": {"type": ["string", "null"], "pattern": "^[0-9]+\\.[0-9]+-[0-9]+\\.[0-9]+$"},
+    "standards": {"type": "array", "items": {"type": "string", "pattern": "^PHPCompatibility[A-Za-z0-9]*$"}},
+    "counts": {
+      "type": "object",
+      "required": ["floor", "removed", "deprecated", "covered"],
+      "additionalProperties": false,
+      "properties": {
+        "floor": {"type": "integer", "minimum": 0},
+        "removed": {"type": "integer", "minimum": 0},
+        "deprecated": {"type": "integer", "minimum": 0},
+        "covered": {"type": "integer", "minimum": 0}
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "line", "source", "type", "kind", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "file": {"description": "Relative to the subject.", "type": "string", "minLength": 1},
+          "line": {"type": "integer", "minimum": 0},
+          "source": {"type": "string", "pattern": "^PHPCompatibility\\."},
+          "type": {"enum": ["ERROR", "WARNING"]},
+          "kind": {"enum": ["floor", "removed", "deprecated"]},
+          "message": {"type": "string"},
+          "rule": {"description": "The config/php/rules.json row whose phpcompat codes match the source.", "type": ["string", "null"]},
+          "covered": {"type": "boolean"}
+        }
+      }
+    },
+    "fallback": {"description": "detect-php-floor.sh --json when the run degraded, else null.", "type": ["object", "null"]},
+    "versions": {"description": "The pinned packages of the tree (config/toolchain-reference.json phpcompat).", "type": "object", "additionalProperties": {"type": "string"}},
+    "alpha": {"description": "true when a pinned package is a pre-release: its findings never block.", "type": "boolean"}
+  }
+}

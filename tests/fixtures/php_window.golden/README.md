@@ -13,6 +13,8 @@ own commit, with a CHANGELOG entry.
 |---|---|
 | `raw/php-lint.w81-84.json` | the legs 8.1, 8.2, 8.3 and 8.4: every one compiles; 8.4 reports the implicitly nullable parameter of `Connection::label()` |
 | `raw/php-lint.w83-85.json` | the legs 8.3, 8.4 and 8.5: 8.5 also reports the `(integer)` cast of `php_window.module` |
+| `raw/phpcompat.w81-84.json` | PHPCompatibility (`run-phpcompat.sh --json`) with the plan `^10.3 \|\| ^11` at P 8.4 and `--test-version 8.1-8.4`. `array_find()` is above that forced 8.1 floor (no core of the range ships polyfill-php84; the plan's own floor is 8.4, because of it). The implicitly nullable parameter is covered by its `rules.json` row. The `covered` flags follow the plan's own window, 8.4 to 8.5 |
+| `raw/phpcompat.w83-85.json` | the same with the plan `^11.3 \|\| ^12` at P 8.5 (its own window 8.3-8.5, the PolyfillPHP84/85 rulesets): only covered findings, the cast and the parameter |
 | `golden.json` | the manifest `golden.sh` checks: `data_hash` and the sha256 of every file here |
 
 `meta.php_versions` holds the PHP release each image ran. The images (official, tags of `config/php/versions.json`):
@@ -27,3 +29,10 @@ own commit, with a CHANGELOG entry.
 
 The `php-target.sh` scans of the same fixture, which need no Docker, are the goldens of `tests/golden/php-window/`
 (`tests/unit/php_window_golden.sh`).
+
+The PHPCompatibility files were recorded on 2026-10-18 in the test-bed `dpl-m5-phpwin-d11` (Drupal 11.4.8, PHP
+8.4.24), from the branch `m5/phpcompat`: the plan frozen with `upgrade-path.sh --subject <php_window> --phase draft
+--root <bed> --range '<C>' --php <P> --freeze`, then `run-phpcompat.sh --subject web/modules/custom/php_window
+--json` (the first with `--test-version 8.1-8.4`), its tree the pins of `config/toolchain-reference.json`
+`phpcompat` (php-compatibility 10.0.0-alpha2, PHPCS 4.0.4). A pin bump re-records them in its own commit: the diff
+is the coverage change (ADR 0003).
