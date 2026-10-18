@@ -5,14 +5,18 @@
 #   golden.json pins (T-M6-01), and the scan writes nothing in the subject;
 # - the detectors: drupal:NAME and a bare NAME are core's, PROJECT:NAME is
 #   not; a dependency on a module removed with no replacement and a reference
-#   to its namespace are hard breaks; a removed library as a list item, a key
-#   or a quoted name; composer.json's require of the replacement; an
-#   announced namespace move is a note (T 11); the majors scanned are (S, T];
+#   to its namespace (or its Tests namespace) are hard breaks; a removed
+#   library as a list item, a key, a flow-sequence item or a quoted name;
+#   flow sequences on one line (with a comment) or several; composer.json's
+#   require of the replacement (a module's or a base theme's); an announced
+#   namespace move is a note (T 11), and a hard break once a major of (S, T]
+#   removes its module (T 12); the majors scanned are (S, T];
 # - the release feed (a cached copy, no network): a covering release is a
 #   rewrite, none a block, a beta counts only in a preview; in deterministic
-#   mode the answer is frozen in the root's lock until the range changes, and
-#   DRUPILOT_DETERMINISTIC=false asks the feed again; release_history_rows and
-#   release_covering on their own;
+#   mode the answer is frozen in the root's lock per project and range, and
+#   reused only for the same pre-release status; DRUPILOT_DETERMINISTIC=false
+#   asks the feed again; --offline reads neither the feed nor the lock;
+#   release_history_rows and release_covering on their own;
 # - the CLI: --help, an unknown flag, a missing subject.
 # Docker-free and network-free.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
@@ -73,6 +77,33 @@ assert_eq "  a note is not a core removal" "$(jq -c '[.core_removals[] | .detect
 t_run "$T_SH" "$SR" --subject "$M" --target 11 --source 11 --offline --json
 assert_eq "S = T: no major to scan, only T's namespace moves" "$(jq -c '[.majors, [.findings[] | .detector]]' "$T_OUT")" '[[],["namespace-move"]]'
 
+# T 12: flow sequences, the Tests namespace, a moved class whose module is
+# removed, a base theme its contrib project already provides.
+N="$T_TMP/n"; mkdir -p "$N/src" "$N/tests/src/Kernel" "$N/themes/nt"
+cat > "$N/n.info.yml" <<'EOF'
+name: N
+type: module
+dependencies: [drupal:contact] # needed for the form
+install: [
+  drupal:history,
+  'drupal:ban'
+]
+EOF
+printf 'x:\n  dependencies: [core/drupal, core/internal.backbone]\ny:\n  dependencies:\n    - core/js-cookie # cookies\n' > "$N/n.libraries.yml"
+printf 'name: NT\ntype: theme\nbase theme: claro\nlibraries: [core/internal.underscore]\n' > "$N/themes/nt/nt.info.yml"
+printf '{"require": {"drupal/claro": "^3"}}\n' > "$N/composer.json"
+printf '<?php\n\nuse Drupal\\Tests\\migrate_drupal\\Kernel\\d7\\MigrateDrupal7TestBase;\n' > "$N/tests/src/Kernel/MigTest.php"
+printf '<?php\n\nuse Drupal\\text\\Plugin\\Field\\FieldType\\TextWithSummaryItem;\n' > "$N/src/X.php"
+t_run "$T_SH" "$SR" --subject "$N" --target 12 --source 10 --range '^11.3 || ^12' --offline --json
+assert_eq "T 12 from S 10: each finding" \
+  "$(jq -c '[.findings[] | [.detector, .name, .file, .line, .action]]' "$T_OUT")" \
+  '[["dependency-removed","contact","n.info.yml",3,"verify"],["dependency-removed","history","n.info.yml",5,"verify"],["dependency-removed","ban","n.info.yml",6,"verify"],["library-removed","core/internal.backbone","n.libraries.yml",2,"hard-break"],["library-removed","core/js-cookie","n.libraries.yml",5,"hard-break"],["dependency-removed","text_with_summary","src/X.php",3,"hard-break"],["migrate-drupal-usage","migrate_drupal","tests/src/Kernel/MigTest.php",3,"hard-break"],["base-theme-removed","claro","themes/nt/nt.info.yml",3,"composer-required"],["library-removed","core/internal.underscore","themes/nt/nt.info.yml",4,"hard-break"]]'
+assert_match "  the moved class: what to do" "$(jq -r '.findings[] | select(.name == "text_with_summary") | .message' "$T_OUT")" \
+  '^TextWithSummaryItem \(Drupal.text.Plugin\) is gone from core in 12.0 with the text_with_summary module, which the contrib project text_with_summary carries on'
+assert_eq "  a base theme composer.json already requires: info, not a hard break" \
+  "$(jq -c '[.findings[] | select(.name == "claro") | [.severity, .hard_break]]' "$T_OUT")|$(jq -c '[.hard_breaks[] | .id] | index("base-theme-removed")' "$T_OUT")" \
+  '[["info",false]]|null'
+
 # The release feed: a cached copy (fresh for a day), no network.
 FEEDS="$(cache_dir)/release-history"; mkdir -p "$FEEDS"
 feed() {  # feed PROJECT RELEASES... (each VERSION=CORE_COMPATIBILITY, published)
@@ -102,9 +133,10 @@ assert_eq "online: contact rewritten (1.0.0 covers the range), claro still a dec
   "$(jq -c '[.findings[] | select(.replacement_project != null) | [.name, .action, .replacement_available, .covering_release]]' "$T_OUT")" \
   '[["contact","rewrite",true,"1.0.0"],["claro","decision",false,null]]'
 assert_match "  the rewrite's message names both changes" "$(jq -r '.findings[0].message' "$T_OUT")" 'depend on contact:contact and require drupal/contact'
-assert_eq "  the answers frozen in the root's lock with their range" \
-  "$(DRUPILOT_PROJECT_DIR="$ROOT" jq -c '.replacements | [.contact.available, .contact.release, .contact.range, .claro.available]' "$(DRUPILOT_PROJECT_DIR="$ROOT" lock_path)")" \
-  '[true,"1.0.0","^11.3 || ^12",false]'
+LOCK="$(DRUPILOT_PROJECT_DIR="$ROOT" lock_path)"
+assert_eq "  the answers frozen in the root's lock per project and range, with the preview flag" \
+  "$(jq -c '.replacements | [.contact["^11.3 || ^12"] | .available, .release, .preview] + [.claro["^11.3 || ^12"].available]' "$LOCK")" \
+  '[true,"1.0.0",true,false]'
 feed contact '1.0.0=^11.5 || ^12'
 t_run "$T_SH" "$SR" --subject "$T_TMP/d11_for_d12" --target 12 --source 11 --range '^11.3 || ^12' --root "$ROOT" --json
 assert_eq "deterministic: the frozen answer stands though the feed changed" "$(jq -r '.findings[0].action' "$T_OUT")" "rewrite"
@@ -112,11 +144,14 @@ t_run env DRUPILOT_DETERMINISTIC=false "$T_SH" "$SR" --subject "$T_TMP/d11_for_d
 assert_eq "DRUPILOT_DETERMINISTIC=false: the feed again, nothing covers: blocked (an error)" \
   "$(jq -c '[.findings[0].action, .findings[0].severity]' "$T_OUT")" '["blocked","error"]'
 t_run "$T_SH" "$SR" --subject "$T_TMP/d11_for_d12" --target 12 --source 11 --range '^11.5 || ^12' --root "$ROOT" --json
-assert_eq "another range: the frozen answer does not hold, the feed is read" \
-  "$(jq -c '[.findings[0].action, .findings[0].covering_release]' "$T_OUT")|$(jq -r '.replacements.contact.range' "$(DRUPILOT_PROJECT_DIR="$ROOT" lock_path)")" \
-  '["rewrite","1.0.0"]|^11.5 || ^12'
-t_run "$T_SH" "$SR" --subject "$T_TMP/d11_for_d12" --target 12 --source 11 --range '^11.3 || ^12' --offline --json
-assert_eq "--offline never reads the feed" "$(jq -c '[.findings[0].action, .offline]' "$T_OUT")" '["verify",true]'
+assert_eq "another range: its own answer, the other range's kept" \
+  "$(jq -c '[.findings[0].action, .findings[0].covering_release]' "$T_OUT")|$(jq -c '.replacements.contact | [.["^11.5 || ^12"].release, .["^11.3 || ^12"].available]' "$LOCK")" \
+  '["rewrite","1.0.0"]|["1.0.0",false]'
+jq '.replacements.contact["^11.5 || ^12"] = {available: false, release: null, core_compatibility: null, preview: false}' "$LOCK" > "$T_TMP/l" && mv "$T_TMP/l" "$LOCK"
+t_run "$T_SH" "$SR" --subject "$T_TMP/d11_for_d12" --target 12 --source 11 --range '^11.5 || ^12' --root "$ROOT" --json
+assert_eq "  an answer frozen for another pre-release status is read again" "$(jq -r '.findings[0].action' "$T_OUT")" "rewrite"
+t_run "$T_SH" "$SR" --subject "$T_TMP/d11_for_d12" --target 12 --source 11 --range '^11.3 || ^12' --root "$ROOT" --offline --json
+assert_eq "--offline reads neither the feed nor the lock" "$(jq -c '[.findings[0].action, .offline]' "$T_OUT")" '["verify",true]'
 
 # The CLI.
 assert_exit "--help: exit 0" 0 "$T_SH" "$SR" --help

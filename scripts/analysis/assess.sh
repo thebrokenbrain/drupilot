@@ -18,7 +18,8 @@
 #                  least one matching file of the subject, plus the detectors
 #                  of the core removals a person must resolve (a removed base
 #                  theme, a removal with no replacement: scan-removals.sh,
-#                  ADR 0031)
+#                  ADR 0031); a removal whose name a category's ERE matches
+#                  (core/jquery.ui.*) counts under that category, once
 #   blocking_deps  deps-status.sh's blockers (no Drupal 11 release on
 #                  drupal.org; offline every contrib dependency is unknown),
 #                  plus each removed core module no release of its contrib
@@ -167,9 +168,14 @@ jq -n -c --slurpfile f "$FINDINGS" --slurpfile w "$WORKLIST" --slurpfile cs "$TM
   # The core removals (ADR 0031): rule removal:<detector>:<action>, the
   # removed name as the symbol.
   | ([$cur[] | select(.class == "removal") | . + {det: (.rule | split(":")[1]), act: (.rule | split(":")[2])}]) as $rem
-  | ([$rem[] | select(.act == "decision" or .act == "hard-break")] | group_by(.det)
+  # A removal whose name the ERE of a catalog category matches (core/jquery.ui.*:
+  # jquery_ui) counts once, under that category.
+  | ([$rem[] | select(.act == "decision" or .act == "hard-break")
+      | . as $x | . + {cat: ([$cat[0].entries[] | select(.ere as $e | ($x.symbol // "") | test($e)) | .id] | .[0])}]) as $rx
+  | ($hb | with_entries(.key as $k | .value = ((.value + [$rx[] | select(.cat == $k) | .file]) | unique))) as $hbx
+  | ([$rx[] | select(.cat == null)] | group_by(.det)
      | map({key: .[0].det, value: ([.[].file] | unique)}) | from_entries) as $rhb
-  | ([$hb | to_entries[] | select((.value | length) > 0) | .key] + ($rhb | keys)) as $breaks
+  | ([$hbx | to_entries[] | select((.value | length) > 0) | .key] + ($rhb | keys)) as $breaks
   | ($man | map(.n) | add // 0) as $m | ($breaks | length) as $h
   | (($D.totals.blockers // 0) + ([$rem[] | select(.act == "blocked") | .symbol] | unique | length)) as $b
   | ([["rector", "phpstan", "port-safety", "signatures"][] | {key: ., value: (($F.tools // {})[.] // "missing")}]
@@ -208,7 +214,7 @@ jq -n -c --slurpfile f "$FINDINGS" --slurpfile w "$WORKLIST" --slurpfile cs "$TM
                       | map({key: .[0].message, value: ([.[].file] | unique | length)}) | from_entries)},
      manual_items: [$man | to_entries[] | {id: "M\(.key + 1)", finding_id: .value.id, file: .value.file, line: .value.line,
                     occurrences: .value.n, source: "\(.value.tool):\(.value.rule)", what: .value.message}],
-     hard_break_categories: ($hb + $rhb), hard_breaks: $breaks,
+     hard_break_categories: ($hbx + $rhb), hard_breaks: $breaks,
      core_removals: ($rem | group_by([.det, .symbol])
                      | map({detector: .[0].det, name: .[0].symbol, action: .[0].act, severity: .[0].severity, files: ([.[].file] | unique)})),
      hygiene: {error: ([$meta[] | select(.severity == "error")] | length), warn: ([$meta[] | select(.severity == "warning")] | length),

@@ -43,10 +43,11 @@
 # feed (https://updates.drupal.org/release-history/<project>/current) is
 # cached for a day under drupilot's cache dir; in deterministic mode
 # (DRUPILOT_DETERMINISTIC, default true) a known answer is frozen in the Drupal
-# root's lock (.replacements.<project>, with the range it answered for) and
-# reused until the range changes or `lock-sync.sh --refresh` drops it;
-# DRUPILOT_DETERMINISTIC=false reads the feed and refreshes the lock. This is
-# the only write: nothing in the subject or the root's tree is touched.
+# root's lock (.replacements.<project>.<range>, with whether it was a
+# preview's) and reused while T's pre-release status is the same, until
+# `lock-sync.sh --refresh` drops it; DRUPILOT_DETERMINISTIC=false reads the
+# feed and refreshes the lock. This is the only write: nothing in the subject
+# or the root's tree is touched.
 #
 # Usage:
 #   scan-removals.sh [--subject DIR] [--target N] [--source S] [--range C]
@@ -63,7 +64,8 @@
 #                  targets/<T>.json default_ranges target-only).
 #   --root DIR     The Drupal root whose lock freezes the coverage answers
 #                  (default: the subject's).
-#   --offline      Never read the release feed: every coverage is unknown.
+#   --offline      Never read the release feed or the lock's frozen answers:
+#                  every coverage is unknown.
 #   --json         Print the report as JSON on STDOUT (default: a summary on
 #                  STDERR and the finding ids on STDOUT).
 #
@@ -145,13 +147,22 @@ for m in $MAJORS; do
   jq -s -c '.[0] + (.[1] // [])' "$TMP/ext.json" "$TMP/e.json" > "$TMP/x" && mv -f "$TMP/x" "$TMP/ext.json"
   jq -s -c '.[0] + (.[1] // [])' "$TMP/lib.json" "$TMP/l.json" > "$TMP/x" && mv -f "$TMP/x" "$TMP/lib.json"
 done
-target_get "$TARGET" '[(.namespace_moves // [])[] | {name, from_ns, to_ns, introduced_in, classes: (.classes // [])}]' > "$TMP/moves.json" 2> /dev/null \
-  || printf '[]' > "$TMP/moves.json"
-jq -e 'type == "array"' "$TMP/moves.json" > /dev/null 2>&1 || printf '[]' > "$TMP/moves.json"
+# The namespace moves of every major from S to T (a move happens within a
+# major: 11.5 moves the text_with_summary classes).
+printf '[]' > "$TMP/moves.json"
+m="$SOURCE"
+while (( m <= TARGET )); do
+  target_get "$m" '[(.namespace_moves // [])[] | {name, from_ns, to_ns, introduced_in, classes: (.classes // [])}]' > "$TMP/mv.json" 2> /dev/null \
+    || printf '[]' > "$TMP/mv.json"
+  jq -e 'type == "array"' "$TMP/mv.json" > /dev/null 2>&1 || printf '[]' > "$TMP/mv.json"
+  jq -s -c '.[0] + .[1]' "$TMP/moves.json" "$TMP/mv.json" > "$TMP/x" && mv -f "$TMP/x" "$TMP/moves.json"
+  m=$((m + 1))
+done
 # The namespaces of the modules removed with no replacement, as one ERE
-# ("Drupal\\migrate_drupal\\"), and the namespace-move classes.
+# ("Drupal\\migrate_drupal\\" or "Drupal\\Tests\\migrate_drupal\\"), and the
+# namespace-move classes.
 NS_ERE="$(jq -r '[.[] | select(.kind == "module" and .rewrite == "hard-break") | .name] | unique
-  | if length == 0 then "" else "Drupal[\\\\]+(" + join("|") + ")[\\\\]" end' "$TMP/ext.json")"
+  | if length == 0 then "" else "Drupal[\\\\]+(Tests[\\\\]+)?(" + join("|") + ")[\\\\]" end' "$TMP/ext.json")"
 MOVE_ERE="$(jq -r '[.[] | .classes[]] | unique | if length == 0 then "" else "(" + join("|") + ")" end' "$TMP/moves.json")"
 MOVE_NS="$(jq -r '[.[] | .from_ns] | unique | join("\n")' "$TMP/moves.json")"
 
@@ -159,64 +170,79 @@ MOVE_NS="$(jq -r '[.[] | .from_ns] | unique | join("\n")' "$TMP/moves.json")"
 #   dep VALUE    a dependencies:/install: entry (PROJECT:NAME, version dropped)
 #   base VALUE   a base theme
 #   lib VALUE    a core/... library reference
-#   ns VALUE     a line naming Drupal\<removed module>\ (VALUE the module)
+#   ns VALUE     a line naming Drupal\<removed module>\ or
+#                Drupal\Tests\<removed module>\ (VALUE the module)
 #   move VALUE   a line naming a namespace-move class in its old namespace
 if [[ -n "$MAJORS" || -n "$MOVE_ERE" ]]; then
+  # One awk per kind of file over the whole module (vendor/, node_modules/ and
+  # .git/ pruned); FILENAME names each file, FNR its line.
   ( cd "$SUBJECT" && find . \( -name vendor -o -name node_modules -o -name .git \) -prune -o -type f \
-      \( -name '*.info.yml' -o -name '*.libraries.yml' \) -print 2> /dev/null || true ) | LC_ALL=C sort > "$TMP/yml.lst"
-  ( cd "$SUBJECT" && find . \( -name vendor -o -name node_modules -o -name .git \) -prune -o -type f \
-      \( -name '*.php' -o -name '*.module' -o -name '*.inc' -o -name '*.install' -o -name '*.theme' \
-         -o -name '*.profile' -o -name '*.engine' -o -name '*.twig' \) -print 2> /dev/null || true ) | LC_ALL=C sort > "$TMP/code.lst"
-  : > "$TMP/rec.tsv"
-  while IFS= read -r f; do
-    [[ -n "$f" ]] || continue
-    AWKV_F="${f#./}" awk '
-      BEGIN { F = ENVIRON["AWKV_F"] }
+      \( -name '*.info.yml' -o -name '*.libraries.yml' \) -exec awk '
       function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
-      function unq(s) { s = trim(s); sub(/[[:space:]]+#.*$/, "", s); gsub(/^["\047]|["\047]$/, "", s); return trim(s) }
-      function dep(v) { v = unq(v); sub(/[[:space:]]*\(.*$/, "", v); v = trim(v); if (v != "") printf "dep\t%s\t%s\t%d\t%s\n", v, F, NR, trim($0) }
-      function lib(v) { v = unq(v); if (v ~ /^core\/[A-Za-z0-9_.-]+$/) printf "lib\t%s\t%s\t%d\t%s\n", v, F, NR, trim($0) }
+      # A YAML comment: a # after a blank.
+      function nocomment(s) { if (s ~ /^[[:space:]]*#/) return ""; sub(/[[:space:]]+#.*$/, "", s); return s }
+      function unq(s) { s = trim(nocomment(s)); gsub(/^["\047]|["\047]$/, "", s); return trim(s) }
+      function dep(v) { v = unq(v); sub(/[[:space:]]*\(.*$/, "", v); v = trim(v); if (v != "") printf "dep\t%s\t%s\t%d\t%s\n", v, F, FNR, trim($0) }
+      function lib(v) { v = unq(v); if (v ~ /^core\/[A-Za-z0-9_.-]+$/) printf "lib\t%s\t%s\t%d\t%s\n", v, F, FNR, trim($0) }
+      # flow(KIND, TEXT) -> the items of a flow sequence ([a, b]) on this
+      # line, as dep or lib; 1 when its ] closes it here.
+      function flow(kind, t,   n, a, i, closed) {
+        t = nocomment(t); closed = 0
+        if (index(t, "]") > 0) { t = substr(t, 1, index(t, "]") - 1); closed = 1 }
+        sub(/^[[:space:]]*\[/, "", t)
+        n = split(t, a, ",")
+        for (i = 1; i <= n; i++) { if (kind == "dep") dep(a[i]); else lib(a[i]) }
+        return closed
+      }
+      FNR == 1 { F = FILENAME; sub(/^\.\//, "", F); blk = ""; fk = "" }
       { sub(/\r$/, "") }
+      # Inside a flow sequence that spans lines.
+      fk != "" { if (flow(fk, $0)) fk = ""; next }
       /^[^[:space:]#-]/ { blk = "" }
       /^(dependencies|install)[[:space:]]*:/ {
-        blk = "dep"; v = $0; sub(/^[^:]*:[[:space:]]*/, "", v)
-        if (v ~ /^\[/) { gsub(/^\[|\][[:space:]]*$/, "", v); n = split(v, a, ","); for (i = 1; i <= n; i++) dep(a[i]); blk = "" }
+        blk = "dep"; v = $0; sub(/^[^:]*:[[:space:]]*/, "", v); v = trim(nocomment(v))
+        if (v ~ /^\[/) { blk = ""; if (!flow("dep", v)) fk = "dep" }
         next
       }
       /^["\047]?base theme["\047]?[[:space:]]*:/ {
         v = $0; sub(/^[^:]*:[[:space:]]*/, "", v); v = unq(v)
-        if (v != "" && v != "false") printf "base\t%s\t%s\t%d\t%s\n", v, F, NR, trim($0)
+        if (v != "" && v != "false") printf "base\t%s\t%s\t%d\t%s\n", v, F, FNR, trim($0)
         next
       }
       blk == "dep" && /^[[:space:]]*-[[:space:]]*/ { v = $0; sub(/^[[:space:]]*-[[:space:]]*/, "", v); dep(v); next }
       /^[[:space:]]*-[[:space:]]*["\047]?core\// { v = $0; sub(/^[[:space:]]*-[[:space:]]*/, "", v); lib(v); next }
-      /^[[:space:]]*["\047]?core\/[A-Za-z0-9_.-]+["\047]?[[:space:]]*:/ { v = $0; sub(/:.*$/, "", v); lib(v); next }
-    ' "$SUBJECT/${f#./}" >> "$TMP/rec.tsv" 2> /dev/null || true
-  done < "$TMP/yml.lst"
-  while IFS= read -r f; do
-    [[ -n "$f" ]] || continue
-    AWKV_F="${f#./}" AWKV_NS="$NS_ERE" AWKV_MV="$MOVE_ERE" AWKV_MVNS="$MOVE_NS" awk '
+      /^[[:space:]]*["\047]?core\/[A-Za-z0-9_.-]+["\047]?[[:space:]]*:/ { v = $0; sub(/:.*$/, "", v); lib(v) }
+      # Any other key with a flow sequence (a library'"'"'s dependencies:, a
+      # theme'"'"'s libraries:, a libraries-extend list): its items as libraries.
+      /^[[:space:]]*["\047]?[A-Za-z0-9_.\/-]+["\047]?[[:space:]]*:[[:space:]]*\[/ {
+        v = $0; sub(/^[^:]*:[[:space:]]*/, "", v); if (!flow("lib", v)) fk = "lib"; next
+      }
+      /^[[:space:]]*["\047]?core\/[A-Za-z0-9_.-]+["\047]?[[:space:]]*:/ { next }
+        ' {} + 2> /dev/null || true ) > "$TMP/rec.tsv"
+  ( cd "$SUBJECT" && find . \( -name vendor -o -name node_modules -o -name .git \) -prune -o -type f \
+      \( -name '*.php' -o -name '*.module' -o -name '*.inc' -o -name '*.install' -o -name '*.theme' \
+         -o -name '*.profile' -o -name '*.engine' -o -name '*.twig' \) -exec env AWKV_NS="$NS_ERE" AWKV_MV="$MOVE_ERE" AWKV_MVNS="$MOVE_NS" awk '
       function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
-      BEGIN { F = ENVIRON["AWKV_F"]; NS = ENVIRON["AWKV_NS"]; MV = ENVIRON["AWKV_MV"]; nm = split(ENVIRON["AWKV_MVNS"], mvns, "\n") }
+      BEGIN { NS = ENVIRON["AWKV_NS"]; MV = ENVIRON["AWKV_MV"]; nm = split(ENVIRON["AWKV_MVNS"], mvns, "\n") }
+      FNR == 1 { F = FILENAME; sub(/^\.\//, "", F) }
       { sub(/\r$/, "") }
       {
         s = $0
         while (match(s, /["\047]core\/[A-Za-z0-9_.-]+["\047]/)) {
-          printf "lib\t%s\t%s\t%d\t%s\n", substr(s, RSTART + 1, RLENGTH - 2), F, NR, trim($0)
+          printf "lib\t%s\t%s\t%d\t%s\n", substr(s, RSTART + 1, RLENGTH - 2), F, FNR, trim($0)
           s = substr(s, RSTART + RLENGTH)
         }
         if (NS != "" && match($0, NS)) {
-          v = substr($0, RSTART, RLENGTH); sub(/^Drupal[\\]+/, "", v); sub(/[\\]+$/, "", v)
-          printf "ns\t%s\t%s\t%d\t%s\n", v, F, NR, trim($0)
+          v = substr($0, RSTART, RLENGTH); sub(/^Drupal[\\]+/, "", v); sub(/^Tests[\\]+/, "", v); sub(/[\\]+$/, "", v)
+          printf "ns\t%s\t%s\t%d\t%s\n", v, F, FNR, trim($0)
         }
         if (MV != "" && match($0, MV)) {
           c = substr($0, RSTART, RLENGTH); hit = 0
           for (i = 1; i <= nm; i++) if (mvns[i] != "" && index($0, mvns[i]) > 0) hit = 1
-          if (hit) printf "move\t%s\t%s\t%d\t%s\n", c, F, NR, trim($0)
+          if (hit) printf "move\t%s\t%s\t%d\t%s\n", c, F, FNR, trim($0)
         }
       }
-    ' "$SUBJECT/${f#./}" >> "$TMP/rec.tsv" 2> /dev/null || true
-  done < "$TMP/code.lst"
+        ' {} + 2> /dev/null || true ) >> "$TMP/rec.tsv"
 else
   : > "$TMP/rec.tsv"
 fi
@@ -256,36 +282,48 @@ jq -c --slurpfile ext "$TMP/ext.json" --slurpfile lib "$TMP/lib.json" --slurpfil
        | {detector: det(.name), name, kind, removed_in, rewrite, replacement_project, core_alternative,
           file: $r.file, line: $r.line, evidence: $r.evidence, via: "namespace"}
      elif .k == "move" then $mvc[.v] // empty
-       | {detector: "namespace-move", name: $r.v, kind: "class", removed_in: null, rewrite: "residual",
-          replacement_project: null, core_alternative: null, file: $r.file, line: $r.line, evidence: $r.evidence,
-          from_ns, to_ns, introduced_in, module: .name}
+       # A class whose module a major of (S, T] removes is gone from core:
+       # the code that names it must change. Otherwise an announced note.
+       | if $mods[.name] != null then
+           . as $m | $mods[.name]
+           | {detector: "dependency-removed", name, kind, removed_in, rewrite, replacement_project, core_alternative,
+              file: $r.file, line: $r.line, evidence: $r.evidence, via: "class", class: $r.v, from_ns: $m.from_ns}
+         else
+           {detector: "namespace-move", name: $r.v, kind: "class", removed_in: null, rewrite: "residual",
+            replacement_project: null, core_alternative: null, file: $r.file, line: $r.line, evidence: $r.evidence,
+            from_ns, to_ns, introduced_in, module: .name}
+         end
      else empty end]
   | unique_by([.file, .line, .detector, .name])' "$TMP/rec.json" > "$TMP/cand.json"
 
 # The release feed, once per replacement project of a dependency or base theme.
 # coverage PROJECT -> {available: true|false|"unknown", release, core_compatibility}
 coverage() {
-  local p="$1" frozen="" feed rows ans det=0 keep=0
-  if [[ -n "$ROOT" && -d "$ROOT" ]]; then
+  local p="$1" frozen="" feed rows ans det=0 keep=0 key
+  [[ "$OFFLINE" == "1" ]] && { printf '{"available":"unknown","release":null,"core_compatibility":null}'; return 0; }
+  # The lock keeps one answer per project and declared range (a range with a
+  # quote or a backslash is never frozen).
+  key=".replacements[\"$p\"][\"$RANGE\"]"
+  if [[ -n "$ROOT" && -d "$ROOT" && -n "$RANGE" && "$RANGE" != *[\"\\]* ]]; then
     keep=1
     DRUPILOT_PROJECT_DIR="$ROOT" deterministic_mode && det=1
   fi
   if [[ "$det" == "1" ]]; then
-    frozen="$(DRUPILOT_PROJECT_DIR="$ROOT" lock_get ".replacements[\"$p\"]" "")"
-    if [[ -n "$frozen" ]] && printf '%s' "$frozen" | jq -e --arg c "$RANGE" '.range == $c and (.available | type) == "boolean"' > /dev/null 2>&1; then
+    frozen="$(DRUPILOT_PROJECT_DIR="$ROOT" lock_get "$key" "")"
+    if [[ -n "$frozen" ]] && printf '%s' "$frozen" | jq -e --argjson pv "$PREVIEW" '.preview == $pv and (.available | type) == "boolean"' > /dev/null 2>&1; then
       printf '%s' "$frozen" | jq -c '{available, release: (.release // null), core_compatibility: (.core_compatibility // null)}'
       return 0
     fi
   fi
-  if [[ "$OFFLINE" == "1" ]] || ! feed="$(release_history_fetch "$p")"; then
+  if ! feed="$(release_history_fetch "$p")"; then
     printf '{"available":"unknown","release":null,"core_compatibility":null}'; return 0
   fi
   rows="$(release_history_rows "$feed")"
   ans="$(printf '%s\n' "$rows" | release_covering "$RANGE" "$TARGET" "$PREVIEW")"
   [[ -n "$ans" ]] || ans='{"available":"unknown","release":null,"core_compatibility":null}'
   if [[ "$keep" == "1" ]] && printf '%s' "$ans" | jq -e '(.available | type) == "boolean"' > /dev/null 2>&1; then
-    DRUPILOT_PROJECT_DIR="$ROOT" lock_set_json ".replacements[\"$p\"]" \
-      "$(printf '%s' "$ans" | jq -c --arg c "$RANGE" '. + {range: $c}')" > /dev/null 2>&1 || true
+    DRUPILOT_PROJECT_DIR="$ROOT" lock_set_json "$key" \
+      "$(printf '%s' "$ans" | jq -c --argjson pv "$PREVIEW" '. + {preview: $pv}')" > /dev/null 2>&1 || true
   fi
   printf '%s' "$ans"
   return 0
@@ -307,10 +345,12 @@ jq -S --slurpfile cov "$TMP/cov.json" --argjson reqs "$REQS" --arg mn "$MN" --ar
                else ($cv[.replacement_project] // {}) | if has("available") then .available else "unknown" end end;
     def rel: if .replacement_project == null then null else ($cv[.replacement_project].release // null) end;
     def action:
-      if .detector == "namespace-move" then "note"
-      elif .detector == "base-theme-removed" then "decision"
-      elif .detector == "library-removed" or .detector == "migrate-drupal-usage" or .rewrite != "dependency" or .via == "namespace" then "hard-break"
-      elif (.replacement_project as $rp | $reqs | index($rp)) != null then "composer-required"
+      (.replacement_project as $rp | $rp != null and ($reqs | index($rp)) != null) as $req
+      | if .detector == "namespace-move" then "note"
+      elif .detector == "base-theme-removed" then (if $req then "composer-required" else "decision" end)
+      elif .detector == "library-removed" or .detector == "migrate-drupal-usage" or .rewrite != "dependency"
+           or .via == "namespace" or .via == "class" then "hard-break"
+      elif $req then "composer-required"
       elif .replacement_available == true then "rewrite"
       elif .replacement_available == false then "blocked"
       else "verify" end;
@@ -325,11 +365,15 @@ jq -S --slurpfile cov "$TMP/cov.json" --argjson reqs "$REQS" --arg mn "$MN" --ar
           + (if .core_alternative then " (core has \(.core_alternative))" else "" end)
           + (if .replacement_project then " or require the contrib theme \(.replacement_project)" else "" end)
         elif .action == "hard-break" then
-          if .detector == "migrate-drupal-usage" then "\(.name) was removed from Drupal core in \(.removed_in): a module that uses it cannot target Drupal \($t)"
+          if .via == "class" then
+            "\(.class) (\(.from_ns)) is gone from core in \(.removed_in) with the \(.name) module"
+            + (if .replacement_project then ", which the contrib project \(.replacement_project) carries on: refer to the plugin by its ID, or depend on \(.replacement_project):\(.name)" else "" end)
+          elif .detector == "migrate-drupal-usage" then "\(.name) was removed from Drupal core in \(.removed_in): a module that uses it cannot target Drupal \($t)"
           elif .kind == "library" then "\($what) was removed from Drupal core in \(.removed_in): the code that needs it must change"
           else "\($what) was removed from Drupal core in \(.removed_in) with no replacement: the code that needs it must change" end
         elif .action == "composer-required" then
-          "\($what) was removed from Drupal core in \(.removed_in); composer.json already requires drupal/\(.replacement_project): declare the dependency as \(.replacement_project):\(.name)"
+          "\($what) was removed from Drupal core in \(.removed_in); composer.json already requires drupal/\(.replacement_project)"
+          + (if .kind == "theme" then ", which provides it" else ": declare the dependency as \(.replacement_project):\(.name)" end)
         elif .action == "rewrite" then
           "\($what) was removed from Drupal core in \(.removed_in); release \(.covering_release) of the contrib project \(.replacement_project) covers \($c): depend on \(.replacement_project):\(.name) and require drupal/\(.replacement_project)"
         elif .action == "blocked" then

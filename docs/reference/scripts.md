@@ -487,7 +487,8 @@ only narrates it.
                  least one matching file of the subject, plus the detectors
                  of the core removals a person must resolve (a removed base
                  theme, a removal with no replacement: scan-removals.sh,
-                 ADR 0031)
+                 ADR 0031); a removal whose name a category's ERE matches
+                 (core/jquery.ui.*) counts under that category, once
   blocking_deps  deps-status.sh's blockers (no Drupal 11 release on
                  drupal.org; offline every contrib dependency is unknown),
                  plus each removed core module no release of its contrib
@@ -1730,8 +1731,9 @@ port-safety or signature-change scan recorded errors; the worklist has an
 open blocking item of the PHP window (a construct removed in the target PHP,
 a file a window PHP does not compile: scripts/analysis/php-target.sh,
 php-lint-window.sh) whose file is still as it was found (php_window_items);
-the worklist, still fresh, has an open blocking core-removal item (a hard
-break or a dependency no release covers: scan-removals.sh, removal_items).
+the worklist has an open blocking core-removal item (a hard break or a
+dependency no release covers: scan-removals.sh, removal_items) whose file
+is still as it was found.
 A result computed on
 sources that changed since (fresh: false) is reported but never blocks; one
 recorded with another subject_digest algorithm (drupilot 0.9) is stale too,
@@ -2252,10 +2254,11 @@ core_compatibility admits every verified core minor C admits. The release
 feed (https://updates.drupal.org/release-history/<project>/current) is
 cached for a day under drupilot's cache dir; in deterministic mode
 (DRUPILOT_DETERMINISTIC, default true) a known answer is frozen in the Drupal
-root's lock (.replacements.<project>, with the range it answered for) and
-reused until the range changes or `lock-sync.sh --refresh` drops it;
-DRUPILOT_DETERMINISTIC=false reads the feed and refreshes the lock. This is
-the only write: nothing in the subject or the root's tree is touched.
+root's lock (.replacements.<project>.<range>, with whether it was a
+preview's) and reused while T's pre-release status is the same, until
+`lock-sync.sh --refresh` drops it; DRUPILOT_DETERMINISTIC=false reads the
+feed and refreshes the lock. This is the only write: nothing in the subject
+or the root's tree is touched.
 
 Usage:
   scan-removals.sh [--subject DIR] [--target N] [--source S] [--range C]
@@ -2272,7 +2275,8 @@ Options:
                  targets/<T>.json default_ranges target-only).
   --root DIR     The Drupal root whose lock freezes the coverage answers
                  (default: the subject's).
-  --offline      Never read the release feed: every coverage is unknown.
+  --offline      Never read the release feed or the lock's frozen answers:
+                 every coverage is unknown.
   --json         Print the report as JSON on STDOUT (default: a summary on
                  STDERR and the finding ids on STDOUT).
 
@@ -4667,9 +4671,10 @@ two layers (G-EVALS):
       prompts in flow order: each command's `choice.sh --key KEY` calls, plus
       the tabs declared only by an AskUserQuestion header (a choices.json key
       with no choice.sh call, such as PUSH). New tabs may only be inserted
-      (CC-02), each as tab-sequence.json's allowed_insertions lists it: right
-      before the 0.9 tab it names, or before another allowed insertion that
-      stands there (D32); without them, the 0.9 sequence;
+      (CC-02), each as tab-sequence.json's allowed_insertions lists it:
+      before the 0.9 tab it names (other allowed insertions may stand
+      between them), at most once and in the listed order (D32); without
+      them, the 0.9 sequence;
     * the router's mode words, in its argument-hint;
     * the router's mode-inference rules: each cue's mode is the first bold
       **`mode`** after it in its rule, else the last one before it;

@@ -2,10 +2,11 @@
 # port-summary.sh and the core removals (T-M6-04, ADR 0031): once the subject
 # is ported, an open blocking human item of the core removals (a removed base
 # theme, a removal with no replacement, a dependency no release covers)
-# blocks the port while the worklist is current (worklist_fresh): status
-# blocked, a core-removals blocker, --strict exit 3. A non-blocking item (a
-# dependency to rewrite or to verify), a closed item, a stale worklist and a
-# stage before ported never block. make-issue.sh turns each open item into a
+# blocks the port while it describes the current code (the hash of its file,
+# else worklist_fresh): status blocked, a core-removals blocker, --strict
+# exit 3. A non-blocking item (a dependency to rewrite or to verify), a closed
+# item, a stale item (only warned about) and a stage before ported never
+# block. make-issue.sh turns each open item into a
 # remaining task. Docker-free.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
@@ -20,9 +21,10 @@ jq -n --arg d "$(subject_digest "$S")" '{stage: "assess", subject: {machine_name
 jq -n --arg h "$(canon_json_hashable < "$IX" | json_hash)" \
   '{schema: 1, stage: "assess", findings: [{id: "F-1", message: "the theme claro was removed from Drupal core in 12.0: choose a new base theme"}],
     meta: {findings_hash: "sha256:f1", raw: {"04-assess-index.json": $h}}}' > "$SD/findings.json"
-wl() {  # wl STATUS BLOCKING REASON
-  jq -n --arg st "$1" --argjson b "$2" --arg r "$3" '{schema: 1, stage: "assess", meta: {findings_hash: "sha256:f1"}, items: [
-    {id: "W-1", lane: "human", file: "rm.info.yml", status: $st, blocking: $b, reason: $r, finding_ids: ["F-1"]}]}' > "$(worklist_file "$S")"
+wl() {  # wl STATUS BLOCKING REASON [FILE_HASH]
+  jq -n --arg st "$1" --argjson b "$2" --arg r "$3" --arg fh "${4:-}" '{schema: 1, stage: "assess", meta: {findings_hash: "sha256:f1"}, items: [
+    {id: "W-1", lane: "human", file: "rm.info.yml", status: $st, blocking: $b, reason: $r, finding_ids: ["F-1"]}
+    + (if $fh == "" then {} else {file_hash: $fh} end)]}' > "$(worklist_file "$S")"
 }
 ps() { t_run "$T_SH" "$T_REPO/scripts/analysis/port-summary.sh" --subject "$S" --json "$@"; }
 blk() { jq -c '[.status, [.blockers[] | select(.source == "core-removals") | .reason]]' "$T_OUT"; }
@@ -53,7 +55,14 @@ wl open true base-theme-removed
 t_run "$T_SH" "$T_REPO/scripts/contrib/make-issue.sh" --project rm --subject "$S" --output "$T_TMP/issue" --json
 assert_eq "make-issue.sh: a remaining task per open core-removal item" \
   "$T_RC|$(jq -r '.summary' "$T_OUT" | grep -c 'Resolve `rm.info.yml`: what the target removes from core (base-theme-removed): the theme claro was removed' || true)" "0|1"
+printf '<?php\n' > "$S/rm.theme"
+ps --strict
+assert_eq "another file changed, the item without file_hash: stale, not blocked" "$T_RC|$(st)" "0|ported"
+assert_match "  and warned about" "$(t_err)" "blocking core-removal item"
+wl open true base-theme-removed "$(file_hash "$S/rm.info.yml")"
+ps --strict
+assert_eq "another file changed, the item's own file did not: still blocked" "$T_RC|$(st)" "3|blocked"
 printf 'name: RM\ntype: theme\nbase theme: stable9\ncore_version_requirement: ^11\n' > "$S/rm.info.yml"
 ps --strict
-assert_eq "the sources changed since the extraction: stale, not blocked" "$T_RC|$(st)" "0|ported"
+assert_eq "the item's own file changed: stale, not blocked" "$T_RC|$(st)" "0|ported"
 t_done

@@ -284,7 +284,19 @@ CKEditor 5 (`ckeditor5`), jQuery UI (`jquery_ui`), Symfony 7 (`symfony7`) — ea
 a POSIX ERE over the files its globs name (`vendor/`, `node_modules/` and `.git/`
 left out), each fact verified in core. `hard_break_categories.<id>` lists the
 matching files, `hard_breaks` the categories present, and `rubric.hard_breaks`
-their number (0–4).
+their number.
+
+The **core removals** (`scripts/analysis/scan-removals.sh`, ADR 0031) add to
+them: what the code still takes from core that a major of the plan removes.
+`core_removals` lists each one (`detector`, `name`, `action`, `files`). A
+`decision` (a removed base theme: a person picks the new one) or a `hard-break`
+(a removed module with no replacement, `migrate_drupal`, a removed library) adds
+its detector (`base-theme-removed`, `dependency-removed`, `migrate-drupal-usage`,
+`library-removed`) to `hard_breaks` and its files to `hard_break_categories`; a
+removed jQuery UI library counts once, under `jquery_ui`. A `rewrite` (a contrib
+release covers the declared range: depend on `PROJECT:NAME`), a `verify` (the
+release feed was not read) and a `composer-required` are not hard breaks; say
+what each needs.
 
 **Symfony 7** is the most false-positive-prone (having an event subscriber is
 common and may not break): it still counts for the verdict, but say in the
@@ -331,7 +343,11 @@ only and a major bump).
   document it, never fake green. Whether an alternative is viable is your
   judgement for the plan, not for the count. With `offline: true` every contrib
   dependency is `unknown` and none blocks: say the dependencies were not
-  checked, not that they are ready.
+  checked, not that they are ready. A removed core module whose contrib
+  replacement has no release that covers the declared range (`core_removals`
+  action `blocked`) also counts in `rubric.blocking_deps`, whatever `offline`
+  says: the removals scan reads drupal.org's release feed (or the answer frozen
+  in the lock) itself.
 - `hygiene` — `{error, warn, info}`, the totals of the metadata findings
   (`lint-extension-metadata.sh`): config without a schema, plugin settings
   without one, a `configure:` route defined nowhere, an orphan service class or
@@ -368,9 +384,11 @@ the same module reach the same verdict. Never recompute or override it:
   method, plus the signature and port-safety findings of severity `error`
   (`manual_items`, §3.4). Soft and next-major ones never count, whatever
   `DRUPILOT_SOFT_DEPRECATIONS` says.
-- `rubric.hard_breaks`: the hard-break categories present (0–4, §3.5).
+- `rubric.hard_breaks`: the hard-break categories present, the core-removal
+  detectors included (§3.5).
 - `rubric.blocking_deps`: the dependencies drupal.org has no release of the
-  target major for (`deps-status.sh` blockers, §3.7).
+  target major for (`deps-status.sh` blockers, §3.7), plus the removed core
+  modules no release of their contrib replacement covers (§3.5).
 
 `rubric.rule` is the first matching row, quoted verbatim in the report:
 

@@ -36,7 +36,7 @@ cwd), its type (module/theme), the target major and the effective PHP target (th
 target's own default unless one is set; `target_set` / `php_set` say whether a value
 was set in the environment or `.drupilot.json`):
 
-!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; T="$(resolve_target_major)"; P="$(resolve_php_target_for "$T")"; printf "subject_dir=%s\n" "$SUBJ"; printf "machine_name=%s\n" "$(subject_machine_name "$SUBJ" 2>/dev/null || echo -)"; printf "subject_type=%s\n" "$(subject_type "$SUBJ" 2>/dev/null || echo -)"; printf "target_major=%s\n" "$T"; printf "target_set=%s\n" "$([[ -n "$(config_get_explicit DRUPILOT_TARGET_MAJOR)" ]] && echo yes || echo no)"; printf "allow_prerelease=%s\n" "$(config_get DRUPILOT_ALLOW_PRERELEASE false)"; printf "php_target=%s\n" "$P"; printf "php_set=%s\n" "$([[ -n "$(config_get_explicit DRUPILOT_PHP_TARGET)" ]] && echo yes || echo no)"; printf "php_unconfirmed=%s\n" "$(php_target_unconfirmed "$P" && echo yes || echo no)"; printf "drupal_target=%s\n" "$(resolve_drupal_target)"' _ "$1"`
+!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; T="$(resolve_target_major)"; P="$(resolve_php_target_for "$T")"; printf "subject_dir=%s\n" "$SUBJ"; printf "machine_name=%s\n" "$(subject_machine_name "$SUBJ" 2>/dev/null || echo -)"; printf "subject_type=%s\n" "$(subject_type "$SUBJ" 2>/dev/null || echo -)"; printf "target_major=%s\n" "$T"; printf "target_set=%s\n" "$([[ -n "$(config_get_explicit DRUPILOT_TARGET_MAJOR)" ]] && echo yes || echo no)"; printf "allow_prerelease=%s\n" "$(config_bool DRUPILOT_ALLOW_PRERELEASE 0 && echo true || echo false)"; printf "php_target=%s\n" "$P"; printf "php_set=%s\n" "$([[ -n "$(config_get_explicit DRUPILOT_PHP_TARGET)" ]] && echo yes || echo no)"; printf "php_unconfirmed=%s\n" "$(php_target_unconfirmed "$P" && echo yes || echo no)"; printf "drupal_target=%s\n" "$(resolve_drupal_target)"' _ "$1"`
 
 Nothing is persisted in this step until the draft upgrade plan below resolves
 (D30). A `--target N` / `--php X.Y` flag in `$ARGUMENTS` wins over every other
@@ -145,11 +145,16 @@ DRUPILOT_TARGET_MAJOR=<T> DRUPILOT_PHP_TARGET=<X.Y> bash "${CLAUDE_PLUGIN_ROOT}/
   the subject still uses (each `name`, `detector` and `files`), and name the
   `hard_breaks` a person must resolve (a removed base theme, a removal with no
   replacement); a removed module with a contrib replacement is checked against
-  drupal.org's release feed in the assessment (ADR 0031).
-  - If `.target.major` is not 11, stop here, persisting nothing: say that the
-    draft plan is frozen, relay its core removals as above (the Drupal T readiness
-    preview), and that Drupal 12 test-beds arrive with a later drupilot release
-    (T-M3-08); do not run the setup scripts below.
+  drupal.org's release feed in the assessment (ADR 0031). A `null`
+  `core_removals` means the plan was frozen before drupilot computed them
+  (1.0.0-alpha.5 or earlier): for the list, run
+  `bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/scan-removals.sh" --subject "<subject_dir>" --offline --json`
+  and read its `core_removals` and `hard_breaks` the same way.
+  - If `.target.major` is not 11, stop here, persisting nothing (not even the
+    pre-release opt-in): say that the draft plan is frozen, relay its core
+    removals as above (the Drupal T readiness preview), and that Drupal 12
+    test-beds arrive with a later drupilot release (T-M3-08); do not run the setup
+    scripts below.
   - Otherwise persist the answered values (`prefs_set DRUPILOT_TARGET_MAJOR <T>`,
     `prefs_set DRUPILOT_PHP_TARGET <X.Y>`, run with
     `DRUPILOT_PROJECT_DIR=<drupal_root>`): now when `drupal_root_exists` is `true`,

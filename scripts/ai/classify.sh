@@ -220,10 +220,12 @@ jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile asf "$TMP/actions.json" --a
          status: (if $h.c.lane == "deferred" then "deferred" elif all($g[]; .c.applied == true) then "applied" else "open" end)})
   | sort_by([(.lane as $l | $order | index($l)), .file, .anchor])' "$FINDINGS" > "$TMP/items.json"
 
-# A PHP-window item keeps the hash of its file as classified (--subject only):
-# a later edit of another file leaves it current (php_window_items).
+# A PHP-window or core-removal item keeps the hash of its file as classified
+# (--subject only): a later edit of another file leaves it current
+# (reason_items).
+HASHED_RE="$PHP_WINDOW_REASONS_ERE|$REMOVAL_REASONS_ERE"
 if [[ -n "$SUBJECT" ]]; then
-  jq -r --arg re "$PHP_WINDOW_REASONS_ERE" '.[] | select(.lane == "human" and ((.reason // "") | test($re))) | .file' "$TMP/items.json" \
+  jq -r --arg re "$HASHED_RE" '.[] | select(.lane == "human" and ((.reason // "") | test($re))) | .file' "$TMP/items.json" \
     | LC_ALL=C sort -u > "$TMP/phpw-files"
   : > "$TMP/phpw-hashes.tsv"
   while IFS= read -r pf; do
@@ -231,7 +233,7 @@ if [[ -n "$SUBJECT" ]]; then
     printf '%s\t%s\n' "$pf" "$(file_hash "$SUBJECT/$pf")" >> "$TMP/phpw-hashes.tsv"
   done < "$TMP/phpw-files"
   if [[ -s "$TMP/phpw-hashes.tsv" ]]; then
-    jq -c --rawfile h "$TMP/phpw-hashes.tsv" --arg re "$PHP_WINDOW_REASONS_ERE" '
+    jq -c --rawfile h "$TMP/phpw-hashes.tsv" --arg re "$HASHED_RE" '
       ($h | split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: .[1]}) | from_entries) as $fh
       | map(if .lane == "human" and ((.reason // "") | test($re)) and $fh[.file] != null then . + {file_hash: $fh[.file]} else . end)' \
       "$TMP/items.json" > "$TMP/items2.json" && mv -f "$TMP/items2.json" "$TMP/items.json"

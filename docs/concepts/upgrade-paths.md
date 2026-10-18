@@ -101,13 +101,13 @@ What happens to each:
 | A removed module whose contrib project has a release that covers the declared range | `rewrite`: depend on `contact:contact` and require `drupal/contact` | no |
 | The same, with no release that covers the range | `blocked`: a blocking dependency, never rewritten (H8) | no, a blocking dependency |
 | The same, with the release feed not read (offline) | `verify`: check by hand | no |
-| A removed base theme | `decision`: pick a new base theme, or require the contrib theme | yes |
+| A removed base theme | `decision`: pick a new base theme, or require the contrib theme (then `composer-required`, an info note) | yes, until the contrib theme is required |
 | A removed module with no replacement, `migrate_drupal`, a removed library | `hard-break`: the code must change | yes |
 
 The plan lists them as `core_removals` and `hard_breaks`, from an offline scan,
 so it never depends on the network. The assessment reads drupal.org's release
 feed (cached for a day; in deterministic mode the answer is frozen in the
-lock), counts the hard breaks in its verdict, and lists them in
+lock, per project and declared range), counts the hard breaks in its verdict, and lists them in
 `viability-report.md`. Each one is a `human` item of the worklist, and an open
 blocking one keeps a ported module `blocked` in `port-summary.sh`.
 

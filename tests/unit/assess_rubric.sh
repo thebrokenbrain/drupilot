@@ -167,6 +167,11 @@ assert_eq "  core_removals: one per detector and name, with its action" "$(jq -c
   '[["base-theme-removed","claro","decision"],["dependency-removed","ban","rewrite"],["dependency-removed","contact","blocked"],["dependency-removed","history","verify"],["library-removed","core/internal.backbone","hard-break"],["library-removed","core/js-cookie","hard-break"],["namespace-move","TextWithSummaryItem","note"]]'
 assert_eq "  it validates against schemas/assess.schema.json" "$(valid "$T_OUT")" ""
 assert_match "  the report lists them" "$(cat "$(project_artifacts_dir "$SUB")/viability-report.md")" '\| `claro` \| base-theme-removed \| decision \| `themes/t/t.info.yml` \|'
+mkdir -p "$SUB/config/install"; printf 'dependencies:\n  - core/jquery.ui.dialog\n' > "$SUB/m.libraries.yml"
+rmf F-j1 library-removed hard-break core/jquery.ui.dialog m.libraries.yml error | jq -s . | run
+assert_eq "  a removed jQuery UI library the jquery_ui category already found: one hard break" \
+  "$(v)|$(jq -c '[.hard_breaks, .hard_break_categories.jquery_ui]' "$T_OUT")" 'M 0 1 0|[["jquery_ui"],["m.libraries.yml"]]'
+rm -f "$SUB/m.libraries.yml"
 fnd F-m9 catalog removal:library-removed:hard-break m.module '{file}' error next-major removal | jq -s . | run
 assert_eq "  a next-major removal counts for nothing" "$(v)|$(jq -c .core_removals "$T_OUT")" "S 0 0 0|[]"
 

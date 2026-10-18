@@ -44,20 +44,25 @@ So for C = `^11.3 || ^12`, H8 allows rewriting `contact`, `history` and `ban`. I
    `12.json` `hard_break_detectors` that removal data can drive:
    - `dependency-removed`;
    - `migrate-drupal-usage`: a dependency on `migrate_drupal` or `migrate_drupal_ui`, or code that names their
-     namespace. A module with only its own `migrate` source plugins is not flagged;
+     namespace (`Drupal\migrate_drupal\` or its test namespace `Drupal\Tests\migrate_drupal\`). A module with
+     only its own `migrate` source plugins is not flagged;
    - `base-theme-removed`;
-   - `library-removed`: a list item or a key in a `*.info.yml` or `*.libraries.yml`, or a quoted name in PHP or
-     Twig;
-   - `namespace-move`: a class of `targets/<T>.json` `namespace_moves` used in its old namespace. This is an
-     announced note and never a hard break (X4).
+   - `library-removed`: a list item, a flow-sequence item (`[a, b]`, on one line or several) or a key in a
+     `*.info.yml` or `*.libraries.yml`, or a quoted name in PHP or Twig;
+   - `namespace-move`: a class of a `namespace_moves` entry of a major from S to T, used in its old namespace.
+     This is an announced note and never a hard break (X4), unless a major of (S, T] removes the module the
+     class moved to. Then the class is gone from core, and the hit is a `dependency-removed` hard break of that
+     module: Text with Summary's classes on a port to Drupal 12.
 
-   It scans the majors in (S, T] of the plan. `phpunit-annotations` and `symfony8-constraint-validator` are not
+   It scans the removals of the majors in (S, T] of the plan. `phpunit-annotations` and `symfony8-constraint-validator` are not
    the scanner's: the Rector passes that fix them report them (`Drupal12SetList::DRUPAL_120`, and the tests-only
    pass of T-M6-05). The graph's per-edge `detectors` stay as they are; they name what a hop looks for.
 
 2. **`drupal:NAME` and a bare `NAME` are core's.** `PROJECT:NAME` with another project already names the contrib
    module, so it is not reported. A dependency whose replacement project is already a `drupal/PROJECT` require in
-   the subject's `composer.json` is `composer-required`, an info note: declare it as `PROJECT:NAME`.
+   the subject's `composer.json` is `composer-required`, an info note: declare it as `PROJECT:NAME`. A base theme
+   whose contrib theme `composer.json` already requires is `composer-required` too: the contrib theme provides
+   it.
 
 3. **The network answer is per stage, frozen per root, never in the plan.**
    - Each finding gets an action:
@@ -73,8 +78,10 @@ So for C = `^11.3 || ^12`, H8 allows rewriting `contact`, `history` and `ban`. I
      verified core minor C admits (`release_covering`).
    - The feed is cached for a day (`release_history_fetch`).
    - In deterministic mode, a known answer (true or false) is frozen in the root's lock under
-     `.replacements.<project>`, together with the range it answered for. It is reused until C changes or
-     `lock-sync.sh --refresh` drops it.
+     `.replacements.<project>.<range>`, with whether T was a pre-release. It is reused for the same range and
+     pre-release status, so two subjects of one root with different ranges keep their own answers, until
+     `lock-sync.sh --refresh` drops them. `DRUPILOT_DETERMINISTIC=false` reads the feed and refreshes the lock.
+     `--offline` reads neither the feed nor the lock: every answer is unknown.
    - `upgrade-path.sh` always runs the scanner `--offline`. Its `core_removals` keep only the network-free facts
      (detector, name, kind, `removed_in`, `rewrite`, replacement project, core alternative, hard break,
      files). The plan resolves the same way with or without a network.
@@ -98,11 +105,15 @@ So for C = `^11.3 || ^12`, H8 allows rewriting `contact`, `history` and `ban`. I
 
      Info findings are `deferred`. The rewrite itself, a codemod under H8, comes with the Drupal 12 test-bed.
    - `assess.sh` keeps `hard_breaks` as a list of ids. It adds the detectors of the open hard-break removals to
-     the catalog categories, so they count in the rubric. It adds their files to `hard_break_categories`, and
-     counts each `blocked` dependency in `blocking_deps`. A new `core_removals` field lists them for the report.
+     the catalog categories, so they count in the rubric. A removal whose name the ERE of a catalog category
+     matches (a removed `core/jquery.ui.*` library: `jquery_ui`) counts once, under that category. It adds their
+     files to `hard_break_categories`, and counts each `blocked` dependency in `blocking_deps`. A new
+     `core_removals` field lists them for the report.
      The acceptance check therefore reads `.hard_breaks | index("base-theme-removed")`, not `map(.id)`: the
      plan's objects carry the details, and the 1.0 `assess.json` shape stays additive.
-   - `port-summary.sh` blocks a ported subject while a blocking removal item is open (source `core-removals`).
+   - `port-summary.sh` blocks a ported subject while a blocking removal item is open and its file is as it was
+     classified (source `core-removals`; `classify.sh` keeps the file's hash, as for the PHP window's items). A
+     stale one is warned about, never blocking.
 
 5. **`ALLOW_PRERELEASE` is a tab only after someone asks for a pre-release.**
    - When T resolves to a pre-release major without the opt-in, `/drupilot-setup` asks "Port to Drupal T as a
@@ -110,7 +121,8 @@ So for C = `^11.3 || ^12`, H8 allows rewriting `contact`, `history` and `ban`. I
    - The tab is never shown in an autonomous run. There, the refusal `prerelease-not-opted-in` stops the run with
      nothing written.
    - It can be pre-answered with `DRUPILOT_CHOICE_ALLOW_PRERELEASE` (registry `config/choices.json`).
-   - `yes` persists `DRUPILOT_ALLOW_PRERELEASE=true` once the draft plan resolves.
+   - Until the Drupal 12 test-bed lands (T-M6-03), the setup stops after a pre-release's draft plan and persists
+     nothing, the opt-in included; the registry's `persist_map` says what a `yes` persists from then on.
    - The refusal's choice now names the tab. The router passes a `--target N` on to `/drupilot-setup`. A frozen
      plan fixes T for the stages after it.
 

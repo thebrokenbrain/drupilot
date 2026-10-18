@@ -9,9 +9,10 @@
 #       prompts in flow order: each command's `choice.sh --key KEY` calls, plus
 #       the tabs declared only by an AskUserQuestion header (a choices.json key
 #       with no choice.sh call, such as PUSH). New tabs may only be inserted
-#       (CC-02), each as tab-sequence.json's allowed_insertions lists it: right
-#       before the 0.9 tab it names, or before another allowed insertion that
-#       stands there (D32); without them, the 0.9 sequence;
+#       (CC-02), each as tab-sequence.json's allowed_insertions lists it:
+#       before the 0.9 tab it names (other allowed insertions may stand
+#       between them), at most once and in the listed order (D32); without
+#       them, the 0.9 sequence;
 #     * the router's mode words, in its argument-hint;
 #     * the router's mode-inference rules: each cue's mode is the first bold
 #       **`mode`** after it in its rule, else the last one before it;
@@ -115,14 +116,18 @@ static_layer() {
   if [[ "$got" == "$want" ]]; then
     result "tab-sequence" pass "the full run declares the 0.9 tab sequence ($(printf '%s' "$want" | jq 'length') tabs)"
   elif jq -n -e --argjson o "$want" --argjson n "$got" --argjson ins "$(jq -c '.allowed_insertions // []' "$EVD/tab-sequence.json")" '
-      # Drop each allowed insertion that stands right before the tab it names
-      # (other allowed insertions may stand between them); what is left must
-      # be the 0.9 sequence itself.
+      # Drop each allowed insertion that stands before the tab it names (other
+      # allowed insertions may stand between them), each at most once and in
+      # the order allowed_insertions lists them; anything else is kept, and
+      # what is left must be the 0.9 sequence itself.
       $n | . as $a | ($ins | map(.key)) as $keys
-      | [range(0; length) as $i
-         | ([$a[($i + 1):][] | select(. as $t | $keys | index($t) | not)] | .[0] // null) as $next
-         | select(any($ins[]; .key == $a[$i] and .before == $next) | not) | $a[$i]]
-      | . == $o' > /dev/null; then
+      | reduce range(0; length) as $i ({out: [], used: -1};
+          ($a[$i]) as $t | ($keys | index($t)) as $k
+          | if $k == null then .out += [$t]
+            else ([$a[($i + 1):][] | select(. as $u | $keys | index($u) | not)] | .[0] // null) as $next
+              | if $k > .used and $ins[$k].before == $next then .used = $k else .out += [$t] end
+            end)
+      | .out == $o' > /dev/null; then
     result "tab-sequence" pass "the 0.9 tab sequence is kept, with the allowed insertions: $got"
   else
     result "tab-sequence" fail "the tab sequence changed: got $got, want $want (a new tab only as tests/evals/router/tab-sequence.json allowed_insertions lists it)"

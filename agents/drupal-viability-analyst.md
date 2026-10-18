@@ -167,8 +167,12 @@ Follow the `viability-assessment` skill: its §3 is the field guide to
   `text_summary()`, `check_markup()`) follow `soft_deprecations_policy` and are
   never must-fix work.
 - **Hard breaks** — `hard_break_categories` (Twig 3, CKEditor 5, jQuery UI,
-  Symfony 7) with the files that matched. A Symfony 7 hit is the most likely to be
-  harmless: say whether PHPStan flags a real type or signature error there.
+  Symfony 7, and the core-removal detectors) with the files that matched. A
+  Symfony 7 hit is the most likely to be harmless: say whether PHPStan flags a
+  real type or signature error there.
+- **Core removals** — `core_removals`: what the code takes from core that the
+  target removes, each with its action (`decision`, `hard-break`, `blocked`,
+  `rewrite`, `verify`, `composer-required`, `note`) and files.
 - **info.yml status + core target** — `info_yml` (present, admits the target
   major, submodules) and `core_target`: the recommended requirement, its
   `require_php`, the `version_bump` verdict, `d10_support` and the warnings.

@@ -2,7 +2,8 @@
 # scripts/dev/evals.sh on a scratch copy of the plugin: the static layer fails
 # when a natural-language port no longer maps to `full`, when a bare
 # `/drupilot` no longer maps to `next`, when two tabs swap places, when a tab
-# is inserted where allowed_insertions does not list it, and when a
+# is inserted where allowed_insertions does not list it (or twice, or out of
+# its listed order), and when a
 # rule that keeps an auto run tab-free is dropped. The live layer, run against
 # a stub `claude` (no model), never counts a failed or empty run as a pass:
 # the auto case needs an explicit NO_TABS reply.
@@ -36,6 +37,10 @@ mutate "a tab inserted without an allowed_insertions entry fails" commands/drupi
   's/--key TARGET_MAJOR/--key LEARN/' 'tab-sequence'
 mutate "the allowed insertion after its anchor fails" commands/drupilot-setup.md \
   's/--key TARGET_MAJOR/--key TMP_SWAP/; s/--key PHP_TARGET/--key TARGET_MAJOR/; s/--key TMP_SWAP/--key PHP_TARGET/' 'tab-sequence'
+mutate "two allowed insertions out of their listed order fail" commands/drupilot-setup.md \
+  's/--key TARGET_MAJOR/--key TMP_SWAP/; s/--key ALLOW_PRERELEASE/--key TARGET_MAJOR/; s/--key TMP_SWAP/--key ALLOW_PRERELEASE/' 'tab-sequence'
+mutate "an allowed insertion asked twice fails" commands/drupilot-setup.md \
+  '/--key ALLOW_PRERELEASE/p' 'tab-sequence'
 mutate "a dropped auto rule fails" agents/drupal-port-orchestrator.md \
   's/\*\*Never perform any outward-facing action\.\*\*/**Avoid outward-facing actions.**/' 'auto rule: \*\*Never perform'
 

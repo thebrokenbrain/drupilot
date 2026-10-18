@@ -57,7 +57,7 @@
         "change_record_search_url": {"anyOf": [{"type": "string"}, {"type": "null"}]},
         "blocking": {"type": "boolean"},
         "reason": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-        "file_hash": {"description": "A PHP-window item classified with --subject: the hash of its file then (file_hash); while the file still has it, the item describes the current code.", "type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "file_hash": {"description": "A PHP-window or core-removal item classified with --subject: the hash of its file then (file_hash); while the file still has it, the item describes the current code.", "type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
         "status": {"enum": ["open", "applied", "deferred"]}
       }
     }

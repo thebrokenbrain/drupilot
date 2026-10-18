@@ -12,7 +12,7 @@ The forks drupilot asks about as tabs, from `config/choices.json`. The recommend
 - **Default:** `no`
 - **Pre-answer:** `DRUPILOT_CHOICE_ALLOW_PRERELEASE`
 
-Asked only when the target major resolves to a pre-release (Drupal 12 until its stable release) and DRUPILOT_ALLOW_PRERELEASE is not true; never in an autonomous run, where the pre-release refusal stops it with nothing written. 'yes' ports to the pre-release as a preview, 'no' to Drupal 11. A 'yes' is persisted only after the draft upgrade plan resolves.
+Asked only when the target major resolves to a pre-release (Drupal 12 until its stable release) and DRUPILOT_ALLOW_PRERELEASE is not true; never in an autonomous run, where the pre-release refusal stops it with nothing written. 'yes' plans the port to the pre-release as a preview, 'no' ports to Drupal 11. Until the Drupal 12 test-bed lands, the setup stops after a pre-release's draft plan and persists nothing, this answer included.
 
 ## ATTRIBUTE_FLOOR
 

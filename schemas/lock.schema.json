@@ -36,17 +36,20 @@
       }
     },
     "replacements": {
-      "description": "The release-feed answers scan-removals.sh froze in deterministic mode (ADR 0031), keyed by the contrib project that replaced a removed core module or theme: whether a release covers the declared range it was asked for, and which. Reused while range is the declared range; lock-sync.sh --refresh drops them.",
+      "description": "The release-feed answers scan-removals.sh froze in deterministic mode (ADR 0031): for each contrib project that replaced a removed core module or theme, and each declared range it was asked about, whether a release covers that range, which one, and whether the target was a pre-release (preview: then alpha, beta and RC releases count). Reused for the same range and preview status; lock-sync.sh --refresh drops them.",
       "type": "object",
       "propertyNames": {"pattern": "^[a-z0-9_]+$"},
       "additionalProperties": {
         "type": "object",
-        "required": ["range", "available"],
-        "properties": {
-          "range": {"type": "string"},
-          "available": {"type": "boolean"},
-          "release": {"type": ["string", "null"]},
-          "core_compatibility": {"type": ["string", "null"]}
+        "additionalProperties": {
+          "type": "object",
+          "required": ["available", "preview"],
+          "properties": {
+            "available": {"type": "boolean"},
+            "preview": {"type": "boolean"},
+            "release": {"type": ["string", "null"]},
+            "core_compatibility": {"type": ["string", "null"]}
+          }
         }
       }
     },
