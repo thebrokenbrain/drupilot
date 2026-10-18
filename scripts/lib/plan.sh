@@ -487,6 +487,37 @@ rector_sets_for_plan() {
   return 0
 }
 
+# _plan_phpunit_min MINOR -> the lowest PHPUnit major MINOR's
+# phpunit_constraint admits (config/targets/<N>.json), or nothing.
+_plan_phpunit_min() {
+  target_get "${1%%.*}" ".minors[\"$1\"].phpunit_constraint // empty" 2> /dev/null \
+    | tr '|' '\n' | sed -n 's/^[^0-9]*\([0-9][0-9]*\).*/\1/p' | sort -n | sed -n '1p'
+  return 0
+}
+
+# plan_tests_pass BED F -> the plan's rector.tests_pass (ADR 0032), one JSON
+# line: {enabled: true, sets: [Rector's PHPUnit annotations-to-attributes
+# set]} when the test-bed core's PHPUnit no longer reads annotations (the
+# lowest major its minor's phpunit_constraint admits is 12 or more: PHPUnit 12
+# ignores @dataProvider, @covers, @group) and the floor F's PHPUnit reads
+# attributes (10 or more), from config/targets/<N>.json minors; else null (a
+# minor without phpunit_constraint is unknown: null). Only that set: never
+# PHPUNIT_CODE_QUALITY, NARROW_ASSERTS or MOCK_TO_STUB, which change what a
+# test verifies (03-R10).
+plan_tests_pass() {
+  local bed="${1:-}" floor="${2:-}" bm fm bmaj fmaj
+  bm="$(printf '%s' "$bed" | sed -n 's/^\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
+  fm="$(printf '%s' "${floor:-$bed}" | sed -n 's/^\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
+  [[ -n "$bm" && -n "$fm" ]] && have_cmd jq || { printf 'null'; return 0; }
+  bmaj="$(_plan_phpunit_min "$bm")"; fmaj="$(_plan_phpunit_min "$fm")"
+  if [[ "$bmaj" =~ ^[0-9]+$ && "$fmaj" =~ ^[0-9]+$ ]] && (( bmaj >= 12 && fmaj >= 10 )); then
+    printf '{"enabled":true,"sets":["Rector\\\\PHPUnit\\\\Set\\\\PHPUnitSetList::ANNOTATIONS_TO_ATTRIBUTES"]}'
+  else
+    printf 'null'
+  fi
+  return 0
+}
+
 # plan_rector_skip -> the Rector rules every drupilot config skips, one JSON
 # array of FQCNs in php/rules.json order (= templates/rector.php.tmpl's
 # $drupilotRiskySkips): the deny rows, plus any compat row not drupal_safe.

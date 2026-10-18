@@ -13,6 +13,41 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+### Added
+- **Drupal 12 test-beds** (T-M6-03, ADR 0004). A port to Drupal 12 (a preview, experimental:
+  off unless you opt in, outside 1.0's release criteria) now runs end to end instead of
+  stopping after its draft plan. `ddev-up.sh` builds
+  the bed from the target's toolchain cell:
+  - a DDEV `drupal12` project with the frozen plan's pre-release core
+    (12.0.0-beta2), else the newest at the data's stability;
+  - no drush where the cell pins it to `null` (no drush release installs on
+    Drupal 12; the bed uses core's `vendor/bin/dr`);
+  - `drupal/core` from source where the cell says `core_install: source`:
+    Drupal 12's packaged core leaves out the tests PHPStan and PHPUnit need.
+    An existing project only gets a warning.
+
+  `/drupilot-setup` persists the target major and the pre-release opt-in once
+  the draft plan resolves, and `/drupilot-port` treats a preview's core removals
+  as items for a person.
+- **The tests pass** (T-M6-05, ADR 0032). When the test-bed's PHPUnit no longer
+  reads annotations (PHPUnit 12, Drupal 12) and the declared floor's reads
+  attributes, the plan's `rector.tests_pass` adds Rector's
+  `PHPUnitSetList::ANNOTATIONS_TO_ATTRIBUTES` to `rector.php`'s set list. Its
+  rules only change PHPUnit test classes, so `@dataProvider`, `@covers` and
+  `@group` become attributes, and nothing else does. Drupal 11 plans keep
+  `tests_pass: null`, with a byte-identical `rector.php`.
+- `docs/guides/d12-preview.md` (T-M6-08): how to opt in, what the plan, the
+  bed and the port do, and the limits of the preview.
+
+### Changed
+- **Toolchain cell 12 is verified** (T-M6-02, ADR 0004 amendment), re-verified
+  on Drupal 12.0.0-beta2. The pins are unchanged: Rector 2.6.1 (drupal-rector
+  1.1.3 still conflicts with Rector 2.6.2 and later), PHPStan 2.2.16, coder
+  9.0.1, upgrade_status 5.0.0-alpha3, no drush. The cell gains `core_install:
+  source`, a new field of `schemas/toolchain.schema.json`.
+- The T=12 plan and template goldens gain `rector.tests_pass` and the PHPUnit
+  set.
+
 ## [1.0.0-alpha.6] - 2026-10-18
 
 ### Added

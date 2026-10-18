@@ -185,12 +185,18 @@ rector_floor_tokens() {
 # comma-ended constant name per line (  'DrupalRector\\Set\\Drupal10SetList::DRUPAL_100',)
 # for the plan's rector.drupal_sets then rector.breaking_sets, in order. The
 # Drupal 8 and 9 families stay out until the D8/D9 hops are proven (T-M9-03,
-# ADR 0019): 0.9 never ran them.
+# ADR 0019): 0.9 never ran them. Then, when the plan enables
+# rector.tests_pass, its PHPUnit sets (Rector\PHPUnit\Set\PHPUnitSetList::...,
+# ADR 0032): their rules only change PHPUnit test classes.
 rector_sets_block() {
-  printf '%s' "${1:-}" | jq -r '[(.rector.drupal_sets // [])[], (.rector.breaking_sets // [])[]]
-    | map(select(test("^Drupal[0-9]+SetList::DRUPAL_[0-9]+(_BREAKING)?$")
-                 and ((capture("^Drupal(?<n>[0-9]+)SetList").n | tonumber) >= 10)))
-    | .[] | "  \u0027DrupalRector\\\\Set\\\\" + . + "\u0027,"' 2> /dev/null || true
+  printf '%s' "${1:-}" | jq -r '([(.rector.drupal_sets // [])[], (.rector.breaking_sets // [])[]]
+      | map(select(test("^Drupal[0-9]+SetList::DRUPAL_[0-9]+(_BREAKING)?$")
+                   and ((capture("^Drupal(?<n>[0-9]+)SetList").n | tonumber) >= 10)))
+      | .[] | "  \u0027DrupalRector\\\\Set\\\\" + . + "\u0027,"),
+    (if (.rector.tests_pass // null | type) == "object" and .rector.tests_pass.enabled == true
+     then (.rector.tests_pass.sets // [])[] | select(test("^Rector\\\\PHPUnit\\\\Set\\\\PHPUnitSetList::[A-Z_]+$"))
+          | "  \u0027" + (split("\\") | join("\\\\")) + "\u0027,"
+     else empty end)' 2> /dev/null || true
   return 0
 }
 
@@ -677,6 +683,27 @@ toolchain_reference_version() {
   jq -r --arg n "${1:-}" --arg c "${2:-11}" '(if $c == "legacy_v1" then .legacy_v1 else (.cells[$c] | select(.verified == true)) end
       | .toolchain[$n]) // empty' "$f" 2>/dev/null || true
   return 0
+}
+
+# toolchain_cell_core_install CELL -> how a test-bed of a verified CELL
+# installs drupal/core: "source" when the cell says so (Drupal 12: the core
+# dist export-ignores its tests, ADR 0004), else "dist" (Composer's default,
+# also for an unverified or unknown cell).
+toolchain_cell_core_install() {
+  local f; f="$(toolchain_reference_file)"
+  [[ -r "$f" ]] && have_cmd jq || { printf 'dist'; return 0; }
+  jq -r --arg c "${1:-}" '(.cells[$c] | select(.verified == true) | .core_install) // "dist"' "$f" 2>/dev/null || printf 'dist'
+  return 0
+}
+
+# toolchain_cell_without_drush CELL -> 0 when a verified CELL pins
+# drush/drush to null: no drush release installs on that major (Drupal 12,
+# ADR 0004), so its test-bed requires none.
+toolchain_cell_without_drush() {
+  local f; f="$(toolchain_reference_file)"
+  [[ -r "$f" ]] && have_cmd jq || return 1
+  jq -e --arg c "${1:-}" '.cells[$c] | select(.verified == true) | .toolchain
+    | has("drush/drush") and .["drush/drush"] == null' "$f" > /dev/null 2>&1
 }
 
 # toolchain_reference_require_cmd [cell] -> the exact command that installs the

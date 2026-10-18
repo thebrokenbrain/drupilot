@@ -63,6 +63,8 @@ plugins:
 # The Getting started, Guides and Concepts sections arrive with their pages (docs D4).
 nav:
   - Home: index.md
+  - Guides:
+      - guides/d12-preview.md
   - Concepts:
       - concepts/upgrade-paths.md
       - concepts/pipeline.md
@@ -117,4 +119,5 @@ nav:
           - contributing/adr/0029-core-polyfills-as-version-data.md
           - contributing/adr/0030-rule-audit-and-generated-compat-pass.md
           - contributing/adr/0031-core-removals-scanner.md
+          - contributing/adr/0032-tests-pass-as-a-plan-set.md
   - Changelog: changelog.md

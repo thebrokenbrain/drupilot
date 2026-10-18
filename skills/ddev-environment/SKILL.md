@@ -100,12 +100,14 @@ test-bed it will create; never a site still on Drupal 10). Exit 2 refuses with
 `.message` and `.choices` and writes nothing: re-ask the tabs, overriding the value
 that led to the refusal (a `d7-auto` refusal stops). The answers are persisted only
 after exit 0 — into the root's `.drupilot.json`, right after §3 creates it for a loose
-subject — and not at all while the target is not 11: until T-M3-08 such a target
-stops the setup once the plan is frozen. After §6 installs the toolchain and the lock
+subject (with `DRUPILOT_ALLOW_PRERELEASE=true` after a pre-release opt-in). A
+pre-release target (Drupal 12) gets its own test-bed: `ddev-up.sh` creates the plan's
+pre-release core, requires no drush where the toolchain cell pins none, and installs
+`drupal/core` from source where the cell says so (ADR 0004). After §6 installs the toolchain and the lock
 records the test-bed's core, run the same command again: it re-plans on the
 installed core when that is another minor.
 
-## 3. Create / start the Drupal 11 DDEV project
+## 3. Create / start the DDEV project (the target major's)
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-up.sh" \

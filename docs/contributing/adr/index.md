@@ -39,6 +39,7 @@ behaviour.
 | [0029](0029-core-polyfills-as-version-data.md) | Core polyfills are version data |
 | [0030](0030-rule-audit-and-generated-compat-pass.md) | The rule audit and the generated compat pass |
 | [0031](0031-core-removals-scanner.md) | The core-removals scanner and where its results go |
+| [0032](0032-tests-pass-as-a-plan-set.md) | The tests pass is a set of the plan, not a sibling config |
 
 A new ADR takes the next free number, gets a line here and a nav line in
 `mkdocs.yml` in the same change (the `docs` gate rejects an orphan page).

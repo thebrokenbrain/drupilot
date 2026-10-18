@@ -21,10 +21,10 @@ Source: docs/contributing/adr/0001-toolchain-pins.md (spike AR-38).
 | `drush/drush` | `13.8.0` |
 | `drupal/upgrade_status` | `4.3.10` |
 
-## Cell 12 (provisional)
+## Cell 12 (verified)
 
-Verified on 2026-10-04: Drupal core 12.0.0-beta1, PHP 8.5, DDEV 1.25.4, with tests/fixtures/legacy_widgets and drupal/autologout 8.x-1.4 (2895b8c1c26d1b9604c87fbc01990866c588ba32).
-Source: docs/contributing/adr/0004-d12-bed.md (spike AR-42; re-verified on the current pre-release in M6).
+Verified on 2026-10-18: Drupal core 12.0.0-beta2, PHP 8.5, DDEV 1.25.4, with tests/fixtures/d11_for_d12 and tests/fixtures/legacy_widgets (on 12.0.0-beta1) and drupal/autologout 8.x-1.4 (2895b8c1c26d1b9604c87fbc01990866c588ba32; on 12.0.0-beta1).
+Source: docs/contributing/adr/0004-d12-bed.md (spike AR-42; re-verified on 12.0.0-beta2, T-M6-02).
 
 | Package | Version |
 |---|---|
@@ -38,7 +38,7 @@ Source: docs/contributing/adr/0004-d12-bed.md (spike AR-42; re-verified on the c
 | `drush/drush` | not installed |
 | `drupal/upgrade_status` | `5.0.0-alpha3` |
 
-No drush release installs on 12.0.0-beta1 (drush 13 needs guzzle ^7); the site is installed with core's install_drupal() and extensions with vendor/bin/dr ex:install. Composer refuses coder 8.3.31 and phpstan 2.2.2 next to drupal/core-dev 12 (coder ^9.0, phpstan ^2.2.14).
+No drush release installs on Drupal 12 (drush 13 needs guzzle ^7; drush 14 is only a dev branch): the bed requires no drush, installs the site with core's install_drupal() and extensions with vendor/bin/dr ex:install. drupal/core is installed from source: its dist export-ignores tests. Composer refuses coder 8.3.31 and phpstan 2.2.2 next to drupal/core-dev 12 (coder ^9.0, phpstan ^2.2.14).
 
 ## Cell d7-pre (planned)
 

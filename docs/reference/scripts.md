@@ -3187,9 +3187,22 @@ Exit codes:
 
 ```text
 drupilot — scripts/env/ddev-up.sh
-Create (if absent) and start a Drupal 11 DDEV project, parameterized by the
-effective PHP target (resolve_php_target). Then ensure a Composer project
-exists (drupal/recommended-project:^11) with Drush ^13.
+Create (if absent) and start a DDEV project of the target major (the root's
+frozen upgrade plan, else DRUPILOT_TARGET_MAJOR: Drupal 11 by default),
+parameterized by the effective PHP target (resolve_php_target). Then ensure a
+Composer project exists (drupal/recommended-project, DRUPILOT_DRUPAL_TARGET)
+with Drush ^13.
+
+The target's toolchain cell (config/toolchain-reference.json, ADR 0004) can
+change three things, for a pre-release major such as Drupal 12:
+  - a pre-release major creates the plan's exact test-bed core
+    (target.bed_core of the frozen plan), else the newest core at the
+    stability config/targets/<T>.json gives (composer_stability_while_prerelease);
+  - a cell that pins drush/drush to null requires no drush (no release
+    installs there: the bed uses core's vendor/bin/dr);
+  - a cell with core_install "source" installs drupal/core from source on a
+    bed it builds, since the dist leaves out the core tests (an existing
+    project only gets a warning).
 
 This script GATES the 'setup' profile via preflight: if a hard requirement
 (Docker daemon up, DDEV) is missing it prints the report and exits 2 WITHOUT
