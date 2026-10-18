@@ -1779,11 +1779,13 @@ plus PHPCompatibilitySymfonyPolyfillPHP<xy> for each polyfill package every
 core of the range ships (the plan's rector.polyfills), when the tree lists
 that standard (`phpcs -i`).
 
-Each message is normalized: Internal.NoCodeFound is dropped; the rest is
-deduplicated on (file, line, source) and classed by PHPCompatibility's
-convention: an ERROR from a New* sniff is `floor` (it needs a PHP above L),
-any other ERROR `removed` (removed in a PHP of the window), a WARNING
-`deprecated`. A finding whose source a config/php/rules.json row lists
+Each message is normalized: PHPCS's own Internal.* messages are dropped
+(Internal.Exception degrades the run first); the rest is deduplicated on
+(file, line, source) and classed by PHPCompatibility's convention: a New*
+sniff is `floor` (it needs a PHP above L; ERROR, or a WARNING such as a new
+ini directive), any other ERROR `removed` (removed in a PHP of the window),
+any other WARNING `deprecated`. vendor/, node_modules/ and .git/ are not
+checked, as the other window tools leave them out. A finding whose source a config/php/rules.json row lists
 (its phpcompat codes) names that row (rule) and is `covered` when the row
 is handled already: Rector applies or denies it over [L..U], or
 php-target.sh reports it for [L..P] (ADR 0003 item 6: it corroborates the
@@ -1804,8 +1806,10 @@ Usage:
 status: ok (PHPCS exited 0-3 with a JSON report and no Internal.Exception),
 degraded (the install failed, PHPCS crashed, timed out or printed no
 report: fallback is then detect-php-floor.sh's scan of the module with the
-plan's range), or skipped (an empty window, a DDEV project that cannot be
-started, or no PHP to run it). reason names why when it is not ok.
+plan's range), or skipped (an empty window, a subject with no PHP-bearing
+file, a DDEV project that cannot be started, or no PHP on a root without
+DDEV, where it runs on the host with the host's composer). reason names why
+when it is not ok.
 
 Exit codes: 0 always once the arguments are valid (whatever the status) ·
 1 usage error, or no Drupal root.
@@ -2317,7 +2321,8 @@ Vocabulary (AR-01):
                  .php_defaults.env; it must be a PHP M supports, M the
                  newest released minor of T or its pre-release minor in
                  preview
-  W = [L..P]     PHP window: PHPStan phpVersion, PHPCompatibility testVersion
+  W = [L..P]     PHP window: PHPStan phpVersion (php.phpcompat_testversion
+                 records L-P; PHPCompatibility itself runs L-U, ADR 0003)
   U              the compat pass's top (ADR 0002): the higher of P and the
                  highest PHP a core of C supports. rector.compat_rules are
                  the compat rules for [L..U] the floor's level set does not
@@ -2957,7 +2962,8 @@ Levels (each includes the previous one):
              the origin lacks (same git HEAD, clean tree) or with
              --discard-copies. The test-bed's .drupilot/ reports are copied to
              each origin's .drupilot/ (self-gitignored; the cores/ cache of
-             reference cores is not copied) first — or, with no
+             reference cores and PHPCompatibility's phpcompat/ Composer tree
+             are not copied) first — or, with no
              origin to copy them to, to the root's hidden state dir
              (<state>/reports-<UTC time>) — and a discarded copy's *.patch
              files go to .drupilot/patches/. "Holds nothing the origin

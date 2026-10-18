@@ -42,7 +42,7 @@ The plan's `php` block holds:
 | `window` | every PHP minor from L to P |
 | `require_php` | the composer `require.php` the port declares (`>=L` when the range keeps a previous major, else none) |
 | `phpstan_phpversion` | PHPStan's `phpVersion {min, max}`, the window as `PHP_VERSION_ID`s |
-| `phpcompat_testversion` | `L-P`, for PHPCompatibility |
+| `phpcompat_testversion` | `L-P`, a record only: `run-phpcompat.sh` checks L to the window's top U (`plan_php_top`, ADR 0003) |
 
 A plan that is not frozen yet is a draft: `/drupilot-setup` resolves it, and
 `upgrade-path.sh --subject <path> --phase draft --root <drupal_root> --json`

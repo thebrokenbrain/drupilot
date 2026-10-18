@@ -235,7 +235,15 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
                                     else {status: $pc[0].status, reason: ($pc[0].reason // null),
                                           test_version: ($pc[0].test_version // null), standards: ($pc[0].standards // []),
                                           version: (($pc[0].versions // {})["phpcompatibility/php-compatibility"] // null),
-                                          alpha: ($pc[0].alpha // false), counts: ($pc[0].counts // null),
+                                          alpha: ($pc[0].alpha // false),
+                                          # The findings the stage kept (a Syntax false positive dropped), and
+                                          # the ones a catalog row covers.
+                                          counts: (if $pc[0].status != "ok" then null
+                                                   else ([$F.findings[] | select(.tool == "phpcompat") | .rule | capture("^php-compat-(?<k>[a-z]+):").k] as $ks
+                                                         | {floor: ([$ks[] | select(. == "floor")] | length),
+                                                            removed: ([$ks[] | select(. == "removed")] | length),
+                                                            deprecated: ([$ks[] | select(. == "deprecated")] | length),
+                                                            covered: (($pc[0].counts // {}).covered // 0)}) end),
                                           fallback_floor: (($pc[0].fallback // {}) | .floor // null)} end),
                         items: [$W.items[] | select(.lane == "human" and ((.reason // "") | test($phpre)))
                                 | . as $i

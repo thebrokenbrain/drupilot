@@ -44,7 +44,7 @@
         "metadata": {"$ref": "#/$defs/verdict"},
         "php-target": {"$ref": "#/$defs/verdict"},
         "php-lint": {"description": "skipped: no leg could run (no Docker daemon); partial: some could not.", "enum": ["ok", "partial", "skipped", "failed", "missing"]},
-        "phpcompat": {"description": "PHPCompatibility (scripts/analysis/run-phpcompat.sh, ADR 0003): partial when it degraded (its raw file then holds detect-php-floor.sh's fallback, not findings), skipped when it did not run (an empty window, no DDEV, no PHP).", "enum": ["ok", "partial", "skipped", "failed", "missing"]}
+        "phpcompat": {"description": "PHPCompatibility (scripts/analysis/run-phpcompat.sh, ADR 0003): partial when it degraded (its raw file then holds detect-php-floor.sh's fallback, not findings), skipped when it did not run (an empty window, a module with no PHP-bearing file, a DDEV project that cannot start, no PHP on a root without DDEV).", "enum": ["ok", "partial", "skipped", "failed", "missing"]}
       }
     },
     "counts": {

@@ -95,9 +95,10 @@ PHP-window tools besides the analyzers:
   [ADR 0003](../contributing/adr/0003-phpcompatibility.md)). A separate
   PHPCS run with `testVersion` set to the window (L to the top U the compat
   pass covers) and, for each polyfill every core of your range ships, the
-  matching Symfony polyfill ruleset. It runs in the test-bed from its own
-  Composer tree, `.drupilot/phpcompat`, installed on first use with exact
-  pins. Your own PHPCS ruleset is never read or changed. drupilot pins an
+  matching Symfony polyfill ruleset. It runs in the test-bed (on the host for
+  a root without DDEV) from its own Composer tree, `.drupilot/phpcompat`,
+  installed on first use with exact pins. `vendor/` and `node_modules/` are
+  not checked, and a module with no PHP file is skipped. Your own PHPCS ruleset is never read or changed. drupilot pins an
   **alpha** release, so its findings never block:
   - a finding a row of `config/php/rules.json` covers adds nothing: Rector
     fixes or denies that row, or the construct scan already reports it;

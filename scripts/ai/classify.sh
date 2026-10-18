@@ -158,9 +158,11 @@ jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile asf "$TMP/actions.json" --a
         elif $f.severity == "info" then {lane: "deferred", recipe: null, reason: "info"}
         elif $f.class == "style" then {lane: "deferred", recipe: null, reason: "style"}
         else
-          # A PHP-window finding takes a recipe only by its exact rule: its
-          # message quotes the code, so a message pattern could claim it.
-          ($f.tool == "catalog" and ($f.rule | test("^php-(removed|removed-syntax|report|manual|floor|lint):"))) as $phpw
+          # A PHP-window finding (from the catalog scans or PHPCompatibility)
+          # takes a recipe only by its exact rule: its message quotes the
+          # code, so a message pattern could claim it.
+          (($f.tool == "catalog" and ($f.rule | test("^php-(removed|removed-syntax|report|manual|floor|lint):")))
+           or $f.tool == "phpcompat") as $phpw
           | ([$recipes[] | {r: ., k: rank($f)} | select(.k < (if $phpw then 1 else 9 end))] | sort_by([.k, .r.id]) | map(.r)) as $cands
           | [$cands[] | select(applies($f) and (failed($f) | not))] as $ok
           | if ($ok | length) > 0 then {lane: $ok[0].lane, recipe: $ok[0].id, reason: null, applied: ($ok[0] | applied($f))}

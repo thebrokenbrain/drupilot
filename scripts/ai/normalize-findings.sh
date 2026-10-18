@@ -276,16 +276,20 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
            severity: "error", scope: "current", class: "php-target"}),
       # PHPCompatibility (ADR 0003 item 6): what no catalog row covers, never
       # blocking (an alpha with known false positives): floor, removed and
-      # deprecated. A Syntax.* report on a file every php -l leg of the window
-      # compiled is a tokenizer false positive (property hooks) and is dropped.
+      # deprecated. A Syntax.* report on a file every php -l leg compiled is a
+      # tokenizer false positive (property hooks) and is dropped, when the legs
+      # all ran and reach both ends of the testVersion PHPCompatibility used.
       (($lint[0] | O | .legs | A | map(O)) as $legs
-        | ([$legs[] | select(.status == "pass" or .status == "fail")] | length == ($legs | length) and length > 0) as $allran
+        | (($pc[0] | O | .test_version | S // "") | split("-")) as $tv
+        | ([$legs[] | .php] as $lp
+           | ([$legs[] | select(.status == "pass" or .status == "fail")] | length == ($legs | length) and length > 0)
+             and ($tv | length) == 2 and ($lp | index($tv[0])) != null and ($lp | index($tv[1])) != null) as $allran
         | ([$legs[] | (.messages | A)[] | O | select((.kind | IN("parse-error", "fatal-error", "lint-error")) and (.file | type) == "string") | .file] | unique) as $bad
         | ($pc[0] | O | .findings | A | map(O | select((.file | type) == "string" and (.source | type) == "string" and (.kind | type) == "string")))[]
         | select(.covered != true)
         | select(((.source | split(".") | .[1] // "") == "Syntax" and $allran and (.file as $f | $bad | index($f) | not)) | not)
         | {tool: "phpcompat", rule: ("php-compat-\(.kind):" + .source), rf: (.file | rootrel), line: (.line | N), symbol: null,
-           message: ((.message | S // .source) | finding_norm_message), severity: "warning", scope: "current", class: "php-target"})
+           message: (((.message | S) // .source) | finding_norm_message), severity: "warning", scope: "current", class: "php-target"})
     ]
   # A trait error comes once per class context: keep as many copies as the
   # context with the most (two identical errors on one line stay two).

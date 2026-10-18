@@ -28,8 +28,13 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   - Its status is `ok`, `degraded` or `skipped`, and it always exits 0.
     `degraded` covers a failed install, a crash, a timeout, no JSON report or
     an `Internal.Exception`; `detect-php-floor.sh`'s scan is then the
-    fallback. `skipped` covers an empty window, no DDEV or no PHP.
-  - Each finding is classed `floor`, `removed` or `deprecated`, and is
+    fallback. `skipped` covers an empty window, a module with no PHP-bearing
+    file, a DDEV project that cannot start, or no PHP on a root without DDEV
+    (where it runs on the host with the host's composer).
+  - `vendor/`, `node_modules/` and `.git/` are not checked, and PHPCS's own
+    `Internal.*` messages are dropped.
+  - Each finding is classed `floor` (a `New*` sniff), `removed` or
+    `deprecated`, and is
     `covered` when a `config/php/rules.json` row already handles it: Rector
     fixes or denies the row, or `php-target.sh` reports it.
 - `config/php/rules.json` rows list their PHPCompatibility sources
@@ -44,7 +49,14 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     it degraded, or `skipped`.
   - `port-report.md`'s PHP window section says it ran an alpha, with its
     `testVersion` and counts, or why it degraded.
-  - `/drupilot-clean --level vendor` also removes the tree's `vendor/`.
+  - `/drupilot-clean --level vendor` also removes the tree's `vendor/`, and
+    `--level workspace` never copies the tree into the developer's origin.
+  - A recipe never claims a PHPCompatibility finding by its message, as for
+    the other PHP-window findings.
+  - The raw report has a schema (`schemas/phpcompat.schema.json`), and the
+    php_window goldens are validated against it.
+- ADR 0003 records how T-M5-05 implemented it: the `.phpcompat` lock key,
+  `testVersion` L-U, the skipped subjects, the coverage rule and host roots.
 
 ## [1.0.0-alpha.4] - 2026-10-17
 

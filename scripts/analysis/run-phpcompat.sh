@@ -22,11 +22,13 @@
 # core of the range ships (the plan's rector.polyfills), when the tree lists
 # that standard (`phpcs -i`).
 #
-# Each message is normalized: Internal.NoCodeFound is dropped; the rest is
-# deduplicated on (file, line, source) and classed by PHPCompatibility's
-# convention: an ERROR from a New* sniff is `floor` (it needs a PHP above L),
-# any other ERROR `removed` (removed in a PHP of the window), a WARNING
-# `deprecated`. A finding whose source a config/php/rules.json row lists
+# Each message is normalized: PHPCS's own Internal.* messages are dropped
+# (Internal.Exception degrades the run first); the rest is deduplicated on
+# (file, line, source) and classed by PHPCompatibility's convention: a New*
+# sniff is `floor` (it needs a PHP above L; ERROR, or a WARNING such as a new
+# ini directive), any other ERROR `removed` (removed in a PHP of the window),
+# any other WARNING `deprecated`. vendor/, node_modules/ and .git/ are not
+# checked, as the other window tools leave them out. A finding whose source a config/php/rules.json row lists
 # (its phpcompat codes) names that row (rule) and is `covered` when the row
 # is handled already: Rector applies or denies it over [L..U], or
 # php-target.sh reports it for [L..P] (ADR 0003 item 6: it corroborates the
@@ -47,8 +49,10 @@
 # status: ok (PHPCS exited 0-3 with a JSON report and no Internal.Exception),
 # degraded (the install failed, PHPCS crashed, timed out or printed no
 # report: fallback is then detect-php-floor.sh's scan of the module with the
-# plan's range), or skipped (an empty window, a DDEV project that cannot be
-# started, or no PHP to run it). reason names why when it is not ok.
+# plan's range), or skipped (an empty window, a subject with no PHP-bearing
+# file, a DDEV project that cannot be started, or no PHP on a root without
+# DDEV, where it runs on the host with the host's composer). reason names why
+# when it is not ok.
 #
 # Exit codes: 0 always once the arguments are valid (whatever the status) ·
 # 1 usage error, or no Drupal root.
@@ -147,6 +151,13 @@ degrade() {
 }
 
 [[ -n "$TV" ]] || emit skipped empty-php-window
+# PHPCS exits 16 ("No files were checked") when no file matches: a module or
+# theme with no PHP-bearing file (vendor/ and node_modules/ left out, as the
+# run leaves them out) has nothing to check, which is no crash.
+_php1="$(find "$SUBJECT_ABS" \( -name vendor -o -name node_modules -o -name .git \) -prune -o -type f \
+  \( -name '*.php' -o -name '*.module' -o -name '*.inc' -o -name '*.install' -o -name '*.theme' \
+     -o -name '*.profile' -o -name '*.engine' \) -print 2> /dev/null | sed -n '1p' || true)"
+[[ -n "$_php1" ]] || emit skipped no-php-files
 
 # --- Where it runs ------------------------------------------------------------------
 # In the test-bed (DDEV) when the root has a project, on the host otherwise.
@@ -215,11 +226,13 @@ log_step "PHPCompatibility: testVersion $TV, $STD"
 _rc=0
 if [[ -n "$RUNNER" ]]; then
   ddev exec timeout 300 "$TREE_REL/vendor/bin/phpcs" --standard="$STD" --runtime-set testVersion "$TV" \
-    --extensions=php,module,inc,install,theme,profile,engine --report=json -q "$SUBJECT_REL" \
+    --extensions=php,module,inc,install,theme,profile,engine --ignore=/vendor/,/node_modules/,/.git/ \
+    --report=json -q "$SUBJECT_REL" \
     < /dev/null > "$TMP/report.json" 2> "$TMP/err" || _rc=$?
 else
   run_with_timeout 300 "$TREE_REL/vendor/bin/phpcs" --standard="$STD" --runtime-set testVersion "$TV" \
-    --extensions=php,module,inc,install,theme,profile,engine --report=json -q "$SUBJECT_REL" \
+    --extensions=php,module,inc,install,theme,profile,engine --ignore=/vendor/,/node_modules/,/.git/ \
+    --report=json -q "$SUBJECT_REL" \
     < /dev/null > "$TMP/report.json" 2> "$TMP/err" || _rc=$?
 fi
 # PHPCS 4's exit code is a bitmask: 1 fixable, 2 non-fixable findings.
@@ -233,11 +246,11 @@ fi
 jq -c --arg root "$ROOT" --arg sp "$SUBJECT_REL" '
   def rel: ltrimstr("/var/www/html/") | ltrimstr($root + "/") | ltrimstr($sp + "/");
   [.files | to_entries[] | (.key | rel) as $f | (.value.messages // [])[]
-   | select((.source // "") != "Internal.NoCodeFound")
+   | select((.source // "") | startswith("Internal.") | not)
    | (.source // "") as $s
    | {file: $f, line: (.line // 0), source: $s, type: (.type // "ERROR"), message: (.message // ""),
-      kind: (if (.type // "ERROR") == "WARNING" then "deprecated"
-             elif (($s | split(".") | .[2] // "") | startswith("New")) then "floor"
+      kind: (if (($s | split(".") | .[2] // "") | startswith("New")) then "floor"
+             elif (.type // "ERROR") == "WARNING" then "deprecated"
              else "removed" end)}]
   | unique_by([.file, .line, .source]) | sort_by([.file, .line, .source])' "$TMP/report.json" > "$TMP/norm.json" \
   || degrade "unreadable-report"

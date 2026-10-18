@@ -3,6 +3,7 @@
 - **Status:** accepted
 - **Date:** 2026-10-04
 - **Decided by:** the 1.0 working session (R-AUTO-3), spike AR-41 (T-M2-09)
+- **Amended:** 2026-10-18, by T-M5-05 (see "Amendments" at the end)
 
 ## Context
 
@@ -54,8 +55,10 @@ blocks a port and never fails stage `php`.
 
    The pins go in `config/toolchain-reference.json` as a cell-independent
    `phpcompat` set (T-M2-10), `verified: true`, `src: ADR 0003`. The lock
-   records them under `.toolchain.phpcompat` (name, version, dist
-   reference) plus the standards list used. Composer accepts the exact root
+   records them under its own `.phpcompat` key (`{packages: {name:
+   version}, standards}`, amended by T-M5-05: `.toolchain` holds the
+   test-bed's composer.lock versions; the dist references stay in the
+   tree's own `composer.lock`). Composer accepts the exact root
    constraint `10.0.0-alpha2` without an `@alpha` flag and without a
    `minimum-stability` change: it derives the stability flag from an exact
    root constraint. The same holds for the three Symfony-side alphas, whose
@@ -167,10 +170,10 @@ blocks a port and never fails stage `php`.
    operator is reported twice, once per backtick; an `ereg()` call is
    reported by both `RemovedExtensions` and `RemovedFunctions`. Classify
    by the PHPCompatibility convention:
-   - an ERROR from a `New*` sniff is **floor**: the construct needs a PHP
-     above L;
+   - a `New*` sniff is **floor**: the construct needs a PHP above L (an
+     ERROR, or a WARNING such as a new ini directive; amended by T-M5-05);
    - any other ERROR is **removed**: removed in a minor of W;
-   - a WARNING is **deprecated**: deprecated in a minor of W.
+   - any other WARNING is **deprecated**: deprecated in a minor of W.
 
    Correlate each group with `config/php/rules.json` through a new per-rule
    `phpcompat` array of sniff codes (the codes are in the Evidence table).
@@ -469,7 +472,7 @@ Faults seen:
     curl_share_close, finfo_close, imagedestroy and xml_parser_free (read
     in this spike).
 - **T-M2-10** adds the cell-independent `phpcompat` set to
-  `config/toolchain-reference.json`. The lock gets `.toolchain.phpcompat`.
+  `config/toolchain-reference.json`. The lock gets `.phpcompat` (T-M5-05).
 - **T-M5-06 stays mandatory.** The `php -l` legs catch the syntax that
   PHPCompatibility misses. The 8.5 runtime-value deprecations stay with the
   rules.json compat rules (the Rector compat pass, ADR 0002) and with the
@@ -488,3 +491,28 @@ Faults seen:
     property-hook tokenizer support;
   - when a Symfony `PolyfillPHP86` ruleset appears;
   - before P can be 8.6.
+
+## Amendments
+
+T-M5-05 (2026-10-18) implemented this decision as `scripts/analysis/run-phpcompat.sh`, with these
+adjustments, each found while building or reviewing it:
+
+- **Lock key.** The pins and standards go under `.phpcompat`, not `.toolchain.phpcompat`. The `.toolchain`
+  map holds the test-bed's own composer.lock versions as `{package: version}` strings. The dist
+  references stay in the tree's `composer.lock`.
+- **testVersion.** It covers L to U, the window's top (`plan_php_top`), as Decision 4 says. The plan's
+  `php.phpcompat_testversion` field (`L-P`) is a record only, and the script does not read it.
+- **What is checked.** PHPCS runs with `--ignore=/vendor/,/node_modules/,/.git/`, like the other window
+  tools. A subject with no PHP-bearing file is `skipped` (`no-php-files`): PHPCS exits 16 with "No files
+  were checked" for it, which is not a crash.
+- **Messages.** Every `Internal.*` message is dropped, not only `Internal.NoCodeFound`;
+  `Internal.Exception` still degrades the run before that. A `New*` WARNING is `floor`.
+- **Coverage.** A finding is covered when Rector applies or denies its row over [L..U], or when
+  `php-target.sh` reports the row for [L..P]. Rector's compat pass reaches U, while the scan classifies
+  against P.
+- **The Syntax false positive.** It is dropped only when every `php -l` leg ran and the legs include both
+  ends of the testVersion. A window wider than the legs keeps it, as a non-blocking item.
+- **Host roots.** A root without DDEV runs the tree on the host, installed with the host's `composer`.
+  With no PHP on the host the check is `skipped` (`no-php`); with no `composer` it degrades
+  (`install-failed`).
+
