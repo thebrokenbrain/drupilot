@@ -164,7 +164,9 @@ Hand `assess.json` to the analyst (it reads that file and does not run
 - **`info.yml`** and the core target: `info_yml`, `core_target`
   (recommended requirement, `require.php`, version bump, warnings).
 - **Contrib dependencies**: `dependencies` (offline, contrib ones are
-  `unknown`; a blocker counts as `blocking_deps`).
+  `unknown`; a blocker counts as `blocking_deps`). A `blocked` core removal
+  counts there too, offline included: the removals scan reads the release feed
+  itself.
 - **Pre-existing hygiene**: `hygiene` and the metadata findings; they never
   count.
 

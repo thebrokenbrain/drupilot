@@ -177,10 +177,13 @@ Follow the `viability-assessment` skill: its §3 is the field guide to
   major, submodules) and `core_target`: the recommended requirement, its
   `require_php`, the `version_bump` verdict, `d10_support` and the warnings.
 - **Contrib dependency D11 readiness** — `dependencies` (`list`, `blockers`,
-  `unknown`; offline every contrib dependency is `unknown` and none blocks: say
-  they were not checked). A dependency with no D11 release is an external
-  blocker; whether an alternative is viable is your judgement for the plan, not a
-  change of the count.
+  `unknown`; offline every contrib dependency is `unknown` and none of them
+  blocks: say they were not checked). A dependency with no D11 release is an
+  external blocker; whether an alternative is viable is your judgement for the
+  plan, not a change of the count. A removed core module whose contrib
+  replacement has no release that covers the declared range (`core_removals`
+  action `blocked`) also counts in `rubric.blocking_deps`, offline included: the
+  removals scan reads the release feed itself.
 - **Pre-existing hygiene** — `hygiene` totals and the report's table; they never
   change the verdict. Phase 1 bumps the submodules' requirement
   (`set-core-requirement.sh`); the rest is a follow-up.

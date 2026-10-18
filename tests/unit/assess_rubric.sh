@@ -172,6 +172,9 @@ rmf F-j1 library-removed hard-break core/jquery.ui.dialog m.libraries.yml error 
 assert_eq "  a removed jQuery UI library the jquery_ui category already found: one hard break" \
   "$(v)|$(jq -c '[.hard_breaks, .hard_break_categories.jquery_ui]' "$T_OUT")" 'M 0 1 0|[["jquery_ui"],["m.libraries.yml"]]'
 rm -f "$SUB/m.libraries.yml"
+rmf F-b1 dependency-removed blocked contact m.info.yml error | jq -s . | run
+assert_match "  offline, the report says a blocked core removal still blocks" "$(cat "$(project_artifacts_dir "$SUB")/viability-report.md")" \
+  'none of them is counted as blocking\. A removed core module whose contrib replacement has no release that covers the range still is'
 fnd F-m9 catalog removal:library-removed:hard-break m.module '{file}' error next-major removal | jq -s . | run
 assert_eq "  a next-major removal counts for nothing" "$(v)|$(jq -c .core_removals "$T_OUT")" "S 0 0 0|[]"
 

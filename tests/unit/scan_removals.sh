@@ -104,6 +104,17 @@ assert_eq "  a base theme composer.json already requires: info, not a hard break
   "$(jq -c '[.findings[] | select(.name == "claro") | [.severity, .hard_break]]' "$T_OUT")|$(jq -c '[.hard_breaks[] | .id] | index("base-theme-removed")' "$T_OUT")" \
   '[["info",false]]|null'
 
+# A file awk cannot open is skipped, not the files after it (a non-root
+# user: root reads it anyway).
+U="$T_TMP/u"; mkdir -p "$U/src"
+for i in 1 2 3 4 5 6; do printf '<?php\nuse Drupal\\migrate_drupal\\Plugin\\migrate\\source\\DrupalSqlBase;\n' > "$U/src/F$i.php"; done
+chmod 000 "$U/src/F3.php"
+t_run "$T_SH" "$SR" --subject "$U" --target 12 --source 11 --offline --json
+chmod 644 "$U/src/F3.php"
+assert_eq "an unreadable file: every other file still scanned" \
+  "$(jq -c '[.findings[] | .file | select(. != "src/F3.php")]' "$T_OUT")" \
+  '["src/F1.php","src/F2.php","src/F4.php","src/F5.php","src/F6.php"]'
+
 # The release feed: a cached copy (fresh for a day), no network.
 FEEDS="$(cache_dir)/release-history"; mkdir -p "$FEEDS"
 feed() {  # feed PROJECT RELEASES... (each VERSION=CORE_COMPATIBILITY, published)

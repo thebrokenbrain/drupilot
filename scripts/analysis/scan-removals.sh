@@ -10,18 +10,21 @@
 #   dependency-removed    a dependencies:/install: entry of a *.info.yml that
 #                         names a removed module as core's (drupal:NAME or a
 #                         bare NAME; PROJECT:NAME already names a contrib
-#                         project), or a reference to the namespace of a
-#                         module removed with no replacement
+#                         project), a reference to the namespace of a
+#                         module removed with no replacement, or a class of a
+#                         namespace move whose module a major of (S, T]
+#                         removes (Text with Summary on Drupal 12)
 #   migrate-drupal-usage  the same for migrate_drupal and migrate_drupal_ui
 #                         (a hard break: a module that depends on them cannot
-#                         target Drupal 12)
+#                         target Drupal 12), their namespace or test
+#                         namespace (Drupal\Tests\migrate_drupal\) included
 #   base-theme-removed    a theme's `base theme:` naming a removed theme
 #   library-removed       a removed core library in a *.info.yml or
-#                         *.libraries.yml (a list item or a key) or quoted in
-#                         a PHP or Twig file
-#   namespace-move        a class of targets/<T>.json namespace_moves in its
-#                         old namespace (an announced note: never a hard
-#                         break)
+#                         *.libraries.yml (a list item, a flow-sequence item
+#                         or a key) or quoted in a PHP or Twig file
+#   namespace-move        a class of a namespace_moves entry of a major from S
+#                         to T used in its old namespace, whose module stays
+#                         in core (an announced note: never a hard break)
 #
 # Each finding has an action:
 #   rewrite            the module moved to a contrib project and a published
@@ -135,7 +138,7 @@ PREVIEW=false
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-removals.XXXXXX")"
 trap 'rm -rf "$TMP" 2> /dev/null || true' EXIT
 
-# The removal rows of every major in (S, T], and T's namespace moves.
+# The removal rows of every major in (S, T].
 MAJORS=""; m=$((SOURCE + 1))
 while (( m <= TARGET )); do MAJORS="$MAJORS $m"; m=$((m + 1)); done
 printf '[]' > "$TMP/ext.json"; printf '[]' > "$TMP/lib.json"
@@ -194,6 +197,8 @@ if [[ -n "$MAJORS" || -n "$MOVE_ERE" ]]; then
         for (i = 1; i <= n; i++) { if (kind == "dep") dep(a[i]); else lib(a[i]) }
         return closed
       }
+      # A file awk cannot open would end the whole batch: skip it.
+      BEGIN { for (i = 1; i < ARGC; i++) { if ((getline _l < ARGV[i]) < 0) ARGV[i] = ""; else close(ARGV[i]) } }
       FNR == 1 { F = FILENAME; sub(/^\.\//, "", F); blk = ""; fk = "" }
       { sub(/\r$/, "") }
       # Inside a flow sequence that spans lines.
@@ -223,7 +228,11 @@ if [[ -n "$MAJORS" || -n "$MOVE_ERE" ]]; then
       \( -name '*.php' -o -name '*.module' -o -name '*.inc' -o -name '*.install' -o -name '*.theme' \
          -o -name '*.profile' -o -name '*.engine' -o -name '*.twig' \) -exec env AWKV_NS="$NS_ERE" AWKV_MV="$MOVE_ERE" AWKV_MVNS="$MOVE_NS" awk '
       function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
-      BEGIN { NS = ENVIRON["AWKV_NS"]; MV = ENVIRON["AWKV_MV"]; nm = split(ENVIRON["AWKV_MVNS"], mvns, "\n") }
+      BEGIN {
+        NS = ENVIRON["AWKV_NS"]; MV = ENVIRON["AWKV_MV"]; nm = split(ENVIRON["AWKV_MVNS"], mvns, "\n")
+        # A file awk cannot open would end the whole batch: skip it.
+        for (i = 1; i < ARGC; i++) { if ((getline _l < ARGV[i]) < 0) ARGV[i] = ""; else close(ARGV[i]) }
+      }
       FNR == 1 { F = FILENAME; sub(/^\.\//, "", F) }
       { sub(/\r$/, "") }
       {

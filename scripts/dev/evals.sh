@@ -11,8 +11,8 @@
 #       with no choice.sh call, such as PUSH). New tabs may only be inserted
 #       (CC-02), each as tab-sequence.json's allowed_insertions lists it:
 #       before the 0.9 tab it names (other allowed insertions may stand
-#       between them), at most once and in the listed order (D32); without
-#       them, the 0.9 sequence;
+#       between them), each row at most once and the rows in their listed
+#       order, which is the flow's (D32); without them, the 0.9 sequence;
 #     * the router's mode words, in its argument-hint;
 #     * the router's mode-inference rules: each cue's mode is the first bold
 #       **`mode`** after it in its rule, else the last one before it;
@@ -117,15 +117,19 @@ static_layer() {
     result "tab-sequence" pass "the full run declares the 0.9 tab sequence ($(printf '%s' "$want" | jq 'length') tabs)"
   elif jq -n -e --argjson o "$want" --argjson n "$got" --argjson ins "$(jq -c '.allowed_insertions // []' "$EVD/tab-sequence.json")" '
       # Drop each allowed insertion that stands before the tab it names (other
-      # allowed insertions may stand between them), each at most once and in
-      # the order allowed_insertions lists them; anything else is kept, and
-      # what is left must be the 0.9 sequence itself.
+      # allowed insertions may stand between them): each row of
+      # allowed_insertions at most once, the rows in their listed order (a
+      # tab inserted twice, before two copies of a reused 0.9 tab, needs two
+      # rows); anything else is kept, and what is left must be the 0.9
+      # sequence itself.
       $n | . as $a | ($ins | map(.key)) as $keys
       | reduce range(0; length) as $i ({out: [], used: -1};
-          ($a[$i]) as $t | ($keys | index($t)) as $k
-          | if $k == null then .out += [$t]
+          ($a[$i]) as $t
+          | if ($keys | index($t)) == null then .out += [$t]
             else ([$a[($i + 1):][] | select(. as $u | $keys | index($u) | not)] | .[0] // null) as $next
-              | if $k > .used and $ins[$k].before == $next then .used = $k else .out += [$t] end
+              | .used as $u
+              | ([range($u + 1; $ins | length) | select($ins[.].key == $t and $ins[.].before == $next)] | .[0]) as $k
+              | if $k != null then .used = $k else .out += [$t] end
             end)
       | .out == $o' > /dev/null; then
     result "tab-sequence" pass "the 0.9 tab sequence is kept, with the allowed insertions: $got"

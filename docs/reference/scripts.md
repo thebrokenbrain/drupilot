@@ -2221,18 +2221,21 @@ no toolchain needed (bash, awk and jq; curl for the release feed). It finds:
   dependency-removed    a dependencies:/install: entry of a *.info.yml that
                         names a removed module as core's (drupal:NAME or a
                         bare NAME; PROJECT:NAME already names a contrib
-                        project), or a reference to the namespace of a
-                        module removed with no replacement
+                        project), a reference to the namespace of a
+                        module removed with no replacement, or a class of a
+                        namespace move whose module a major of (S, T]
+                        removes (Text with Summary on Drupal 12)
   migrate-drupal-usage  the same for migrate_drupal and migrate_drupal_ui
                         (a hard break: a module that depends on them cannot
-                        target Drupal 12)
+                        target Drupal 12), their namespace or test
+                        namespace (Drupal\Tests\migrate_drupal\) included
   base-theme-removed    a theme's `base theme:` naming a removed theme
   library-removed       a removed core library in a *.info.yml or
-                        *.libraries.yml (a list item or a key) or quoted in
-                        a PHP or Twig file
-  namespace-move        a class of targets/<T>.json namespace_moves in its
-                        old namespace (an announced note: never a hard
-                        break)
+                        *.libraries.yml (a list item, a flow-sequence item
+                        or a key) or quoted in a PHP or Twig file
+  namespace-move        a class of a namespace_moves entry of a major from S
+                        to T used in its old namespace, whose module stays
+                        in core (an announced note: never a hard break)
 
 Each finding has an action:
   rewrite            the module moved to a contrib project and a published
@@ -4673,8 +4676,8 @@ two layers (G-EVALS):
       with no choice.sh call, such as PUSH). New tabs may only be inserted
       (CC-02), each as tab-sequence.json's allowed_insertions lists it:
       before the 0.9 tab it names (other allowed insertions may stand
-      between them), at most once and in the listed order (D32); without
-      them, the 0.9 sequence;
+      between them), each row at most once and the rows in their listed
+      order, which is the flow's (D32); without them, the 0.9 sequence;
     * the router's mode words, in its argument-hint;
     * the router's mode-inference rules: each cue's mode is the first bold
       **`mode`** after it in its rule, else the last one before it;
