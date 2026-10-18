@@ -13,6 +13,21 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+### Added
+- **The end-to-end port in CI** (T-M4-14). `.github/workflows/e2e.yml`
+  installs DDEV on an Ubuntu runner with `ddev/github-action-setup-ddev`, at
+  the DDEV version the golden was recorded with, and runs the new developer
+  script `scripts/dev/e2e.sh [--work DIR] [--name NAME] [--keep]`.
+  - The script builds a test-bed and ports `tests/fixtures/legacy_widgets` with
+    the scripted R-LAB-8 sequence of its golden's README. No model runs, so the
+    AI lane is empty.
+  - It byte-compares the `make-patch.sh --local` patch with
+    `tests/fixtures/legacy_widgets.golden/golden/port-to-drupal-11.patch`, and
+    exits 3 with the diff when they differ.
+  - The workflow runs nightly and on demand once it is on the default branch,
+    and before that on an integration pull request labelled `e2e`. It keeps the
+    log and the patch as an artifact.
+
 ## [1.0.0-alpha.4] - 2026-10-17
 
 ### Added
