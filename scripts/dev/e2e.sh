@@ -92,13 +92,16 @@ step "rector dry-run" 0 bash "$REPO/scripts/analysis/run-rector.sh" --subject "$
 step "phpstan" "0 1" bash "$REPO/scripts/analysis/run-phpstan.sh" --subject "$S" --json
 step "phpcs" "0 1" bash "$REPO/scripts/analysis/run-phpcs.sh" --subject "$S" --json
 step "render-templates" 0 bash "$REPO/scripts/env/render-templates.sh" --subject "$S" --force
-REQ="$(bash "$REPO/scripts/analysis/core-strategy.sh" --subject "$S" --json < /dev/null 2>> "$LOG" | jq -r '.recommended_core_version_requirement // empty')"
+# A failed substitution is a failed step too (exit 2), never set -e's own code.
+REQ="$(bash "$REPO/scripts/analysis/core-strategy.sh" --subject "$S" --json < /dev/null 2>> "$LOG" | jq -r '.recommended_core_version_requirement // empty')" \
+  || { log_err "e2e: core-strategy.sh failed (see $LOG)."; exit 2; }
 [[ -n "$REQ" ]] || { log_err "e2e: core-strategy.sh gave no recommended range (see $LOG)."; exit 2; }
 log_info "e2e: core range $REQ"
 step "rector apply" 0 bash "$REPO/scripts/analysis/run-rector.sh" --subject "$S" --apply
 step "core requirement" 0 bash "$REPO/scripts/analysis/set-core-requirement.sh" --subject "$S" --requirement "$REQ"
 step "phpcbf" "0 1" bash "$REPO/scripts/analysis/run-phpcs.sh" --subject "$S" --fix
-P="$(bash "$REPO/scripts/contrib/make-patch.sh" --local --subject "$S" < /dev/null 2>> "$LOG" | sed -n '$p')"
+P="$(bash "$REPO/scripts/contrib/make-patch.sh" --local --subject "$S" < /dev/null 2>> "$LOG" | sed -n '$p')" \
+  || { log_err "e2e: make-patch.sh --local failed (see $LOG)."; exit 2; }
 [[ -n "$P" && -f "$P" ]] || { log_err "e2e: make-patch.sh --local wrote no patch (see $LOG)."; exit 2; }
 cp "$P" "$WORK/port-to-drupal-11.patch"
 if cmp -s "$GOLDEN" "$P"; then
