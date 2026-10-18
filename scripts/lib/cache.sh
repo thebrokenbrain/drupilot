@@ -217,6 +217,56 @@ digests_implemented_skips() {
   return 0
 }
 
+# release_history_fetch PROJECT -> the path of PROJECT's drupal.org release
+# feed (https://updates.drupal.org/release-history/PROJECT/current), cached
+# under <cache>/release-history/ for a day (its fetch time in PROJECT.fetched,
+# epoch seconds). A stale or missing copy is fetched again (curl, else wget);
+# when that fails a stale copy is still used. Nothing, and return 1, when there
+# is no copy at all or PROJECT is not a project name.
+release_history_fetch() {
+  local p="${1:-}" d f at_f now at=0 url
+  [[ "$p" =~ ^[a-z0-9_]+$ ]] || return 1
+  d="$(cache_dir)/release-history"; f="$d/$p.xml"; at_f="$d/$p.fetched"
+  mkdir -p "$d" 2> /dev/null || return 1
+  now="$(date +%s)"
+  [[ -r "$at_f" ]] && at="$(sed -n '1p' "$at_f" 2> /dev/null)"
+  [[ "$at" =~ ^[0-9]+$ ]] || at=0
+  if [[ ! -s "$f" ]] || (( now - at > 86400 )); then
+    url="https://updates.drupal.org/release-history/$p/current"
+    if have_cmd curl; then curl -fsS --max-time 15 "$url" -o "$f.tmp.$$" < /dev/null 2> /dev/null || rm -f "$f.tmp.$$"
+    elif have_cmd wget; then wget -q -T 15 -O "$f.tmp.$$" "$url" < /dev/null 2> /dev/null || rm -f "$f.tmp.$$"
+    fi
+    if [[ -s "$f.tmp.$$" ]] && grep_q -E '<project|<error' "$f.tmp.$$"; then
+      mv -f "$f.tmp.$$" "$f"; printf '%s\n' "$now" > "$at_f"
+    else
+      rm -f "$f.tmp.$$" 2> /dev/null || true
+    fi
+  fi
+  [[ -s "$f" ]] || return 1
+  printf '%s' "$f"
+  return 0
+}
+
+# release_history_rows FILE -> the releases of a release feed, one per line in
+# feed order: VERSION<TAB>STATUS<TAB>CORE_COMPATIBILITY (its &gt; &lt; &amp;
+# decoded; empty when the release has none). Nothing for a feed with no
+# release (an <error> answer).
+release_history_rows() {
+  [[ -r "${1:-}" ]] || return 0
+  tr -d '\r\n' < "$1" | sed 's#<release>#\
+<release>#g' | sed -n '/^<release>/p' | awk '
+    function tag(s, t,   a, b) {
+      a = index(s, "<" t ">"); if (a == 0) return ""
+      s = substr(s, a + length(t) + 2); b = index(s, "</" t ">"); if (b == 0) return ""
+      return substr(s, 1, b - 1)
+    }
+    {
+      c = tag($0, "core_compatibility"); gsub(/&gt;/, ">", c); gsub(/&lt;/, "<", c); gsub(/&amp;/, "\\&", c)
+      v = tag($0, "version"); if (v != "") printf "%s\t%s\t%s\n", v, tag($0, "status"), c
+    }'
+  return 0
+}
+
 # fast_copy_tree <src> <dest> -> copy the CONTENTS of <src> into <dest>
 # (created), preserving modes, times and symlinks, as cheaply as the filesystem
 # allows: a copy-on-write clone where possible (GNU cp --reflink=auto on

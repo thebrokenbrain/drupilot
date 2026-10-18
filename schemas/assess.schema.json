@@ -86,11 +86,27 @@
       }
     },
     "hard_breaks": {
-      "description": "The hard breaks found (Twig 3, CKEditor 5, jQuery UI, Symfony 7, ...).",
+      "description": "The hard breaks found: the ids of the config/catalog/hard-breaks.json categories present (Twig 3, CKEditor 5, jQuery UI, Symfony 7), then those of the core removals a person must resolve (base-theme-removed, dependency-removed, library-removed, migrate-drupal-usage: scan-removals.sh, ADR 0031), sorted.",
       "type": "array"
     },
+    "core_removals": {
+      "description": "The core removals of the assessment's findings (class removal, ADR 0031): one entry per detector and removed name, with the scanner's action (rewrite, blocked, verify, composer-required, decision, hard-break, note) and the files. Absent from an assess.json written before 1.0.0-alpha.6.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["detector", "name", "action", "severity", "files"],
+        "additionalProperties": false,
+        "properties": {
+          "detector": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+          "name": {"type": "string", "minLength": 1},
+          "action": {"enum": ["rewrite", "blocked", "verify", "composer-required", "decision", "hard-break", "note"]},
+          "severity": {"enum": ["error", "warning", "info"]},
+          "files": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
     "hard_break_categories": {
-      "description": "The findings of each of the four fixed hard-break greps.",
+      "description": "The files of each hard break: the four fixed hard-break greps, plus the detector of each core removal a person must resolve.",
       "type": "object",
       "properties": {
         "twig3": {"type": "array"},

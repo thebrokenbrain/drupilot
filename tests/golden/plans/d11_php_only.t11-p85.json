@@ -4,10 +4,10 @@
     "OPT_IN_TEST_MAX_PHP": 1,
     "OPT_IN_TEST_PREVIOUS_MAJOR": 0
   },
-  "core_removals": null,
+  "core_removals": [],
   "data_hash": "sha256:56ec4231aedc8d88d7c207106fdb5d058f49aed6910bdc57d290ec4475604118",
   "detectors": [],
-  "hard_breaks": null,
+  "hard_breaks": [],
   "hops": [],
   "patch_name": "d11_php_only-port-to-drupal-11.patch",
   "php": {

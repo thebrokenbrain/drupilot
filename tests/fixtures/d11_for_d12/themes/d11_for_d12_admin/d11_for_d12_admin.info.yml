@@ -1,0 +1,8 @@
+name: 'D11 for D12 admin'
+type: theme
+description: 'A Claro sub-theme.'
+package: 'drupilot fixtures'
+core_version_requirement: ^11
+base theme: claro
+libraries:
+  - d11_for_d12_admin/global-styling

@@ -20,6 +20,15 @@
       "persist_key": "DRUPILOT_TARGET_MAJOR",
       "note": "12 is a pre-release: it is offered only with DRUPILOT_ALLOW_PRERELEASE=true and ports to it as a preview. A --target N argument wins; the answer is persisted only after the draft upgrade plan resolves."
     },
+    "ALLOW_PRERELEASE": {
+      "command": "/drupilot-setup",
+      "header": "Pre-release",
+      "stage": "plan-draft",
+      "options": ["no", "yes"],
+      "default": "no",
+      "persist_map": {"yes": {"DRUPILOT_ALLOW_PRERELEASE": "true"}},
+      "note": "Asked only when the target major resolves to a pre-release (Drupal 12 until its stable release) and DRUPILOT_ALLOW_PRERELEASE is not true; never in an autonomous run, where the pre-release refusal stops it with nothing written. 'yes' plans the port to the pre-release as a preview, 'no' ports to Drupal 11. Until the Drupal 12 test-bed lands, the setup stops after a pre-release's draft plan and persists nothing, this answer included."
+    },
     "PHP_TARGET": {
       "command": "/drupilot-setup",
       "header": "PHP target",

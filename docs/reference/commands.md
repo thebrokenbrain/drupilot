@@ -87,5 +87,5 @@ Discover, adapt to Drupal 11, and run the full PHPUnit suite (Unit, Kernel, Func
 
 drupilot router and main entry point for porting. Detects the current state of a Drupal module/theme port (environment, cached assessment, phase). When the user asks to PORT/upgrade/modernize a module ('port this module to Drupal 11', 'upgrade this to D11', 'make it work on Drupal 11'), it RUNS the full setup-&gt;assess-&gt;port-&gt;[refactor]-&gt;test flow via the drupal-port-orchestrator — guided with confirmations, or hands-off with the `auto` mode word / DRUPILOT_AUTONOMOUS=true (which writes the local patch and never performs outward-facing contribution). For an exploratory ask or a bare '/drupilot' ('what's next', 'where am I', 'status'), it instead summarizes and recommends the single next step. Use it whenever the user wants to port a module/theme to Drupal 11 or asks what to do next.
 
-- **Arguments:** `[subject-path | --subject DIR] [full|auto|status|next] [--no-confirm] [--workspace DIR] [--json]`
+- **Arguments:** `[subject-path | --subject DIR] [full|auto|status|next] [--no-confirm] [--workspace DIR] [--target N] [--json]`
 - **Allowed tools:** Bash, Read, Task, AskUserQuestion

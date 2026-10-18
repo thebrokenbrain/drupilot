@@ -66,7 +66,10 @@
 # port-safety or signature-change scan recorded errors; the worklist has an
 # open blocking item of the PHP window (a construct removed in the target PHP,
 # a file a window PHP does not compile: scripts/analysis/php-target.sh,
-# php-lint-window.sh) whose file is still as it was found (php_window_items).
+# php-lint-window.sh) whose file is still as it was found (php_window_items);
+# the worklist has an open blocking core-removal item (a hard break or a
+# dependency no release covers: scan-removals.sh, removal_items) whose file
+# is still as it was found.
 # A result computed on
 # sources that changed since (fresh: false) is reported but never blocks; one
 # recorded with another subject_digest algorithm (drupilot 0.9) is stale too,
@@ -155,14 +158,22 @@ fi
 # blocks while it describes the current code (fresh); a stale one is only
 # warned about, like any result computed on sources that changed since.
 PHPW="$(php_window_items "$SUBJECT")"
+# The worklist's open core-removal items (removal_items, ADR 0031): a
+# blocking one (a hard break, a dependency no release covers) blocks while it
+# describes the current code, and a stale one is warned about, the same way.
+RMW="$(removal_items "$SUBJECT")"
 _stale="$(printf '%s' "$PHPW" | jq -r '[.[] | select(.blocking and (.fresh | not))] | length' 2>/dev/null || echo 0)"
-case "$(printf '%s' "$VIEW" | jq -r '.stage // ""' 2>/dev/null || true)" in ported|refactored|tested|contributed) ;; *) _stale=0;; esac
+_rstale="$(printf '%s' "$RMW" | jq -r '[.[] | select(.blocking and (.fresh | not))] | length' 2>/dev/null || echo 0)"
+case "$(printf '%s' "$VIEW" | jq -r '.stage // ""' 2>/dev/null || true)" in ported|refactored|tested|contributed) ;; *) _stale=0; _rstale=0;; esac
 if [[ "$_stale" =~ ^[1-9] ]]; then
   log_warn "$_stale blocking PHP-window item(s) were found in a file that changed since: re-run the pipeline's php stage to check them."
 fi
+if [[ "$_rstale" =~ ^[1-9] ]]; then
+  log_warn "$_rstale blocking core-removal item(s) were found in a file that changed since: re-run the assessment to check them."
+fi
 
 SUMMARY="$(jq -n \
-  --argjson v "$VIEW" --argjson r "$RECORD" --argjson m "$MANIFEST" --argjson pw "$PHPW" \
+  --argjson v "$VIEW" --argjson r "$RECORD" --argjson m "$MANIFEST" --argjson pw "$PHPW" --argjson rw "$RMW" \
   --arg subject "$SUBJECT" --arg ver "$(plugin_version)" \
   --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --arg core "$CORE_REQ" --arg php "$REQ_PHP" --arg pfiles "$PATCH_FILES" \
@@ -195,7 +206,10 @@ SUMMARY="$(jq -n \
         then {source: "signature-changes", reason: "\($m.signature_changes.errors) error finding(s) recorded by scan-signature-changes.sh"} else empty end),
        ([$pw[] | select(.blocking and .fresh)] as $pb
         | if ($pb | length) > 0
-          then {source: "php-target", reason: "\($pb | length) open blocking PHP-window item(s): \([$pb[] | "\(.file) (\(.reason))"] | unique | join(", "))"} else empty end)
+          then {source: "php-target", reason: "\($pb | length) open blocking PHP-window item(s): \([$pb[] | "\(.file) (\(.reason))"] | unique | join(", "))"} else empty end),
+       ([$rw[] | select(.blocking and .fresh)] as $rb
+        | if ($rb | length) > 0
+          then {source: "core-removals", reason: "\($rb | length) open blocking core-removal item(s): \([$rb[] | "\(.file) (\(.reason))"] | unique | join(", "))"} else empty end)
      ] | if ($stage | srank) >= ("ported" | srank) then . else [] end) as $blockers
   | {schema_version: 1,
      drupilot_version: ($ver | nz),

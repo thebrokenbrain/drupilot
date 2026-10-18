@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-10-04",
+  "as_of": "2026-10-18",
   "major": 11,
   "status": "supported",
   "status_src": {
@@ -115,7 +115,7 @@
       "checked_at": "2026-10-04"
     },
     "11.3": {
-      "latest": "11.3.18",
+      "latest": "11.3.19",
       "released": "2025-12-17",
       "php_min": "8.3",
       "php_recommended": "8.4",
@@ -139,13 +139,13 @@
         "symfony/polyfill-php84",
         "symfony/polyfill-php85"
       ],
-      "src": "https://git.drupalcode.org/project/drupal/-/raw/11.3.18/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json",
+      "src": "https://git.drupalcode.org/project/drupal/-/raw/11.3.19/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json",
       "php_src": "https://www.drupal.org/api-d7/node.json?nid=2891690 (PHP requirements, changed 2026-08-04)",
       "verified": true,
-      "checked_at": "2026-10-04"
+      "checked_at": "2026-10-18"
     },
     "11.4": {
-      "latest": "11.4.8",
+      "latest": "11.4.10",
       "released": "2026-07-01",
       "php_min": "8.3",
       "php_recommended": "8.4",
@@ -169,10 +169,10 @@
         "symfony/polyfill-php85",
         "symfony/polyfill-php86"
       ],
-      "src": "https://git.drupalcode.org/project/drupal/-/raw/11.4.8/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json",
+      "src": "https://git.drupalcode.org/project/drupal/-/raw/11.4.10/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json",
       "php_src": "https://www.drupal.org/api-d7/node.json?nid=2891690 (PHP requirements, changed 2026-08-04)",
       "verified": true,
-      "checked_at": "2026-10-04"
+      "checked_at": "2026-10-18"
     },
     "11.5": {
       "status": "detect",

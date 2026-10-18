@@ -38,6 +38,7 @@ behaviour.
 | [0028](0028-pipeline-stage-contract.md) | The pipeline's stage contract |
 | [0029](0029-core-polyfills-as-version-data.md) | Core polyfills are version data |
 | [0030](0030-rule-audit-and-generated-compat-pass.md) | The rule audit and the generated compat pass |
+| [0031](0031-core-removals-scanner.md) | The core-removals scanner and where its results go |
 
 A new ADR takes the next free number, gets a line here and a nav line in
 `mkdocs.yml` in the same change (the `docs` gate rejects an orphan page).

@@ -6,7 +6,7 @@
       "set": {
         "DRUPILOT_ALLOW_PRERELEASE": "true"
       },
-      "tab": null
+      "tab": "ALLOW_PRERELEASE"
     },
     {
       "id": "target-11",

@@ -32,7 +32,7 @@
       "kind": "det+tab",
       "weight": 2,
       "when": ["always"],
-      "tabs": ["TARGET_MAJOR", "PHP_TARGET"],
+      "tabs": ["TARGET_MAJOR", "ALLOW_PRERELEASE", "PHP_TARGET"],
       "subs": [],
       "outputs": ["upgrade plan (draft), frozen in the lock"],
       "gate": "the target major and PHP target are confirmed (a tab, a pre-answer or the auto default); a Drupal 7 source in an auto run stops here (D7-AUTO)",

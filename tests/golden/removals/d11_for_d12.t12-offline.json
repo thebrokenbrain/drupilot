@@ -1,0 +1,236 @@
+{
+  "core_removals": [
+    {
+      "action": "decision",
+      "core_alternative": "default_admin",
+      "covering_release": null,
+      "detector": "base-theme-removed",
+      "files": [
+        "themes/d11_for_d12_admin/d11_for_d12_admin.info.yml"
+      ],
+      "hard_break": true,
+      "kind": "theme",
+      "name": "claro",
+      "removed_in": "12.0",
+      "replacement_available": "unknown",
+      "replacement_project": "claro",
+      "rewrite": "base-theme"
+    },
+    {
+      "action": "verify",
+      "core_alternative": null,
+      "covering_release": null,
+      "detector": "dependency-removed",
+      "files": [
+        "d11_for_d12.info.yml"
+      ],
+      "hard_break": false,
+      "kind": "module",
+      "name": "contact",
+      "removed_in": "12.0",
+      "replacement_available": "unknown",
+      "replacement_project": "contact",
+      "rewrite": "dependency"
+    },
+    {
+      "action": "hard-break",
+      "core_alternative": null,
+      "covering_release": null,
+      "detector": "library-removed",
+      "files": [
+        "d11_for_d12.libraries.yml"
+      ],
+      "hard_break": true,
+      "kind": "library",
+      "name": "core/internal.backbone",
+      "removed_in": "12.0",
+      "replacement_available": null,
+      "replacement_project": null,
+      "rewrite": null
+    },
+    {
+      "action": "hard-break",
+      "core_alternative": null,
+      "covering_release": null,
+      "detector": "library-removed",
+      "files": [
+        "d11_for_d12.module"
+      ],
+      "hard_break": true,
+      "kind": "library",
+      "name": "core/js-cookie",
+      "removed_in": "12.0",
+      "replacement_available": null,
+      "replacement_project": null,
+      "rewrite": null
+    },
+    {
+      "action": "hard-break",
+      "core_alternative": null,
+      "covering_release": null,
+      "detector": "migrate-drupal-usage",
+      "files": [
+        "modules/d11_for_d12_migrate/d11_for_d12_migrate.info.yml",
+        "modules/d11_for_d12_migrate/src/Plugin/migrate/source/LegacyTitle.php"
+      ],
+      "hard_break": true,
+      "kind": "module",
+      "name": "migrate_drupal",
+      "removed_in": "12.0",
+      "replacement_available": null,
+      "replacement_project": null,
+      "rewrite": "hard-break"
+    }
+  ],
+  "findings": [
+    {
+      "action": "verify",
+      "core_alternative": null,
+      "covering_release": null,
+      "detector": "dependency-removed",
+      "evidence": "- drupal:contact",
+      "file": "d11_for_d12.info.yml",
+      "hard_break": false,
+      "kind": "module",
+      "line": 8,
+      "message": "contact was removed from Drupal core in 12.0; whether a release of the contrib project contact covers ^11.3 || ^12 is unknown: see https://www.drupal.org/project/contact",
+      "name": "contact",
+      "removed_in": "12.0",
+      "replacement_available": "unknown",
+      "replacement_project": "contact",
+      "rewrite": "dependency",
+      "severity": "warning"
+    },
+    {
+      "action": "hard-break",
+      "core_alternative": null,
+      "covering_release": null,
+      "detector": "library-removed",
+      "evidence": "- core/internal.backbone",
+      "file": "d11_for_d12.libraries.yml",
+      "hard_break": true,
+      "kind": "library",
+      "line": 7,
+      "message": "the library core/internal.backbone was removed from Drupal core in 12.0: the code that needs it must change",
+      "name": "core/internal.backbone",
+      "removed_in": "12.0",
+      "replacement_available": null,
+      "replacement_project": null,
+      "rewrite": null,
+      "severity": "error"
+    },
+    {
+      "action": "hard-break",
+      "core_alternative": null,
+      "covering_release": null,
+      "detector": "library-removed",
+      "evidence": "$form['#attached']['library'][] = 'core/js-cookie';",
+      "file": "d11_for_d12.module",
+      "hard_break": true,
+      "kind": "library",
+      "line": 34,
+      "message": "the library core/js-cookie was removed from Drupal core in 12.0: the code that needs it must change",
+      "name": "core/js-cookie",
+      "removed_in": "12.0",
+      "replacement_available": null,
+      "replacement_project": null,
+      "rewrite": null,
+      "severity": "error"
+    },
+    {
+      "action": "hard-break",
+      "core_alternative": null,
+      "covering_release": null,
+      "detector": "migrate-drupal-usage",
+      "evidence": "- drupal:migrate_drupal",
+      "file": "modules/d11_for_d12_migrate/d11_for_d12_migrate.info.yml",
+      "hard_break": true,
+      "kind": "module",
+      "line": 8,
+      "message": "migrate_drupal was removed from Drupal core in 12.0: a module that uses it cannot target Drupal 12",
+      "name": "migrate_drupal",
+      "removed_in": "12.0",
+      "replacement_available": null,
+      "replacement_project": null,
+      "rewrite": "hard-break",
+      "severity": "error"
+    },
+    {
+      "action": "hard-break",
+      "core_alternative": null,
+      "covering_release": null,
+      "detector": "migrate-drupal-usage",
+      "evidence": "use Drupal\\migrate_drupal\\Plugin\\migrate\\source\\DrupalSqlBase;",
+      "file": "modules/d11_for_d12_migrate/src/Plugin/migrate/source/LegacyTitle.php",
+      "hard_break": true,
+      "kind": "module",
+      "line": 7,
+      "message": "migrate_drupal was removed from Drupal core in 12.0: a module that uses it cannot target Drupal 12",
+      "name": "migrate_drupal",
+      "removed_in": "12.0",
+      "replacement_available": null,
+      "replacement_project": null,
+      "rewrite": "hard-break",
+      "severity": "error"
+    },
+    {
+      "action": "decision",
+      "core_alternative": "default_admin",
+      "covering_release": null,
+      "detector": "base-theme-removed",
+      "evidence": "base theme: claro",
+      "file": "themes/d11_for_d12_admin/d11_for_d12_admin.info.yml",
+      "hard_break": true,
+      "kind": "theme",
+      "line": 6,
+      "message": "the theme claro was removed from Drupal core in 12.0: choose a new base theme (core has default_admin) or require the contrib theme claro",
+      "name": "claro",
+      "removed_in": "12.0",
+      "replacement_available": "unknown",
+      "replacement_project": "claro",
+      "rewrite": "base-theme",
+      "severity": "error"
+    }
+  ],
+  "hard_breaks": [
+    {
+      "files": [
+        "themes/d11_for_d12_admin/d11_for_d12_admin.info.yml"
+      ],
+      "id": "base-theme-removed",
+      "name": "claro"
+    },
+    {
+      "files": [
+        "d11_for_d12.libraries.yml"
+      ],
+      "id": "library-removed",
+      "name": "core/internal.backbone"
+    },
+    {
+      "files": [
+        "d11_for_d12.module"
+      ],
+      "id": "library-removed",
+      "name": "core/js-cookie"
+    },
+    {
+      "files": [
+        "modules/d11_for_d12_migrate/d11_for_d12_migrate.info.yml",
+        "modules/d11_for_d12_migrate/src/Plugin/migrate/source/LegacyTitle.php"
+      ],
+      "id": "migrate-drupal-usage",
+      "name": "migrate_drupal"
+    }
+  ],
+  "majors": [
+    12
+  ],
+  "offline": true,
+  "preview": true,
+  "range": "^11.3 || ^12",
+  "source_major": 11,
+  "subject": "d11_for_d12",
+  "target_major": 12,
+  "tool": "scan-removals"
+}

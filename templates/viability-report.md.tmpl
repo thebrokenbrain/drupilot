@@ -91,6 +91,17 @@ human review:
 | jQuery / jQuery UI (`core/jquery.ui.*` removed/externalized) | {{JQUERY_STATUS}} | {{JQUERY_NOTES}} |
 | Symfony 7 (event subscriber signatures / typing) | {{SYMFONY7_STATUS}} | {{SYMFONY7_NOTES}} |
 
+## Core removals
+
+What the code still takes from Drupal core that the target major removes
+(`scripts/analysis/scan-removals.sh`): `decision` and `hard-break` are hard breaks,
+`blocked` a blocking dependency, `rewrite` a dependency on the contrib project that
+replaced the module, `verify` a replacement to check by hand.
+
+| Removed | Detector | Action | Where |
+|---|---|---|---|
+{{CORE_REMOVAL_ROWS}}
+
 ## `info.yml` status
 
 {{INFO_YML_STATUS}}

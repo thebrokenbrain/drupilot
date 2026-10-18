@@ -15,9 +15,15 @@
 #                  signature and port-safety findings of severity error
 #                  (manual_items, each with its occurrences)
 #   hard_breaks    the categories of config/catalog/hard-breaks.json with at
-#                  least one matching file of the subject
+#                  least one matching file of the subject, plus the detectors
+#                  of the core removals a person must resolve (a removed base
+#                  theme, a removal with no replacement: scan-removals.sh,
+#                  ADR 0031); a removal whose name a category's ERE matches
+#                  (core/jquery.ui.*) counts under that category, once
 #   blocking_deps  deps-status.sh's blockers (no Drupal 11 release on
-#                  drupal.org; offline every contrib dependency is unknown)
+#                  drupal.org; offline every contrib dependency is unknown),
+#                  plus each removed core module no release of its contrib
+#                  replacement covers (scan-removals.sh's blocked)
 #
 #   XL  blocking_deps >= 1 or hard_breaks >= 3 or manual > 40
 #   L   hard_breaks == 2 or manual > 15
@@ -159,8 +165,19 @@ jq -n -c --slurpfile f "$FINDINGS" --slurpfile w "$WORKLIST" --slurpfile cs "$TM
                       and ("\(.file)\u001f\(.anchor)" as $k | $rx | index($k) | not)) | . + {n: occ}]
      + [$cur[] | select((.class == "signature" or .class == "safety") and .severity == "error") | . + {n: 1}]
      | sort_by([.file, .line // 0, .id])) as $man
-  | ([$hb | to_entries[] | select((.value | length) > 0) | .key]) as $breaks
-  | ($man | map(.n) | add // 0) as $m | ($breaks | length) as $h | ($D.totals.blockers // 0) as $b
+  # The core removals (ADR 0031): rule removal:<detector>:<action>, the
+  # removed name as the symbol.
+  | ([$cur[] | select(.class == "removal") | . + {det: (.rule | split(":")[1]), act: (.rule | split(":")[2])}]) as $rem
+  # A removal whose name the ERE of a catalog category matches (core/jquery.ui.*:
+  # jquery_ui) counts once, under that category.
+  | ([$rem[] | select(.act == "decision" or .act == "hard-break")
+      | . as $x | . + {cat: ([$cat[0].entries[] | select(.ere as $e | ($x.symbol // "") | test($e)) | .id] | .[0])}]) as $rx
+  | ($hb | with_entries(.key as $k | .value = ((.value + [$rx[] | select(.cat == $k) | .file]) | unique))) as $hbx
+  | ([$rx[] | select(.cat == null)] | group_by(.det)
+     | map({key: .[0].det, value: ([.[].file] | unique)}) | from_entries) as $rhb
+  | ([$hbx | to_entries[] | select((.value | length) > 0) | .key] + ($rhb | keys)) as $breaks
+  | ($man | map(.n) | add // 0) as $m | ($breaks | length) as $h
+  | (($D.totals.blockers // 0) + ([$rem[] | select(.act == "blocked") | .symbol] | unique | length)) as $b
   | ([["rector", "phpstan", "port-safety", "signatures"][] | {key: ., value: (($F.tools // {})[.] // "missing")}]
      | map(select(.value != "ok" and .value != "partial"))) as $notok
   | ($notok | length > 0) as $prov
@@ -197,7 +214,9 @@ jq -n -c --slurpfile f "$FINDINGS" --slurpfile w "$WORKLIST" --slurpfile cs "$TM
                       | map({key: .[0].message, value: ([.[].file] | unique | length)}) | from_entries)},
      manual_items: [$man | to_entries[] | {id: "M\(.key + 1)", finding_id: .value.id, file: .value.file, line: .value.line,
                     occurrences: .value.n, source: "\(.value.tool):\(.value.rule)", what: .value.message}],
-     hard_break_categories: $hb, hard_breaks: $breaks,
+     hard_break_categories: ($hbx + $rhb), hard_breaks: $breaks,
+     core_removals: ($rem | group_by([.det, .symbol])
+                     | map({detector: .[0].det, name: .[0].symbol, action: .[0].act, severity: .[0].severity, files: ([.[].file] | unique)})),
      hygiene: {error: ([$meta[] | select(.severity == "error")] | length), warn: ([$meta[] | select(.severity == "warning")] | length),
                info: ([$meta[] | select(.severity == "info")] | length)},
      dependencies: {ready: ($D.totals.ready // 0), blockers: $b, unknown: ($D.totals.unknown // 0), offline: (if ($D | has("offline")) then $D.offline else null end),
@@ -247,11 +266,12 @@ render_template "$(plugin_root)/templates/viability-report.md.tmpl" "$ART/viabil
   "SOFT_DEPRECATION_ROWS=$(j '.soft_deprecations | if length == 0 then "| - | - | - | - | - | - |" else map("| `\(.symbol | gsub("\\|"; "\\|"))` | \(.deprecated_in // "?") | \(.removed_in // "?") | \(.effort // "?") | \(.replacement_since // "?") | per policy |") | join("\n") end')" \
   "TWIG3_STATUS=$(hbs twig3)" "TWIG3_NOTES=$(hbn twig3)" "CKEDITOR5_STATUS=$(hbs ckeditor5)" "CKEDITOR5_NOTES=$(hbn ckeditor5)" \
   "JQUERY_STATUS=$(hbs jquery_ui)" "JQUERY_NOTES=$(hbn jquery_ui)" "SYMFONY7_STATUS=$(hbs symfony7)" "SYMFONY7_NOTES=$(hbn symfony7)" \
+  "CORE_REMOVAL_ROWS=$(j '(.core_removals // []) | if length == 0 then "| - | - | - | - |" else map("| `\(.name | gsub("\\|"; "\\|"))` | \(.detector) | \(.action) | \(.files | map("`" + gsub("\\|"; "\\|") + "`") | join(", ")) |") | join("\n") end')" \
   "INFO_YML_STATUS=$(j '.info_yml | "- `core_version_requirement` present: \(.core_version_requirement_present)\n- admits the target major: \(.d11_compatible)\n- every submodule admits it: \(.submodules_d11_compatible)"')" \
   "TARGET_CORE_REQUIREMENT=$(j '.recommended_core_version_requirement // "-"')" \
   "HYGIENE_SUMMARY=$(j '"\(.hygiene.error) error(s), \(.hygiene.warn) warning(s), \(.hygiene.info) info."')" \
   "HYGIENE_ROWS=$(jq -r '[.findings[] | select(.class == "metadata")] | if length == 0 then "| - | - | - | - | - |" else map("| \(.severity) | \(.rule | sub("^metadata:"; "")) | `\(.file | gsub("\\|"; "\\|")):\(.line // "")` | \(.message | gsub("\\|"; "\\|")) | - |") | join("\n") end' "$FINDINGS")" \
-  "CONTRIB_DEPENDENCY_ROWS=$(j '(.dependencies.list | if length == 0 then "| - | - | - |" else map("| `\(.project)` | \(.d11 // "unknown") | \(.url // "") |") | join("\n") end) + (if .dependencies.offline == true then "\n\n> Checked offline: drupal.org was not asked, so every contrib dependency is `unknown` and none is counted as blocking." else "" end)')" \
+  "CONTRIB_DEPENDENCY_ROWS=$(j '(.dependencies.list | if length == 0 then "| - | - | - |" else map("| `\(.project)` | \(.d11 // "unknown") | \(.url // "") |") | join("\n") end) + (if .dependencies.offline == true then "\n\n> Checked offline: drupal.org was not asked about them, so every contrib dependency is `unknown` and none of them is counted as blocking." + (if any((.core_removals // [])[]; .action == "blocked") then " A removed core module whose contrib replacement has no release that covers the range still is (the removals scan reads the release feed itself: see Core removals)." else "" end) else "" end)')" \
   "NEXT_STEP=/drupilot-port" \
   "PHASE1_SUMMARY=$(j '"the info.yml requirement, the \(.auto_fixable.rector_official_files) Rector file(s), the \(.rubric.manual) manual item(s)" + (if .rubric.hard_breaks > 0 then " and the hard breaks (" + (.hard_breaks | join(", ")) + ")" else "" end) + ", then the tests."')" \
   "PHASE2_SUMMARY=the Drupal $TMAJ way rewrite (attributes, dependency injection, strict types), only when you ask for it." \

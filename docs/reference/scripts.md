@@ -181,7 +181,16 @@ codemod > ai-templated > ai-free > test-adapt > human > deferred.
                 PHPCompatibility reports that no config/php/rules.json row
                 covers: a warning). PHPCompatibility's own floor and
                 removed findings take fix-needs-php-above-floor and
-                removed-in-target-php, as warnings: they never block
+                removed-in-target-php, as warnings: they never block. A
+                core removal (scan-removals.sh, ADR 0031) is human too:
+                base-theme-removed (a removed base theme: a decision),
+                removed-from-core (no replacement),
+                removed-dependency-no-release (no release of the contrib
+                replacement covers the range: it blocks),
+                removed-dependency-unverified (the release feed was not
+                read) or removed-dependency-replaceable (a covering release
+                exists: depend on the contrib project); its info notes are
+                deferred
   test-adapt    an ai-templated or ai-free finding in a file under a tests/
                 directory (the module's or a submodule's)
 
@@ -224,8 +233,10 @@ NN is the stage's place in config/pipeline.json. The tools are run-rector.sh
 scan-signature-changes.sh, lint-extension-metadata.sh, php-target.sh (the
 PHP window's removed and deprecated constructs), php-lint-window.sh
 (php -l on each PHP minor of the window, in Docker; its legs skipped
-without a Docker daemon) and run-phpcompat.sh (PHPCompatibility over the
-window, report-only: ok, degraded or skipped), each with --json;
+without a Docker daemon), run-phpcompat.sh (PHPCompatibility over the
+window, report-only: ok, degraded or skipped) and scan-removals.sh (what
+the subject takes from core that a major of the plan removes; the release
+feed answers frozen in the root's lock: ADR 0031), each with --json;
 every report goes through canon_json with the Drupal root (root-relative
 paths, sorted keys; its own timestamps moved under meta: DET-2). Then the
 anchor of every (file, line) the reports name in a PHP file is computed
@@ -319,10 +330,10 @@ files, the target major and the soft-deprecation policy: no tool runs, no
 PHP, so the result is the same on every platform (DET-2).
 
 Reads <raw-dir>/<NN>-<stage>-{index,rector,phpstan,phpcs,port-safety,
-signatures,metadata,php-target,php-lint,phpcompat,anchors}.json as
+signatures,metadata,php-target,php-lint,phpcompat,removals,anchors}.json as
 scripts/ai/extract.sh writes them (any but the index may be missing;
-php-target, php-lint and phpcompat are expected, and have a verdict, only
-when the index names them or their file exists).
+php-target, php-lint, phpcompat and removals are expected, and have a
+verdict, only when the index names them or their file exists).
 
   id      "F-" + the first 12 hex of sha256(tool␟rule␟file␟anchor␟symbol␟
           message␟occurrence) (␟ = 0x1f); the line is not part of it
@@ -342,7 +353,9 @@ when the index names them or their file exists).
           findings no config/php/rules.json row covers (a warning: never
           blocking; a Syntax.* one is dropped as a false positive when every
           php -l leg ran, compiled the file and the legs reach both ends of
-          its testVersion)
+          its testVersion); removal:<detector>:<action> from
+          scan-removals.sh (its symbol the removed extension or library,
+          its severity the scanner's: ADR 0031)
   anchor  the innermost Namespace\Class::method or function of the line,
           the Namespace\ClassLike for a line in a class-like body outside
           its methods (the raw anchors file, scripts/php/anchor.php), else
@@ -350,7 +363,8 @@ when the index names them or their file exists).
   scope   current, or next-major for a soft deprecation under the report or
           defer policy (DRUPILOT_SOFT_DEPRECATIONS)
   class   hard | soft | unknown (classify-deprecations.sh) | analysis |
-          safety | signature | metadata | style | php-target | rector
+          safety | signature | metadata | style | php-target | removal |
+          rector
 
 Usage:
   normalize-findings.sh (--subject DIR | --raw-dir DIR) [--stage S]
@@ -470,9 +484,15 @@ only narrates it.
                  signature and port-safety findings of severity error
                  (manual_items, each with its occurrences)
   hard_breaks    the categories of config/catalog/hard-breaks.json with at
-                 least one matching file of the subject
+                 least one matching file of the subject, plus the detectors
+                 of the core removals a person must resolve (a removed base
+                 theme, a removal with no replacement: scan-removals.sh,
+                 ADR 0031); a removal whose name a category's ERE matches
+                 (core/jquery.ui.*) counts under that category, once
   blocking_deps  deps-status.sh's blockers (no Drupal 11 release on
-                 drupal.org; offline every contrib dependency is unknown)
+                 drupal.org; offline every contrib dependency is unknown),
+                 plus each removed core module no release of its contrib
+                 replacement covers (scan-removals.sh's blocked)
 
   XL  blocking_deps >= 1 or hard_breaks >= 3 or manual > 40
   L   hard_breaks == 2 or manual > 15
@@ -1710,7 +1730,10 @@ not-verified-unbaselined; a fresh core matrix failed; the manifest's
 port-safety or signature-change scan recorded errors; the worklist has an
 open blocking item of the PHP window (a construct removed in the target PHP,
 a file a window PHP does not compile: scripts/analysis/php-target.sh,
-php-lint-window.sh) whose file is still as it was found (php_window_items).
+php-lint-window.sh) whose file is still as it was found (php_window_items);
+the worklist has an open blocking core-removal item (a hard break or a
+dependency no release covers: scan-removals.sh, removal_items) whose file
+is still as it was found.
 A result computed on
 sources that changed since (fresh: false) is reported but never blocks; one
 recorded with another subject_digest algorithm (drupilot 0.9) is stale too,
@@ -2183,6 +2206,95 @@ Options:
 
 Gate: `setup` profile (Docker daemon + DDEV).
 Output: status/logging on STDERR; Drush's report on STDOUT.
+```
+
+### analysis/scan-removals.sh
+
+```text
+drupilot — scripts/analysis/scan-removals.sh
+The core-removals scanner (T-M6-04, 04-R14, ADR 0031): what a module/theme
+still takes from Drupal core that a major in (S, T] removes, read from the
+version data (config/targets/<N>.json removed_extensions and
+removed_libraries; DRUPILOT_VERSION_DATA_DIR to read a snapshot). Read-only,
+no toolchain needed (bash, awk and jq; curl for the release feed). It finds:
+
+  dependency-removed    a dependencies:/install: entry of a *.info.yml that
+                        names a removed module as core's (drupal:NAME or a
+                        bare NAME; PROJECT:NAME already names a contrib
+                        project), a reference to the namespace of a
+                        module removed with no replacement, or a class of a
+                        namespace move whose module a major of (S, T]
+                        removes (Text with Summary on Drupal 12)
+  migrate-drupal-usage  the same for migrate_drupal and migrate_drupal_ui
+                        (a hard break: a module that depends on them cannot
+                        target Drupal 12), their namespace or test
+                        namespace (Drupal\Tests\migrate_drupal\) included
+  base-theme-removed    a theme's `base theme:` naming a removed theme
+  library-removed       a removed core library in a *.info.yml or
+                        *.libraries.yml (a list item, a flow-sequence item
+                        or a key) or quoted in a PHP or Twig file
+  namespace-move        a class of a namespace_moves entry of a major from S
+                        to T used in its old namespace, whose module stays
+                        in core (an announced note: never a hard break)
+
+Each finding has an action:
+  rewrite            the module moved to a contrib project and a published
+                     release of it covers the declared range C (H8): depend
+                     on PROJECT:NAME and require drupal/PROJECT
+  blocked            the release feed was read and no release covers C: a
+                     blocking dependency, never rewritten
+  verify             whether a release covers C is unknown (--offline, no
+                     curl, the feed unreachable)
+  composer-required  composer.json already requires drupal/PROJECT
+  decision           a removed base theme: a person picks the new one
+  hard-break         removed with no replacement path
+  note               an announced namespace move
+A finding is a hard break when its action is decision or hard-break.
+
+A release covers C when it is published, is not a -dev branch, is stable
+(or any release while T is a pre-release: a preview) and its
+core_compatibility admits every verified core minor C admits. The release
+feed (https://updates.drupal.org/release-history/<project>/current) is
+cached for a day under drupilot's cache dir; in deterministic mode
+(DRUPILOT_DETERMINISTIC, default true) a known answer is frozen in the Drupal
+root's lock (.replacements.<project>.<range>, with whether it was a
+preview's) and reused while T's pre-release status is the same, until
+`lock-sync.sh --refresh` drops it; DRUPILOT_DETERMINISTIC=false reads the
+feed and refreshes the lock. This is the only write: nothing in the subject
+or the root's tree is touched.
+
+Usage:
+  scan-removals.sh [--subject DIR] [--target N] [--source S] [--range C]
+                   [--root DIR] [--offline] [--json] [-h|--help]
+
+Options:
+  --subject DIR  The module/theme directory (default: the current one).
+  --target N     T (default: the subject's frozen plan, else
+                 DRUPILOT_TARGET_MAJOR, else 11).
+  --source S     S, the source era: the majors in (S, T] are scanned
+                 (default: the subject's frozen plan, else T - 1).
+  --range C      The declared range a replacement release must cover
+                 (default: the subject's frozen plan, else
+                 targets/<T>.json default_ranges target-only).
+  --root DIR     The Drupal root whose lock freezes the coverage answers
+                 (default: the subject's).
+  --offline      Never read the release feed or the lock's frozen answers:
+                 every coverage is unknown.
+  --json         Print the report as JSON on STDOUT (default: a summary on
+                 STDERR and the finding ids on STDOUT).
+
+Output (--json): {tool, subject, target_major, source_major, majors, range,
+preview, offline, findings[{detector, name, kind, removed_in, file, line,
+evidence, rewrite, replacement_project, core_alternative,
+replacement_available, covering_release, action, hard_break, severity,
+message}], core_removals[{detector, name, kind, removed_in, rewrite,
+replacement_project, core_alternative, replacement_available,
+covering_release, action, hard_break, files}], hard_breaks[{id, name,
+files}]}. Files are subject-relative; findings are sorted by file, line,
+detector and name.
+
+Exit codes: 0 scanned (findings are data, not an error) · 1 usage error,
+not a directory, or version data that cannot be read · 2 jq missing.
 ```
 
 ### analysis/scan-signature-changes.sh
@@ -3354,7 +3466,8 @@ This script reads what is actually installed and records it:
 
 It does NOT touch digests.{ref,sha} (run-rector.sh owns those), except that
 --refresh drops digests.sha (and the frozen implemented-digests.yml hash)
-so the next Rector run re-resolves the live ref.
+so the next Rector run re-resolves the live ref, and the release answers
+scan-removals.sh froze (.replacements), so the next scan reads the feed.
 
 Fail-safe: if there is no composer.lock yet (setup not run) or DDEV is down,
 it records what it can and exits 0 — it never blocks a flow.
@@ -3367,7 +3480,8 @@ Options:
   --subject DIR   A module/theme path; the Drupal root is derived from it.
   --dir DIR       The Drupal project root directly.
   --json          Print the resulting lockfile (JSON) on STDOUT.
-  --refresh       Re-capture and drop the frozen digests SHA (re-resolve next).
+  --refresh       Re-capture and drop the frozen digests SHA and release
+                  answers (re-resolve next).
   --dry-run       Show what would be written; change nothing.
   -h, --help      Show this help.
 
@@ -4560,8 +4674,10 @@ two layers (G-EVALS):
       prompts in flow order: each command's `choice.sh --key KEY` calls, plus
       the tabs declared only by an AskUserQuestion header (a choices.json key
       with no choice.sh call, such as PUSH). New tabs may only be inserted
-      (CC-02), each as tab-sequence.json's allowed_insertions lists it: right
-      before the 0.9 tab it names (D32); without them, the 0.9 sequence;
+      (CC-02), each as tab-sequence.json's allowed_insertions lists it:
+      before the 0.9 tab it names (other allowed insertions may stand
+      between them), each row at most once and the rows in their listed
+      order, which is the flow's (D32); without them, the 0.9 sequence;
     * the router's mode words, in its argument-hint;
     * the router's mode-inference rules: each cue's mode is the first bold
       **`mode`** after it in its rule, else the last one before it;

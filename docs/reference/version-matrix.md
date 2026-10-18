@@ -7,7 +7,7 @@ The version data drupilot reads: one `config/targets/<major>.json` per Drupal ma
 ## Drupal 10
 
 - **Status:** supported (checked 2026-10-04 in <https://updates.drupal.org/release-history/drupal/current>: supported_branches lists 10.6.)
-- **As of:** 2026-10-04
+- **As of:** 2026-10-18
 - **Released:** 2022-12-15 (https://www.drupal.org/api-d7/node.json?nid=3327456 (drupal 10.0.0))
 - **End of life:** 2026-12-09 (https://www.drupal.org/about/core/policies/core-release-cycles/schedule (02-F1, read 2026-10-03))
 - **Updates from:** 9.4.4 (https://www.drupal.org/api-d7/node.json?nid=3327456 (drupal 10.0.0 release notes: sites must update to at least Drupal 9.4.4))
@@ -24,7 +24,7 @@ The version data drupilot reads: one `config/targets/<major>.json` per Drupal ma
 | 10.3 | 10.3.14 | 2024-06-20 | 8.1 | 8.3 |  |  | 6 | 3 | ^9.6.13 | ^8.3.10 | ^1.11.0 | yes |
 | 10.4 | 10.4.10 | 2024-12-17 | 8.1 | 8.3 | 8.1, 8.2, 8.3, 8.4 | 8.5, 8.6 | 6 | 3 | ^9.6.13 | ^8.3.10 | ^1.12.4 | yes |
 | 10.5 | 10.5.12 | 2025-06-19 | 8.1 | 8.3 | 8.1, 8.2, 8.3, 8.4 | 8.5, 8.6 | 6 | 3 | ^9.6.13 | ^8.3.10 | ^1.12.4 | yes |
-| 10.6 | 10.6.18 | 2025-12-17 | 8.1 | 8.4 | 8.1, 8.2, 8.3, 8.4 | 8.5, 8.6 | 6 | 3 | ^9.6.34 | ^8.3.10 | ^1.12.4 | yes |
+| 10.6 | 10.6.19 | 2025-12-17 | 8.1 | 8.4 | 8.1, 8.2, 8.3, 8.4 | 8.5, 8.6 | 6 | 3 | ^9.6.34 | ^8.3.10 | ^1.12.4 | yes |
 
 Sources:
 
@@ -34,7 +34,7 @@ Sources:
 - 10.3 (checked 2026-10-04): https://git.drupalcode.org/project/drupal/-/raw/10.3.14/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json
 - 10.4 (checked 2026-10-04): https://git.drupalcode.org/project/drupal/-/raw/10.4.10/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json; PHP support: https://www.drupal.org/api-d7/node.json?nid=2891690 (PHP requirements, changed 2026-08-04)
 - 10.5 (checked 2026-10-04): https://git.drupalcode.org/project/drupal/-/raw/10.5.12/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json; PHP support: https://www.drupal.org/api-d7/node.json?nid=2891690 (PHP requirements, changed 2026-08-04)
-- 10.6 (checked 2026-10-04): https://git.drupalcode.org/project/drupal/-/raw/10.6.18/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json; PHP support: https://www.drupal.org/api-d7/node.json?nid=2891690 (PHP requirements, changed 2026-08-04)
+- 10.6 (checked 2026-10-18): https://git.drupalcode.org/project/drupal/-/raw/10.6.19/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json; PHP support: https://www.drupal.org/api-d7/node.json?nid=2891690 (PHP requirements, changed 2026-08-04)
 
 ### Removed core extensions
 
@@ -98,7 +98,7 @@ Sources:
 ## Drupal 11
 
 - **Status:** supported (checked 2026-10-04 in <https://updates.drupal.org/release-history/drupal/current>: supported_branches lists 11.3., 11.4. and 11.5.)
-- **As of:** 2026-10-04
+- **As of:** 2026-10-18
 - **Released:** 2024-08-02 (https://www.drupal.org/api-d7/node.json?nid=3465378 (drupal 11.0.0))
 - **End of life:** mid-late 2028, at least until the release of Drupal 13 (https://www.drupal.org/about/core/blog/announcing-drupal-1200-platform-requirements (02-F1, read 2026-10-03))
 - **Updates from:** 10.3 (https://www.drupal.org/api-d7/node.json?nid=3465378 (drupal 11.0.0 release notes: sites must update to Drupal 10.3 before updating to Drupal 11))
@@ -115,8 +115,8 @@ Sources:
 | 11.0 | 11.0.13 | 2024-08-02 | 8.3 | 8.3 |  |  | 7 | 3 | ^10.5.19 | ^8.3.10 | ^1.11.0 | yes |
 | 11.1 | 11.1.10 | 2024-12-13 | 8.3 | 8.3 | 8.3, 8.4 | 8.1, 8.2, 8.5, 8.6 | 7 | 3 | ^10.5.19 | ^8.3.10 | ^1.12.4 | yes |
 | 11.2 | 11.2.14 | 2025-06-19 | 8.3 | 8.3 | 8.3, 8.4 | 8.1, 8.2, 8.5, 8.6 | 7 | 3 | ^10.5.19 \|\| ^11.5.3 | ^8.3.30 | ^1.12.27 \|\| ^2.1.17 | yes |
-| 11.3 | 11.3.18 | 2025-12-17 | 8.3 | 8.4 | 8.3, 8.4, 8.5 | 8.1, 8.2, 8.6 | 7 | 3 | ^11.5.50 | ^8.3.30 | ^1.12.27 \|\| ^2.1.26 | yes |
-| 11.4 | 11.4.8 | 2026-07-01 | 8.3 | 8.4 | 8.3, 8.4, 8.5 | 8.1, 8.2 | 7 | 3 | ^11.5.50 | ^8.3.30 | ^1.12.27 \|\| ^2.2.0 | yes |
+| 11.3 | 11.3.19 | 2025-12-17 | 8.3 | 8.4 | 8.3, 8.4, 8.5 | 8.1, 8.2, 8.6 | 7 | 3 | ^11.5.50 | ^8.3.30 | ^1.12.27 \|\| ^2.1.26 | yes |
+| 11.4 | 11.4.10 | 2026-07-01 | 8.3 | 8.4 | 8.3, 8.4, 8.5 | 8.1, 8.2 | 7 | 3 | ^11.5.50 | ^8.3.30 | ^1.12.27 \|\| ^2.2.0 | yes |
 | 11.5 | detected at runtime | | | | | | | | | | | |
 
 Sources:
@@ -124,8 +124,8 @@ Sources:
 - 11.0 (checked 2026-10-04): https://git.drupalcode.org/project/drupal/-/raw/11.0.13/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json
 - 11.1 (checked 2026-10-04): https://git.drupalcode.org/project/drupal/-/raw/11.1.10/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json; PHP support: https://www.drupal.org/api-d7/node.json?nid=2891690 (PHP requirements, changed 2026-08-04)
 - 11.2 (checked 2026-10-04): https://git.drupalcode.org/project/drupal/-/raw/11.2.14/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json; PHP support: https://www.drupal.org/api-d7/node.json?nid=2891690 (PHP requirements, changed 2026-08-04)
-- 11.3 (checked 2026-10-04): https://git.drupalcode.org/project/drupal/-/raw/11.3.18/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json; PHP support: https://www.drupal.org/api-d7/node.json?nid=2891690 (PHP requirements, changed 2026-08-04)
-- 11.4 (checked 2026-10-04): https://git.drupalcode.org/project/drupal/-/raw/11.4.8/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json; PHP support: https://www.drupal.org/api-d7/node.json?nid=2891690 (PHP requirements, changed 2026-08-04)
+- 11.3 (checked 2026-10-18): https://git.drupalcode.org/project/drupal/-/raw/11.3.19/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json; PHP support: https://www.drupal.org/api-d7/node.json?nid=2891690 (PHP requirements, changed 2026-08-04)
+- 11.4 (checked 2026-10-18): https://git.drupalcode.org/project/drupal/-/raw/11.4.10/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json; PHP support: https://www.drupal.org/api-d7/node.json?nid=2891690 (PHP requirements, changed 2026-08-04)
 
 ### Removed core extensions
 
@@ -174,8 +174,8 @@ Never a hard gate.
 
 ## Drupal 12
 
-- **Status:** pre-release (checked 2026-10-04 in <https://updates.drupal.org/release-history/drupal/current>: The newest 12.x release is 12.0.0-beta1 (2026-09-30); there is no stable 12.0.0.)
-- **As of:** 2026-10-04
+- **Status:** pre-release (checked 2026-10-18 in <https://updates.drupal.org/release-history/drupal/current>: The newest 12.x release is 12.0.0-beta2 (2026-10-14); there is no stable 12.0.0.)
+- **As of:** 2026-10-18
 - **Released:** planned 2026-12-07/week (https://www.drupal.org/about/core/policies/core-release-cycles/schedule (02-F1, read 2026-10-03))
 - **End of life:** unknown (https://www.drupal.org/about/core/policies/core-release-cycles/schedule (02-F1: unknown))
 - **Updates from:** 11.3 (https://www.drupal.org/api-d7/node.json?nid=3627048 (drupal 12.0.0-beta1 release notes): updates added prior to Drupal 11.3.0 have been removed and the update system will refuse to update from Drupal 11.2 or earlier)
@@ -189,11 +189,11 @@ Never a hard gate.
 
 | Minor | Latest | Released | PHP min | Recommended | PHP supported | PHP not supported | Symfony | Twig | PHPUnit | Coder | PHPStan | Verified |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 12.0 | 12.0.0-beta1 |  | 8.5 | 8.5 | 8.5 | 8.1, 8.2, 8.3, 8.4 | 8 | 3 | ^12.5.22 | ^9.0 | ^2.2.14 | yes |
+| 12.0 | 12.0.0-beta2 |  | 8.5 | 8.5 | 8.5 | 8.1, 8.2, 8.3, 8.4 | 8 | 3 | ^12.5.22 | ^9.0 | ^2.2.14 | yes |
 
 Sources:
 
-- 12.0 (checked 2026-10-04): https://git.drupalcode.org/project/drupal/-/raw/12.0.0-beta1/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json; PHP support: https://www.drupal.org/api-d7/node.json?nid=2891690 (PHP requirements, changed 2026-08-04)
+- 12.0 (checked 2026-10-18): https://git.drupalcode.org/project/drupal/-/raw/12.0.0-beta2/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json; PHP support: https://www.drupal.org/api-d7/node.json?nid=2891690 (PHP requirements, changed 2026-08-04)
 
 ### Removed core extensions
 
@@ -218,6 +218,7 @@ Sources:
 | `block_content_storage_body_field` | module | 12.0 | 11.3.0 |  | hard-break | yes |
 | `search_help` | module | 12.0 |  |  | hard-break | yes |
 | `search_node` | module | 12.0 |  |  | hard-break | yes |
+| `navigation_top_bar` | module | 12.0 |  |  | hard-break | yes |
 
 Sources:
 
@@ -240,6 +241,7 @@ Sources:
 - `block_content_storage_body_field`: core tree: absent at 11.2.14, present at 11.3.0 and 11.4.8 (lifecycle: deprecated, hidden; its lifecycle_link points at https://www.drupal.org/api-d7/node.json?nid=3223395 (Deprecated and obsolete extensions)), absent at 12.0.0-beta1 A configuration placeholder (the block_content body field storage), the twin of node_storage_body_field.
 - `search_help`: core tree: absent at 11.3.18, present at 11.4.0 and 11.4.8, absent at 12.0.0-beta1 (removed with the search module) A submodule of search, added in 11.4.0. Whether the contributed Search project carries it on is not verified.
 - `search_node`: core tree: absent at 11.3.18, present at 11.4.0 and 11.4.8, absent at 12.0.0-beta1 (removed with the search module) A submodule of search, added in 11.4.0. Whether the contributed Search project carries it on is not verified.
+- `navigation_top_bar`: https://www.drupal.org/api-d7/node.json?nid=3630974 (drupal 12.0.0-beta2 release notes: the obsolete Navigation Top Bar module has been removed from core) ; core tree: present at 10.3.0 (lifecycle: experimental) and from 11.2.0 lifecycle: obsolete, present at 11.4.10 and 12.0.0-beta1, absent at 12.0.0-beta2 (https://git.drupalcode.org/project/drupal/-/tree/12.0.0-beta2/core) A submodule of navigation, obsolete since 11.2.0 (its functionality moved into the navigation module). Removed in 12.0.0-beta2 (#3627057), after beta1: sites uninstall it before updating.
 
 ### Removed core libraries
 

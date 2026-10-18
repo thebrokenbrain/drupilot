@@ -11,7 +11,9 @@
 #   method; a PHP-level rule, a file-level anchor or unavailable anchors cover
 #   nothing; signature and port-safety errors, not warnings), the hard-break
 #   catalog (globs never expanded by the shell, vendor/ and node_modules/ left
-#   out, case-sensitive), blocking dependencies, the viability threshold;
+#   out, case-sensitive), the core removals (scan-removals.sh, ADR 0031: a
+#   decision or a hard break is a hard-break category, a blocked dependency a
+#   blocking one), blocking dependencies, the viability threshold;
 # - a Rector or PHPStan run with no verdict makes the verdict provisional
 #   (exit 3, no stage recorded); the settings come from the subject's root;
 # - info.yml: a quoted or open-ended requirement, the submodules;
@@ -140,6 +142,41 @@ hard 0 | jq -s . | run
 assert_eq "four categories (a subscriber next to a root m.api.php), in the catalog's order" "$(jq -c .hard_breaks "$T_OUT")" '["twig3","ckeditor5","jquery_ui","symfony7"]'
 assert_eq "  the report says present" "$(grep -c '| present' "$(project_artifacts_dir "$SUB")/viability-report.md" || true)" "4"
 rm -f "$SUB/templates/a.html.twig" "$SUB/js/e.js" "$SUB/config/install/m.settings.yml" "$SUB/src/EventSubscriber/S.php"
+
+# The core removals (ADR 0031): a decision or a hard break counts as one
+# hard-break category per detector, after the catalog's; a blocked dependency
+# as a blocking one; a dependency to verify or to rewrite and a note count for
+# nothing.
+rmf() {  # rmf ID DETECTOR ACTION NAME FILE SEVERITY
+  fnd "$1" catalog "removal:$2:$3" "$5" '{file}' "$6" current removal | jq -c --arg n "$4" '.symbol = $n'
+}
+{
+  rmf F-m1 base-theme-removed decision claro themes/t/t.info.yml error
+  rmf F-m2 library-removed hard-break core/js-cookie m.module error
+  rmf F-m3 library-removed hard-break core/internal.backbone m.libraries.yml error
+  rmf F-m4 dependency-removed blocked contact m.info.yml error
+  rmf F-m5 dependency-removed verify history m.info.yml warning
+  rmf F-m6 dependency-removed rewrite ban m.info.yml warning
+  rmf F-m7 namespace-move note TextWithSummaryItem m.module info
+} | jq -s . | run
+assert_eq "core removals: two hard-break categories and a blocked dependency: XL" "$(v)" "XL 0 2 1"
+assert_eq "  hard_breaks: the removal detectors" "$(jq -c .hard_breaks "$T_OUT")" '["base-theme-removed","library-removed"]'
+assert_eq "  their files" "$(jq -c '[.hard_break_categories["base-theme-removed"], .hard_break_categories["library-removed"]]' "$T_OUT")" \
+  '[["themes/t/t.info.yml"],["m.libraries.yml","m.module"]]'
+assert_eq "  core_removals: one per detector and name, with its action" "$(jq -c '[.core_removals[] | [.detector, .name, .action]]' "$T_OUT")" \
+  '[["base-theme-removed","claro","decision"],["dependency-removed","ban","rewrite"],["dependency-removed","contact","blocked"],["dependency-removed","history","verify"],["library-removed","core/internal.backbone","hard-break"],["library-removed","core/js-cookie","hard-break"],["namespace-move","TextWithSummaryItem","note"]]'
+assert_eq "  it validates against schemas/assess.schema.json" "$(valid "$T_OUT")" ""
+assert_match "  the report lists them" "$(cat "$(project_artifacts_dir "$SUB")/viability-report.md")" '\| `claro` \| base-theme-removed \| decision \| `themes/t/t.info.yml` \|'
+mkdir -p "$SUB/config/install"; printf 'dependencies:\n  - core/jquery.ui.dialog\n' > "$SUB/m.libraries.yml"
+rmf F-j1 library-removed hard-break core/jquery.ui.dialog m.libraries.yml error | jq -s . | run
+assert_eq "  a removed jQuery UI library the jquery_ui category already found: one hard break" \
+  "$(v)|$(jq -c '[.hard_breaks, .hard_break_categories.jquery_ui]' "$T_OUT")" 'M 0 1 0|[["jquery_ui"],["m.libraries.yml"]]'
+rm -f "$SUB/m.libraries.yml"
+rmf F-b1 dependency-removed blocked contact m.info.yml error | jq -s . | run
+assert_match "  offline, the report says a blocked core removal still blocks" "$(cat "$(project_artifacts_dir "$SUB")/viability-report.md")" \
+  'none of them is counted as blocking\. A removed core module whose contrib replacement has no release that covers the range still is'
+fnd F-m9 catalog removal:library-removed:hard-break m.module '{file}' error next-major removal | jq -s . | run
+assert_eq "  a next-major removal counts for nothing" "$(v)|$(jq -c .core_removals "$T_OUT")" "S 0 0 0|[]"
 
 # The viability threshold.
 hard 5 | jq -s . | run; assert_eq "M within the default threshold (medium)" "$(jq -c '[.viability_threshold, .above_threshold]' "$T_OUT")" '["M",false]'

@@ -153,15 +153,20 @@ Hand `assess.json` to the analyst (it reads that file and does not run
   function or method, plus the signature and port-safety errors.
 - **Auto-fixable**: `auto_fixable` (the official Rector files and rules).
 - **Hard breaks**: `hard_break_categories` (Twig 3, CKEditor 5, jQuery UI,
-  Symfony 7) with the files that matched. A Symfony 7 hit is the most likely
-  to be harmless: say whether PHPStan flags a real type or signature error
-  there.
+  Symfony 7, and the core-removal detectors) with the files that matched. A
+  Symfony 7 hit is the most likely to be harmless: say whether PHPStan flags a
+  real type or signature error there.
+- **Core removals**: `core_removals`, what the code takes from core that the
+  target removes, each with its action and files: a `decision` or `hard-break`
+  is a hard break, a `blocked` dependency a blocking one (ADR 0031).
 - **Soft deprecations**: `soft_deprecations` with the policy
   `soft_deprecations_policy`; they never count.
 - **`info.yml`** and the core target: `info_yml`, `core_target`
   (recommended requirement, `require.php`, version bump, warnings).
 - **Contrib dependencies**: `dependencies` (offline, contrib ones are
-  `unknown`; a blocker counts as `blocking_deps`).
+  `unknown`; a blocker counts as `blocking_deps`). A `blocked` core removal
+  counts there too, offline included: the removals scan reads the release feed
+  itself.
 - **Pre-existing hygiene**: `hygiene` and the metadata findings; they never
   count.
 

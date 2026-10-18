@@ -11,8 +11,10 @@
 # scan-signature-changes.sh, lint-extension-metadata.sh, php-target.sh (the
 # PHP window's removed and deprecated constructs), php-lint-window.sh
 # (php -l on each PHP minor of the window, in Docker; its legs skipped
-# without a Docker daemon) and run-phpcompat.sh (PHPCompatibility over the
-# window, report-only: ok, degraded or skipped), each with --json;
+# without a Docker daemon), run-phpcompat.sh (PHPCompatibility over the
+# window, report-only: ok, degraded or skipped) and scan-removals.sh (what
+# the subject takes from core that a major of the plan removes; the release
+# feed answers frozen in the root's lock: ADR 0031), each with --json;
 # every report goes through canon_json with the Drupal root (root-relative
 # paths, sorted keys; its own timestamps moved under meta: DET-2). Then the
 # anchor of every (file, line) the reports name in a PHP file is computed
@@ -70,7 +72,7 @@ mkdir -p "$RAW" || die "Cannot create $RAW." 2
 # The stage's previous raw files, whatever NN they were written with (the
 # stage may have moved in config/pipeline.json); each tool's name exactly, so
 # another stage whose id starts with this one is never touched.
-TOOL_FILES="index rector phpstan phpcs port-safety signatures metadata php-target php-lint phpcompat anchors"
+TOOL_FILES="index rector phpstan phpcs port-safety signatures metadata php-target php-lint phpcompat removals anchors"
 for t in $TOOL_FILES; do for f in "$RAW"/[0-9][0-9]-"$STAGE"-"$t".json; do [[ -f "$f" ]] && rm -f "$f"; done; done
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-extract.XXXXXX")"
@@ -105,6 +107,7 @@ extract metadata bash "$S/analysis/lint-extension-metadata.sh" --subject "$SUBJE
 extract php-target bash "$S/analysis/php-target.sh" --subject "$SUBJECT_REL" --json
 extract php-lint bash "$S/analysis/php-lint-window.sh" --subject "$SUBJECT_REL" --json
 extract phpcompat bash "$S/analysis/run-phpcompat.sh" --subject "$SUBJECT_REL" --json
+extract removals bash "$S/analysis/scan-removals.sh" --subject "$SUBJECT_REL" --root "$ROOT" --json
 
 # The anchors of every (file, line) the reports name in a PHP file.
 log_step "extract: anchors"
@@ -113,7 +116,7 @@ jq -n -c --arg sp "$SUBJECT_REL" \
   --slurpfile cs "$RAW/$NN-$STAGE-phpcs.json" --slurpfile safety "$RAW/$NN-$STAGE-port-safety.json" \
   --slurpfile sig "$RAW/$NN-$STAGE-signatures.json" --slurpfile meta "$RAW/$NN-$STAGE-metadata.json" \
   --slurpfile phpt "$RAW/$NN-$STAGE-php-target.json" --slurpfile lint "$RAW/$NN-$STAGE-php-lint.json" \
-  --slurpfile pc "$RAW/$NN-$STAGE-phpcompat.json" '
+  --slurpfile pc "$RAW/$NN-$STAGE-phpcompat.json" --slurpfile rm "$RAW/$NN-$STAGE-removals.json" '
   def rootrel: if startswith($sp + "/") then . else $sp + "/" + . end;
   def hunk_lines: split("\n") as $l
     | reduce range(0; $l | length) as $i ({out: [], start: null, ctx: 0, found: true};
@@ -127,7 +130,7 @@ jq -n -c --arg sp "$SUBJECT_REL" \
     (($stan[0].files // {}) | to_entries[] | (.key | sub(" \\(in context of (class [^ ()]+|anonymous class|[^ /()]*@anonymous/.*)\\)$"; "")) as $f | (.value.messages // [])[] | {file: ($f | rootrel), line}),
     (($cs[0].files // {}) | to_entries[] | .key as $f | (.value.messages // [])[] | {file: ($f | rootrel), line}),
     (($safety[0].findings // [])[], ($sig[0].findings // [])[], ($meta[0].findings // [])[], ($phpt[0].findings // [])[],
-     ($pc[0].findings // [])[],
+     ($pc[0].findings // [])[], ($rm[0].findings // [])[],
      ([($lint[0].legs // [])[] | (.messages // [])[]] | .[])
       | {file: (.file | rootrel), line}) ]
   | map(select((.line | type) == "number" and (.file | test("\\.(php|module|inc|install|theme|profile|engine)$"))))

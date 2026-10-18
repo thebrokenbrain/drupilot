@@ -21,7 +21,8 @@
 #
 # It does NOT touch digests.{ref,sha} (run-rector.sh owns those), except that
 # --refresh drops digests.sha (and the frozen implemented-digests.yml hash)
-# so the next Rector run re-resolves the live ref.
+# so the next Rector run re-resolves the live ref, and the release answers
+# scan-removals.sh froze (.replacements), so the next scan reads the feed.
 #
 # Fail-safe: if there is no composer.lock yet (setup not run) or DDEV is down,
 # it records what it can and exits 0 — it never blocks a flow.
@@ -34,7 +35,8 @@
 #   --subject DIR   A module/theme path; the Drupal root is derived from it.
 #   --dir DIR       The Drupal project root directly.
 #   --json          Print the resulting lockfile (JSON) on STDOUT.
-#   --refresh       Re-capture and drop the frozen digests SHA (re-resolve next).
+#   --refresh       Re-capture and drop the frozen digests SHA and release
+#                   answers (re-resolve next).
 #   --dry-run       Show what would be written; change nothing.
 #   -h, --help      Show this help.
 #
@@ -169,12 +171,12 @@ else
   log_info "No DDEV project at $PROJECT_DIR — skipping add-on version capture (optional)."
 fi
 
-# --- Refresh: drop the frozen digests SHA so the next run re-resolves ------
+# --- Refresh: drop the frozen digests SHA and release answers -------------
 if [[ "$DO_REFRESH" == "1" && "$DRY_RUN" != "1" && -f "$LOCKFILE" ]]; then
   tmp="$(mktemp "${LOCKFILE}.XXXXXX" 2>/dev/null)" || tmp=""
-  if [[ -n "$tmp" ]] && jq 'del(.digests.sha, .digests.implemented_yml_sha256, .digests.implemented_yml_ref)' "$LOCKFILE" > "$tmp" 2>/dev/null; then
+  if [[ -n "$tmp" ]] && jq 'del(.digests.sha, .digests.implemented_yml_sha256, .digests.implemented_yml_ref, .replacements)' "$LOCKFILE" > "$tmp" 2>/dev/null; then
     mv -f "$tmp" "$LOCKFILE"
-    log_info "Refresh: dropped the frozen digests SHA (next Rector run re-resolves the live ref)."
+    log_info "Refresh: dropped the frozen digests SHA and release answers (the next runs re-resolve them)."
   else
     [[ -n "$tmp" ]] && rm -f "$tmp" 2>/dev/null || true
   fi

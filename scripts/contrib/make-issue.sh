@@ -298,6 +298,14 @@ if [[ -n "$SUBJECT" && -d "$SUBJECT" ]] && have_cmd jq; then
     REMAINING="$REMAINING
 $_pw"
   fi
+  # The core removals left for a person (removal_items, ADR 0031): one task each.
+  _rm="$(removal_items "$(cd "$SUBJECT" && pwd)" | jq -r '.[]
+    | "- [ ] \(if .blocking then "Resolve" else "Review" end) `\(.file)`: what the target removes from core (\(.reason)): \((.messages | unique | join("; ")) // "")"
+      + (if .fresh then "" else " (found before the sources last changed: re-check it)" end)' 2> /dev/null || true)"
+  if [[ -n "$_rm" ]]; then
+    REMAINING="$REMAINING
+$_rm"
+  fi
 fi
 
 [[ -n "$SUMMARY" ]] || SUMMARY="It applies the automated \`drupal-rector\` fixes plus the minimal manual changes required for Drupal 11, and updates \`core_version_requirement\` accordingly."

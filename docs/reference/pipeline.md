@@ -7,7 +7,7 @@ The stages of a port, in order, from `config/pipeline.json`. A stage id is publi
 | # | Stage | What | Kind | Runs when | Tabs | Sub-steps |
 |---|---|---|---|---|---|---|
 | 1 | `doctor` | Check the environment | det | `always` | — | — |
-| 2 | `plan-draft` | Draft the upgrade plan | det+tab | `always` | `TARGET_MAJOR`, `PHP_TARGET` | — |
+| 2 | `plan-draft` | Draft the upgrade plan | det+tab | `always` | `TARGET_MAJOR`, `ALLOW_PRERELEASE`, `PHP_TARGET` | — |
 | 3 | `setup` | Set up the test-bed | det | `always` | `PLACEMENT`, `CONFIG_CONFLICT` | — |
 | 4 | `assess` | Assess viability | det | `always` | `EXISTING_WORK` | — |
 | 5 | `plan-final` | Finalize the upgrade plan | det+tab | `always` | `CORE_TARGET` | — |

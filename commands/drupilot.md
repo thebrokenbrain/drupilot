@@ -1,6 +1,6 @@
 ---
 description: drupilot router and main entry point for porting. Detects the current state of a Drupal module/theme port (environment, cached assessment, phase). When the user asks to PORT/upgrade/modernize a module ('port this module to Drupal 11', 'upgrade this to D11', 'make it work on Drupal 11'), it RUNS the full setup->assess->port->[refactor]->test flow via the drupal-port-orchestrator — guided with confirmations, or hands-off with the `auto` mode word / DRUPILOT_AUTONOMOUS=true (which writes the local patch and never performs outward-facing contribution). For an exploratory ask or a bare '/drupilot' ('what's next', 'where am I', 'status'), it instead summarizes and recommends the single next step. Use it whenever the user wants to port a module/theme to Drupal 11 or asks what to do next.
-argument-hint: "[subject-path | --subject DIR] [full|auto|status|next] [--no-confirm] [--workspace DIR] [--json]"
+argument-hint: "[subject-path | --subject DIR] [full|auto|status|next] [--no-confirm] [--workspace DIR] [--target N] [--json]"
 allowed-tools: Bash, Read, Task, AskUserQuestion
 ---
 
@@ -42,6 +42,13 @@ the user asked you to port/upgrade the module) or **recommend the next logical s
     `--workspace DIR` to `resolve-workspace.sh`, `ddev-up.sh` and
     `place-subject.sh` (or prefix any script with `DRUPILOT_WORKSPACE_DIR=DIR`),
     and hand it to the orchestrator so every stage uses it.
+  - `--target N` — the Drupal major to port to (T). Pass `--target N` to
+    `/drupilot-setup`'s plan step (it wins over `DRUPILOT_TARGET_MAJOR`); the
+    plan it freezes fixes T for every later stage. A pre-release major (Drupal 12
+    until its stable release) also needs the pre-release opt-in, which
+    `/drupilot-setup` asks for in a guided run (`ALLOW_PRERELEASE`); an `auto` run
+    never asks it and stops on the plan's `prerelease-not-opted-in` refusal unless
+    `DRUPILOT_ALLOW_PRERELEASE=true` (or its pre-answer) was given.
   - `--json` — the machine contract: whatever mode runs, your **final message is
     exactly** the output of
     `bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-summary.sh" --subject <subject_dir> --json`

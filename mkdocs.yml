@@ -116,4 +116,5 @@ nav:
           - contributing/adr/0028-pipeline-stage-contract.md
           - contributing/adr/0029-core-polyfills-as-version-data.md
           - contributing/adr/0030-rule-audit-and-generated-compat-pass.md
+          - contributing/adr/0031-core-removals-scanner.md
   - Changelog: changelog.md

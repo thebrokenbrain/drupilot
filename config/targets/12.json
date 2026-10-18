@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
-  "as_of": "2026-10-04",
+  "as_of": "2026-10-18",
   "major": 12,
   "status": "pre-release",
   "status_src": {
     "url": "https://updates.drupal.org/release-history/drupal/current",
     "verified": true,
-    "checked_at": "2026-10-04",
-    "note": "The newest 12.x release is 12.0.0-beta1 (2026-09-30); there is no stable 12.0.0."
+    "checked_at": "2026-10-18",
+    "note": "The newest 12.x release is 12.0.0-beta2 (2026-10-14); there is no stable 12.0.0."
   },
   "released": {
     "planned": "2026-12-07/week",
@@ -40,7 +40,7 @@
   },
   "minors": {
     "12.0": {
-      "latest": "12.0.0-beta1",
+      "latest": "12.0.0-beta2",
       "released": null,
       "php_min": "8.5",
       "php_recommended": "8.5",
@@ -62,10 +62,10 @@
       "polyfills": [
         "symfony/polyfill-php86"
       ],
-      "src": "https://git.drupalcode.org/project/drupal/-/raw/12.0.0-beta1/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json",
+      "src": "https://git.drupalcode.org/project/drupal/-/raw/12.0.0-beta2/{core/composer.json,composer/Metapackage/DevDependencies/composer.json,core/lib/Drupal.php} ; https://repo.packagist.org/p2/drupal/core.json",
       "php_src": "https://www.drupal.org/api-d7/node.json?nid=2891690 (PHP requirements, changed 2026-08-04)",
       "verified": true,
-      "checked_at": "2026-10-04"
+      "checked_at": "2026-10-18"
     }
   },
   "removed_extensions": [
@@ -393,6 +393,24 @@
         "12.0.0"
       ],
       "note": "A submodule of search, added in 11.4.0. Whether the contributed Search project carries it on is not verified."
+    },
+    {
+      "name": "navigation_top_bar",
+      "kind": "module",
+      "removed_in": "12.0",
+      "deprecated_in": null,
+      "replacement_project": null,
+      "replacement_available": null,
+      "rewrite": "hard-break",
+      "info_path": "core/modules/navigation/modules/navigation_top_bar/navigation_top_bar.info.yml",
+      "src": "https://www.drupal.org/api-d7/node.json?nid=3630974 (drupal 12.0.0-beta2 release notes: the obsolete Navigation Top Bar module has been removed from core) ; core tree: present at 10.3.0 (lifecycle: experimental) and from 11.2.0 lifecycle: obsolete, present at 11.4.10 and 12.0.0-beta1, absent at 12.0.0-beta2 (https://git.drupalcode.org/project/drupal/-/tree/12.0.0-beta2/core)",
+      "verified": true,
+      "verified_at": "12.0.0-beta2",
+      "reverify_at": [
+        "12.0.0-rc1",
+        "12.0.0"
+      ],
+      "note": "A submodule of navigation, obsolete since 11.2.0 (its functionality moved into the navigation module). Removed in 12.0.0-beta2 (#3627057), after beta1: sites uninstall it before updating."
     }
   ],
   "removed_libraries": [
@@ -457,11 +475,19 @@
     {
       "id": "release-12.0.0-beta1",
       "url": "https://www.drupal.org/api-d7/node.json?nid=3627048",
-      "changed": "2026-10-02",
+      "changed": "2026-10-14",
       "fields": [
         "upgrade_from_min",
         "removed_extensions",
         "removed_libraries"
+      ]
+    },
+    {
+      "id": "release-12.0.0-beta2",
+      "url": "https://www.drupal.org/api-d7/node.json?nid=3630974",
+      "changed": "2026-10-14",
+      "fields": [
+        "removed_extensions"
       ]
     }
   ]

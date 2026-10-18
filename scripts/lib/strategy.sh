@@ -34,6 +34,41 @@ core_requirement_admits() {
     END { exit ok ? 0 : 1 }'
 }
 
+# release_covering RANGE MAXMAJOR PREVIEW -> whether a contrib release covers
+# the declared core range RANGE (H8, ADR 0031), one JSON line {available,
+# release, core_compatibility}, from release_history_rows lines on STDIN.
+# A release counts when its status is published, it is not a -dev branch, it
+# is stable (or any release with PREVIEW true: the target is a pre-release)
+# and its core_compatibility admits every verified core minor of RANGE up to
+# MAXMAJOR (core_range_minors); the first such row in feed order (the newest)
+# is the release. available is true with one, false when the feed listed
+# releases and none covers RANGE, "unknown" when it listed none or RANGE
+# admits no verified minor.
+release_covering() {
+  local range="${1:-}" max="${2:-}" pv="${3:-false}" minors n v st cc
+  minors="$(core_range_minors "$range" "$max")"
+  n="$(printf '%s\n' "$minors" | grep -c . || true)"
+  local seen=0
+  while IFS="$(printf '\t')" read -r v st cc; do
+    [[ -n "$v" ]] || continue
+    seen=1
+    [[ "$st" == "published" && -n "$cc" ]] || continue
+    case "$v" in *-dev) continue;; esac
+    if [[ "$pv" != "true" ]] && printf '%s' "$v" | grep_q -i -E -- '-(alpha|beta|rc)[0-9]*$'; then continue; fi
+    [[ "$n" -gt 0 ]] || continue
+    if [[ "$(printf '%s\n' "$minors" | core_requirement_minors "$cc" | grep -c . || true)" == "$n" ]]; then
+      jq -n -c --arg v "$v" --arg c "$cc" '{available: true, release: $v, core_compatibility: $c}'
+      return 0
+    fi
+  done
+  if [[ "$seen" == "1" && "$n" -gt 0 ]]; then
+    printf '{"available":false,"release":null,"core_compatibility":null}\n'
+  else
+    printf '{"available":"unknown","release":null,"core_compatibility":null}\n'
+  fi
+  return 0
+}
+
 # core_requirement_minors <constraint> -> the core minors (MAJOR.MINOR, one per
 # line on STDIN) the Composer-style constraint admits some release of, in
 # input order ('^10.3 || ^11' admits 10.3..10.x and 11.x; '~11.2.0' only 11.2;

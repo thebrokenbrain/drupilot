@@ -42,7 +42,16 @@
 #                 PHPCompatibility reports that no config/php/rules.json row
 #                 covers: a warning). PHPCompatibility's own floor and
 #                 removed findings take fix-needs-php-above-floor and
-#                 removed-in-target-php, as warnings: they never block
+#                 removed-in-target-php, as warnings: they never block. A
+#                 core removal (scan-removals.sh, ADR 0031) is human too:
+#                 base-theme-removed (a removed base theme: a decision),
+#                 removed-from-core (no replacement),
+#                 removed-dependency-no-release (no release of the contrib
+#                 replacement covers the range: it blocks),
+#                 removed-dependency-unverified (the release feed was not
+#                 read) or removed-dependency-replaceable (a covering release
+#                 exists: depend on the contrib project); its info notes are
+#                 deferred
 #   test-adapt    an ai-templated or ai-free finding in a file under a tests/
 #                 directory (the module's or a submodule's)
 #
@@ -159,9 +168,9 @@ jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile asf "$TMP/actions.json" --a
         elif $f.class == "style" then {lane: "deferred", recipe: null, reason: "style"}
         else
           # A PHP-window finding (from the catalog scans or PHPCompatibility)
-          # takes a recipe only by its exact rule: its message quotes the
-          # code, so a message pattern could claim it.
-          (($f.tool == "catalog" and ($f.rule | test("^php-(removed|removed-syntax|report|manual|floor|lint):")))
+          # or a core removal takes a recipe only by its exact rule: its
+          # message quotes the code, so a message pattern could claim it.
+          (($f.tool == "catalog" and ($f.rule | test("^(php-(removed|removed-syntax|report|manual|floor|lint)|removal):")))
            or $f.tool == "phpcompat") as $phpw
           | ([$recipes[] | {r: ., k: rank($f)} | select(.k < (if $phpw then 1 else 9 end))] | sort_by([.k, .r.id]) | map(.r)) as $cands
           | [$cands[] | select(applies($f) and (failed($f) | not))] as $ok
@@ -181,6 +190,10 @@ jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile asf "$TMP/actions.json" --a
                         elif ($f.rule | startswith("php-lint:")) then "does-not-compile"
                         elif ($f.rule | startswith("php-manual:")) then "deprecated-no-rule"
                         elif ($f.rule | startswith("php-compat-deprecated:")) then "deprecated-in-php-window"
+                        elif ($f.rule | startswith("removal:")) then
+                          ({"decision": "base-theme-removed", "hard-break": "removed-from-core",
+                            "blocked": "removed-dependency-no-release", "verify": "removed-dependency-unverified",
+                            "rewrite": "removed-dependency-replaceable"}[$f.rule | split(":")[2] // ""] // "no recipe")
                         else "no recipe" end)}
             else {lane: "ai-free", recipe: null, reason: null} end
         end
@@ -207,10 +220,12 @@ jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile asf "$TMP/actions.json" --a
          status: (if $h.c.lane == "deferred" then "deferred" elif all($g[]; .c.applied == true) then "applied" else "open" end)})
   | sort_by([(.lane as $l | $order | index($l)), .file, .anchor])' "$FINDINGS" > "$TMP/items.json"
 
-# A PHP-window item keeps the hash of its file as classified (--subject only):
-# a later edit of another file leaves it current (php_window_items).
+# A PHP-window or core-removal item keeps the hash of its file as classified
+# (--subject only): a later edit of another file leaves it current
+# (reason_items).
+HASHED_RE="$PHP_WINDOW_REASONS_ERE|$REMOVAL_REASONS_ERE"
 if [[ -n "$SUBJECT" ]]; then
-  jq -r --arg re "$PHP_WINDOW_REASONS_ERE" '.[] | select(.lane == "human" and ((.reason // "") | test($re))) | .file' "$TMP/items.json" \
+  jq -r --arg re "$HASHED_RE" '.[] | select(.lane == "human" and ((.reason // "") | test($re))) | .file' "$TMP/items.json" \
     | LC_ALL=C sort -u > "$TMP/phpw-files"
   : > "$TMP/phpw-hashes.tsv"
   while IFS= read -r pf; do
@@ -218,7 +233,7 @@ if [[ -n "$SUBJECT" ]]; then
     printf '%s\t%s\n' "$pf" "$(file_hash "$SUBJECT/$pf")" >> "$TMP/phpw-hashes.tsv"
   done < "$TMP/phpw-files"
   if [[ -s "$TMP/phpw-hashes.tsv" ]]; then
-    jq -c --rawfile h "$TMP/phpw-hashes.tsv" --arg re "$PHP_WINDOW_REASONS_ERE" '
+    jq -c --rawfile h "$TMP/phpw-hashes.tsv" --arg re "$HASHED_RE" '
       ($h | split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: .[1]}) | from_entries) as $fh
       | map(if .lane == "human" and ((.reason // "") | test($re)) and $fh[.file] != null then . + {file_hash: $fh[.file]} else . end)' \
       "$TMP/items.json" > "$TMP/items2.json" && mv -f "$TMP/items2.json" "$TMP/items.json"

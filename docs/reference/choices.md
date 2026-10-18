@@ -4,6 +4,16 @@
 
 The forks drupilot asks about as tabs, from `config/choices.json`. The recommended option is pre-selected; the answer is remembered in the project's `.drupilot.json` when the choice has a setting. `DRUPILOT_CHOICE_<KEY>` pre-answers a tab (an invalid value is ignored with a warning), except where it says it is never pre-answered.
 
+## ALLOW_PRERELEASE
+
+- **Tab:** Pre-release
+- **Command:** `/drupilot-setup`
+- **Options:** `no`, `yes`
+- **Default:** `no`
+- **Pre-answer:** `DRUPILOT_CHOICE_ALLOW_PRERELEASE`
+
+Asked only when the target major resolves to a pre-release (Drupal 12 until its stable release) and DRUPILOT_ALLOW_PRERELEASE is not true; never in an autonomous run, where the pre-release refusal stops it with nothing written. 'yes' plans the port to the pre-release as a preview, 'no' ports to Drupal 11. Until the Drupal 12 test-bed lands, the setup stops after a pre-release's draft plan and persists nothing, this answer included.
+
 ## ATTRIBUTE_FLOOR
 
 - **Tab:** Attribute floor
