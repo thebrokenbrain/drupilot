@@ -353,6 +353,9 @@ Before declaring the module refactored, all must hold:
   `pre-existing-failures` or `not-verified-unbaselined` verdict is reported with
   its list, never presented as green.
 - Every test added in Phase 2 has an `effective` negative control.
+- `fixpoint.sh --subject <path> --stage refactor` exits **0** (§5): under
+  `DRUPILOT_FIXPOINT=enforce`, the default, an exit 3 means the refactor is not
+  done.
 - Plugins use attributes; services are injected; strict types are in place where
   appropriate.
 
@@ -382,7 +385,18 @@ checked and lists their ids).
 **The fixpoint gate.** Run
 `bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/fixpoint.sh" --subject "<path>" --stage refactor --json`
 before the report: Rector, the codemods and the processed lanes must have
-nothing left (`DRUPILOT_FIXPOINT`: `warn` reports, `enforce` exits 3).
+nothing left (`<state_dir>/fixpoint.json` lists what they still have). Under
+`DRUPILOT_FIXPOINT=enforce` (the default; exit 3) the refactor is not done:
+fix the items, run the validation loop and `make-patch.sh --local` again, then
+the gate once more, and render no report before it passes. A tool with no
+verdict (`no_verdict_tools`) is fixed by making that scan give one (its own
+run and log), then the gate again. A change you reverted on purpose is accepted
+once logged (`log-decision.sh --kind rector-revert --rule <Rule or recipe id>
+--file <file>`). `<file>` is the module-relative path `fixpoint.json` lists; a later run applies
+the change again unless it is skipped for that path: an official-pass rule in
+`rector.php`, a compat-pass rule in `rector-compat.php` (both kept once edited
+by hand), a codemod through the project's recipe overlay
+`<root>/.drupilot/recipes.json`. Under `warn` report what the gate lists.
 
 **Refresh the didactic report.** Tee the Phase 2 Rector + final PHPStan
 deprecation output into `<state_dir>/change-log.txt` (under `$HOME`, never in the

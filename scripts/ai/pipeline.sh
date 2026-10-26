@@ -26,9 +26,10 @@
 # The stages:
 #   upgrade   the official Rector pass (run-rector.sh --apply), the
 #             extraction at stage upgrade, and the codemods (apply-recipes.sh
-#             --reextract: S6, S7); skipped, reason same-major, when the
-#             plan's hops are [] (the digests layer, which the developer
-#             reviews, stays in /drupilot-port)
+#             --reextract: S6, S7). It runs on every plan: on a same-major one
+#             (hops []) Rector has no Drupal set and applies the PHP floor's
+#             sets and the compat pass (the digests layer, which the
+#             developer reviews, stays in /drupilot-port)
 #   php       the extraction at stage php (with the PHP-window tools:
 #             php-target.sh's removed and deprecated constructs, the php -l
 #             legs of php-lint-window.sh), normalize-findings.sh and
@@ -42,7 +43,11 @@
 #             skipped "placeholder" one of 1.0.0-alpha.1) is never up to date
 #   validate  the fixpoint gate (fixpoint.sh: the extraction again, the
 #             codemods in dry-run); its exit 3 (DRUPILOT_FIXPOINT=enforce)
-#             fails the stage
+#             fails the stage. Only a converged gate leaves it up to date: a
+#             gate not converged in warn mode, run off, or with no output is
+#             recorded with the reason fixpoint-not-converged, fixpoint-off
+#             or fixpoint-no-verdict, and validate is up to date only while
+#             fixpoint.json says converged
 #   report    the generated manifest (manifest.sh, with --rationale when
 #             given) and port-report.sh
 #
@@ -144,10 +149,6 @@ raw_misnumbered() {
 # The stages themselves. Each returns the stage's exit code; SKIP_REASON set
 # means skipped.
 stage_upgrade() {
-  local hops
-  hops="$(plan_get_own "$SUBJECT" '.hops | length')"
-  if [[ -z "$hops" ]]; then hops="$(plan_for_subject "$ROOT" "$SUBJECT" 2> /dev/null | jq -r '.hops | length' 2> /dev/null || true)"; fi
-  if [[ "$hops" == "0" ]]; then SKIP_REASON="same-major"; return 0; fi
   bash "$S/analysis/run-rector.sh" --subject "$SUBJECT" --apply --json < /dev/null > "$SD/upgrade-rector.json" || return $?
   bash "$S/ai/extract.sh" --subject "$SUBJECT" --stage upgrade < /dev/null || return $?
   bash "$S/ai/normalize-findings.sh" --subject "$SUBJECT" --stage upgrade < /dev/null || return $?
@@ -179,7 +180,17 @@ stage_php() {
   return 0
 }
 stage_validate() {
-  bash "$S/analysis/fixpoint.sh" --subject "$SUBJECT" --stage validate < /dev/null || return $?
+  local out conv
+  out="$(bash "$S/analysis/fixpoint.sh" --subject "$SUBJECT" --stage validate --json < /dev/null)" || return $?
+  # Anything but a converged gate is done, never up to date (-s: jq 1.6 reads
+  # an empty input as no input at all).
+  conv="$(jq -r -s 'if length == 1 then "\(.[0].mode // ""):\(.[0].converged)" else "none" end' <<< "$out" 2> /dev/null || printf 'none')"
+  case "$conv" in
+    *:true) ;;
+    off:*) DONE_REASON="fixpoint-off";;
+    *:false) DONE_REASON="fixpoint-not-converged";;
+    *) DONE_REASON="fixpoint-no-verdict";;
+  esac
   return 0
 }
 stage_report() {
@@ -200,7 +211,9 @@ for s in $ORDER; do
   D="$(digest_now)"
   last="$(jq -c --arg s "$s" '.stages[$s] // {}' "$REC" 2> /dev/null || printf '{}')"
   if [[ "$FORCE" != "1" && "$RAN" != "1" ]] && jq -e --arg d "$D" '(.status == "done" or .status == "skipped") and .output_digest == $d
-       and (((.reason // "") == "placeholder" or ((.reason // "") | startswith("php-lint-"))) | not)' <<< "$last" > /dev/null 2>&1; then
+       and (((.reason // "") == "placeholder" or ((.reason // "") | startswith("fixpoint-"))
+             or ((.reason // "") | startswith("php-lint-"))) | not)' <<< "$last" > /dev/null 2>&1 \
+     && { [[ "$s" != "validate" ]] || jq -e -s 'length == 1 and .[0].converged == true' "$SD/fixpoint.json" > /dev/null 2>&1; }; then
     log_info "pipeline: $s is up to date (its output digest is the current one)."
     OUT="$(jq -c --arg s "$s" --arg d "$D" '. + [{id: $s, status: "up-to-date", reason: null, input_digest: $d, output_digest: $d, rc: 0}]' <<< "$OUT")"
     continue

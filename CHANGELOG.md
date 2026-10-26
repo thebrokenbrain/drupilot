@@ -78,6 +78,29 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   templates and a draft plan.
 
 ### Changed
+- **`DRUPILOT_FIXPOINT` defaults to `enforce`** (T-M11-06, AR-16). A port or a
+  refactor whose fixpoint gate does not converge now exits 3, and the stage is
+  not done until the items `fixpoint.json` lists are fixed;
+  `DRUPILOT_FIXPOINT=warn` keeps the alphas' behaviour (report and go on). An
+  unknown value now falls back to `enforce`, the default. The port and refactor
+  prompts, the README and the upgrade page say so.
+- **The fixpoint gate accepts a deliberate revert.** A change reverted on
+  purpose and logged with `log-decision.sh --kind rector-revert --rule R
+  [--file F]` (R is a Rector rule or a codemod's recipe id; without `--file` it
+  covers every file) never blocks: `fixpoint.json` lists what it covers under
+  `accepted_reverts`, and an entry that covers nothing under
+  `accepted_reverts.unmatched`. `log-decision.sh` stores a `--file` inside the
+  module relative to it whatever its form (a `./` path, or the
+  `web/modules/custom/<name>/...` path the tools print from the Drupal root).
+  `no_verdict_tools` names the tools that gave no verdict, and so does the
+  gate's message. `schemas/fixpoint.schema.json` gains both
+  fields; the port and refactor prompts say how to clear each case.
+- **The pipeline's `upgrade` stage runs on a same-major plan** (ADR 0028
+  amendment). Rector has no Drupal set there, but its pass applies the PHP
+  floor's sets and the compat pass, and the codemods run. The stage was
+  skipped (`same-major`), so `/drupilot-port` with the digests layer off left
+  those changes to the fixpoint gate (`d11_php_only` never converged). The
+  `hops` condition leaves `config/pipeline.json`.
 - **README.md and README_es.md describe 1.0**: the upgrade plan, the PHP
   window, the deterministic core and the Drupal 12 preview; the minimum Claude
   Code version; how to update; a Documentation section; and `DRUPILOT_FIXPOINT`
@@ -109,6 +132,16 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   nothing for it), so a script started as `cd <plugin> && bash scripts/...` that
   changes directory still finds its templates (`run-rector.sh` looked for
   `/templates/rector.php.tmpl`).
+- **Only a converged fixpoint gate leaves `validate` up to date.** `pipeline.sh`
+  recorded a gate not converged in warn mode, or run with
+  `DRUPILOT_FIXPOINT=off`, as done and up to date, so a later run under
+  `enforce` skipped the gate. Such a run is now recorded with the reason
+  `fixpoint-not-converged`, `fixpoint-off` or `fixpoint-no-verdict` (no
+  output), and the stage is up to date only while `fixpoint.json` says
+  converged.
+- **The full-refactor skill stops on a failed fixpoint gate.** Under `enforce`
+  an exit 3 means the refactor is not done, and no report is rendered before
+  the gate passes; its Definition of done lists the gate.
 - **The unit gate no longer times out on the jq 1.6 CI leg.** The per-test
   timeout of `scripts/dev/unit.sh` is now 600 s by default (it was 300 s).
   `core_strategy_view` takes about 200 s in a `debian:12-slim` container on a

@@ -12,6 +12,8 @@
     "stage": {"type": "string", "minLength": 1},
     "processed_lanes": {"type": "array", "items": {"type": "string"}},
     "no_verdict": {"description": "True when Rector, PHPStan or a scan feeding the codemod lane (port-safety, signatures, metadata) gave no verdict: the gate cannot converge.", "type": "boolean"},
+    "no_verdict_tools": {"description": "The tools that gave no verdict (findings.json .tools), or extraction when extract.sh itself gave none. Absent before 1.0.0-rc.1.", "type": "array", "items": {"type": "string"}},
+    "accepted_reverts": {"description": "The deliberate reverts the decision log records (log-decision.sh --kind rector-revert): the Rector findings, codemods and open items they cover, which never block, and the entries that cover nothing on this tree (unmatched). Absent before 1.0.0-rc.1.", "type": "object", "required": ["rector", "codemods", "open_items"], "properties": {"rector": {"type": "array", "items": {"type": "object"}}, "codemods": {"type": "array", "items": {"type": "object"}}, "open_items": {"type": "array", "items": {"type": "object"}}, "unmatched": {"type": "array", "items": {"type": "object"}}}},
     "converged": {"type": "boolean"},
     "rector": {
       "description": "The Rector findings still there (the official dry-run: the digests rules never count).",

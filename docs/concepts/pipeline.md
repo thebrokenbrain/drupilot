@@ -70,14 +70,18 @@ The [state reference](../reference/state.md) describes each file.
   lock and the sources it started from and the one it left. When the state
   is still the one it left, the stage is up to date and does not run again.
   An interrupted port resumes at the stage that did not finish.
-- **Same-major.** A plan with no hop between majors skips `upgrade`.
+- **Same-major.** A plan with no hop between majors still runs `upgrade`:
+  Rector has no Drupal set there, and applies the PHP floor's sets, the compat
+  pass and the codemods.
 
 ## The fixpoint gate
 
 At the end of a port or a refactor, `validate` runs the extraction once more
 and checks that the deterministic lanes have nothing left: no Rector change,
 no codemod that would still apply, no open item in the `rector` or `codemod`
-lanes. A tool that gave no verdict never counts as a pass.
+lanes. A tool that gave no verdict never counts as a pass. A change you
+reverted on purpose counts once the decision log records it
+(`log-decision.sh --kind rector-revert`).
 
 `DRUPILOT_FIXPOINT` decides what a failure does:
 - `warn`, the default before 1.0.0-rc.1, reports the items and goes on;

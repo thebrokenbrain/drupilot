@@ -7,8 +7,11 @@
 #   digests;
 #   a checkpoint ref per stage, the real index and HEAD untouched;
 # - a re-run on the same tree, plan and lock: every stage up to date, no tool
-#   runs; --force runs them again; a plan with hops [] skips upgrade
-#   (same-major);
+#   runs; --force runs them again; a plan with hops [] runs upgrade too
+#   (Rector's PHP floor sets and compat pass, the codemods);
+# - only a converged fixpoint leaves validate up to date: not converged in
+#   warn mode, off, or no output is done with a fixpoint-* reason, and a done
+#   record whose fixpoint.json does not say converged runs again;
 # - raw/<NN>-<stage>-<tool>.json: a raw report under another NN fails the
 #   stage;
 # - an injected failure puts the tree back at the stage's own checkpoint and
@@ -35,7 +38,8 @@ stub ai/normalize-findings.sh 'printf "%s\n" "{\"tools\":{\"php-lint\":\"${STUB_
 stub ai/classify.sh 'if [ -n "${STUB_PHP_GAP:-}" ]; then ids=""; else ids="\"F-1\""; fi
 printf "%s\n" "{\"items\":[{\"lane\":\"human\",\"status\":\"open\",\"blocking\":true,\"reason\":\"removed-in-target-php\",\"finding_ids\":[$ids]}]}" > "$STUB_SD/worklist.json"; exit 0'
 stub ai/apply-recipes.sh 'exit 0'
-stub analysis/fixpoint.sh 'if [ "${STUB_FIXPOINT_RC:-0}" != 0 ]; then printf "broken\n" >> "$STUB_SUBJECT/src/A.php"; printf "x\n" > "$STUB_SUBJECT/src/New.php"; fi; exit "${STUB_FIXPOINT_RC:-0}"'
+stub analysis/fixpoint.sh 'if [ -n "${STUB_FIXPOINT_JSON:-}" ]; then j="$STUB_FIXPOINT_JSON"; else j="{\"mode\": \"enforce\", \"converged\": true}"; fi
+mkdir -p "$STUB_SD"; printf "%s\n" "$j" > "$STUB_SD/fixpoint.json"; printf "%s\n" "$j"; if [ "${STUB_FIXPOINT_RC:-0}" != 0 ]; then printf "broken\n" >> "$STUB_SUBJECT/src/A.php"; printf "x\n" > "$STUB_SUBJECT/src/New.php"; fi; exit "${STUB_FIXPOINT_RC:-0}"'
 stub ai/manifest.sh 'exit 0'
 stub analysis/port-report.sh 'exit 0'
 
@@ -88,12 +92,32 @@ g checkout -q -- src/A.php
 pl
 assert_eq "a tree rolled back to before upgrade: upgrade runs again" "$T_RC|$(calls | cut -d, -f1)" "0|run-rector"
 
-# A same-major plan: upgrade is skipped.
+# A same-major plan: upgrade runs too (Rector's PHP floor sets and compat
+# pass, the codemods).
 setplan '[]'
 pl
-assert_eq "hops []: upgrade skipped (same-major), the other stages run (php too)" "$T_RC|$(st upgrade)|$(calls)" \
-  "0|skipped|same-major|extract,normalize-findings,classify,fixpoint,manifest,port-report"
+assert_eq "hops []: upgrade runs too, then the other stages" "$T_RC|$(st upgrade)|$(calls)" \
+  "0|done|-|run-rector,extract,normalize-findings,classify,apply-recipes,extract,normalize-findings,classify,fixpoint,manifest,port-report"
 setplan '["10-11"]'
+
+# A fixpoint that did not converge in warn mode: done, with its reason, and
+# never up to date (an enforce run judges it again).
+STUB_FIXPOINT_JSON='{"converged": false, "mode": "warn"}' pl --stages validate --force
+assert_eq "fixpoint not converged in warn mode: validate done, reason fixpoint-not-converged" "$T_RC|$(st validate)" "0|done|fixpoint-not-converged"
+pl --stages validate
+assert_eq "  so it is not up to date: the gate runs again" "$T_RC|$(calls)|$(st validate)" "0|fixpoint|done|-"
+pl --stages validate
+assert_eq "  converged: then it is up to date" "$T_RC|$(calls)" "0|"
+STUB_FIXPOINT_JSON='{"schema": 1, "mode": "off", "converged": null}' pl --stages validate --force
+assert_eq "fixpoint off: validate done, reason fixpoint-off" "$T_RC|$(st validate)" "0|done|fixpoint-off"
+pl --stages validate
+assert_eq "  so the next run judges it: the gate runs again" "$T_RC|$(calls)|$(st validate)" "0|fixpoint|done|-"
+STUB_FIXPOINT_JSON=' ' pl --stages validate --force
+assert_eq "a gate with no output: done, reason fixpoint-no-verdict" "$T_RC|$(st validate)" "0|done|fixpoint-no-verdict"
+pl --stages validate
+printf '{"converged": false}\n' > "$SD/fixpoint.json"
+pl --stages validate
+assert_eq "a done record whose fixpoint.json is not converged (an earlier version's warn run): the gate runs again" "$T_RC|$(calls)" "0|fixpoint"
 
 # A raw report under another NN fails the stage, and its changes go back.
 cp "$S/src/A.php" "$T_TMP/A.before"

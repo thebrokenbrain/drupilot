@@ -707,11 +707,18 @@ summary for review (the catalog is local, self-gitignored, and
 `bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/fixpoint.sh" --subject "<path>" --json`:
 the extraction runs again, and Rector, the codemods and the processed lanes
 (`rector`, `rector-custom`, `codemod`) must have nothing left
-(`<state_dir>/fixpoint.json` lists what they still have). `DRUPILOT_FIXPOINT=warn`
-(the default) reports and goes on; `enforce` exits 3, and the port is not done
-(after fixing the items, run the validation loop and `make-patch.sh --local`
-again)
-until the listed items are fixed.
+(`<state_dir>/fixpoint.json` lists what they still have).
+`DRUPILOT_FIXPOINT=enforce` (the default) exits 3, and the port is not done
+until the listed items are fixed (after fixing them, run the validation loop and
+`make-patch.sh --local` again); `warn` reports and goes on. A tool with no
+verdict (`no_verdict_tools`) is fixed by making that scan give one, then the
+gate again. A change reverted on purpose is accepted once logged
+(`log-decision.sh --kind rector-revert --rule <Rule or recipe id> --file
+<file>`). `<file>` is the module-relative path `fixpoint.json` lists; a later run applies
+the change again unless it is skipped for that path: an official-pass rule in
+`rector.php`, a compat-pass rule in `rector-compat.php` (both kept once edited
+by hand), a codemod through the project's recipe overlay
+`<root>/.drupilot/recipes.json`.
 
 **Write the report card (trust + teaching artifact).** While the passes ran you
 should have **tee'd** the official Rector output, the digests pass output and the

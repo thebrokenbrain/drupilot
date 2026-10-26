@@ -425,9 +425,10 @@ arrives in drupilot 1.2 (M7).
 The stages:
   upgrade   the official Rector pass (run-rector.sh --apply), the
             extraction at stage upgrade, and the codemods (apply-recipes.sh
-            --reextract: S6, S7); skipped, reason same-major, when the
-            plan's hops are [] (the digests layer, which the developer
-            reviews, stays in /drupilot-port)
+            --reextract: S6, S7). It runs on every plan: on a same-major one
+            (hops []) Rector has no Drupal set and applies the PHP floor's
+            sets and the compat pass (the digests layer, which the
+            developer reviews, stays in /drupilot-port)
   php       the extraction at stage php (with the PHP-window tools:
             php-target.sh's removed and deprecated constructs, the php -l
             legs of php-lint-window.sh), normalize-findings.sh and
@@ -441,7 +442,11 @@ The stages:
             skipped "placeholder" one of 1.0.0-alpha.1) is never up to date
   validate  the fixpoint gate (fixpoint.sh: the extraction again, the
             codemods in dry-run); its exit 3 (DRUPILOT_FIXPOINT=enforce)
-            fails the stage
+            fails the stage. Only a converged gate leaves it up to date: a
+            gate not converged in warn mode, run off, or with no output is
+            recorded with the reason fixpoint-not-converged, fixpoint-off
+            or fixpoint-no-verdict, and validate is up to date only while
+            fixpoint.json says converged
   report    the generated manifest (manifest.sh, with --rationale when
             given) and port-report.sh
 
@@ -1054,13 +1059,21 @@ deterministic lanes:
   codemods   no codemod that would still change a file
   open       no open item in a processed lane (rector, rector-custom,
              codemod; the AI lanes join when their executor does)
+A deliberate revert the decision log records (log-decision.sh --kind
+rector-revert --rule R [--file F]: R is a Rector rule, short or FQCN, or a
+codemod's recipe id; without --file it covers every file) is accepted: its
+Rector findings, codemods and open items are listed under accepted_reverts
+and never block (a --file is compared as the module-relative path; an entry
+that covers nothing is listed under accepted_reverts.unmatched). A later run
+applies such a change again unless it is skipped for that path (rector.php,
+rector-compat.php, or the project's recipe overlay for a codemod).
 It writes <state>/fixpoint.json (converged, the exact items of each list)
 and records the run in <state>/runs/<run_id>/run-manifest.json (its input
 and output hashes; DRUPILOT_RUNS_KEEP runs are kept).
 
-DRUPILOT_FIXPOINT: warn (the default before 1.0.0-rc.1): a failure is reported
-and the exit code stays 0 · enforce: a failure exits 3, the stage is not
-done · off: nothing runs.
+DRUPILOT_FIXPOINT: enforce (the default from 1.0.0-rc.1): a failure exits 3,
+the stage is not done · warn (the default before): a failure is reported and
+the exit code stays 0 · off: nothing runs. Any other value is the default.
 
 Usage:
   fixpoint.sh --subject DIR [--stage S] [--findings F --worklist W]
@@ -1073,7 +1086,8 @@ Usage:
     --json          print fixpoint.json on STDOUT
 
 A tool with no verdict (Rector, PHPStan, or the port-safety, signature and
-metadata scans that feed the codemod lane) means not converged.
+metadata scans that feed the codemod lane) means not converged;
+no_verdict_tools names them ("extraction" when extract.sh itself gave none).
 
 Exit codes: 0 converged, or not converged in warn mode, or off · 1 usage
 error, or the extraction failed · 3 not converged in enforce mode (a tool
@@ -1328,8 +1342,10 @@ Usage:
 
 Options:
   --subject DIR    The module/theme the decision is about (default: $PWD).
-  --kind KIND      rector-revert     a Rector change undone or rewritten by
-                                     hand (--rule required)
+  --kind KIND      rector-revert     a Rector change, or a codemod's, undone
+                                     or rewritten by hand (--rule required);
+                                     the fixpoint gate accepts it for --rule
+                                     in --file (every file without one)
                    post-port-fix     a fix made after the validate loop,
                                      the tests or the core matrix found a
                                      problem the port introduced
@@ -1345,9 +1361,12 @@ Options:
                    preexisting-bug   a bug found but NOT fixed by the port
   --what TEXT      What was done (required).
   --why TEXT       Why (required; a decision without a reason is not logged).
-  --rule RULE      The Rector rule (short name or FQCN).
+  --rule RULE      The Rector rule (short name or FQCN), or a codemod's
+                   recipe id (config/recipes.json).
   --file PATH      The file concerned (stored relative to the subject when
-                   it is inside it).
+                   it is inside it: an absolute path, a ./ path, or a path
+                   from the working directory, such as the Drupal root's
+                   web/modules/custom/<name>/... the tools print).
   --script NAME    The script whose output was not followed.
   --detected-by X  What found the problem (phpstan, phpunit, core-matrix,
                    port-safety, review, ...).
