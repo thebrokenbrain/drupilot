@@ -16,9 +16,9 @@
 # and records the run in <state>/runs/<run_id>/run-manifest.json (its input
 # and output hashes; DRUPILOT_RUNS_KEEP runs are kept).
 #
-# DRUPILOT_FIXPOINT: warn (the default before 1.0.0-rc.1): a failure is reported
-# and the exit code stays 0 · enforce: a failure exits 3, the stage is not
-# done · off: nothing runs.
+# DRUPILOT_FIXPOINT: enforce (the default from 1.0.0-rc.1): a failure exits 3,
+# the stage is not done · warn (the default before): a failure is reported and
+# the exit code stays 0 · off: nothing runs. Any other value is the default.
 #
 # Usage:
 #   fixpoint.sh --subject DIR [--stage S] [--findings F --worklist W]
@@ -60,8 +60,8 @@ have_cmd jq || die "jq is required (run /drupilot-doctor)." 1
 SUBJECT="$(cd "$SUBJECT" && pwd)"
 ROOT="$(find_drupal_root "$SUBJECT" 2> /dev/null || true)"
 if [[ -n "$ROOT" && -z "${DRUPILOT_PROJECT_DIR:-}" ]]; then export DRUPILOT_PROJECT_DIR="$ROOT"; fi
-MODE="$(lc "$(config_get DRUPILOT_FIXPOINT warn)")"
-case "$MODE" in enforce|warn|off) ;; *) log_warn "DRUPILOT_FIXPOINT=$MODE is not enforce, warn or off: warn."; MODE="warn";; esac
+MODE="$(lc "$(config_get DRUPILOT_FIXPOINT enforce)")"
+case "$MODE" in enforce|warn|off) ;; *) log_warn "DRUPILOT_FIXPOINT=$MODE is not enforce, warn or off: enforce."; MODE="enforce";; esac
 SD="$(project_state_dir "$SUBJECT")"
 S="$(plugin_root)/scripts"
 if [[ "$MODE" == "off" ]]; then

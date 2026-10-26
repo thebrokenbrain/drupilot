@@ -1058,9 +1058,9 @@ It writes <state>/fixpoint.json (converged, the exact items of each list)
 and records the run in <state>/runs/<run_id>/run-manifest.json (its input
 and output hashes; DRUPILOT_RUNS_KEEP runs are kept).
 
-DRUPILOT_FIXPOINT: warn (the default before 1.0.0-rc.1): a failure is reported
-and the exit code stays 0 · enforce: a failure exits 3, the stage is not
-done · off: nothing runs.
+DRUPILOT_FIXPOINT: enforce (the default from 1.0.0-rc.1): a failure exits 3,
+the stage is not done · warn (the default before): a failure is reported and
+the exit code stays 0 · off: nothing runs. Any other value is the default.
 
 Usage:
   fixpoint.sh --subject DIR [--stage S] [--findings F --worklist W]

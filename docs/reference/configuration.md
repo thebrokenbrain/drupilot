@@ -120,7 +120,7 @@ Target core range.
 
 The fixpoint gate at the end of a port or a refactor (`scripts/analysis/fixpoint.sh`): the extraction runs again, and Rector, the codemods and the processed lanes must have nothing left. `warn` (the default before 1.0.0-rc.1) reports a failure and goes on; `enforce` (the default from 1.0.0-rc.1) makes it exit 3, so the stage is not done; `off` skips it.
 
-- **Default:** `warn`
+- **Default:** `enforce`
 - **Type:** enum — one of `enforce`, `warn`, `off`
 - **See:** [reference/state.md](../reference/state.md)
 

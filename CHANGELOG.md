@@ -78,6 +78,12 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   templates and a draft plan.
 
 ### Changed
+- **`DRUPILOT_FIXPOINT` defaults to `enforce`** (T-M11-06, AR-16). A port or a
+  refactor whose fixpoint gate does not converge now exits 3, and the stage is
+  not done until the items `fixpoint.json` lists are fixed;
+  `DRUPILOT_FIXPOINT=warn` keeps the alphas' behaviour (report and go on). An
+  unknown value now falls back to `enforce`, the default. The port and refactor
+  prompts, the README and the upgrade page say so.
 - **README.md and README_es.md describe 1.0**: the upgrade plan, the PHP
   window, the deterministic core and the Drupal 12 preview; the minimum Claude
   Code version; how to update; a Documentation section; and `DRUPILOT_FIXPOINT`
