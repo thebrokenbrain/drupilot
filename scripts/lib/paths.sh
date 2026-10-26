@@ -11,15 +11,18 @@
 # Plugin paths and persistent data
 # ---------------------------------------------------------------------------
 # plugin_root -> plugin root. Uses CLAUDE_PLUGIN_ROOT if set; otherwise derives
-# it from this file's location (<root>/scripts/lib/paths.sh), resolved once,
-# when the file is sourced: a script run by a relative path (cd <plugin> &&
-# bash scripts/...) that changes directory later still finds it.
-_DRUPILOT_PLUGIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
+# it from this file's location (<root>/scripts/lib/paths.sh). The directory is
+# made absolute when the file is sourced, with no fork (the hooks source it on
+# every tool call), so a script run by a relative path (cd <plugin> && bash
+# scripts/...) that changes directory later still finds it.
+_DRUPILOT_LIB_DIR="${BASH_SOURCE[0]%/*}"
+[[ "$_DRUPILOT_LIB_DIR" != "${BASH_SOURCE[0]}" ]] || _DRUPILOT_LIB_DIR="."
+case "$_DRUPILOT_LIB_DIR" in /*) ;; *) _DRUPILOT_LIB_DIR="$PWD/$_DRUPILOT_LIB_DIR";; esac
 plugin_root() {
   if [[ -n "${CLAUDE_PLUGIN_ROOT:-}" ]]; then
     printf '%s' "$CLAUDE_PLUGIN_ROOT"; return 0
   fi
-  printf '%s' "$_DRUPILOT_PLUGIN_ROOT"
+  ( cd -- "$_DRUPILOT_LIB_DIR/../.." 2>/dev/null && pwd )
 }
 
 drupilot_config_file() { printf '%s/config/defaults.json' "$(plugin_root)"; }

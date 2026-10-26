@@ -214,8 +214,9 @@ is either (i) passing or (ii) recorded as an external blocker (with its cause) i
 `last-test.json` and the report. Never stop on an unexplained red, and never use
 `markTestSkipped` to hide a real failure.
 
-Long suites should run in the background and notify on completion (PROMPT 6)
-rather than blocking the session.
+Long suites can be slow: run them in the foreground, a group at a time, and
+show readable progress. A headless `claude -p` run stops a background job when
+the session ends.
 
 ## 6. Add missing tests (Phase 2 only)
 

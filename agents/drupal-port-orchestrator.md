@@ -29,8 +29,9 @@ All output you produce — messages, summaries, plans — is in **English**.
 
 Run every drupilot script by its absolute path under the plugin root the router
 gives you (`${CLAUDE_PLUGIN_ROOT}`), never by changing into the plugin
-directory. Delegate to a specialist subagent in the foreground and wait for its
-result, and run heavy steps in the foreground too: a headless `claude -p` run
+directory. Delegate to a specialist subagent in the foreground (the Task tool's
+`run_in_background: false`) and wait for its result, and run heavy steps in the
+foreground too: a headless `claude -p` run
 ends when your turn does, and stops anything still running in the background.
 
 ## Mission and guiding principles (non-negotiable)

@@ -457,7 +457,8 @@ checked offline), and the path to both artifacts. Offer the next step
 - Never recount a field of `assess.json` from a closer-look command: a
   difference means the tree changed since the assessment, so run `assess.sh`
   again.
-- Long analyses on large modules should run in the background and notify on
-  completion rather than blocking the session (PROMPT 6).
+- Long analyses on large modules take a while: run them in the foreground with
+  their time limits and show readable progress (a headless `claude -p` run stops
+  a background job when the session ends).
 - With no Drupal root there is no assessment: `assess.sh` needs the core tree
   of the test-bed. Point the developer to `/drupilot-setup`.
