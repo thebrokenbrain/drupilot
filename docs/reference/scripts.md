@@ -442,9 +442,11 @@ The stages:
             skipped "placeholder" one of 1.0.0-alpha.1) is never up to date
   validate  the fixpoint gate (fixpoint.sh: the extraction again, the
             codemods in dry-run); its exit 3 (DRUPILOT_FIXPOINT=enforce)
-            fails the stage. A gate that did not converge in warn mode is
-            recorded with the reason fixpoint-not-converged, and such a
-            record is never up to date
+            fails the stage. Only a converged gate leaves it up to date: a
+            gate not converged in warn mode, run off, or with no output is
+            recorded with the reason fixpoint-not-converged, fixpoint-off
+            or fixpoint-no-verdict, and validate is up to date only while
+            fixpoint.json says converged
   report    the generated manifest (manifest.sh, with --rationale when
             given) and port-report.sh
 
@@ -1061,8 +1063,10 @@ A deliberate revert the decision log records (log-decision.sh --kind
 rector-revert --rule R [--file F]: R is a Rector rule, short or FQCN, or a
 codemod's recipe id; without --file it covers every file) is accepted: its
 Rector findings, codemods and open items are listed under accepted_reverts
-and never block. A later run-rector.sh --apply applies such a change again
-unless rector.php skips the rule for that path.
+and never block (a --file is compared as the module-relative path; an entry
+that covers nothing is listed under accepted_reverts.unmatched). A later run
+applies such a change again unless it is skipped for that path (rector.php,
+rector-compat.php, or the project's recipe overlay for a codemod).
 It writes <state>/fixpoint.json (converged, the exact items of each list)
 and records the run in <state>/runs/<run_id>/run-manifest.json (its input
 and output hashes; DRUPILOT_RUNS_KEEP runs are kept).
@@ -1360,7 +1364,9 @@ Options:
   --rule RULE      The Rector rule (short name or FQCN), or a codemod's
                    recipe id (config/recipes.json).
   --file PATH      The file concerned (stored relative to the subject when
-                   it is inside it).
+                   it is inside it: an absolute path, a ./ path, or a path
+                   from the working directory, such as the Drupal root's
+                   web/modules/custom/<name>/... the tools print).
   --script NAME    The script whose output was not followed.
   --detected-by X  What found the problem (phpstan, phpunit, core-matrix,
                    port-safety, review, ...).

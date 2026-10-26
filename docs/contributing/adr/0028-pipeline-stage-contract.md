@@ -55,5 +55,7 @@ arrives in M7.
 
 `upgrade` runs on every plan. On a same-major plan (no hop) Rector has no Drupal set, but its pass still applies
 the PHP floor's sets and the compat pass, and the codemods run. Skipped, those changes were left to the fixpoint
-gate, which now stops the stage by default (`DRUPILOT_FIXPOINT=enforce`, T-M11-06). A `validate` whose gate did
-not converge in warn mode is recorded with the reason `fixpoint-not-converged` and is never up to date.
+gate, which now stops the stage by default (`DRUPILOT_FIXPOINT=enforce`, T-M11-06). Only a converged gate leaves
+`validate` up to date: one not converged in warn mode, run off, or with no output is recorded with the reason
+`fixpoint-not-converged`, `fixpoint-off` or `fixpoint-no-verdict`, and the stage is up to date only while
+`fixpoint.json` says converged.

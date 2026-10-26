@@ -88,8 +88,12 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   purpose and logged with `log-decision.sh --kind rector-revert --rule R
   [--file F]` (R is a Rector rule or a codemod's recipe id; without `--file` it
   covers every file) never blocks: `fixpoint.json` lists what it covers under
-  `accepted_reverts`. `no_verdict_tools` names the tools that gave no verdict,
-  and so does the gate's message. `schemas/fixpoint.schema.json` gains both
+  `accepted_reverts`, and an entry that covers nothing under
+  `accepted_reverts.unmatched`. `log-decision.sh` stores a `--file` inside the
+  module relative to it whatever its form (a `./` path, or the
+  `web/modules/custom/<name>/...` path the tools print from the Drupal root).
+  `no_verdict_tools` names the tools that gave no verdict, and so does the
+  gate's message. `schemas/fixpoint.schema.json` gains both
   fields; the port and refactor prompts say how to clear each case.
 - **The pipeline's `upgrade` stage runs on a same-major plan** (ADR 0028
   amendment). Rector has no Drupal set there, but its pass applies the PHP
@@ -128,10 +132,13 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   nothing for it), so a script started as `cd <plugin> && bash scripts/...` that
   changes directory still finds its templates (`run-rector.sh` looked for
   `/templates/rector.php.tmpl`).
-- **A `validate` stage that did not converge in warn mode is no longer reused.**
-  `pipeline.sh` recorded it as done and up to date, so a later run under
-  `enforce` skipped the gate. It is now recorded with the reason
-  `fixpoint-not-converged`, and the gate runs again.
+- **Only a converged fixpoint gate leaves `validate` up to date.** `pipeline.sh`
+  recorded a gate not converged in warn mode, or run with
+  `DRUPILOT_FIXPOINT=off`, as done and up to date, so a later run under
+  `enforce` skipped the gate. Such a run is now recorded with the reason
+  `fixpoint-not-converged`, `fixpoint-off` or `fixpoint-no-verdict` (no
+  output), and the stage is up to date only while `fixpoint.json` says
+  converged.
 - **The full-refactor skill stops on a failed fixpoint gate.** Under `enforce`
   an exit 3 means the refactor is not done, and no report is rendered before
   the gate passes; its Definition of done lists the gate.

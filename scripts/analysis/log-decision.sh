@@ -47,7 +47,9 @@
 #   --rule RULE      The Rector rule (short name or FQCN), or a codemod's
 #                    recipe id (config/recipes.json).
 #   --file PATH      The file concerned (stored relative to the subject when
-#                    it is inside it).
+#                    it is inside it: an absolute path, a ./ path, or a path
+#                    from the working directory, such as the Drupal root's
+#                    web/modules/custom/<name>/... the tools print).
 #   --script NAME    The script whose output was not followed.
 #   --detected-by X  What found the problem (phpstan, phpunit, core-matrix,
 #                    port-safety, review, ...).
@@ -177,10 +179,19 @@ if [[ -z "$PHASE" ]]; then
   phase_reached "$SUBJECT" refactored 2>/dev/null && PHASE="refactor"
 fi
 case "$PHASE" in port|refactor) ;; *) die "--phase must be port or refactor: '$PHASE'" 1;; esac
-# A file inside the subject is stored relative to it (stable across a move).
+# A file inside the subject is stored relative to it (stable across a move,
+# and the path the fixpoint gate compares): an absolute path, a ./ path, or a
+# path from the working directory (the web/modules/custom/<name>/... the tools
+# print from the Drupal root).
 if [[ -n "$FILE" ]]; then
-  case "$FILE" in
-    "$SUBJECT"/*) FILE="${FILE#"$SUBJECT"/}";;
+  _f="${FILE#./}"
+  case "$_f" in
+    /*) ;;
+    *) if [[ -e "$PWD/$_f" || ! -e "$SUBJECT/$_f" ]]; then _f="$PWD/$_f"; fi;;
+  esac
+  case "$_f" in
+    "$SUBJECT"/*) FILE="${_f#"$SUBJECT"/}";;
+    *) FILE="${FILE#./}";;
   esac
 fi
 ROOT="$(find_drupal_root "$SUBJECT" 2>/dev/null || true)"

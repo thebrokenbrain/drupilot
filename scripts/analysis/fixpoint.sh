@@ -16,8 +16,10 @@
 # rector-revert --rule R [--file F]: R is a Rector rule, short or FQCN, or a
 # codemod's recipe id; without --file it covers every file) is accepted: its
 # Rector findings, codemods and open items are listed under accepted_reverts
-# and never block. A later run-rector.sh --apply applies such a change again
-# unless rector.php skips the rule for that path.
+# and never block (a --file is compared as the module-relative path; an entry
+# that covers nothing is listed under accepted_reverts.unmatched). A later run
+# applies such a change again unless it is skipped for that path (rector.php,
+# rector-compat.php, or the project's recipe overlay for a codemod).
 # It writes <state>/fixpoint.json (converged, the exact items of each list)
 # and records the run in <state>/runs/<run_id>/run-manifest.json (its input
 # and output hashes; DRUPILOT_RUNS_KEEP runs are kept).
@@ -96,8 +98,12 @@ jq -e '.schema == 1 and (.findings | type) == "array"' "$FINDINGS" > /dev/null 2
 jq -e '.schema == 1 and (.items | type) == "array"' "$WORKLIST" > /dev/null 2>&1 || die "$WORKLIST is not a worklist.json." 1
 # The deliberate reverts: the subject's rector-revert entries of the decision
 # log, as {rule (its short name, or a recipe id), file (null: every file)}.
-decisions_for_subject "$SUBJECT" | jq -c '[.[] | select(.kind == "rector-revert" and ((.rule // "") | length) > 0)
-  | {rule: (.rule | tostring | split("\\") | last), file: (if (.file // "") == "" then null else .file end)}] | unique' \
+# A file is made module-relative: a ./ prefix, the subject's own absolute path
+# or its path from the Drupal root are dropped.
+_relsubj=""; [[ -z "$ROOT" ]] || _relsubj="${SUBJECT#"$ROOT"/}/"
+decisions_for_subject "$SUBJECT" | jq -c --arg abs "$SUBJECT/" --arg rel "$_relsubj" '[.[] | select(.kind == "rector-revert" and ((.rule // "") | length) > 0)
+  | {rule: (.rule | tostring | split("\\") | last),
+     file: (if (.file // "") == "" then null else (.file | tostring | ltrimstr("./") | ltrimstr($abs) | ltrimstr($rel)) end)}] | unique' \
   > "$TMP/reverts.json" 2> /dev/null || printf '[]\n' > "$TMP/reverts.json"
 
 DOC="$TMP/fixpoint.json"
@@ -123,6 +129,10 @@ jq -n -c --slurpfile f "$FINDINGS" --slurpfile w "$WORKLIST" --slurpfile a "$TMP
      | sort_by([.lane, .file, .anchor])) as $open_all
   | [$open_all[] | select(.accepted) | del(.accepted)] as $open_rev
   | [$open_all[] | select(.accepted | not) | del(.accepted)] as $open
+  | [$R[] | . as $e | select(
+        ([$rx_all[] | select((.rule | split("\\") | last) == $e.rule and ($e.file == null or $e.file == .file))] | length) == 0
+        and ([$cm_all[] | select(.recipe == $e.rule and ($e.file == null or $e.file == .file))] | length) == 0
+        and ([$W.items[] | select(.status == "open" and any((.recipes // [])[]; . == $e.rule) and ($e.file == null or $e.file == .file))] | length) == 0)] as $unmatched
   | [["rector", "phpstan", "port-safety", "signatures", "metadata"][] as $t
       | select(($F.tools[$t] // "missing") as $v | ($v != "ok" and $v != "partial")) | $t] as $nvt0
   | ($nvt0 + (if $nov == 1 and ($nvt0 | length) == 0 then ["extraction"] else [] end)) as $nvt
@@ -130,7 +140,7 @@ jq -n -c --slurpfile f "$FINDINGS" --slurpfile w "$WORKLIST" --slurpfile a "$TMP
      no_verdict: (($nvt | length) > 0), no_verdict_tools: $nvt,
      converged: (($nvt | length) == 0 and ($rx | length) == 0 and ($cm | length) == 0 and ($open | length) == 0),
      rector: $rx, codemods: $cm, open_items: $open,
-     accepted_reverts: {rector: $rx_rev, codemods: $cm_rev, open_items: $open_rev},
+     accepted_reverts: {rector: $rx_rev, codemods: $cm_rev, open_items: $open_rev, unmatched: $unmatched},
      findings_hash: ($F.meta.findings_hash // null), worklist_hash: ($W.meta.worklist_hash // null)}' | canon_json > "$DOC"
 CONV="$(jq -r '.converged' "$DOC")"
 jq --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '. + {meta: {generated_at: $at}}' "$DOC" | canon_json > "$DOC.meta"
@@ -151,7 +161,11 @@ else
   jq -r '(.rector[] | "  rector   \(.file) \(.anchor): \(.rule)"), (.codemods[] | "  codemod  \(.file): \(.recipe) (\(.item_id))"),
          (.open_items[] | "  open     \(.id) \(.lane) \(.file) \(.anchor)")' "$DOC" >&2
 fi
-if jq -e '[.accepted_reverts[][]] | length > 0' "$DOC" > /dev/null 2>&1; then
+if [[ "$CONV" != "true" ]] && jq -e '(.accepted_reverts.unmatched | length) > 0' "$DOC" > /dev/null 2>&1; then
+  log_warn "fixpoint: a rector-revert entry covers nothing on this tree (its --file is compared as the module-relative path):"
+  jq -r '.accepted_reverts.unmatched[] | "  revert   \(.rule)\(if .file then " in " + .file else " (every file)" end)"' "$DOC" >&2
+fi
+if jq -e '[.accepted_reverts.rector[], .accepted_reverts.codemods[], .accepted_reverts.open_items[]] | length > 0' "$DOC" > /dev/null 2>&1; then
   log_info "fixpoint: deliberate reverts accepted (the decision log's rector-revert entries):"
   jq -r '(.accepted_reverts.rector[] | "  rector   \(.file) \(.anchor): \(.rule)"), (.accepted_reverts.codemods[] | "  codemod  \(.file): \(.recipe) (\(.item_id))"),
          (.accepted_reverts.open_items[] | "  open     \(.id) \(.lane) \(.file) \(.anchor)")' "$DOC" >&2

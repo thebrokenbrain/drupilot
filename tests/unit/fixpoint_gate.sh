@@ -15,6 +15,8 @@
 #   with no verdict never converges, and no_verdict_tools names it;
 # - a deliberate revert the decision log records (rector-revert: a Rector
 #   rule or a recipe id, in a file or every file) is accepted, never blocks;
+#   its --file is stored module-relative whatever its form, and an entry that
+#   covers nothing is listed (accepted_reverts.unmatched) and warned about;
 # - fixpoint.json and the run manifest (<state>/runs/<run_id>/), of which
 #   DRUPILOT_RUNS_KEEP are kept;
 # - the live path (extraction again, the codemods in dry-run) with stub tools.
@@ -118,6 +120,21 @@ t_run "$T_SH" "$FX" --subject "$S" --findings "$F" --worklist "$W" --json
 assert_eq "  with the two codemods' reverts (one in every file): converged, exit 0" \
   "$T_RC|$(jq -c '[.converged, (.accepted_reverts.open_items | length), (.open_items | length)]' "$T_OUT")" '0|[true,3,0]'
 assert_eq "  fixpoint.json still validates against its schema" "$(valid fixpoint "$SD/fixpoint.json")" ""
+rm -f "$(decisions_log_file "$S")"
+# The file of a revert, in the forms a person or a tool gives it: ./src/...,
+# or a path from the working directory (as from a Drupal root).
+t_run "$T_SH" "$LD" --subject "$S" --kind rector-revert --rule FunctionFirstClassCallableRector \
+  --file ./src/Form/WidgetImportForm.php --what "x" --why "y" --json
+assert_eq "a ./ file is stored module-relative" "$(jq -r '.file' "$T_OUT")" "src/Form/WidgetImportForm.php"
+t_run sh -c 'cd "$1" && "$2" "$3" --subject "$4" --kind rector-revert --rule safety.class-case --file legacy_widgets/legacy_widgets.services.yml --what x --why y --json' \
+  _ "$T_TMP" "$T_SH" "$LD" "$S"
+assert_eq "  so is a path from the working directory" "$(jq -r '.file' "$T_OUT")" "legacy_widgets.services.yml"
+t_run "$T_SH" "$LD" --subject "$S" --kind rector-revert --rule RenamedRector --file src/Nowhere.php --what "x" --why "y"
+t_run "$T_SH" "$FX" --subject "$S" --findings "$F" --worklist "$W" --json
+assert_eq "  both accepted; one codemod item still blocks; the entry that covers nothing is listed" \
+  "$T_RC|$(jq -c '[(.accepted_reverts.rector | length), (.accepted_reverts.open_items | length), [.open_items[].file], .accepted_reverts.unmatched]' "$T_OUT")" \
+  '3|[1,2,["modules/legacy_widgets_extra/legacy_widgets_extra.info.yml"],[{"file":"src/Nowhere.php","rule":"RenamedRector"}]]'
+assert_match "  and warned about" "$(t_err)" "covers nothing on this tree"
 rm -f "$(decisions_log_file "$S")"
 
 # Usage errors.

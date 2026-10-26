@@ -70,7 +70,9 @@ The [state reference](../reference/state.md) describes each file.
   lock and the sources it started from and the one it left. When the state
   is still the one it left, the stage is up to date and does not run again.
   An interrupted port resumes at the stage that did not finish.
-- **Same-major.** A plan with no hop between majors skips `upgrade`.
+- **Same-major.** A plan with no hop between majors still runs `upgrade`:
+  Rector has no Drupal set there, and applies the PHP floor's sets, the compat
+  pass and the codemods.
 
 ## The fixpoint gate
 

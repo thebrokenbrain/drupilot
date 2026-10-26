@@ -392,8 +392,11 @@ the gate once more, and render no report before it passes. A tool with no
 verdict (`no_verdict_tools`) is fixed by making that scan give one (its own
 run and log), then the gate again. A change you reverted on purpose is accepted
 once logged (`log-decision.sh --kind rector-revert --rule <Rule or recipe id>
---file <file>`); a later Rector run applies it again unless `rector.php` skips
-that rule for that path. Under `warn` report what the gate lists.
+--file <file>`). `<file>` is the module-relative path `fixpoint.json` lists; a later run applies
+the change again unless it is skipped for that path: an official-pass rule in
+`rector.php`, a compat-pass rule in `rector-compat.php` (both kept once edited
+by hand), a codemod through the project's recipe overlay
+`<root>/.drupilot/recipes.json`. Under `warn` report what the gate lists.
 
 **Refresh the didactic report.** Tee the Phase 2 Rector + final PHPStan
 deprecation output into `<state_dir>/change-log.txt` (under `$HOME`, never in the
