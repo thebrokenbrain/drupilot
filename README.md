@@ -10,6 +10,8 @@
 
 `drupilot` = **Drupal** + **co-pilot**. It is your co-pilot for the D9/10 → D11 journey: it never refuses a hard module — if a full refactor is disproportionate it still hands you a staged, functionality-preserving plan and leaves the final call to you.
 
+**drupilot 1.0** plans each port before it touches code: the **upgrade plan** (the target major, the declared core range, the PHP window, the Rector sets of every core minor on the way, and what core removed that the code still uses) is frozen in a lockfile and read by every stage. It checks every PHP of the window, and turns the analyzers' output into deterministic findings and a worklist. A **Drupal 12 preview** is available as an experimental opt-in. Coming from 0.9? Read [Upgrading from 0.9 to 1.0](docs/upgrading/0.9-to-1.0.md).
+
 ---
 
 ## Table of contents
@@ -17,6 +19,7 @@
 - [What it does](#what-it-does)
 - [Requirements](#requirements)
 - [Installation](#installation)
+- [Documentation](#documentation)
 - [Quick start](#quick-start)
 - [Commands](#commands)
 - [The two-phase porting philosophy](#the-two-phase-porting-philosophy)
@@ -59,6 +62,9 @@
 
 - **Viability assessment** — a non-destructive static analysis (Rector dry-run, PHPStan, PHPCS, optional Upgrade Status) that estimates how much of the work is auto-fixable vs. manual, classifies the hard breaks (Twig 3, CKEditor 5, jQuery UI, Symfony 7), checks `info.yml` and contrib-dependency D11 readiness, recommends a **core compatibility target** (`^11` vs `^10 || ^11`, the `require.php` it implies, and a SemVer version-bump verdict), and produces a markdown report plus a **staged port plan** with an S/M/L/XL effort verdict.
 - **Minimal port (Phase 1)** — the smallest set of changes to make the module/theme run on Drupal 11 while **preserving the original functionality**. Driven by `palantirnet/drupal-rector`, an optional AI-rules layer (`dbuytaert/drupal-digests`), and targeted manual fixes.
+- **An upgrade plan, decided once** — before it touches code, drupilot resolves the port's plan: the target major, the declared core range, the PHP window (from the lowest PHP the range supports to the PHP target), the drupal-rector sets of every core minor on the way, and the modules, themes and libraries core removed that the code still uses. It is frozen in the lockfile, every stage reads its versions from it, and `bash "$CLAUDE_PLUGIN_ROOT/scripts/drupilot.sh" plan show` prints it.
+- **The whole PHP window** — every PHP of the window is checked: `php -l` on each, PHPCompatibility, the core polyfills, and a narrow Rector compat pass; the Unit and Kernel tests also run on the lowest PHP the test-bed's core supports.
+- **A deterministic core** — the analyzers' output becomes findings with stable ids and a worklist that says who fixes each one: Rector and the recipes, the AI from a template, or a person. The viability verdict is computed from them, the port manifest is generated, and a fixpoint gate checks that nothing automatic is left at the end of a port.
 - **Full refactor (Phase 2, opt-in)** — a rewrite to modern Drupal 11 best practices: PHP 8 attributes for plugins, dependency injection, strict types, zero deprecations, clean `Drupal` + `DrupalPractice`, and a green test suite.
 - **Tests** — discovers, adapts and runs the complete PHPUnit suite (Unit / Kernel / Functional / FunctionalJavascript) inside DDEV (with Selenium for JS), iterating until green and reporting coverage. Failures are **never** silenced.
 - **Contribution** — prepares and (optionally) publishes the result to Drupal.org via the modern issue-fork + Merge Request flow, or a legacy patch, with a **semi-automatic** (confirm every outward action) or **fully automatic** mode. It generates the **issue summary and the recommended values for the mandatory fields** (Title, Category, Priority, Version, Component, Assigned) to paste into the web form, plus a brief **comment**. A `.patch` is always produced alongside the MR and **verified to apply cleanly** onto the version it targets, so you (or anyone) can attach and apply it on the issue before the maintainer merges.
@@ -67,6 +73,7 @@
 - **Pre-existing hygiene, reported** — a metadata lint flags config without schema, a `configure:` route that does not exist, orphan services, service arguments that do not match the constructor, submodules left on an obsolete `core_version_requirement` and undeclared dependencies. It is listed in the viability and port reports and never changes the effort verdict. Phase 1 fixes only the submodules' core requirement, which it bumps together with the main `info.yml`.
 - **You stay in control** — the consequential decisions are **tabbed choices** (core target, PHP target, the digests rules to apply, refactor scope, push-or-not), with the recommendation pre-selected and your answers remembered per project. Nothing important happens silently.
 - **Insight, not just output** — a per-port **report card** (`port-report.md`: what changed and why, the preservation verdict), a **dependency D11-readiness panel** (which contrib deps block the port), an **upstream issue search** (is someone already porting this?), and a **deprecation explainer** that turns cryptic output into a fix + a change-records link.
+- **Drupal 12 preview (experimental)** — with an explicit opt-in (`--target 12` and the Pre-release tab, or `DRUPILOT_ALLOW_PRERELEASE=true`), drupilot ports to Drupal 12's newest pre-release on a test-bed of its own and lists what Drupal 12 removes from core that the code still uses. It is off by default and outside 1.0's release criteria: see the [Drupal 12 preview](docs/guides/d12-preview.md) guide.
 
 The configured default PHP target is **8.3**, the safe floor, used whenever no tab is shown (an autonomous run, or `DRUPILOT_PHP_TARGET` already set); the guided `/drupilot-setup` tab recommends and pre-selects **8.4**, with 8.3 offered as the safe floor. The target is fully configurable; everything (PHPStan level, PHPCS sniffs, DDEV `php_version`) derives from a single setting. Rector's PHP sets follow the floor of the declared core range and the composer `require.php` instead (usually 8.1 for `^10 || ^11`), never above the target, so the official Rector pass does not add syntax the lowest declared PHP cannot run, as far as drupilot's version data knows that PHP (a kept Drupal 9 leg without a composer `require.php` falls back to PHP 7.4, with a warning). In-flow choices persist in a per-project `.drupilot.json` (read between environment variables and the defaults).
 
@@ -83,6 +90,8 @@ The configured default PHP target is **8.3**, the safe floor, used whenever no t
 | **Contribution** (Drupal.org) | `git`, a drupal.org account + GitLab access, and an **SSH key** or a **PAT** | `glab`/`curl` for the GitLab API (degradable) |
 
 DDEV provides the full Drupal environment (web + database + chromedriver) on top of Docker — **you do not need to set up a LAMP stack yourself**.
+
+**Claude Code:** 2.1.271 or later.
 
 **Shell:** the scripts and hooks run on **bash ≥ 3.2** and do not assume GNU tools, so stock macOS (`/bin/bash` 3.2, BSD `sed`/`grep`) works as-is — no Homebrew bash or GNU coreutils needed. `/drupilot-doctor` reports the bash version it found.
 
@@ -110,7 +119,21 @@ DDEV provides the full Drupal environment (web + database + chromedriver) on top
 
 After installing, restart or start a new session so the hooks load. Then run `/drupilot-doctor` to verify your environment.
 
+**Updating:** `claude plugin update drupilot@drupilot`, or turn on auto-update for the marketplace in `/plugin` → Marketplaces (it is off by default for a third-party marketplace). Coming from 0.9, read [Upgrading from 0.9 to 1.0](docs/upgrading/0.9-to-1.0.md). The full install page is [docs/getting-started/install.md](docs/getting-started/install.md).
+
 > Validate the plugin manifest locally at any time with `claude plugin validate /path/to/drupilot`.
+
+---
+
+## Documentation
+
+The documentation site is published with each release at <https://thebrokenbrain.github.io/drupilot/> (English only). From a checkout, preview it with `docker compose up docs` (http://localhost:8000). Good places to start:
+
+- [Install](docs/getting-started/install.md) and [Upgrading from 0.9 to 1.0](docs/upgrading/0.9-to-1.0.md)
+- [Upgrade paths](docs/concepts/upgrade-paths.md): the source and target majors, the PHP target and the upgrade plan
+- [PHP and the core target](docs/concepts/php-and-core-target.md)
+- [Drupal 12 preview](docs/guides/d12-preview.md) (experimental)
+- Reference: [commands](docs/reference/commands.md), [configuration](docs/reference/configuration.md), [scripts](docs/reference/scripts.md), [per-module state](docs/reference/state.md)
 
 ---
 
@@ -441,7 +464,7 @@ Defaults live in `config/defaults.json`. **Every `DRUPILOT_*` key can be overrid
 | `DRUPILOT_KEEP_D10` | _(deprecated)_ | Legacy boolean (`true` → keep D10, `false` → D11-only), honored only while `DRUPILOT_CORE_TARGET_STRATEGY` is `auto`; an explicit strategy wins. Deprecated since 1.0.0 (removed in 2.0.0, a warning when set): use `DRUPILOT_CORE_TARGET_STRATEGY`. |
 | `DRUPILOT_REQUIRE_PHP_FLOOR` | `detect` | When keeping `^10 \|\| ^11`, how to set composer `require.php`: `detect` derives the real floor from a heuristic scan of the ported code (e.g. `>=8.1` when it uses no PHP 8.2/8.3 constructs, for genuine Drupal 10 support); `target` keeps the conservative `>=<php target>`. A lowered floor is best-effort — confirm with PHPCompatibility. |
 | `DRUPILOT_PLACEMENT` | `move` | How a loose checkout is placed into the sibling test-bed: `move` relocates it (non-lossy — it stays a git repo at the new path), `symlink` keeps your checkout where it is and links it in (a target outside the test-bed is not visible inside the DDEV container, so `ddev exec` tooling cannot see it — use it for host-side work), `copy` duplicates it without untracked local-environment residue (`.ddev/`, `vendor/`, `node_modules/`, …) or untracked symlinks escaping the checkout (anything git tracks is always copied). For a module that is a sub-directory of a repository (a monorepo), `move` becomes `copy` (moving it would delete it from the repository); `symlink` and `copy` are kept, and `symlink` then edits the module inside the repository. |
-| `DRUPILOT_WORKSPACE_DIR` | _(empty)_ | Explicit path for the Drupal test-bed root. Empty means a sibling `<parent>/<machine_name>-d11`, or, for a module inside a repository, a test-bed next to that repository (`<parent>/<project>-d11` for a Drupal project without installed core). Keep it outside your repository: `resolve-workspace.sh` warns when it is not. |
+| `DRUPILOT_WORKSPACE_DIR` | _(empty)_ | Explicit path for the Drupal test-bed root. Empty means a sibling `<parent>/<machine_name>-d<T>` (`-d11` for Drupal 11), or, for a module inside a repository, a test-bed next to that repository (`<parent>/<project>-d<T>` for a Drupal project without installed core). Keep it outside your repository: `resolve-workspace.sh` warns when it is not. |
 | `DRUPILOT_LAYERS_SANDBOX` | _(asked)_ | Applies to `/drupilot-layers` runs on a **loose** folder of modules (a set inside a Drupal 11 root is ported in place, in that one site; a project checkout without installed core always uses one shared test-bed next to the repository). `per-module` gives each module its own `<name>-d11` test-bed. `shared` uses one test-bed for the whole set, outside the repository (`shared_root` of `resolve-workspace.sh --json`), so a module and the modules it depends on are installed together. Empty means the command asks; autonomous runs use `per-module`. The answer is remembered in `.drupilot.json`. |
 | `DRUPILOT_ARTIFACTS_DIR` | _(empty)_ | Override for the visible `.drupilot/` outputs directory. Empty means `<root>/.drupilot`. |
 | `DRUPILOT_HOME` | _(empty)_ | drupilot's hidden data directory: the per-module machine state, the lockfiles and the caches. Empty means `$XDG_DATA_HOME/drupilot` (`~/.local/share/drupilot`). Read from the environment only; give an absolute path (a leading `~` is expanded; any other relative value is ignored). Since 0.9.1 the first command that passes its gate copies, once, any state drupilot 0.9.0 left in Claude Code's plugin data directory (the originals are kept). |
@@ -471,6 +494,8 @@ Defaults live in `config/defaults.json`. **Every `DRUPILOT_*` key can be overrid
 | `DRUPILOT_STATE_FORCE` | `false` | The stage a port has reached (`state.json` in drupilot's state dir: setup < assessed < ported < refactored < tested < contributed, recorded by `port-report.sh`, a whole-suite `run-phpunit.sh` run whose preservation is `verified` or `verified-partial`, and `state.sh record`; see [Per-module state](#per-module-state)) never goes down, so re-running `/drupilot-port` after a refactor does not undo it. `true` lets a new record lower it, e.g. to restart a port from scratch. |
 | `DRUPILOT_AUTONOMOUS` | `false` | Hands-off mode (same as the `auto` mode word): unattended setup→assess→port→refactor→test, writes the local patch, **never** contributes. See [Hands-off mode](#hands-off-autonomous-mode). |
 | `DRUPILOT_DETERMINISTIC` | `true` | Reproducibility (default on): freeze the resolved Drupal core, dev toolchain, digests SHA and DDEV add-ons in a per-project `drupilot-lock.json` and reuse them on later runs. Set to `false` to resolve fresh every time and refresh the lock. See [Determinism](#determinism-reproducible-by-default). |
+| `DRUPILOT_LOCK_LOCATION` | `state` | Where the Drupal root's `drupilot-lock.json` lives: `state` in drupilot's hidden state dir; `project` at `<root>/drupilot-lock.json`, committable, so a team shares the frozen core, toolchain and upgrade plan. `project` applies only to your own Drupal root with an installed core; a test-bed keeps `state`, with a warning. |
+| `DRUPILOT_FIXPOINT` | `warn` | The fixpoint gate at the end of a port or a refactor (`scripts/analysis/fixpoint.sh`): the extraction runs again, and Rector, the codemods and the processed lanes must have nothing left. `warn` reports a failure and goes on (the default through the 1.0 betas), `enforce` exits 3 so the stage is not done (the default from 1.0.0-rc.1), `off` skips it. |
 | `DRUPILOT_TOOLCHAIN_SOURCE` | `auto` | Where `install-toolchain.sh` takes the dev-toolchain versions from: `auto` (the project lock when it pins the whole known-good set, else the shipped known-good reference `config/toolchain-reference.json`; the `.packages` ranges when `DRUPILOT_DETERMINISTIC=false`), `reference` (always the known-good set — the repair path) or `range` (fresh resolve). |
 | `DRUPILOT_POST_EDIT_LINT` | `autofix` | The PostToolUse incremental lint: `autofix` (run phpcbf + phpcs, and **say** when a file was modified), `report` (phpcs only, never edits files), or `off`. It is phase-aware — during Phase 1 it surfaces compatibility **errors** only, deferring style warnings to the refactor, and its phpcbf leaves unused `use` statements alone (a `use` added one edit before the code that needs it would otherwise be deleted; the validate loop cleans them up). It lints with the same ruleset `run-phpcs.sh` last resolved for the extension (see `DRUPILOT_PHPCS_RULESET`). |
 | `DRUPILOT_PHPCS_RULESET` | `auto` | Which PHPCS ruleset `run-phpcs.sh` uses: `auto` (the subject's **own** `.phpcs.xml` / `phpcs.xml` / `.phpcs.xml.dist` / `phpcs.xml.dist`, looked up from the subject to the Drupal root, its git top level and the origin checkout of a copy placement — drupilot's generated `phpcs.xml.dist` never counts — else `Drupal,DrupalPractice`), `drupilot` (always `Drupal,DrupalPractice`, the behavior of drupilot 0.8.4 and earlier releases) or a ruleset file path. A project ruleset PHPCS cannot load (e.g. it references PHPCompatibility, not installed in the test-bed) falls back to `Drupal,DrupalPractice` with a warning; an explicit ruleset path that cannot load is an error (exit 2), never a silent fallback. `run-phpcs.sh --json` and `port-report.md` say which one was used. |

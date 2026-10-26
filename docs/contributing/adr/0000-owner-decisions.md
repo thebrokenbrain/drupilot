@@ -38,3 +38,10 @@ for it. The rule binds every subagent and workflow agent too.
 
 The answers are inputs of the 1.0 roadmap's milestones; changing one later
 needs the owner and is recorded as an amendment to this ADR.
+
+## Amendments
+
+- **2026-10-18, the scope of 1.0** (docs scope and rc soak added on 2026-10-26):
+  1.0.0 ships Drupal 11 support before Drupal 12's stable release, the
+  Drupal 12 preview stays experimental, and M7 to M10 become 1.1 to 1.3.
+  Recorded in [ADR 0033](0033-1.0-is-the-drupal-11-release.md).

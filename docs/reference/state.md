@@ -42,6 +42,12 @@ drupilot 1.0 computes algorithm 2, which added Twig, JS and CSS. Every digest re
 
 Records that are compared or hashed between runs keep their timestamps under a top-level `meta` object, so two runs that compute the same result write the same bytes outside it: `rector-rules.json` keeps `meta.generated_at`, and `last-test.json` keeps when each negative control ran in `meta.negative_controls` (`recorded_at` stays where 0.9 put it).
 
+!!! note "Experimental in 1.0"
+    The records the next sections describe are new in drupilot 1.0, and their shape may still change in a 1.x
+    release: the raw reports, `findings.json`, `worklist.json`, `actions.jsonl`, the assessment's 1.0 keys,
+    `port-manifest.json` as 1.0 generates it (schema 1), `fixpoint.json`, the run manifests and `stages.json`. The 0.9 keys of the records above
+    keep their shape for all of 1.x.
+
 ## Raw reports and findings
 
 drupilot 1.0 does not hand the analyzers' output to the model as it is. A stage first runs its deterministic tools and keeps their reports in the same hidden state dir, under `raw/`. `scripts/ai/extract.sh --subject DIR [--stage S]` writes one file per tool, `raw/<NN>-<stage>-<tool>.json`, where `NN` is the stage's place in [the pipeline](pipeline.md). The tools are Rector (a dry-run), PHPStan, PHPCS, the port-safety checks, the signature-change scan, the metadata lint, and the three PHP-window tools: the construct scan (`php-target`), `php -l` on each PHP of the window (`php-lint`, skipped without a Docker daemon) and PHPCompatibility (`phpcompat`, report-only; see [PHP and the core target](../concepts/php-and-core-target.md)), and the core-removals scan (`removals`: what the module takes from core that a major of the plan removes; see [Upgrade paths](../concepts/upgrade-paths.md#core-removals)). Each report is canonical: the Drupal root and the container path are stripped from its paths, its keys are sorted, and its timestamps are moved under `meta`. (The analyzers name files from the Drupal root; the port-safety, signature, metadata, PHP-window and removals reports name them from the module.) Two more files complete the stage:
