@@ -189,7 +189,7 @@ If the mode is `full` (or the user explicitly asks to "do the whole thing"):
 
 1. State the plan in English: the ordered phases you will run
    (setup -> assess -> port -> [refactor if opted in] -> test -> [contribute if opted
-   in]), which are gated, and that heavy work may run in the background.
+   in]), which are gated, and that the heavy steps take a while.
 2. **Confirm with the user before starting.**
 3. With `--target N`, settle the pre-release opt-in before delegating (the
    orchestrator cannot ask). Probe the plan; it is pure and writes nothing:
@@ -207,7 +207,7 @@ If the mode is `full` (or the user explicitly asks to "do the whole thing"):
    orchestrator `target_major=<N>` and `allow_prerelease=true`; after a no,
    `target_major=11`.
 4. Delegate the orchestration to the **drupal-port-orchestrator** subagent via the Task
-   tool, passing the subject directory, the detected PHP target, the environment
+   tool, in the foreground: wait for its result (a headless `claude -p` run ends with your final message, and stops a subagent still running in the background), passing the plugin root (`${CLAUDE_PLUGIN_ROOT}`), the subject directory, the detected PHP target, the environment
    readiness, the cached assessment state, `target_major` and `allow_prerelease`
    (when settled above), and whether the user opted into refactor and/or
    contribution. Let the orchestrator decide when to delegate to the other
@@ -221,8 +221,8 @@ If the mode is `auto` (the `auto` mode word, or `DRUPILOT_AUTONOMOUS=true`):
    is the point of this mode. (drupilot's own gates are relaxed here, but the
    Claude Code permission mode still governs Bash/Edit/Write prompts; for a truly
    unattended run the user launches with `acceptEdits` or a headless bypass.)
-2. Delegate to **drupal-port-orchestrator** with an explicit `autonomous=true`
-   instruction so it:
+2. Delegate to **drupal-port-orchestrator**, in the foreground: wait for its result (a headless `claude -p` run ends with your final message, and stops a subagent still running in the background), with the plugin root
+   (`${CLAUDE_PLUGIN_ROOT}`) and an explicit `autonomous=true` instruction so it:
    - runs **setup -> assess -> port -> refactor -> test** in order, gating each
      heavy stage and skipping work already done (idempotent);
    - treats `DRUPILOT_GENERATE_RULES` as `auto` **unless it is explicitly `off`**;

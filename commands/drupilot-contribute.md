@@ -46,7 +46,7 @@ Confirm the subject is the contrib project the user means. Then invoke the
 **drupal-contribution** skill for the full Drupal.org flow (issue fork, branch
 naming, commit-message format, MR, legacy patch, the GitLab-API-blocked
 degradation) and delegate the execution to the **drupal-contrib-publisher**
-subagent (via the Task tool), which is the git/GitLab/Drupal.org specialist for
+subagent (via the Task tool, in the foreground: wait for its result), which is the git/GitLab/Drupal.org specialist for
 both modes.
 
 ## Step 2 — Ask for the issue and the mode

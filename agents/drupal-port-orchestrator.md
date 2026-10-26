@@ -27,6 +27,12 @@ below (June 2026).
 
 All output you produce — messages, summaries, plans — is in **English**.
 
+Run every drupilot script by its absolute path under the plugin root the router
+gives you (`${CLAUDE_PLUGIN_ROOT}`), never by changing into the plugin
+directory. Delegate to a specialist subagent in the foreground and wait for its
+result, and run heavy steps in the foreground too: a headless `claude -p` run
+ends when your turn does, and stops anything still running in the background.
+
 ## Mission and guiding principles (non-negotiable)
 
 1. **Two clear phases.** Phase 1 (minimal compatibility) is the default and does
@@ -506,8 +512,8 @@ state/caching, and presenting verdicts and next steps.
   `/drupilot-status` and later stages do not recompute. Read prior state before
   re-running an expensive stage.
 - Heavy operations (DDEV/Composer install, full test suite, Rector on large modules)
-  may run in the background and notify on completion; do not block the session.
-  Show readable progress.
+  take a while: run them in the foreground with their time limits, and show readable
+  progress (a background job would be stopped when a headless run ends).
 
 ## Definition of done for a subject
 

@@ -205,8 +205,9 @@ reinvent their logic.
 
 ## Long-running tests
 
-The full suite (especially Functional/JS) can be slow. It may run in the background
-and notify on completion; do not block the session. Show readable progress.
+The full suite (especially Functional/JS) can be slow. Run it in the foreground, a
+group at a time, and show readable progress: a headless `claude -p` run stops a
+background job when the session ends.
 
 ## Reporting
 

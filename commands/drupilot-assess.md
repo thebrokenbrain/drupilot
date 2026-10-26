@@ -87,7 +87,7 @@ the fallback.
 
 Invoke the **viability-assessment** skill: it explains every field of
 `assess.json` and how to narrate it. Then delegate the narration and the plan to
-the **drupal-viability-analyst** subagent (via the Task tool): it reads the
+the **drupal-viability-analyst** subagent (via the Task tool, in the foreground: wait for its result): it reads the
 verdict `assess.sh` computed, never a verdict of its own.
 
 ## Step 3 — Run the assessment (one script, read-only for the code)
