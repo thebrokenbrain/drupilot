@@ -46,7 +46,8 @@ Records that are compared or hashed between runs keep their timestamps under a t
     The records the next sections describe are new in drupilot 1.0, and their shape may still change in a 1.x
     release: the raw reports, `findings.json`, `worklist.json`, `actions.jsonl`, `assess.json` as `assess.sh`
     writes it (schema 1), `port-manifest.json` as 1.0 generates it (schema 1), `fixpoint.json`, the run manifests
-    and `stages.json`. Apart from the timestamps 1.0 moved under `meta` (above), the 0.9 keys of the records above
+    and `stages.json`. Apart from the keys 1.0 moved under `meta` (the timestamps, and `rector-rules.json`'s
+    `subject`; above), the 0.9 keys of the records above
     keep their shape for all of 1.x.
 
 ## Raw reports and findings

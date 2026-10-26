@@ -1058,7 +1058,7 @@ It writes <state>/fixpoint.json (converged, the exact items of each list)
 and records the run in <state>/runs/<run_id>/run-manifest.json (its input
 and output hashes; DRUPILOT_RUNS_KEEP runs are kept).
 
-DRUPILOT_FIXPOINT: warn (default through the betas): a failure is reported
+DRUPILOT_FIXPOINT: warn (the default before 1.0.0-rc.1): a failure is reported
 and the exit code stays 0 · enforce: a failure exits 3, the stage is not
 done · off: nothing runs.
 
@@ -4499,7 +4499,7 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
                 every name the 0.9 README documents is public. A finding
                 fails the gate (T-M3-14; it warned until M3), and so does a
                 _*_comment of defaults.json longer than 1800 characters
-                (AR-27: the prose stays until M11 but must not grow). Comment
+                (AR-27: the prose stays until 1.0.x or 1.1 but must not grow). Comment
                 lines of the scripts and scripts/dev/ are not scanned
   - docs        the docs site (08-R6): scripts/dev/gen-docs.sh --check (no
                 drift of the generated docs/reference pages); every
@@ -4510,7 +4510,7 @@ Gates (in order; names are what --only/--skip/--allow-fail take):
                 relative .md link inside docs/ resolves. A docs/*_es.md or a
                 docs/es/ only warns (English-only site); a root FLOW*.md is
                 only noted in the detail (its content moves to the docs in
-                the content step, M11)
+                1.0.x or 1.1)
   - schemas     the persisted 0.9 artifacts and the version data validate
                 against schemas/ (scripts/dev/schema-check.sh: jq always,
                 check-jsonschema where it is installed; with --ci,

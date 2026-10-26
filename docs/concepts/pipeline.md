@@ -10,7 +10,8 @@
 ## The stages
 
 The list is `config/pipeline.json`. Its ids are public and stable: they name
-the stages in the records, in these docs and in the progress view. The
+the stages in the records and in these docs (and in the progress view drupilot
+1.2 adds). The
 [pipeline reference](../reference/pipeline.md) lists each stage with its
 inputs, outputs and the gate to leave it.
 
@@ -79,8 +80,8 @@ no codemod that would still apply, no open item in the `rector` or `codemod`
 lanes. A tool that gave no verdict never counts as a pass.
 
 `DRUPILOT_FIXPOINT` decides what a failure does:
-- `warn`, the default through the betas, reports the items and goes on;
-- `enforce`, the default from the release candidate, stops the stage;
+- `warn`, the default before 1.0.0-rc.1, reports the items and goes on;
+- `enforce`, the default from 1.0.0-rc.1, stops the stage;
 - `off` skips the gate.
 
 ## Where the AI fits

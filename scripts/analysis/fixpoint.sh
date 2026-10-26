@@ -16,7 +16,7 @@
 # and records the run in <state>/runs/<run_id>/run-manifest.json (its input
 # and output hashes; DRUPILOT_RUNS_KEEP runs are kept).
 #
-# DRUPILOT_FIXPOINT: warn (default through the betas): a failure is reported
+# DRUPILOT_FIXPOINT: warn (the default before 1.0.0-rc.1): a failure is reported
 # and the exit code stays 0 · enforce: a failure exits 3, the stage is not
 # done · off: nothing runs.
 #
