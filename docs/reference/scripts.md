@@ -5187,8 +5187,10 @@ assert.sh). Exit 0 counts as a pass only with that line, at least one
 assertion and no "not ok" line, so a forgotten t_done or an early `exit 0`
 fails. Each test runs with stdin from /dev/null, in its own process group
 (without a controlling terminal where `setsid --wait` exists), and under a
-per-test timeout where `timeout`/`gtimeout` exists (300 s, times the number
-of tests per CPU when more run at once than there are CPUs; --timeout);
+per-test timeout where `timeout`/`gtimeout` exists (600 s, times the number
+of tests per CPU when more run at once than there are CPUs; --timeout; the
+heaviest tests take about 200 s with jq 1.6 on a developer machine, and
+nearly twice that on a CI runner);
 t_isolate sets DRUPILOT_NONINTERACTIVE=1, so on
 every platform drupilot's own prompts take their default. Ctrl-C stops the
 run (exit 130) and kills the running tests.
@@ -5205,7 +5207,7 @@ Usage:
     --only   run a subset (test names: the file names without .sh)
     --jobs   how many tests run at once (1 to 9999; default: the usable CPUs,
              at most 8; 1 runs them one by one)
-    --timeout  seconds each test may run (default 300, times the tests per
+    --timeout  seconds each test may run (default 600, times the tests per
              CPU when --jobs exceeds the CPUs)
     --json   machine summary on STDOUT (the test output still goes to STDERR):
              {ok, bash, tests:[{name, status: pass|fail|skip, detail,

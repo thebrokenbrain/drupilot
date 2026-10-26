@@ -13,8 +13,10 @@
 # assertion and no "not ok" line, so a forgotten t_done or an early `exit 0`
 # fails. Each test runs with stdin from /dev/null, in its own process group
 # (without a controlling terminal where `setsid --wait` exists), and under a
-# per-test timeout where `timeout`/`gtimeout` exists (300 s, times the number
-# of tests per CPU when more run at once than there are CPUs; --timeout);
+# per-test timeout where `timeout`/`gtimeout` exists (600 s, times the number
+# of tests per CPU when more run at once than there are CPUs; --timeout; the
+# heaviest tests take about 200 s with jq 1.6 on a developer machine, and
+# nearly twice that on a CI runner);
 # t_isolate sets DRUPILOT_NONINTERACTIVE=1, so on
 # every platform drupilot's own prompts take their default. Ctrl-C stops the
 # run (exit 130) and kills the running tests.
@@ -31,7 +33,7 @@
 #     --only   run a subset (test names: the file names without .sh)
 #     --jobs   how many tests run at once (1 to 9999; default: the usable CPUs,
 #              at most 8; 1 runs them one by one)
-#     --timeout  seconds each test may run (default 300, times the tests per
+#     --timeout  seconds each test may run (default 600, times the tests per
 #              CPU when --jobs exceeds the CPUs)
 #     --json   machine summary on STDOUT (the test output still goes to STDERR):
 #              {ok, bash, tests:[{name, status: pass|fail|skip, detail,
@@ -92,7 +94,7 @@ fi
 [[ "$JOBS" =~ ^[1-9][0-9]{0,3}$ ]] || die "--jobs needs a positive integer below 10000 (got '$JOBS')" 1
 # The per-test timeout grows when more tests run at once than there are CPUs.
 if [[ -z "$PER_TEST" ]]; then
-  PER_TEST=$(( 300 * ( (JOBS + CPUS - 1) / CPUS ) ))
+  PER_TEST=$(( 600 * ( (JOBS + CPUS - 1) / CPUS ) ))
 fi
 [[ "$PER_TEST" =~ ^[1-9][0-9]{0,5}$ ]] || die "--timeout needs a positive number of seconds (got '$PER_TEST')" 1
 

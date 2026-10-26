@@ -48,6 +48,12 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 - The T=12 plan and template goldens gain `rector.tests_pass` and the PHPUnit
   set.
 
+### Fixed
+- **The unit gate no longer times out on the jq 1.6 CI leg.** The per-test
+  timeout of `scripts/dev/unit.sh` is now 600 s by default (it was 300 s).
+  `core_strategy_view` takes about 200 s in a `debian:12-slim` container on a
+  developer machine, and it ran past 300 s on a CI runner.
+
 ## [1.0.0-alpha.6] - 2026-10-18
 
 ### Added
