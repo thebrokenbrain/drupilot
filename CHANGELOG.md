@@ -115,6 +115,19 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   no longer reported (coder 9, on Drupal 12, reports it as an ERROR; ADR 0004).
 
 ### Fixed
+- **A headless `/drupilot … auto` run no longer stops halfway.** The router ran
+  the orchestrator as a background subagent and ended its turn, so a
+  `claude -p` session ended and stopped the port (a lab run on autologout). The
+  router now waits for the orchestrator, and the orchestrator, the commands
+  that delegate, the test engineer and the `test-adaptation` and
+  `viability-assessment` skills wait for their subagents and heavy steps
+  instead of running them in the background. The router passes the plugin root,
+  and the orchestrator runs every script by its absolute path.
+- **Scripts find the plugin root when run by a relative path.** The library's
+  directory is made absolute when it is sourced (with no fork, so the hooks pay
+  nothing for it), so a script started as `cd <plugin> && bash scripts/...` that
+  changes directory still finds its templates (`run-rector.sh` looked for
+  `/templates/rector.php.tmpl`).
 - **A `validate` stage that did not converge in warn mode is no longer reused.**
   `pipeline.sh` recorded it as done and up to date, so a later run under
   `enforce` skipped the gate. It is now recorded with the reason

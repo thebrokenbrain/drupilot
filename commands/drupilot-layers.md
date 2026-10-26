@@ -195,7 +195,7 @@ Adding the proposed dependencies is never pre-answered:
 4. **Port each module sequentially** — never in parallel (they may share a
    site). For each module of the layer, in the listed order (a cycle group's
    members one after another), delegate to the **drupal-port-orchestrator**
-   subagent via the Task tool with:
+   subagent via the Task tool, in the foreground (wait for each module's result), with:
    - the module directory as the subject;
    - the run mode: `auto` when `autonomous=true`, else `full` (its confirmations
      stay on; `auto` never pushes or opens an MR — contribution is never part of
