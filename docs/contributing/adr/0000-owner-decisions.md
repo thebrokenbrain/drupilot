@@ -17,7 +17,7 @@ as its own ADR in this directory.
 | # | Question | Answer |
 |---|---|---|
 | OD-01 | Keep bash 3.2/BSD on the host, with PHP helpers only in the container? | Yes. |
-| OD-02 | Ship Drupal 7 in 1.0 as experimental inventory and viability only, with scaffold and fill behind a flag? | Yes. |
+| OD-02 | Ship Drupal 7 in 1.0 as experimental inventory and viability only, with scaffold and fill behind a flag? | Yes. Amended on 2026-10-18 (below): the Drupal 7 track ships in 1.3. |
 | OD-03 | After Drupal 10's end of life, should the default for `auto` with target 11 be target-only? | Yes, through a data commit: in 1.0.0 if `1.0.0-rc.1` is cut after 2026-12-09, otherwise in 1.0.1; either way with its own CHANGELOG `Changed` entry and new goldens under a new data snapshot. (Confirmed after an explanation of what the flip changes.) |
 | OD-04 | Allow one scoped `deny` hook for the residual fixer? | No: hooks keep asking, never denying. |
 | OD-05 | Which minimum Claude Code version to document and soft-check? | 2.1.271, as a soft check only. |
@@ -38,3 +38,12 @@ for it. The rule binds every subagent and workflow agent too.
 
 The answers are inputs of the 1.0 roadmap's milestones; changing one later
 needs the owner and is recorded as an amendment to this ADR.
+
+## Amendments
+
+- **2026-10-18, the scope of 1.0** (docs scope and rc soak added on 2026-10-26):
+  1.0.0 ships Drupal 11 support before Drupal 12's stable release, and the
+  Drupal 12 preview stays experimental. Official Drupal 12 support comes in
+  1.1, M7 and M8 in 1.2, and M9 and M10 in 1.3. This changes OD-02: the
+  Drupal 7 track (M10) moves from 1.0 to 1.3. Recorded in
+  [ADR 0033](0033-1.0-is-the-drupal-11-release.md).

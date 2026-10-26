@@ -2,9 +2,9 @@
 
 Each record states one decision, why it was taken and what it implies.
 [0000](0000-owner-decisions.md) holds the owner's answers to the 1.0 plan's
-open questions; the 1.0 spikes add 0001–0006 (0005 is AR-39's, in M9); the others record forks the
-working session decided on its own, choosing the option that keeps 0.9
-behaviour.
+open questions, and [0033](0033-1.0-is-the-drupal-11-release.md) is an owner
+decision that amends it (the scope of 1.0); the 1.0 spikes add 0001–0006 (0005 is AR-39's, in M9); the others
+record forks the working session decided on its own, choosing the option that keeps 0.9 behaviour.
 
 | ADR | Decision |
 |---|---|
@@ -40,6 +40,7 @@ behaviour.
 | [0030](0030-rule-audit-and-generated-compat-pass.md) | The rule audit and the generated compat pass |
 | [0031](0031-core-removals-scanner.md) | The core-removals scanner and where its results go |
 | [0032](0032-tests-pass-as-a-plan-set.md) | The tests pass is a set of the plan, not a sibling config |
+| [0033](0033-1.0-is-the-drupal-11-release.md) | 1.0.0 is the Drupal 11 release; the Drupal 12 preview stays experimental |
 
 A new ADR takes the next free number, gets a line here and a nav line in
 `mkdocs.yml` in the same change (the `docs` gate rejects an orphan page).

@@ -60,9 +60,13 @@ plugins:
 # No extra.version (mike) at 1.0.
 
 # The nav lists every docs/**/*.md (the docs gate of scripts/dev/check.sh checks it).
-# The Getting started, Guides and Concepts sections arrive with their pages (docs D4).
+# Each section arrives with its pages (docs D4); the rest of the guides follow in 1.x.
 nav:
   - Home: index.md
+  - Getting started:
+      - getting-started/install.md
+  - Upgrading:
+      - upgrading/0.9-to-1.0.md
   - Guides:
       - guides/d12-preview.md
   - Concepts:
@@ -120,4 +124,5 @@ nav:
           - contributing/adr/0030-rule-audit-and-generated-compat-pass.md
           - contributing/adr/0031-core-removals-scanner.md
           - contributing/adr/0032-tests-pass-as-a-plan-set.md
+          - contributing/adr/0033-1.0-is-the-drupal-11-release.md
   - Changelog: changelog.md

@@ -21,7 +21,7 @@
 #      pipeline stops.
 # The records are <state>/stages.json; each run is recorded in
 # runs/<run_id>/run-manifest.json (run_manifest_record). Progress reporting
-# arrives in M7.
+# arrives in drupilot 1.2 (M7).
 #
 # The stages:
 #   upgrade   the official Rector pass (run-rector.sh --apply), the

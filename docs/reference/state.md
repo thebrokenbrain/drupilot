@@ -42,6 +42,14 @@ drupilot 1.0 computes algorithm 2, which added Twig, JS and CSS. Every digest re
 
 Records that are compared or hashed between runs keep their timestamps under a top-level `meta` object, so two runs that compute the same result write the same bytes outside it: `rector-rules.json` keeps `meta.generated_at`, and `last-test.json` keeps when each negative control ran in `meta.negative_controls` (`recorded_at` stays where 0.9 put it).
 
+!!! note "Experimental in 1.0"
+    The records the next sections describe are new in drupilot 1.0, and their shape may still change in a 1.x
+    release: the raw reports, `findings.json`, `worklist.json`, `actions.jsonl`, `assess.json` as `assess.sh`
+    writes it (schema 1), `port-manifest.json` as 1.0 generates it (schema 1), `fixpoint.json`, the run manifests
+    and `stages.json`. Apart from the keys 1.0 moved under `meta` (the timestamps, and `rector-rules.json`'s
+    `subject`; above), the 0.9 keys of the records above
+    keep their shape for all of 1.x.
+
 ## Raw reports and findings
 
 drupilot 1.0 does not hand the analyzers' output to the model as it is. A stage first runs its deterministic tools and keeps their reports in the same hidden state dir, under `raw/`. `scripts/ai/extract.sh --subject DIR [--stage S]` writes one file per tool, `raw/<NN>-<stage>-<tool>.json`, where `NN` is the stage's place in [the pipeline](pipeline.md). The tools are Rector (a dry-run), PHPStan, PHPCS, the port-safety checks, the signature-change scan, the metadata lint, and the three PHP-window tools: the construct scan (`php-target`), `php -l` on each PHP of the window (`php-lint`, skipped without a Docker daemon) and PHPCompatibility (`phpcompat`, report-only; see [PHP and the core target](../concepts/php-and-core-target.md)), and the core-removals scan (`removals`: what the module takes from core that a major of the plan removes; see [Upgrade paths](../concepts/upgrade-paths.md#core-removals)). Each report is canonical: the Drupal root and the container path are stripped from its paths, its keys are sorted, and its timestamps are moved under `meta`. (The analyzers name files from the Drupal root; the port-safety, signature, metadata, PHP-window and removals reports name them from the module.) Two more files complete the stage:
@@ -107,7 +115,7 @@ Soft deprecations and next-major findings never count. When Rector, PHPStan, the
 `scripts/analysis/fixpoint.sh --subject DIR [--stage S]` is the gate at the end of a port or a refactor. It runs the extraction again on the tree as it is, then the codemods in dry-run, and writes `fixpoint.json` (schema `schemas/fixpoint.schema.json`). The file lists the Rector changes still proposed, the codemods that would still apply, and the open items of the processed lanes. Those lanes are `rector`, `rector-custom` and `codemod`; the AI lanes join when their executor does. The Rector dry-run is the official pass: the digests rules, which you review during the port, never count. The gate converges only when the three lists are empty and every tool gave a verdict: Rector, PHPStan, and the port-safety, signature and metadata scans that feed the codemod lane.
 
 `DRUPILOT_FIXPOINT` decides what a failure does:
-- `warn`, the default through the 1.0 betas, reports it;
+- `warn`, the default before 1.0.0-rc.1, reports it;
 - `enforce`, the default from 1.0.0-rc.1, exits 3, so the stage is not done;
 - `off` skips the gate.
 
