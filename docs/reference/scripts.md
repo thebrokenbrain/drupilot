@@ -8,7 +8,7 @@ Every script of `scripts/`, by group, with the usage its header documents (`-h` 
 
 ```text
 drupilot — scripts/drupilot.sh
-The headless dispatcher (AR-22, X9). Until it gains its other verbs (M10), it
+The headless dispatcher (AR-22, X9). Until it gains its other verbs (1.3), it
 answers one: `plan show`, the "drupilot plan" block a skill or command
 renders with a load-time !`...` span, and the fallback such a prompt points
 to when the span did not run (AR-26).
@@ -420,7 +420,7 @@ config/pipeline.json. For each stage:
      pipeline stops.
 The records are <state>/stages.json; each run is recorded in
 runs/<run_id>/run-manifest.json (run_manifest_record). Progress reporting
-arrives in M7.
+arrives in drupilot 1.2 (M7).
 
 The stages:
   upgrade   the official Rector pass (run-rector.sh --apply), the

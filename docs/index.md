@@ -16,8 +16,8 @@ checks every PHP of the window, and records deterministic findings. A Drupal
     Most of the user guide still lives in the
     [README](https://github.com/thebrokenbrain/drupilot#readme) while the guide
     pages are written. The install, upgrade and concept pages are here, and the
-    reference pages below are generated from the plugin's own sources, so they
-    are always current.
+    reference pages below, except Per-module state (hand-written), are
+    generated from the plugin's own sources, so they are always current.
 
 ## Getting started
 

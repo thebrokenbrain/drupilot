@@ -28,8 +28,8 @@ In order, for a port of a Drupal 10 module to Drupal 11:
 7. **php**: the PHP window: the constructs a PHP of the window removed or
    deprecated, and `php -l` on each of its PHP versions (see
    [PHP and the core target](php-and-core-target.md)).
-8. **residual**: the AI fixes what the tools left (arrives in a later 1.0
-   pre-release; until then the port command drives these fixes).
+8. **residual**: the AI fixes what the tools left (arrives in drupilot 1.2;
+   until then the port command drives these fixes).
 9. **validate**: the checks, ending with the fixpoint gate.
 10. **test**: the test suite, and the preservation verdict.
 11. **report**: the manifest, the report card and the local patch.

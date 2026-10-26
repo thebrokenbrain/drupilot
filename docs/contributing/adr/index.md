@@ -2,9 +2,9 @@
 
 Each record states one decision, why it was taken and what it implies.
 [0000](0000-owner-decisions.md) holds the owner's answers to the 1.0 plan's
-open questions; the 1.0 spikes add 0001–0006 (0005 is AR-39's, in M9); the others record forks the
-working session decided on its own, choosing the option that keeps 0.9
-behaviour.
+open questions, and [0033](0033-1.0-is-the-drupal-11-release.md) is an owner
+decision that amends it (the scope of 1.0); the 1.0 spikes add 0001–0006 (0005 is AR-39's, in M9); the others
+record forks the working session decided on its own, choosing the option that keeps 0.9 behaviour.
 
 | ADR | Decision |
 |---|---|

@@ -44,8 +44,9 @@ Records that are compared or hashed between runs keep their timestamps under a t
 
 !!! note "Experimental in 1.0"
     The records the next sections describe are new in drupilot 1.0, and their shape may still change in a 1.x
-    release: the raw reports, `findings.json`, `worklist.json`, `actions.jsonl`, the assessment's 1.0 keys,
-    `port-manifest.json` as 1.0 generates it (schema 1), `fixpoint.json`, the run manifests and `stages.json`. The 0.9 keys of the records above
+    release: the raw reports, `findings.json`, `worklist.json`, `actions.jsonl`, `assess.json` as `assess.sh`
+    writes it (schema 1), `port-manifest.json` as 1.0 generates it (schema 1), `fixpoint.json`, the run manifests
+    and `stages.json`. Apart from the timestamps 1.0 moved under `meta` (above), the 0.9 keys of the records above
     keep their shape for all of 1.x.
 
 ## Raw reports and findings
@@ -113,7 +114,7 @@ Soft deprecations and next-major findings never count. When Rector, PHPStan, the
 `scripts/analysis/fixpoint.sh --subject DIR [--stage S]` is the gate at the end of a port or a refactor. It runs the extraction again on the tree as it is, then the codemods in dry-run, and writes `fixpoint.json` (schema `schemas/fixpoint.schema.json`). The file lists the Rector changes still proposed, the codemods that would still apply, and the open items of the processed lanes. Those lanes are `rector`, `rector-custom` and `codemod`; the AI lanes join when their executor does. The Rector dry-run is the official pass: the digests rules, which you review during the port, never count. The gate converges only when the three lists are empty and every tool gave a verdict: Rector, PHPStan, and the port-safety, signature and metadata scans that feed the codemod lane.
 
 `DRUPILOT_FIXPOINT` decides what a failure does:
-- `warn`, the default through the 1.0 betas, reports it;
+- `warn`, the default before 1.0.0-rc.1, reports it;
 - `enforce`, the default from 1.0.0-rc.1, exits 3, so the stage is not done;
 - `off` skips the gate.
 

@@ -63,16 +63,19 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   bed and the port do, and the limits of the preview.
 - **The 1.0 scope** (ADR 0033, an amendment of ADR 0000): 1.0.0 is the Drupal 11
   release, before Drupal 12's stable release. The Drupal 12 preview stays
-  experimental, and milestones M7 to M10 become 1.1 to 1.3. A stabilization
-  round, with the essential docs, a lab re-verification and `1.0.0-rc.1` with a
-  3-day soak, comes first.
+  experimental; official Drupal 12 support comes in 1.1, milestones M7 and M8
+  in 1.2, and M9 and M10 (with the Drupal 7 track, amending OD-02) in 1.3. A
+  stabilization round, with the essential docs, a lab re-verification and
+  `1.0.0-rc.1` with a 3-day soak, comes first.
 - `docs/getting-started/install.md`: requirements (Claude Code 2.1.271 or
   later), install, update (`claude plugin update`, the marketplace's
   auto-update), and testing a checkout with `--plugin-dir`.
 - `docs/upgrading/0.9-to-1.0.md`: what happens to a project drupilot 0.9 set up
   (its state, its lock, its generated configs, its stale records, the upgrade
   plan), the renamed settings, what is new, and what is experimental in 1.0.
-  A lab run upgraded a project set up with 0.9.2 this way.
+  A lab run checked it on a project set up with 0.9.2: the stale test record,
+  the lock kept with its refresh notice, and dry runs of the toolchain, the
+  templates and a draft plan.
 
 ### Changed
 - **README.md and README_es.md describe 1.0**: the upgrade plan, the PHP
