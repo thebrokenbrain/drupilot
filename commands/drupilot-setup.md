@@ -124,12 +124,13 @@ read-only workspace resolver (Step 3 explains its fields; for a loose subject
 the root is the test-bed it will create):
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/resolve-workspace.sh" --subject "<subject_dir>" --json
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/resolve-workspace.sh" --subject "<subject_dir>" --target <T> --json
 ```
 
-When `.in_place_ok` is `false` (a site still on Drupal 10), settle the workspace
+When `.in_place_ok` is `false` (a site on an older major than T: a Drupal 10 site
+for Drupal 11, a Drupal 11 site for a Drupal 12 preview), settle the workspace
 first as Step 3 describes (a test-bed through `DRUPILOT_WORKSPACE_DIR`) and run the
-resolver again: never freeze a plan under a Drupal 10 site. Then resolve the draft
+resolver again: never freeze a plan under such a site, and never upgrade its core. Then resolve the draft
 plan. Pass `DRUPILOT_TARGET_MAJOR` / `DRUPILOT_PHP_TARGET` only for a value that was
 answered in a tab, pre-answered or given as a flag (a pinned or default value is read
 by the script itself); add `--auto` in an autonomous run:
@@ -172,8 +173,8 @@ installed and recorded in the lock (see there).
 
 ## Step 3 — State the plan, then do the work via the ddev-environment skill
 
-Before acting, state in English what you will do: create/start the DDEV Drupal 11
-project, install add-ons, install the Composer dev toolchain, place/symlink the subject
+Before acting, state in English what you will do: create/start the DDEV project of
+the target major (Drupal T), install add-ons, install the Composer dev toolchain, place/symlink the subject
 under `web/modules/custom` or `web/themes/custom`, and write the tool configs. Note that
 the heavy steps (composer create-project/require, add-on installs) may run in the background.
 
@@ -189,19 +190,19 @@ first, then place the subject AFTER 3a creates Drupal (`composer create-project`
 root). Run the read-only resolver to decide WHERE:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/resolve-workspace.sh" --subject "<subject_dir>" --json
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/resolve-workspace.sh" --subject "<subject_dir>" --target <T> --json
 ```
 
 It emits `{subject_src, machine_name, type, loose, drupal_root, drupal_root_exists,
 subject_dest_rel, subject_dest_abs, placement, already_placed}`. For a loose subject it
-targets a sibling Drupal root `<parent>/<machine_name>-d11` (or `DRUPILOT_WORKSPACE_DIR`),
+targets a sibling Drupal root `<parent>/<machine_name>-d<T>` (`-d11` for Drupal 11, or `DRUPILOT_WORKSPACE_DIR`),
 keeping the original checkout pristine; for a module already inside a Drupal root it reports
 `loose:false` and the existing layout is kept (full back-compat). `ddev-up.sh` consults this
 resolver internally, so the loose subject is never scaffolded on top of.
 
 `.layout` says why: `in-place` (inside a Drupal root with core installed — when
-`.in_place_ok` is false the site runs Drupal 10 (`.core_version`): tell the developer an
-in-place port needs the site on Drupal 11 first, and offer a test-bed by setting
+`.in_place_ok` is false the site runs an older major than T (`.core_version`): tell the
+developer an in-place port needs the site on Drupal T first, and offer a test-bed by setting
 `DRUPILOT_WORKSPACE_DIR` outside the site), `project-no-core` (a module of a Composer project
 checkout whose core is not installed, e.g. a monorepo clone: the test-bed is
 `<parent>/<project>-d11`, next to the repository), `repo-subdir` (a sub-directory of a git
@@ -236,10 +237,11 @@ itself) and say so in one line; when it is null, ask.
 
 Then, AFTER 3a has created Drupal, place the subject (idempotent — detect-and-skip when
 already placed). Pass `--yes` because the workspace tab above already captured consent for
-the relocating `move` (so the script does not re-prompt):
+the relocating `move` (so the script does not re-prompt), and prefix
+`DRUPILOT_TARGET_MAJOR=<T>` when T is not 11, so it resolves the same test-bed:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/place-subject.sh" --subject "<subject_dir>" --yes
+DRUPILOT_TARGET_MAJOR=<T> bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/place-subject.sh" --subject "<subject_dir>" --yes
 ```
 
 It places the loose subject into `<root>/web/{modules,themes,profiles}/custom/<machine_name>`,
@@ -258,26 +260,31 @@ baseline yourself (idempotent — an existing baseline is kept), substituting `<
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/origin-hygiene.sh" --snapshot --subject "<subject_dir>" --placement in-place
 ```
 
-### 3a — Bring up the DDEV Drupal 11 project
+### 3a — Bring up the DDEV project
 
 Run this yourself via the Bash tool, substituting `<subject_dir>` with the resolved
 subject directory from Step 2's context and `<ddev_name>` with the DDEV project name (do not
 run it verbatim). Pass `--name` explicitly: without it the project is named after the
 test-bed directory (e.g. `my_module-d11` → `my-module-d11`). A good default is the
-`machine_name` from the resolver plus `-d11`; the script sanitizes it to a hostname-safe
-value:
+`machine_name` from the resolver plus `-d<T>` (`-d11` for Drupal 11); the script sanitizes
+it to a hostname-safe value. Prefix `DRUPILOT_TARGET_MAJOR=<T>` when T is not 11 (as for
+the resolver), and pass no `--php`: the script takes the frozen draft plan's
+`php.final`:
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-up.sh" --subject "<subject_dir>" --name "<ddev_name>" --docroot web
+DRUPILOT_TARGET_MAJOR=<T> bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-up.sh" --subject "<subject_dir>" --name "<ddev_name>" --docroot web
 ```
 
 All logs, the preflight report and the ddev/composer output go to stderr; add `--json` for
 a `{project_dir, project_name, php_version, primary_url, drupal_target}` summary on stdout.
 
-This configures the target's DDEV project type (`target_ddev_type`) with `--docroot=web --php-version=$(resolve_php_target)`,
-starts DDEV, runs `ddev composer create-project drupal/recommended-project:^11` (`create` on DDEV < 1.24.2) when there is no
-composer.json, ensures `drush:^13`, and reads the generated `.ddev/config.yaml` rather
-than assuming hostnames/images. It skips if the project is already configured/running.
+This configures the target's DDEV project type (`target_ddev_type`) with `--docroot=web` and
+the PHP of the frozen plan (`php.final`; else an explicit `DRUPILOT_PHP_TARGET`, else the
+target's default), starts DDEV, runs `ddev composer create-project drupal/recommended-project:^11`
+(`create` on DDEV < 1.24.2; for a Drupal 12 preview, the plan's pre-release core) when there is
+no composer.json, ensures `drush:^13` (none where the toolchain cell has no drush), and reads
+the generated `.ddev/config.yaml` rather than assuming hostnames/images. It refuses (exit 1,
+nothing changed) a root whose installed core is an older major than T. It skips if the project is already configured/running.
 A root whose `vendor/` is missing (e.g. after `/drupilot-clean`) gets `ddev composer
 install`; an empty root may be filled from the cached base core (`DRUPILOT_CORE_CACHE`)
 and, in deterministic mode, is created with the core version the lockfile froze. Its
@@ -311,8 +318,9 @@ it verbatim — the script rejects an unsubstituted placeholder):
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-toolchain.sh" --dir "<drupal_root>" --json
 ```
 
-Add `--with-upgrade-status` to also install `drupal/upgrade_status`; `--dry-run`
-prints the resolved package specs without running Composer.
+Add `--with-upgrade-status` to also install `drupal/upgrade_status` (skipped, with a
+note, on a Drupal 12 bed: no drush); `--dry-run` prints the resolved package specs
+without running Composer.
 
 It installs drupal-rector, `rector/rector`, PHPStan + extension-installer +
 phpstan-drupal + phpstan-deprecation-rules, drupal/coder (`DRUPILOT_CODER_CONSTRAINT`)

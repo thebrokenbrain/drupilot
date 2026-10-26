@@ -14,7 +14,7 @@ DRUPILOT_VERSION_DATA_DIR="$T_REPO/tests/fixtures/data-snapshots/$(jq -r .data_h
 export DRUPILOT_VERSION_DATA_DIR
 names() { printf '%s|%s|%s|%s' "$(target_patch_desc "$@")" "$(target_workspace_suffix "$@")" "$(target_ddev_type "$@")" "$(target_workspace_suffixes "$@" | tr '\n' ' ')"; }
 assert_eq "T 11 (the default): the 0.9 names" "$(names)" "port-to-drupal-11|-d11|drupal11|-d11 "
-assert_eq "T 12: its names, a 0.9 -d11 bed still found" "$(names 12)" "port-to-drupal-12|-d12|drupal12|-d12 -d11 "
+assert_eq "T 12: its names; a -d11 bed is only Drupal 11's (CC-17)" "$(names 12)" "port-to-drupal-12|-d12|drupal12|-d12 "
 assert_eq "DRUPILOT_TARGET_MAJOR=12 names them too" "$(DRUPILOT_TARGET_MAJOR=12 target_patch_desc)" "port-to-drupal-12"
 assert_eq "an invalid T is 11" "$(names abc | cut -d'|' -f1)" "port-to-drupal-11"
 assert_eq "the patch globs: the 0.9 ones and every target's" "$(target_patch_globs | tr '\n' ' ')" \
@@ -28,6 +28,16 @@ assert_eq "  --target 12: <name>-d12" "$(rw --target 12)" "$T_TMP/legacy_widgets
 assert_eq "  DRUPILOT_TARGET_MAJOR=12: <name>-d12" "$(DRUPILOT_TARGET_MAJOR=12 rw)" "$T_TMP/legacy_widgets-d12"
 t_run "$T_SH" "$T_REPO/scripts/env/resolve-workspace.sh" --subject "$T_TMP/legacy_widgets" --target x --json
 assert_eq "  an invalid --target: exit 1" "$T_RC" "1"
+
+# In place: the site's own core must be the target major or later.
+S="$T_TMP/site"; mkdir -p "$S/web/core/lib" "$S/web/modules/custom"
+printf '{"name":"x/site"}\n' > "$S/composer.json"
+printf "<?php\nclass Drupal {\n  const VERSION = '11.4.8';\n}\n" > "$S/web/core/lib/Drupal.php"
+cp -R "$T_REPO/tests/fixtures/legacy_widgets" "$S/web/modules/custom/legacy_widgets"
+ip() { "$T_SH" "$T_REPO/scripts/env/resolve-workspace.sh" --subject "$S/web/modules/custom/legacy_widgets" --json "$@" 2> /dev/null | jq -c '[.layout, .in_place_ok]'; }
+assert_eq "in place on a Drupal 11 site: ok for a Drupal 11 port" "$(ip)" '["in-place",true]'
+assert_eq "  not for a Drupal 12 preview: drupilot never upgrades the site's core" "$(ip --target 12)" '["in-place",false]'
+assert_eq "  nor with DRUPILOT_TARGET_MAJOR=12" "$(DRUPILOT_TARGET_MAJOR=12 ip)" '["in-place",false]'
 
 # A T=12 local patch, with a 0.9 patch left in the tree.
 if command -v git > /dev/null 2>&1; then

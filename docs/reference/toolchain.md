@@ -38,7 +38,7 @@ Source: docs/contributing/adr/0004-d12-bed.md (spike AR-42; re-verified on 12.0.
 | `drush/drush` | not installed |
 | `drupal/upgrade_status` | `5.0.0-alpha3` |
 
-No drush release installs on Drupal 12 (drush 13 needs guzzle ^7; drush 14 is only a dev branch): the bed requires no drush, installs the site with core's install_drupal() and extensions with vendor/bin/dr ex:install. drupal/core is installed from source: its dist export-ignores tests. Composer refuses coder 8.3.31 and phpstan 2.2.2 next to drupal/core-dev 12 (coder ^9.0, phpstan ^2.2.14).
+No drush release installs on Drupal 12 (drush 13 needs guzzle ^7; drush 14 is only a dev branch): the bed requires no drush, and Upgrade Status, which analyses through drush, is skipped. drupilot installs no site on a bed (kernel and functional tests install their own); the lab installed one with core's install_drupal() and enabled extensions with vendor/bin/dr ex:install. drupal/core is installed from source: its dist export-ignores tests. Composer refuses coder 8.3.31 and phpstan 2.2.2 next to drupal/core-dev 12 (coder ^9.0, phpstan ^2.2.14).
 
 ## Cell d7-pre (planned)
 

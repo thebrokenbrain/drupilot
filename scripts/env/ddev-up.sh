@@ -3,15 +3,22 @@
 # drupilot — scripts/env/ddev-up.sh
 # Create (if absent) and start a DDEV project of the target major (the root's
 # frozen upgrade plan, else DRUPILOT_TARGET_MAJOR: Drupal 11 by default),
-# parameterized by the effective PHP target (resolve_php_target). Then ensure a
-# Composer project exists (drupal/recommended-project, DRUPILOT_DRUPAL_TARGET)
-# with Drush ^13.
+# parameterized by the effective PHP target: --php, else an explicit
+# DRUPILOT_PHP_TARGET (the environment, or the root's .drupilot.json), else the
+# frozen plan's php.final, else the target's default (resolve_php_target_for).
+# Then ensure a Composer project exists (drupal/recommended-project,
+# DRUPILOT_DRUPAL_TARGET) with Drush ^13. It refuses (exit 1, before any
+# `ddev config`) a root whose installed core is an older major than the target
+# (drupilot never upgrades a core) and an explicit DRUPILOT_DRUPAL_TARGET that
+# does not admit the target major.
 #
 # The target's toolchain cell (config/toolchain-reference.json, ADR 0004) can
 # change three things, for a pre-release major such as Drupal 12:
 #   - a pre-release major creates the plan's exact test-bed core
 #     (target.bed_core of the frozen plan), else the newest core at the
 #     stability config/targets/<T>.json gives (composer_stability_while_prerelease);
+#     an explicit DRUPILOT_DRUPAL_TARGET of that one major (12.0.x-dev) is
+#     built as it is;
 #   - a cell that pins drush/drush to null requires no drush (no release
 #     installs there: the bed uses core's vendor/bin/dr);
 #   - a cell with core_install "source" installs drupal/core from source on a
@@ -72,7 +79,7 @@
 #
 #   --name     DDEV project name (hostname-safe; sanitized). Default: the
 #              project directory's name (for a loose subject, the sibling
-#              test-bed '<machine_name>-d11').
+#              test-bed '<machine_name>-d<T>', -d11 for Drupal 11).
 #   --json     print a JSON summary on STDOUT when done:
 #              {project_dir, project_name, php_version, primary_url, drupal_target,
 #               core_source, core_cache}
@@ -123,16 +130,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Effective PHP target (flag overrides config; config defaults to 8.3).
-[[ -z "$PHP_TARGET" ]] && PHP_TARGET="$(resolve_php_target)"
-
-# Warn (don't block) on PHP 8.5: DDEV may lack that image, and it needs Drupal
-# 11.3 or later (checked below against the core this run installs, and at the
-# end against the core the test-bed has).
-if php_target_unconfirmed "$PHP_TARGET"; then
-  log_warn "DDEV may not provide a PHP $PHP_TARGET image. Consider 8.3 (default) or 8.4 if 'ddev start' fails."
-fi
-
 PLUGIN_ROOT_DIR="$(plugin_root)"
 
 # ---------------------------------------------------------------------------
@@ -166,7 +163,7 @@ if [[ -z "$PROJECT_DIR" ]]; then
       if [[ "$(printf '%s' "$_plan" | jq -r '.loose // empty' 2>/dev/null || true)" == "true" ]]; then
         PROJECT_DIR="$(printf '%s' "$_plan" | jq -r '.drupal_root // empty' 2>/dev/null || true)"
         if [[ -n "$PROJECT_DIR" ]]; then
-          log_info "Loose subject detected — building the Drupal 11 test-bed outside your checkout:"
+          log_info "Loose subject detected — building the Drupal $(target_names_major) test-bed outside your checkout:"
           log_info "  $PROJECT_DIR"
           log_info "  (your checkout stays intact; place-subject.sh places the module in once Drupal exists)."
         fi
@@ -177,6 +174,59 @@ fi
 [[ -z "$PROJECT_DIR" ]] && PROJECT_DIR="$PWD"
 mkdir -p "$PROJECT_DIR"
 PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
+
+# The target major of this root: its frozen upgrade plan, else
+# DRUPILOT_TARGET_MAJOR (Drupal 11 by default).
+BED_MAJOR="$(DRUPILOT_PROJECT_DIR="$PROJECT_DIR" target_names_major)"
+
+# Effective PHP target: --php, else an explicit DRUPILOT_PHP_TARGET (the
+# environment, or this root's .drupilot.json), else the frozen plan's
+# php.final when the plan names this major, else the target major's default
+# (config/targets/<T>.json php_defaults: Drupal 11 keeps 0.9's default).
+if [[ -z "$PHP_TARGET" ]]; then
+  PHP_TARGET="$(DRUPILOT_PROJECT_DIR="$PROJECT_DIR" config_get_explicit DRUPILOT_PHP_TARGET)"
+fi
+if [[ -z "$PHP_TARGET" && "$(plan_get .target.major "$PROJECT_DIR" 2> /dev/null || true)" == "$BED_MAJOR" ]]; then
+  PHP_TARGET="$(plan_get .php.final "$PROJECT_DIR" 2> /dev/null || true)"
+fi
+[[ -n "$PHP_TARGET" ]] || PHP_TARGET="$(DRUPILOT_PROJECT_DIR="$PROJECT_DIR" resolve_php_target_for "$BED_MAJOR")"
+
+# Warn (don't block) on a PHP that DDEV may lack and that needs a recent core
+# (checked below against the core this run installs, and at the end against
+# the core the test-bed has). When the target major itself requires that PHP
+# (Drupal 12), the remedy is a newer DDEV, never an older PHP.
+PHP_NEEDS_DDEV=0
+if php_target_unconfirmed "$PHP_TARGET" \
+   && [[ "$(target_get "$BED_MAJOR" '.php_defaults.env' 2> /dev/null || true)" == "$PHP_TARGET" ]]; then
+  PHP_NEEDS_DDEV=1
+fi
+if [[ "$PHP_NEEDS_DDEV" == "1" ]]; then
+  log_warn "Drupal $BED_MAJOR needs PHP $PHP_TARGET, which an older DDEV may not provide: upgrade DDEV if 'ddev start' fails."
+elif php_target_unconfirmed "$PHP_TARGET"; then
+  log_warn "DDEV may not provide a PHP $PHP_TARGET image. Consider 8.3 (default) or 8.4 if 'ddev start' fails."
+fi
+
+# bed_core_major_check ADVICE -> dies (exit 1) when this root's installed core
+# is an older major than the target: drupilot never upgrades a core, and a
+# port to Drupal T needs a Drupal T test-bed.
+bed_core_major_check() {
+  local v
+  v="$(drupal_core_version "$PROJECT_DIR" 2> /dev/null || true)"
+  [[ "$v" =~ ^v?([0-9]+)\. ]] || return 0
+  [[ "${BASH_REMATCH[1]}" -lt "$BED_MAJOR" ]] || return 0
+  log_err "$PROJECT_DIR has Drupal $v, an older major than the target of this port, Drupal $BED_MAJOR."
+  log_plain "$1"
+  die "The test-bed's core is not Drupal $BED_MAJOR." 1
+}
+if [[ -f "$PROJECT_DIR/composer.json" ]]; then
+  bed_core_major_check "drupilot never upgrades a site's core: set DRUPILOT_WORKSPACE_DIR (or pass --workspace) to a new directory for a Drupal $BED_MAJOR test-bed, and run the setup again."
+fi
+# An explicit DRUPILOT_DRUPAL_TARGET is the core the bed is built with (ADR
+# 0021), so it must admit the target major.
+DRUPAL_TARGET_PIN="$(DRUPILOT_PROJECT_DIR="$PROJECT_DIR" config_get_explicit DRUPILOT_DRUPAL_TARGET)"
+if [[ -n "$DRUPAL_TARGET_PIN" ]] && ! core_requirement_admits "$DRUPAL_TARGET_PIN" "$BED_MAJOR"; then
+  die "DRUPILOT_DRUPAL_TARGET '$DRUPAL_TARGET_PIN' does not admit Drupal $BED_MAJOR, the target major of $PROJECT_DIR: unset it, or set a constraint of Drupal $BED_MAJOR, and run the setup again." 1
+fi
 
 # Clean-root guard (BEFORE any `ddev config`): if we will need `ddev composer
 # create` (no composer.json yet), the root must contain only the docroot and
@@ -242,33 +292,46 @@ if [[ -f "$DDEV_CONFIG" ]]; then
     ( cd "$PROJECT_DIR" && ddev config --php-version="$PHP_TARGET" >&2 )
   fi
 else
-  log_step "Configuring DDEV (Drupal $(DRUPILOT_PROJECT_DIR="$PROJECT_DIR" target_names_major), PHP $PHP_TARGET)"
-  ( cd "$PROJECT_DIR" && ddev config \
+  log_step "Configuring DDEV (Drupal $BED_MAJOR, PHP $PHP_TARGET)"
+  if ! ( cd "$PROJECT_DIR" && ddev config \
       --project-name="$PROJECT_NAME" \
-      --project-type="$(DRUPILOT_PROJECT_DIR="$PROJECT_DIR" target_ddev_type)" \
+      --project-type="$(target_ddev_type "$BED_MAJOR")" \
       --docroot="$DOCROOT" \
-      --php-version="$PHP_TARGET" >&2 ) \
-    || die "'ddev config' failed. If PHP $PHP_TARGET is unsupported by this DDEV version, retry with --php 8.3." 1
+      --php-version="$PHP_TARGET" >&2 ); then
+    [[ "$PHP_NEEDS_DDEV" == "1" ]] \
+      && die "'ddev config' failed. Drupal $BED_MAJOR needs PHP $PHP_TARGET: upgrade DDEV if this version cannot provide it." 1
+    die "'ddev config' failed. If PHP $PHP_TARGET is unsupported by this DDEV version, retry with --php 8.3." 1
+  fi
   log_ok "DDEV configured."
 fi
 
 # ---------------------------------------------------------------------------
 # Step 1b — the base core: honor a frozen core version, reuse a cached tree
 # ---------------------------------------------------------------------------
-DRUPAL_TARGET="$(resolve_drupal_target)"
+DRUPAL_TARGET="$(DRUPILOT_PROJECT_DIR="$PROJECT_DIR" resolve_drupal_target)"
 DRUSH_CONSTRAINT="$(config_json '.packages.drush' 'drush/drush:^13')"
-# The target major of this root and its toolchain cell (see the header).
-BED_MAJOR="$(DRUPILOT_PROJECT_DIR="$PROJECT_DIR" target_names_major)"
+# The toolchain cell of the target major (see the header).
 BED_CELL="$(target_get "$BED_MAJOR" '.toolchain_cell // empty' 2> /dev/null || true)"
 BED_PRERELEASE=0
 [[ "$(target_get "$BED_MAJOR" '.status' 2> /dev/null || true)" == "pre-release" ]] && BED_PRERELEASE=1
 if [[ -n "$BED_CELL" ]] && toolchain_cell_without_drush "$BED_CELL"; then DRUSH_CONSTRAINT=""; fi
 CORE_INSTALL="dist"
 [[ -n "$BED_CELL" ]] && CORE_INSTALL="$(toolchain_cell_core_install "$BED_CELL")"
-# A root whose frozen plan names another major than the configured Drupal
-# target (a Drupal 12 plan while DRUPILOT_TARGET_MAJOR is not set here): the
-# plan's major, unless DRUPILOT_DRUPAL_TARGET pins a core.
-if [[ -z "$(config_get_explicit DRUPILOT_DRUPAL_TARGET)" ]] && ! core_requirement_admits "$DRUPAL_TARGET" "$BED_MAJOR"; then
+# The explicit DRUPILOT_DRUPAL_TARGET (checked above) pins the core. For a
+# pre-release major only a constraint of that one major does: a bare ^N names
+# the major (X12) and a constraint of several majors is a declared range, so
+# the bed gets the plan's pre-release core. Without one, a root whose frozen
+# plan names another major than the configured Drupal target (a Drupal 12 plan
+# while DRUPILOT_TARGET_MAJOR is not set here) gets the plan's major.
+CORE_PIN=""
+if [[ -n "$DRUPAL_TARGET_PIN" ]]; then
+  CORE_PIN="$DRUPAL_TARGET_PIN"
+  if [[ "$BED_PRERELEASE" == "1" ]] && { [[ -n "$(drupal_target_major "$DRUPAL_TARGET_PIN")" ]] \
+       || core_requirement_admits "$DRUPAL_TARGET_PIN" "$((BED_MAJOR - 1))" \
+       || core_requirement_admits "$DRUPAL_TARGET_PIN" "$((BED_MAJOR + 1))"; }; then
+    CORE_PIN=""; DRUPAL_TARGET="^$BED_MAJOR"
+  fi
+elif ! core_requirement_admits "$DRUPAL_TARGET" "$BED_MAJOR"; then
   DRUPAL_TARGET="^$BED_MAJOR"
 fi
 CREATE_TIMEOUT="$(config_get DRUPILOT_DDEV_CREATE_TIMEOUT 900)"
@@ -288,7 +351,8 @@ RESTORED_ENTRIES=()
 CREATE_SPEC="drupal/recommended-project:${DRUPAL_TARGET}"
 
 # The exact core version the lockfile froze for this root (deterministic mode
-# only), when it is a plain release that the Drupal target still admits.
+# only), when it is a release or a pre-release (12.0.0-beta2) of a major the
+# Drupal target still admits.
 LOCKED_CORE=""
 if deterministic_mode && [[ ! -f "$PROJECT_DIR/composer.json" ]]; then
   LOCKED_CORE="$(DRUPILOT_PROJECT_DIR="$PROJECT_DIR" lock_get .drupal.core "")"
@@ -304,9 +368,10 @@ fi
 
 # A pre-release major (Drupal 12 before its release): the frozen plan's exact
 # test-bed core, else the newest core at the data's stability (Composer only
-# creates stable releases by default).
+# creates stable releases by default). An explicit core pin keeps its own
+# stability (Composer reads it from the constraint).
 CREATE_ARGS=()
-if [[ "$BED_PRERELEASE" == "1" && -z "$LOCKED_CORE" && ! -f "$PROJECT_DIR/composer.json" ]]; then
+if [[ "$BED_PRERELEASE" == "1" && -z "$CORE_PIN" && -z "$LOCKED_CORE" && ! -f "$PROJECT_DIR/composer.json" ]]; then
   _bed="$(plan_get .target.bed_core "$PROJECT_DIR" 2> /dev/null || true)"
   if [[ "$(plan_get .target.major "$PROJECT_DIR" 2> /dev/null || true)" == "$BED_MAJOR" && -n "$_bed" ]] \
      && core_requirement_admits "$DRUPAL_TARGET" "${_bed%%.*}"; then

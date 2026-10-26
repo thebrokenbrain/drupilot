@@ -2195,7 +2195,9 @@ Unlike Rector/PHPStan/PHPCS, Upgrade Status REQUIRES an installed Drupal site
 
 It soft-skips (exit 0, clear message) when DDEV is not running or Drupal is
 not installed — analysis should never hard-fail just because the optional
-site bootstrap is unavailable.
+site bootstrap is unavailable — and, before starting anything, on a test-bed
+whose toolchain cell pins drush/drush to null (Drupal 12: no drush release
+installs there, ADR 0004), since Upgrade Status analyses through drush.
 
 Usage:
   run-upgrade-status.sh --module NAME
@@ -3189,15 +3191,22 @@ Exit codes:
 drupilot — scripts/env/ddev-up.sh
 Create (if absent) and start a DDEV project of the target major (the root's
 frozen upgrade plan, else DRUPILOT_TARGET_MAJOR: Drupal 11 by default),
-parameterized by the effective PHP target (resolve_php_target). Then ensure a
-Composer project exists (drupal/recommended-project, DRUPILOT_DRUPAL_TARGET)
-with Drush ^13.
+parameterized by the effective PHP target: --php, else an explicit
+DRUPILOT_PHP_TARGET (the environment, or the root's .drupilot.json), else the
+frozen plan's php.final, else the target's default (resolve_php_target_for).
+Then ensure a Composer project exists (drupal/recommended-project,
+DRUPILOT_DRUPAL_TARGET) with Drush ^13. It refuses (exit 1, before any
+`ddev config`) a root whose installed core is an older major than the target
+(drupilot never upgrades a core) and an explicit DRUPILOT_DRUPAL_TARGET that
+does not admit the target major.
 
 The target's toolchain cell (config/toolchain-reference.json, ADR 0004) can
 change three things, for a pre-release major such as Drupal 12:
   - a pre-release major creates the plan's exact test-bed core
     (target.bed_core of the frozen plan), else the newest core at the
     stability config/targets/<T>.json gives (composer_stability_while_prerelease);
+    an explicit DRUPILOT_DRUPAL_TARGET of that one major (12.0.x-dev) is
+    built as it is;
   - a cell that pins drush/drush to null requires no drush (no release
     installs there: the bed uses core's vendor/bin/dr);
   - a cell with core_install "source" installs drupal/core from source on a
@@ -3258,7 +3267,7 @@ Usage:
 
   --name     DDEV project name (hostname-safe; sanitized). Default: the
              project directory's name (for a loose subject, the sibling
-             test-bed '<machine_name>-d11').
+             test-bed '<machine_name>-d<T>', -d11 for Drupal 11).
   --json     print a JSON summary on STDOUT when done:
              {project_dir, project_name, php_version, primary_url, drupal_target,
               core_source, core_cache}
@@ -3399,13 +3408,15 @@ cell per Drupal major family. The test-bed's cell is the one its lock records
 installed core's major; a lock drupilot 0.9 wrote (it pins rector/rector and
 records no cell) is cell legacy_v1, 0.9's own set, until it is refreshed
 (--source reference), and a notice says so. A cell that is not verified yet
-(cell 12 while Drupal 12 is a pre-release) pins nothing: its packages resolve
-from the ranges, with a warning.
+pins nothing: its packages resolve from the ranges, with a warning. A lock
+recorded for another cell (a Drupal 11 lock on a root now on Drupal 12) is
+not this cell's set: none of its pins is used.
 
 Where each version comes from (--source, default DRUPILOT_TOOLCHAIN_SOURCE=auto):
   auto       Deterministic mode (DRUPILOT_DETERMINISTIC, default true):
                - the project lock, when it pins EVERY package of the
-                 cell's known-good set (a complete, previously working set);
+                 cell's known-good set (a complete, previously working set)
+                 and records no other cell;
                - otherwise the cell's set as a whole (a partial lock is never
                  mixed with the reference: that combination was never
                  tested);
@@ -3418,6 +3429,11 @@ Where each version comes from (--source, default DRUPILOT_TOOLCHAIN_SOURCE=auto)
   range      The .packages ranges only (fresh resolve).
 If Composer cannot resolve the pinned set against this project (e.g. a newer
 core needs a newer PHPStan), it retries once with the ranges and says so.
+drupal/coder's range is DRUPILOT_CODER_CONSTRAINT when set, else the
+major.minor of the cell's own coder pin (drupal/core-dev 12 requires coder 9),
+else the config default.
+--with-upgrade-status is skipped, with a note, on a cell that pins drush to
+null: upgrade_status needs drush to analyse anything (Drupal 12, ADR 0004).
 
 After installing it runs the smoke test (rector_smoke in common.sh: a Rector
 dry-run of a trivial file with the Drupal 10 set, plus `phpstan --version`) and
@@ -3434,7 +3450,8 @@ Options:
   --subject DIR          A module/theme path; the Drupal root is derived from it.
   --dir ROOT             The Drupal project root (composer.json + .ddev/).
   --source S             Version source (see above). Default: auto.
-  --with-upgrade-status  Also install drupal/upgrade_status.
+  --with-upgrade-status  Also install drupal/upgrade_status (not where the
+                         cell has no drush).
   --no-core-dev          Skip drupal/core-dev (PHPUnit + test deps).
   --smoke-only           Do not install; only run the smoke test (+ diagnostics).
   --dry-run              Print the resolved package specs; run nothing.
@@ -3886,7 +3903,7 @@ Exit codes: 0 ok · 1 usage/error · 3 a file differs (not replaced without
 
 ```text
 drupilot — scripts/env/resolve-workspace.sh
-Decide WHERE the Drupal 11 test-bed lives and WHERE the subject module/theme is
+Decide WHERE the test-bed (of the target major) lives and WHERE the subject module/theme is
 placed inside it — WITHOUT mutating anything (a pure resolver, like
 core-strategy.sh). It is the single source of truth that ddev-up.sh and
 place-subject.sh consult so a LOOSE checkout is never scaffolded on top of.
@@ -3900,10 +3917,11 @@ Drupal root and a clean web/{modules,themes,profiles}/custom/<name> destination.
 Resolution of the Drupal ROOT (first match wins):
   1. An existing Drupal root found by walking up from the subject (the module is
      already inside a site) -> use it, placement 'in-place', loose=false.
-     In place means the site's OWN core: it must already be on Drupal 11
-     (core_version, in_place_ok:false + a warning below 11). For a site still
-     on Drupal 10, an explicit DRUPILOT_WORKSPACE_DIR / --workspace pointing
-     elsewhere makes it a test-bed port instead (step 2).
+     In place means the site's OWN core: it must already be on the target
+     major or later (core_version; in_place_ok:false below it: a Drupal 10
+     site for a Drupal 11 port, a Drupal 11 site for a Drupal 12 preview).
+     For such a site, an explicit DRUPILOT_WORKSPACE_DIR / --workspace
+     pointing elsewhere makes it a test-bed port instead (step 2).
      A Composer project root WITHOUT installed core (a monorepo clone: web/core
      and vendor/ are gitignored) is never such a root, even with a committed
      .ddev/config.yaml: layout 'project-no-core', handled as loose.
@@ -3929,10 +3947,11 @@ Usage:
     --subject DIR  Module/theme directory (default: current directory).
     --workspace DIR  The test-bed root for a loose subject; the same as
                    DRUPILOT_WORKSPACE_DIR (the flag wins over the variable).
-    --target N     The target major the test-bed is named for (default:
-                   DRUPILOT_TARGET_MAJOR, 11): '<name>-d<N>'. For any N an
-                   existing '<name>-d11' bed drupilot 0.9 built is still found
-                   where it looks for the moved subject.
+    --target N     The target major (default: the frozen plan of the
+                   current root, else DRUPILOT_TARGET_MAJOR, 11): the
+                   test-bed is '<name>-d<N>' (for N = 11 the name a drupilot
+                   0.9 bed carries, CC-17), and an in-place site must run
+                   Drupal N or later.
     --json         Print only the JSON payload (suppress the human table).
 
 Output: a human table on STDERR; the recommendation JSON on STDOUT:
@@ -3949,7 +3968,7 @@ test-bed to share between the modules of the same set (/drupilot-layers),
 outside the repository. testbed_inside_origin: the chosen root lies inside the
 subject's repository or project (only an explicit DRUPILOT_WORKSPACE_DIR can
 do that; warned). core_version / in_place_ok: the installed core of an
-in-place root and whether it is Drupal 11 or later (null otherwise).
+in-place root and whether it is the target major or later (null otherwise).
 residue lists untracked local-environment leftovers at the top of the subject
 (.ddev/, vendor/, node_modules/, .phpstan-cache/, .drupilot/) and symlinks
 whose target escapes it. residual_ddev is true when the Drupal "root" is the

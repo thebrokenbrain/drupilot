@@ -11,7 +11,7 @@
 # rector_compat_list (no rule audit: config/php/rules.json alone),
 # rector_compat_rules_block, rector_compat_php_id, phpstan_profile_block and
 # phpstan_cache_key, as render-templates.sh and run-rector.sh build them.
-# rector-tests.php follows the plan from M6 (T-M6-05).
+# The tests pass (T-M6-05, ADR 0032) is in rector.php's set and skip lists.
 # Capture (on purpose, then golden.sh --update in its own commit):
 #   bash tests/unit/templates_render.sh --capture
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"

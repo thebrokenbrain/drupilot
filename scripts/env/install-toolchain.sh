@@ -30,13 +30,15 @@
 # installed core's major; a lock drupilot 0.9 wrote (it pins rector/rector and
 # records no cell) is cell legacy_v1, 0.9's own set, until it is refreshed
 # (--source reference), and a notice says so. A cell that is not verified yet
-# (cell 12 while Drupal 12 is a pre-release) pins nothing: its packages resolve
-# from the ranges, with a warning.
+# pins nothing: its packages resolve from the ranges, with a warning. A lock
+# recorded for another cell (a Drupal 11 lock on a root now on Drupal 12) is
+# not this cell's set: none of its pins is used.
 #
 # Where each version comes from (--source, default DRUPILOT_TOOLCHAIN_SOURCE=auto):
 #   auto       Deterministic mode (DRUPILOT_DETERMINISTIC, default true):
 #                - the project lock, when it pins EVERY package of the
-#                  cell's known-good set (a complete, previously working set);
+#                  cell's known-good set (a complete, previously working set)
+#                  and records no other cell;
 #                - otherwise the cell's set as a whole (a partial lock is never
 #                  mixed with the reference: that combination was never
 #                  tested);
@@ -49,6 +51,11 @@
 #   range      The .packages ranges only (fresh resolve).
 # If Composer cannot resolve the pinned set against this project (e.g. a newer
 # core needs a newer PHPStan), it retries once with the ranges and says so.
+# drupal/coder's range is DRUPILOT_CODER_CONSTRAINT when set, else the
+# major.minor of the cell's own coder pin (drupal/core-dev 12 requires coder 9),
+# else the config default.
+# --with-upgrade-status is skipped, with a note, on a cell that pins drush to
+# null: upgrade_status needs drush to analyse anything (Drupal 12, ADR 0004).
 #
 # After installing it runs the smoke test (rector_smoke in common.sh: a Rector
 # dry-run of a trivial file with the Drupal 10 set, plus `phpstan --version`) and
@@ -65,7 +72,8 @@
 #   --subject DIR          A module/theme path; the Drupal root is derived from it.
 #   --dir ROOT             The Drupal project root (composer.json + .ddev/).
 #   --source S             Version source (see above). Default: auto.
-#   --with-upgrade-status  Also install drupal/upgrade_status.
+#   --with-upgrade-status  Also install drupal/upgrade_status (not where the
+#                          cell has no drush).
 #   --no-core-dev          Skip drupal/core-dev (PHPUnit + test deps).
 #   --smoke-only           Do not install; only run the smoke test (+ diagnostics).
 #   --dry-run              Print the resolved package specs; run nothing.
@@ -211,7 +219,17 @@ add_pkg phpstan
 add_pkg phpstan_extension_installer
 add_pkg phpstan_drupal
 add_pkg phpstan_deprecation_rules
-add_pkg coder "$(config_get DRUPILOT_CODER_CONSTRAINT "^8.3")"
+CODER_RANGE="$(config_get_explicit DRUPILOT_CODER_CONSTRAINT)"
+if [[ -z "$CODER_RANGE" ]]; then
+  _cp="$(toolchain_reference_version drupal/coder "$CELL")"
+  [[ "$_cp" =~ ^([0-9]+)\.([0-9]+)\. ]] && CODER_RANGE="^${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+fi
+[[ -n "$CODER_RANGE" ]] || CODER_RANGE="$(config_get DRUPILOT_CODER_CONSTRAINT "^8.3")"
+add_pkg coder "$CODER_RANGE"
+if [[ "$WITH_US" == "1" ]] && toolchain_cell_without_drush "$CELL"; then
+  log_warn "Not installing drupal/upgrade_status: no drush release installs here (toolchain cell $CELL), and upgrade_status needs drush to analyse anything."
+  WITH_US=0
+fi
 [[ "$WITH_US" == "1" ]] && add_pkg upgrade_status
 [[ ${#LENIENT[@]} -gt 0 ]] && add_pkg lenient
 if [[ "$WITH_CORE_DEV" == "1" ]]; then
@@ -219,11 +237,20 @@ if [[ "$WITH_CORE_DEV" == "1" ]]; then
   PKG_NAMES+=("${_cd%%:*}"); PKG_RANGES+=("${_cd#*:}")
 fi
 
+# A lock recorded for another cell (toolchain_cell_for gave way to the core's
+# cell) is not a set that worked here: none of its pins is used.
+LOCK_USABLE=1
+_lc="$(toolchain_lock_cell "$ROOT")"
+if [[ -n "$_lc" && "$_lc" != "$CELL" ]]; then
+  LOCK_USABLE=0
+  log_info "The project lock records toolchain cell $_lc, not $CELL: its pins are not used."
+fi
 # Is the lock a COMPLETE known-good set (every reference-pinned package we
 # install is in the lock)? Only then is it preferred over the reference.
-lock_complete=1
+lock_complete="$LOCK_USABLE"
 for i in "${!PKG_NAMES[@]}"; do
   n="${PKG_NAMES[$i]}"
+  [[ "$lock_complete" == "1" ]] || break
   [[ -n "$(toolchain_reference_version "$n" "$CELL")" ]] || continue
   [[ -n "$(lock_get ".toolchain.\"$n\"" "")" ]] || { lock_complete=0; break; }
 done
@@ -232,7 +259,7 @@ done
 spec_for() {
   local i="$1" mode="$2" n r lockv refv
   n="${PKG_NAMES[$i]}"; r="${PKG_RANGES[$i]}"
-  lockv="$(lock_get ".toolchain.\"$n\"" "")"
+  lockv=""; [[ "$LOCK_USABLE" == "1" ]] && lockv="$(lock_get ".toolchain.\"$n\"" "")"
   refv="$(toolchain_reference_version "$n" "$CELL")"
   if [[ "$mode" == "pinned" ]]; then
     case "$SOURCE" in

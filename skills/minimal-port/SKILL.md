@@ -360,7 +360,9 @@ Apply only the mechanical, behavior-preserving fixes:
   is the plan's, read with
   `plan_get .range.constraint "<drupal_root>"` (and `plan_get .php.require_php`
   for composer's `require.php`): core-strategy shows each option's consequences,
-  the plan decides. That range is core-strategy's
+  the plan decides. For a Drupal 12 preview (the plan's `target.major` is not
+  11) core-strategy does not apply: the range is the plan's alone (`^11.3 || ^12`
+  by default). For Drupal 11 that range is core-strategy's
   `recommended_core_version_requirement` for the same strategy (`auto` → `^10 || ^11` for a
   BC-preserving port — `^10.N || ^11` when a minor floor was declared (`^10.3`
   stays `^10.3 || ^11`) or the code uses a plugin attribute class that exists only

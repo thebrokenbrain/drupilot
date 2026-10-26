@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # drupilot — scripts/env/resolve-workspace.sh
-# Decide WHERE the Drupal 11 test-bed lives and WHERE the subject module/theme is
+# Decide WHERE the test-bed (of the target major) lives and WHERE the subject module/theme is
 # placed inside it — WITHOUT mutating anything (a pure resolver, like
 # core-strategy.sh). It is the single source of truth that ddev-up.sh and
 # place-subject.sh consult so a LOOSE checkout is never scaffolded on top of.
@@ -15,10 +15,11 @@
 # Resolution of the Drupal ROOT (first match wins):
 #   1. An existing Drupal root found by walking up from the subject (the module is
 #      already inside a site) -> use it, placement 'in-place', loose=false.
-#      In place means the site's OWN core: it must already be on Drupal 11
-#      (core_version, in_place_ok:false + a warning below 11). For a site still
-#      on Drupal 10, an explicit DRUPILOT_WORKSPACE_DIR / --workspace pointing
-#      elsewhere makes it a test-bed port instead (step 2).
+#      In place means the site's OWN core: it must already be on the target
+#      major or later (core_version; in_place_ok:false below it: a Drupal 10
+#      site for a Drupal 11 port, a Drupal 11 site for a Drupal 12 preview).
+#      For such a site, an explicit DRUPILOT_WORKSPACE_DIR / --workspace
+#      pointing elsewhere makes it a test-bed port instead (step 2).
 #      A Composer project root WITHOUT installed core (a monorepo clone: web/core
 #      and vendor/ are gitignored) is never such a root, even with a committed
 #      .ddev/config.yaml: layout 'project-no-core', handled as loose.
@@ -44,10 +45,11 @@
 #     --subject DIR  Module/theme directory (default: current directory).
 #     --workspace DIR  The test-bed root for a loose subject; the same as
 #                    DRUPILOT_WORKSPACE_DIR (the flag wins over the variable).
-#     --target N     The target major the test-bed is named for (default:
-#                    DRUPILOT_TARGET_MAJOR, 11): '<name>-d<N>'. For any N an
-#                    existing '<name>-d11' bed drupilot 0.9 built is still found
-#                    where it looks for the moved subject.
+#     --target N     The target major (default: the frozen plan of the
+#                    current root, else DRUPILOT_TARGET_MAJOR, 11): the
+#                    test-bed is '<name>-d<N>' (for N = 11 the name a drupilot
+#                    0.9 bed carries, CC-17), and an in-place site must run
+#                    Drupal N or later.
 #     --json         Print only the JSON payload (suppress the human table).
 #
 # Output: a human table on STDERR; the recommendation JSON on STDOUT:
@@ -64,7 +66,7 @@
 # outside the repository. testbed_inside_origin: the chosen root lies inside the
 # subject's repository or project (only an explicit DRUPILOT_WORKSPACE_DIR can
 # do that; warned). core_version / in_place_ok: the installed core of an
-# in-place root and whether it is Drupal 11 or later (null otherwise).
+# in-place root and whether it is the target major or later (null otherwise).
 # residue lists untracked local-environment leftovers at the top of the subject
 # (.ddev/, vendor/, node_modules/, .phpstan-cache/, .drupilot/) and symlinks
 # whose target escapes it. residual_ddev is true when the Drupal "root" is the
@@ -111,9 +113,10 @@ SUBJECT_ABS="$(cd "$SUBJECT" 2>/dev/null && pwd || true)"
 [[ -n "$SUBJECT_ABS" && -d "$SUBJECT_ABS" ]] || die "Subject directory not found: '$SUBJECT'." 1
 
 MACHINE="$(subject_machine_name "$SUBJECT_ABS" 2>/dev/null || basename "$SUBJECT_ABS")"
-# The test-bed suffix of the target major: -d11 for Drupal 11 (CC-17).
+# The target major and its test-bed suffix: -d11 for Drupal 11 (CC-17).
 [[ -z "$TARGET_OPT" || "$TARGET_OPT" =~ ^[1-9][0-9]*$ ]] || die "Invalid --target '$TARGET_OPT' (expected an integer such as 11)." 1
-SUFFIX="$(target_workspace_suffix "$TARGET_OPT")"
+TARGET_T="$(target_names_major "$TARGET_OPT")"
+SUFFIX="$(target_workspace_suffix "$TARGET_T")"
 TYPE="$(subject_type "$SUBJECT_ABS" 2>/dev/null || echo module)"
 case "$TYPE" in
   theme)   DEST_SUB="themes";;
@@ -159,10 +162,11 @@ PLACEMENT_NOTE=""
 if [[ -n "$EXISTING_ROOT" ]]; then
   CORE_VERSION="$(drupal_core_version "$EXISTING_ROOT" 2>/dev/null || true)"
   if [[ "$CORE_VERSION" =~ ^([0-9]+)\. ]]; then
-    if [[ "${BASH_REMATCH[1]}" -ge 11 ]]; then IN_PLACE_OK="true"; else IN_PLACE_OK="false"; fi
+    if [[ "${BASH_REMATCH[1]}" -ge "$TARGET_T" ]]; then IN_PLACE_OK="true"; else IN_PLACE_OK="false"; fi
   fi
-  # A site still on Drupal 10 cannot host a Drupal 11 port in place: an explicit
-  # workspace elsewhere turns it into a test-bed port.
+  # A site on an older major than the target cannot host the port in place (it
+  # never upgrades the site's core): an explicit workspace elsewhere turns it
+  # into a test-bed port.
   _ws="$(config_get DRUPILOT_WORKSPACE_DIR "")"
   if [[ "$IN_PLACE_OK" == "false" && -n "$_ws" ]]; then
     case "$_ws" in /*) : ;; *) _ws="$(dirname "$SUBJECT_ABS")/$_ws";; esac
@@ -327,8 +331,8 @@ if [[ "$INSIDE" == "true" ]]; then
   log_plain "  Point DRUPILOT_WORKSPACE_DIR outside it (the default is $_default)."
 fi
 if [[ "$IN_PLACE_OK" == "false" ]]; then
-  log_warn "The Drupal root $ROOT runs Drupal $CORE_VERSION: an in-place port needs the site on Drupal 11 first."
-  log_plain "  Port in a Drupal 11 test-bed instead: set DRUPILOT_WORKSPACE_DIR (or --workspace) to a directory outside it."
+  log_warn "The Drupal root $ROOT runs Drupal $CORE_VERSION: an in-place port needs the site on Drupal $TARGET_T first."
+  log_plain "  Port in a Drupal $TARGET_T test-bed instead: set DRUPILOT_WORKSPACE_DIR (or --workspace) to a directory outside it."
 fi
 
 if [[ "$JSON_ONLY" -eq 0 ]]; then

@@ -9,7 +9,10 @@
 # of the data with cell 12 unverified) warns and resolves from the ranges
 # (exit 0); a lock that
 # records its cell is read as that cell; a lock 1.0 created (schema 1) is
-# never legacy_v1; reading the cell creates no data dir; preflight still
+# never legacy_v1; a lock recorded for another cell (cell 11 or 0.9's on a
+# Drupal 12 root) lends none of its pins, core-dev included; a fresh resolve
+# asks for the cell's coder major; --with-upgrade-status is skipped where the
+# cell has no drush; reading the cell creates no data dir; preflight still
 # finds a known-broken combination on a root whose installed set is not its
 # cell's.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
@@ -86,10 +89,27 @@ assert_eq "... and is not read as legacy_v1" "$(printf '%s' "$out" | jq -r .cell
 D2="$T_TMP/d12again"; mkroot "$D2" 12.0.0-beta1
 LOCK="$(DRUPILOT_PROJECT_DIR="$D2" CLAUDE_PLUGIN_ROOT="$T_REPO" "$T_SH" -c '. "$1"; drupilot_lock_file' _ "$T_LIB")"
 mkdir -p "$(dirname "$LOCK")"; jq '. + {schema: 1, toolchain_cell: "11"}' "$FX/root-state/drupilot-lock.json" > "$LOCK"
-out="$(dry "$D2" --no-core-dev)"
+out="$(dry "$D2")"
 assert_eq "a cell-11 lock on a Drupal 12 root: cell 12" "$(printf '%s' "$out" | jq -r .cell)" "12"
+assert_eq "... and none of its pins is used: cell 12's coder, the core's core-dev" \
+  "$(printf '%s' "$out" | jq -r '[([.packages[] | select(.source == "lock")] | length), (.packages[] | select(.name == "drupal/coder" or .name == "drupal/core-dev") | .spec)] | join(" ")')" \
+  "0 drupal/coder:9.0.1 drupal/core-dev:12.0.0-beta1"
 cp "$FX/root-state/drupilot-lock.json" "$LOCK"
-assert_eq "a 0.9 lock on a Drupal 12 root: cell 12, not legacy_v1" "$(dry "$D2" --no-core-dev | jq -r .cell)" "12"
+out="$(dry "$D2")"
+assert_eq "a 0.9 lock on a Drupal 12 root: cell 12, not legacy_v1, none of its pins" \
+  "$(printf '%s' "$out" | jq -r '[.cell, ([.packages[] | select(.source == "lock")] | length | tostring)] | join(" ")')" "12 0"
+
+# A fresh resolve asks for the coder major of the cell (drupal/core-dev 12
+# requires coder ^9.0); an explicit DRUPILOT_CODER_CONSTRAINT still wins.
+coder() { jq -r '.packages[] | select(.name == "drupal/coder") | .spec'; }
+assert_eq "--source range on Drupal 12: coder ^9.0" "$(dry "$D" --source range --no-core-dev | coder)" "drupal/coder:^9.0"
+assert_eq "  on Drupal 11: coder ^8.3, as before" "$(dry "$N" --source range --no-core-dev | coder)" "drupal/coder:^8.3"
+assert_eq "  DRUPILOT_CODER_CONSTRAINT wins" "$(DRUPILOT_CODER_CONSTRAINT='^9.0.1' dry "$N" --source range --no-core-dev | coder)" "drupal/coder:^9.0.1"
+# upgrade_status needs drush: not on a cell that pins it to null.
+us() { jq -r '[.packages[] | select(.name == "drupal/upgrade_status")] | length'; }
+assert_eq "--with-upgrade-status on Drupal 12 (no drush): skipped" "$(dry "$D" --no-core-dev --with-upgrade-status | us)" "0"
+assert_match "  with a note" "$(cat "$T_TMP/err")" 'Not installing drupal/upgrade_status: no drush release installs here'
+assert_eq "  on Drupal 11: installed" "$(dry "$N" --no-core-dev --with-upgrade-status | us)" "1"
 
 # The smoke-test diagnosis compares with the cell just installed, not the
 # lock's (a --source reference refresh of a 0.9 lock).

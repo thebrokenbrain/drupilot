@@ -15,8 +15,8 @@ printf '{"name": "drupilot-unit/stub-root"}\n' > "$T_TMP/root/composer.json"
 printf "<?php\nclass Drupal {\n  const VERSION = '11.4.8';\n}\n" > "$T_TMP/root/web/core/lib/Drupal.php"
 cp -R "$T_REPO/tests/fixtures/legacy_widgets" "$T_TMP/root/web/modules/custom/"
 # phpcs reports one error, so post-edit-lint reaches its STDOUT path (the
-# PostToolUse context); phpcbf changes nothing.
-printf '#!/bin/sh\nprintf " 3 | ERROR | [x] Missing file doc comment\\n"\nexit 2\n' > "$T_TMP/root/vendor/bin/phpcs"
+# PostToolUse context), and logs its arguments; phpcbf changes nothing.
+printf '#!/bin/sh\necho "$*" >> "%s"\nprintf " 3 | ERROR | [x] Missing file doc comment\\n"\nexit 2\n' "$T_TMP/phpcs.args" > "$T_TMP/root/vendor/bin/phpcs"
 printf '#!/bin/sh\nexit 0\n' > "$T_TMP/root/vendor/bin/phpcbf"
 chmod +x "$T_TMP/root/vendor/bin/phpcs" "$T_TMP/root/vendor/bin/phpcbf"
 printf '%s' 'not json {' > "$T_TMP/garbage.json"
@@ -71,6 +71,10 @@ for h in session-detect-env post-edit-lint guard-contrib; do
     XDG_CACHE_HOME="$rohome/.cache" XDG_CONFIG_HOME="$rohome/.config"
   assert_eq "$h: a HOME it cannot write -> exit 0, at most a hookSpecificOutput" "$(contract)" "0|ok"
 done
+# Phase 1 (nothing ported yet): the phpcs report, like phpcbf, leaves out the
+# unused-use sniffs (ADR 0004: coder 9 reports an unused `use` as an ERROR).
+assert_match "post-edit-lint: the Phase 1 phpcs report leaves out the unused-use sniffs" "$(cat "$T_TMP/phpcs.args" 2> /dev/null)" \
+  '--exclude=Drupal\.Classes\.UnusedUseStatement,SlevomatCodingStandard\.Namespaces\.UnusedUses'  # portability-ok: a phpcs option the stub logged, not grep
 # INV1: an autonomous run never pushes on its own; the guard asks.
 hook guard-contrib "$T_TMP/push.json" DRUPILOT_AUTONOMOUS=true
 assert_eq "INV1: autonomous push -> ask" "$T_RC|$(jq -r '.hookSpecificOutput.permissionDecision' "$T_OUT" 2>/dev/null)" "0|ask"
