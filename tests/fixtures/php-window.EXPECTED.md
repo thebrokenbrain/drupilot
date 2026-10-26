@@ -26,7 +26,7 @@ window is `8.4, 8.5` and the cast and the PDO constant are two non-blocking `hum
 
 ## `d11_php_only`
 
-A Drupal 11 module (`^11.3`, S = T = 11: the plan has no hop, so the stage `upgrade` is skipped `same-major`) that
+A Drupal 11 module (`^11.3`, S = T = 11: the plan has no hop, so the stage `upgrade` applies no Drupal set, only the PHP floor's sets, the compat pass and the codemods) that
 only needs PHP work, with the target PHP 8.5 (W = 8.3..8.5).
 
 | Construct | File | Rule | Result |

@@ -20,7 +20,7 @@ assert_eq "every when condition is in the closed set" \
   "$(jq -c '.conditions as $c | [.stages[] | .when[] | select($c[.] == null)]' "$P")" "[]"
 assert_eq "every skip_reason names one of its stage's conditions" \
   "$(jq -c '[.stages[] | select(.skip_reason) | . as $s | .skip_reason | keys[] | select(. as $k | $s.when | index($k) | not)]' "$P")" "[]"
-assert_eq "upgrade is skipped as same-major without hops" "$(jq -r '.stages[] | select(.id == "upgrade") | .skip_reason.hops' "$P")" "same-major"
+assert_eq "upgrade runs on every standard plan, a same-major one too" "$(jq -c '.stages[] | select(.id == "upgrade") | [.when, .skip_reason]' "$P")" '[["track:standard"],null]'
 assert_eq "every tab is a config/choices.json key" \
   "$(jq -c --slurpfile ch "$C" '[.stages[].tabs[] | select($ch[0].choices[.] == null)]' "$P")" "[]"
 assert_eq "every choice with a stage is a tab of that stage" \

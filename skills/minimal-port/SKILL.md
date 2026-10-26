@@ -710,7 +710,12 @@ the extraction runs again, and Rector, the codemods and the processed lanes
 (`<state_dir>/fixpoint.json` lists what they still have).
 `DRUPILOT_FIXPOINT=enforce` (the default) exits 3, and the port is not done
 until the listed items are fixed (after fixing them, run the validation loop and
-`make-patch.sh --local` again); `warn` reports and goes on.
+`make-patch.sh --local` again); `warn` reports and goes on. A tool with no
+verdict (`no_verdict_tools`) is fixed by making that scan give one, then the
+gate again. A change reverted on purpose is accepted once logged
+(`log-decision.sh --kind rector-revert --rule <Rule or recipe id> --file
+<file>`; a later Rector run applies it again unless `rector.php` skips that
+rule for that path).
 
 **Write the report card (trust + teaching artifact).** While the passes ran you
 should have **tee'd** the official Rector output, the digests pass output and the

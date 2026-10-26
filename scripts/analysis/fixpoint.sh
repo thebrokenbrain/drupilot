@@ -12,6 +12,12 @@
 #   codemods   no codemod that would still change a file
 #   open       no open item in a processed lane (rector, rector-custom,
 #              codemod; the AI lanes join when their executor does)
+# A deliberate revert the decision log records (log-decision.sh --kind
+# rector-revert --rule R [--file F]: R is a Rector rule, short or FQCN, or a
+# codemod's recipe id; without --file it covers every file) is accepted: its
+# Rector findings, codemods and open items are listed under accepted_reverts
+# and never block. A later run-rector.sh --apply applies such a change again
+# unless rector.php skips the rule for that path.
 # It writes <state>/fixpoint.json (converged, the exact items of each list)
 # and records the run in <state>/runs/<run_id>/run-manifest.json (its input
 # and output hashes; DRUPILOT_RUNS_KEEP runs are kept).
@@ -31,7 +37,8 @@
 #     --json          print fixpoint.json on STDOUT
 #
 # A tool with no verdict (Rector, PHPStan, or the port-safety, signature and
-# metadata scans that feed the codemod lane) means not converged.
+# metadata scans that feed the codemod lane) means not converged;
+# no_verdict_tools names them ("extraction" when extract.sh itself gave none).
 #
 # Exit codes: 0 converged, or not converged in warn mode, or off · 1 usage
 # error, or the extraction failed · 3 not converged in enforce mode (a tool
@@ -87,22 +94,43 @@ if [[ -z "$FINDINGS" ]]; then
 fi
 jq -e '.schema == 1 and (.findings | type) == "array"' "$FINDINGS" > /dev/null 2>&1 || die "$FINDINGS is not a findings.json." 1
 jq -e '.schema == 1 and (.items | type) == "array"' "$WORKLIST" > /dev/null 2>&1 || die "$WORKLIST is not a worklist.json." 1
-jq -e '[.tools.rector, .tools.phpstan, .tools["port-safety"], .tools.signatures, .tools.metadata] | any(. != "ok" and . != "partial")' "$FINDINGS" > /dev/null 2>&1 && NOVERDICT=1
+# The deliberate reverts: the subject's rector-revert entries of the decision
+# log, as {rule (its short name, or a recipe id), file (null: every file)}.
+decisions_for_subject "$SUBJECT" | jq -c '[.[] | select(.kind == "rector-revert" and ((.rule // "") | length) > 0)
+  | {rule: (.rule | tostring | split("\\") | last), file: (if (.file // "") == "" then null else .file end)}] | unique' \
+  > "$TMP/reverts.json" 2> /dev/null || printf '[]\n' > "$TMP/reverts.json"
 
 DOC="$TMP/fixpoint.json"
-jq -n -c --slurpfile f "$FINDINGS" --slurpfile w "$WORKLIST" --slurpfile a "$TMP/apply.json" \
+jq -n -c --slurpfile f "$FINDINGS" --slurpfile w "$WORKLIST" --slurpfile a "$TMP/apply.json" --slurpfile rv "$TMP/reverts.json" \
   --arg mode "$MODE" --arg stage "$STAGE" --argjson nov "$NOVERDICT" '
-  $f[0] as $F | $w[0] as $W
+  $f[0] as $F | $w[0] as $W | $rv[0] as $R
   | ["rector", "rector-custom", "codemod"] as $processed
-  | ([$F.findings[] | select(.tool == "rector" and .scope == "current")
-      | {id, rule, file, anchor}] | sort_by([.file, .anchor, .rule])) as $rx
-  | ([$a[0].applications[] | select(.status == "would-apply") | {item_id, recipe, file}] | sort_by([.file, .recipe])) as $cm
-  | ([$W.items[] | select(.status == "open" and (.lane as $l | $processed | index($l))) | {id, lane, file, anchor}]
-     | sort_by([.lane, .file, .anchor])) as $open
+  | def reverted($r; $file): ($r | tostring | split("\\") | last) as $short
+      | any($R[]; .rule == $short and (.file == null or .file == $file));
+  ([$F.findings[] | select(.tool == "rector" and .scope == "current")
+      | {id, rule, file, anchor}] | sort_by([.file, .anchor, .rule])) as $rx_all
+  | [$rx_all[] | select(reverted(.rule; .file))] as $rx_rev
+  | [$rx_all[] | select(reverted(.rule; .file) | not)] as $rx
+  | ([$a[0].applications[] | select(.status == "would-apply") | {item_id, recipe, file}] | sort_by([.file, .recipe])) as $cm_all
+  | [$cm_all[] | select(reverted(.recipe; .file))] as $cm_rev
+  | [$cm_all[] | select(reverted(.recipe; .file) | not)] as $cm
+  | [$rx_rev[].id] as $rev_ids
+  | ([$W.items[] | select(.status == "open" and (.lane as $l | $processed | index($l)))
+      | . as $it
+      | {id, lane, file, anchor,
+         accepted: (((($it.finding_ids // []) | length) > 0 and (($it.finding_ids // []) | all(. as $i | $rev_ids | index($i))))
+                    or any(($it.recipes // [])[]; reverted(.; $it.file)))}]
+     | sort_by([.lane, .file, .anchor])) as $open_all
+  | [$open_all[] | select(.accepted) | del(.accepted)] as $open_rev
+  | [$open_all[] | select(.accepted | not) | del(.accepted)] as $open
+  | [["rector", "phpstan", "port-safety", "signatures", "metadata"][] as $t
+      | select(($F.tools[$t] // "missing") as $v | ($v != "ok" and $v != "partial")) | $t] as $nvt0
+  | ($nvt0 + (if $nov == 1 and ($nvt0 | length) == 0 then ["extraction"] else [] end)) as $nvt
   | {schema: 1, tool: "fixpoint", mode: $mode, stage: $stage, processed_lanes: $processed,
-     no_verdict: ($nov == 1),
-     converged: ($nov == 0 and ($rx | length) == 0 and ($cm | length) == 0 and ($open | length) == 0),
+     no_verdict: (($nvt | length) > 0), no_verdict_tools: $nvt,
+     converged: (($nvt | length) == 0 and ($rx | length) == 0 and ($cm | length) == 0 and ($open | length) == 0),
      rector: $rx, codemods: $cm, open_items: $open,
+     accepted_reverts: {rector: $rx_rev, codemods: $cm_rev, open_items: $open_rev},
      findings_hash: ($F.meta.findings_hash // null), worklist_hash: ($W.meta.worklist_hash // null)}' | canon_json > "$DOC"
 CONV="$(jq -r '.converged' "$DOC")"
 jq --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '. + {meta: {generated_at: $at}}' "$DOC" | canon_json > "$DOC.meta"
@@ -114,7 +142,7 @@ RC=0
 if [[ "$CONV" == "true" ]]; then
   log_ok "fixpoint: converged (Rector, the codemods and the processed lanes have nothing left)."
 else
-  _what="$(jq -r '[(if .no_verdict then "Rector or PHPStan gave no verdict" else empty end),
+  _what="$(jq -r '[(if .no_verdict then "no verdict from \(.no_verdict_tools | join(", "))" else empty end),
     (if (.rector | length) > 0 then "\(.rector | length) Rector change(s)" else empty end),
     (if (.codemods | length) > 0 then "\(.codemods | length) codemod change(s)" else empty end),
     (if (.open_items | length) > 0 then "\(.open_items | length) open item(s) in a processed lane" else empty end)] | join(", ")' "$DOC")"
@@ -122,6 +150,11 @@ else
   else log_warn "fixpoint: not converged: $_what (see fixpoint.json; DRUPILOT_FIXPOINT=warn)."; fi
   jq -r '(.rector[] | "  rector   \(.file) \(.anchor): \(.rule)"), (.codemods[] | "  codemod  \(.file): \(.recipe) (\(.item_id))"),
          (.open_items[] | "  open     \(.id) \(.lane) \(.file) \(.anchor)")' "$DOC" >&2
+fi
+if jq -e '[.accepted_reverts[][]] | length > 0' "$DOC" > /dev/null 2>&1; then
+  log_info "fixpoint: deliberate reverts accepted (the decision log's rector-revert entries):"
+  jq -r '(.accepted_reverts.rector[] | "  rector   \(.file) \(.anchor): \(.rule)"), (.accepted_reverts.codemods[] | "  codemod  \(.file): \(.recipe) (\(.item_id))"),
+         (.accepted_reverts.open_items[] | "  open     \(.id) \(.lane) \(.file) \(.anchor)")' "$DOC" >&2
 fi
 [[ "$AS_JSON" == "1" ]] && cat "$DOC.meta"
 exit "$RC"

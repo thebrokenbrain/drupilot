@@ -84,6 +84,19 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `DRUPILOT_FIXPOINT=warn` keeps the alphas' behaviour (report and go on). An
   unknown value now falls back to `enforce`, the default. The port and refactor
   prompts, the README and the upgrade page say so.
+- **The fixpoint gate accepts a deliberate revert.** A change reverted on
+  purpose and logged with `log-decision.sh --kind rector-revert --rule R
+  [--file F]` (R is a Rector rule or a codemod's recipe id; without `--file` it
+  covers every file) never blocks: `fixpoint.json` lists what it covers under
+  `accepted_reverts`. `no_verdict_tools` names the tools that gave no verdict,
+  and so does the gate's message. `schemas/fixpoint.schema.json` gains both
+  fields; the port and refactor prompts say how to clear each case.
+- **The pipeline's `upgrade` stage runs on a same-major plan** (ADR 0028
+  amendment). Rector has no Drupal set there, but its pass applies the PHP
+  floor's sets and the compat pass, and the codemods run. The stage was
+  skipped (`same-major`), so `/drupilot-port` with the digests layer off left
+  those changes to the fixpoint gate (`d11_php_only` never converged). The
+  `hops` condition leaves `config/pipeline.json`.
 - **README.md and README_es.md describe 1.0**: the upgrade plan, the PHP
   window, the deterministic core and the Drupal 12 preview; the minimum Claude
   Code version; how to update; a Documentation section; and `DRUPILOT_FIXPOINT`
@@ -102,6 +115,13 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   no longer reported (coder 9, on Drupal 12, reports it as an ERROR; ADR 0004).
 
 ### Fixed
+- **A `validate` stage that did not converge in warn mode is no longer reused.**
+  `pipeline.sh` recorded it as done and up to date, so a later run under
+  `enforce` skipped the gate. It is now recorded with the reason
+  `fixpoint-not-converged`, and the gate runs again.
+- **The full-refactor skill stops on a failed fixpoint gate.** Under `enforce`
+  an exit 3 means the refactor is not done, and no report is rendered before
+  the gate passes; its Definition of done lists the gate.
 - **The unit gate no longer times out on the jq 1.6 CI leg.** The per-test
   timeout of `scripts/dev/unit.sh` is now 600 s by default (it was 300 s).
   `core_strategy_view` takes about 200 s in a `debian:12-slim` container on a

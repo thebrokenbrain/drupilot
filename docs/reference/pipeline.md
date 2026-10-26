@@ -12,7 +12,7 @@ The stages of a port, in order, from `config/pipeline.json`. A stage id is publi
 | 4 | `assess` | Assess viability | det | `always` | `EXISTING_WORK` | — |
 | 5 | `plan-final` | Finalize the upgrade plan | det+tab | `always` | `CORE_TARGET` | — |
 | 6 | `d7-rewrite` | Rewrite Drupal 7 code (experimental) | det+ai | `track:d7-assisted`, `experimental-d7`, `not-auto` | — | — |
-| 7 | `upgrade` | Upgrade the Drupal API | det | `track:standard`, `hops` (else skipped: `same-major`) | `DIGESTS_RULES`, `PORT_ATTRIBUTES` | `rector-official`, `rector-tests`, `digests`, `recipes` |
+| 7 | `upgrade` | Upgrade the Drupal API | det | `track:standard` | `DIGESTS_RULES`, `PORT_ATTRIBUTES` | `rector-official`, `rector-tests`, `digests`, `recipes` |
 | 8 | `php` | Adapt to the PHP target | det | `always` | — | — |
 | 9 | `residual` | Fix what the tools cannot | ai | `worklist:ai` | — | — |
 | 10 | `validate` | Validate | det | `always` | `D10_CHECK` | `phpcbf`, `phpcs`, `phpstan`, `port-safety`, `signatures`, `deprecations`, `core-matrix`, `fixpoint` |
@@ -26,7 +26,6 @@ The stages of a port, in order, from `config/pipeline.json`. A stage id is publi
 - `always`: every run
 - `track:standard`: the upgrade plan's track is standard (a Drupal 8+ source)
 - `track:d7-assisted`: the upgrade plan's track is d7-assisted (a Drupal 7 source)
-- `hops`: the upgrade plan has at least one major hop (hops is not [])
 - `experimental-d7`: DRUPILOT_EXPERIMENTAL_D7=on
 - `worklist:ai`: worklist.json has open items in an ai-* lane
 - `optin`: the developer opted in (it is never run by default)

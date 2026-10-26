@@ -250,7 +250,9 @@ reads for the manifest's `rector_rules` (Step 9). Undo or rewrite any applied hu
 `pipeline.sh` needs the module in a git repository (its checkpoints are refs
 under `refs/drupilot/stages/`; the real index and HEAD are never touched).
 Without one, apply with `run-rector.sh --subject "$1" --apply` as before. A
-plan with no hop (a same-major port) skips the stage (`same-major`). Its exit 3
+plan with no hop (a same-major port) runs the stage too: Rector has no Drupal
+set then and applies the PHP floor's sets and the compat pass, and the codemods
+run. Its exit 3
 means the stage failed and the tree is back at its checkpoint:
 `<state_dir>/stages.json` and `<state_dir>/upgrade-rector.json` (the Rector
 `--json`) say why.
@@ -679,8 +681,13 @@ that would still apply, and the open items of the processed lanes (`rector`,
 `rector-custom`, `codemod`). Under `DRUPILOT_FIXPOINT=enforce` (the default)
 a failure exits 3 and the port is not done: fix the items, run the validation
 loop again, then `make-patch.sh --local` again (the local patch was written
-before) and the gate once more. Under `warn` a failure is reported and the port
-goes on: name the items in the summary.
+before) and the gate once more. A tool with no verdict (`no_verdict_tools`) is
+fixed by making that scan give one (its own run and log), then the gate again.
+A change you reverted on purpose is accepted once logged
+(`log-decision.sh --kind rector-revert --rule <Rule or recipe id> --file
+<file>`); a later Rector run applies it again unless `rector.php` skips that
+rule for that path. Under `warn` a failure is reported and the port goes on:
+name the items in the summary.
 
 **Write the port report card (the trust + teaching artifact).** The manifest is
 generated, never written by hand: `scripts/ai/manifest.sh` builds

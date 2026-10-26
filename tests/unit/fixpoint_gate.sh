@@ -3,13 +3,18 @@
 # the codemods and the processed lanes (rector, rector-custom, codemod) have
 # nothing left.
 # - legacy_widgets after its port (the findings golden without its one Rector
-#   change, the worklist computed from it): converged;
+#   change and its 18 signature, safety and metadata findings, which the
+#   port's codemods and manual fixes clear; the worklist computed from it):
+#   converged. It checks the gate on a hand-made input, not a port's outcome
+#   (the lab runs the fixture matrix through the port);
 # - an injected non-convergent case lists the exact items: a Rector change, a
 #   codemod that would still apply, an open item in a processed lane; the AI
 #   lanes are not processed yet;
 # - DRUPILOT_FIXPOINT: enforce (the default from 1.0.0-rc.1) exits 3, warn
 #   reports and exits 0, off skips, any other value is the default; a tool
-#   with no verdict never converges;
+#   with no verdict never converges, and no_verdict_tools names it;
+# - a deliberate revert the decision log records (rector-revert: a Rector
+#   rule or a recipe id, in a file or every file) is accepted, never blocks;
 # - fixpoint.json and the run manifest (<state>/runs/<run_id>/), of which
 #   DRUPILOT_RUNS_KEEP are kept;
 # - the live path (extraction again, the codemods in dry-run) with stub tools.
@@ -63,10 +68,11 @@ assert_eq "off: nothing runs, exit 0" "$T_RC|$(jq -c '[.mode, .converged]' "$T_O
 # A tool with no verdict never converges.
 jq '.tools.phpstan = "failed"' "$T_TMP/fp2.json" > "$T_TMP/fnv.json"
 DRUPILOT_FIXPOINT=enforce t_run "$T_SH" "$FX" --subject "$S" --findings "$T_TMP/fnv.json" --worklist "$T_TMP/wp.json" --json
-assert_eq "PHPStan with no verdict: not converged (enforce: exit 3)" "$T_RC|$(jq -c '[.converged, .no_verdict]' "$T_OUT")" '3|[false,true]'
+assert_eq "PHPStan with no verdict: not converged (enforce: exit 3)" "$T_RC|$(jq -c '[.converged, .no_verdict, .no_verdict_tools]' "$T_OUT")" '3|[false,true,["phpstan"]]'
+assert_match "  the error names it" "$(t_err)" "not converged: no verdict from phpstan"
 jq '.tools["port-safety"] = "failed"' "$T_TMP/fp2.json" > "$T_TMP/fps.json"
 DRUPILOT_FIXPOINT=warn t_run "$T_SH" "$FX" --subject "$S" --findings "$T_TMP/fps.json" --worklist "$T_TMP/wp.json" --json
-assert_eq "  a port-safety scan with no verdict (it feeds the codemod lane): not converged" "$T_RC|$(jq -c '[.converged, .no_verdict]' "$T_OUT")" '0|[false,true]'
+assert_eq "  a port-safety scan with no verdict (it feeds the codemod lane): not converged" "$T_RC|$(jq -c '[.converged, .no_verdict, .no_verdict_tools]' "$T_OUT")" '0|[false,true,["port-safety"]]'
 
 # DRUPILOT_RUNS_KEEP: the oldest runs go.
 rm -rf "${SD:?}/runs"
@@ -90,9 +96,29 @@ assert_eq "live: extracted again at the validate stage, the codemod that would a
   '0|1|[false,[["safety.class-case","legacy_widgets.services.yml"]]]'
 t_run env CLAUDE_PLUGIN_ROOT="$P" DRUPILOT_FIXPOINT=warn STUB_EXTRACT_RC=3 "$T_SH" "$P/scripts/analysis/fixpoint.sh" --subject "$S" --stage refactor --json
 assert_eq "  an extraction with no verdict (exit 3): not converged; --stage passed on" \
-  "$T_RC|$(jq -c '[.converged, .no_verdict, .stage]' "$T_OUT")|$(grep -c -- '--stage refactor' "$T_TMP/calls")" '0|[false,true,"refactor"]|1'
+  "$T_RC|$(jq -c '[.converged, .no_verdict, .no_verdict_tools, .stage]' "$T_OUT")|$(grep -c -- '--stage refactor' "$T_TMP/calls")" '0|[false,true,["extraction"],"refactor"]|1'
 t_run env CLAUDE_PLUGIN_ROOT="$P" STUB_EXTRACT_RC=2 "$T_SH" "$P/scripts/analysis/fixpoint.sh" --subject "$S"
 assert_eq "  an extraction that fails: exit 1" "$T_RC" "1"
+
+# A deliberate revert the decision log records is accepted: the reverted
+# Rector change and the open item of that finding never block; a codemod's
+# recipe id, in a file or (no --file) in every file, covers that lane's items.
+LD="$T_REPO/scripts/analysis/log-decision.sh"
+t_run "$T_SH" "$LD" --subject "$S" --kind rector-revert --rule FunctionFirstClassCallableRector \
+  --file src/Form/WidgetImportForm.php --what "Kept the string callable" --why "A test pins it"
+assert_eq "a rector-revert logged" "$T_RC" "0"
+t_run "$T_SH" "$FX" --subject "$S" --findings "$F" --worklist "$W" --json
+assert_eq "  its Rector change and that finding's open item are accepted; the codemod items still block (exit 3)" \
+  "$T_RC|$(jq -c '[.converged, (.rector | length), [.accepted_reverts.rector[].rule], [.accepted_reverts.open_items[].lane], [.open_items[].lane]]' "$T_OUT")" \
+  '3|[false,0,["Rector\\CodingStyle\\Rector\\FuncCall\\FunctionFirstClassCallableRector"],["rector"],["codemod","codemod"]]'
+assert_match "  the accepted reverts are listed" "$(t_err)" "deliberate reverts accepted"
+t_run "$T_SH" "$LD" --subject "$S" --kind rector-revert --rule safety.class-case --file legacy_widgets.services.yml --what "Kept the class name" --why "Checked by hand"
+t_run "$T_SH" "$LD" --subject "$S" --kind rector-revert --rule meta.submodule-core-req --what "Kept the requirement" --why "Checked by hand"
+t_run "$T_SH" "$FX" --subject "$S" --findings "$F" --worklist "$W" --json
+assert_eq "  with the two codemods' reverts (one in every file): converged, exit 0" \
+  "$T_RC|$(jq -c '[.converged, (.accepted_reverts.open_items | length), (.open_items | length)]' "$T_OUT")" '0|[true,3,0]'
+assert_eq "  fixpoint.json still validates against its schema" "$(valid fixpoint "$SD/fixpoint.json")" ""
+rm -f "$(decisions_log_file "$S")"
 
 # Usage errors.
 t_run "$T_SH" "$FX" --subject "$S" --findings "$F"

@@ -77,7 +77,9 @@ The [state reference](../reference/state.md) describes each file.
 At the end of a port or a refactor, `validate` runs the extraction once more
 and checks that the deterministic lanes have nothing left: no Rector change,
 no codemod that would still apply, no open item in the `rector` or `codemod`
-lanes. A tool that gave no verdict never counts as a pass.
+lanes. A tool that gave no verdict never counts as a pass. A change you
+reverted on purpose counts once the decision log records it
+(`log-decision.sh --kind rector-revert`).
 
 `DRUPILOT_FIXPOINT` decides what a failure does:
 - `warn`, the default before 1.0.0-rc.1, reports the items and goes on;

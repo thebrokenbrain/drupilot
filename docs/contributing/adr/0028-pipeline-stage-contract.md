@@ -33,8 +33,9 @@ with the remedy, and `/drupilot-port` falls back to the 0.9 calls.
 
 **The M4 stages.**
 - `upgrade`: the official Rector pass (`run-rector.sh --apply`), the extraction at stage `upgrade`, and the
-  codemods (`apply-recipes.sh --reextract`). It is skipped with reason `same-major` when the plan has no hop.
-  The digests layer, which the developer reviews, stays in `/drupilot-port`.
+  codemods (`apply-recipes.sh --reextract`). It is skipped with reason `same-major` when the plan has no hop
+  (amended in 1.0.0-rc.1, see below). The digests layer, which the developer reviews, stays in
+  `/drupilot-port`.
 - `php`: a placeholder until M5, recorded as `skipped` with reason `placeholder`.
 - `validate`: the fixpoint gate (`fixpoint.sh`). Its exit 3 under `DRUPILOT_FIXPOINT=enforce` fails the stage.
 - `report`: `manifest.sh` and `port-report.sh`.
@@ -49,3 +50,10 @@ arrives in M7.
 - A failed stage leaves the tree as the stage found it, so the next run starts from a known state.
 - The checkpoint refs accumulate under `refs/drupilot/stages/`. They are local: never pushed, and invisible to
   `git log` and `git status`.
+
+## Amendment (1.0.0-rc.1)
+
+`upgrade` runs on every plan. On a same-major plan (no hop) Rector has no Drupal set, but its pass still applies
+the PHP floor's sets and the compat pass, and the codemods run. Skipped, those changes were left to the fixpoint
+gate, which now stops the stage by default (`DRUPILOT_FIXPOINT=enforce`, T-M11-06). A `validate` whose gate did
+not converge in warn mode is recorded with the reason `fixpoint-not-converged` and is never up to date.

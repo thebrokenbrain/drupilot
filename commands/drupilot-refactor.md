@@ -297,8 +297,11 @@ Summarize in English:
 Rector, the codemods and the processed lanes must have nothing left on the
 refactored tree (`<state_dir>/fixpoint.json`). Under `DRUPILOT_FIXPOINT=enforce`
 (the default; exit 3) the refactor is not done until those items are fixed, the
-validation loop and `make-patch.sh --local` run again, and the gate passes;
-under `warn` report what it lists.
+validation loop and `make-patch.sh --local` run again, and the gate passes; a
+tool with no verdict (`no_verdict_tools`) is fixed by making that scan give
+one, and a change reverted on purpose is accepted once logged
+(`log-decision.sh --kind rector-revert --rule <Rule or recipe id> --file
+<file>`). Under `warn` report what it lists.
 
 **Refresh the port report card (trust + teaching).** Regenerate the manifest for
 Phase 2 with `scripts/ai/manifest.sh --phase refactor`: it is built from the
