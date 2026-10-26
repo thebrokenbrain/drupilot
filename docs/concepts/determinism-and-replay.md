@@ -3,7 +3,7 @@
 !!! note "Summary"
     The same module, plan and lock give the same port. drupilot gets there
     with four parts: pinned inputs, canonical artifacts, a fixpoint check, and
-    (in a later pre-release) a replay cache for the AI's answers. This page
+    (in drupilot 1.2) a replay cache for the AI's answers. This page
     covers the first three.
 
 ## Pinned inputs

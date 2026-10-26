@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # drupilot — scripts/drupilot.sh
-# The headless dispatcher (AR-22, X9). Until it gains its other verbs (M10), it
+# The headless dispatcher (AR-22, X9). Until it gains its other verbs (1.3), it
 # answers one: `plan show`, the "drupilot plan" block a skill or command
 # renders with a load-time !`...` span, and the fallback such a prompt points
 # to when the span did not run (AR-26).
