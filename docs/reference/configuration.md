@@ -46,7 +46,7 @@ Hands-off mode (same as the `auto` mode word): unattended setup→assess→port�
 
 ### `DRUPILOT_CODER_CONSTRAINT`
 
-`drupal/coder` branch (PHPCS 3.x vs 4.x). Applies only to a fresh resolve (`DRUPILOT_TOOLCHAIN_SOURCE=range` or `DRUPILOT_DETERMINISTIC=false`); otherwise the locked version or the known-good reference version (`config/toolchain-reference.json`) is installed.
+`drupal/coder` branch (PHPCS 3.x vs 4.x). Applies only to a fresh resolve (`DRUPILOT_TOOLCHAIN_SOURCE=range` or `DRUPILOT_DETERMINISTIC=false`); otherwise the locked version or the known-good reference version (`config/toolchain-reference.json`) is installed. Unset, a fresh resolve asks for the major.minor of the toolchain cell's coder (`^8.3` on Drupal 11, `^9.0` on Drupal 12), else this default.
 
 - **Default:** `^8.3`
 - **Type:** string

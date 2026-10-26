@@ -64,6 +64,7 @@ tell the user to run `/drupilot-setup` first and stop.
   echo "core_strategy=$(config_get_noalias DRUPILOT_CORE_TARGET_STRATEGY auto)"; \
   PROOT="$(subject_project_root "$SUBJECT" 2>/dev/null || true)"; \
   echo "draft_range=$([[ -n "$PROOT" ]] && plan_get .range.strategy "$PROOT" 2>/dev/null) $([[ -n "$PROOT" ]] && plan_get .range.constraint "$PROOT" 2>/dev/null)"; \
+  echo "target_major=$(DRUPILOT_PROJECT_DIR="${PROOT:-$SUBJECT}" target_names_major)"; \
   echo "use_digests=$(config_get DRUPILOT_USE_DIGESTS_RULES true)"; \
   echo "digests_ref=$(config_get DRUPILOT_DIGESTS_REF main)"; \
   echo "generate_rules=$(config_get DRUPILOT_GENERATE_RULES ask)"' \
@@ -79,6 +80,11 @@ you can show the consequences:
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/core-strategy.sh" --subject "$1" --phase port --json
 ```
 
+`core-strategy.sh` answers for Drupal 11 only. When `target_major` above is not
+11 (a preview port to a pre-release such as Drupal 12), ignore its range,
+`require_php` and `verify_cores`: the plan decides the range (for Drupal 12,
+`^11.3 || ^12` by default, `^12` with `DRUPILOT_CORE_TARGET_STRATEGY=target-only`).
+
 **Decision point — let the developer own the core target (G4/G5).** This is one
 of the most consequential choices in the port, so surface it as a tab with
 **AskUserQuestion** (header "Core target") *unless* the run is autonomous
@@ -86,7 +92,10 @@ of the most consequential choices in the port, so surface it as a tab with
 pinned, or the setup's draft plan pinned an explicit range (`draft_range` above
 starts with `explicit`: a `DRUPILOT_DRUPAL_TARGET` such as `^10.3 || ^11`, ADR
 0021): then the range is that one, there is no tab, and the final plan below
-takes it with `--range`. A pre-answer comes first, also in an autonomous run:
+takes it with `--range`. There is no tab either when `target_major` is not 11
+(the options below are Drupal 11's): resolve the final plan without
+`DRUPILOT_CORE_TARGET_STRATEGY` (the script reads the setting), persist nothing,
+and report the plan's range. A pre-answer comes first, also in an autonomous run:
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key CORE_TARGET --subject "$1" --persist --json
@@ -134,9 +143,10 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "$1" --p
 ```
 
 - **Exit 0**: the final plan is frozen; it may add hops or raise the core floor
-  over the draft, never change the target, the PHP target or the test-bed. If its
-  `.target.major` is not 11, stop: a port to Drupal 12 needs its test-bed, which
-  arrives with a later drupilot release (T-M3-08); change nothing.
+  over the draft, never change the target, the PHP target or the test-bed. When
+  `.target.preview` is `true`, this is a preview port to a pre-release core: say
+  so in the summary, and treat its `hard_breaks` (core removals) as items a
+  person must resolve.
 - **Exit 2**: nothing was written. Show `.message` and `.choices`; a
   `final-changes-frozen` refusal means the setup's choices no longer hold (for
   example the PHP target changed since): send the developer to
@@ -532,7 +542,9 @@ findings need no change. Tee the human output into `<state_dir>/change-log.txt`.
 
 The validate loop only ever sees the Drupal 11 test-bed. When the requirement set
 in Step 6 still admits Drupal 10 (`verify_cores` in the Step 1 JSON has a `10…`
-leg) and `DRUPILOT_VERIFY_CORES` is not `off`, verify it statically on a real
+leg), the plan's target major is 11 (`target_major`; a preview's range keeps no
+Drupal 10, and its Drupal 11 half stays declared, not verified) and
+`DRUPILOT_VERIFY_CORES` is not `off`, verify it statically on a real
 Drupal 10 core once the loop is clean (see the `minimal-port` skill §6a):
 
 ```bash

@@ -135,14 +135,14 @@ NO_MATCH=0
 # --check on a path that no longer exists: the usual reason is a 'move'
 # placement, which relocated the origin into the test-bed. Look for the
 # baseline where place-subject.sh would have put the test-bed (the pinned
-# DRUPILOT_WORKSPACE_DIR, then the '<name>-d11' sibling) and accept it when its
+# DRUPILOT_WORKSPACE_DIR, then the '<name>-d<T>' sibling) and accept it when its
 # recorded .source is the given path; .origin then points at the moved tree.
 if [[ "$MODE" == "check" && -z "$ROOT" && -z "$SUBJECT_ABS" ]]; then
   _base="$(basename "$SUBJECT")"
   _parent="$(cd "$(dirname "$SUBJECT")" 2>/dev/null && pwd || true)"
   if [[ -n "$_parent" && -n "$_base" ]]; then
     _gone="$_parent/$_base"
-    for _c in "$(config_get DRUPILOT_WORKSPACE_DIR "")" "$_parent/${_base}$(target_workspace_suffix)" "$_parent/${_base}-d11"; do
+    for _c in "$(config_get DRUPILOT_WORKSPACE_DIR "")" "$_parent/${_base}$(target_workspace_suffix)"; do
       [[ -n "$_c" && -d "$_c" ]] || continue
       _c="$(cd "$_c" && pwd)"
       while IFS= read -r _b; do

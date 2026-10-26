@@ -46,9 +46,10 @@ If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scri
   webdriver host. After DDEV writes `.ddev/config.yaml`, read it back for the real
   values (project name, `php_version`, webdriver service host).
 - **PHP target drives everything.** The DDEV `php_version`, the PHPStan level
-  expectations and some PHPCS sniffs all derive from `DRUPILOT_PHP_TARGET`
-  (default `8.3`); Rector's PHP level is the floor of the declared core range,
-  never above it (ADR 0002). Resolve it with `resolve_php_target`; see
+  expectations and some PHPCS sniffs all derive from the PHP target: an explicit
+  `DRUPILOT_PHP_TARGET`, else the frozen plan's `php.final`, else the target's
+  default (Drupal 11: `resolve_php_target`, 8.3; Drupal 12: 8.5); Rector's PHP
+  level is the floor of the declared core range, never above it (ADR 0002). See
   the `php-target-tuning` skill for the PHP 8.5 caveat (it needs Drupal 11.3 or
   later).
 
@@ -78,7 +79,8 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/detect-php.sh" --json
 # -> {host_php, ddev_php, target, supported, unconfirmed}
 ```
 
-Use `target` for the rest of the flow. If `unconfirmed` is true (i.e. 8.5),
+Use `target` for the rest of the flow (it is the Drupal 11 PHP target; the
+test-bed takes the frozen plan's `php.final`, §3, which for Drupal 12 is 8.5). If `unconfirmed` is true (i.e. 8.5),
 say that PHP 8.5 needs Drupal 11.3 or later and that no Rector `php85` set is
 assumed; `ddev-up.sh` warns when the core it creates may be older (the
 lock-pinned core, else the lowest minor the Drupal target admits) and when the
@@ -95,31 +97,37 @@ before anything is created (ADR 0018):
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "<path>" --phase draft --root "<drupal_root>" --freeze --json
 ```
 
-`<drupal_root>` is `resolve-workspace.sh`'s answer (for a loose subject, the
-test-bed it will create; never a site still on Drupal 10). Exit 2 refuses with
+`<drupal_root>` is `resolve-workspace.sh --target <T>`'s answer (for a loose
+subject, the test-bed it will create, `<name>-d<T>`; never a site on an older
+major than T). Exit 2 refuses with
 `.message` and `.choices` and writes nothing: re-ask the tabs, overriding the value
 that led to the refusal (a `d7-auto` refusal stops). The answers are persisted only
 after exit 0 — into the root's `.drupilot.json`, right after §3 creates it for a loose
-subject — and not at all while the target is not 11: until T-M3-08 such a target
-stops the setup once the plan is frozen. After §6 installs the toolchain and the lock
+subject (with `DRUPILOT_ALLOW_PRERELEASE=true` after a pre-release opt-in). A
+pre-release target (Drupal 12) gets its own test-bed: `ddev-up.sh` creates the plan's
+pre-release core, requires no drush where the toolchain cell pins none, and installs
+`drupal/core` from source where the cell says so (ADR 0004). After §6 installs the toolchain and the lock
 records the test-bed's core, run the same command again: it re-plans on the
 installed core when that is another minor.
 
-## 3. Create / start the Drupal 11 DDEV project
+## 3. Create / start the DDEV project (the target major's)
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-up.sh" \
-  --php "<target>" --subject "<path/to/module-or-theme>" --name "<ddev_name>" --docroot web
+DRUPILOT_TARGET_MAJOR=<T> bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-up.sh" \
+  --subject "<path/to/module-or-theme>" --name "<ddev_name>" --docroot web
 ```
 
-Pass `--name` explicitly (e.g. `<machine_name>-d11`); otherwise the DDEV project is
-named after the test-bed directory. stdout carries only the optional `--json` summary
+Pass `--name` explicitly (e.g. `<machine_name>-d<T>`, `-d11` for Drupal 11); otherwise
+the DDEV project is named after the test-bed directory. Pass `--php` only for a PHP
+the developer gave: without it the script takes an explicit `DRUPILOT_PHP_TARGET`
+(the environment or the root's `.drupilot.json`), else the frozen plan's `php.final`,
+else the target's default, so the bed runs the PHP the plan targets. stdout carries only the optional `--json` summary
 (`{project_dir, project_name, php_version, primary_url, drupal_target}`); every log,
 the preflight report and the ddev/composer output go to stderr.
 
 What `ddev-up.sh` does (idempotently):
 
-- `ddev config --project-type=<the target's DDEV type> --docroot=web --php-version=$(resolve_php_target)`
+- `ddev config --project-type=<the target's DDEV type> --docroot=web --php-version=<the plan's php.final>`
   only if the project is not already configured (`target_ddev_type`: the
   plan's `target.ddev_type`, from `config/targets/<T>.json`).
 - `ddev start`.
@@ -133,7 +141,10 @@ What `ddev-up.sh` does (idempotently):
   (e.g. after `/drupilot-clean --level vendor`).
 - Marks a root it built as a drupilot test-bed (`drupilot_testbed` in its
   `.drupilot.json`), which is what lets `/drupilot-clean` remove it later.
-- Ensures `drush/drush:^13` is present (D11 requires Drush 13).
+- Ensures `drush/drush:^13` is present (D11 requires Drush 13; none where the
+  toolchain cell pins drush to `null`, Drupal 12).
+- Refuses (exit 1, before `ddev config`) a root whose installed core is an older
+  major than the target: drupilot never upgrades a site's core.
 - **Reads the generated `.ddev/config.yaml`** for the real project name and
   hostnames instead of guessing `*.ddev.site`.
 
@@ -395,11 +406,14 @@ already in place, say "already configured — skipped". Hand off to the
   `composer.json`. `ddev-up.sh` already guards this; do not call it manually
   inside a populated project.
 - The installed DDEV may not provide a PHP 8.5 image; `ddev-up.sh` warns about it.
-  Fall back to `8.3` rather than failing the whole setup.
+  For Drupal 11 fall back to `8.3` rather than failing the whole setup; Drupal 12
+  needs 8.5, so upgrade DDEV instead.
 - The webdriver hostname differs by add-on version — never hardcode
   `selenium-chrome:4444`; read the generated YAML / add-on output.
 - Rector and PHPStan need the Drupal **core tree present** (no database), so they
   work right after `ddev composer create-project`. `upgrade_status` additionally needs an
-  **installed** site (DB) — defer it until `ddev drush site:install` has run.
+  **installed** site (DB) — defer it until `ddev drush site:install` has run. A
+  Drupal 12 bed has no drush: `run-upgrade-status.sh` skips it there, and
+  `install-toolchain.sh --with-upgrade-status` does not install it.
 - All status messages go to stderr via the `log_*` helpers; stdout stays clean
   for parseable payloads (e.g. `detect-php.sh --json`).

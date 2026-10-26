@@ -37,19 +37,19 @@ H4 scripts/contrib/find-upstream-issue.sh 7
 H4 scripts/contrib/make-issue.sh 16
 H4 scripts/contrib/make-patch.sh 3
 H4 scripts/contrib/open-mr.sh 2
-H4 scripts/env/ddev-up.sh 5
+H4 scripts/env/ddev-up.sh 4
 H4 scripts/env/detect-php.sh 3
 H4 scripts/env/install-toolchain.sh 2
 H4 scripts/env/next-step.sh 4
 H4 scripts/env/place-subject.sh 1
 H4 scripts/env/preflight.sh 3
 H4 scripts/env/render-templates.sh 1
-H4 scripts/env/resolve-workspace.sh 3
+H4 scripts/env/resolve-workspace.sh 1
 H4 scripts/env/state.sh 3
 H4 scripts/lib/config.sh 6
 H4 scripts/lib/core.sh 1
 H4 scripts/lib/php-scan.sh 1
-H4 scripts/lib/plan.sh 5
+H4 scripts/lib/plan.sh 5  # plan_tests_pass compares PHPUnit majors (attributes from 10, annotations ignored from 12), tool facts (ADR 0032); the -d11 suffix line went with CC-17
 H4 scripts/lib/strategy.sh 29
 H4 scripts/lib/toolchain.sh 8
 H4 scripts/tests/run-phpunit.sh 1

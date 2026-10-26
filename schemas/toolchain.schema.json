@@ -71,6 +71,7 @@
         },
         "verified_with": {"type": "array", "items": {"type": "string"}},
         "toolchain": {"$ref": "#/$defs/pins"},
+        "core_install": {"description": "How a test-bed of this cell installs drupal/core: source when the dist leaves out the core tests (Drupal 12's core/.gitattributes export-ignores tests; ADR 0004). Absent: Composer's default (dist).", "enum": ["dist", "source"]},
         "note": {"type": "string"}
       }
     }

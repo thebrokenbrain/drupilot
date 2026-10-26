@@ -4,7 +4,8 @@
 # plan_hops / plan_detectors over paths/graph.json, rector_sets_for_plan (per
 # minor up to the bed, breaking sets by the floor, always_sets, reflection
 # from a bed's drupal-rector, the skipped records), plan_rector_skip (= the
-# template's skip list) and plan_rector_bc. The data is the snapshot the T=11
+# template's skip list), plan_rector_bc and plan_tests_pass with the PHPUnit
+# sets rector_sets_block appends and the skips rector_skip_block adds (ADR 0032). The data is the snapshot the T=11
 # core-target golden is pinned to.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
@@ -118,4 +119,27 @@ assert_eq "bc ^10.1.3 || ^11 (exactly DeprecationHelper's first release)" "$(pla
 assert_eq "bc ^10.1.2 || ^11 (10.1.2 lacks it)" "$(plan_rector_bc '^10.1.2 || ^11' 10.1)" '{"enabled":false,"min_core":null}'
 assert_eq "bc '11' (one release, 11.0.0)" "$(plan_rector_bc '11' 11.0)" '{"enabled":false,"min_core":null}'
 assert_eq "bc ^11 <>11.2.1 (an exclusion keeps the range)" "$(plan_rector_bc '^11 <>11.2.1' 11.0)" '{"enabled":true,"min_core":"11.0"}'
+# --- the tests pass (ADR 0032) --------------------------------------------------
+TP='{"enabled":true,"sets":["Rector\\PHPUnit\\Set\\PHPUnitSetList::ANNOTATIONS_TO_ATTRIBUTES"],"skip":["Rector\\PHPUnit\\AnnotationsToAttributes\\Rector\\Class_\\AnnotationWithValueToAttributeRector"]}'
+assert_json_eq "tests pass: a Drupal 12 bed (PHPUnit 12) with the floor 11.3 (PHPUnit 11), skipping the set's @group rule" "$(plan_tests_pass 12.0.0-beta1 11.3)" "$TP"
+assert_eq "  the floor 11.0 (PHPUnit 10 reads attributes) still" "$(plan_tests_pass 12.0.0-beta1 11.0 | jq -c .enabled)" "true"
+assert_eq "  a floor on Drupal 10 (PHPUnit 9 reads no attributes): off" "$(plan_tests_pass 12.0.0-beta1 10.3)" "null"
+assert_eq "  a Drupal 11 bed (PHPUnit 11 still reads annotations): off" "$(plan_tests_pass 11.4.8 11.0)" "null"
+assert_eq "  no floor: the bed alone" "$(plan_tests_pass 12.0.0-beta1 '' | jq -c .enabled)" "true"
+assert_eq "  a minor with no PHPUnit data (11.5): unknown, off" "$(plan_tests_pass 12.0.0-beta1 11.5)" "null"
+SB="$(rector_sets_block "{\"rector\":{\"drupal_sets\":[\"Drupal11SetList::DRUPAL_110\",\"Drupal12SetList::DRUPAL_120\"],\"tests_pass\":$TP}}")"
+assert_eq "rector_sets_block: the tests pass's sets first (Rector registers them before drupal-rector's), only when the first Drupal set resolves, then the Drupal sets" \
+  "$(printf '%s\n' "$SB" | grep -v '^  //')" \
+  "  ...(defined('DrupalRector\\\\Set\\\\Drupal11SetList::DRUPAL_110') ? ['Rector\\\\PHPUnit\\\\Set\\\\PHPUnitSetList::ANNOTATIONS_TO_ATTRIBUTES'] : []),
+  'DrupalRector\\\\Set\\\\Drupal11SetList::DRUPAL_110',
+  'DrupalRector\\\\Set\\\\Drupal12SetList::DRUPAL_120',"
+assert_eq "  no Drupal set: no tests pass either (rector.php's stop still fires)" \
+  "$(rector_sets_block "{\"rector\":{\"drupal_sets\":[],\"tests_pass\":$TP}}" | grep -c . || true)" "0"
+assert_eq "  a disabled or absent tests pass adds nothing" \
+  "$(rector_sets_block '{"rector":{"drupal_sets":["Drupal11SetList::DRUPAL_110"],"tests_pass":{"enabled":false,"sets":["Rector\\PHPUnit\\Set\\PHPUnitSetList::ANNOTATIONS_TO_ATTRIBUTES"],"skip":[]}}}' | grep -c PHPUnit || true)|$(rector_sets_block '{"rector":{"drupal_sets":[],"tests_pass":null}}' | grep -c . || true)" "0|0"
+SK="$(rector_skip_block "{\"rector\":{\"skip\":[],\"tests_pass\":$TP}}")"
+assert_eq "rector_skip_block: the tests pass's skip after the data's" \
+  "$(printf '%s\n' "$SK" | grep -c 'AnnotationsToAttributes' || true)|$(printf '%s\n' "$SK" | sed -n '$p')" \
+  "1|  'Rector\\\\PHPUnit\\\\AnnotationsToAttributes\\\\Rector\\\\Class_\\\\AnnotationWithValueToAttributeRector',"
+assert_eq "  none without the tests pass" "$(rector_skip_block '{"rector":{"skip":[],"tests_pass":null}}' | grep -c 'PHPUnit' || true)" "0"
 t_done

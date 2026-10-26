@@ -487,6 +487,44 @@ rector_sets_for_plan() {
   return 0
 }
 
+# _plan_phpunit_min MINOR -> the lowest PHPUnit major MINOR's
+# phpunit_constraint admits (config/targets/<N>.json), or nothing.
+_plan_phpunit_min() {
+  target_get "${1%%.*}" ".minors[\"$1\"].phpunit_constraint // empty" 2> /dev/null \
+    | tr '|' '\n' | sed -n 's/^[^0-9]*\([0-9][0-9]*\).*/\1/p' | sort -n | sed -n '1p'
+  return 0
+}
+
+# plan_tests_pass BED F -> the plan's rector.tests_pass (ADR 0032), one JSON
+# line: {enabled: true, sets: [Rector's PHPUnit annotations-to-attributes
+# set], skip: [its rule for @group]} when the test-bed
+# core's PHPUnit no longer reads annotations (the lowest major its minor's
+# phpunit_constraint admits is 12 or more: PHPUnit 12 ignores @dataProvider,
+# @covers, @group) and the floor F's PHPUnit reads attributes (10 or more),
+# from config/targets/<N>.json minors; else null (a minor without
+# phpunit_constraint is unknown: null). Only that set: never
+# PHPUNIT_CODE_QUALITY, NARROW_ASSERTS or MOCK_TO_STUB, which change what a
+# test verifies (03-R10). drupal-rector's PhpUnitTestAnnotationToAttributeRector
+# (Drupal11SetList::DRUPAL_110) converts @group and keeps the annotation for a
+# range that keeps Drupal 11 (run-tests.sh of 11.0 and 11.1 reads only
+# @group); the set's AnnotationWithValueToAttributeRector would remove it
+# first, so the plan skips that rule (it also converts @backupGlobals,
+# @preserveGlobalState, @uses and @testDox, which stay annotations).
+plan_tests_pass() {
+  local bed="${1:-}" floor="${2:-}" bm fm bmaj fmaj
+  bm="$(printf '%s' "$bed" | sed -n 's/^\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
+  fm="$(printf '%s' "${floor:-$bed}" | sed -n 's/^\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
+  [[ -n "$bm" && -n "$fm" ]] && have_cmd jq || { printf 'null'; return 0; }
+  bmaj="$(_plan_phpunit_min "$bm")"; fmaj="$(_plan_phpunit_min "$fm")"
+  if [[ "$bmaj" =~ ^[0-9]+$ && "$fmaj" =~ ^[0-9]+$ ]] && (( bmaj >= 12 && fmaj >= 10 )); then
+    jq -n -c '{enabled: true, sets: ["Rector\\PHPUnit\\Set\\PHPUnitSetList::ANNOTATIONS_TO_ATTRIBUTES"],
+      skip: ["Rector\\PHPUnit\\AnnotationsToAttributes\\Rector\\Class_\\AnnotationWithValueToAttributeRector"]}'
+  else
+    printf 'null'
+  fi
+  return 0
+}
+
 # plan_rector_skip -> the Rector rules every drupilot config skips, one JSON
 # array of FQCNs in php/rules.json order (= templates/rector.php.tmpl's
 # $drupilotRiskySkips): the deny rows, plus any compat row not drupal_safe.
@@ -989,15 +1027,12 @@ target_patch_desc() { printf 'port-to-drupal-%s\n' "$(target_names_major "${1:-}
 # target_workspace_suffix [T] -> -d<T>, the suffix of a loose subject's test-bed.
 target_workspace_suffix() { printf -- '-d%s\n' "$(target_names_major "${1:-}")"; }
 
-# target_workspace_suffixes [T] -> the suffixes an existing test-bed may carry,
-# one per line: -d<T>, then -d11 when T is not 11 (a bed drupilot 0.9 built is
-# still recognized, CC-17).
+# target_workspace_suffixes [T] -> the suffixes an existing test-bed of target
+# major T may carry, one per line: -d<T> (for T = 11 the suffix a bed drupilot
+# 0.9 built carries, CC-17). A -d11 bed is never one of another target's: its
+# core is Drupal 11.
 target_workspace_suffixes() {
-  local t
-  t="$(target_names_major "${1:-}")"
-  printf -- '-d%s\n' "$t"
-  if [[ "$t" != "11" ]]; then printf -- '-d11\n'; fi
-  return 0
+  printf -- '-d%s\n' "$(target_names_major "${1:-}")"
 }
 
 # target_ddev_type [T] -> the DDEV project type of the test-bed: the target's

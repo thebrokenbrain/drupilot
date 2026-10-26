@@ -13,6 +13,84 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+### Added
+- **Drupal 12 test-beds** (T-M6-03, ADR 0004). A port to Drupal 12 (a preview, experimental:
+  off unless you opt in, outside 1.0's release criteria) now runs end to end instead of
+  stopping after its draft plan. `ddev-up.sh` builds the bed from the target's toolchain
+  cell:
+  - its own test-bed, `<name>-d12`: `/drupilot-setup` and the orchestrator pass the target
+    major to `resolve-workspace.sh`, `ddev-up.sh` and `place-subject.sh`, and a `-d11` bed
+    is only ever Drupal 11's (CC-17);
+  - a DDEV `drupal12` project on the frozen plan's PHP (`php.final`, 8.5), with the plan's
+    pre-release core (12.0.0-beta2), else the newest at the data's stability; an explicit
+    `DRUPILOT_DRUPAL_TARGET` of that one major is built as it is (`12.0.x-dev`), with the
+    data's stability when it has none of its own (`^12.0`);
+  - no drush where the cell pins it to `null` (no drush release installs on Drupal 12).
+    `run-upgrade-status.sh` then skips with a note, and `install-toolchain.sh
+    --with-upgrade-status` does not install upgrade_status;
+  - `drupal/core` from source where the cell says `core_install: source`:
+    Drupal 12's packaged core leaves out the tests PHPStan and PHPUnit need.
+    An existing project only gets a warning.
+
+  `ddev-up.sh` refuses (exit 1, before `ddev config`) a root whose installed core
+  is an older major than the target, an explicit `DRUPILOT_DRUPAL_TARGET` that
+  does not admit it, and an explicit `DRUPILOT_TARGET_MAJOR` that the root's frozen
+  plan does not name; `resolve-workspace.sh` reports `in_place_ok: false` for a site
+  older than the target major (a Drupal 11 site for a Drupal 12 preview), and
+  `ddev-up.sh` and `place-subject.sh` pass it an explicit `DRUPILOT_TARGET_MAJOR`.
+  `/drupilot-setup` persists the target major and the pre-release opt-in once the
+  draft plan resolves. A guided `/drupilot --target 12` asks the Pre-release tab
+  before it hands the run to the orchestrator, which applies the opt-in (or its
+  pre-answer) to every plan call and never asks in an autonomous run.
+  `/drupilot-port` shows no Core target tab and runs no Drupal 10 check for a
+  preview (the plan decides its range), and treats its core removals as items
+  for a person.
+- **The tests pass** (T-M6-05, ADR 0032). When the test-bed's PHPUnit no longer
+  reads annotations (PHPUnit 12, Drupal 12) and the declared floor's reads
+  attributes, the plan's `rector.tests_pass` adds Rector's
+  `PHPUnitSetList::ANNOTATIONS_TO_ATTRIBUTES` to `rector.php`, ahead of the
+  Drupal sets and only when drupal-rector resolves: its rules convert first, so
+  drupal-rector's own (`#[RunTestsInSeparateProcesses]`, `#[TestWith]`) never add
+  a second attribute. It converts `@dataProvider`, `@depends`, `@testWith`,
+  `@covers`, `@before`, `@test`, `@requires` and the other PHPUnit tags. `@group`
+  stays with drupal-rector's rule, which keeps the annotation for a range that
+  keeps Drupal 11 (`run-tests.sh` of 11.0 and 11.1 reads only `@group`), so the
+  plan skips the set's rule for it (`tests_pass.skip`); that rule's
+  `@backupGlobals`, `@backupStaticAttributes`, `@preserveGlobalState`, `@uses` and
+  `@testDox` stay annotations. Drupal 11 plans keep `tests_pass: null`, with a
+  byte-identical `rector.php`.
+- `docs/guides/d12-preview.md` (T-M6-08): how to opt in, what the plan, the
+  bed and the port do, and the limits of the preview.
+
+### Changed
+- **Toolchain cell 12 is verified** (T-M6-02, ADR 0004 amendment), re-verified
+  on Drupal 12.0.0-beta2. The pins are unchanged: Rector 2.6.1 (drupal-rector
+  1.1.3 still conflicts with Rector 2.6.2 and later), PHPStan 2.2.16, coder
+  9.0.1, upgrade_status 5.0.0-alpha3, no drush. The cell gains `core_install:
+  source`, a new field of `schemas/toolchain.schema.json`.
+- The T=12 plan and template goldens gain `rector.tests_pass` with its skip
+  list.
+- **post-edit-lint's Phase 1 phpcs report leaves out the unused-use sniffs**,
+  as its phpcbf pass already did: a `use` added one edit before its code is
+  no longer reported (coder 9, on Drupal 12, reports it as an ERROR; ADR 0004).
+
+### Fixed
+- **The unit gate no longer times out on the jq 1.6 CI leg.** The per-test
+  timeout of `scripts/dev/unit.sh` is now 600 s by default (it was 300 s).
+  `core_strategy_view` takes about 200 s in a `debian:12-slim` container on a
+  developer machine, and it ran past 300 s on a CI runner.
+- **`ddev-up.sh` configures the PHP the plan targets.** Without `--php` it read
+  `DRUPILOT_PHP_TARGET` only, so a loose subject's test-bed got 8.3 when the
+  answered PHP target was persisted after the bed existed. It now takes an
+  explicit `DRUPILOT_PHP_TARGET` (also from the bed's `.drupilot.json`), else
+  the frozen plan's `php.final`, else the target's default, and re-running it
+  from the original checkout no longer aligns a bed down to 8.3.
+- **`install-toolchain.sh` never reuses a lock recorded for another cell.** A
+  cell 11 lock on a root rebuilt on Drupal 12 counted as a complete set, so its
+  pins (coder 8.3, core-dev 11) were installed and Composer failed. A fresh
+  resolve now asks for the coder major of the cell (`^9.0` on Drupal 12, where
+  `drupal/core-dev` requires it) unless `DRUPILOT_CODER_CONSTRAINT` is set.
+
 ## [1.0.0-alpha.6] - 2026-10-18
 
 ### Added

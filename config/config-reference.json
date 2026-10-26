@@ -65,7 +65,7 @@
       "enum": null,
       "tier": "public",
       "default_ref": "defaults.json#/DRUPILOT_CODER_CONSTRAINT",
-      "description": "`drupal/coder` branch (PHPCS 3.x vs 4.x). Applies only to a fresh resolve (`DRUPILOT_TOOLCHAIN_SOURCE=range` or `DRUPILOT_DETERMINISTIC=false`); otherwise the locked version or the known-good reference version (`config/toolchain-reference.json`) is installed.",
+      "description": "`drupal/coder` branch (PHPCS 3.x vs 4.x). Applies only to a fresh resolve (`DRUPILOT_TOOLCHAIN_SOURCE=range` or `DRUPILOT_DETERMINISTIC=false`); otherwise the locked version or the known-good reference version (`config/toolchain-reference.json`) is installed. Unset, a fresh resolve asks for the major.minor of the toolchain cell's coder (`^8.3` on Drupal 11, `^9.0` on Drupal 12), else this default.",
       "see": "concepts/determinism-lockfile.md"
     },
     "DRUPILOT_PHPSTAN_LEVEL": {

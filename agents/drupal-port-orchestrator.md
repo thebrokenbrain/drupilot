@@ -276,6 +276,26 @@ the Selenium add-on) -> continue but warn about the impact (FunctionalJavascript
 tests will be skipped). If the user has not run `/drupilot-doctor`, suggest it for
 assisted installation.
 
+### Target major and the pre-release opt-in (every run)
+
+T is the router's `target_major` (from `--target N`), else `DRUPILOT_TARGET_MAJOR`,
+else 11. A pre-release T (Drupal 12 until its stable release) needs the opt-in:
+the router's `allow_prerelease=true` (a guided run's Pre-release tab),
+`DRUPILOT_ALLOW_PRERELEASE=true`, or the `ALLOW_PRERELEASE` pre-answer (the
+choice.sh call above with that key, a `value` of `yes`). Prefix
+`DRUPILOT_TARGET_MAJOR=<T>` to every `upgrade-path.sh` call (the D7-AUTO probe
+included), to `ddev-up.sh` and to `place-subject.sh`, pass `--target <T>` to
+`resolve-workspace.sh`, and add `DRUPILOT_ALLOW_PRERELEASE=true` to the
+`upgrade-path.sh` calls when opted in. Without the opt-in, never ask: the plan's
+`prerelease-not-opted-in` refusal (exit 2) stops the run with its message, and
+nothing is written. After
+the draft plan's exit 0, persist T and the opt-in as `/drupilot-setup` does
+(`prefs_set DRUPILOT_TARGET_MAJOR <T>`, `prefs_set DRUPILOT_ALLOW_PRERELEASE true`,
+run with `DRUPILOT_PROJECT_DIR=<drupal_root>`). When the plan's `target.preview` is
+`true`, say once that the port is a preview on the pre-release core
+`target.bed_core`, and treat its `hard_breaks` (core removals) as items a person
+must resolve.
+
 ### Before any stage of an autonomous run — rule D7-AUTO
 
 An autonomous run (`auto`, `DRUPILOT_AUTONOMOUS=true`) first checks the source era,
@@ -286,23 +306,25 @@ whatever stage it starts at (a set-up site skips Stage 1):
 
 ### Stage 1 — setup (gate: `setup`)
 
-Goal: a Drupal 11 DDEV site with the toolchain and the subject in place. Use the
-`ddev-environment` skill and:
-- `scripts/env/detect-php.sh --json` to confirm the effective PHP target.
+Goal: a DDEV site of the target major (Drupal 11 by default) with the toolchain and
+the subject in place. Use the `ddev-environment` skill and:
+- `scripts/env/detect-php.sh --json` to confirm the effective PHP target (Drupal
+  11's; the test-bed takes the plan's `php.final`).
 - Freeze the draft upgrade plan before anything is created:
   `scripts/analysis/upgrade-path.sh --subject <path> --phase draft --root <drupal_root> --freeze --json`
-  (`<drupal_root>` from `scripts/env/resolve-workspace.sh --json`), with `--auto`
+  (`<drupal_root>` from `scripts/env/resolve-workspace.sh --target <T> --json`), with `--auto`
   in an autonomous run: a Drupal 7 source is then refused (`d7-auto`, exit 2) and
   the run stops with its message, nothing written (rule D7-AUTO). Any other exit 2
   stops the setup with the refusal's message and choices.
-- `scripts/env/ddev-up.sh` to create/start the D11 DDEV project at the target PHP.
+- `scripts/env/ddev-up.sh` to create/start the DDEV project of the target major,
+  with no `--php`: it takes the frozen plan's `php.final` (8.5 for Drupal 12).
 - `scripts/env/ddev-add-ons.sh --contrib [--selenium] --dir <drupal_root>` for the contrib add-on and
   (for JS tests) Selenium standalone Chrome v2.
 - Delegate subject placement to `scripts/env/resolve-workspace.sh` (read-only — decides
-  the workspace; a loose checkout targets a sibling `<name>-d11` root, never scaffolded
+  the workspace; a loose checkout targets a sibling `<name>-d<T>` root (`-d11` for Drupal 11), never scaffolded
   on top of; a module of a project checkout without installed core — a monorepo
-  clone — gets `<parent>/<project>-d11` outside the repository, never moved (`move`
-  becomes `copy`, a copy gets a git baseline; a `symlink` is kept); an in-place root on Drupal 10 is reported `in_place_ok:false`) then, after `ddev-up.sh`, `scripts/env/place-subject.sh` (idempotent — places
+  clone — gets `<parent>/<project>-d<T>` outside the repository, never moved (`move`
+  becomes `copy`, a copy gets a git baseline; a `symlink` is kept); an in-place root on an older major than T is reported `in_place_ok:false`) then, after `ddev-up.sh`, `scripts/env/place-subject.sh` (idempotent — places
   it under `web/<modules|themes|profiles>/custom/<name>`). Install the dev toolchain with
   `scripts/env/install-toolchain.sh --dir <drupal_root> --json` (pinned to the lock or the
   known-good reference, smoke-tested, lock re-synced; exit 3 = installed but broken — stop

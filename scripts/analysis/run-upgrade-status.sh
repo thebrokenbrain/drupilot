@@ -10,7 +10,9 @@
 #
 # It soft-skips (exit 0, clear message) when DDEV is not running or Drupal is
 # not installed — analysis should never hard-fail just because the optional
-# site bootstrap is unavailable.
+# site bootstrap is unavailable — and, before starting anything, on a test-bed
+# whose toolchain cell pins drush/drush to null (Drupal 12: no drush release
+# installs there, ADR 0004), since Upgrade Status analyses through drush.
 #
 # Usage:
 #   run-upgrade-status.sh --module NAME
@@ -55,6 +57,14 @@ DRUPAL_ROOT="$(find_drupal_root "$PWD" 2>/dev/null || true)"
 [[ -n "$DRUPAL_ROOT" ]] || die "Could not locate a Drupal root (.ddev/config.yaml). Run /drupilot-setup first." 2
 
 cd "$DRUPAL_ROOT"
+
+# --- No drush on this test-bed: nothing can run (ADR 0004) -----------------
+_cell="$(toolchain_cell_for "$DRUPAL_ROOT")"
+if toolchain_cell_without_drush "$_cell"; then
+  log_warn "Skipping Upgrade Status: no drush release installs on this test-bed (toolchain cell $_cell), and Upgrade Status analyses through drush."
+  log_warn "Rector, PHPStan and PHPCS still cover the static analysis."
+  exit 0
+fi
 
 # --- DDEV must be running (a stopped project is started explicitly) --------
 ddev_ensure_running "$DRUPAL_ROOT" || true

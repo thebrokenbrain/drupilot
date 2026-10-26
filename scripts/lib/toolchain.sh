@@ -185,12 +185,29 @@ rector_floor_tokens() {
 # comma-ended constant name per line (  'DrupalRector\\Set\\Drupal10SetList::DRUPAL_100',)
 # for the plan's rector.drupal_sets then rector.breaking_sets, in order. The
 # Drupal 8 and 9 families stay out until the D8/D9 hops are proven (T-M9-03,
-# ADR 0019): 0.9 never ran them.
+# ADR 0019): 0.9 never ran them. When the plan enables rector.tests_pass, its
+# PHPUnit sets (Rector\PHPUnit\Set\PHPUnitSetList::..., ADR 0032) come first, on
+# one line that adds them only when the first Drupal set resolves: Rector runs
+# a node's rules in the order they were registered, so its annotation rules
+# convert before drupal-rector's, whose own (#[RunTestsInSeparateProcesses],
+# #[TestWith]) then find the attribute or no annotation instead of adding a
+# second one; their rules need drupal-rector's bootstrap file to see Drupal's
+# test base classes; and rector.php's "no Drupal set resolves" stop must still
+# fire without drupal-rector (Rector bundles the PHPUnit sets).
 rector_sets_block() {
-  printf '%s' "${1:-}" | jq -r '[(.rector.drupal_sets // [])[], (.rector.breaking_sets // [])[]]
-    | map(select(test("^Drupal[0-9]+SetList::DRUPAL_[0-9]+(_BREAKING)?$")
-                 and ((capture("^Drupal(?<n>[0-9]+)SetList").n | tonumber) >= 10)))
-    | .[] | "  \u0027DrupalRector\\\\Set\\\\" + . + "\u0027,"' 2> /dev/null || true
+  printf '%s' "${1:-}" | jq -r '([(.rector.drupal_sets // [])[], (.rector.breaking_sets // [])[]]
+      | map(select(test("^Drupal[0-9]+SetList::DRUPAL_[0-9]+(_BREAKING)?$")
+                   and ((capture("^Drupal(?<n>[0-9]+)SetList").n | tonumber) >= 10)))) as $d
+    | (if (.rector.tests_pass // null | type) == "object" and .rector.tests_pass.enabled == true and ($d | length) > 0
+       then [(.rector.tests_pass.sets // [])[] | select(type == "string" and test("^Rector\\\\PHPUnit\\\\Set\\\\PHPUnitSetList::[A-Z_]+$"))
+             | "\u0027" + (split("\\") | join("\\\\")) + "\u0027"]
+            | if length == 0 then empty else
+                "  // The tests pass (ADR 0032), first and only next to drupal-rector, whose",
+                "  // bootstrap file its rules need to see Drupal\u0027s test base classes.",
+                "  ...(defined(\u0027DrupalRector\\\\Set\\\\" + $d[0] + "\u0027) ? [" + join(", ") + "] : []),"
+              end
+       else empty end),
+      ($d[] | "  \u0027DrupalRector\\\\Set\\\\" + . + "\u0027,")' 2> /dev/null || true
   return 0
 }
 
@@ -200,11 +217,23 @@ rector_sets_block() {
 # The skips of today's data the plan lacks (plan_rector_skip) follow its own:
 # the data's deny list is a floor no frozen plan lowers, so a plan frozen
 # before a rule was found unsafe (or before ADR 0030 opened its polyfills)
-# never runs it.
+# never runs it. When the plan enables rector.tests_pass, its skip list
+# follows, under a comment (ADR 0032: drupal-rector converts those
+# annotations itself).
 rector_skip_block() {
-  printf '%s' "${1:-}" | jq -r --argjson x "$(plan_rector_skip)" '(.rector.skip // []) as $s | ($s + ($x - $s))[]
-    | select(type == "string" and test("^[A-Za-z0-9_\\\\]+$"))
-    | "  \u0027" + (split("\\") | join("\\\\")) + "\u0027,"' 2> /dev/null || true
+  printf '%s' "${1:-}" | jq -r --argjson x "$(plan_rector_skip)" '
+    def fqcn: select(type == "string" and test("^[A-Za-z0-9_\\\\]+$"));
+    def php_str: "  \u0027" + (split("\\") | join("\\\\")) + "\u0027,";
+    (.rector.skip // []) as $s | ($s + ($x - $s)) as $base
+    | ($base[] | fqcn | php_str),
+      (if (.rector.tests_pass // null | type) == "object" and .rector.tests_pass.enabled == true
+       then [(.rector.tests_pass.skip // [])[] | fqcn] - $base
+            | if length == 0 then empty else
+                "  // The tests pass (ADR 0032): drupal-rector converts @group itself, and",
+                "  // keeps the annotation an older core of the range still reads.",
+                (.[] | php_str)
+              end
+       else empty end)' 2> /dev/null || true
   return 0
 }
 
@@ -617,28 +646,37 @@ phpunit_available() {
 # toolchain_reference_file -> path to the shipped reference matrix.
 toolchain_reference_file() { printf '%s/config/toolchain-reference.json' "$(plugin_root)"; }
 
+# toolchain_lock_cell <root> -> the cell the root's lock records
+# (.toolchain_cell); "legacy_v1" for a lock drupilot 0.9 created (no .schema;
+# it pins rector/rector, which only install-toolchain.sh installs, and records
+# no cell); nothing otherwise. Reads the lock without creating drupilot's data
+# dir.
+toolchain_lock_cell() {
+  local lf
+  [[ -n "${1:-}" ]] && have_cmd jq || return 0
+  lf="$(lock_path "$1")"
+  [[ -r "$lf" ]] || return 0
+  jq -r 'if (.toolchain_cell // "") != "" then .toolchain_cell
+         elif (.schema // 0) == 0 and ((.toolchain // {})["rector/rector"] // "") != "" then "legacy_v1"
+         else "" end' "$lf" 2> /dev/null || true
+  return 0
+}
+
 # toolchain_cell_for <root> [fresh] -> the toolchain cell of a test-bed: the
-# cell its lock records (.toolchain_cell); "legacy_v1" for a lock drupilot 0.9
-# created (no .schema; it pins rector/rector, which only install-toolchain.sh
-# installs, and records no cell: it keeps 0.9's set until it is refreshed);
-# else, and always with a second argument (a refresh), the cell
-# config/targets/<major>.json names for the installed core's major; else
-# "11". A lock's answer that no longer fits the installed core's cell (the
-# root was rebuilt on another major) gives way to the core's. Reads the lock
-# without creating drupilot's data dir.
+# cell its lock records (toolchain_lock_cell: a 0.9 lock keeps 0.9's set,
+# legacy_v1, until it is refreshed); else, and always with a second argument
+# (a refresh), the cell config/targets/<major>.json names for the installed
+# core's major; else "11". A lock's answer that no longer fits the installed
+# core's cell (the root was rebuilt on another major) gives way to the core's.
+# Reads the lock without creating drupilot's data dir.
 toolchain_cell_for() {
-  local r="${1:-}" c="" major core_cell="" lf
+  local r="${1:-}" c="" major core_cell=""
   if [[ -n "$r" ]]; then
     major="$(drupal_core_version "$r" | sed -n 's/^v\{0,1\}\([0-9][0-9]*\)\..*/\1/p')"
     [[ -n "$major" ]] && core_cell="$(target_get "$major" .toolchain_cell)"
   fi
-  if [[ -n "$r" && -z "${2:-}" ]] && have_cmd jq; then
-    lf="$(lock_path "$r")"
-    if [[ -r "$lf" ]]; then
-      c="$(jq -r 'if (.toolchain_cell // "") != "" then .toolchain_cell
-                  elif (.schema // 0) == 0 and ((.toolchain // {})["rector/rector"] // "") != "" then "legacy_v1"
-                  else "" end' "$lf" 2> /dev/null || true)"
-    fi
+  if [[ -n "$r" && -z "${2:-}" ]]; then
+    c="$(toolchain_lock_cell "$r")"
     # legacy_v1 is 0.9's Drupal 11 set.
     if [[ -n "$c" && -n "$core_cell" ]]; then
       if [[ "$c" == "legacy_v1" && "$core_cell" != "11" ]] || [[ "$c" != "legacy_v1" && "$c" != "$core_cell" ]]; then c=""; fi
@@ -677,6 +715,27 @@ toolchain_reference_version() {
   jq -r --arg n "${1:-}" --arg c "${2:-11}" '(if $c == "legacy_v1" then .legacy_v1 else (.cells[$c] | select(.verified == true)) end
       | .toolchain[$n]) // empty' "$f" 2>/dev/null || true
   return 0
+}
+
+# toolchain_cell_core_install CELL -> how a test-bed of a verified CELL
+# installs drupal/core: "source" when the cell says so (Drupal 12: the core
+# dist export-ignores its tests, ADR 0004), else "dist" (Composer's default,
+# also for an unverified or unknown cell).
+toolchain_cell_core_install() {
+  local f; f="$(toolchain_reference_file)"
+  [[ -r "$f" ]] && have_cmd jq || { printf 'dist'; return 0; }
+  jq -r --arg c "${1:-}" '(.cells[$c] | select(.verified == true) | .core_install) // "dist"' "$f" 2>/dev/null || printf 'dist'
+  return 0
+}
+
+# toolchain_cell_without_drush CELL -> 0 when a verified CELL pins
+# drush/drush to null: no drush release installs on that major (Drupal 12,
+# ADR 0004), so its test-bed requires none.
+toolchain_cell_without_drush() {
+  local f; f="$(toolchain_reference_file)"
+  [[ -r "$f" ]] && have_cmd jq || return 1
+  jq -e --arg c "${1:-}" '.cells[$c] | select(.verified == true) | .toolchain
+    | has("drush/drush") and .["drush/drush"] == null' "$f" > /dev/null 2>&1
 }
 
 # toolchain_reference_require_cmd [cell] -> the exact command that installs the

@@ -118,7 +118,17 @@
         "skip": {"type": "array", "items": {"type": "string", "pattern": "^Rector\\\\"}},
         "compat_rules": {"type": ["array", "null"], "items": {"type": "string"}},
         "polyfills": {"type": ["array", "null"], "items": {"type": "string"}},
-        "tests_pass": {"type": ["object", "null"]}
+        "tests_pass": {
+          "description": "The PHPUnit sets the plan adds to rector.php's set list (ADR 0032): on when the test-bed core's PHPUnit no longer reads annotations and the floor's reads attributes; null otherwise. skip: the set's rules rector.php skips, because drupal-rector's own rule converts the same annotations.",
+          "type": ["object", "null"],
+          "required": ["enabled", "sets", "skip"],
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {"type": "boolean"},
+            "sets": {"type": "array", "items": {"type": "string", "pattern": "^Rector\\\\PHPUnit\\\\Set\\\\PHPUnitSetList::[A-Z_]+$"}},
+            "skip": {"type": "array", "items": {"type": "string", "pattern": "^Rector\\\\PHPUnit\\\\"}}
+          }
+        }
       }
     },
     "phpstan": {

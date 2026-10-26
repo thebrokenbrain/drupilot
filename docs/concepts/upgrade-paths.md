@@ -19,7 +19,7 @@ A port is a point on three axes.
   newer major is opted into as a preview (`DRUPILOT_ALLOW_PRERELEASE`). Asking
   for a pre-release major without the opt-in shows the `ALLOW_PRERELEASE` tab
   in a guided run (default: no, Drupal 11); an autonomous run never asks it and
-  stops on the refusal.
+  stops on the refusal. See the [Drupal 12 preview](../guides/d12-preview.md).
 - **PHP target (P)**: the PHP the code runs on in the test-bed and on your
   site, set by `DRUPILOT_PHP_TARGET` or the setup's PHP tab.
 

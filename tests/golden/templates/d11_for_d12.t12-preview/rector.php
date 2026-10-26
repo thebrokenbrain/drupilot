@@ -97,6 +97,9 @@ use Rector\ValueObject\PhpVersion;
 // drupal-rector is missing or cannot be autoloaded: stop, rather than run a
 // pass that applies no Drupal rule and reports nothing to change.
 $drupilotSetNames = [
+  // The tests pass (ADR 0032), first and only next to drupal-rector, whose
+  // bootstrap file its rules need to see Drupal's test base classes.
+  ...(defined('DrupalRector\\Set\\Drupal11SetList::DRUPAL_110') ? ['Rector\\PHPUnit\\Set\\PHPUnitSetList::ANNOTATIONS_TO_ATTRIBUTES'] : []),
   'DrupalRector\\Set\\Drupal11SetList::DRUPAL_110',
   'DrupalRector\\Set\\Drupal11SetList::DRUPAL_111',
   'DrupalRector\\Set\\Drupal11SetList::DRUPAL_112',
@@ -132,6 +135,9 @@ $drupilotRiskySkips = array_values(array_filter([
   'Rector\\Php85\\Rector\\Class_\\WakeupToUnserializeRector',
   'Rector\\Php85\\Rector\\Property\\AddOverrideAttributeToOverriddenPropertiesRector',
   'Rector\\Php84\\Rector\\Class_\\DeprecatedAnnotationToDeprecatedAttributeRector',
+  // The tests pass (ADR 0032): drupal-rector converts @group itself, and
+  // keeps the annotation an older core of the range still reads.
+  'Rector\\PHPUnit\\AnnotationsToAttributes\\Rector\\Class_\\AnnotationWithValueToAttributeRector',
 ], 'class_exists'));
 
 $drupilotConfig = RectorConfig::configure()

@@ -138,20 +138,22 @@ esac
 # Phase 1: the hook runs after EVERY edit, so a `use` added one edit before the
 # code that needs it looks unused in between; the unused-use sniffs are left
 # to the validate loop (run-phpcs.sh --fix --fix-scope changed), which runs
-# once a batch of edits is complete. (PHPCS ignores an excluded sniff the
-# standard does not register.)
-declare -a CBF_ARGS=()
-[[ "$PHASE" != "refactor" ]] && CBF_ARGS=("--exclude=Drupal.Classes.UnusedUseStatement,SlevomatCodingStandard.Namespaces.UnusedUses")  # portability-ok: phpcbf options, not grep
+# once a batch of edits is complete. Both passes leave them out: phpcbf would
+# delete the `use`, and phpcs would report it, as an ERROR with coder 9
+# (Drupal 12, ADR 0004). (PHPCS ignores an excluded sniff the standard does not
+# register.)
+declare -a PHASE1_ARGS=()
+[[ "$PHASE" != "refactor" ]] && PHASE1_ARGS=("--exclude=Drupal.Classes.UnusedUseStatement,SlevomatCodingStandard.Namespaces.UnusedUses")  # portability-ok: phpcs/phpcbf options, not grep
 CHANGED_NOTE=""
 if [[ "$MODE" == "autofix" ]]; then
   BEFORE="$(cksum "$FILE" 2>/dev/null || true)"
-  ( cd "$DRUPAL_ROOT" 2>/dev/null && $RUNNER "$PHPCBF_BIN" --standard="$STD" ${TV_ARGS[@]+"${TV_ARGS[@]}"} ${CBF_ARGS[@]+"${CBF_ARGS[@]}"} "$REL" >/dev/null 2>&1 ) || true
+  ( cd "$DRUPAL_ROOT" 2>/dev/null && $RUNNER "$PHPCBF_BIN" --standard="$STD" ${TV_ARGS[@]+"${TV_ARGS[@]}"} ${PHASE1_ARGS[@]+"${PHASE1_ARGS[@]}"} "$REL" >/dev/null 2>&1 ) || true
   AFTER="$(cksum "$FILE" 2>/dev/null || true)"
   [[ -n "$BEFORE" && "$BEFORE" != "$AFTER" ]] && \
     CHANGED_NOTE="phpcbf auto-corrected coding-standard issues in ${REL} (the file on disk was modified). "
 fi
 
-PHPCS_OUT="$(cd "$DRUPAL_ROOT" 2>/dev/null && $RUNNER "$PHPCS_BIN" --standard="$STD" ${EXT_ARGS[@]+"${EXT_ARGS[@]}"} ${TV_ARGS[@]+"${TV_ARGS[@]}"} --report=full --no-colors "$REL" 2>/dev/null || true)"
+PHPCS_OUT="$(cd "$DRUPAL_ROOT" 2>/dev/null && $RUNNER "$PHPCS_BIN" --standard="$STD" ${EXT_ARGS[@]+"${EXT_ARGS[@]}"} ${TV_ARGS[@]+"${TV_ARGS[@]}"} ${PHASE1_ARGS[@]+"${PHASE1_ARGS[@]}"} --report=full --no-colors "$REL" 2>/dev/null || true)"
 
 # Nothing from phpcs -> only surface an autofix note, if any.
 if [[ -z "$PHPCS_OUT" ]] || ! printf '%s' "$PHPCS_OUT" | grep_q -iE 'ERROR|WARNING'; then

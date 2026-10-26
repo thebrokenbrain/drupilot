@@ -43,12 +43,13 @@ the user asked you to port/upgrade the module) or **recommend the next logical s
     `place-subject.sh` (or prefix any script with `DRUPILOT_WORKSPACE_DIR=DIR`),
     and hand it to the orchestrator so every stage uses it.
   - `--target N` — the Drupal major to port to (T). Pass `--target N` to
-    `/drupilot-setup`'s plan step (it wins over `DRUPILOT_TARGET_MAJOR`); the
-    plan it freezes fixes T for every later stage. A pre-release major (Drupal 12
-    until its stable release) also needs the pre-release opt-in, which
-    `/drupilot-setup` asks for in a guided run (`ALLOW_PRERELEASE`); an `auto` run
-    never asks it and stops on the plan's `prerelease-not-opted-in` refusal unless
-    `DRUPILOT_ALLOW_PRERELEASE=true` (or its pre-answer) was given.
+    `/drupilot-setup`'s plan step (it wins over `DRUPILOT_TARGET_MAJOR`), and hand
+    it to the orchestrator as `target_major`; the plan it freezes fixes T for
+    every later stage. A pre-release major (Drupal 12 until its stable release)
+    also needs the pre-release opt-in: a guided `full` run settles it before it
+    delegates (see `full` below); an `auto` run never asks it and stops on the
+    plan's `prerelease-not-opted-in` refusal unless `DRUPILOT_ALLOW_PRERELEASE=true`
+    (or its pre-answer) was given.
   - `--json` — the machine contract: whatever mode runs, your **final message is
     exactly** the output of
     `bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-summary.sh" --subject <subject_dir> --json`
@@ -190,10 +191,26 @@ If the mode is `full` (or the user explicitly asks to "do the whole thing"):
    (setup -> assess -> port -> [refactor if opted in] -> test -> [contribute if opted
    in]), which are gated, and that heavy work may run in the background.
 2. **Confirm with the user before starting.**
-3. Delegate the orchestration to the **drupal-port-orchestrator** subagent via the Task
+3. With `--target N`, settle the pre-release opt-in before delegating (the
+   orchestrator cannot ask). Probe the plan; it is pure and writes nothing:
+
+   ```bash
+   DRUPILOT_TARGET_MAJOR=<N> bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "<subject_dir>" --phase draft --json
+   ```
+
+   Only when it exits 2 with `.code` `prerelease-not-opted-in`, this is
+   `/drupilot-setup`'s Pre-release tab, asked here instead of there: resolve
+   its pre-answer exactly as `/drupilot-setup` does (`choice.sh` with the
+   `ALLOW_PRERELEASE` key; a `value` of `yes` is the answer, `no` ports to Drupal
+   11), and when it is null ask it as `/drupilot-setup` describes it
+   (AskUserQuestion; the default ports to Drupal 11). After a yes, hand the
+   orchestrator `target_major=<N>` and `allow_prerelease=true`; after a no,
+   `target_major=11`.
+4. Delegate the orchestration to the **drupal-port-orchestrator** subagent via the Task
    tool, passing the subject directory, the detected PHP target, the environment
-   readiness, the cached assessment state, and whether the user opted into refactor
-   and/or contribution. Let the orchestrator decide when to delegate to the other
+   readiness, the cached assessment state, `target_major` and `allow_prerelease`
+   (when settled above), and whether the user opted into refactor and/or
+   contribution. Let the orchestrator decide when to delegate to the other
    subagents and when to gate.
 
 ### `auto` — hands-off, unattended

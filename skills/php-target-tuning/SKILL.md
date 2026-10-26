@@ -113,8 +113,10 @@ overridden. The subject's own ruleset wins when it loads
 
 ### DDEV — `php_version`
 
-`ddev-up.sh` configures the test-bed with `--php-version=$(resolve_php_target)`:
-the test suite runs on P. A reconfigure needs `ddev restart`.
+`ddev-up.sh` configures the test-bed with P: an explicit `DRUPILOT_PHP_TARGET`,
+else the frozen plan's `php.final`, else the target's default
+(`resolve_php_target_for`). The test suite runs on P. A reconfigure needs
+`ddev restart`.
 
 ## 4. The php stage: the whole window, checked
 
