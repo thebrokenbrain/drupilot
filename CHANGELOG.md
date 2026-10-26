@@ -96,6 +96,19 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   no longer reported (coder 9, on Drupal 12, reports it as an ERROR; ADR 0004).
 
 ### Fixed
+- **A headless `/drupilot … auto` run no longer stops halfway.** The router ran
+  the orchestrator as a background subagent and ended its turn, so a
+  `claude -p` session ended and stopped the port (a lab run on autologout). The
+  router now waits for the orchestrator, and the orchestrator, the commands
+  that delegate, the test engineer and the `test-adaptation` and
+  `viability-assessment` skills wait for their subagents and heavy steps
+  instead of running them in the background. The router passes the plugin root,
+  and the orchestrator runs every script by its absolute path.
+- **Scripts find the plugin root when run by a relative path.** The library's
+  directory is made absolute when it is sourced (with no fork, so the hooks pay
+  nothing for it), so a script started as `cd <plugin> && bash scripts/...` that
+  changes directory still finds its templates (`run-rector.sh` looked for
+  `/templates/rector.php.tmpl`).
 - **The unit gate no longer times out on the jq 1.6 CI leg.** The per-test
   timeout of `scripts/dev/unit.sh` is now 600 s by default (it was 300 s).
   `core_strategy_view` takes about 200 s in a `debian:12-slim` container on a

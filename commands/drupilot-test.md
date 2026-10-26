@@ -51,7 +51,7 @@ Invoke the **test-adaptation** skill for the exact DDEV PHPUnit commands, the
 Selenium / FunctionalJavascript setup, and the common D11 test-API migrations.
 
 Then delegate the iterate-to-green loop to the **drupal-test-engineer** subagent
-(via the Task tool). It is the specialist in PHPUnit / DDEV / Selenium and owns
+(via the Task tool, in the foreground: wait for its result). It is the specialist in PHPUnit / DDEV / Selenium and owns
 the adapt-run-fix cycle.
 
 ## Step 3 — Adapt the tests to Drupal 11

@@ -176,7 +176,7 @@ installed and recorded in the lock (see there).
 Before acting, state in English what you will do: create/start the DDEV project of
 the target major (Drupal T), install add-ons, install the Composer dev toolchain, place/symlink the subject
 under `web/modules/custom` or `web/themes/custom`, and write the tool configs. Note that
-the heavy steps (composer create-project/require, add-on installs) may run in the background.
+the heavy steps (composer create-project/require, add-on installs) take a while.
 
 Use the **ddev-environment** skill for the operating procedure and gotchas, then run the
 leaf scripts in order. Each is idempotent.
@@ -455,7 +455,7 @@ Then print the final state: DDEV project name and status, PHP target (for 8.5, n
 that it needs Drupal 11.3 or later), which add-ons are installed, the toolchain versions, and which config files
 were written or left untouched. Recommend the next step: `/drupilot-assess`.
 
-For long-running batches, prefer background execution and notify on completion; do not
-block the session. If you delegate the whole environment build, use the Task tool with
-the **drupal-port-orchestrator** subagent, but for a plain setup the scripts above are
-enough.
+Run the long steps in the foreground with their time limits, and report progress: a
+headless `claude -p` run stops a background job when the session ends. If you delegate
+the whole environment build, use the Task tool with the **drupal-port-orchestrator**
+subagent, in the foreground, but for a plain setup the scripts above are enough.
