@@ -238,12 +238,17 @@ if [[ "$WITH_CORE_DEV" == "1" ]]; then
 fi
 
 # A lock recorded for another cell (toolchain_cell_for gave way to the core's
-# cell) is not a set that worked here: none of its pins is used.
+# cell) is not a set that worked here: none of its pins is used. Only auto in
+# deterministic mode reads the lock's pins.
 LOCK_USABLE=1
 _lc="$(toolchain_lock_cell "$ROOT")"
-if [[ -n "$_lc" && "$_lc" != "$CELL" ]]; then
+if [[ "$SOURCE" == "auto" && "$DETERMINISTIC" == "true" && -n "$_lc" && "$_lc" != "$CELL" ]]; then
   LOCK_USABLE=0
-  log_info "The project lock records toolchain cell $_lc, not $CELL: its pins are not used."
+  if [[ "$_lc" == "legacy_v1" ]]; then
+    log_info "The project lock holds drupilot 0.9's toolchain, not toolchain cell $CELL's: its pins are not used."
+  else
+    log_info "The project lock was written for toolchain cell $_lc, not $CELL: its pins are not used."
+  fi
 fi
 # Is the lock a COMPLETE known-good set (every reference-pinned package we
 # install is in the lock)? Only then is it preferred over the reference.

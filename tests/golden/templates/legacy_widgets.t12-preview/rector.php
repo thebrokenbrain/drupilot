@@ -97,6 +97,9 @@ use Rector\ValueObject\PhpVersion;
 // drupal-rector is missing or cannot be autoloaded: stop, rather than run a
 // pass that applies no Drupal rule and reports nothing to change.
 $drupilotSetNames = [
+  // The tests pass (ADR 0032), first and only next to drupal-rector, whose
+  // bootstrap file its rules need to see Drupal's test base classes.
+  ...(defined('DrupalRector\\Set\\Drupal10SetList::DRUPAL_100') ? ['Rector\\PHPUnit\\Set\\PHPUnitSetList::ANNOTATIONS_TO_ATTRIBUTES'] : []),
   'DrupalRector\\Set\\Drupal10SetList::DRUPAL_100',
   'DrupalRector\\Set\\Drupal10SetList::DRUPAL_101',
   'DrupalRector\\Set\\Drupal10SetList::DRUPAL_102',
@@ -110,9 +113,6 @@ $drupilotSetNames = [
   'DrupalRector\\Set\\Drupal11SetList::DRUPAL_111_BREAKING',
   'DrupalRector\\Set\\Drupal11SetList::DRUPAL_112_BREAKING',
   'DrupalRector\\Set\\Drupal11SetList::DRUPAL_113_BREAKING',
-  // The tests pass (ADR 0032), only next to drupal-rector, whose bootstrap
-  // file its rules need to see Drupal's test base classes.
-  ...(defined('DrupalRector\\Set\\Drupal10SetList::DRUPAL_100') ? ['Rector\\PHPUnit\\Set\\PHPUnitSetList::ANNOTATIONS_TO_ATTRIBUTES'] : []),
 ];
 $drupilotSets = array_map('constant', array_values(array_filter($drupilotSetNames, 'defined')));
 if ($drupilotSetNames !== [] && $drupilotSets === []) {
@@ -139,12 +139,9 @@ $drupilotRiskySkips = array_values(array_filter([
   'Rector\\Php85\\Rector\\Class_\\WakeupToUnserializeRector',
   'Rector\\Php85\\Rector\\Property\\AddOverrideAttributeToOverriddenPropertiesRector',
   'Rector\\Php84\\Rector\\Class_\\DeprecatedAnnotationToDeprecatedAttributeRector',
-  // The tests pass (ADR 0032): drupal-rector converts these annotations
-  // itself, and keeps them while a core of the range still reads them.
+  // The tests pass (ADR 0032): drupal-rector converts @group itself, and
+  // keeps the annotation an older core of the range still reads.
   'Rector\\PHPUnit\\AnnotationsToAttributes\\Rector\\Class_\\AnnotationWithValueToAttributeRector',
-  'Rector\\PHPUnit\\AnnotationsToAttributes\\Rector\\ClassMethod\\DataProviderAnnotationToAttributeRector',
-  'Rector\\PHPUnit\\AnnotationsToAttributes\\Rector\\ClassMethod\\DependsAnnotationWithValueToAttributeRector',
-  'Rector\\PHPUnit\\AnnotationsToAttributes\\Rector\\ClassMethod\\TestWithAnnotationToAttributeRector',
 ], 'class_exists'));
 
 $drupilotConfig = RectorConfig::configure()

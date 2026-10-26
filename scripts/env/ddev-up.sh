@@ -9,16 +9,17 @@
 # Then ensure a Composer project exists (drupal/recommended-project,
 # DRUPILOT_DRUPAL_TARGET) with Drush ^13. It refuses (exit 1, before any
 # `ddev config`) a root whose installed core is an older major than the target
-# (drupilot never upgrades a core) and an explicit DRUPILOT_DRUPAL_TARGET that
-# does not admit the target major.
+# (drupilot never upgrades a core), an explicit DRUPILOT_DRUPAL_TARGET that
+# does not admit the target major, and an explicit DRUPILOT_TARGET_MAJOR that
+# the root's frozen plan does not name.
 #
 # The target's toolchain cell (config/toolchain-reference.json, ADR 0004) can
 # change three things, for a pre-release major such as Drupal 12:
 #   - a pre-release major creates the plan's exact test-bed core
 #     (target.bed_core of the frozen plan), else the newest core at the
 #     stability config/targets/<T>.json gives (composer_stability_while_prerelease);
-#     an explicit DRUPILOT_DRUPAL_TARGET of that one major (12.0.x-dev) is
-#     built as it is;
+#     an explicit DRUPILOT_DRUPAL_TARGET of that one major is built as it is
+#     (12.0.x-dev), with the data's stability when it has none (^12.0);
 #   - a cell that pins drush/drush to null requires no drush (no release
 #     installs there: the bed uses core's vendor/bin/dr);
 #   - a cell with core_install "source" installs drupal/core from source on a
@@ -158,12 +159,16 @@ if [[ -z "$PROJECT_DIR" ]]; then
   # unchanged for a module already inside a usable site.
   if is_drupal_extension_dir "${SUBJECT:-$PWD}"; then
     RESOLVER="$PLUGIN_ROOT_DIR/scripts/env/resolve-workspace.sh"
+    # An explicit DRUPILOT_TARGET_MAJOR names the bed the setup planned for,
+    # whatever plan the current root holds.
+    _rt=(); _tm="$(config_get_explicit DRUPILOT_TARGET_MAJOR)"
+    [[ "$_tm" =~ ^[1-9][0-9]*$ ]] && _rt=(--target "$_tm")
     if [[ -r "$RESOLVER" ]] && have_cmd jq; then
-      _plan="$(bash "$RESOLVER" --subject "${SUBJECT:-$PWD}" --json 2>/dev/null || true)"
+      _plan="$(bash "$RESOLVER" --subject "${SUBJECT:-$PWD}" ${_rt[@]+"${_rt[@]}"} --json 2>/dev/null || true)"
       if [[ "$(printf '%s' "$_plan" | jq -r '.loose // empty' 2>/dev/null || true)" == "true" ]]; then
         PROJECT_DIR="$(printf '%s' "$_plan" | jq -r '.drupal_root // empty' 2>/dev/null || true)"
         if [[ -n "$PROJECT_DIR" ]]; then
-          log_info "Loose subject detected — building the Drupal $(target_names_major) test-bed outside your checkout:"
+          log_info "Loose subject detected — building the Drupal $(target_names_major "${_tm:-}") test-bed outside your checkout:"
           log_info "  $PROJECT_DIR"
           log_info "  (your checkout stays intact; place-subject.sh places the module in once Drupal exists)."
         fi
@@ -176,8 +181,15 @@ mkdir -p "$PROJECT_DIR"
 PROJECT_DIR="$(cd "$PROJECT_DIR" && pwd)"
 
 # The target major of this root: its frozen upgrade plan, else
-# DRUPILOT_TARGET_MAJOR (Drupal 11 by default).
+# DRUPILOT_TARGET_MAJOR (Drupal 11 by default). An explicit
+# DRUPILOT_TARGET_MAJOR that the frozen plan does not name is refused: the
+# setup re-plans before it builds the bed.
 BED_MAJOR="$(DRUPILOT_PROJECT_DIR="$PROJECT_DIR" target_names_major)"
+_tm="$(DRUPILOT_PROJECT_DIR="$PROJECT_DIR" config_get_explicit DRUPILOT_TARGET_MAJOR)"
+_pm="$(plan_get .target.major "$PROJECT_DIR" 2> /dev/null || true)"
+if [[ "$_tm" =~ ^[1-9][0-9]*$ && -n "$_pm" && "$_tm" != "$_pm" ]]; then
+  die "DRUPILOT_TARGET_MAJOR is $_tm, but the upgrade plan frozen for $PROJECT_DIR targets Drupal $_pm: run /drupilot-setup again (it re-plans), or unset it." 1
+fi
 
 # Effective PHP target: --php, else an explicit DRUPILOT_PHP_TARGET (the
 # environment, or this root's .drupilot.json), else the frozen plan's
@@ -219,12 +231,12 @@ bed_core_major_check() {
   die "The test-bed's core is not Drupal $BED_MAJOR." 1
 }
 if [[ -f "$PROJECT_DIR/composer.json" ]]; then
-  bed_core_major_check "drupilot never upgrades a site's core: set DRUPILOT_WORKSPACE_DIR (or pass --workspace) to a new directory for a Drupal $BED_MAJOR test-bed, and run the setup again."
+  bed_core_major_check "drupilot never upgrades a site's core: set DRUPILOT_WORKSPACE_DIR (or pass --workspace) to a new directory, and run /drupilot-setup again: it plans the port for a Drupal $BED_MAJOR test-bed there."
 fi
 # An explicit DRUPILOT_DRUPAL_TARGET is the core the bed is built with (ADR
 # 0021), so it must admit the target major.
 DRUPAL_TARGET_PIN="$(DRUPILOT_PROJECT_DIR="$PROJECT_DIR" config_get_explicit DRUPILOT_DRUPAL_TARGET)"
-if [[ -n "$DRUPAL_TARGET_PIN" ]] && ! core_requirement_admits "$DRUPAL_TARGET_PIN" "$BED_MAJOR"; then
+if [[ -n "$DRUPAL_TARGET_PIN" ]] && ! constraint_admits_major "$DRUPAL_TARGET_PIN" "$BED_MAJOR"; then
   die "DRUPILOT_DRUPAL_TARGET '$DRUPAL_TARGET_PIN' does not admit Drupal $BED_MAJOR, the target major of $PROJECT_DIR: unset it, or set a constraint of Drupal $BED_MAJOR, and run the setup again." 1
 fi
 
@@ -327,8 +339,8 @@ CORE_PIN=""
 if [[ -n "$DRUPAL_TARGET_PIN" ]]; then
   CORE_PIN="$DRUPAL_TARGET_PIN"
   if [[ "$BED_PRERELEASE" == "1" ]] && { [[ -n "$(drupal_target_major "$DRUPAL_TARGET_PIN")" ]] \
-       || core_requirement_admits "$DRUPAL_TARGET_PIN" "$((BED_MAJOR - 1))" \
-       || core_requirement_admits "$DRUPAL_TARGET_PIN" "$((BED_MAJOR + 1))"; }; then
+       || constraint_admits_major "$DRUPAL_TARGET_PIN" "$((BED_MAJOR - 1))" \
+       || constraint_admits_major "$DRUPAL_TARGET_PIN" "$((BED_MAJOR + 1))"; }; then
     CORE_PIN=""; DRUPAL_TARGET="^$BED_MAJOR"
   fi
 elif ! core_requirement_admits "$DRUPAL_TARGET" "$BED_MAJOR"; then
@@ -368,9 +380,15 @@ fi
 
 # A pre-release major (Drupal 12 before its release): the frozen plan's exact
 # test-bed core, else the newest core at the data's stability (Composer only
-# creates stable releases by default). An explicit core pin keeps its own
-# stability (Composer reads it from the constraint).
+# creates stable releases by default). An explicit core pin keeps a stability
+# of its own (12.0.x-dev, 12.0.0-beta1, ^12@beta), and gets the data's
+# otherwise (^12.0: Composer would only look for a stable release).
 CREATE_ARGS=()
+_pre_stab="$(target_get "$BED_MAJOR" '.composer_stability_while_prerelease // empty' 2> /dev/null || true)"
+if [[ "$BED_PRERELEASE" == "1" && -n "$CORE_PIN" && -z "$LOCKED_CORE" && ! -f "$PROJECT_DIR/composer.json" \
+      && -n "$_pre_stab" ]] && ! printf '%s' "$CORE_PIN" | grep_q -E '@|-dev|-(alpha|beta|rc|RC)[0-9]*'; then
+  CREATE_ARGS=(--stability "$_pre_stab")
+fi
 if [[ "$BED_PRERELEASE" == "1" && -z "$CORE_PIN" && -z "$LOCKED_CORE" && ! -f "$PROJECT_DIR/composer.json" ]]; then
   _bed="$(plan_get .target.bed_core "$PROJECT_DIR" 2> /dev/null || true)"
   if [[ "$(plan_get .target.major "$PROJECT_DIR" 2> /dev/null || true)" == "$BED_MAJOR" && -n "$_bed" ]] \
@@ -378,8 +396,7 @@ if [[ "$BED_PRERELEASE" == "1" && -z "$CORE_PIN" && -z "$LOCKED_CORE" && ! -f "$
     CREATE_SPEC="drupal/recommended-project:$_bed"
     log_info "Drupal $BED_MAJOR is a pre-release: creating the plan's test-bed core $_bed."
   else
-    _stab="$(target_get "$BED_MAJOR" '.composer_stability_while_prerelease // empty' 2> /dev/null || true)"
-    [[ -n "$_stab" ]] && CREATE_ARGS=(--stability "$_stab")
+    [[ -n "$_pre_stab" ]] && CREATE_ARGS=(--stability "$_pre_stab")
   fi
 fi
 

@@ -335,7 +335,7 @@ subject_project_root() {
     base="$(basename "$s")"
     parent="$(cd "$(dirname "$s")" 2>/dev/null && pwd || true)"
     if [[ -n "$parent" && -n "$base" ]]; then
-      for c in "$(config_get DRUPILOT_WORKSPACE_DIR "")" "$parent/${base}$(target_workspace_suffix)" "$parent/${base}-d11"; do
+      for c in "$(config_get DRUPILOT_WORKSPACE_DIR "")" "$parent/${base}$(target_workspace_suffix)"; do
         [[ -n "$c" ]] || continue
         if [[ -d "$c/web/modules/custom/$base" || -d "$c/web/themes/custom/$base" \
               || -d "$c/web/profiles/custom/$base" ]]; then

@@ -125,7 +125,10 @@ fi
 # --- Resolve the plan (single source of truth) -----------------------------
 RESOLVER="$(plugin_root)/scripts/env/resolve-workspace.sh"
 [[ -r "$RESOLVER" ]] || die "resolve-workspace.sh not found: $RESOLVER" 1
-PLAN="$(bash "$RESOLVER" --subject "$SUBJECT_ABS" --json 2>/dev/null || true)"
+# An explicit DRUPILOT_TARGET_MAJOR names the test-bed the setup planned for.
+_rt=(); _tm="$(config_get_explicit DRUPILOT_TARGET_MAJOR)"
+[[ "$_tm" =~ ^[1-9][0-9]*$ ]] && _rt=(--target "$_tm")
+PLAN="$(bash "$RESOLVER" --subject "$SUBJECT_ABS" ${_rt[@]+"${_rt[@]}"} --json 2>/dev/null || true)"
 [[ -n "$PLAN" ]] || die "Could not resolve the workspace plan for '$SUBJECT_ABS'." 1
 
 pget() { printf '%s' "$PLAN" | jq -r "$1 // empty" 2>/dev/null; }

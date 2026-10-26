@@ -23,7 +23,8 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     is only ever Drupal 11's (CC-17);
   - a DDEV `drupal12` project on the frozen plan's PHP (`php.final`, 8.5), with the plan's
     pre-release core (12.0.0-beta2), else the newest at the data's stability; an explicit
-    `DRUPILOT_DRUPAL_TARGET` of that one major (such as `12.0.x-dev`) is built as it is;
+    `DRUPILOT_DRUPAL_TARGET` of that one major is built as it is (`12.0.x-dev`), with the
+    data's stability when it has none of its own (`^12.0`);
   - no drush where the cell pins it to `null` (no drush release installs on Drupal 12).
     `run-upgrade-status.sh` then skips with a note, and `install-toolchain.sh
     --with-upgrade-status` does not install upgrade_status;
@@ -32,9 +33,11 @@ carries none) to match, and tag the commit `vX.Y.Z`.
     An existing project only gets a warning.
 
   `ddev-up.sh` refuses (exit 1, before `ddev config`) a root whose installed core
-  is an older major than the target, and an explicit `DRUPILOT_DRUPAL_TARGET` that
-  does not admit it; `resolve-workspace.sh` reports `in_place_ok: false` for a site
-  older than the target major (a Drupal 11 site for a Drupal 12 preview).
+  is an older major than the target, an explicit `DRUPILOT_DRUPAL_TARGET` that
+  does not admit it, and an explicit `DRUPILOT_TARGET_MAJOR` that the root's frozen
+  plan does not name; `resolve-workspace.sh` reports `in_place_ok: false` for a site
+  older than the target major (a Drupal 11 site for a Drupal 12 preview), and
+  `ddev-up.sh` and `place-subject.sh` pass it an explicit `DRUPILOT_TARGET_MAJOR`.
   `/drupilot-setup` persists the target major and the pre-release opt-in once the
   draft plan resolves. A guided `/drupilot --target 12` asks the Pre-release tab
   before it hands the run to the orchestrator, which applies the opt-in (or its
@@ -45,13 +48,17 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 - **The tests pass** (T-M6-05, ADR 0032). When the test-bed's PHPUnit no longer
   reads annotations (PHPUnit 12, Drupal 12) and the declared floor's reads
   attributes, the plan's `rector.tests_pass` adds Rector's
-  `PHPUnitSetList::ANNOTATIONS_TO_ATTRIBUTES` to `rector.php`'s set list, only
-  when drupal-rector resolves. It converts `@covers`, `@before`, `@test`,
-  `@requires` and the other PHPUnit annotations; `@group`, `@dataProvider`,
-  `@depends` and `@testWith` stay with drupal-rector's own rule, which keeps the
-  annotation for a range that keeps Drupal 11, so the plan skips the set's four
-  rules for them (`tests_pass.skip`). Drupal 11 plans keep `tests_pass: null`,
-  with a byte-identical `rector.php`.
+  `PHPUnitSetList::ANNOTATIONS_TO_ATTRIBUTES` to `rector.php`, ahead of the
+  Drupal sets and only when drupal-rector resolves: its rules convert first, so
+  drupal-rector's own (`#[RunTestsInSeparateProcesses]`, `#[TestWith]`) never add
+  a second attribute. It converts `@dataProvider`, `@depends`, `@testWith`,
+  `@covers`, `@before`, `@test`, `@requires` and the other PHPUnit tags. `@group`
+  stays with drupal-rector's rule, which keeps the annotation for a range that
+  keeps Drupal 11 (`run-tests.sh` of 11.0 and 11.1 reads only `@group`), so the
+  plan skips the set's rule for it (`tests_pass.skip`); that rule's
+  `@backupGlobals`, `@backupStaticAttributes`, `@preserveGlobalState`, `@uses` and
+  `@testDox` stay annotations. Drupal 11 plans keep `tests_pass: null`, with a
+  byte-identical `rector.php`.
 - `docs/guides/d12-preview.md` (T-M6-08): how to opt in, what the plan, the
   bed and the port do, and the limits of the preview.
 

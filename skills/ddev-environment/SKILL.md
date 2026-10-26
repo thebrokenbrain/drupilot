@@ -46,9 +46,10 @@ If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scri
   webdriver host. After DDEV writes `.ddev/config.yaml`, read it back for the real
   values (project name, `php_version`, webdriver service host).
 - **PHP target drives everything.** The DDEV `php_version`, the PHPStan level
-  expectations and some PHPCS sniffs all derive from `DRUPILOT_PHP_TARGET`
-  (default `8.3`); Rector's PHP level is the floor of the declared core range,
-  never above it (ADR 0002). Resolve it with `resolve_php_target`; see
+  expectations and some PHPCS sniffs all derive from the PHP target: an explicit
+  `DRUPILOT_PHP_TARGET`, else the frozen plan's `php.final`, else the target's
+  default (Drupal 11: `resolve_php_target`, 8.3; Drupal 12: 8.5); Rector's PHP
+  level is the floor of the declared core range, never above it (ADR 0002). See
   the `php-target-tuning` skill for the PHP 8.5 caveat (it needs Drupal 11.3 or
   later).
 
@@ -118,9 +119,9 @@ DRUPILOT_TARGET_MAJOR=<T> bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-up.sh" \
 
 Pass `--name` explicitly (e.g. `<machine_name>-d<T>`, `-d11` for Drupal 11); otherwise
 the DDEV project is named after the test-bed directory. Pass `--php` only for a PHP
-the developer gave: without it the script takes the frozen plan's `php.final` (else
-an explicit `DRUPILOT_PHP_TARGET`, else the target's default), so the bed runs the
-PHP the plan targets. stdout carries only the optional `--json` summary
+the developer gave: without it the script takes an explicit `DRUPILOT_PHP_TARGET`
+(the environment or the root's `.drupilot.json`), else the frozen plan's `php.final`,
+else the target's default, so the bed runs the PHP the plan targets. stdout carries only the optional `--json` summary
 (`{project_dir, project_name, php_version, primary_url, drupal_target}`); every log,
 the preflight report and the ddev/composer output go to stderr.
 

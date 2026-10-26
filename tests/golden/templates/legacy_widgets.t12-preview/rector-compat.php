@@ -46,12 +46,9 @@ $drupilotRiskySkips = array_values(array_filter([
   'Rector\\Php85\\Rector\\Class_\\WakeupToUnserializeRector',
   'Rector\\Php85\\Rector\\Property\\AddOverrideAttributeToOverriddenPropertiesRector',
   'Rector\\Php84\\Rector\\Class_\\DeprecatedAnnotationToDeprecatedAttributeRector',
-  // The tests pass (ADR 0032): drupal-rector converts these annotations
-  // itself, and keeps them while a core of the range still reads them.
+  // The tests pass (ADR 0032): drupal-rector converts @group itself, and
+  // keeps the annotation an older core of the range still reads.
   'Rector\\PHPUnit\\AnnotationsToAttributes\\Rector\\Class_\\AnnotationWithValueToAttributeRector',
-  'Rector\\PHPUnit\\AnnotationsToAttributes\\Rector\\ClassMethod\\DataProviderAnnotationToAttributeRector',
-  'Rector\\PHPUnit\\AnnotationsToAttributes\\Rector\\ClassMethod\\DependsAnnotationWithValueToAttributeRector',
-  'Rector\\PHPUnit\\AnnotationsToAttributes\\Rector\\ClassMethod\\TestWithAnnotationToAttributeRector',
 ], 'class_exists'));
 
 // The compat rules (the plan's rector.compat_rules). An unknown class in

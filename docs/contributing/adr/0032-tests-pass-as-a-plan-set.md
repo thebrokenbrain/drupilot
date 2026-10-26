@@ -17,7 +17,7 @@ The plan (10 AR-04, 03-R10) asks for a tests-only pass with that set only, and n
 `rector-tests.php.tmpl`, until the plan's `rector.tests_pass` existed. The roadmap wires it as the `upgrade` sub
 `rector-tests`.
 
-The lab runs on 12.0.0-beta2 showed four facts:
+The lab runs on 12.0.0-beta2 showed five facts:
 
 - Most of the set's rules act only on PHPUnit test classes: a class Rector can tell extends `TestCase`. One does
   not: `AnnotationToAttributeRector` converts the bare tags (`@test`, `@before`, `@after`, `@small`,
@@ -26,46 +26,55 @@ The lab runs on 12.0.0-beta2 showed four facts:
 - Rector can tell a test class only with drupal-rector's `config/drupal-phpunit-bootstrap-file.php`. Without the
   file it does not know that `UnitTestCase` is a `TestCase`, and it converts nothing. `rector.php` already registers
   that file whenever it has a set.
-- drupal-rector already converts four annotations itself. Its `PhpUnitTestAnnotationToAttributeRector`
-  (`Drupal11SetList::DRUPAL_110`) adds `#[Group]`, `#[DataProvider]`, `#[Depends]` and `#[TestWith]`. It keeps each
-  annotation when backward-compatible rewrites are on (the plan's `rector.bc`, for a range that keeps Drupal 11)
-  and the installed core is below 12.0.0: Drupal 11's `run-tests.sh` groups tests by `@group` (11.2 to 11.4 put a
-  test with only `#[Group]` under `##no-group-annotations`). Otherwise it removes the annotation. Rector's rules
-  for the same annotations then convert a kept annotation a second time, and they do not check for an attribute
-  already there: the lab bed's test class got two `#[Group('d11_for_d12')]`.
-- drupal-rector's `DRUPAL_114` set adds `#[RunTestsInSeparateProcesses]` to kernel and functional test classes
-  (`PhpUnitAddRunTestsInSeparateProcessesAttributeRector`), and every Drupal 12 plan lists that set.
+- drupal-rector converts some of the same annotations itself:
+  - its `PhpUnitTestAnnotationToAttributeRector` (`Drupal11SetList::DRUPAL_110`) adds `#[Group]`, `#[DataProvider]`,
+    `#[Depends]` and `#[TestWith]`. It keeps each annotation when backward-compatible rewrites are on (the plan's
+    `rector.bc`, for a range that keeps Drupal 11) and the installed core is below 12.0.0, and removes it otherwise;
+  - its `PhpUnitAddRunTestsInSeparateProcessesAttributeRector` (`DRUPAL_114`) adds `#[RunTestsInSeparateProcesses]` to
+    every kernel and functional test class, unless the class already has the attribute.
+- Rector runs a node's rules in the order they were registered, which is the order of the sets. Two of the set's
+  rules then add a second attribute when they run after drupal-rector's: `AnnotationWithValueToAttributeRector`
+  (`@group`) and `AnnotationToAttributeRector` (`@runTestsInSeparateProcesses`); `TestWithAnnotationToAttributeRector`
+  does the same for a kept `@testWith`. A second `#[RunTestsInSeparateProcesses]` is an error: the attribute is not
+  repeatable, and PHPUnit 12 refuses the class. The rules for `@dataProvider` and `@depends` never add one: the first
+  checks for an existing attribute, and the second converts on the class node, before the method rules run.
+- Drupal's `run-tests.sh` reads `@group` only on 11.0 and 11.1 (`TestDiscovery`). From 11.2 it uses PHPUnit's own
+  discovery (`PhpUnitTestDiscovery`), which reads the attributes.
+
+A rule-order probe on the lab bed (Rector 2.6.1, drupal-rector 1.1.3, a kernel test with each annotation) showed it:
+with the PHPUnit set after the Drupal sets, `#[Group]`, `#[RunTestsInSeparateProcesses]` and `#[TestWith]` came out
+twice; with it first and the `@group` rule skipped, every attribute came out once and `@group` stayed.
 
 ## Decision
 
 1. **No sibling config.** When the plan enables `rector.tests_pass`, its sets join `rector.php`'s set list
-   (`{{RECTOR_SETS}}`, `rector_sets_block`), after the Drupal sets. They are written as
-   `Rector\PHPUnit\Set\PHPUnitSetList::...` and filtered with `defined()` like the rest.
+   (`{{RECTOR_SETS}}`, `rector_sets_block`). They are written as `Rector\PHPUnit\Set\PHPUnitSetList::...` and
+   filtered with `defined()` like the rest.
    - There is one config, one pass, and the same dry-run, review and apply cycle.
    - There is no second render to keep in step with the plan, and no fourth pass in `run-rector.sh`.
    - Their hits count under the official pass (`rule_hits.official`).
+2. **The PHPUnit sets come first.** Their rules convert before drupal-rector's, which then find the attribute or no
+   annotation left, so no attribute is added twice.
    - They join the list only when the plan's first Drupal set resolves. Rector bundles the PHPUnit sets, so
      `defined()` is always true for them, and `rector.php`'s "no Drupal set resolves" stop must still fire when
      drupal-rector is missing. Their rules need drupal-rector's bootstrap file anyway.
-2. **drupal-rector's own rule wins for its four annotations.** `rector.tests_pass.skip` lists the set's rules
-   that convert them a second time, and `rector_skip_block` adds them to `rector.php`'s `withSkip()`:
-   `AnnotationWithValueToAttributeRector`, `DataProviderAnnotationToAttributeRector`,
-   `DependsAnnotationWithValueToAttributeRector` and `TestWithAnnotationToAttributeRector`.
-   - `AnnotationWithValueToAttributeRector` also converts `@backupGlobals`, `@backupStaticAttributes`,
-     `@preserveGlobalState`, `@uses` and `@testDox`. Those stay annotations, which PHPUnit 12 ignores: a test
-     adaptation item where a test needs them.
-   - The other rules of the set stay: covers, requires, ticket, and the bare tags.
-3. **When it is on.** `plan_tests_pass BED F` reads `phpunit_constraint` from the version data of two minors.
+3. **`@group` stays with drupal-rector.** `rector.tests_pass.skip` lists `AnnotationWithValueToAttributeRector`, and
+   `rector_skip_block` adds it to `rector.php`'s `withSkip()`. That rule removes `@group`, which a floor of 11.0 or
+   11.1 still needs; drupal-rector's rule keeps it for such a range.
+   - The same rule also converts `@backupGlobals`, `@backupStaticAttributes`, `@preserveGlobalState`, `@uses` and
+     `@testDox`. Those stay annotations, which PHPUnit 12 ignores: a test adaptation item where a test needs them.
+   - Every other rule of the set runs: data providers, depends, test-with, covers, requires, ticket and the bare
+     tags.
+4. **When it is on.** `plan_tests_pass BED F` reads `phpunit_constraint` from the version data of two minors.
    - It enables the pass when the test-bed core's lowest admitted PHPUnit major is 12 or more: annotations are no
      longer read there.
    - It also requires that the floor F's lowest admitted PHPUnit major is 10 or more: every core of the declared
-     range must read attributes. Drupal's own test discovery reads `@group`, which drupal-rector keeps for such a
-     range, so a floor of 11.0 or 11.1 is fine.
+     range must read attributes.
    - A minor without that data counts as unknown: the pass stays off.
    - So a Drupal 12 port (bed 12.0, F 11.3) has it, and every Drupal 11 plan (bed PHPUnit 11) keeps
      `tests_pass: null`. Its `rector.php` is byte-identical, and H10 holds.
    - A range down to Drupal 10 (PHPUnit 9) never gets it, because PHPUnit 9 does not read attributes.
-4. **Only `ANNOTATIONS_TO_ATTRIBUTES`.** 03-R10's exclusions stand. The set emits fully qualified attribute names
+5. **Only `ANNOTATIONS_TO_ATTRIBUTES`.** 03-R10's exclusions stand. The set emits fully qualified attribute names
    (`#[\PHPUnit\Framework\Attributes\DataProvider(...)]`), and PHPCS's style pass leaves them as they are.
 
 ## Consequences
@@ -75,5 +84,6 @@ The lab runs on 12.0.0-beta2 showed four facts:
 - The T=12 plan and template goldens change. The T=11 ones do not.
 - `rector-compat.php` shares the skip list, so the tests pass's skips appear there too. That pass loads no PHPUnit
   set, so they change nothing there.
-- On a 12.0.0 bed (Drupal 12's stable release, 1.1) drupal-rector removes the annotations even for a range that
-  keeps Drupal 11. The re-verification at GA decides whether that range needs its own handling.
+- On a 12.0.0 bed (Drupal 12's stable release, 1.1) drupal-rector removes `@group` even for a range that keeps
+  Drupal 11. Only a floor of 11.0 or 11.1 needs it; the re-verification at GA decides whether such a range needs
+  its own handling.

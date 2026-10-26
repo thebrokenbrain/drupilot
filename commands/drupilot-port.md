@@ -64,7 +64,7 @@ tell the user to run `/drupilot-setup` first and stop.
   echo "core_strategy=$(config_get_noalias DRUPILOT_CORE_TARGET_STRATEGY auto)"; \
   PROOT="$(subject_project_root "$SUBJECT" 2>/dev/null || true)"; \
   echo "draft_range=$([[ -n "$PROOT" ]] && plan_get .range.strategy "$PROOT" 2>/dev/null) $([[ -n "$PROOT" ]] && plan_get .range.constraint "$PROOT" 2>/dev/null)"; \
-  echo "target_major=$([[ -n "$PROOT" ]] && plan_get .target.major "$PROOT" 2>/dev/null)"; \
+  echo "target_major=$(DRUPILOT_PROJECT_DIR="${PROOT:-$SUBJECT}" target_names_major)"; \
   echo "use_digests=$(config_get DRUPILOT_USE_DIGESTS_RULES true)"; \
   echo "digests_ref=$(config_get DRUPILOT_DIGESTS_REF main)"; \
   echo "generate_rules=$(config_get DRUPILOT_GENERATE_RULES ask)"' \

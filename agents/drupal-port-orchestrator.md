@@ -282,12 +282,13 @@ T is the router's `target_major` (from `--target N`), else `DRUPILOT_TARGET_MAJO
 else 11. A pre-release T (Drupal 12 until its stable release) needs the opt-in:
 the router's `allow_prerelease=true` (a guided run's Pre-release tab),
 `DRUPILOT_ALLOW_PRERELEASE=true`, or the `ALLOW_PRERELEASE` pre-answer (the
-choice.sh call above with that key, a `value` of `yes`). With it, prefix
-`DRUPILOT_TARGET_MAJOR=<T> DRUPILOT_ALLOW_PRERELEASE=true` to every
-`upgrade-path.sh` call (the D7-AUTO probe included), pass `--target <T>` to
-`resolve-workspace.sh`, and prefix `DRUPILOT_TARGET_MAJOR=<T>` to `ddev-up.sh` and
-`place-subject.sh`. Without it, never ask: the plan's `prerelease-not-opted-in`
-refusal (exit 2) stops the run with its message, and nothing is written. After
+choice.sh call above with that key, a `value` of `yes`). Prefix
+`DRUPILOT_TARGET_MAJOR=<T>` to every `upgrade-path.sh` call (the D7-AUTO probe
+included), to `ddev-up.sh` and to `place-subject.sh`, pass `--target <T>` to
+`resolve-workspace.sh`, and add `DRUPILOT_ALLOW_PRERELEASE=true` to the
+`upgrade-path.sh` calls when opted in. Without the opt-in, never ask: the plan's
+`prerelease-not-opted-in` refusal (exit 2) stops the run with its message, and
+nothing is written. After
 the draft plan's exit 0, persist T and the opt-in as `/drupilot-setup` does
 (`prefs_set DRUPILOT_TARGET_MAJOR <T>`, `prefs_set DRUPILOT_ALLOW_PRERELEASE true`,
 run with `DRUPILOT_PROJECT_DIR=<drupal_root>`). When the plan's `target.preview` is
@@ -322,7 +323,7 @@ the subject in place. Use the `ddev-environment` skill and:
 - Delegate subject placement to `scripts/env/resolve-workspace.sh` (read-only — decides
   the workspace; a loose checkout targets a sibling `<name>-d<T>` root (`-d11` for Drupal 11), never scaffolded
   on top of; a module of a project checkout without installed core — a monorepo
-  clone — gets `<parent>/<project>-d11` outside the repository, never moved (`move`
+  clone — gets `<parent>/<project>-d<T>` outside the repository, never moved (`move`
   becomes `copy`, a copy gets a git baseline; a `symlink` is kept); an in-place root on an older major than T is reported `in_place_ok:false`) then, after `ddev-up.sh`, `scripts/env/place-subject.sh` (idempotent — places
   it under `web/<modules|themes|profiles>/custom/<name>`). Install the dev toolchain with
   `scripts/env/install-toolchain.sh --dir <drupal_root> --json` (pinned to the lock or the

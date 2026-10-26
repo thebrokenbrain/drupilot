@@ -3197,16 +3197,17 @@ frozen plan's php.final, else the target's default (resolve_php_target_for).
 Then ensure a Composer project exists (drupal/recommended-project,
 DRUPILOT_DRUPAL_TARGET) with Drush ^13. It refuses (exit 1, before any
 `ddev config`) a root whose installed core is an older major than the target
-(drupilot never upgrades a core) and an explicit DRUPILOT_DRUPAL_TARGET that
-does not admit the target major.
+(drupilot never upgrades a core), an explicit DRUPILOT_DRUPAL_TARGET that
+does not admit the target major, and an explicit DRUPILOT_TARGET_MAJOR that
+the root's frozen plan does not name.
 
 The target's toolchain cell (config/toolchain-reference.json, ADR 0004) can
 change three things, for a pre-release major such as Drupal 12:
   - a pre-release major creates the plan's exact test-bed core
     (target.bed_core of the frozen plan), else the newest core at the
     stability config/targets/<T>.json gives (composer_stability_while_prerelease);
-    an explicit DRUPILOT_DRUPAL_TARGET of that one major (12.0.x-dev) is
-    built as it is;
+    an explicit DRUPILOT_DRUPAL_TARGET of that one major is built as it is
+    (12.0.x-dev), with the data's stability when it has none (^12.0);
   - a cell that pins drush/drush to null requires no drush (no release
     installs there: the bed uses core's vendor/bin/dr);
   - a cell with core_install "source" installs drupal/core from source on a

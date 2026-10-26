@@ -205,8 +205,8 @@ resolver internally, so the loose subject is never scaffolded on top of.
 developer an in-place port needs the site on Drupal T first, and offer a test-bed by setting
 `DRUPILOT_WORKSPACE_DIR` outside the site), `project-no-core` (a module of a Composer project
 checkout whose core is not installed, e.g. a monorepo clone: the test-bed is
-`<parent>/<project>-d11`, next to the repository), `repo-subdir` (a sub-directory of a git
-repository that is not a Drupal project: `<parent of the repository>/<machine_name>-d11`) or
+`<parent>/<project>-d<T>`, next to the repository), `repo-subdir` (a sub-directory of a git
+repository that is not a Drupal project: `<parent of the repository>/<machine_name>-d<T>`) or
 `standalone`. A test-bed is never created inside the developer's repository
 (`testbed_inside_origin:true` only with an explicit workspace there — warn). For
 `project-no-core` and `repo-subdir` the resolver's `placement` is always `copy` (a move would
@@ -221,7 +221,7 @@ the recommended option) *unless* the run is autonomous (an autonomous run shows 
 resolves with the `move` default). Offer:
 
 - **Sibling dir + move — recommended** (`DRUPILOT_PLACEMENT=move`) — relocate the checkout
-  into `<machine_name>-d11/web/.../custom/<machine_name>`; it stays a git repo, just at a
+  into `<machine_name>-d<T>/web/.../custom/<machine_name>`; it stays a git repo, just at a
   new path; the default.
 - **Sibling dir + symlink** (`DRUPILOT_PLACEMENT=symlink`) — keep editing your original path
   and symlink it into the test-bed. Gate on `autonomous=false`.
@@ -268,8 +268,8 @@ run it verbatim). Pass `--name` explicitly: without it the project is named afte
 test-bed directory (e.g. `my_module-d11` → `my-module-d11`). A good default is the
 `machine_name` from the resolver plus `-d<T>` (`-d11` for Drupal 11); the script sanitizes
 it to a hostname-safe value. Prefix `DRUPILOT_TARGET_MAJOR=<T>` when T is not 11 (as for
-the resolver), and pass no `--php`: the script takes the frozen draft plan's
-`php.final`:
+the resolver), and pass no `--php`: the script takes an explicit `DRUPILOT_PHP_TARGET`,
+else the frozen draft plan's `php.final`:
 
 ```bash
 DRUPILOT_TARGET_MAJOR=<T> bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-up.sh" --subject "<subject_dir>" --name "<ddev_name>" --docroot web
@@ -279,8 +279,8 @@ All logs, the preflight report and the ddev/composer output go to stderr; add `-
 a `{project_dir, project_name, php_version, primary_url, drupal_target}` summary on stdout.
 
 This configures the target's DDEV project type (`target_ddev_type`) with `--docroot=web` and
-the PHP of the frozen plan (`php.final`; else an explicit `DRUPILOT_PHP_TARGET`, else the
-target's default), starts DDEV, runs `ddev composer create-project drupal/recommended-project:^11`
+an explicit `DRUPILOT_PHP_TARGET` (the environment or the root's `.drupilot.json`), else
+the PHP of the frozen plan (`php.final`), else the target's default, starts DDEV, runs `ddev composer create-project drupal/recommended-project:^11`
 (`create` on DDEV < 1.24.2; for a Drupal 12 preview, the plan's pre-release core) when there is
 no composer.json, ensures `drush:^13` (none where the toolchain cell has no drush), and reads
 the generated `.ddev/config.yaml` rather than assuming hostnames/images. It refuses (exit 1,

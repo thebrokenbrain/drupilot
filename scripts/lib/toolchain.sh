@@ -185,26 +185,29 @@ rector_floor_tokens() {
 # comma-ended constant name per line (  'DrupalRector\\Set\\Drupal10SetList::DRUPAL_100',)
 # for the plan's rector.drupal_sets then rector.breaking_sets, in order. The
 # Drupal 8 and 9 families stay out until the D8/D9 hops are proven (T-M9-03,
-# ADR 0019): 0.9 never ran them. Then, when the plan enables
-# rector.tests_pass, its PHPUnit sets (Rector\PHPUnit\Set\PHPUnitSetList::...,
-# ADR 0032), on one line that adds them only when the first Drupal set
-# resolves: their rules need drupal-rector's bootstrap file to see Drupal's
-# test base classes, and rector.php's "no Drupal set resolves" stop must still
+# ADR 0019): 0.9 never ran them. When the plan enables rector.tests_pass, its
+# PHPUnit sets (Rector\PHPUnit\Set\PHPUnitSetList::..., ADR 0032) come first, on
+# one line that adds them only when the first Drupal set resolves: Rector runs
+# a node's rules in the order they were registered, so its annotation rules
+# convert before drupal-rector's, whose own (#[RunTestsInSeparateProcesses],
+# #[TestWith]) then find the attribute or no annotation instead of adding a
+# second one; their rules need drupal-rector's bootstrap file to see Drupal's
+# test base classes; and rector.php's "no Drupal set resolves" stop must still
 # fire without drupal-rector (Rector bundles the PHPUnit sets).
 rector_sets_block() {
   printf '%s' "${1:-}" | jq -r '([(.rector.drupal_sets // [])[], (.rector.breaking_sets // [])[]]
       | map(select(test("^Drupal[0-9]+SetList::DRUPAL_[0-9]+(_BREAKING)?$")
                    and ((capture("^Drupal(?<n>[0-9]+)SetList").n | tonumber) >= 10)))) as $d
-    | ($d[] | "  \u0027DrupalRector\\\\Set\\\\" + . + "\u0027,"),
-      (if (.rector.tests_pass // null | type) == "object" and .rector.tests_pass.enabled == true and ($d | length) > 0
+    | (if (.rector.tests_pass // null | type) == "object" and .rector.tests_pass.enabled == true and ($d | length) > 0
        then [(.rector.tests_pass.sets // [])[] | select(type == "string" and test("^Rector\\\\PHPUnit\\\\Set\\\\PHPUnitSetList::[A-Z_]+$"))
              | "\u0027" + (split("\\") | join("\\\\")) + "\u0027"]
             | if length == 0 then empty else
-                "  // The tests pass (ADR 0032), only next to drupal-rector, whose bootstrap",
-                "  // file its rules need to see Drupal\u0027s test base classes.",
+                "  // The tests pass (ADR 0032), first and only next to drupal-rector, whose",
+                "  // bootstrap file its rules need to see Drupal\u0027s test base classes.",
                 "  ...(defined(\u0027DrupalRector\\\\Set\\\\" + $d[0] + "\u0027) ? [" + join(", ") + "] : []),"
               end
-       else empty end)' 2> /dev/null || true
+       else empty end),
+      ($d[] | "  \u0027DrupalRector\\\\Set\\\\" + . + "\u0027,")' 2> /dev/null || true
   return 0
 }
 
@@ -226,8 +229,8 @@ rector_skip_block() {
       (if (.rector.tests_pass // null | type) == "object" and .rector.tests_pass.enabled == true
        then [(.rector.tests_pass.skip // [])[] | fqcn] - $base
             | if length == 0 then empty else
-                "  // The tests pass (ADR 0032): drupal-rector converts these annotations",
-                "  // itself, and keeps them while a core of the range still reads them.",
+                "  // The tests pass (ADR 0032): drupal-rector converts @group itself, and",
+                "  // keeps the annotation an older core of the range still reads.",
                 (.[] | php_str)
               end
        else empty end)' 2> /dev/null || true

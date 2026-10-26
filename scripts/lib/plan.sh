@@ -497,7 +497,7 @@ _plan_phpunit_min() {
 
 # plan_tests_pass BED F -> the plan's rector.tests_pass (ADR 0032), one JSON
 # line: {enabled: true, sets: [Rector's PHPUnit annotations-to-attributes
-# set], skip: [its four rules drupal-rector's own covers]} when the test-bed
+# set], skip: [its rule for @group]} when the test-bed
 # core's PHPUnit no longer reads annotations (the lowest major its minor's
 # phpunit_constraint admits is 12 or more: PHPUnit 12 ignores @dataProvider,
 # @covers, @group) and the floor F's PHPUnit reads attributes (10 or more),
@@ -505,10 +505,11 @@ _plan_phpunit_min() {
 # phpunit_constraint is unknown: null). Only that set: never
 # PHPUNIT_CODE_QUALITY, NARROW_ASSERTS or MOCK_TO_STUB, which change what a
 # test verifies (03-R10). drupal-rector's PhpUnitTestAnnotationToAttributeRector
-# (Drupal11SetList::DRUPAL_110) converts @group, @dataProvider, @depends and
-# @testWith and keeps each annotation for the Drupal 11 cores of the range,
-# whose run-tests.sh reads @group; the set's rules for the same annotations
-# add a second attribute next to it, so the plan skips them.
+# (Drupal11SetList::DRUPAL_110) converts @group and keeps the annotation for a
+# range that keeps Drupal 11 (run-tests.sh of 11.0 and 11.1 reads only
+# @group); the set's AnnotationWithValueToAttributeRector would remove it
+# first, so the plan skips that rule (it also converts @backupGlobals,
+# @preserveGlobalState, @uses and @testDox, which stay annotations).
 plan_tests_pass() {
   local bed="${1:-}" floor="${2:-}" bm fm bmaj fmaj
   bm="$(printf '%s' "$bed" | sed -n 's/^\([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
@@ -516,10 +517,8 @@ plan_tests_pass() {
   [[ -n "$bm" && -n "$fm" ]] && have_cmd jq || { printf 'null'; return 0; }
   bmaj="$(_plan_phpunit_min "$bm")"; fmaj="$(_plan_phpunit_min "$fm")"
   if [[ "$bmaj" =~ ^[0-9]+$ && "$fmaj" =~ ^[0-9]+$ ]] && (( bmaj >= 12 && fmaj >= 10 )); then
-    jq -n -c '"Rector\\PHPUnit\\AnnotationsToAttributes\\Rector\\" as $r
-      | {enabled: true, sets: ["Rector\\PHPUnit\\Set\\PHPUnitSetList::ANNOTATIONS_TO_ATTRIBUTES"],
-         skip: [$r + "Class_\\AnnotationWithValueToAttributeRector", $r + "ClassMethod\\DataProviderAnnotationToAttributeRector",
-                $r + "ClassMethod\\DependsAnnotationWithValueToAttributeRector", $r + "ClassMethod\\TestWithAnnotationToAttributeRector"]}'
+    jq -n -c '{enabled: true, sets: ["Rector\\PHPUnit\\Set\\PHPUnitSetList::ANNOTATIONS_TO_ATTRIBUTES"],
+      skip: ["Rector\\PHPUnit\\AnnotationsToAttributes\\Rector\\Class_\\AnnotationWithValueToAttributeRector"]}'
   else
     printf 'null'
   fi

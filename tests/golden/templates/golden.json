@@ -2,9 +2,9 @@
   "data_hash": "56ec4231aedc8d88d7c207106fdb5d058f49aed6910bdc57d290ec4475604118",
   "files": {
     "d11_for_d12.t12-preview/phpcs.xml.dist": "fea5ef5e1f1b109e0145ef41fd0f28c4c27ae6255a5cf0d8abb083ad50fa49bf",
-    "d11_for_d12.t12-preview/phpstan.neon": "b13d77584970faee54f97fd348e2648eb98d89da94a75066c472afe1945d4330",
-    "d11_for_d12.t12-preview/rector-compat.php": "ddbe5e6a5a4e6602326dc618738e0d856d59ab6cbc8ea18e27287a592905d329",
-    "d11_for_d12.t12-preview/rector.php": "3aaafed8cd91b56c0c553fe4d7db791699757b5851a4c8daa1e1c41408a22361",
+    "d11_for_d12.t12-preview/phpstan.neon": "fa949ebc1d94348cfc7cabc3ee84d550787476e6233b77ac919e51051aa771c5",
+    "d11_for_d12.t12-preview/rector-compat.php": "939c6d90ee71261f6b0258a8cde96ab2c02a0bf6f59849a5a6d7a128ec9e5971",
+    "d11_for_d12.t12-preview/rector.php": "3ead1671beba2c0558145845075446ce5a9841c8b282322d200307b0545d05b4",
     "d11_php_only.t11-p85/phpcs.xml.dist": "8c211d48f800e833a027b266f1f1e162fba8f8ce46d86497a1a6a52ee35681ff",
     "d11_php_only.t11-p85/phpstan.neon": "c295810f4ba5d22e4bfd2ad81a545e9f2c97da389b8444ac929be116c51d7587",
     "d11_php_only.t11-p85/rector-compat.php": "19c02b7e031d2219bac3a62f35debdfa3139fd59e5b42c5d5f32b5fb0031a0fa",
@@ -50,8 +50,8 @@
     "legacy_widgets.t11-target-only-p84/rector-compat.php": "f4b84a1f58f9aa28e5ac9512946066bb0e126ce0a217b0504c87179c2e2cd631",
     "legacy_widgets.t11-target-only-p84/rector.php": "42653acbc8453a3d560cf168126d9d0909406061c3dd682cd2dbbfcff5eb37c7",
     "legacy_widgets.t12-preview/phpcs.xml.dist": "9f7cddfff05f61ecab2f171b6d3beca8916ae5840a4ad4e205ac5ff11662974b",
-    "legacy_widgets.t12-preview/phpstan.neon": "94d38b41068c191b7e7bcf1d18fe57b96415aa8573445120c5e3f8fbf1681f58",
-    "legacy_widgets.t12-preview/rector-compat.php": "2f9ad785123acca918471967b5e5a2d6e4202be900518a0e8471431ddf18cbcd",
-    "legacy_widgets.t12-preview/rector.php": "103b04a8360fb14b1b6f7bcc71768c848f92a3a6d86b5d5c261ac5eecd37ca58"
+    "legacy_widgets.t12-preview/phpstan.neon": "88ba800d31fe738bb4b9a045e683b107b492bd13b2c3d50ec5fc618ac85ddb9a",
+    "legacy_widgets.t12-preview/rector-compat.php": "a0ccc720164d8dc22e69ab23a51166729989a49ad8e0e006b14e090426794b7c",
+    "legacy_widgets.t12-preview/rector.php": "babb66fe368a5cf1f98fba77cb930ee6179041b7088686b76970f25af0c2a67b"
   }
 }

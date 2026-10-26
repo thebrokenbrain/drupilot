@@ -55,30 +55,32 @@ gives:
 ## What the port changes
 
 - **PHPUnit attributes.** PHPUnit 12 no longer reads annotations such as `@dataProvider`, `@covers` or `@group`.
-  - drupal-rector's own rule (in `Drupal11SetList::DRUPAL_110`) converts `@group`, `@dataProvider`, `@depends` and
-    `@testWith`. For a range that keeps Drupal 11 it also keeps each annotation, because Drupal 11's
-    `run-tests.sh` groups tests by `@group`.
-  - The plan adds Rector's `PHPUnitSetList::ANNOTATIONS_TO_ATTRIBUTES` for the rest, such as `@covers`, `@before`,
-    `@test` and `@requires` ([ADR 0032](../contributing/adr/0032-tests-pass-as-a-plan-set.md)). It skips the set's
-    rules for the four annotations drupal-rector converts, and adds nothing that changes what a test checks.
+  - The plan adds Rector's `PHPUnitSetList::ANNOTATIONS_TO_ATTRIBUTES`, ahead of the Drupal sets
+    ([ADR 0032](../contributing/adr/0032-tests-pass-as-a-plan-set.md)). It converts `@dataProvider`, `@depends`,
+    `@testWith`, `@covers`, `@before`, `@test`, `@requires` and the other PHPUnit tags, and adds nothing that
+    changes what a test checks.
+  - `@group` stays with drupal-rector's own rule (in `Drupal11SetList::DRUPAL_110`). For a range that keeps
+    Drupal 11 it keeps the annotation next to the attribute, because `run-tests.sh` of Drupal 11.0 and 11.1 reads
+    only `@group`.
   - drupal-rector's `DRUPAL_114` set adds `#[RunTestsInSeparateProcesses]` to kernel and functional test classes.
 - **Symfony 8.** `DRUPAL_120` adds the `mixed` and `void` types Symfony 8 requires on a constraint validator's
   `validate()`.
 - **Core removals** become worklist items for a person:
-  - a removed base theme is a decision: a new base theme, or the contrib theme;
+  - a removed base theme is a decision, a new base theme or the contrib theme, and a hard break until it is made;
   - a removed module with a contrib release that covers your range is a dependency to rewrite: `contact:contact`
     plus `composer require drupal/contact`;
+  - a removed module that no release covers is a blocked dependency;
   - a removal with no replacement, such as `migrate_drupal` or a removed library, is a hard break.
 
-  An open hard break keeps the port `blocked` in `port-summary.sh`.
+  An open hard break or blocked dependency keeps the port `blocked` in `port-summary.sh`.
 
 ## Limits of the preview
 
 - The Drupal 11 half of the range (`^11.3`) is declared, not verified: the port's core matrix step
   (`verify-core-matrix.sh`) checks a kept Drupal 10 half, and a preview's range has none.
 - `@backupGlobals`, `@backupStaticAttributes`, `@preserveGlobalState`, `@uses` and `@testDox` stay annotations,
-  which PHPUnit 12 ignores: their Rector rule also converts `@group` and `@depends`, so the plan skips it. Convert
-  them by hand where a test needs them.
+  which PHPUnit 12 ignores: their Rector rule also converts `@group`, so the plan skips it. Convert them by hand
+  where a test needs them.
 - PHPUnit 12 reports a mock that sets no expectation as a notice, and the notice fails the group. Use
   `createStub()`, or `#[AllowMockObjectsWithoutExpectations]`, as a test adaptation.
 - The dependency rewrite under H8 is not automatic yet: the item says what to change.

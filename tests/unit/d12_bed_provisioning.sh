@@ -7,9 +7,11 @@
 # from the frozen plan alone, with no target in the environment; an explicit
 # core pin keeps its own stability; a pin that does not admit the target, and
 # a root whose installed core is Drupal 11, are refused (exit 1) before any
-# `ddev config`; on the Drupal 12 bed, run-upgrade-status.sh skips on purpose
+# `ddev config`, and so is an explicit DRUPILOT_TARGET_MAJOR the frozen plan
+# does not name; a pin of the major with no stability of its own (^12.0) gets
+# the data's --stability; on the Drupal 12 bed, run-upgrade-status.sh skips on purpose
 # (no drush: no `ddev drush` call); a Drupal 11 bed is built as before (the
-# target's PHP, ^11, drush).
+# target's PHP, ^11, drush; DRUPILOT_DRUPAL_TARGET='*' still builds).
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
 # shellcheck source=../../scripts/lib/common.sh
@@ -92,7 +94,16 @@ up DRUPILOT_DRUPAL_TARGET=12.0.x-dev "$T_SH" "$T_REPO/scripts/env/ddev-up.sh" --
 assert_eq "DRUPILOT_DRUPAL_TARGET=12.0.x-dev: created with it, no --stability" \
   "$(cat "$T_TMP/rc")|$(grep -c -- 'drupal/recommended-project:12.0.x-dev$' "$LOG" || true)|$(grep -c -- '--stability' "$LOG" || true)" "0|1|0"
 
+R4="$T_TMP/pin-minor"; freeze "$SUBJ" "$R4"
+up DRUPILOT_DRUPAL_TARGET=^12.0 "$T_SH" "$T_REPO/scripts/env/ddev-up.sh" --dir "$R4" --docroot web
+assert_eq "DRUPILOT_DRUPAL_TARGET=^12.0 (no stability of its own): created with it and the data's --stability" \
+  "$(cat "$T_TMP/rc")|$(grep 'create-project' "$LOG" | grep -c -- "--stability $(target_get 12 .composer_stability_while_prerelease) drupal/recommended-project:^12.0\$" || true)" "0|1"
+
 # --- refusals, before any ddev config -------------------------------------------
+R5="$T_TMP/major-11"; freeze "$SUBJ" "$R5"
+up DRUPILOT_TARGET_MAJOR=11 "$T_SH" "$T_REPO/scripts/env/ddev-up.sh" --dir "$R5" --docroot web
+assert_eq "DRUPILOT_TARGET_MAJOR=11 against the frozen Drupal 12 plan: exit 1, no ddev config" \
+  "$(cat "$T_TMP/rc")|$(grep -c '^config ' "$LOG" || true)" "1|0"
 R3="$T_TMP/pin-11"; freeze "$SUBJ" "$R3"
 up DRUPILOT_DRUPAL_TARGET=^11 "$T_SH" "$T_REPO/scripts/env/ddev-up.sh" --dir "$R3" --docroot web
 assert_eq "a pin that does not admit the plan's Drupal 12: exit 1, no ddev config" \
@@ -107,6 +118,10 @@ assert_eq "a root whose core is Drupal 11, for Drupal 12: exit 1, no ddev config
 assert_match "  the message says why" "$(cat "$T_TMP/up.err")" "has Drupal 11.4.8, an older major than the target of this port, Drupal 12"
 
 # --- a Drupal 11 bed, as before -------------------------------------------------
+STAR="$T_TMP/star"; mkdir -p "$STAR"
+up DRUPILOT_DRUPAL_TARGET='*' "$T_SH" "$T_REPO/scripts/env/ddev-up.sh" --dir "$STAR" --docroot web
+assert_eq "DRUPILOT_DRUPAL_TARGET='*' admits Drupal 11: built with it, as before" \
+  "$(cat "$T_TMP/rc")|$(grep 'create-project' "$LOG" | grep -c -- 'drupal/recommended-project:\*$' || true)" "0|1"
 LW="$T_TMP/legacy_widgets"; cp -R "$T_REPO/tests/fixtures/legacy_widgets" "$LW"
 up "$T_SH" "$T_REPO/scripts/env/ddev-up.sh" --subject "$LW" --name lw-d11 --docroot web
 assert_eq "Drupal 11: exit 0, a drupal11 project on the target's default PHP" \
