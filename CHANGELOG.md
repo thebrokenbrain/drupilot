@@ -124,7 +124,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   checks after its result (`ICON_MISSING`: the plugin has no icon), which do
   not change the result. `release.sh` counted them as warnings and refused
   `1.0.0-rc.1`. They are now shown and never block; a warning of the result
-  itself still refuses the release (`tests/unit/release_validate.sh`).
+  itself still refuses the release. The CLI runs with `TERM=dumb` (under
+  `TERM=linux` it prints ASCII figures, which the filter did not read), and an
+  output with no CLAUDE.md-at-root warning in its result, while that file
+  exists, refuses as not understood (`tests/unit/release_validate.sh`).
 - **A headless `/drupilot … auto` run no longer stops halfway.** The router ran
   the orchestrator as a background subagent and ended its turn, so a
   `claude -p` session ended and stopped the port (a lab run on autologout). The

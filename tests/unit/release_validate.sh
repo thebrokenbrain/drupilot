@@ -4,7 +4,9 @@
 # result block a release (the known CLAUDE.md-at-root one aside). The plugin
 # directory's own checks a newer CLI prints after the result (ICON_MISSING,
 # "About these checks") are shown and never block; a warning of the result
-# itself still refuses the release with nothing committed.
+# itself still refuses the release with nothing committed, with the directory
+# section present too and in the CLI's ASCII figures (">"); with a CLAUDE.md
+# at the root, a result without its warning was not understood: refused.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
 unset GITHUB_BASE_REF GITHUB_REF_NAME GITHUB_REF_TYPE RELEASE_FROM
@@ -54,8 +56,8 @@ Validating plugin: /x
 OUT
 assert_eq "a warning of the result: refused" "$(rel "$T_TMP/bad.out" 1.0.0-alpha.1)" "1"
 assert_match "  with the reason" "$(t_err)" "a warning other than the known CLAUDE.md-at-root one"
-assert_eq "  nothing committed or tagged, the tree clean" \
-  "$(g rev-parse HEAD)|$(g tag -l | wc -l | tr -d ' ')|$(g status --porcelain | wc -l | tr -d ' ')" "$HEAD0|0|0"
+untouched() { printf '%s|%s|%s' "$(g rev-parse HEAD)" "$(g tag -l | wc -l | tr -d ' ')" "$(g status --porcelain | wc -l | tr -d ' ')"; }
+assert_eq "  nothing committed or tagged, the tree clean" "$(untouched)" "$HEAD0|0|0"
 
 # The 2.1.311 output: the CLAUDE.md warning, then the plugin directory's checks.
 cat > "$T_TMP/dir.out" <<'OUT'
@@ -81,6 +83,19 @@ These plugin directory checks do not change the result below.
 
 ✔ Validation passed with warnings
 OUT
+# A result warning before the directory section, and in ASCII figures: refused.
+awk '{ print } /^  ❯ root: CLAUDE.md/ { print "  ❯ author: No author information provided" }' "$T_TMP/dir.out" > "$T_TMP/dir-bad.out"
+assert_eq "a result warning with the directory section present: refused" "$(rel "$T_TMP/dir-bad.out" 1.0.0-alpha.1)" "1"
+assert_eq "  nothing committed or tagged" "$(untouched)" "$HEAD0|0|0"
+sed 's/^  ❯ /  > /' "$T_TMP/dir-bad.out" > "$T_TMP/dir-ascii.out"
+assert_eq "  the same in the CLI's ASCII figures: refused" "$(rel "$T_TMP/dir-ascii.out" 1.0.0-alpha.1)" "1"
+# With a CLAUDE.md at the root, its warning must be in the result.
+printf '# x\n' > "$r/CLAUDE.md"; g add CLAUDE.md && g commit -qm claude; HEAD0="$(g rev-parse HEAD)"
+grep -v 'CLAUDE.md at the plugin root' "$T_TMP/dir.out" > "$T_TMP/dir-noclaude.out"
+assert_eq "a CLAUDE.md at the root and no warning about it in the result: refused" "$(rel "$T_TMP/dir-noclaude.out" 1.0.0-alpha.1)" "1"
+assert_match "  as not understood" "$(t_err)" "output was not understood"
+assert_eq "  nothing committed or tagged" "$(untouched)" "$HEAD0|0|0"
+
 assert_eq "the plugin directory's checks: released" "$(rel "$T_TMP/dir.out" 1.0.0-alpha.1)" "0"
 assert_eq "  the release commit and the tag" "$(g log -1 --format=%s)|$(g tag -l)" "chore(release): 1.0.0-alpha.1|v1.0.0-alpha.1"
 assert_match "  the directory's checks are shown" "$(t_err)" "ICON_MISSING"

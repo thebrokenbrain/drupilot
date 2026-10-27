@@ -4986,7 +4986,8 @@ Cut a release (a maintainer tool: no command, skill or hook calls it), as
   4. run `claude plugin validate .` (no warning but the known CLAUDE.md-at-
      root one, which is why --strict is not used; the plugin directory's
      own checks a newer CLI prints after the result, such as ICON_MISSING,
-     are shown and never block) and `check.sh --ci`;
+     are shown and never block; an output it cannot parse refuses) and
+     `check.sh --ci`;
   5. commit `chore(release): <version>` and tag it `v<version>` (annotated);
   6. print the push commands. It never pushes, and never runs
      `claude plugin tag` (09-R12: only vX.Y.Z tags).
