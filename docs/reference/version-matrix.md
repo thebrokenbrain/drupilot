@@ -277,7 +277,7 @@ Sources:
 
 ## PHP rules
 
-As of 2026-10-17; rule classes read in rector-src 2.5.2. compat: a deprecation fix whose output runs on the PHP floor; deny: never applied, also inside a level set; report-only: reported, never rewritten; removed-no-rule: a removed construct no compat rule fixes (the Rector level sets rewrite some of its forms; php-target.sh reports what is left).
+As of 2026-10-27; rule classes read in rector-src 2.5.2. compat: a deprecation fix whose output runs on the PHP floor; deny: never applied, also inside a level set; report-only: reported, never rewritten; removed-no-rule: a removed construct no compat rule fixes (the Rector level sets rewrite some of its forms; php-target.sh reports what is left).
 
 | Id | Kind | Rector rule | Deprecated in | Removed in | Output needs PHP | Drupal-safe | Verified |
 |---|---|---|---|---|---|---|---|
@@ -309,6 +309,7 @@ As of 2026-10-17; rule classes read in rector-src 2.5.2. compat: a deprecation f
 | `p85-pdo-mysql-constants` | report-only |  | 8.5 |  | 8.4 | true | no |
 | `p85-http-response-header` | report-only |  | 8.5 |  | 8.4 | true | no |
 | `p81-strftime` | report-only |  | 8.1 |  |  |  | yes |
+| `p80-sort-bool-comparator` | report-only |  | 8.0 |  |  |  | yes |
 | `p81-filter-sanitize-string` | report-only |  | 8.1 |  |  |  | yes |
 | `p84-e-strict` | report-only |  | 8.4 |  |  |  | yes |
 | `p84-lcg-value` | report-only |  | 8.4 |  |  |  | yes |
@@ -347,6 +348,7 @@ Sources:
 - `p85-pdo-mysql-constants`: https://www.php.net/manual/en/migration85.deprecated.php ; output_min_php: https://www.php.net/manual/en/class.pdo-mysql.php output_min_php 8.4: the Pdo\Mysql class and its ATTR_* constants are PHP 8 &gt;= 8.4.0 (php.net, read 2026-10-12).
 - `p85-http-response-header`: https://www.php.net/manual/en/migration85.deprecated.php ; output_min_php: https://www.php.net/manual/en/function.http-get-last-response-headers.php output_min_php 8.4: http_get_last_response_headers() is PHP 8 &gt;= 8.4.0 (php.net, read 2026-10-12).
 - `p81-strftime`: https://www.php.net/manual/en/migration81.deprecated.php
+- `p80-sort-bool-comparator`: https://www.php.net/manual/en/migration80.deprecated.php php.net (read 2026-10-27): sort comparison functions that return true or false throw a deprecation warning since PHP 8.0. Drupal's test runner turns the notice into a failure (lab L-1.0-D9, optimizedb). Found by a heuristic scan of the closures and arrow functions passed inline (php_sort_bool_comparator_lines): a named callback is not followed.
 - `p81-filter-sanitize-string`: https://www.php.net/manual/en/migration81.deprecated.php
 - `p84-e-strict`: https://www.php.net/manual/en/migration84.deprecated.php
 - `p84-lcg-value`: https://www.php.net/manual/en/migration84.deprecated.php

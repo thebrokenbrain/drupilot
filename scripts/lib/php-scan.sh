@@ -605,3 +605,171 @@ BEGIN { st = "html"; lbl = "" }
 }' "$f" 2> /dev/null || true
   return 0
 }
+
+# php_sort_bool_comparator_lines FILE -> the line of every comparator, passed
+# inline to usort(), uasort() or uksort(), that returns a comparison (a bool)
+# instead of an int, one line number per finding, in order. PHP 8.0
+# deprecated it ("Returning bool from comparison function is deprecated"),
+# and Drupal's test runner turns that notice into a failure. FILE is
+# php_code_lines's output (comments and string contents blanked, the line
+# numbers kept). A heuristic scan, not a parser: a closure (`function`, maybe
+# `static`) or an arrow function written as the second argument is followed;
+# a named callback, an array callable or a variable is not. A closure's
+# reported line is that of a `return` whose expression has, at its top level
+# (outside brackets, and after any outer parentheses are stripped), a
+# comparison (<, >, <=, >=, ==, !=, ===, !==, <>), &&, ||, a leading ! or
+# true/false, and neither <=> nor a ternary; an arrow function's, the line of
+# its =>. A closure or arrow function that declares a return type other than
+# bool is skipped (PHP converts what it returns), and so are the returns of a
+# closure nested in the comparator.
+php_sort_bool_comparator_lines() {
+  local f="${1:-}"
+  [[ -f "$f" ]] || return 0
+  LC_ALL=C awk '
+function ws(k) { while (k <= n && substr(buf, k, 1) ~ /[ \t\n\r]/) k++; return k }
+function isid(c) { return c ~ /[A-Za-z0-9_$\\]/ }
+# shut(k) -> the position of the bracket that closes the one at k (n + 1
+# when none does).
+function shut(k,   d, ch) {
+  d = 0
+  for (; k <= n; k++) {
+    ch = substr(buf, k, 1)
+    if (ch == "(" || ch == "[" || ch == "{") d++
+    else if (ch == ")" || ch == "]" || ch == "}") { d--; if (d == 0) return k }
+  }
+  return n + 1
+}
+function lineof(k,   t) { t = substr(buf, 1, k); return gsub(/\n/, "", t) + 1 }
+function trim(s) { gsub(/^[ \t\n\r]+|[ \t\n\r]+$/, "", s); return s }
+# isbool(e) -> 1 when the expression e reads as a bool (see the header).
+function isbool(e,   m, d, k, ch, c2, c3, found, ee, dd, kk, cc) {
+  e = trim(e)
+  # Strip outer parentheses that enclose the whole expression.
+  while (substr(e, 1, 1) == "(") {
+    m = length(e); dd = 0
+    for (kk = 1; kk <= m; kk++) {
+      cc = substr(e, kk, 1)
+      if (cc == "(" || cc == "[" || cc == "{") dd++
+      else if (cc == ")" || cc == "]" || cc == "}") { dd--; if (dd == 0) break }
+    }
+    if (kk != m) break
+    e = trim(substr(e, 2, m - 2))
+  }
+  ee = tolower(e)
+  if (ee == "true" || ee == "false") return 1
+  if (substr(e, 1, 1) == "!" && substr(e, 2, 1) != "=") return 1
+  m = length(e); d = 0; found = 0
+  for (k = 1; k <= m; k++) {
+    ch = substr(e, k, 1)
+    if (ch == "(" || ch == "[" || ch == "{") { d++; continue }
+    if (ch == ")" || ch == "]" || ch == "}") { d--; continue }
+    if (d > 0) continue
+    c3 = substr(e, k, 3); c2 = substr(e, k, 2)
+    if (c3 == "<=>") return 0
+    if (c3 == "===" || c3 == "!==") { found = 1; k += 2; continue }
+    if (c3 == "?->") { k += 2; continue }
+    if (c2 == "??") { k++; continue }
+    if (ch == "?") return 0
+    if (c2 == "->" || c2 == "=>" || c2 == "<<" || c2 == ">>") { k++; continue }
+    if (c2 == "==" || c2 == "!=" || c2 == "<>" || c2 == "<=" || c2 == ">=" || c2 == "&&" || c2 == "||") { found = 1; k++; continue }
+    if (ch == "<" || ch == ">") found = 1
+  }
+  return found
+}
+# rtype(k, stop) -> the return type declared from k (after a ":") up to the
+# position stop, lowercased, without a leading "?"; "" when none is declared.
+function rtype(k, stop,   t) {
+  k = ws(k)
+  if (substr(buf, k, 1) != ":") return ""
+  t = tolower(trim(substr(buf, k + 1, stop - k - 1))); sub(/^\?/, "", t)
+  return t
+}
+# A closure: the keyword function ends just before k.
+function closure(k,   p, b, e, ch, t, r, x, stop, q) {
+  k = ws(k)
+  if (substr(buf, k, 1) == "&") k = ws(k + 1)
+  if (substr(buf, k, 1) != "(") return
+  p = shut(k); k = ws(p + 1)
+  if (substr(lb, k, 3) == "use" && !isid(substr(buf, k + 3, 1))) {
+    k = ws(k + 3)
+    if (substr(buf, k, 1) != "(") return
+    k = ws(shut(k) + 1)
+  }
+  b = index(substr(buf, k), "{"); if (b == 0) return
+  b = k + b - 1
+  t = rtype(k, b)
+  if (t != "" && t != "bool") return
+  e = shut(b)
+  # Each return of this body, the bodies of nested closures skipped.
+  for (x = b + 1; x < e; x++) {
+    ch = substr(lb, x, 1)
+    if (ch == "f" && substr(lb, x, 8) == "function" && !isid(substr(buf, x - 1, 1)) && !isid(substr(buf, x + 8, 1))) {
+      q = index(substr(buf, x), "{"); if (q == 0 || x + q - 1 >= e) break
+      x = shut(x + q - 1); continue
+    }
+    if (ch == "r" && substr(lb, x, 6) == "return" && !isid(substr(buf, x - 1, 1)) && !isid(substr(buf, x + 6, 1))) {
+      stop = x + 6
+      while (stop < e) {
+        r = substr(buf, stop, 1)
+        if (r == ";") break
+        if (r == "(" || r == "[" || r == "{") { stop = shut(stop) + 1; continue }
+        stop++
+      }
+      if (isbool(substr(buf, x + 6, stop - x - 6))) print lineof(x)
+      x = stop
+    }
+  }
+}
+# An arrow function: the keyword fn ends just before k; its body runs to the
+# comma or the parenthesis that ends the argument.
+function arrow(k,   p, a, stop, r, t) {
+  k = ws(k)
+  if (substr(buf, k, 1) == "&") k = ws(k + 1)
+  if (substr(buf, k, 1) != "(") return
+  p = shut(k); k = p + 1
+  a = index(substr(buf, k), "=>"); if (a == 0) return
+  a = k + a - 1
+  t = rtype(k, a)
+  if (t != "" && t != "bool") return
+  stop = a + 2
+  while (stop <= n) {
+    r = substr(buf, stop, 1)
+    if (r == "," || r == ")" || r == "]" || r == "}" || r == ";") break
+    if (r == "(" || r == "[" || r == "{") { stop = shut(stop) + 1; continue }
+    stop++
+  }
+  if (isbool(substr(buf, a + 2, stop - a - 2))) print lineof(a)
+}
+# A call: its first top-level comma starts the comparator.
+function call(k,   d, ch) {
+  d = 0
+  for (; k <= n; k++) {
+    ch = substr(buf, k, 1)
+    if (ch == "(" || ch == "[" || ch == "{") d++
+    else if (ch == ")" || ch == "]" || ch == "}") { d--; if (d == 0) return }
+    else if (ch == "," && d == 1) break
+  }
+  if (k > n) return
+  k = ws(k + 1)
+  if (substr(lb, k, 6) == "static" && substr(buf, k + 6, 1) ~ /[ \t\n\r]/) k = ws(k + 6)
+  if (substr(lb, k, 8) == "function" && !isid(substr(buf, k + 8, 1))) closure(k + 8)
+  else if (substr(lb, k, 2) == "fn" && !isid(substr(buf, k + 2, 1))) arrow(k + 2)
+}
+{ buf = buf $0 "\n" }
+END {
+  n = length(buf); lb = tolower(buf)
+  for (i = 1; i <= n; i++) {
+    if (substr(lb, i, 1) != "u") continue
+    w = 0
+    if (substr(lb, i, 5) == "usort") w = 5
+    else if (substr(lb, i, 6) == "uasort" || substr(lb, i, 6) == "uksort") w = 6
+    if (w == 0) continue
+    pc = (i > 1) ? substr(buf, i - 1, 1) : " "
+    if (pc ~ /[A-Za-z0-9_$>:]/ || isid(substr(buf, i + w, 1))) continue
+    j = ws(i + w)
+    if (substr(buf, j, 1) == "(") call(j)
+    i += w - 1
+  }
+}' "$f" 2> /dev/null | LC_ALL=C sort -n -u || true
+  return 0
+}

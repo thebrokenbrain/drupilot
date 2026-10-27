@@ -1539,9 +1539,13 @@ reported here):
                     whether the fix runs on L, its output_min_php at or
                     below L or none)
 A row is searched only when it has a `detect` ERE (`ere:`, or `ere-i:` for
-a case-insensitive one: PHP function and cast names); its `exclude` ERE
-drops the lines it matches (a method of the same name being declared). The
-rows of those classes without a pattern are listed in `unsearched`. Only the
+a case-insensitive one: PHP function and cast names) or names a built-in
+scan (`scan:NAME`, for a construct that spans lines; the one there is,
+sort-bool-comparator, is php_sort_bool_comparator_lines in
+scripts/lib/php-scan.sh); its `exclude` ERE drops the lines it matches (a
+method of the same name being declared). The rows of those classes without
+a pattern, and those naming a scan this drupilot does not have, are listed
+in `unsearched`. Only the
 code is searched: comments, string contents, heredocs and inline HTML are
 blanked first (php_code_lines, scripts/lib/php-scan.sh), the line numbers
 kept. vendor/, node_modules/ and .git/ are left out. L and P are --floor /

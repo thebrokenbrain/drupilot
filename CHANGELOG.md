@@ -31,6 +31,14 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   hard break. The test no longer starts on the target ("Unknown themes"), and
   the assessment missed that test work: porting the Drupal 9-only optimizedb
   module showed it. The worklist item's reason is `removed-test-theme`.
+- A `usort()`, `uasort()` or `uksort()` comparator that returns a bool
+  (`return $a > $b;`), deprecated since PHP 8.0, is now reported. Drupal's
+  test runner turns that notice into a failure, and no analyzer drupilot runs
+  saw it. `php-target.sh` finds it with a scan of its own, for a construct
+  that spans lines (`detect: "scan:sort-bool-comparator"` in
+  `config/php/rules.json`, row `p80-sort-bool-comparator`: a report-only
+  warning whose fix, `<=>`, runs on the floor). The scan follows the closures
+  and arrow functions written inline, not a named callback.
 
 ## [1.0.0] - 2026-10-27
 
