@@ -13,6 +13,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-27
+
+No changes since 1.0.0-rc.1.
+
 ## [1.0.0-rc.1] - 2026-10-27
 
 ### Added
@@ -3840,7 +3844,8 @@ verdict, what-changed report card, frozen lock), and new insight tools
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-rc.1...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-rc.1...v1.0.0
 [1.0.0-rc.1]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.6...v1.0.0-rc.1
 [1.0.0-alpha.6]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.5...v1.0.0-alpha.6
 [1.0.0-alpha.5]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.4...v1.0.0-alpha.5
