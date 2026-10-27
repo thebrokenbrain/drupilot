@@ -28,7 +28,7 @@
 #                 [--patch-name FILE] [--kind mr|patch]
 #                 [--title T] [--summary T]
 #                 [--problem T] [--resolution T] [--remaining T]
-#                 [--d10-unverified] [--core-matrix FILE]
+#                 [--prev-major-unverified] [--core-matrix FILE]
 #                 [--output DIR] [--json]
 #
 #   --project      drupal.org project machine name. Auto-detected from --subject.
@@ -37,7 +37,8 @@
 #                  field (4.0.x -> 4.0.x-dev) and the comment's apply target.
 #   --issue        numeric issue id (for the tracking URL and the patch name).
 #   --comment      patch comment number, for the derived patch name (default 1).
-#   --description  patch description slug (default 'port-to-drupal-11').
+#   --description  patch description slug (default 'port-to-drupal-<T>', T the
+#                  target major: 'port-to-drupal-11' for Drupal 11).
 #   --patch-name   explicit patch filename to reference (overrides the derived).
 #   --kind         'mr' (default) or 'patch' — wording in the comment.
 #   --phase        'port' (default) or 'refactor' — drives the default Problem/
@@ -48,7 +49,9 @@
 #   --problem      Problem/Motivation prose (default: a generic port rationale).
 #   --resolution   Proposed resolution prose (default: the minimal-port steps).
 #   --remaining    Remaining tasks prose (default: review/test/merge/credit).
-#   --d10-unverified  append a "verify Drupal 10 compatibility" item to Remaining
+#   --prev-major-unverified (alias --d10-unverified, the 0.9 name, kept for
+#                  all of 1.x: config/migrations.json value_aliases)
+#                  append a "verify Drupal 10 compatibility" item to Remaining
 #                  tasks (use when keeping '^10 || ^11' without verifying it).
 #                  When a FRESH core-matrix result (verify-core-matrix.sh, same
 #                  subject sources) says Drupal 10 is verified-static, the item
@@ -58,6 +61,10 @@
 #                  floor and run the suite; when it says failed, an item to fix the reported
 #                  Drupal 10 incompatibilities (or drop '^10') is added even
 #                  without this flag.
+#                  With --subject, each open PHP-window item of the worklist
+#                  (a construct removed in the target PHP, a file a window PHP
+#                  does not compile, a deprecation to fix by hand) adds a task
+#                  too, marked for a re-check when its file changed since.
 #   --core-matrix FILE  the verify-core-matrix.sh --json result to read
 #                  (default: the subject's persisted core-matrix.json when
 #                  --subject is given).
@@ -76,7 +83,7 @@ SUBJECT=""
 BASE=""
 ISSUE=""
 COMMENT="1"
-DESCRIPTION="port-to-drupal-11"
+DESCRIPTION=""
 PATCH_NAME=""
 KIND="mr"
 PHASE="port"
@@ -128,7 +135,7 @@ while [[ $# -gt 0 ]]; do
     --resolution=*) RESOLUTION="${1#*=}"; shift;;
     --remaining) REMAINING="${2:-}"; shift 2;;
     --remaining=*) REMAINING="${1#*=}"; shift;;
-    --d10-unverified) D10_UNVERIFIED=1; shift;;
+    --prev-major-unverified|--d10-unverified) D10_UNVERIFIED=1; shift;;
     --core-matrix) CORE_MATRIX="${2:-}"; shift 2;;
     --core-matrix=*) CORE_MATRIX="${1#*=}"; shift;;
     --output) OUTPUT="${2:-}"; shift 2;;
@@ -138,6 +145,12 @@ while [[ $# -gt 0 ]]; do
     *) log_warn "Unknown argument: $1"; shift;;
   esac
 done
+
+# The default description names the target major (port-to-drupal-11 for T 11).
+if [[ -z "$DESCRIPTION" ]]; then
+  _tr="$(find_drupal_root "${SUBJECT:-$PWD}" 2>/dev/null || true)"
+  DESCRIPTION="$(DRUPILOT_PROJECT_DIR="${DRUPILOT_PROJECT_DIR:-$_tr}" target_patch_desc)"
+fi
 
 # Resolve the project machine name from the subject dir when not given.
 DETECT_DIR="${SUBJECT:-$PWD}"
@@ -273,6 +286,26 @@ elif [[ "$D10_UNVERIFIED" == "1" && "$D10_MATRIX" == "verified-static" ]]; then
 elif [[ "$D10_UNVERIFIED" == "1" ]]; then
   REMAINING="$REMAINING
 - [ ] Verify Drupal 10 compatibility (install on a Drupal 10 site, or run the suite against Drupal 10) — the '^10 || ^11' support is declared but not verified."
+fi
+
+# The PHP window's constructs left for a person (the worklist, when its
+# extraction saw the current sources: php_window_items): one task each.
+if [[ -n "$SUBJECT" && -d "$SUBJECT" ]] && have_cmd jq; then
+  _pw="$(php_window_items "$(cd "$SUBJECT" && pwd)" | jq -r '.[]
+    | "- [ ] \(if .blocking then "Fix" else "Review" end) `\(.file)` for the PHP window (\(.reason)): \((.messages | unique | join("; ")) // "")"
+      + (if .fresh then "" else " (found before the file last changed: re-check it)" end)' 2> /dev/null || true)"
+  if [[ -n "$_pw" ]]; then
+    REMAINING="$REMAINING
+$_pw"
+  fi
+  # The core removals left for a person (removal_items, ADR 0031): one task each.
+  _rm="$(removal_items "$(cd "$SUBJECT" && pwd)" | jq -r '.[]
+    | "- [ ] \(if .blocking then "Resolve" else "Review" end) `\(.file)`: what the target removes from core (\(.reason)): \((.messages | unique | join("; ")) // "")"
+      + (if .fresh then "" else " (found before the sources last changed: re-check it)" end)' 2> /dev/null || true)"
+  if [[ -n "$_rm" ]]; then
+    REMAINING="$REMAINING
+$_rm"
+  fi
 fi
 
 [[ -n "$SUMMARY" ]] || SUMMARY="It applies the automated \`drupal-rector\` fixes plus the minimal manual changes required for Drupal 11, and updates \`core_version_requirement\` accordingly."

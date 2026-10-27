@@ -1,0 +1,66 @@
+{
+  "ok": true,
+  "status": "dry-run",
+  "root": "@HOME@/Proyectos/drupilot-lab/m2/lm22/dpl-m2-mig09-d11",
+  "source": "lock",
+  "requested_source": "auto",
+  "deterministic": true,
+  "reference": "@HOME@/Proyectos/drupilot-lab/m2/lm22/drupilot-0.9.1/config/toolchain-reference.json",
+  "packages": [
+    {
+      "name": "palantirnet/drupal-rector",
+      "spec": "palantirnet/drupal-rector:0.21.2",
+      "source": "lock",
+      "installed": "0.21.2"
+    },
+    {
+      "name": "rector/rector",
+      "spec": "rector/rector:2.5.2",
+      "source": "lock",
+      "installed": "2.5.2"
+    },
+    {
+      "name": "phpstan/phpstan",
+      "spec": "phpstan/phpstan:2.2.2",
+      "source": "lock",
+      "installed": "2.2.2"
+    },
+    {
+      "name": "phpstan/extension-installer",
+      "spec": "phpstan/extension-installer:1.4.3",
+      "source": "lock",
+      "installed": "1.4.3"
+    },
+    {
+      "name": "mglaman/phpstan-drupal",
+      "spec": "mglaman/phpstan-drupal:2.2.2",
+      "source": "lock",
+      "installed": "2.2.2"
+    },
+    {
+      "name": "phpstan/phpstan-deprecation-rules",
+      "spec": "phpstan/phpstan-deprecation-rules:2.0.5",
+      "source": "lock",
+      "installed": "2.0.5"
+    },
+    {
+      "name": "drupal/coder",
+      "spec": "drupal/coder:8.3.31",
+      "source": "lock",
+      "installed": "8.3.31"
+    },
+    {
+      "name": "drupal/core-dev",
+      "spec": "drupal/core-dev:11.4.8",
+      "source": "lock",
+      "installed": "11.4.8"
+    }
+  ],
+  "composer_ran": false,
+  "fallback_to_ranges": false,
+  "smoke": {
+    "ok": null,
+    "error": null
+  },
+  "lock_synced": false
+}

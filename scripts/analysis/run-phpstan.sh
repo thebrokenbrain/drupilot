@@ -8,6 +8,12 @@
 # (DRUPILOT_PHPSTAN_LEVEL_REFACTOR). PHPStan needs the Drupal core tree present
 # but does NOT bootstrap a database.
 #
+# The config is the root's phpstan.neon (else phpstan.neon.dist). A drupilot
+# render nobody edited (its sha256 is the one kept in the root's lock) follows
+# the current upgrade plan: when the plan moved since it was rendered (the
+# port's final freeze, a refactor), it is re-rendered first, after a backup,
+# with its own profile (ADR 0020). A hand-edited one is used as it is.
+#
 # Usage:
 #   run-phpstan.sh --subject DIR [--level N] [--json]
 #
@@ -20,7 +26,12 @@
 #                   count the viability analyst can read instead of estimating.
 #                   drupilot adds one key, `drupilot`:
 #                   {status: clean|findings|crashed, exit_code, phpstan_exit_code,
-#                    notices:[...], crash:[...]}. When PHPStan crashed (no
+#                    notices:[...], crash:[...], runner:{runner: ddev|host,
+#                    php_version, tool_version}}, and sorts the report (files
+#                    by path, their messages by line, identifier and message,
+#                    the general errors by text: DET-2). A DET-1 refusal
+#                    (exit 3) is reported as crashed, its reason in crash.
+#                    When PHPStan crashed (no
 #                   report produced) `totals` is null, `files` is {} and the
 #                   reason is in `drupilot.crash` — never a fake zero count.
 #   -h, --help      Show this help.
@@ -32,9 +43,16 @@
 # `drupal_root` parameter) are surfaced as warnings, and a crash (invalid
 # config, missing path, fatal error, internal error) is reported as such.
 #
+# Determinism (DET-1): with DRUPILOT_DETERMINISTIC on, PHPStan never falls back
+# to the host for a root that has a DDEV project, nor runs a phpstan/phpstan,
+# phpstan-drupal or deprecation-rules other than the version the lock pins:
+# exit 3. Its cache lives in the explicit tmpDir of phpstan.neon, keyed by the
+# upgrade plan (ADR 0020).
+#
 # Exit codes: 0 no issues · 1 PHPStan reported findings (or a usage error) ·
 # 2 requirements/toolchain missing · 3 PHPStan crashed or could not analyse, so
-# there is NO verdict (do not read it as "found issues").
+# there is NO verdict (do not read it as "found issues"), or a DET-1 violation
+# (an unplanned host run, a tool version the lock does not pin).
 # =============================================================================
 set -euo pipefail
 
@@ -105,6 +123,18 @@ cd "$DRUPAL_ROOT"
 ddev_ensure_running_or_host "$DRUPAL_ROOT" phpstan \
   || die "Could not start the DDEV project at $DRUPAL_ROOT, and there is no host vendor/bin/phpstan to fall back to." 1
 RUNNER="$(drupal_runner "$DRUPAL_ROOT")"
+# DET-1: in deterministic mode PHPStan runs where the plan put it, at the
+# versions the lock pins.
+_det1="$(DET1_RUNNER="$RUNNER" det1_message "$DRUPAL_ROOT" PHPStan phpstan/phpstan mglaman/phpstan-drupal phpstan/phpstan-deprecation-rules)"
+if [[ -n "$_det1" ]]; then
+  # The documented exit-3 shape on STDOUT for a --json caller, never empty.
+  if [[ "$AS_JSON" == "1" ]] && have_cmd jq; then
+    jq -n -c --arg m "$_det1" --argjson prov "$(tool_provenance "$DRUPAL_ROOT" "$RUNNER" phpstan/phpstan)" \
+      '{totals: null, files: {}, errors: [$m], drupilot: {status: "crashed", exit_code: 3, phpstan_exit_code: null,
+        notices: [], crash: [$m], runner: $prov}}'
+  fi
+  die "$_det1" 3
+fi
 PHP_TARGET="$(resolve_php_target)"
 
 log_info "Drupal root : $DRUPAL_ROOT"
@@ -120,6 +150,23 @@ fi
 # --- Verify the PHPStan binary is present ---------------------------------
 if [[ ! -f "$DRUPAL_ROOT/vendor/bin/phpstan" ]]; then
   die "vendor/bin/phpstan is missing. Install the toolchain first (e.g. via /drupilot-setup: 'composer require --dev phpstan/phpstan phpstan/extension-installer mglaman/phpstan-drupal phpstan/phpstan-deprecation-rules')." 2
+fi
+
+# --- Keep an untouched drupilot phpstan.neon on the current plan -----------
+# Its phpVersion range and cache directory come from the upgrade plan (ADR
+# 0020), which the port's final freeze or a refactor may have moved since the
+# setup rendered it. An untouched render (its sha256 is the one kept in the
+# root's lock) is re-rendered for the current plan, after a backup, keeping its
+# profile; a hand-edited one, or one whose sha256 the lock no longer keeps, is
+# used as it is.
+if [[ -f "$DRUPAL_ROOT/phpstan.neon" ]] && grep -q '^# drupilot — phpstan.neon' "$DRUPAL_ROOT/phpstan.neon" 2>/dev/null \
+   && render_sha_matches "$DRUPAL_ROOT" phpstan.neon "$DRUPAL_ROOT/phpstan.neon"; then
+  _prof="$(sed -n 's/^# drupilot-phpstan-profile: \([a-z]*\)$/\1/p' "$DRUPAL_ROOT/phpstan.neon" 2>/dev/null | sed -n '1p')"
+  _rj="$("$BASH" "$(plugin_root)/scripts/env/render-templates.sh" --root "$DRUPAL_ROOT" --subject-path "$SUBJECT_REL" \
+          --only phpstan ${_prof:+--profile "$_prof"} --json 2> /dev/null < /dev/null || true)"
+  if [[ "$(printf '%s' "$_rj" | jq -r '.files[0].status // empty' 2> /dev/null || true)" == "upgraded" ]]; then
+    log_ok "phpstan.neon was an untouched drupilot render for another plan; regenerated for the current one (previous copy in .drupilot/backups/)."
+  fi
 fi
 
 # --- Build the command ----------------------------------------------------
@@ -184,8 +231,8 @@ if [[ "$AS_JSON" == "1" ]]; then
   # line (display_errors to stdout) by parsing from the first '{'.
   JSON_OUT="$(sed -n '/^{/,$p' "$OUT_F")"
   if [[ -n "$JSON_OUT" ]] && printf '%s' "$JSON_OUT" | jq -e 'type == "object" and has("totals")' >/dev/null 2>&1; then
-    INTERNAL="$(printf '%s' "$JSON_OUT" | jq '[.errors[]? | select(type == "string" and test("Internal error"; "i"))] | length' 2>/dev/null || echo 0)"
-    if [[ "$INTERNAL" != "0" ]]; then STATUS="crashed"
+    INTERNAL="$(printf '%s' "$JSON_OUT" | jq --arg re "$(phpstan_crash_ere)" '[.errors[]? | select(type == "string" and test($re; "i"))] | length' 2>/dev/null || echo 0)"
+    if [[ "$INTERNAL" != "0" ]] || grep_q -iE -- "$(phpstan_crash_ere)" "$ERR_F"; then STATUS="crashed"
     elif [[ "$PHPSTAN_RC" -eq 0 ]]; then STATUS="clean"
     elif [[ "$PHPSTAN_RC" -eq 1 ]]; then STATUS="findings"
     else STATUS="crashed"; fi
@@ -195,7 +242,7 @@ if [[ "$AS_JSON" == "1" ]]; then
 else
   if [[ "$PHPSTAN_RC" -eq 0 ]]; then STATUS="clean"
   elif [[ "$PHPSTAN_RC" -eq 1 ]] && grep -qE 'Found [0-9]+ errors?' "$OUT_F"; then
-    if grep -qiE 'Internal error' "$OUT_F"; then STATUS="crashed"; else STATUS="findings"; fi
+    if grep -qiE -- "$(phpstan_crash_ere)" "$OUT_F" "$ERR_F"; then STATUS="crashed"; else STATUS="findings"; fi
   else
     STATUS="crashed"
   fi
@@ -210,7 +257,7 @@ if [[ -n "$NOTICES" ]]; then
   while IFS= read -r n; do
     [[ -n "$n" ]] && log_warn "PHPStan notice: $n"
   done <<<"$NOTICES"
-  if printf '%s' "$NOTICES" | grep -q 'drupal_root parameter is deprecated'; then
+  if printf '%s' "$NOTICES" | grep_q 'drupal_root parameter is deprecated'; then
     log_info "Fix: remove the 'drupal: drupal_root:' block from $CONFIG (phpstan-drupal discovers the Drupal root itself); for a drupilot-generated config, regenerate it with scripts/env/render-templates.sh --only phpstan --force."
   fi
 fi
@@ -227,9 +274,16 @@ if [[ "$AS_JSON" == "1" ]]; then
   [[ "$STATUS" == "crashed" ]] && CRASH_JSON="$(printf '%s\n' "$OTHER_ERR" | jq -R . | jq -sc 'map(select(length > 0))')"
   META="$(jq -nc --arg status "$STATUS" --argjson rc "$RC" --argjson prc "$PHPSTAN_RC" \
     --argjson notices "$NOTICES_JSON" --argjson crash "$CRASH_JSON" \
-    '{status: $status, exit_code: $rc, phpstan_exit_code: $prc, notices: $notices, crash: $crash}')"
+    --argjson prov "$(tool_provenance "$DRUPAL_ROOT" "$RUNNER" phpstan/phpstan)" \
+    '{status: $status, exit_code: $rc, phpstan_exit_code: $prc, notices: $notices, crash: $crash, runner: $prov}')"
   if [[ "$STATUS" != "crashed" ]] || printf '%s' "${JSON_OUT:-}" | jq -e 'has("totals")' >/dev/null 2>&1; then
-    printf '%s' "$JSON_OUT" | jq -c --argjson m "$META" '. + {drupilot: $m}'
+    # Sorted (DET-2): files by path, each file's messages by line, identifier
+    # and message, the general errors by text.
+    printf '%s' "$JSON_OUT" | jq -c --argjson m "$META" '. + {drupilot: $m}
+      | (if (.files | type) == "object" then .files |= (to_entries | sort_by(.key)
+          | map(if (.value.messages | type) == "array" then .value.messages |= sort_by([(.line // 0), (.identifier // ""), (.message // "")]) else . end)
+          | from_entries) else . end)
+      | (if (.errors | type) == "array" then .errors |= sort else . end)'
   else
     jq -nc --argjson m "$META" '{totals: null, files: {}, errors: $m.crash, drupilot: $m}'
   fi

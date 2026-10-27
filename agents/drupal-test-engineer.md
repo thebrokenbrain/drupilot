@@ -145,7 +145,17 @@ reinvent their logic.
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject <DIR> --type functional
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject <DIR> --type js
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject <DIR> --type all
+   # Then the floor's PHP, when this module's frozen plan has a PHP_LOW leg (a
+   # no-op without one; exit 2 when the root holds no plan of this module):
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject <DIR> --type all --leg PHP_LOW
    ```
+   The `PHP_LOW` leg runs the Unit and Kernel groups on the window's lowest PHP
+   the bed core supports (the container's `/usr/bin/phpX.Y`); `last-test.json`
+   keeps each leg's verdict under `legs`, and the top-level `preservation` is
+   the stronger of the two. A failure there is classified against the pre-port
+   baseline like any other (regression, not baselined, pre-existing): it is the
+   port breaking on its declared floor, so fix it in the code, never relax the
+   test. A narrowed run (`--type unit`, `--filter`) never replaces a whole leg.
    Use `--filter X` to isolate a single failing test while iterating. For `js`, the
    script ensures Selenium is present; if it is not, it skips JS with a clear message
    — surface that, do not pretend the suite is fully green. **Exit 2 with "PHPUnit
@@ -195,8 +205,9 @@ reinvent their logic.
 
 ## Long-running tests
 
-The full suite (especially Functional/JS) can be slow. It may run in the background
-and notify on completion; do not block the session. Show readable progress.
+The full suite (especially Functional/JS) can be slow. Run it in the foreground, a
+group at a time, and show readable progress: a headless `claude -p` run stops a
+background job when the session ends.
 
 ## Reporting
 

@@ -1,0 +1,26 @@
+<?php
+
+/**
+ * @file
+ * Hooks.
+ */
+
+use Drupal\Core\Entity\EntityInterface;
+
+$global = function () {
+  return 1;
+};
+
+/**
+ * Implements hook_entity_operation().
+ */
+function anchor_fx_entity_operation(EntityInterface $entity) {
+  $ops = array_filter([1, 2], fn ($x) => $x > 1);
+  return array_map(function ($op) {
+    return $op;
+  }, $ops);
+}
+
+function _anchor_fx_helper() {
+  return 'x';
+}

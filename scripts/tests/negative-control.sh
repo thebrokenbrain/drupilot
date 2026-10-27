@@ -55,10 +55,11 @@
 # Output: with --json the record on STDOUT:
 #   {test, type, label, mutation:{kind, ref|patch, paths}, mutated_rc,
 #    restored_rc, red_tests, mutated_executed, restored_executed,
-#    restored_identical, verdict, reason, logs:{red, green}, subject_digest, at}
+#    restored_identical, verdict, reason, logs:{red, green}, subject_digest,
+#    digest_algo, at}
 # The record is also stored in negative-controls.json (state dir; one entry per
 # test+type+label, the latest wins) and summarized into last-test.json's
-# `negative_controls`. Logs on STDERR.
+# `negative_controls` (its times under `meta.negative_controls`). Logs on STDERR.
 #
 # Verdicts / exit codes:
 #   0  effective   -> red with the change undone, green once restored, identical.
@@ -476,13 +477,14 @@ RECORD="$(jq -n -c \
   --arg mrc "$MUT_RC" --arg grc "$GREEN_RC" --arg mexec "${MUT_EXEC:-}" --arg gexec "${GREEN_EXEC:-}" \
   --argjson red_tests "$RED_TESTS" --argjson identical "$RESTORED_IDENTICAL" \
   --arg verdict "$VERDICT" --arg reason "$REASON" --arg lr "$LOG_RED" --arg lg "$LOG_GREEN" \
-  --arg digest "$(subject_digest "$SUBJECT")" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --arg digest "$(subject_digest "$SUBJECT")" --argjson da "$(subject_digest_algo)" \
+  --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   '{test:$test, type:$type, label:($lbl | select(. != "") // null), mutation:$mutation,
     mutated_rc:($mrc | tonumber? // null), restored_rc:($grc | tonumber? // null),
     mutated_executed:($mexec | tonumber? // null), restored_executed:($gexec | tonumber? // null),
     red_tests:$red_tests, restored_identical:$identical,
     verdict:$verdict, reason:$reason, logs:{red:$lr, green:$lg},
-    subject_digest:($digest | select(. != "") // null), at:$at}')"
+    subject_digest:($digest | select(. != "") // null), digest_algo:$da, at:$at}')"
 
 # Store: one entry per test+type+label, the latest wins.
 NC_FILE="$(negative_controls_file "$SUBJECT")"
@@ -494,7 +496,8 @@ printf '%s' "$PREV" | jq --argjson r "$RECORD" \
 
 # Keep last-test.json's summary in step (the record a test run wrote stays its own).
 if [[ -r "$STATE_DIR/last-test.json" ]]; then
-  jq --argjson nc "$(negative_controls_summary "$SUBJECT")" '.negative_controls = $nc' \
+  jq --argjson nc "$(negative_controls_summary "$SUBJECT")" --argjson nct "$(negative_controls_times "$SUBJECT")" \
+    '.negative_controls = $nc | .meta.negative_controls = $nct' \
     "$STATE_DIR/last-test.json" > "$STATE_DIR/last-test.json.tmp" 2>/dev/null \
     && mv "$STATE_DIR/last-test.json.tmp" "$STATE_DIR/last-test.json" || rm -f "$STATE_DIR/last-test.json.tmp"
 fi

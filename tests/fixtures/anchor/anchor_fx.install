@@ -1,0 +1,13 @@
+<?php
+
+/**
+ * @file
+ * Install hooks.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function anchor_fx_install() {
+  return NULL;
+}

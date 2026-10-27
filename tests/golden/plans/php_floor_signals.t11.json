@@ -1,0 +1,23 @@
+{
+  "choices": [
+    {
+      "id": "php-target",
+      "label": "Raise the PHP target to 8.4",
+      "set": {
+        "DRUPILOT_PHP_TARGET": "8.4"
+      },
+      "tab": "PHP_TARGET"
+    }
+  ],
+  "code": "floor-above-final",
+  "message": "The upgrade plan cannot be resolved: the code needs PHP 8.4, above the PHP target 8.3.",
+  "phase": "draft",
+  "schema_version": 1,
+  "status": "refused",
+  "violations": [
+    {
+      "detail": "the code needs PHP 8.4, above the PHP target 8.3",
+      "id": "floor-above-final"
+    }
+  ]
+}

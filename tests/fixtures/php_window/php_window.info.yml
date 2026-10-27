@@ -1,0 +1,5 @@
+name: 'PHP window'
+type: module
+description: 'A Drupal 10-era module whose code meets the edges of the PHP window.'
+core_version_requirement: ^10.3 || ^11
+package: Testing

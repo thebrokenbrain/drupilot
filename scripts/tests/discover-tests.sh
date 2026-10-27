@@ -78,7 +78,7 @@ FILES_JSON="[]"
 extract_class_name() {
   local f="$1" cls=""
   cls="$(grep -aoE '^[[:space:]]*(final[[:space:]]+|abstract[[:space:]]+)*class[[:space:]]+[A-Za-z_][A-Za-z0-9_]*' "$f" 2>/dev/null \
-        | head -n1 | sed -E 's/.*class[[:space:]]+//')"
+        | sed -n '1p' | sed -E 's/.*class[[:space:]]+//')"
   [[ -z "$cls" ]] && cls="$(basename "$f" .php)"
   printf '%s' "$cls"
 }

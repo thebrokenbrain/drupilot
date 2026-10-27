@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  drupilot — phpcs.xml.dist
+  drupilot-template-version: 2
+
+  PHP_CodeSniffer ruleset for a Drupal module/theme being ported to Drupal 11.
+  Generated from a template by scripts/env/render-templates.sh, which fills in
+  the extension path to check (the file element below).
+
+  Standards come from drupal/coder. Its Composer plugin normally registers
+  them; if `vendor/bin/phpcs -i` does not list Drupal and DrupalPractice,
+  register them once per project with phpcs's config-set option, setting
+  installed_paths to
+    vendor/drupal/coder/coder_sniffer,vendor/sirbrillig/phpcs-variable-analysis,vendor/slevomat/coding-standard
+  (drupilot's run-phpcs.sh does this for you). See the README, Troubleshooting.
+  Note: an XML comment must never contain a double hyphen, so command-line
+  options are described here rather than spelled out.
+
+  coder ^8.3 ships PHPCS 3.x (default safe), coder ^9.0 ships PHPCS 4.x. The
+  ruleset syntax below is compatible with both.
+-->
+<ruleset name="drupilot">
+  <description>Drupal coding standards for the ported extension (Drupal + DrupalPractice).</description>
+
+  <!-- Import the Drupal coding standards from drupal/coder. -->
+  <rule ref="Drupal"/>
+  <rule ref="DrupalPractice"/>
+
+  <!-- File extensions checked (PROMPT 2.3). -->
+  <arg name="extensions" value="php,module,inc,install,test,profile,theme,info,txt,md,yml"/>
+
+  <!-- Readable, colored progress output. -->
+  <arg name="colors"/>
+  <arg value="sp"/>
+
+  <!-- The extension under analysis. -->
+  <file>web/modules/custom/legacy_widgets</file>
+
+  <!-- Never lint third-party or generated code. -->
+  <exclude-pattern>*/vendor/*</exclude-pattern>
+  <exclude-pattern>*/node_modules/*</exclude-pattern>
+</ruleset>

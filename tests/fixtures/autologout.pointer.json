@@ -1,0 +1,9 @@
+{
+  "project": "autologout",
+  "version": "8.x-1.4",
+  "git_url": "https://git.drupalcode.org/project/autologout.git",
+  "commit_sha": "2895b8c1c26d1b9604c87fbc01990866c588ba32",
+  "tarball_url": "https://git.drupalcode.org/project/autologout/-/archive/8.x-1.4/autologout-8.x-1.4.tar.gz",
+  "tarball_sha256": "4ddecfaa89451529a004d9198909d85c87492808c0b3e0a2bc4223d7128daa8c",
+  "fetched_at": "2026-10-03T23:16:17Z"
+}

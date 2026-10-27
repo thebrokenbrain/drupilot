@@ -1,0 +1,17 @@
+{
+  "agents": [
+    "drupal-contrib-publisher",
+    "drupal-port-orchestrator",
+    "drupal-test-engineer",
+    "drupal-viability-analyst"
+  ],
+  "skills": [
+    "ddev-environment",
+    "drupal-contribution",
+    "full-refactor",
+    "minimal-port",
+    "php-target-tuning",
+    "test-adaptation",
+    "viability-assessment"
+  ]
+}

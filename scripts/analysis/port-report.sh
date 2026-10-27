@@ -210,6 +210,46 @@ case "$PRESERVATION" in
     esac;;
   *)                     PRES_LINE="• preservation: not run yet (run /drupilot-test).";;
 esac
+# A verdict recorded on other sources (or by drupilot 0.9, whose digests are
+# of another algorithm) is not current proof: say so next to it.
+TEST_STALE=""
+if [[ -r "$STATE_DIR/last-test.json" && "$PRESERVATION" != "unknown" ]]; then
+  case "$(digest_freshness "$SUBJECT" "$STATE_DIR/last-test.json")" in
+    "false sources-changed") TEST_STALE="the sources changed since the last test run";;
+    "false digest-algorithm") TEST_STALE="the last test run was recorded by an older drupilot, which cannot tell whether the sources changed since";;
+  esac
+fi
+if [[ -n "$TEST_STALE" ]]; then
+  PRES_LINE="$PRES_LINE _(stale: ${TEST_STALE}; re-run /drupilot-test.)_"
+fi
+# The test legs (last-test.json legs, T-M5-11): each leg's own verdict under
+# the aggregate, when the record holds more than the CURRENT one.
+TEST_LEGS="$(printf '%s' "$TEST" | jq -r '(.legs // {}) | if (type == "object" and (keys | length) > 1)
+  then (to_entries | map("- \(.key)\(if .value.php != null then " (PHP \(.value.php))" else "" end): \(.value.preservation)"
+         + (if (.value.stale // false) then " (stale: recorded on other sources)" else "" end)
+         + (if ((.value.tests_failed // []) | length) > 0 then " — failing: \(.value.tests_failed | join(", "))" else "" end)
+         + (if (.value.baseline | type) == "object"
+            then ([(if (.value.baseline.regressions | length) > 0 then "regressions: \(.value.baseline.regressions | join(", "))" else empty end),
+                   (if (.value.baseline.not_baselined | length) > 0 then "not baselined: \(.value.baseline.not_baselined | join(", "))" else empty end),
+                   (if (.value.baseline.pre_existing | length) > 0 then "pre-existing: \(.value.baseline.pre_existing | join(", "))" else empty end)]
+                  | if length > 0 then " (" + join("; ") + ")" else "" end)
+            else "" end)) | join("\n"))
+  else empty end' 2>/dev/null || true)"
+if [[ -n "$TEST_LEGS" ]]; then
+  PRES_LINE="$PRES_LINE
+
+**Test legs** (the verdict above is their aggregate):
+
+$TEST_LEGS"
+fi
+# Lenient dependencies the run used (last-test.json lenient[], AR-28): named
+# next to the verdict, never folded into it.
+TEST_LENIENT="$(printf '%s' "$TEST" | jq -r '(.lenient // []) | if type == "array" then join(", ") else empty end' 2>/dev/null || true)"
+if [[ -n "$TEST_LENIENT" ]]; then
+  PRES_LINE="$PRES_LINE
+
+⚠️ **Lenient dependencies:** the tests ran with $TEST_LENIENT installed through composer-drupal-lenient on the test-bed (their \`drupal/core\` constraint ignored). The verdict does not show that they support this core."
+fi
 
 VERDICT="$(printf '%s' "$ASSESS" | jq -r '.verdict // .effort // empty' 2>/dev/null || true)"
 
@@ -304,11 +344,14 @@ printf '%s' "$PREC" | jq -e 'type == "object"' >/dev/null 2>&1 || PREC=""
   printf '| composer `require.php` | `%s` |\n' "$REQ_PHP"
   printf '| PHP target | %s |\n' "$PHP_TARGET"
   printf '| Version bump | %s |\n' "$BUMP"
-  printf '| Preservation | %s |\n' "$PRESERVATION"
+  printf '| Preservation | %s%s |\n' "$PRESERVATION" "${TEST_STALE:+ (stale)}"
   printf '\n'
 
   printf '## Preservation gate\n\n%s\n\n' "$PRES_LINE"
   if [[ -n "$T_BASE" ]]; then
+    # With test legs, this comparison is the CURRENT leg's (each leg's own
+    # classes are listed under the legs above).
+    [[ -z "$TEST_LEGS" ]] || printf '_The baseline comparison below is the CURRENT leg\x27s (the bed\x27s PHP)._\n\n'
     printf '%s' "$T_BASE" | jq -r '
       "Compared with the pre-port baseline (`run-phpunit.sh --baseline`, taken \(.taken_at // "?")): **\(.regressions | length)** regression(s), **\(.not_baselined // [] | length)** not baselined, **\(.pre_existing | length)** pre-existing failure(s), **\(.fixed | length)** test(s) fixed by the port."
         + (if .same_code then " _The baseline was taken on the current code, so it cannot show what the port changed._" else "" end) + "\n",
@@ -346,7 +389,12 @@ printf '%s' "$PREC" | jq -e 'type == "object"' >/dev/null 2>&1 || PREC=""
   fi
 
   printf '### Manual edits\n\n'
-  # Items may be a plain string or an object {edit, why?, change_record?}.
+  # Items may be a plain string or an object {edit, why?, change_record?}; a
+  # generated manifest says null when it cannot tell (no git history, or a
+  # Rector record without its files).
+  if [[ "$(printf '%s' "$M" | jq -r 'has("manual_edits") and .manual_edits == null' 2>/dev/null)" == "true" ]]; then
+    printf '_Unknown: no git history to compare with, or a Rector record that does not list its files._\n'
+  else
   printf '%s' "$M" | jq -r '
     (.manual_edits // []) | .[]? |
     if type == "string" then "- " + .
@@ -355,8 +403,77 @@ printf '%s' "$PREC" | jq -e 'type == "object"' >/dev/null 2>&1 || PREC=""
          + (if (.change_record // "") != "" then " ([change record](" + .change_record + "))" else "" end)
     end
   ' 2>/dev/null | { grep . || printf '_none_\n'; }
+  fi
   printf '\n'
   printf '### Remaining deprecations\n\n%s\n\n' "$DEPR"
+
+  # A generated manifest (manifest.sh, schema 1): the worklist by lane and
+  # status, the codemods in effect, and the rationale the model gave per item.
+  if [[ "$(printf '%s' "$M" | jq -r '(.worklist.by_lane_status // null) | type == "object"' 2>/dev/null)" == "true" ]]; then
+    printf '### Worklist (lane × status)\n\n'
+    printf '%s' "$M" | jq -r '
+      ["rector", "rector-custom", "codemod", "ai-templated", "ai-free", "test-adapt", "human", "deferred"] as $order
+      | .worklist.by_lane_status as $t
+      | ([$t[] | keys[]] | unique) as $st
+      | if ($t | length) == 0 then "_no item_"
+        else ( "| Lane | " + ($st | join(" | ")) + " |",
+               "|---|" + ($st | map("---:") | join("|")) + "|",
+               ( [$order[] | select($t[.] != null)] + ([$t | keys[] ] - $order) | .[]
+                 | . as $l | "| `\($l)` | " + ($st | map(($t[$l][.] // 0) | tostring) | join(" | ")) + " |" ) )
+        end' 2>/dev/null || printf '_unreadable_\n'
+    printf '\n'
+    if [[ "$(printf '%s' "$M" | jq -r '(.codemods // []) | length' 2>/dev/null)" != "0" ]]; then
+      printf '**Codemods applied:**\n\n'
+      printf '%s' "$M" | jq -r '.codemods[] | "- `\(.recipe)` (\(.version)) on `\(.file)`"' 2>/dev/null || true
+      printf '\n'
+    fi
+    if [[ "$(printf '%s' "$M" | jq -r '(.rationale // {}) | length' 2>/dev/null)" != "0" ]]; then
+      printf '**Why (per item):**\n\n'
+      printf '%s' "$M" | jq -r '.worklist.items[] | select(.rationale != null) | "- `\(.id)` (\(.lane), `\(.file)`): \(.rationale)"' 2>/dev/null || true
+      printf '\n'
+    fi
+  fi
+
+  # The PHP window (manifest.sh's php_window): the php -l legs, the
+  # compile-time deprecations, and the constructs left for a person.
+  if [[ "$(printf '%s' "$M" | jq -r '.php_window | type == "object"' 2>/dev/null)" == "true" ]]; then
+    printf '### PHP window\n\n'
+    printf '%s' "$M" | jq -r '
+      .php_window as $p
+      | "Floor PHP `\($p.floor // "?")`, target PHP `\($p.target // "?")`"
+        + (if ($p.window // null) != null then ", window `\($p.window | join(", "))`." else "." end) + "\n",
+        (if $p.lint == null then "_php -l was not run on the window._\n"
+         elif $p.lint.status == "skipped" then "_php -l was not run on the window (no Docker daemon, or no PHP image could be pulled)._\n"
+         else ( (if $p.lint.status == "error" then "**php -l could not run on the window** (every run failed or timed out).\n" else empty end),
+                "| PHP | php -l | Errors | Deprecations |", "|---|---|---:|---:|",
+                ($p.lint.legs[] | "| \(.php) | \(.status) | \(.errors // 0) | \(.deprecations // 0) |"), "" ) end),
+        (if (($p.lint.deprecations // []) | length) > 0
+         then ("**Compile-time deprecations:**\n",
+               ($p.lint.deprecations[] | "- PHP \(.php) `\(.file):\(.line // "-")` — \(.message)"), "")
+         else empty end),
+        (if ($p.phpcompat // null) == null then empty
+         else ($p.phpcompat as $c
+               | "PHPCompatibility" + (if $c.version then " `\($c.version)`" else "" end)
+                 + (if $c.alpha == true then " (an alpha release: its findings never block)" else "" end)
+                 + (if $c.test_version then ", testVersion `\($c.test_version)`" else "" end) + ": "
+                 + (if $c.status == "ok" then
+                      "\($c.counts.floor // 0) above the floor, \($c.counts.removed // 0) removed, \($c.counts.deprecated // 0) deprecated"
+                      + (if ($c.counts.covered // 0) > 0 then " (and \($c.counts.covered) a catalog row already covers)" else "" end) + "."
+                    elif $c.status == "degraded" then
+                      "**degraded** (\($c.reason // "unknown")): the heuristic scan stood in"
+                      + (if $c.fallback_floor then ", floor PHP `\($c.fallback_floor)`." else "." end)
+                    else "not run (\($c.reason // "skipped"))." end) + "\n") end),
+        (if (($p.unsearched // []) | length) > 0
+         then "Not searched for (no pattern; `php -l` and PHPStan may still report them): \([$p.unsearched[] | "`\(.)`"] | join(", ")).\n"
+         else empty end),
+        (if (($p.items // []) | length) == 0 then "No construct of the window is left for a person.\n"
+         else ("**Left for a person:**\n",
+               ($p.items[] | "- \(if .blocking then "**blocking** " else "" end)`\(.file)` (\(.reason); \(.status))"
+                 + ([.findings[] | "\n    - `\(.rule)` line \(.line // "-"): \(.message)"] | join(""))), "")
+         end)
+    ' 2>/dev/null || printf '_unreadable_\n'
+    printf '\n'
+  fi
 
   if [[ "$(printf '%s' "$M" | jq -r 'has("port_safety")' 2>/dev/null)" == "true" ]]; then
     printf '### Port-safety checks\n\n'

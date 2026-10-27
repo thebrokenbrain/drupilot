@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-10-06",
+  "catalog": "hard-breaks",
+  "description": "The four hard-break categories of the viability rubric (07-R4, T-M4-09), moved out of skills/viability-assessment/SKILL.md so scripts/analysis/assess.sh counts them the same way on every run. A category is present when its POSIX ERE (case-sensitive, grep -E) matches at least one file of the subject whose name matches one of its globs. The matched files are listed; the count of categories present is the rubric's hard_breaks. The patterns are the 0.9 skill's, unchanged, so the verdict reproduces; each fact was verified against the drupal/core 11.4.8 tree of the lab bed.",
+  "entries": [
+    {
+      "id": "twig3",
+      "label": "Twig 3 (removed filters/functions, spaceless)",
+      "src": "drupal/core 11.4.8 core/composer.json requires twig/twig ^3.28.0; twig 3.x ships no spaceless token parser (src/TokenParser), and its spaceless filter is deprecated since twig 3.12 (src/Extension/CoreExtension.php)",
+      "verified": true,
+      "blocking": false,
+      "ere": "\\{%[-[:space:]]*spaceless|\\|[[:space:]]*(spaceless|convert_encoding)([^A-Za-z0-9_]|$)",
+      "globs": ["*.twig"]
+    },
+    {
+      "id": "ckeditor5",
+      "label": "CKEditor 5 (CKEditor 4 removed since Drupal 10)",
+      "src": "drupal/core 11.4.8 has core/modules/ckeditor5 and no core/modules/ckeditor",
+      "verified": true,
+      "blocking": false,
+      "ere": "CKEDITOR\\.|Drupal\\.editors\\.ckeditor|editor\\.editor\\.ckeditor([^A-Za-z0-9_]|$)",
+      "globs": ["*.yml", "*.js"]
+    },
+    {
+      "id": "jquery_ui",
+      "label": "jQuery UI (core/jquery.ui.* removed or externalized)",
+      "src": "drupal/core 11.4.8 core/core.libraries.yml declares no jquery.ui library; only internal.jquery_ui remains",
+      "verified": true,
+      "blocking": false,
+      "ere": "jquery[._]ui|core/jquery\\.ui",
+      "globs": ["*.libraries.yml", "*.yml", "*.js"]
+    },
+    {
+      "id": "symfony7",
+      "label": "Symfony 7 (event subscriber signatures and typing)",
+      "src": "drupal/core 11.4.8 core/composer.json requires symfony/http-kernel ^7.4.12",
+      "verified": true,
+      "blocking": false,
+      "ere": "EventSubscriberInterface|getSubscribedEvents",
+      "globs": ["*.php"]
+    }
+  ]
+}

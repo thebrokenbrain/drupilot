@@ -1,0 +1,4 @@
+name = D7 minimal
+description = A Drupal 7 module (source detection fixture).
+core = 7.x
+files[] = d7_minimal.test

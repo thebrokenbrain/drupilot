@@ -69,11 +69,14 @@
 #
 # SHA256SUMS (written by --capture) pins every captured file, so an edit to
 # the committed baseline itself fails --check too, also for a file whose
-# output allowed-diffs.txt lets differ.
+# output allowed-diffs.txt lets differ. hook-latency.json, samples/ and
+# golden.json in the same directory are recorded by hand
+# (scripts/dev/hook-latency.sh, the lab, scripts/dev/golden.sh), not captured:
+# --capture keeps them and --check ignores them.
 #
 # Usage:
 #   scripts/dev/baseline-0.9.sh [--capture | --check] [--json] [--keep]
-#                               [-h|--help]
+#                               [--data-dir DIR] [-h|--help]
 #     --capture  capture from the v0.9.0 tag into tests/baseline/v0.9.0/
 #                (needs git and the tag; run once, commit the result)
 #     --check    capture from this checkout and compare (the default)
@@ -82,6 +85,9 @@
 #                same | allowed | differs | missing | unexpected | error |
 #                tampered (the committed file does not match SHA256SUMS)
 #     --keep     keep the temp dir and print its path on STDERR
+#     --data-dir the version data the scripts read (DRUPILOT_VERSION_DATA_DIR,
+#                which the isolation would otherwise unset): golden.sh passes
+#                the data snapshot the baseline is pinned to
 #
 # Requires bash >= 3.2 and jq; --capture also git and the v0.9.0 tag; a
 # sha256 tool (sha256sum or shasum) to honour allowed-diffs.txt.
@@ -102,7 +108,7 @@ INPUTS="$REPO/tests/baseline/inputs"
 ALLOWED="$BASE_DIR/allowed-diffs.txt"
 PHP_TARGETS="8.3 8.4 8.5"
 
-MODE="check"; AS_JSON=0; KEEP=0
+MODE="check"; AS_JSON=0; KEEP=0; DATA_DIR=""
 
 usage() { print_usage "${BASH_SOURCE[0]}"; }
 
@@ -112,6 +118,8 @@ while [[ $# -gt 0 ]]; do
     --check) MODE="check"; shift;;
     --json) AS_JSON=1; shift;;
     --keep) KEEP=1; shift;;
+    --data-dir) DATA_DIR="${2:-}"; shift 2 || die "--data-dir needs a value" 1;;
+    --data-dir=*) DATA_DIR="${1#*=}"; shift;;
     -h|--help) usage; exit 0;;
     *) die "Unknown argument: $1 (see --help)" 1;;
   esac
@@ -157,6 +165,10 @@ fi
 
 # --- Isolated environment -----------------------------------------------------
 for _v in $(env | sed -n 's/^\(DRUPILOT_[A-Za-z0-9_]*\)=.*/\1/p'); do unset "$_v"; done
+if [[ -n "$DATA_DIR" ]]; then
+  [[ -d "$DATA_DIR/targets" ]] || die "--data-dir $DATA_DIR holds no targets/" 1
+  export DRUPILOT_VERSION_DATA_DIR="$DATA_DIR"
+fi
 export CLAUDE_PLUGIN_ROOT="$PR"
 export HOME="$TMP/home"
 export XDG_DATA_HOME="$TMP/home/.local/share" XDG_STATE_HOME="$TMP/home/.local/state"
@@ -247,7 +259,7 @@ cap() {
   printf '%s\n' "$rc" > "$RAW/$name.rc"
   printf '%s\n' "$view" > "$RAW/$name.view"
   hit="$(grep -E 'syntax error|unbound variable|command not found|bad substitution|: invalid option|integer expression expected' \
-           "$RAW/$name.err" 2>/dev/null | head -n 2 || true)"
+           "$RAW/$name.err" 2>/dev/null | sed -n '1,2p' || true)"
   [[ -z "$hit" ]] || printf '%s: shell error: %s\n' "$name" "$(printf '%s' "$hit" | tr '\n' ' ')" >> "$ERRORS"
   return 0
 }
@@ -402,9 +414,10 @@ if [[ "$MODE" == "capture" ]]; then
   fi
   [[ -n "$HASHER" ]] || die "--capture needs sha256sum or shasum (for SHA256SUMS)" 1
   mkdir -p "$BASE_DIR"
-  find "$BASE_DIR" -mindepth 1 ! -name allowed-diffs.txt -exec rm -rf {} + 2>/dev/null || true
+  find "$BASE_DIR" -mindepth 1 ! -name allowed-diffs.txt ! -name hook-latency.json ! -name golden.json ! -path "$BASE_DIR/samples" ! -path "$BASE_DIR/samples/*" \
+    -exec rm -rf {} + 2>/dev/null || true
   cp -R "$OUT/." "$BASE_DIR/"
-  ( cd "$BASE_DIR" && find . -type f ! -name allowed-diffs.txt ! -name SHA256SUMS | sed 's#^\./##' | LC_ALL=C sort \
+  ( cd "$BASE_DIR" && find . -type f ! -name allowed-diffs.txt ! -name SHA256SUMS ! -name hook-latency.json ! -name golden.json ! -path './samples/*' | sed 's#^\./##' | LC_ALL=C sort \
       | while IFS= read -r _f; do printf '%s  %s\n' "$($HASHER < "$_f" | cut -d' ' -f1)" "$_f"; done ) > "$BASE_DIR/SHA256SUMS"
   if [[ ! -f "$ALLOWED" ]]; then
     printf '# Intended differences from the v0.9.0 baseline, one per line:\n' > "$ALLOWED"
@@ -453,7 +466,7 @@ if [[ -z "$HASHER" ]]; then
 elif [[ ! -f "$BASE_DIR/SHA256SUMS" ]]; then
   result SHA256SUMS missing "tests/baseline/v0.9.0/SHA256SUMS is missing (rerun --capture)"
 else
-  ( cd "$BASE_DIR" && find . -type f ! -name allowed-diffs.txt ! -name SHA256SUMS | sed 's#^\./##' | LC_ALL=C sort ) \
+  ( cd "$BASE_DIR" && find . -type f ! -name allowed-diffs.txt ! -name SHA256SUMS ! -name hook-latency.json ! -name golden.json ! -path './samples/*' | sed 's#^\./##' | LC_ALL=C sort ) \
     > "$TMP/committed.txt"
   awk '{ print $2 }' "$BASE_DIR/SHA256SUMS" | LC_ALL=C sort > "$TMP/pinned.txt"
   while IFS= read -r _f; do
@@ -488,7 +501,7 @@ while IFS= read -r _f; do
     result "$_f" allowed "${_why:-listed in allowed-diffs.txt}"
     continue
   fi
-  diff -u "$_b" "$OUT/$_f" 2>/dev/null | head -n 60 | sed 's/^/    /' >&2 || true
+  diff -u "$_b" "$OUT/$_f" 2>/dev/null | sed -n '1,60p' | sed 's/^/    /' >&2 || true
   if [[ -z "$_h" ]]; then
     result "$_f" differs "differs from the baseline (no sha256 tool to check allowed-diffs.txt)"
   elif [[ -n "$_want" ]]; then
@@ -498,7 +511,7 @@ while IFS= read -r _f; do
   fi
 done < "$_seen"
 
-( cd "$BASE_DIR" && find . -type f ! -name allowed-diffs.txt ! -name SHA256SUMS | sed 's#^\./##' | LC_ALL=C sort ) \
+( cd "$BASE_DIR" && find . -type f ! -name allowed-diffs.txt ! -name SHA256SUMS ! -name hook-latency.json ! -name golden.json ! -path './samples/*' | sed 's#^\./##' | LC_ALL=C sort ) \
   | while IFS= read -r _f; do
       grep -qxF -- "$_f" "$_seen" || printf '%s\n' "$_f"
     done > "$TMP/missing.txt"

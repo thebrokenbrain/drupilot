@@ -51,7 +51,7 @@ Invoke the **test-adaptation** skill for the exact DDEV PHPUnit commands, the
 Selenium / FunctionalJavascript setup, and the common D11 test-API migrations.
 
 Then delegate the iterate-to-green loop to the **drupal-test-engineer** subagent
-(via the Task tool). It is the specialist in PHPUnit / DDEV / Selenium and owns
+(via the Task tool, in the foreground: wait for its result). It is the specialist in PHPUnit / DDEV / Selenium and owns
 the adapt-run-fix cycle.
 
 ## Step 3 — Adapt the tests to Drupal 11
@@ -115,6 +115,27 @@ and review each one flagged as failing with a different message now. A group
 whose PHPUnit executed no test (e.g. a `--filter` matching nothing) counts as
 `empty`, never as passed.
 
+**The PHP_LOW leg (the floor's PHP).** When the upgrade plan's `test_matrix` has
+a `PHP_LOW` leg (the window's lowest PHP the test-bed core supports is below the
+bed's own PHP), run the Unit and Kernel groups again on that PHP once they pass on
+the bed's:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/run-phpunit.sh" --subject "$1" --type all --leg PHP_LOW
+```
+
+It uses that PHP's binary in the DDEV web container and needs no restart. A plan
+without the leg makes it a no-op. A Functional test is not part of it: its site is
+served by the bed's own PHP. Its failures are classified against the baseline like
+any other (regression, not baselined, pre-existing), and its verdict goes to
+`last-test.json` `legs.PHP_LOW`; the top-level `preservation` becomes the stronger
+of the two legs'. A failure on the low PHP is the port breaking on its declared
+floor: fix it in the code, never relax the test. A PHP that is missing, or cannot
+load the test-bed's vendor tree, blocks the leg (exit `2`) and turns a `verified`
+suite into `verified-partial`: say so, never hide it. Run the suite on the current
+sources first: the leg is only recorded over a CURRENT run of the same sources. The
+`PREVIOUS_MAJOR` leg is static, checked by the core matrix (`verify-core-matrix.sh`).
+
 ## Step 5 — Coverage (especially in Phase 2)
 
 When the suite is green, report coverage. In a Phase 2 context, first add tests
@@ -153,6 +174,8 @@ Summarize in English:
 - Discovered vs. run counts per group (Unit / Kernel / Functional /
   FunctionalJavascript).
 - Pass/fail result per group, and the adaptations made to reach green.
+- The verdict of each test leg (`legs` in `last-test.json`: the bed's PHP, and
+  the floor's PHP when the plan has a `PHP_LOW` leg), and the aggregate.
 - Coverage figures (when measured), and any tests added in Phase 2 with their
   negative-control verdicts.
 - With a baseline: regressions, pre-existing failures (and which now fail

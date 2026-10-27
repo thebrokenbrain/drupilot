@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thebrokenbrain.github.io/drupilot/schemas/assess.schema.json",
+  "title": "drupilot viability assessment cache (assess.json)",
+  "description": "The machine-readable result of a viability assessment, in the subject's hidden state dir (project_state_dir, under drupilot's data dir; never in the project tree). From 1.0, scripts/analysis/assess.sh writes it (schema 1, ADR 0025): the verdict and the three rubric counts computed from findings.json, the rule that matched, and everything viability-report.md shows; the same tree and lock give the same document outside meta (its time is meta.generated_at). A 0.9 file has no schema key: the model wrote it at the end of /drupilot-assess without fixing every key name or nesting, so its readers (common.sh state_snapshot_json, next-step.sh, port-report.sh) take .verdict (else .effort), .timestamp (else .generated_at, else .meta.generated_at) and .recommended_core_version_requirement, each optional. Hence only verdict is required and the nested shapes below are described leniently.",
+  "type": "object",
+  "required": ["verdict"],
+  "properties": {
+    "schema": {"description": "1 for a file assess.sh wrote; absent in a 0.9 file.", "const": 1},
+    "provisional": {"description": "True when Rector, PHPStan, the port-safety checks or the signature scan gave no verdict: the counts are incomplete, the document is assess-provisional.json (never assess.json) and the assessed stage was not recorded.", "type": "boolean"},
+    "no_verdict": {"description": "The tools that gave no verdict, as \"<tool> <verdict>\".", "type": "array", "items": {"type": "string"}},
+    "tools": {"description": "Each extractor's verdict, from findings.json (ok | partial | failed | missing).", "type": "object"},
+    "worklist": {"description": "The worklist's item counts (classify.sh).", "type": "object"},
+    "findings_hash": {"anyOf": [{"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, {"type": "null"}]},
+    "worklist_hash": {"anyOf": [{"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, {"type": "null"}]},
+    "subject_digest": {"description": "The subject's digest the assessment was computed on (digest_algo).", "type": "string"},
+    "digest_algo": {"type": "integer", "minimum": 1},
+    "meta": {"description": "What changes between two runs (DET-2): generated_at and the drupilot version.", "type": "object"},
+    "verdict": {
+      "description": "The S/M/L/XL effort verdict of the deterministic rubric (the same closed set state.sh record --effort enforces).",
+      "enum": ["S", "M", "L", "XL"]
+    },
+    "effort": {
+      "description": "The same verdict under the older name readers fall back to.",
+      "enum": ["S", "M", "L", "XL"]
+    },
+    "timestamp": {"description": "When the assessment ran (UTC, ISO 8601).", "type": "string"},
+    "generated_at": {"description": "Alternative name of timestamp (readers try timestamp first).", "type": "string"},
+    "tool": {"type": "string"},
+    "drupilot_version": {"type": "string"},
+    "subject": {"description": "The subject's path relative to the Drupal root (findings.json subject.path), null when unknown.", "type": ["string", "null"]},
+    "machine_name": {"type": "string"},
+    "type": {"description": "module, theme or profile.", "type": "string"},
+    "contrib": {"description": "Whether the subject is a drupal.org contrib project.", "type": "boolean"},
+    "php_target": {"type": "string"},
+    "drupal_target": {"type": "string"},
+    "sandbox_core": {"description": "The Drupal core version the analysis ran against.", "type": "string"},
+    "viability_threshold": {"description": "The resolved DRUPILOT_VIABILITY_THRESHOLD: as a verdict letter (S, M, L, XL) in a schema-1 file, as the setting's word (small, medium, large, xl) in a 0.9 one.", "type": "string"},
+    "above_threshold": {"description": "True when the verdict strictly exceeds the threshold.", "type": "boolean"},
+    "next_step": {"description": "The suggested next command.", "type": "string"},
+    "current_core_version_requirement": {"type": ["string", "null"]},
+    "recommended_core_version_requirement": {
+      "description": "From core-strategy.sh --json; port-report.sh falls back to it when the manifest has no core_version_requirement. Null when core-strategy.sh gave no answer.",
+      "type": ["string", "null"]
+    },
+    "require_php": {"type": ["string", "null"]},
+    "version_bump": {"description": "The SemVer bump the core target implies (core-strategy.sh); null when it gave no answer.", "type": ["string", "null"]},
+    "core_target": {
+      "description": "The core compatibility decision, copied (possibly in part) from scripts/analysis/core-strategy.sh --json.",
+      "type": "object",
+      "properties": {
+        "strategy": {"type": "string"},
+        "phase": {"type": "string"},
+        "current_core_version_requirement": {"type": ["string", "null"]},
+        "recommended_core_version_requirement": {"type": "string"},
+        "composer_core_constraint": {"type": "string"},
+        "require_php": {"type": ["string", "null"]},
+        "version_bump": {"type": "string"},
+        "bc_break": {"type": "boolean"},
+        "php_target": {"type": "string"},
+        "php_floor_strategy": {"type": "string"},
+        "php_floor_detected": {"type": ["string", "null"]},
+        "php_floor_effective": {"type": ["string", "null"]},
+        "php_floor_target_compatible": {"type": ["boolean", "null"]},
+        "has_composer_json": {"type": "boolean"},
+        "d10_support": {"type": "string"},
+        "verify_cores": {"type": "array"},
+        "rationale": {"type": "array"},
+        "warnings": {"type": "array"},
+        "suggested_remaining_tasks": {"type": "array"}
+      }
+    },
+    "auto_fixable": {
+      "description": "The auto-fixable vs manual split (\"a rough percentage\"); the 0.9 flow records an object of counts and percentages (official Rector vs digests broken out).",
+      "type": ["object", "number"],
+      "properties": {
+        "percent_automated": {"type": "number"},
+        "percent_manual": {"type": "number"},
+        "required_changes": {"type": "integer"},
+        "automated_required_changes": {"type": "integer"},
+        "rector_official_files": {"type": "integer"},
+        "rector_official_rules": {"description": "{short Rector rule name: number of files it changes} (schema 1: the official and compat passes); {Rule: hits} in a 0.9 file.", "type": "object"},
+        "rector_drupal_deprecation_hits": {"type": "integer"},
+        "digests": {"description": "The digests layer's share, or \"off\" when it did not run."},
+        "note": {"type": "string"}
+      }
+    },
+    "hard_breaks": {
+      "description": "The hard breaks found: the ids of the config/catalog/hard-breaks.json categories present (Twig 3, CKEditor 5, jQuery UI, Symfony 7), then those of the core removals a person must resolve (base-theme-removed, dependency-removed, library-removed, migrate-drupal-usage: scan-removals.sh, ADR 0031), sorted.",
+      "type": "array"
+    },
+    "core_removals": {
+      "description": "The core removals of the assessment's findings (class removal, ADR 0031): one entry per detector and removed name, with the scanner's action (rewrite, blocked, verify, composer-required, decision, hard-break, note) and the files. Absent from an assess.json written before 1.0.0-alpha.6.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["detector", "name", "action", "severity", "files"],
+        "additionalProperties": false,
+        "properties": {
+          "detector": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+          "name": {"type": "string", "minLength": 1},
+          "action": {"enum": ["rewrite", "blocked", "verify", "composer-required", "decision", "hard-break", "note"]},
+          "severity": {"enum": ["error", "warning", "info"]},
+          "files": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    },
+    "hard_break_categories": {
+      "description": "The files of each hard break: the four fixed hard-break greps, plus the detector of each core removal a person must resolve.",
+      "type": "object",
+      "properties": {
+        "twig3": {"type": "array"},
+        "ckeditor5": {"type": "array"},
+        "jquery_ui": {"type": "array"},
+        "symfony7": {"type": "array"}
+      }
+    },
+    "manual_items": {
+      "description": "The manual Phase 1 changes the rubric counts.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "finding_id": {"description": "The findings.json id (schema 1).", "type": "string"},
+          "occurrences": {"description": "The PHPStan occurrences the finding stands for (1 for a catalog finding); manual is their sum.", "type": "integer", "minimum": 1},
+          "file": {"type": "string"},
+          "line": {"type": ["integer", "null"]},
+          "what": {"type": "string"},
+          "source": {"description": "The tool and finding that reported it.", "type": "string"},
+          "pre_existing_d10": {"description": "Whether it already breaks on Drupal 10.", "type": "boolean"}
+        }
+      }
+    },
+    "rubric": {
+      "description": "The three rubric counts and the rule that produced the verdict.",
+      "type": "object",
+      "properties": {
+        "manual": {"type": "integer", "minimum": 0},
+        "hard_breaks": {"type": "integer", "minimum": 0},
+        "blocking_deps": {"type": "integer", "minimum": 0},
+        "rule": {"type": "string"}
+      }
+    },
+    "deprecations_hard": {"description": "Hard deprecations: the PHPStan occurrences of findings.json findings of class hard (classify-deprecations.sh counts.hard in a 0.9 file).", "type": "integer", "minimum": 0},
+    "deprecations_soft": {"description": "Soft deprecations, counted the same way (counts.soft).", "type": "integer", "minimum": 0},
+    "deprecations_unknown": {"description": "Unclassified deprecations, counted the same way (counts.unknown).", "type": "integer", "minimum": 0},
+    "soft_deprecations_policy": {"description": "The DRUPILOT_SOFT_DEPRECATIONS policy applied (report, defer, fix).", "type": "string"},
+    "soft_deprecations": {
+      "description": "The soft deprecations, one per symbol (values n/a, or null, when the catalog has none).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "symbol": {"type": "string"},
+          "deprecated_in": {"type": ["string", "null"]},
+          "removed_in": {"type": ["string", "null"]},
+          "effort": {"type": ["string", "null"]},
+          "occurrences": {"type": "integer", "minimum": 0},
+          "action": {"type": "string"}
+        }
+      }
+    },
+    "signature_changes": {
+      "description": "Totals of scan-signature-changes.sh --json.",
+      "type": "object",
+      "properties": {
+        "core_floor": {"type": ["string", "null"]},
+        "errors": {"type": "integer", "minimum": 0},
+        "warnings": {"type": "integer", "minimum": 0},
+        "infos": {"type": "integer", "minimum": 0}
+      }
+    },
+    "hygiene": {
+      "description": "Totals of lint-extension-metadata.sh --json (outside the rubric).",
+      "type": "object",
+      "properties": {
+        "error": {"type": "integer", "minimum": 0},
+        "warn": {"type": "integer", "minimum": 0},
+        "info": {"type": "integer", "minimum": 0}
+      }
+    },
+    "info_yml": {
+      "description": "info.yml status.",
+      "type": "object",
+      "properties": {
+        "core_version_requirement_present": {"type": "boolean"},
+        "d11_compatible": {"type": "boolean"},
+        "submodules_d11_compatible": {"type": "boolean"}
+      }
+    },
+    "dependencies": {
+      "description": "Contrib dependency D11 readiness counts (deps-status.sh).",
+      "type": "object",
+      "properties": {
+        "ready": {"type": "integer", "minimum": 0},
+        "blockers": {"type": "integer", "minimum": 0},
+        "unknown": {"type": "integer", "minimum": 0}
+      }
+    },
+    "phpstan": {
+      "description": "PHPStan summary.",
+      "type": "object",
+      "properties": {
+        "level": {"type": ["integer", "string"]},
+        "status": {"type": "string"},
+        "file_errors": {"type": "integer", "minimum": 0},
+        "deprecations": {"type": "integer", "minimum": 0},
+        "count": {"description": "Every PHPStan finding of findings.json (schema 1).", "type": "integer", "minimum": 0},
+        "other": {"type": "integer", "minimum": 0}
+      }
+    },
+    "phpcs": {
+      "description": "PHPCS summary and the ruleset used (run-phpcs.sh --json).",
+      "type": "object",
+      "properties": {
+        "errors": {"type": "integer", "minimum": 0},
+        "warnings": {"type": "integer", "minimum": 0},
+        "standard": {"type": "string"},
+        "source": {"type": "string"},
+        "fallback_reason": {"type": ["string", "null"]}
+      }
+    },
+    "upgrade_status": {
+      "description": "Upgrade Status result, or why it was skipped.",
+      "type": "object",
+      "properties": {
+        "status": {"type": "string"},
+        "reason": {"type": "string"}
+      }
+    },
+    "ready": {
+      "description": "The ready flags at assessment time.",
+      "type": "object",
+      "properties": {
+        "analysis": {"type": "boolean"},
+        "environment": {"type": "boolean"},
+        "contribution": {"type": "boolean"},
+        "drupal_installed": {"type": "boolean"}
+      }
+    },
+    "reports": {
+      "description": "Paths of the human artifacts (viability-report.md, port-plan.md).",
+      "type": "object",
+      "properties": {
+        "viability_report": {"type": "string"},
+        "port_plan": {"type": "string"}
+      }
+    }
+  }
+}

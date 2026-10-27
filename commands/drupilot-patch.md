@@ -25,6 +25,14 @@ otherwise detect it from the current directory. Confirm the machine name:
 
 !`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-$PWD}"; [[ -d "$SUBJ" ]] || SUBJ="$PWD"; printf "subject_dir=%s\n" "$SUBJ"; printf "is_extension=%s\n" "$(is_drupal_extension_dir "$SUBJ" && echo yes || echo no)"; printf "machine_name=%s\n" "$(subject_machine_name "$SUBJ" 2>/dev/null || echo -)"; printf "under_git=%s\n" "$(git -C "$SUBJ" rev-parse --is-inside-work-tree >/dev/null 2>&1 && echo yes || echo no)"' _ "$1"`
 
+**The upgrade plan.** Every version this command needs (target major, test-bed
+core, declared range, PHP floor and target, Rector sets, names) comes from it,
+never from the examples in this text (AR-26):
+
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show --subject "$1" 2>/dev/null || true`
+
+If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show
+
 If the subject is not a Drupal extension, or not under git, say so plainly and
 stop (the patch needs a git checkout). `make-patch.sh --local` already
 warns-and-skips in that case, so never fail the session over it.

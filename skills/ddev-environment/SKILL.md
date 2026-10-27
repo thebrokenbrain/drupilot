@@ -25,6 +25,15 @@ scripts under `${CLAUDE_PLUGIN_ROOT}/scripts/env/` and the templates under
 `${CLAUDE_PLUGIN_ROOT}/templates/`. Prefer those scripts over ad-hoc `ddev`
 commands so behavior stays idempotent, gated and consistent.
 
+**The upgrade plan.** Every version this procedure needs (target major, test-bed
+core, declared range, PHP floor and target, Rector sets, names) comes from it,
+never from the examples below (AR-26). The block is the working directory's: when it
+names no module, or a module other than the subject, run `plan show --subject <subject_dir>`:
+
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show 2>/dev/null || true`
+
+If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show
+
 ## 0. Golden rules
 
 - **Gate first.** Setup needs Docker (daemon up) + DDEV. Always run preflight for
@@ -36,9 +45,11 @@ commands so behavior stays idempotent, gated and consistent.
 - **Read the generated YAML.** Do not assume hostnames, the PHP image, or the
   webdriver host. After DDEV writes `.ddev/config.yaml`, read it back for the real
   values (project name, `php_version`, webdriver service host).
-- **PHP target drives everything.** The DDEV `php_version`, the Rector PHP set,
-  the PHPStan level expectations and some PHPCS sniffs all derive from
-  `DRUPILOT_PHP_TARGET` (default `8.3`). Resolve it with `resolve_php_target`; see
+- **PHP target drives everything.** The DDEV `php_version`, the PHPStan level
+  expectations and some PHPCS sniffs all derive from the PHP target: an explicit
+  `DRUPILOT_PHP_TARGET`, else the frozen plan's `php.final`, else the target's
+  default (Drupal 11: `resolve_php_target`, 8.3; Drupal 12: 8.5); Rector's PHP
+  level is the floor of the declared core range, never above it (ADR 0002). See
   the `php-target-tuning` skill for the PHP 8.5 caveat (it needs Drupal 11.3 or
   later).
 
@@ -68,28 +79,57 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/detect-php.sh" --json
 # -> {host_php, ddev_php, target, supported, unconfirmed}
 ```
 
-Use `target` for the rest of the flow. If `unconfirmed` is true (i.e. 8.5),
+Use `target` for the rest of the flow (it is the Drupal 11 PHP target; the
+test-bed takes the frozen plan's `php.final`, §3, which for Drupal 12 is 8.5). If `unconfirmed` is true (i.e. 8.5),
 say that PHP 8.5 needs Drupal 11.3 or later and that no Rector `php85` set is
 assumed; `ddev-up.sh` warns when the core it creates may be older (the
 lock-pinned core, else the lowest minor the Drupal target admits) and when the
 installed core is older.
 
-## 3. Create / start the Drupal 11 DDEV project
+### 2b. Target major and the draft upgrade plan
+
+`/drupilot-setup` asks the target major first (`choice.sh --key TARGET_MAJOR`;
+Drupal 11 by default, 12 only as a preview with `DRUPILOT_ALLOW_PRERELEASE=true`),
+then the PHP target, and freezes the draft upgrade plan in the Drupal root's lock
+before anything is created (ADR 0018):
 
 ```bash
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-up.sh" \
-  --php "<target>" --subject "<path/to/module-or-theme>" --name "<ddev_name>" --docroot web
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "<path>" --phase draft --root "<drupal_root>" --freeze --json
 ```
 
-Pass `--name` explicitly (e.g. `<machine_name>-d11`); otherwise the DDEV project is
-named after the test-bed directory. stdout carries only the optional `--json` summary
+`<drupal_root>` is `resolve-workspace.sh --target <T>`'s answer (for a loose
+subject, the test-bed it will create, `<name>-d<T>`; never a site on an older
+major than T). Exit 2 refuses with
+`.message` and `.choices` and writes nothing: re-ask the tabs, overriding the value
+that led to the refusal (a `d7-auto` refusal stops). The answers are persisted only
+after exit 0 — into the root's `.drupilot.json`, right after §3 creates it for a loose
+subject (with `DRUPILOT_ALLOW_PRERELEASE=true` after a pre-release opt-in). A
+pre-release target (Drupal 12) gets its own test-bed: `ddev-up.sh` creates the plan's
+pre-release core, requires no drush where the toolchain cell pins none, and installs
+`drupal/core` from source where the cell says so (ADR 0004). After §6 installs the toolchain and the lock
+records the test-bed's core, run the same command again: it re-plans on the
+installed core when that is another minor.
+
+## 3. Create / start the DDEV project (the target major's)
+
+```bash
+DRUPILOT_TARGET_MAJOR=<T> bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/ddev-up.sh" \
+  --subject "<path/to/module-or-theme>" --name "<ddev_name>" --docroot web
+```
+
+Pass `--name` explicitly (e.g. `<machine_name>-d<T>`, `-d11` for Drupal 11); otherwise
+the DDEV project is named after the test-bed directory. Pass `--php` only for a PHP
+the developer gave: without it the script takes an explicit `DRUPILOT_PHP_TARGET`
+(the environment or the root's `.drupilot.json`), else the frozen plan's `php.final`,
+else the target's default, so the bed runs the PHP the plan targets. stdout carries only the optional `--json` summary
 (`{project_dir, project_name, php_version, primary_url, drupal_target}`); every log,
 the preflight report and the ddev/composer output go to stderr.
 
 What `ddev-up.sh` does (idempotently):
 
-- `ddev config --project-type=drupal11 --docroot=web --php-version=$(resolve_php_target)`
-  only if the project is not already configured.
+- `ddev config --project-type=<the target's DDEV type> --docroot=web --php-version=<the plan's php.final>`
+  only if the project is not already configured (`target_ddev_type`: the
+  plan's `target.ddev_type`, from `config/targets/<T>.json`).
 - `ddev start`.
 - `ddev composer create-project drupal/recommended-project:^11` (`ddev composer create` on DDEV < 1.24.2) only when there is no
   `composer.json` yet (creating a project would overwrite an existing one).
@@ -101,7 +141,10 @@ What `ddev-up.sh` does (idempotently):
   (e.g. after `/drupilot-clean --level vendor`).
 - Marks a root it built as a drupilot test-bed (`drupilot_testbed` in its
   `.drupilot.json`), which is what lets `/drupilot-clean` remove it later.
-- Ensures `drush/drush:^13` is present (D11 requires Drush 13).
+- Ensures `drush/drush:^13` is present (D11 requires Drush 13; none where the
+  toolchain cell pins drush to `null`, Drupal 12).
+- Refuses (exit 1, before `ddev config`) a root whose installed core is an older
+  major than the target: drupilot never upgrades a site's core.
 - **Reads the generated `.ddev/config.yaml`** for the real project name and
   hostnames instead of guessing `*.ddev.site`.
 
@@ -230,7 +273,7 @@ What it installs (`config/defaults.json` `.packages.*`):
 - `palantirnet/drupal-rector` (the `palantirnet/` namespace is current;
   `palantirnet/drupal8-rector` is obsolete) and its engine `rector/rector`
   (range `^2.0 <2.6.2`: drupal-rector 0.21.x throws `Could not detect twig set.`
-  with rector/rector >= 2.6.2)
+  with rector/rector >= 2.6.2, and 1.1.3 declares a conflict with it)
 - `phpstan/phpstan`, `phpstan/extension-installer`, `mglaman/phpstan-drupal`,
   `phpstan/phpstan-deprecation-rules`
 - `drupal/coder` at `DRUPILOT_CODER_CONSTRAINT` (default `^8.3` → PHPCS 3.x, the
@@ -254,7 +297,7 @@ resolve against the project, it retries once with the ranges. It allows the
 Composer plugins, runs one `ddev composer require --dev -W`, then:
 
 - a **smoke test** (`rector_smoke` in `common.sh`): a Rector dry-run of a trivial
-  file with `Drupal10SetList::DRUPAL_10` plus `phpstan --version`, through DDEV;
+  file with drupal-rector's sets loaded plus `phpstan --version`, through DDEV;
 - `lock-sync.sh --dir <root>`, so the exact toolchain (including `rector/rector`
   and `drupal/core-dev`) is frozen in the lock.
 
@@ -312,8 +355,8 @@ rector,phpstan,phpcs,testing` limits the set; `--set KEY=VALUE` overrides a toke
 
 | Template | Destination (Drupal root) | Key placeholders |
 |---|---|---|
-| `rector.php.tmpl` | `rector.php` | `{{PHP_TARGET}}`, `{{PHP_SET}}`, `{{SUBJECT_PATH}}` |
-| `phpstan.neon.tmpl` | `phpstan.neon` | `{{PHPSTAN_LEVEL}}`, `{{SUBJECT_PATH}}` |
+| `rector.php.tmpl` | `rector.php` | `{{SUBJECT_PATH}}`, from the upgrade plan: `{{RECTOR_SETS}}`, `{{BC_BLOCK}}`, `{{PHP_VERSION_L}}`, `{{PHP_SETS_L}}`, `{{SKIP_RULES}}` (ADR 0019) |
+| `phpstan.neon.tmpl` | `phpstan.neon` | `{{PHPSTAN_LEVEL}}`, `{{SUBJECT_PATH}}`, from the upgrade plan: `{{PHPSTAN_PHP_MIN}}`/`{{PHPSTAN_PHP_MAX}}`, `{{PHPSTAN_PROFILE}}`, `{{PHPSTAN_CACHE_KEY}}` (ADR 0020) |
 | `phpcs.xml.dist.tmpl` | `phpcs.xml.dist` | `{{SUBJECT_PATH}}` |
 | `ddev-config.yaml.tmpl` | (reference for `.ddev/config.yaml`) | `{{PROJECT_NAME}}`, `{{PHP_TARGET}}` |
 | `ddev-web-environment.yaml.tmpl` | `.ddev/config.testing.yaml` (separate file) | — |
@@ -323,7 +366,9 @@ rector,phpstan,phpcs,testing` limits the set; `--set KEY=VALUE` overrides a toke
 
 `{{SUBJECT_PATH}}` is the in-docroot path, e.g. `web/modules/custom/foo`.
 `{{PHP_TARGET}}` = `resolve_php_target`; `{{PHPSTAN_LEVEL}}` =
-`DRUPILOT_PHPSTAN_LEVEL` (default 2 for Phase 1). `{{WEBDRIVER_HOST}}` (read
+`DRUPILOT_PHPSTAN_LEVEL` (default 2 for Phase 1). phpstan.neon's profile is
+`compat` (phpstan-drupal's opinion rules off) unless `--profile refactor` (the
+refactor stage) asks for every rule. `{{WEBDRIVER_HOST}}` (read
 from `.ddev/docker-compose.selenium-chrome.yaml`, default `selenium-chrome:4444`)
 is still accepted by `--set` but no current template uses it.
 The generated `phpstan.neon` intentionally has no `drupal: drupal_root:` block:
@@ -349,7 +394,7 @@ raw JSON value produces invalid compose YAML ("did not find expected key") and
 
 ## 8. Verify and report
 
-When done, confirm and report (in English): project name, `type: drupal11`,
+When done, confirm and report (in English): project name, the DDEV `type`,
 docroot `web`, effective `php_version`, add-ons installed, toolchain packages
 present, and which config files were written vs already present. If anything was
 already in place, say "already configured — skipped". Hand off to the
@@ -361,11 +406,14 @@ already in place, say "already configured — skipped". Hand off to the
   `composer.json`. `ddev-up.sh` already guards this; do not call it manually
   inside a populated project.
 - The installed DDEV may not provide a PHP 8.5 image; `ddev-up.sh` warns about it.
-  Fall back to `8.3` rather than failing the whole setup.
+  For Drupal 11 fall back to `8.3` rather than failing the whole setup; Drupal 12
+  needs 8.5, so upgrade DDEV instead.
 - The webdriver hostname differs by add-on version — never hardcode
   `selenium-chrome:4444`; read the generated YAML / add-on output.
 - Rector and PHPStan need the Drupal **core tree present** (no database), so they
   work right after `ddev composer create-project`. `upgrade_status` additionally needs an
-  **installed** site (DB) — defer it until `ddev drush site:install` has run.
+  **installed** site (DB) — defer it until `ddev drush site:install` has run. A
+  Drupal 12 bed has no drush: `run-upgrade-status.sh` skips it there, and
+  `install-toolchain.sh --with-upgrade-status` does not install it.
 - All status messages go to stderr via the `log_*` helpers; stdout stays clean
   for parseable payloads (e.g. `detect-php.sh --json`).

@@ -1,0 +1,37 @@
+{
+  "core_strategy": "auto",
+  "created": "2026-10-03T23:26:21Z",
+  "ddev_addons": {
+    "ddev-drupal-contrib": "1.2.1",
+    "ddev-selenium-standalone-chrome": "2.2.1"
+  },
+  "drupal": {
+    "core": "11.4.8"
+  },
+  "drupilot_revision": "v0.9.1-dirty",
+  "drupilot_version": "0.9.1",
+  "php_target": "8.3",
+  "phpstan_level": 2,
+  "toolchain": {
+    "drupal/coder": "8.3.31",
+    "drupal/core-dev": "11.4.8",
+    "drush/drush": "13.8.0",
+    "mglaman/phpstan-drupal": "2.2.2",
+    "palantirnet/drupal-rector": "0.21.2",
+    "phpstan/extension-installer": "1.4.3",
+    "phpstan/phpstan": "2.2.2",
+    "phpstan/phpstan-deprecation-rules": "2.0.5",
+    "rector/rector": "2.5.2"
+  },
+  "updated": "2026-10-03T23:27:15Z",
+  "verify_cores": {
+    "10": {
+      "constraint": "^10",
+      "version": "10.6.18"
+    },
+    "10.0": {
+      "constraint": "~10.0.0",
+      "version": "10.0.11"
+    }
+  }
+}

@@ -113,5 +113,5 @@ if [[ "$DRY" == "1" ]]; then
 fi
 
 printf '%s\n' "$new_content" > "$GI"
-log_ok "Ensured drupilot's ignore block in $GI (.drupilot/, .drupilot.json, .phpstan-cache/, *-port-to-drupal-11*.patch)."
+log_ok "Ensured drupilot's ignore block in $GI (.drupilot/, .drupilot.json, .phpstan-cache/, *-port-to-drupal-*.patch)."
 exit 0

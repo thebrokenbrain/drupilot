@@ -1,0 +1,137 @@
+{
+  "anchors": "php",
+  "counts": {
+    "by_class": {
+      "analysis": 1,
+      "metadata": 2,
+      "style": 1
+    },
+    "by_tool": {
+      "catalog": 2,
+      "phpcs": 1,
+      "phpstan": 1
+    },
+    "current": 4,
+    "next_major": 0,
+    "total": 4
+  },
+  "findings": [
+    {
+      "anchor": "{file}",
+      "class": "metadata",
+      "file": "acme_api.services.yml",
+      "id": "F-ae0e83b69e66",
+      "line": 3,
+      "message": "Service 'acme_api.client' passes 3 argument(s) but Drupal\\acme_api\\Client\\ApiClient::__construct() takes 2: PHP silently ignores the extra one(s) (a stale argument, or a constructor that lost a parameter).",
+      "occurrence": 0,
+      "rule": "metadata:services-arity",
+      "scope": "current",
+      "severity": "warning",
+      "sources": [
+        {
+          "line": 3,
+          "rule": "metadata:services-arity",
+          "tool": "catalog"
+        }
+      ],
+      "symbol": null,
+      "tool": "catalog"
+    },
+    {
+      "anchor": "Drupal\\acme_api\\Controller\\StatusController::create",
+      "class": "analysis",
+      "file": "src/Controller/StatusController.php",
+      "id": "F-385953b9a213",
+      "line": 23,
+      "message": "Unsafe usage of new static().",
+      "occurrence": 0,
+      "rule": "new.static",
+      "scope": "current",
+      "severity": "error",
+      "sources": [
+        {
+          "line": 23,
+          "rule": "new.static",
+          "tool": "phpstan"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpstan"
+    },
+    {
+      "anchor": "Drupal\\acme_api\\Controller\\StatusController::status",
+      "class": "style",
+      "file": "src/Controller/StatusController.php",
+      "id": "F-39ffd2fbb750",
+      "line": 30,
+      "message": "\\Drupal calls should be avoided in classes, use dependency injection instead",
+      "occurrence": 0,
+      "rule": "DrupalPractice.Objects.GlobalDrupal.GlobalDrupal",
+      "scope": "current",
+      "severity": "warning",
+      "sources": [
+        {
+          "line": 30,
+          "rule": "DrupalPractice.Objects.GlobalDrupal.GlobalDrupal",
+          "tool": "phpcs"
+        }
+      ],
+      "symbol": null,
+      "tool": "phpcs"
+    },
+    {
+      "anchor": "{file}",
+      "class": "metadata",
+      "file": "src/Controller/StatusController.php",
+      "id": "F-ce6866feb350",
+      "line": 5,
+      "message": "'acme_api' uses project module 'acme_core' (class,service) without declaring it in acme_api.info.yml dependencies: installing 'acme_api' alone fails or breaks at runtime.",
+      "occurrence": 0,
+      "rule": "metadata:undeclared-deps",
+      "scope": "current",
+      "severity": "warning",
+      "sources": [
+        {
+          "line": 5,
+          "rule": "metadata:undeclared-deps",
+          "tool": "catalog"
+        }
+      ],
+      "symbol": null,
+      "tool": "catalog"
+    }
+  ],
+  "meta": {
+    "findings_hash": "sha256:73a8e8baa85bd616c65e5a6f8fb6391f71449d2a521307887c371599d4118085",
+    "raw": {
+      "04-assess-anchors.json": "sha256:127d678fdaf05a4cedfe26f5362c598b0b46134ef2bd7752941a4fe77c58fa83",
+      "04-assess-index.json": "sha256:4e91402098a5e9d77e169f24c8ad83bfdc3e43d12f7dd870f0f9f86b72795e55",
+      "04-assess-metadata.json": "sha256:32459473bf6e23ed1a9144d822f5f8afc6142f14a96fc43e3a220f6547ede82a",
+      "04-assess-phpcs.json": "sha256:d62441c565970898c2ed089ed9fac9b91d92345b857fd0ee7b359ff0e4039d2b",
+      "04-assess-phpstan.json": "sha256:b295e14e8b05d1ec1b669b2c86481fd119e27fd13dcf9f3f8c77ebab48ed12c2",
+      "04-assess-port-safety.json": "sha256:c953ee2bd032851b999c157f9ad8533e7ea2d307a2fc16c4c1e9e66aaa0cb33a",
+      "04-assess-rector.json": "sha256:ddea1a996781f3fee827ee319674121505d6f2788abcabf95b43078b44ef5ede",
+      "04-assess-signatures.json": "sha256:d9219219dfa3c81d3ddb26f2919931e875d4cc6e866364590d1702d2ae92d9c7"
+    }
+  },
+  "schema": 1,
+  "stage": "assess",
+  "subject": {
+    "machine_name": "acme_api",
+    "path": "web/modules/custom/acme_api"
+  },
+  "target": {
+    "major": 11,
+    "php_version": "8.3.33",
+    "runner": "ddev",
+    "soft_policy": "report"
+  },
+  "tools": {
+    "metadata": "ok",
+    "phpcs": "ok",
+    "phpstan": "ok",
+    "port-safety": "ok",
+    "rector": "ok",
+    "signatures": "ok"
+  }
+}

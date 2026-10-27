@@ -1,0 +1,85 @@
+{
+  "source": "run",
+  "taken_at": "2026-10-04T12:51:58Z",
+  "recorded_at": "2026-10-04T12:51:58Z",
+  "subject_digest": "37b4bdf786402fd69318d8a207328d8ddfe94f157f3825e279910f3f561955f3",
+  "git_head": "518f214ea8572359c4ef8f93daaa8af43b1f1af0",
+  "type": "all",
+  "filter": null,
+  "status": "failed",
+  "ran": 2,
+  "passed": 1,
+  "failed": 1,
+  "skipped": 0,
+  "executed": 9,
+  "group_results": [
+    {
+      "group": "Unit",
+      "rc": 0,
+      "status": "passed",
+      "executed": 4
+    },
+    {
+      "group": "Kernel",
+      "rc": 2,
+      "status": "failed",
+      "executed": 5
+    }
+  ],
+  "tests": [
+    {
+      "group": "Unit",
+      "id": "Drupal\\Tests\\legacy_widgets\\Unit\\WidgetCounterTest::testBucket with data set \"zero\"",
+      "status": "pass",
+      "message": null
+    },
+    {
+      "group": "Unit",
+      "id": "Drupal\\Tests\\legacy_widgets\\Unit\\WidgetCounterTest::testBucket with data set \"below threshold\"",
+      "status": "pass",
+      "message": null
+    },
+    {
+      "group": "Unit",
+      "id": "Drupal\\Tests\\legacy_widgets\\Unit\\WidgetCounterTest::testBucket with data set \"at threshold\"",
+      "status": "pass",
+      "message": null
+    },
+    {
+      "group": "Unit",
+      "id": "Drupal\\Tests\\legacy_widgets\\Unit\\WidgetCounterTest::testBucket with data set \"above threshold\"",
+      "status": "pass",
+      "message": null
+    },
+    {
+      "group": "Kernel",
+      "id": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testQueueWorkerProcessesItem",
+      "status": "error",
+      "message": "PHPUnit\\Framework\\Exception: PHP Fatal error:  Declaration of Drupal\\legacy_widgets\\Entity\\LegacyWidget::getOriginal() must be compatible with Drupal\\Core\\Entity\\EntityBase::getOriginal(): ?static in /var/www/html/web/modules/custom/legacy_"
+    },
+    {
+      "group": "Kernel",
+      "id": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testFilterProducesSummary",
+      "status": "error",
+      "message": "PHPUnit\\Framework\\Exception: PHP Fatal error:  Declaration of Drupal\\legacy_widgets\\Entity\\LegacyWidget::getOriginal() must be compatible with Drupal\\Core\\Entity\\EntityBase::getOriginal(): ?static in /var/www/html/web/modules/custom/legacy_"
+    },
+    {
+      "group": "Kernel",
+      "id": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testEntityOperationWithDrupal10Arguments",
+      "status": "error",
+      "message": "PHPUnit\\Framework\\Exception: PHP Fatal error:  Declaration of Drupal\\legacy_widgets\\Entity\\LegacyWidget::getOriginal() must be compatible with Drupal\\Core\\Entity\\EntityBase::getOriginal(): ?static in /var/www/html/web/modules/custom/legacy_"
+    },
+    {
+      "group": "Kernel",
+      "id": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testCounterService",
+      "status": "error",
+      "message": "PHPUnit\\Framework\\Exception: PHP Fatal error:  Declaration of Drupal\\legacy_widgets\\Entity\\LegacyWidget::getOriginal() must be compatible with Drupal\\Core\\Entity\\EntityBase::getOriginal(): ?static in /var/www/html/web/modules/custom/legacy_"
+    },
+    {
+      "group": "Kernel",
+      "id": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testFindAccount",
+      "status": "error",
+      "message": "PHPUnit\\Framework\\Exception: PHP Fatal error:  Declaration of Drupal\\legacy_widgets\\Entity\\LegacyWidget::getOriginal() must be compatible with Drupal\\Core\\Entity\\EntityBase::getOriginal(): ?static in /var/www/html/web/modules/custom/legacy_"
+    }
+  ]
+}

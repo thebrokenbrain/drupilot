@@ -1,0 +1,35 @@
+<?php
+
+/**
+ * @file
+ * Hook implementations of the d11_for_d12 fixture.
+ */
+
+declare(strict_types=1);
+
+use Drupal\Core\Entity\EntityTypeInterface;
+use Drupal\Core\Form\FormStateInterface;
+
+/**
+ * Implements hook_entity_base_field_info_alter().
+ */
+function d11_for_d12_entity_base_field_info_alter(array &$fields, EntityTypeInterface $entity_type): void {
+  if ($entity_type->id() === 'node' && isset($fields['title'])) {
+    $fields['title']->addConstraint('D11ForD12PlainTitle');
+  }
+}
+
+/**
+ * Implements hook_form_BASE_FORM_ID_alter() for node_form.
+ */
+function d11_for_d12_form_node_form_alter(array &$form, FormStateInterface $form_state, string $form_id): void {
+  $form['#attached']['library'][] = 'd11_for_d12/title_counter';
+}
+
+/**
+ * Implements hook_form_BASE_FORM_ID_alter() for contact_message_form.
+ */
+function d11_for_d12_form_contact_message_form_alter(array &$form, FormStateInterface $form_state, string $form_id): void {
+  // Remembers the sender's name in a cookie between visits.
+  $form['#attached']['library'][] = 'core/js-cookie';
+}

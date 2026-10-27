@@ -13,6 +13,1462 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+## [1.0.0-rc.1] - 2026-10-27
+
+### Added
+- **Drupal 12 test-beds** (T-M6-03, ADR 0004). A port to Drupal 12 (a preview, experimental:
+  off unless you opt in, outside 1.0's release criteria) now runs end to end instead of
+  stopping after its draft plan. `ddev-up.sh` builds the bed from the target's toolchain
+  cell:
+  - its own test-bed, `<name>-d12`: `/drupilot-setup` and the orchestrator pass the target
+    major to `resolve-workspace.sh`, `ddev-up.sh` and `place-subject.sh`, and a `-d11` bed
+    is only ever Drupal 11's (CC-17);
+  - a DDEV `drupal12` project on the frozen plan's PHP (`php.final`, 8.5), with the plan's
+    pre-release core (12.0.0-beta2), else the newest at the data's stability; an explicit
+    `DRUPILOT_DRUPAL_TARGET` of that one major is built as it is (`12.0.x-dev`), with the
+    data's stability when it has none of its own (`^12.0`);
+  - no drush where the cell pins it to `null` (no drush release installs on Drupal 12).
+    `run-upgrade-status.sh` then skips with a note, and `install-toolchain.sh
+    --with-upgrade-status` does not install upgrade_status;
+  - `drupal/core` from source where the cell says `core_install: source`:
+    Drupal 12's packaged core leaves out the tests PHPStan and PHPUnit need.
+    An existing project only gets a warning.
+
+  `ddev-up.sh` refuses (exit 1, before `ddev config`) a root whose installed core
+  is an older major than the target, an explicit `DRUPILOT_DRUPAL_TARGET` that
+  does not admit it, and an explicit `DRUPILOT_TARGET_MAJOR` that the root's frozen
+  plan does not name; `resolve-workspace.sh` reports `in_place_ok: false` for a site
+  older than the target major (a Drupal 11 site for a Drupal 12 preview), and
+  `ddev-up.sh` and `place-subject.sh` pass it an explicit `DRUPILOT_TARGET_MAJOR`.
+  `/drupilot-setup` persists the target major and the pre-release opt-in once the
+  draft plan resolves. A guided `/drupilot --target 12` asks the Pre-release tab
+  before it hands the run to the orchestrator, which applies the opt-in (or its
+  pre-answer) to every plan call and never asks in an autonomous run.
+  `/drupilot-port` shows no Core target tab and runs no Drupal 10 check for a
+  preview (the plan decides its range), and treats its core removals as items
+  for a person.
+- **The tests pass** (T-M6-05, ADR 0032). When the test-bed's PHPUnit no longer
+  reads annotations (PHPUnit 12, Drupal 12) and the declared floor's reads
+  attributes, the plan's `rector.tests_pass` adds Rector's
+  `PHPUnitSetList::ANNOTATIONS_TO_ATTRIBUTES` to `rector.php`, ahead of the
+  Drupal sets and only when drupal-rector resolves: its rules convert first, so
+  drupal-rector's own (`#[RunTestsInSeparateProcesses]`, `#[TestWith]`) never add
+  a second attribute. It converts `@dataProvider`, `@depends`, `@testWith`,
+  `@covers`, `@before`, `@test`, `@requires` and the other PHPUnit tags. `@group`
+  stays with drupal-rector's rule, which keeps the annotation for a range that
+  keeps Drupal 11 (`run-tests.sh` of 11.0 and 11.1 reads only `@group`), so the
+  plan skips the set's rule for it (`tests_pass.skip`); that rule's
+  `@backupGlobals`, `@backupStaticAttributes`, `@preserveGlobalState`, `@uses` and
+  `@testDox` stay annotations. Drupal 11 plans keep `tests_pass: null`, with a
+  byte-identical `rector.php`.
+- `docs/guides/d12-preview.md` (T-M6-08): how to opt in, what the plan, the
+  bed and the port do, and the limits of the preview.
+- **The 1.0 scope** (ADR 0033, an amendment of ADR 0000): 1.0.0 is the Drupal 11
+  release, before Drupal 12's stable release. The Drupal 12 preview stays
+  experimental; official Drupal 12 support comes in 1.1, milestones M7 and M8
+  in 1.2, and M9 and M10 (with the Drupal 7 track, amending OD-02) in 1.3. A
+  stabilization round, with the essential docs, a lab re-verification and
+  `1.0.0-rc.1` with a 3-day soak, comes first.
+- `docs/getting-started/install.md`: requirements (Claude Code 2.1.271 or
+  later), install, update (`claude plugin update`, the marketplace's
+  auto-update), and testing a checkout with `--plugin-dir`.
+- `docs/upgrading/0.9-to-1.0.md`: what happens to a project drupilot 0.9 set up
+  (its state, its lock, its generated configs, its stale records, the upgrade
+  plan), the renamed settings, what is new, and what is experimental in 1.0.
+  A lab run checked it on a project set up with 0.9.2: the stale test record,
+  the lock kept with its refresh notice, and dry runs of the toolchain, the
+  templates and a draft plan.
+
+### Changed
+- **`DRUPILOT_FIXPOINT` defaults to `enforce`** (T-M11-06, AR-16). A port or a
+  refactor whose fixpoint gate does not converge now exits 3, and the stage is
+  not done until the items `fixpoint.json` lists are fixed;
+  `DRUPILOT_FIXPOINT=warn` keeps the alphas' behaviour (report and go on). An
+  unknown value now falls back to `enforce`, the default. The port and refactor
+  prompts, the README and the upgrade page say so.
+- **The fixpoint gate accepts a deliberate revert.** A change reverted on
+  purpose and logged with `log-decision.sh --kind rector-revert --rule R
+  [--file F]` (R is a Rector rule or a codemod's recipe id; without `--file` it
+  covers every file) never blocks: `fixpoint.json` lists what it covers under
+  `accepted_reverts`, and an entry that covers nothing under
+  `accepted_reverts.unmatched`. `log-decision.sh` stores a `--file` inside the
+  module relative to it whatever its form (a `./` path, or the
+  `web/modules/custom/<name>/...` path the tools print from the Drupal root).
+  `no_verdict_tools` names the tools that gave no verdict, and so does the
+  gate's message. `schemas/fixpoint.schema.json` gains both
+  fields; the port and refactor prompts say how to clear each case.
+- **The pipeline's `upgrade` stage runs on a same-major plan** (ADR 0028
+  amendment). Rector has no Drupal set there, but its pass applies the PHP
+  floor's sets and the compat pass, and the codemods run. The stage was
+  skipped (`same-major`), so `/drupilot-port` with the digests layer off left
+  those changes to the fixpoint gate (`d11_php_only` never converged). The
+  `hops` condition leaves `config/pipeline.json`.
+- **README.md and README_es.md describe 1.0**: the upgrade plan, the PHP
+  window, the deterministic core and the Drupal 12 preview; the minimum Claude
+  Code version; how to update; a Documentation section; and `DRUPILOT_FIXPOINT`
+  and `DRUPILOT_LOCK_LOCATION` in the configuration table. The docs site's home
+  page links the new pages, and `docs/reference/state.md` marks the records new
+  in 1.0 experimental: their shape may still change in a 1.x release.
+- **Toolchain cell 12 is verified** (T-M6-02, ADR 0004 amendment), re-verified
+  on Drupal 12.0.0-beta2. The pins are unchanged: Rector 2.6.1 (drupal-rector
+  1.1.3 still conflicts with Rector 2.6.2 and later), PHPStan 2.2.16, coder
+  9.0.1, upgrade_status 5.0.0-alpha3, no drush. The cell gains `core_install:
+  source`, a new field of `schemas/toolchain.schema.json`.
+- The T=12 plan and template goldens gain `rector.tests_pass` with its skip
+  list.
+- **post-edit-lint's Phase 1 phpcs report leaves out the unused-use sniffs**,
+  as its phpcbf pass already did: a `use` added one edit before its code is
+  no longer reported (coder 9, on Drupal 12, reports it as an ERROR; ADR 0004).
+
+### Fixed
+- **`release.sh` no longer refuses a release over the plugin directory's
+  checks.** `claude plugin validate` 2.1.311 prints the plugin directory's own
+  checks after its result (`ICON_MISSING`: the plugin has no icon), which do
+  not change the result. `release.sh` counted them as warnings and refused
+  `1.0.0-rc.1`. They are now shown and never block; a warning of the result
+  itself still refuses the release. The CLI runs with `TERM=dumb` (under
+  `TERM=linux` it prints ASCII figures, which the filter did not read), and an
+  output with no CLAUDE.md-at-root warning in its result, while that file
+  exists, refuses as not understood (`tests/unit/release_validate.sh`).
+- **A headless `/drupilot … auto` run no longer stops halfway.** The router ran
+  the orchestrator as a background subagent and ended its turn, so a
+  `claude -p` session ended and stopped the port (a lab run on autologout). The
+  router now waits for the orchestrator, and the orchestrator, the commands
+  that delegate, the test engineer and the `test-adaptation` and
+  `viability-assessment` skills wait for their subagents and heavy steps
+  instead of running them in the background. The router passes the plugin root,
+  and the orchestrator runs every script by its absolute path.
+- **Scripts find the plugin root when run by a relative path.** The library's
+  directory is made absolute when it is sourced (with no fork, so the hooks pay
+  nothing for it), so a script started as `cd <plugin> && bash scripts/...` that
+  changes directory still finds its templates (`run-rector.sh` looked for
+  `/templates/rector.php.tmpl`).
+- **Only a converged fixpoint gate leaves `validate` up to date.** `pipeline.sh`
+  recorded a gate not converged in warn mode, or run with
+  `DRUPILOT_FIXPOINT=off`, as done and up to date, so a later run under
+  `enforce` skipped the gate. Such a run is now recorded with the reason
+  `fixpoint-not-converged`, `fixpoint-off` or `fixpoint-no-verdict` (no
+  output), and the stage is up to date only while `fixpoint.json` says
+  converged.
+- **The full-refactor skill stops on a failed fixpoint gate.** Under `enforce`
+  an exit 3 means the refactor is not done, and no report is rendered before
+  the gate passes; its Definition of done lists the gate.
+- **The unit gate no longer times out on the jq 1.6 CI leg.** The per-test
+  timeout of `scripts/dev/unit.sh` is now 600 s by default (it was 300 s).
+  `core_strategy_view` takes about 200 s in a `debian:12-slim` container on a
+  developer machine, and it ran past 300 s on a CI runner.
+- **`ddev-up.sh` configures the PHP the plan targets.** Without `--php` it read
+  `DRUPILOT_PHP_TARGET` only, so a loose subject's test-bed got 8.3 when the
+  answered PHP target was persisted after the bed existed. It now takes an
+  explicit `DRUPILOT_PHP_TARGET` (also from the bed's `.drupilot.json`), else
+  the frozen plan's `php.final`, else the target's default, and re-running it
+  from the original checkout no longer aligns a bed down to 8.3.
+- **`install-toolchain.sh` never reuses a lock recorded for another cell.** A
+  cell 11 lock on a root rebuilt on Drupal 12 counted as a complete set, so its
+  pins (coder 8.3, core-dev 11) were installed and Composer failed. A fresh
+  resolve now asks for the coder major of the cell (`^9.0` on Drupal 12, where
+  `drupal/core-dev` requires it) unless `DRUPILOT_CODER_CONSTRAINT` is set.
+
+## [1.0.0-alpha.6] - 2026-10-18
+
+### Added
+- **The core-removals scanner** (T-M6-04, 04-R14, ADR 0031).
+  `scripts/analysis/scan-removals.sh [--subject DIR] [--target N] [--source S]
+  [--range C] [--root DIR] [--offline] [--json]` reports what a module or theme
+  still takes from Drupal core that a major in (S, T] removes. It is driven by
+  `config/targets/<N>.json` `removed_extensions` and `removed_libraries`.
+  - Detectors:
+    - `dependency-removed`: a `drupal:NAME` or bare `NAME` in a
+      `dependencies:`/`install:` list (`PROJECT:NAME` already names a contrib
+      project);
+    - `migrate-drupal-usage`: a dependency on `migrate_drupal` or
+      `migrate_drupal_ui`, or code that names their namespace;
+    - `base-theme-removed`;
+    - `library-removed`: a list item or a key in a `*.info.yml` or
+      `*.libraries.yml`, or a quoted name in PHP or Twig;
+    - `namespace-move`: an announced note, never a hard break.
+  - Each finding has an action: `rewrite`, `blocked`, `verify`,
+    `composer-required`, `decision`, `hard-break` or `note`.
+    - A removed module with a contrib replacement is checked against
+      drupal.org's release feed (H8). The release must be published, not a
+      `-dev` branch, stable (any release in a preview), and admit every
+      verified core minor of the declared range.
+    - The feed is cached for a day. In deterministic mode the answer is frozen
+      in the root's lock per project and declared range (`.replacements`);
+      `lock-sync.sh --refresh` drops it.
+- **Core removals in the plan, the findings and the assessment** (ADR 0031).
+  - The upgrade plan's `core_removals` and `hard_breaks` are now filled from
+    an offline scan, so the plan stays network-free.
+  - `extract.sh` keeps the scan as the raw tool `removals`.
+    `normalize-findings.sh` makes `class: removal` findings with the rule
+    `removal:<detector>:<action>`.
+  - `classify.sh` sends each error or warning finding to `human`, with the
+    reason `base-theme-removed`, `removed-from-core`,
+    `removed-dependency-no-release`, `removed-dependency-unverified` or
+    `removed-dependency-replaceable`. The info findings (`composer-required`,
+    `note`) are `deferred`.
+  - `assess.sh` counts the removal hard breaks in the rubric's `hard_breaks`
+    (a removed jQuery UI library once, under `jquery_ui`) and a dependency no
+    release covers in `blocking_deps`. It adds
+    `core_removals` to `assess.json` and a "Core removals" section to
+    `viability-report.md`.
+  - `port-summary.sh` blocks a ported subject while a blocking removal item is
+    open and its file unchanged (blocker source `core-removals`; a stale one is
+    warned about), and `make-issue.sh` lists each open item as a remaining
+    task.
+- **The pre-release opt-in tab** (T-M6-07, CC-15).
+  - `/drupilot-setup` asks `ALLOW_PRERELEASE` ("Pre-release": `no`, the
+    default, or `yes`) only when the target major is a pre-release (Drupal 12)
+    without `DRUPILOT_ALLOW_PRERELEASE=true`. It never asks in an autonomous
+    run, where the plan's refusal stops the run with nothing written.
+  - It can be pre-answered with `DRUPILOT_CHOICE_ALLOW_PRERELEASE`. The
+    refusal `prerelease-not-opted-in` now names the tab.
+  - The `/drupilot` router accepts `--target N` and passes it to the setup.
+  - The draft plan's core removals are reported as the Drupal 12 readiness
+    preview.
+- The `d11_for_d12` fixture (T-M6-01): a Drupal 11 module with annotations in
+  its tests, a Claro sub-theme, a `ConstraintValidator`, a
+  `core/internal.backbone` and a `core/js-cookie` dependency, a `contact`
+  dependency and a `migrate_drupal` source plugin. Its goldens are
+  `tests/golden/removals/` and the `d11_for_d12.t12-preview` plan and
+  templates.
+
+### Changed
+- Every upgrade plan carries `core_removals` and `hard_breaks` (`[]` where
+  `null` was). The T=11 plan goldens change that way, and so do the template
+  goldens, through `phpstan.neon`'s `tmpDir`, which the plan hash keys. Every
+  assess golden gains `core_removals: []`. The D10→D11 patch does not change
+  (H10).
+- The router eval accepts consecutive allowed tab insertions before the 0.9
+  tab they name (`ALLOW_PRERELEASE` after `TARGET_MAJOR`, both before
+  `PHP_TARGET`).
+- **Version data refreshed to Drupal 12.0.0-beta2** (2026-10-14, from the
+  release feed; `scripts/dev/refresh-data.sh`).
+  - The newest patch of each minor: 10.6.19, 11.3.19, 11.4.10 and
+    12.0.0-beta2. A new plan's Drupal 11 test-bed core is therefore 11.4.10,
+    and a Drupal 12 preview's is 12.0.0-beta2.
+  - The beta2 release notes and the core tree add `navigation_top_bar` to the
+    Drupal 12 removals. It is a navigation submodule, obsolete since 11.2.0,
+    removed in 12.0.0-beta2 (#3627057) with no replacement: a hard break for a
+    module that depends on it.
+  - The beta1 release notes changed on 2026-10-14; their removal list and
+    update floor are unchanged.
+  - The existing goldens stay pinned to their data snapshots.
+
+## [1.0.0-alpha.5] - 2026-10-18
+
+### Added
+- **PHPCompatibility over the PHP window** (T-M5-05, ADR 0003).
+  `scripts/analysis/run-phpcompat.sh --subject DIR [--test-version L-U]
+  [--no-install] [--json]` runs a separate PHPCS with `testVersion` from the
+  plan's floor to the window's top, plus the Symfony polyfill ruleset of each
+  polyfill every core of the range ships (when the tree has one).
+  - It installs its own Composer tree, `<root>/.drupilot/phpcompat`, on first
+    use: the exact `phpcompat` pins of `config/toolchain-reference.json`
+    (php-compatibility 10.0.0-alpha2 on PHPCS 4.0.4), recorded in the root's
+    lock (`.phpcompat`).
+  - It never reads or changes the project's own ruleset and never runs
+    phpcbf.
+  - Its status is `ok`, `degraded` or `skipped`, and it always exits 0.
+    `degraded` covers a failed install, a crash, a timeout, no JSON report or
+    an `Internal.Exception`; `detect-php-floor.sh`'s scan is then the
+    fallback. `skipped` covers an empty window, a module with no PHP-bearing
+    file, a DDEV project that cannot start, or no PHP on a root without DDEV
+    (where it runs on the host with the host's composer).
+  - PHPCS gets the module's own files (`--file-list`, found as
+    `php-target.sh` finds them: `vendor/`, `node_modules/` and `.git/` pruned
+    by name, a symlinked module followed), and PHPCS's own `Internal.*`
+    messages are dropped.
+  - Each finding is classed `floor` (a `New*` sniff), `removed` or
+    `deprecated`, and is
+    `covered` when a `config/php/rules.json` row already handles it: Rector
+    fixes or denies the row, or `php-target.sh` reports it.
+- `config/php/rules.json` rows list their PHPCompatibility sources
+  (`phpcompat`, from the ADR 0003 spike; schema updated).
+- **The php stage runs it on every extraction.**
+  - Uncovered findings become non-blocking `human` items:
+    `fix-needs-php-above-floor`, `removed-in-target-php`, or the new reason
+    `deprecated-in-php-window`.
+  - A `Syntax` report is dropped as the property-hooks false positive when
+    every `php -l` leg ran and compiled the file and the legs reach both ends
+    of PHPCompatibility's `testVersion`; otherwise it stays, non-blocking.
+  - `findings.json` gains the `phpcompat` tool verdict: `ok`, `partial` when
+    it degraded, or `skipped`.
+  - `port-report.md`'s PHP window section says it ran an alpha, with its
+    `testVersion` and counts, or why it degraded.
+  - `/drupilot-clean --level vendor` also removes the tree's `vendor/`, and
+    `--level workspace` never copies the tree into the developer's origin.
+  - A recipe never claims a PHPCompatibility finding by its message, as for
+    the other PHP-window findings.
+  - The raw report has a schema (`schemas/phpcompat.schema.json`), and the
+    php_window goldens are validated against it.
+- ADR 0003 records how T-M5-05 implemented it: the `.phpcompat` lock key,
+  `testVersion` L-U, the skipped subjects, the coverage rule and host roots.
+- **The end-to-end port in CI** (T-M4-14). `.github/workflows/e2e.yml`
+  installs DDEV on an Ubuntu runner with `ddev/github-action-setup-ddev`, at
+  the DDEV version the golden was recorded with, and runs the new developer
+  script `scripts/dev/e2e.sh [--work DIR] [--name NAME] [--keep]`.
+  - The script builds a test-bed and ports `tests/fixtures/legacy_widgets` with
+    the scripted R-LAB-8 sequence of its golden's README. No model runs, so the
+    AI lane is empty.
+  - It byte-compares the `make-patch.sh --local` patch with
+    `tests/fixtures/legacy_widgets.golden/golden/port-to-drupal-11.patch`, and
+    exits 3 with the diff when they differ.
+  - The workflow runs nightly and on demand once it is on the default branch,
+    and before that on an integration pull request labelled `e2e`. It keeps the
+    log and the patch as an artifact.
+
+## [1.0.0-alpha.4] - 2026-10-17
+
+### Added
+- **The Rector rule audit** (T-M5-03, AR-11, ADR 0030).
+  `scripts/analysis/rector-rule-audit.sh --root DIR [--refresh] [--json]`
+  reflects the PHP sets of the Rector installed in the test-bed, through the
+  staged helper `scripts/php/rule-audit.php`. For each rule it lists the sets,
+  the PHP Rector needs before it runs the rule, the polyfill package and the
+  Rector interfaces. The result is kept in the root's lock
+  (`.rector_rule_audit`) per Rector version, so two runs print the same bytes.
+  Its `missing` list names the `config/php/rules.json` rows that the installed
+  Rector's PHP sets do not register.
+- **The plan carries the compat rules and the polyfills** (T-M5-04, ADR 0030).
+  - `rector.compat_rules` lists the compat rows that are safe for Drupal,
+    deprecated up to the top of the window, and above the floor's level set
+    (`php_compat_pass_rules`). The top of the window is the higher of P and the
+    highest PHP a core of the range supports.
+  - `rector.polyfills` lists the `symfony/polyfill-phpXY` packages every core
+    of the range ships (`core_range_polyfills`).
+  - A plan frozen before these fields computes them when it is read.
+
+### Changed
+- **`rector-compat.php` is generated** (template 2).
+  - Its rules are the plan's, minus those the installed Rector lacks or its
+    floor level set already runs.
+  - Its `withPhpVersion()` is the highest audited minimum PHP of those rules.
+  - Its skip list is the plan's.
+  - The compat pass runs whenever that list is not empty, no longer only when
+    the floor is below 8.4.
+  - With the default `^10 || ^11` plan the plan lists nine rules instead of
+    one: besides the implicitly nullable parameter, the 8.2 to 8.5 deprecation
+    fixes whose output runs on the floor (`"${var}"`, the CSV escape argument,
+    backticks, `case x;`, `array_key_exists(null, ...)`, a `null`
+    `__debugInfo()`, `chr()` out of range, `setAccessible()`). On a test-bed
+    with the rule audit the pass lists eight: Rector's `PHP_81` set, which the
+    main pass runs, already holds the `setAccessible()` fix.
+- **`rector.php` gets the polyfills explicitly** (template 6).
+  - `polyfillPackages()` receives the plan's list, so Rector's polyfill rules
+    follow the declared range, never the test-bed's `composer.json`.
+  - With `^10 || ^11` the list is empty, so those rules stay off.
+  - From `^11.2` on, `polyfill-php84` lets the `foreach` → `array_find()` family
+    run below PHP 8.4.
+- `php_rule_class`: a compat row that is safe for Drupal, in the window, and
+  whose fix runs on the floor is `apply-compat`, run by the level set or else
+  by the compat pass. It was `report-only` when the rule was not in the old
+  one-rule list. `RECTOR_COMPAT_RULES` and `RECTOR_COMPAT_FROM_PHP` are gone;
+  `rector_compat_needed` takes the compat list.
+- **`config/php/rules.json`**:
+  - `OrdSingleByteRector` is no longer `drupal_safe`. It rewrites `ord($s)` to
+    `ord($s[0])`, and on an empty string that raises a warning on every PHP, where
+    `ord('')` was silent before 8.5 (checked in the lab on 8.2, 8.4 and 8.5).
+    It is never applied, and is reported when the target is PHP 8.5.
+  - `RemoveGetClassGetParentClassNoArgsRector` is no longer `drupal_safe`.
+    It rewrites `get_parent_class()` to `parent::class` without checking that a
+    parent exists, which is a fatal error in a class with no parent (checked in
+    the lab). It is reported and skipped by both passes.
+  - New `deny` row for `DeprecatedAnnotationToDeprecatedAttributeRector`. It
+    turns `@deprecated` into `#[\Deprecated]`, which from PHP 8.4 makes every use
+    emit a native deprecation on top of Drupal's `@trigger_error()`. Drupal core
+    uses no `#[\Deprecated]`.
+- The goldens of the plans and the templates move to a new data snapshot. The
+  0.9 baseline allows the new `rector.php` and `phpstan.neon` renders.
+
+- The compat pass's top of the window is read leg by leg
+  (`range_php_ceiling`): a leg the version data does not hold, such as `^9.5`
+  in `^9.5 || ^10 || ^11`, no longer hides the others' PHP 8.4 and 8.5 fixes.
+- A frozen plan's skip list gets today's skips next to its own: the data's deny
+  list is a floor no frozen plan lowers, so a plan frozen before a rule was found
+  unsafe, or before its polyfills were opened, never runs it.
+- `/drupilot-status` shows the rule audit in the lock as its version and rule
+  count.
+
+### Fixed
+- `detect-php-floor.sh` counted a function named in a comment or a string as a
+  call: a docblock naming `array_find()` raised the floor to 8.4. Every function
+  row (8.2 to 8.5) now reads calls in the code only, the same blanked copy as the
+  8.5 syntax row, and every signal in a file whose path holds `:` keeps its line.
+
+## [1.0.0-alpha.3] - 2026-10-17
+
+### Added
+- **Core polyfills are version data** (T-M5-08, ADR 0029).
+  `config/targets/<major>.json` `minors[].polyfills` lists the
+  `symfony/polyfill-phpXY` packages every release of the minor requires.
+  `scripts/dev/refresh-data.sh` derives it from Packagist's `drupal/core`
+  metadata, through p2's minified inheritance. `config/php/polyfills.json`
+  lists the functions each package defines unconditionally, with their sources
+  (`schemas/php-polyfills.schema.json`; the `data` gate checks every named
+  package is described).
+- `core_range_polyfills C` (`scripts/lib/plan.sh`): the packages every core
+  minor of a range provides, either required or native at the minor's minimum
+  PHP, and their functions. For example, none for `^10.3 || ^11`, and
+  `polyfill-php84` from `^11.2`.
+- **`detect-php-floor.sh --range C`**: a function every core of C provides
+  through a polyfill keeps its signal, marked `polyfilled`, but no longer raises
+  the floor. `upgrade-path.sh` computes the PHP floor L with the range it
+  decided. Without `--range`, the output keeps its 0.9 shape.
+- **`detect-php-floor.sh` knows PHP 8.5**, from php.net's migration85 pages:
+  the pipe operator and the `(void)` cast, searched in the code only
+  (`php_code_lines`: a regex, a string or a comment is no signal),
+  `array_first()` / `array_last()` and `get_error_handler()` /
+  `get_exception_handler()`. The 8.5 attributes are no signal: an older PHP
+  ignores them.
+- **`detect-php-floor.sh` reads calls only**: a method call, a static call or
+  a function's own definition no longer counts, and a function the module
+  defines itself as a global function (in its code, in a file with no
+  namespace) is provided. `core-strategy.sh` judges the floor with the
+  polyfills of the range it recommends, as the plan does.
+- **The test legs run** (T-M5-11, AR-06, CC-14). `run-phpunit.sh --leg
+  PHP_LOW` runs the Unit and Kernel groups again on the window's lowest PHP the
+  bed core supports, the plan's `test_matrix` `PHP_LOW` leg, through that PHP's
+  binary in the DDEV web container (`/usr/bin/phpX.Y`, no restart).
+  - `last-test.json` keeps each leg's own verdict under `legs` (`CURRENT`,
+    `PHP_LOW`; `schemas/last-test.schema.json`).
+  - The top-level `preservation` is the stronger of the two legs', with the
+    0.9 values only, and a red one makes `status` `failed`. A `PHP_LOW`
+    failure is classified against the baseline like any other, while a
+    blocked, stale or narrowed leg counts as `verified-partial` at most.
+  - The leg is recorded only over a `CURRENT` run of the same sources. A
+    `CURRENT` run keeps it, marked `stale` on other sources, while the plan
+    has the leg.
+  - A PHP that cannot load the bed's vendor tree blocks the leg.
+  - `/drupilot-test`, the test-engineer agent and `port-report.md` show the
+    legs.
+- **`/drupilot-port --php X.Y`** (T-M5-09). The setup froze the PHP target.
+  The port checks X.Y against the frozen plan's `php.final`, and a mismatch,
+  or no frozen plan, stops it and sends the developer to
+  `/drupilot-setup --php X.Y`.
+
+### Changed
+- **The `php-target-tuning` skill is a view over the plan** (T-M5-10). It reads
+  the PHP window from the plan block and the support facts from the helpers,
+  with no version tables of its own. It also covers the php stage and the
+  polyfills.
+- `config/targets/{10,11,12}.json`: every minor gains `polyfills`. The
+  goldens keep their data snapshots: none of their outputs depends on the
+  polyfills, since a snapshot without `php/polyfills.json` gives the empty,
+  conservative intersection.
+
+### Fixed
+- `detect-php-floor.sh`: `mb_str_pad()` is a PHP 8.3 function (php.net), not
+  8.4; `fpow()`, `mb_ucfirst()` and `mb_lcfirst()` (PHP 8.4) were missing.
+
+## [1.0.0-alpha.2] - 2026-10-12
+
+### Added
+- **The PHP window is checked** (M5: T-M5-02, T-M5-06, T-M5-07). The stage
+  `php` of `scripts/ai/pipeline.sh` is no longer a placeholder: it extracts
+  again with two PHP-window tools, normalizes and classifies, and fails when a
+  PHP-window finding is in no worklist item. It runs on every plan, a
+  same-major one included.
+  - `php_rule_class ROW L P` and `php_rules_classified L P`
+    (`scripts/lib/plan.sh`): every `config/php/rules.json` row in exactly one
+    class for the window [L..P]: `deny`, `removed-blocking`,
+    `apply-modernize`, `apply-compat`, `report-only` or `not-applicable`.
+  - `scripts/analysis/php-target.sh --subject DIR [--floor X.Y] [--target
+    X.Y] --json`: the module's PHP files searched for the `removed-blocking`
+    and `report-only` constructs still in the code (`each()`,
+    `create_function()`, `mysql_*`, `ereg*`, the old cast names,
+    `PDO::MYSQL_ATTR_*`, `strftime()`, ...), the rows without a pattern
+    listed as `unsearched`; only the code is searched (`php_code_lines` in
+    `scripts/lib/php-scan.sh` blanks comments, string contents, heredocs and
+    inline HTML, the line numbers kept), a row's `exclude` and `vendor/` left
+    out; the bounds from the module's own frozen plan.
+  - `scripts/analysis/php-lint-window.sh --subject DIR [--window "X.Y ..."]
+    --json`: `php -l` on every PHP minor of the window, each in a throwaway
+    official `php:X.Y-cli` container (the image of `config/php/versions.json`,
+    the tree streamed in, no network): a leg per minor, the compiler's errors
+    and deprecations per file; skipped without a Docker daemon. The shared
+    mechanism is `php_lint_docker` / `php_cli_image`
+    (`scripts/lib/toolchain.sh`), which `verify-core-matrix.sh` now uses for
+    its floor lint too.
+  - `extract.sh` runs both as the tools `php-target` and `php-lint`;
+    `normalize-findings.sh` turns them into findings of class `php-target`
+    (rules `php-removed:<id>`, `php-report:<id>`, `php-manual:<id>`,
+    `php-floor:X.Y`, `php-removed-syntax:X.Y`, `php-lint:X.Y`) and records
+    their verdicts (only when the raw index names them, so an older raw set
+    reads as before); `classify.sh` puts them in the `human` lane with the
+    reason `removed-in-target-php`, `does-not-compile`,
+    `fix-needs-php-above-floor` (the fix needs a PHP above the floor) or
+    `deprecated-no-rule` (the fix runs on the floor, but no rule makes it).
+  - `manifest.sh` records `php_window` (the bounds, the legs, the
+    compile-time deprecations, the items); `port-report.md` has a **PHP
+    window** section; `make-issue.sh --subject` adds a remaining task per
+    open item; `port-summary.sh` reports a `php-target` blocker, and
+    `--strict` exits 3, while an open blocking item of the window remains and
+    its file is the one it was found in (`file_hash` on the item;
+    `worklist_fresh`, `php_window_items` in `scripts/lib/canon.sh`). A
+    PHP-window finding takes a recipe only by its exact rule.
+- **The `php_window` fixture** and the completed `d11_php_only` fixture
+  (T-M5-01), with the goldens `tests/golden/php-window/` (the scans of both
+  windows of the plan) and the lab recordings of their `php -l` legs
+  (`tests/fixtures/{php_window,d11_php_only}.golden/`);
+  `tests/unit/php_window_golden.sh` takes `d11_php_only` through
+  normalize, classify and `port-summary --strict` (exit 3) without Docker.
+- **`docs/concepts/php-and-core-target.md`**: the PHP window, the rule
+  classes, the php stage and where its items show.
+
+### Changed
+- `config/php/rules.json`: the `report-only` rows carry a `detect` pattern,
+  and the patterns of PHP function and cast names match regardless of case
+  (`ere-i:`, `schemas/php-rules.schema.json`); a class instantiated with
+  `new` is not a call of the removed function of the same name.
+- `php_rule_class` counts a compat row as `apply-compat` only when a pass
+  runs its rule: the main pass's level set at L, or the compat pass
+  (`RECTOR_COMPAT_RULES` in `scripts/lib/toolchain.sh`); the other compat
+  rows of the window are `report-only`. The level set is the one the main
+  pass runs at L (`rector_php_set_arg`: php84 for an unconfirmed 8.5 floor).
+- `pipeline.sh`: a stage that runs (done) also runs the stages after it in
+  the same invocation, so a re-run php stage refreshes the manifest and the
+  report.
+- The version data changed (the patterns above and the `output_min_php`
+  values of Fixed): the data snapshot `ae3ca627…` is vendored, and the
+  goldens `plans`, `templates`, `core-strategy` and `detect-source` are
+  pinned to it and re-recorded. Outside `d11_php_only`, only the plans'
+  `data_hash` and the PHPStan cache directory derived from the plan hash
+  changed.
+- `tests/fixtures/d11_php_only` declares `^11.3` and has an implicitly
+  nullable parameter and an `each()` call; its rows of the goldens above are
+  re-recorded.
+- `/drupilot-port` tells the developer about the blocking PHP-window items
+  and never rewrites a removed construct on its own.
+
+### Fixed
+- `config/php/rules.json`: `p85-http-response-header` had no
+  `output_min_php`; its replacement `http_get_last_response_headers()` is
+  PHP 8.4 or later, as is the `Pdo\Mysql` class `p85-pdo-mysql-constants`
+  points to (both read on php.net, sources added). Below a floor of 8.4 the
+  fix of either needs a higher PHP.
+
+## [1.0.0-alpha.1] - 2026-10-12
+
+### Added
+- **The canonical-artifact helpers** (`scripts/lib/canon.sh`, AR-13,
+  T-M4-02), the base of the deterministic pipeline:
+  - `canon_json [ROOT]`: keys sorted, two-space indent, LF line endings, a
+    CRLF inside a string made LF, the runner paths stripped;
+  - `relpath_strip_runner [ROOT]`: removes the container's `/var/www/html/`
+    and the host's root (as given and its physical path, also JSON-escaped),
+    so the same tree gives the same root-relative paths on the host and in
+    DDEV; it gives the M1 raw goldens back byte for byte;
+  - `file_hash` (LF-normalized), `finding_norm_message` and `canon_jq_defs`
+    (the message part of a finding id: runner paths, "on line N" and
+    whitespace noise dropped);
+  - `worklist_get` / `worklist_set`: `worklist.json` in the subject's state
+    dir, written atomically in its canonical form.
+- **`docs/concepts/upgrade-paths.md`**: the upgrade plan for users. It covers
+  the three axes (source, target, PHP), the hops, the core-range strategies,
+  the draft and final phases, refusals, `plan show` and the names.
+- **The `hard-rules` gate** (alias `no-version-literals`, T-M3-12) greps the
+  scripts, the PHP templates (comment lines skipped) and the prompts for the
+  hard rules:
+  - H2: `SleepToSerialize`/`WakeupToUnserialize` outside a skip list;
+  - H3: `withComposerBased(`;
+  - H5: a drupal.org docs or project releases URL (the HTML pages);
+  - H6: a hard-coded "Drupal 12 stable";
+  - H7: a three-major range literal in code;
+  - H9: a `drush migrate:import`;
+  - the forbidden `Drupal10SetList::DRUPAL_10` aggregate;
+  - a `drupalNN` DDEV-type literal outside `scripts/lib/plan.sh`;
+  - H4: exactly as many version-literal lines per script as recorded, a
+    ratchet that only goes down.
+
+  Reasoned exceptions live in `tests/contract/hard-rules-allow.txt`. The
+  prompts that still described the `DRUPAL_10` aggregate or a `drupal11` DDEV
+  type now describe the plan's per-minor sets and `target_ddev_type`.
+- **The `scripts` gate** (AR-22) checks every script but `scripts/dev/`. Each
+  sources `common.sh` at its depth, answers `--help` with exit 0 and a Usage
+  section, and refuses an unknown flag with exit 1. The probe is
+  `--drupilot-no-such-flag --help`, so no script body runs. The 28 scripts of
+  0.9 that skip an unknown flag keep their frozen CLI; every new one refuses
+  it. AR-22's `--json` check stays with the smoke tests.
+- **`scripts/drupilot.sh plan show`** (T-M3-13; the headless dispatcher of
+  AR-22, which answers only this verb until M10) prints the "drupilot plan"
+  block: the subject's frozen upgrade plan, else a draft.
+  - The commands with load-time spans, and the `minimal-port`,
+    `php-target-tuning`, `viability-assessment`, `full-refactor` and
+    `ddev-environment` skills, render it at load time.
+  - Every prompt with a `` !` `` span carries the fixed fallback line
+    (`prompt_bang_fallback.sh`).
+- **`DRUPILOT_TARGET_MAJOR` and `DRUPILOT_DRUPAL_TARGET` agree** (T-M3-06,
+  X12 as ADR 0021 narrows it):
+  - `DRUPILOT_DRUPAL_TARGET` is still the test-bed's core constraint, and the
+    highest major it admits names the target major (`^12` → 12,
+    `>=11 <12` → 11);
+  - a constraint that admits two or more majors (e.g. `^10.3 || ^11`) is also
+    the declared core range `upgrade-path.sh` uses (strategy `explicit`),
+    unless `DRUPILOT_CORE_TARGET_STRATEGY` is set too. `/drupilot-port` then
+    asks no core-target question and keeps that range in the final plan;
+  - a one-major value (`^11.2`, `~11.2.0`, `11.x-dev`) only pins the test-bed,
+    as in 0.9;
+  - with only `DRUPILOT_TARGET_MAJOR` set, the test-bed's core constraint is
+    `^<major>`.
+
+  With neither set, 0.9's `11` and `^11`.
+- **The target major names drupilot's outputs** (T-M3-08, CC-16, CC-17,
+  09-R10). For Drupal 11 every name is the 0.9 one, byte for byte:
+  - the patch description `port-to-drupal-<T>` (`<module>-port-to-drupal-<T>.patch`
+    and its issue-comment and `-repo.patch` forms);
+  - the issue-fork branch `<issue>-port-to-drupal-<T>`;
+  - a loose subject's test-bed `<name>-d<T>`;
+  - the DDEV project type (`config/targets/<T>.json` `.ddev_type`).
+
+  `resolve-workspace.sh --target N` names the test-bed for another major, and
+  a bed drupilot 0.9 named `-d11` is still found. The exclusion globs
+  (`make-patch.sh`, `git_local_exclude`, `origin-hygiene.sh`, the managed
+  `.gitignore` block) cover every target's patches as well as the 0.9 ones,
+  so an old patch left in a tree never leaks into a new one.
+- **`docs/reference/deprecations-of-drupilot.md`** lists every renamed setting,
+  value, field and flag of drupilot (every `config/migrations.json` row; a unit
+  test keeps the two in step). The `version` gate also checks the
+  `value_aliases` rows.
+- **The commands plan before they act** (T-M3-15): `/drupilot-setup` asks
+  the new **Target major** tab (`TARGET_MAJOR`: Drupal 11 by default, 12 only as
+  a preview with `DRUPILOT_ALLOW_PRERELEASE=true`; `--target N` wins) before the
+  PHP target, then freezes the draft upgrade plan in the root's lock
+  (`upgrade-path.sh --phase draft --freeze`), persisting both answers only once
+  it resolves (into a loose subject's test-bed right after it is created); a
+  refusal re-asks the tabs, overriding the value that led to it; a target other
+  than 11 stops after the plan, persisting nothing, until T-M3-08; and once the
+  toolchain is installed the draft is resolved again, so it re-plans on the
+  core the test-bed really runs. The Target major tab shows only when a
+  pre-release may be chosen (`DRUPILOT_ALLOW_PRERELEASE=true`); the PHP default
+  is the target's own. `/drupilot-port` freezes the final plan with
+  the core-target answer and applies the plan's `range.constraint` and
+  `php.require_php` (`plan_get`), so core-strategy only shows each option's
+  consequences (and refuses a final plan for a target other than 11); the
+  orchestrator checks rule D7-AUTO before any stage of an autonomous run and
+  freezes the draft and final plans as the commands do. The router
+  eval allows a new tab only as `tab-sequence.json` `allowed_insertions` lists
+  it (TARGET_MAJOR right before PHP_TARGET).
+- **core-strategy is checked as a view of the plan's decision** (T-M3-05,
+  CC-11, CC-36): `tests/unit/core_strategy_view.sh` resolves every fixture
+  and monorepo module with each strategy through both `core-strategy.sh` and
+  `upgrade-path.sh` and requires the same range and resolved strategy, and
+  `keep_current.sh` pins the keep-current outcome in both
+  (`keep_current_alias`).
+- **`sigpipe` gate** in `scripts/dev/check.sh` and **`grep_q`** in
+  `scripts/lib/core.sh`: no pipeline in `scripts/` or `hooks/` may end in a
+  consumer that stops reading early (`| head`, `| grep -q` / `-m` / `-l`, an
+  `| awk` exit); `grep_q` answers like `grep -q` but reads its whole input.
+- **`DRUPILOT_TARGET_MAJOR`** (default `11` for all of 1.0.x) and
+  **`DRUPILOT_ALLOW_PRERELEASE`** (default `false`), the target Drupal major and
+  the opt-in for a major with no stable release yet (T-M3-06), with
+  `resolve_target_major`, `resolve_php_target_for` (P from the target's data
+  default unless one is set) and `config_get_explicit`. The upgrade plan
+  reads them.
+- **`scripts/lib/canon.sh`**: `canon_json_hashable`, `json_hash` and
+  `sha256_hex`, the canonical form an upgrade plan is hashed in (AR-13).
+- **The upgrade-plan building blocks** in `scripts/lib/plan.sh` (T-M3-03,
+  AR-04/AR-06, ADR 0017): `plan_target_block` (the target, its bed core and
+  the pre-release opt-in), `plan_hops` / `plan_detectors` over
+  `paths/graph.json`, `rector_sets_for_plan` (per-minor sets up to the bed,
+  breaking sets by the floor, `always_sets`, reflection from a bed's
+  drupal-rector, skipped sets recorded with a reason), `plan_rector_skip`,
+  `plan_rector_bc`, `plan_php_block`, `plan_test_matrix`, `plan_ci_flags`,
+  `plan_assert` (the plan's assertions, never fixed silently) and
+  `version_data_hash`; in `scripts/lib/strategy.sh`,
+  `core_requirement_minors`, `core_requirement_lowest` and
+  `core_requirement_majors` (which core minors, lowest version and majors a
+  `core_version_requirement` admits, read as composer/semver reads it and
+  checked against its answers). The resolver CLI that assembles them comes
+  next.
+- **`scripts/analysis/upgrade-path.sh`**, the upgrade-plan resolver (T-M3-01,
+  T-M3-03, AR-06, ADR 0017): from the subject (`detect-source.sh`, static in
+  the draft phase, with the analyzer signal in the final one), the target
+  major, the PHP target, the strategy (the 0.9 names as aliases) or an
+  explicit `--range`, the version data and the root's lock, it prints the
+  plan (`--json`) or refuses with exit 2 and the choices that resolve it; a
+  Drupal 7 source in an autonomous run is refused before anything is written
+  (`d7-auto`). It writes nothing. Its goldens are `tests/golden/plans/`.
+  The root's `.drupilot.json` and lock are found from the subject's logical
+  path (a symlink placement included), never from the cwd; `plan_assert`
+  gains `range-excludes-bed` (a range that does not admit the bed core).
+- **The upgrade plan is frozen in the lock** (T-M3-04, ADR 0018):
+  `upgrade-path.sh --freeze` writes `upgrade_plan`, `upgrade_plan_hash`,
+  `upgrade_plan_phase` and `data_hash` to the Drupal root's lock in one write,
+  only after a successful resolution; in deterministic mode a later run
+  reuses the frozen plan while the request matches, and a final plan may
+  only add hops or raise F over it (`final-changes-frozen`). Readers use
+  `plan_get JQPATH [ROOT]` / `plan_frozen [ROOT]` (`scripts/lib/plan.sh`)
+  and `lock_path` (`scripts/lib/lock.sh`), which create nothing;
+  `lock_merge_json` merges several keys in one atomic write and never gives
+  a 0.9 lock a schema (nor overwrites a lock that is not one JSON object).
+  A data refresh never makes the frozen plan stale (a default P, the bed core
+  and the toolchain cell stay the frozen ones), and a loose subject's draft
+  freezes under the test-bed root it will have (`--root` of a path that does
+  not exist yet). `schemas/lock.schema.json` describes the new keys.
+- The `jq-compat` gate also rejects a jq keyword used as a `def` parameter
+  (jq 1.6 refuses `def c($label)`).
+- **`schemas/upgrade-plan.schema.json`** with an example plan
+  (`schemas/examples/upgrade-plan.example.json`), checked by the `schemas`
+  gate; the target major and bed core, the PHP floor and final, the range,
+  the hops and the toolchain cell are marked as what the hard gates read.
+- **ADR 0017**: what the upgrade-plan resolver decides where AR-04/AR-06 are
+  silent.
+- **Unit goldens pinned to a data snapshot**: `golden.sh` also checks every
+  `tests/golden/<name>/` holding a `golden.json`, and the unit tests
+  regenerate them against the snapshot it pins (`detect-source`, and the
+  168-case `core-strategy` matrix).
+- **`scripts/analysis/detect-source.sh`** (T-M3-02, AR-05): the source era
+  S of a module or theme, the oldest Drupal major whose APIs it still uses,
+  with its track (`d7-assisted` for Drupal 7), a confidence and the evidence:
+  a Drupal 7 `.info`, a `core: 8.x` `.info.yml`, the declared constraint, the
+  SimpleTest and Drupal 7 test APIs (the `config/paths/eras.json` signals,
+  which gain JavascriptTestBase) and, with `--full --phpstan FILE`,
+  PHPStan's "removed from drupal:X", which only lowers S. S is the minimum
+  of the code signals and the declared floor (ADR 0016).
+  `subject_d7_info_file` / `info_value_d7` read a Drupal 7 `.info` without
+  changing anything for `.info.yml` subjects. Goldens in
+  `tests/golden/detect-source/`, and the source-era fixtures `d7_minimal`,
+  `d8_legacy`, `d9_module`, `d11_php_only` and `keep_current`.
+- **The `lib-defs` gate**: every function of `scripts/lib/*.sh` is defined in
+  exactly one lib, `common.sh` lists each domain lib once, and a hook's
+  `_DRUPILOT_LIBS` covers every lib it reaches (a static call scan);
+  `check.sh --compare-pre-split=REF` also compares the function set with a git
+  ref.
+- **Unit tests and the `unit` gate.** `tests/lib/assert.sh` is a portable
+  assertion library (bash 3.2, BSD/BusyBox, jq 1.6; no bats) with its own
+  self-test; `scripts/dev/unit.sh` runs it and every `tests/unit/*.sh` with the
+  same bash, and `scripts/dev/check.sh` runs that as its new `unit` gate
+  (`--gate` is now an alias of `--only`). A test passes only with its summary
+  line, at least one assertion and no failed one. `t_isolate` sets
+  `DRUPILOT_NONINTERACTIVE=1`, so no test can block on one of drupilot's
+  prompts on any platform; where `setsid --wait` and `timeout` exist a test
+  also runs detached from the terminal and under a 300 s timeout, and Ctrl-C
+  stops the run and the running test. The first
+  tests freeze 0.9 behaviour: `config_get` precedence, `version_ge`, the
+  `project_state_path` key (symlinked paths included), `lock_resolve`,
+  `choose_one` pre-answers, the `keep-current` core strategy, the hooks'
+  fail-safe contract (malformed stdin, no jq, a HOME no process can write, on
+  payloads that reach each hook's real work) and
+  the invariant tests INV1, INV2, INV4, INV5, INV7, INV8, INV9, INV10 and INV11
+  (INV3 and INV6 are stubs owned by later milestones; `tests/INVARIANTS.md` maps
+  all twelve), plus `sessionstart_writes_nothing`.
+- **Hook latency baseline.** `scripts/dev/hook-latency.sh` measures each hook's
+  p50/p95 on a fixed payload; the 0.9 numbers are recorded in
+  `tests/baseline/v0.9.0/hook-latency.json`.
+- **Contract snapshots and the `contract` gate.** `scripts/dev/contract.sh`
+  freezes the 0.9 public surface in `tests/contract/*.json`: the commands (an
+  `argument-hint` token may only be added, in order), skills and agents,
+  `config/choices.json`, the key sets of `preflight --json`, the port-summary v1
+  and `core-strategy --json`, the generated branch/patch/test-bed names, the
+  enums (preservation, stages, `d10_support`, ...), each read from the code
+  that emits it, and every script's documented exit codes. An intended change
+  is an entry in `tests/contract/allowed-changes.json`, pinned by the sha256 of
+  the new snapshot (a snapshot changed twice has two entries).
+- **Router evals and the `evals` gate.** `scripts/dev/evals.sh` checks the
+  router statically: the ordered tab sequence of a guided `full` run, the
+  mode words, the mode-inference rules (each cue bound to the mode its rule
+  gives it, a bare `/drupilot` included) and the prompt rules that keep an
+  `auto` run tab-free and push-free (`tests/evals/router/`). A command's tabs include the ones it shows by
+  header, so the refactor stage's reuse of the port's "Drupal 10 check" tab is
+  part of the frozen sequence. `--live` replays the inference cases and each
+  command's tab order through `claude -p` with every tool call denied by a
+  hook (pass at 90% or more; opt-in, never in CI); an `auto` run must answer
+  NO_TABS, and a failed or empty run never counts as a pass.
+- **Golden outputs and the optional `golden` gate.** `scripts/dev/golden.sh`
+  absorbs `baseline-0.9.sh --check` (the smoke test `baseline` is gone; the
+  gate runs with `--smoke`/`--ci`, so on every CI leg) and checks
+  `tests/fixtures/legacy_widgets.golden/`: the patch and raw Rector, PHPStan
+  and PHPCS JSON of the scripted `legacy_widgets` port recorded in the DDEV lab
+  (core 11.4.8, PHP 8.3, digests off), byte-identical with v0.9.0's, each file
+  pinned by `sha256` in `golden.json`. `tests/fixtures/autologout.pointer.json`
+  pins the autologout 8.x-1.4 corpus by commit and tarball hash.
+
+- **The `version` gate.** `scripts/dev/check.sh` checks that plugin.json
+  equals the released CHANGELOG heading of highest SemVer precedence (so a
+  0.9.x section merged from main above a 1.0 pre-release is fine), that a `v*`
+  tag on HEAD is `v<version>`, that `main` never carries a pre-release version
+  (also on a pull request into it, through `GITHUB_BASE_REF`), and that
+  `config/migrations.json` is coherent (valid variable names, aliased keys
+  declared in `config/config-reference.json`). `semver_gt` in `common.sh`
+  compares versions with pre-releases (`version_ge` strips them).
+- **`scripts/dev/release.sh`** cuts a release: version checks (SemVer
+  precedence, pre-releases included), plugin.json, the CHANGELOG heading and
+  compare links, `claude plugin validate` and `check.sh --ci`, then a
+  `chore(release)` commit and an annotated `vX.Y.Z` tag. It never pushes;
+  `--dry-run` writes nothing. An unchanged pre-release can be promoted to its
+  release (`1.0.0-rc.N` -> `1.0.0`) with an empty `[Unreleased]`.
+- **Alias layer for renamed settings.** `config/migrations.json` (no row
+  yet) lets `config_get` resolve an old key name, or one old value, to the
+  new key, from the environment and then from `.drupilot.json`, with one
+  deprecation warning per process (decided when `common.sh` is sourced, so
+  the `$(config_get ...)` subshells do not repeat it); the environment still
+  wins over every file tier.
+- **`config/config-reference.json` and the `config-keys` gate.** Every
+  `DRUPILOT_*` key the scripts, hooks and prompts read is declared with its
+  tier, type, enum, default source and docs page; the gate warns on an
+  undeclared read or an inconsistent entry, and fails when a
+  `config/defaults.json` comment grows past 1800 characters.
+
+- **The docs site (infrastructure).** `mkdocs.yml` and `docker-compose.yml`
+  build an English-only site from `docs/` with Zensical 0.0.67 in Docker
+  (`docker compose up docs`; `docker compose --profile build run --rm
+  docs-build` for the strict build; it also builds with Material for MkDocs
+  9). `scripts/dev/gen-docs.sh` generates its reference pages (commands,
+  configuration, choices, scripts, skills and agents, toolchain, Drupal
+  deprecations) from the sources, byte-identical on every platform;
+  `docs/reference/state.md` documents the per-module state record. The new
+  `docs` gate fails on drift, on a page missing from the nav or a nav entry
+  missing from `docs/`, on a plugin file citing a README section or a missing
+  page, and on a broken link between pages (a root `FLOW*.md` is only
+  noted). `.github/workflows/docs.yml`
+  builds the site on every pull request and deploys it to GitHub Pages only
+  on a release tag (`vX.Y.Z`, never a pre-release such as `v1.0.0-alpha.1`)
+  or a manual run.
+- **Architecture decision records** in `docs/contributing/adr/`: the owner's
+  answers to the 1.0 plan's open questions (0000), the lab spikes of M2 (0001
+  toolchain cell 11, 0002 the Rector compat pass, 0003 PHPCompatibility, 0004
+  the provisional Drupal 12 cell, 0006 hooks keep `ask` under headless
+  `claude -p`) and the decisions taken while building M1 and M2 (0007–0014).
+- **JSON Schemas for the persisted artifacts** (`schemas/`): the port
+  summary (v1), `assess.json`, `last-test.json`, `port-manifest.json`, the
+  lockfile and `preflight --json`, describing 0.9 as it is.
+  `scripts/dev/schema-check.sh` validates the 0.9 instances (the baseline
+  captures, lab samples in `tests/baseline/v0.9.0/samples/` and a live
+  preflight) with `check-jsonschema` 0.38.2 where installed (CI, or a pinned
+  Docker image) and always with a jq structural validator; the new `schemas`
+  gate runs it.
+- **Version data, with its sources.** `config/targets/{10,11,12}.json` (one
+  file per Drupal major: status, release and end-of-life dates, the oldest
+  core a site must run before it can update, every minor's newest tag, PHP
+  floor, recommended PHP, PHP support from drupal.org's requirements table,
+  Symfony/Twig majors and PHPUnit/Coder/PHPStan constraints, the core modules,
+  themes and libraries each major removed, the per-minor drupal-rector sets),
+  `config/php/versions.json` (each PHP minor's lifecycle and tool ids) and
+  `config/php/rules.json` (the PHP compat, deny, report-only and
+  removed-without-rule entries), `config/paths/eras.json` and `graph.json` (the
+  source-era fingerprints and the upgrade hop graph). Every value names its
+  source and whether it was verified; an unknown value is `null` or a minor
+  `{"status": "detect"}`. Schemas in `schemas/` (target, php-versions,
+  php-rules, paths, catalog). The removals follow the core tree at both
+  tags: every module (nested ones included, such as
+  `node_storage_body_field` and `search_node`), theme and
+  `core.libraries.yml` key that disappears at a major's .0 is listed (22
+  libraries in 10.0, 14 in 11.0, 3 in 12.0), and
+  Migrate Drupal and Migrate Drupal UI are recorded as still shipped in
+  12.0.0-beta1 with `lifecycle: obsolete`.
+- **`scripts/dev/refresh-data.sh`** (developer only, never run by a port)
+  regenerates the derived fields of `config/targets/*.json` from packagist and
+  git.drupalcode.org at each minor's newest tag, keeps the hand-maintained
+  fields, checks every removed extension and library against the core tree at
+  both tags, reports any extension (every `.info.yml` under `core/modules`
+  and `core/themes`, nested modules included, listed from a tree-only git
+  fetch of each tag) or library that disappears at a major's .0 without
+  being listed, and reports a drupal.org page (read
+  through api-d7) that changed since it was read. Every fetch is cached;
+  `--offline` runs are byte-identical, and nothing is written unless every
+  fetch succeeded.
+- **The `data` gate** (`scripts/dev/data-check.sh`): the version data and any
+  `config/catalog/*.json` match their schema, every value names its source,
+  every node a hard gate reads is verified and never "announced", and the
+  files agree with each other. The `schemas` gate validates the same files
+  with `check-jsonschema` too.
+- **`scripts/lib/plan.sh`**, sourced by `common.sh`: `target_get`,
+  `php_window`, `php_bounds_for_range` (the PHP window of a declared core
+  range: `^10 || ^11` gives 8.1 to 8.5; nothing when a major is not in the
+  data) and `core_version_cmp`, which orders
+  pre-releases (`12.0.0-beta1` < `12.0.0`) but reads a minor or a branch as
+  the whole branch (`12.0.0-beta1` == `12.0`).
+- **`docs/reference/version-matrix.md`**, generated from the version data by
+  `scripts/dev/gen-docs.sh`.
+- **Data snapshots for the goldens.** Each golden's `data_hash` is the
+  sha256 of the version data it was computed with, vendored under
+  `tests/fixtures/data-snapshots/<hash>/`; `golden.sh` checks the goldens
+  against that snapshot (`baseline-0.9.sh --data-dir`), never against the
+  live `config/` (the baseline golden's scripts read the snapshot through
+  `DRUPILOT_VERSION_DATA_DIR`), so a data commit never changes an existing
+  golden. An edited or missing snapshot fails, and so does one no golden is
+  pinned to; `golden.sh --update` vendors the live data as a new, verified
+  snapshot, repins, and (without `--only`) removes the unused ones.
+
+- **The toolchain matrix.** `config/toolchain-reference.json` (schema 2,
+  `schemas/toolchain.schema.json`) holds one cell per Drupal major family:
+  cell 11 (ADR 0001), the provisional cell 12 (ADR 0004, not pinned until it
+  is re-verified in M6), `d7-pre`, the PHPCompatibility set (ADR 0003), and
+  `legacy_v1`, the set drupilot 0.9 shipped. A test-bed uses the cell its
+  installed core major names; the lock records it (`toolchain_cell`), and
+  `install-toolchain.sh --json` reports it (`cell`). A lock drupilot 1.0
+  creates starts as `{"schema": 1}`, which is how a lock 0.9 created is told
+  apart. ADR 0015.
+- **The Rector compat pass** (ADR 0002). `templates/rector-compat.php.tmpl`
+  registers only PHP deprecation fixes whose output still runs on the PHP
+  floor (today `ExplicitNullableParamTypeRector`: `Foo $x = NULL` becomes
+  `?Foo $x = NULL`) and no set. `run-rector.sh` renders it at the Drupal root
+  and runs it right after the official pass when the floor is below PHP 8.4
+  and the declared core range runs on 8.4 or later. Its `--json` reports it
+  (`compat_status`, `compat_files`, `rule_hits.compat`, errors with `pass: 3`)
+  with `php_floor` and `php_ceiling`; its dry-run record holds the compat
+  pass's `--apply` to what it announced, and a crash counts as an
+  official-pass crash (exit 3), although the rule record of what the
+  official pass already applied is kept. `render-templates.sh` gains the
+  `rector-compat` target (`--only rector` implies it; `skipped` when no
+  compat rule applies) and `php_floor`/`php_ceiling` in its `--json`. New
+  helpers: `php_constraint_floor` (`plan.sh`: the lowest PHP a `require.php`
+  constraint admits), `rector_php_bounds`, `rector_compat_needed`,
+  `rector_floor_tokens`, `rector_config_floor` and `rector_config_pristine`
+  (`common.sh`).
+- The `data` gate checks that every rule `templates/rector.php.tmpl` skips is
+  `drupal_safe: false` in `config/php/rules.json`, and that every rule of
+  `templates/rector-compat.php.tmpl` is a `drupal_safe` compat rule there.
+- **`DRUPILOT_LOCK_LOCATION=state|project`** (T-M4-16, AR-14, OD-06;
+  default `state`). With `project`, the Drupal root's lock lives at
+  `<root>/drupilot-lock.json`. drupilot's managed ignore block leaves it out,
+  so a team can commit it and share the frozen core, toolchain, digests SHA
+  and upgrade plan.
+  - It applies only to your own Drupal root with an installed core. It does
+    not apply to a test-bed drupilot built or will build for a loose module
+    (the draft plan is frozen before the bed exists), a root holding placed
+    modules, or a module repo carrying its own core. Those keep the state dir,
+    and `lock-sync.sh` and `upgrade-path.sh --freeze` warn about it.
+  - The lock moves at its next write: it is linked into place atomically, and
+    the state copy is retired as `.moved-to-project`, never read again.
+    Until the move the state copy is read; `lock_clear` removes both.
+  - With `state`, a lock left at the root is reported, not read.
+    `make-patch.sh` never puts `drupilot-lock.json` in a patch.
+  - Every reader goes through `lock_path` / `drupilot_lock_file`; the
+    `hard-rules` gate's new `LOCK` rule fails on a lock path spelled anywhere
+    else. `lock_get` and `lock_show` no longer create the state dir.
+- **`config/pipeline.json`, the stage catalog** (T-M4-13, AR-07): the
+  ordered stages of a port.
+  - The ids are `doctor`, `plan-draft`, `setup`, `assess`, `plan-final`,
+    `d7-rewrite`, `upgrade`, `php`, `residual`, `validate`, `test`, `report`,
+    `refactor` and `contribute`. They are public and stable from 1.0 on.
+  - Each stage carries its label, kind, weight, conditions, skip reason, tabs,
+    sub-steps, outputs, gate, the `state.json` coarse stage it records, and
+    the skill step that defines its procedure.
+  - `schemas/pipeline.schema.json` validates it (the `schemas` gate), and
+    `docs/reference/pipeline.md` is generated from it.
+- **The staged PHP runtime and `anchor.php`** (T-M4-04, AR-23, 05-R5).
+  - `stage_runtime ROOT` (`scripts/lib/cache.sh`) copies the plugin's PHP
+    helpers (`scripts/php/*.php`) into `<root>/.drupilot/runtime/`, where the
+    bed's container can run them. Every copy is verified by its sha256: a
+    tampered or missing one is staged again. The set's hash is kept in the
+    lock as `.runtime_hash`.
+  - The first helper, `scripts/php/anchor.php`, gives each `{file, line}` its
+    anchor: the innermost `Namespace\Class::method` or function (closures,
+    arrow functions and anonymous classes are transparent), or `{file}`. It
+    uses `token_get_all`, so it needs no dependency.
+  - It ran on the `tests/fixtures/anchor` files (traits, enums, interfaces,
+    braced namespaces, a mixed `.module`) on PHP 8.1, 8.3 (in the bed) and
+    8.5.
+  - The local patch never includes `.drupilot/runtime/` (INV10 test).
+- **`DRUPILOT_LENIENT_DEPS`** (T-M4-17, AR-08, AR-28; default `off`): a
+  comma-separated list of `drupal/<project>` packages lets contrib
+  dependencies whose `drupal/core` constraint does not admit the test-bed's
+  core install there anyway, so the module's tests can run.
+  - `install-toolchain.sh` installs `mglaman/composer-drupal-lenient`
+    (`.packages.lenient`, `^2.0`) and adds the packages to the bed's
+    `extra.drupal-lenient.allowed-list`.
+  - Only on a test-bed drupilot built; a warning skips it on your own project.
+  - The list in effect (`lenient_packages`) is kept in the lock
+    (`.lenient_packages`), in `install-toolchain.sh --json` and in
+    `last-test.json` (`lenient`). The port report names it next to the
+    preservation verdict, which it never changes (CC-14).
+- **Raw tool reports and `findings.json`** (T-M4-05, AR-10, ADR 0022).
+  - `scripts/ai/extract.sh --subject DIR [--stage S]` runs a stage's
+    deterministic tools and keeps each report as
+    `<state>/raw/<NN>-<stage>-<tool>.json`. The tools are Rector (a dry-run),
+    PHPStan, PHPCS, port-safety, the signature scan and the metadata lint.
+    Each report has root-relative paths, sorted keys and its timestamps under
+    `meta`. The anchor of every reported line is computed once in the bed
+    (`anchor.php`) and kept as one more raw file.
+  - `scripts/ai/normalize-findings.sh` makes `findings.json` from them. Each
+    finding has a stable id that never includes the line, a subject-relative
+    file, an anchor, a symbol, a normalized message, an occurrence, a
+    severity, a `scope` (`current` or `next-major`) and a `class`. Findings of
+    different tools about the same symbol at the same anchor are merged into
+    one, with `sources[]`. An error PHPStan reports in a trait (once per class
+    that uses it) is kept in the trait's file, as many times as the class
+    context with the most copies. `tools` records each
+    tool's verdict (`ok`, `partial`, `failed`, `missing`), so a crashed tool
+    never reads like a clean run, and a failing `classify-deprecations.sh`
+    stops the script (exit 3) instead of losing the deprecation classes. The
+    script needs only jq and a sha256 tool, so the goldens run on every CI
+    leg; thousands of findings take seconds.
+  - `schemas/findings.schema.json` is the contract (the `schemas` gate).
+    `tests/golden/findings/` holds the lab recordings of `legacy_widgets`
+    and the monorepo's `acme_core` and `acme_api`. Two recordings of the same
+    tree gave the same bytes outside `meta`.
+  - `docs/reference/state.md` documents the raw files and the findings.
+- **The recipe catalog `config/recipes.json`** (T-M4-06, AR-11, ADR 0023):
+  what drupilot does with each kind of finding.
+  - `scripts/dev/gen-recipes.sh` generates it from the catalogs, the one
+    source of truth (CC-33): `config/deprecations.json`,
+    `config/port-checks.json` and the new `config/metadata-checks.json`.
+    The `data` gate runs `--check`, so it is never edited by hand.
+  - A catalog entry may carry a `recipe` block that turns it into a
+    deterministic codemod or changes its lane. The scripts that read the
+    catalogs ignore the block, so their outputs are unchanged.
+  - 42 recipes: 30 for the AI, with the catalog's text as their template; 8
+    for a person; 4 codemods.
+  - The codemods:
+    - a required `CacheableMetadata` hook parameter made optional
+      (`hook_entity_operation`, `_alter`), only when the body does not use it;
+    - a class name in a `.yml` file given the case of its file;
+    - a submodule's `core_version_requirement` set to the module's own
+      plan's range, never above the declared floor.
+  - `scripts/ai/apply-recipe.sh` applies one codemod to one finding with the
+    `ere-replace`, `yaml-edit` and `info-yml` engines. It writes only an
+    exact change whose postconditions hold; anything else is `no-match`, and
+    nothing changes.
+  - A postcondition on the function's body reads it whole: a heredoc or a
+    `/* */` block never ends it early, and a line starting with `*` outside
+    a comment is code.
+  - Every codemod has `before/`, `after/` and `expect.json` fixtures in
+    `tests/fixtures/recipes/`. `schemas/recipes.schema.json` validates the
+    catalog, and `docs/reference/recipes.md` is generated from it.
+- **The worklist** (T-M4-07, AR-10, ADR 0024). `scripts/ai/classify.sh`
+  turns `findings.json` into `worklist.json`: every finding gets a lane, and
+  the findings of one file, anchor and lane make one item.
+  - The lanes, in priority order: `rector`, `rector-custom`, `codemod`,
+    `ai-templated`, `ai-free`, `test-adapt` (a file under a `tests/`
+    directory), `human` and `deferred`.
+    `deferred` holds the next-major deprecations, which never reach an AI
+    lane, plus info and style findings.
+  - The recipe of a finding is the first that matches (rule, symbol,
+    message) and whose conditions hold, its required core against the
+    declared floor included. A codemod that cannot apply hands its finding to
+    `ai-templated` with its text.
+  - `scripts/ai/apply-recipes.sh` applies the open codemods (step S6) and,
+    with `--reextract`, re-runs the tools on the new tree (S7).
+  - Each application is a line of the hidden `actions.jsonl`, with the
+    file's hash before and after. The classifier reads it: a codemod that
+    changed nothing, failed or did not clear its finding is not tried again,
+    and one whose change was reverted is.
+  - A project overlay (`<root>/.drupilot/recipes.json`) is checked before
+    use: a recipe in an unknown lane, without a 12-hex version or a kind, or
+    with a `message_ere`/`file_ere` that does not compile makes `classify.sh`
+    exit 1.
+  - `schemas/worklist.schema.json` is the contract. Worklist goldens for
+    `legacy_widgets`, `acme_core` and `acme_api` are computed Docker-free
+    from the findings goldens, and a test keeps next-major findings out of
+    the AI lanes.
+- **The viability verdict is computed** (T-M4-09, 07-R4, AR-10, ADR 0025).
+  `scripts/analysis/assess.sh` runs the assess stage and writes
+  `assess.json` and `viability-report.md`; the skill only narrates them.
+  - The three rubric counts come from `findings.json`:
+    - `manual`: each call of a current hard or unknown deprecation that no
+      Drupal Rector rule changes in the same function, plus the signature and
+      port-safety errors;
+    - `hard_breaks`: the categories of the new
+      `config/catalog/hard-breaks.json`, the 0.9 greps with each fact verified
+      in core;
+    - `blocking_deps`: `deps-status.sh`'s blockers.
+  - The digests layer is no longer part of the assessment, so a deprecation
+    only a digests rule fixes now counts as manual.
+  - When Rector, PHPStan, the port-safety checks or the signature scan gave
+    no verdict, the verdict is `provisional`: it goes to
+    `assess-provisional.json` (never `assess.json`), the stage is not
+    recorded, and the exit code is 3.
+  - It needs the test-bed's Drupal root, and reads the settings there.
+  - The S/M/L/XL table is the 0.9 one, first match wins, and `rubric.rule`
+    keeps the rule that matched. Soft and next-major findings never count.
+  - `assess.json` gains `schema: 1`, `tools`, `worklist`, `findings_hash`,
+    `worklist_hash`, `subject_digest` and `meta`; the same tree, lock and
+    drupal.org answers give the same document outside `meta`. Assess goldens
+    for `legacy_widgets`, `acme_core` and `acme_api` are computed Docker-free
+    from the findings and worklist goldens.
+
+- **The digests pass remembers your verdicts and skips what drupal-rector
+  already does** (T-M4-08, 03-R17, 05-R6).
+  - `run-rector.sh --digests` runs a filtered `all.php` (ADR 0026). It
+    leaves out the rules the official pass already applies, from
+    drupal-rector's `docs/implemented-digests.yml` at the installed version:
+    fetched, cached, and its hash frozen in the lock
+    (`.digests.implemented_yml_*`). An entry counts only when every class it
+    names is registered in a set your `rector.php` loads. drupal-rector
+    implements most of them in its Drupal 11 sets, which a port to 11 does
+    not load, so those still run in the digests pass, and so do the
+    config-only entries (the file names no class for them).
+  - It also leaves out the rules you rejected for the module.
+  - It fails closed: an `all.php` it cannot read whole stops the digests
+    pass (exit 4) rather than drop a rule silently. Once the module has
+    verdicts, an `--apply` needs a dry-run of the same sources and digests
+    rules with a verdict on every rule it changed files with, and runs no
+    rule that dry-run did not (exit 4 otherwise). A refusal prints its own
+    remedy, never the crash advice.
+  - `scripts/analysis/digests-decisions.sh` records each verdict, keyed by
+    the rule, the digests SHA and the module's sources, in the hidden
+    `digests-decisions.json`.
+  - `run-rector.sh --json` reports `digests_filter` and `digests_review`.
+    `/drupilot-port` asks only about the pending rules: a second port of the
+    same sources asks nothing. An autonomous run's recorded defaults
+    (`digests-decisions.sh --auto`) are replayed only by another autonomous
+    run (`run-rector.sh --auto`).
+  - `/drupilot-clean` (or `digests-decisions.sh --clear`) forgets the
+    verdicts. `lock-sync.sh --refresh` and `DRUPILOT_DETERMINISTIC=false`
+    fetch the yml again and freeze its new hash.
+
+- **The port manifest is generated** (T-M4-10, AR-10, 01-R9, ADR 0027).
+  `scripts/ai/manifest.sh` builds `port-manifest.json` (schema 1) from what
+  the scripts recorded, never from memory:
+  - the worklist, by lane and status, and the codemods still in effect;
+  - the Rector rules and files of the applying run (`rector-rules.json` now
+    lists the files) and of the attribute pass (`convert-attributes.sh
+    --apply` now keeps `attributes-rules.json`);
+  - the digests verdicts and the decision log;
+  - the git diff against the port's base: files changed, and the manual
+    edits (the files neither Rector nor a codemod changed).
+  - The model's only input is the rationale, keyed by worklist item id: an
+    unknown id is refused, and an earlier rationale is kept for the items
+    still there.
+  - It refuses scans of other sources than the module now (the extraction
+    index records the sources' digest), so the assess stage's pre-port
+    reports are never taken for the port's. A tool that printed no report is
+    left out, never shown as "0 errors".
+  - The files left out are make-patch.sh --local's (drupilot's files, the
+    patches, the local-environment residue); paths keep their non-ASCII
+    names. The applying Rector runs of one port add up in rector-rules.json
+    (its new `port_base`), so a digests apply no longer hides the official
+    pass's files. The actions log's hash leaves out each record's
+    time, so the same actions give the same manifest.
+  - `port-report.sh` renders the lane × status table, the codemods and the
+    rationale. A manifest golden pins the generator on the lab's
+    `legacy_widgets` port.
+
+- **Concept pages for the deterministic core:** `docs/concepts/pipeline.md`
+  (the stages, the findings-to-changes loop, the stage contract, the
+  fixpoint gate) and `docs/concepts/determinism-and-replay.md` (pinned
+  inputs, canonical artifacts, the fixpoint check, run records).
+- **The pipeline's stage contract** (T-M4-12, AR-07, ADR 0028).
+  `scripts/ai/pipeline.sh` runs `upgrade`, `php` (a placeholder until M5),
+  `validate` and `report` in catalog order.
+  - Before each stage it records a git checkpoint of the module
+    (`refs/drupilot/stages/<run>/<stage>`; the index and HEAD untouched). A
+    failed stage puts the tree back at its checkpoint and stops the run.
+  - The records are `stages.json`, with input and output digests (plan,
+    lock, sources). A stage whose output is the current state is not run
+    again, so an interrupted port resumes where it stopped.
+  - A plan with no hop skips `upgrade` (`same-major`). A raw report under
+    another stage number fails the stage.
+  - `/drupilot-port` applies the official Rector pass through the `upgrade`
+    stage, and checks the fixpoint, writes the manifest and renders the
+    report through the last three stages.
+- **The fixpoint gate** (T-M4-11, AR-16, 05-R9, DET-8).
+  `scripts/analysis/fixpoint.sh` runs at the end of a port or a refactor. It
+  extracts again and checks that Rector, the codemods and the processed
+  lanes (`rector`, `rector-custom`, `codemod`) have nothing left. The
+  dry-run is the official pass, so the digests rules never count, and a scan
+  with no verdict (Rector, PHPStan, port-safety, signatures, metadata) is
+  never a convergence.
+  - It writes `fixpoint.json` with the exact items left.
+  - `DRUPILOT_FIXPOINT`: `warn` (the default through the betas) reports,
+    `enforce` exits 3, `off` skips.
+  - Every run is recorded in `runs/<run_id>/run-manifest.json` with its
+    input and output hashes (the run id and times under `meta`), and
+    `DRUPILOT_RUNS_KEEP` (default 10) are kept.
+  - New schemas: `fixpoint.schema.json`, `run-manifest.schema.json`.
+
+### Changed
+- **`/drupilot-port` and `/drupilot-refactor` run `manifest.sh`** instead of
+  writing the manifest. Divergences stay in the decision log, the
+  verification records in their state files, and the learned patterns in
+  the catalog; the free-text `validation` list is gone.
+- **`/drupilot-assess` and the `viability-assessment` skill** no longer run
+  the analyzers one by one, grep for hard breaks or apply the rubric: they
+  run `assess.sh` and narrate `assess.json` (the skill has no `grep` left).
+  `state.json`'s snapshot reads the assessment time from `meta.generated_at`
+  too.
+- **`scripts/dev/unit.sh` runs the tests in parallel** (`--jobs N`, default
+  the CPUs, at most 8): the unit gate went from 12 minutes to under 2 on a
+  developer machine, and the macOS CI leg, which runs the whole gate twice,
+  no longer nears its timeout. Results print as each test ends; the `--json`
+  summary keeps the tests' order.
+  - The default follows the CPUs the process may use (`nproc`, a cgroup CPU
+    quota). The per-test timeout grows when `--jobs` exceeds them
+    (`--timeout`).
+  - Each test runs in its own process group. Ctrl-C or a TERM sends TERM to
+    the running tests, then KILL after 3 s, and waits for them: the run ends
+    with exit 130 and leaves no process and no temp dir behind.
+- **The `config-keys` gate fails** on an undeclared or inconsistent
+  `DRUPILOT_*` key instead of warning (T-M3-14). `DRUPILOT_EXPERIMENTAL_D7`,
+  which the D7-AUTO message names, is declared (environment only until the
+  d7-assisted track lands).
+- **rector.php is rendered from the upgrade plan** (T-M3-09, ADR 0019;
+  template 5):
+  - the plan's per-minor Drupal sets, `defined()`-filtered, with
+    drupal-rector's bootstrap file (what its `DRUPAL_10` aggregate registers:
+    the same Rector diffs, checked in the lab). When none of them resolves
+    (drupal-rector missing), the config stops and `run-rector.sh` reports a
+    crash (exit 3), as template 4 did, rather than a pass with nothing to
+    change;
+  - a backwards-compatibility block only when the plan enables it (`^10.3`
+    and later floors: no needless `DeprecationHelper` wrapper);
+  - the plan's PHP floor, and the skip list from `config/php/rules.json`.
+
+  `render-templates.sh` and `run-rector.sh` take the subject's frozen plan,
+  else a fresh draft (`plan_for_subject`); `render-templates.sh --json`
+  reports which (`plan`). The sha256 of every render is kept in the root's
+  lock (`.templates`), so an untouched render is regenerated when the plan
+  moves and a hand-edited one never is (INV5). A render whose sha256 the lock
+  lost counts as hand-edited until it is found equal to the current render
+  again (its sha256 is then kept again). The Drupal 8/9 sets stay out until
+  their hops are proven (T-M9-03).
+- The `sigpipe` gate also flags `| cmp`, which stops reading at the first
+  difference.
+- **phpstan.neon is rendered from the upgrade plan** (T-M3-09, ADR 0020;
+  template 3):
+  - `phpVersion: {min, max}`: the plan's floor and PHP target, so PHPStan
+    checks the code against every PHP it must run on;
+  - `tmpDir: .phpstan-cache/<plan hash>`: one result cache per plan;
+  - a profile. `compat` (the plan's, Phase 1) turns off phpstan-drupal's four
+    opinion rules (dependency injection, entity storage injection, test class
+    suffix, `@internal` parents): a minimal port makes no change they ask
+    for, so Phase 1 PHPStan output loses those findings and nothing else
+    (checked in the lab). `refactor` keeps every rule as phpstan-drupal ships
+    it; `render-templates.sh --profile refactor` renders it, and
+    `/drupilot-refactor` does so before its PHPStan run.
+
+  `render-templates.sh --json` gains `phpstan_profile`. An untouched
+  `phpstan.neon` follows the plan: `run-phpstan.sh` re-renders it, after a
+  backup and with its profile, when the plan moved since (the port's final
+  freeze; a refactor refreezes the final plan for the range it applies). A
+  template-2 `phpstan.neon`, edited or not, is upgraded after a backup with its
+  diff printed; a hand-edited template-3 one is kept.
+- **Refactor: the core-target decision is a function of its own.**
+  `strategy_decide` computes the decision for any target major (the ranges
+  from `config/targets/<T>.json`, the older-major signals as the majors below
+  T, the PHP floor never below the kept previous minor's `php_min`), and
+  `recommend_core_target` renders `core-strategy.sh`'s JSON from it. For T=11
+  every output is byte-identical: a 168-case matrix of subjects and scenarios
+  (`tests/unit/core_strategy_matrix.sh`) pins the raw stdout captured before
+  the change. For another target major the
+  decision uses that target's PHP default (8.5 for 12), and `auto` keeps the
+  previous major only while `config/targets/<T-1>.json` does not say `eol`
+  (a data commit flips it, X15); the current data changes no output.
+- `config/php/rules.json`: the four Rector rules `templates/rector.php.tmpl`
+  skips for Drupal reasons (first-class callables, `#[\Override]` on
+  methods, readonly properties and classes) are `deny` rows, and
+  `p81-null-to-internal` moves from `compat` with `drupal_safe: false` to
+  `deny`, so the data lists the whole skip list in the template's order.
+- **Refactor: `scripts/lib/common.sh` is split into domain libs** (T-M3-10):
+  `core`, `paths`, `config`, `lock`, `cache`, `subject`, `ddev`, `state`,
+  `strategy`, `toolchain`, `git`, `interact` and `phpcs`, sourced in a fixed
+  order with `plan` by `common.sh`, which every script still sources. The
+  move is mechanical: no function is renamed, added, dropped or edited (the
+  same 187 function definitions and 18 variables after sourcing, byte for
+  byte), and `shellcheck` checks each lib on its own. The hooks source only
+  the libs they use (`_DRUPILOT_LIBS`, checked by the `lib-defs` gate), so
+  each hook starts faster than in 0.9 (p95 on a developer machine:
+  `guard-contrib` 98 ms instead of 108, `post-edit-lint` 156 instead of 163,
+  `session-detect-env` 956 instead of 960; T-M3-11).
+- **Rector targets the PHP floor of the declared core range, not the PHP
+  target** (T-M2-13, ADR 0002). `rector.php` (template marker 4) sets
+  `->withPhpVersion(PhpVersion::PHP_<L>)` and `->withPhpSets(php<L>: true)`,
+  where L is the lowest PHP the core range `core-strategy.sh` recommends and
+  the `require.php` composer will enforce admit, never above
+  `DRUPILOT_PHP_TARGET`: usually 8.1 for `^10 || ^11`, 8.3 for `^11`. A
+  range leg the version data does not hold (a Drupal 9 leg kept as-is)
+  leaves the floor to the enforced `require.php`, else the lowest PHP the
+  data knows, with a warning; the compat pass's ceiling comes from the legs
+  it does know. 0.9 applied the target's sets, so a port
+  that kept Drupal 10 on a PHP 8.3 bed could gain PHP 8.3 syntax (a typed
+  class constant, `AddTypeToConstRector`) that its PHP 8.1 sites cannot
+  parse. For `^11` with a PHP 8.4 target the sets drop from php84 to php83,
+  and the compat pass keeps the implicit-nullable fix. A `rector.php` from an
+  older template is backed up and regenerated as before; an untouched
+  current render of `rector.php` is also regenerated when its floor moves
+  (the core target chosen at port time is not the one setup assumed), and
+  one of `rector.php` or `rector-compat.php` (whose only input is the
+  subject) when it was rendered for another subject of a shared test-bed
+  (0.9 reported that as `differs`, exit 3); a hand-edited one is kept with a
+  warning. A project's own `rector.php` without
+  `withPhpVersion()` gets a warning.
+- **Rector skips three more rules** (T-M2-14): `SleepToSerializeRector` and
+  `WakeupToUnserializeRector` (`DependencySerializationTrait` defines
+  `__sleep()`/`__wakeup()`) and
+  `AddOverrideAttributeToOverriddenPropertiesRector` (`#[\Override]` on a
+  property needs PHP 8.5), in both Rector configs, still filtered with
+  `class_exists()`.
+- `config/php/rules.json`: `p81-null-to-internal`
+  (`NullToStrictStringFuncCallArgRector`) is `drupal_safe: false`, as the
+  template has always skipped it.
+- **The `legacy_widgets` H10 golden is re-recorded** (lab, Drupal 11.4.8, PHP
+  8.3, cell 11 toolchain). The port patch, `phpstan.json` and `phpcs.json`
+  are byte-identical to the M1 recording, and so is every file with the cell
+  11 pins alone; `raw/rector-dryrun.json` gains `compat_files`,
+  `compat_status`, `php_floor` and `php_ceiling`. The golden is pinned to a
+  new data snapshot (the `rules.json` change above).
+- **New test-beds get the cell 11 toolchain:** palantirnet/drupal-rector
+  1.1.3, rector/rector 2.6.1 and phpstan/phpstan 2.2.16 (were 0.21.2, 2.5.2
+  and 2.2.2); the other pins are unchanged. On `legacy_widgets` and
+  autologout 8.x-1.4, on PHP 8.3 and 8.5, every port patch is byte-identical
+  to 0.9's (spike AR-38). A project whose lock drupilot 0.9 wrote keeps 0.9's
+  set, with a notice, until `install-toolchain.sh --source reference`
+  refreshes it. A Drupal 12 test-bed resolves its toolchain from the ranges,
+  with a warning, while cell 12 is provisional. `known_broken` now names
+  rector 2.5.2 with any phpstan from 2.2.6 on, and drupal-rector 1.1.2 with
+  rector 2.6.2 or later. The `drupal_rector` range of `config/defaults.json`
+  is now `^1.1.3`, so a fallback to the ranges lands on the same set. With
+  1.1.3, `convert-attributes.sh` gives byte-identical results on the
+  fixtures, and it now converts a plugin annotation with a keyless value
+  (`@FormElement("x")`), which 0.21.2 emitted without its argument and the
+  script restored. Because 1.1.x matches an existing attribute by its short
+  name, `convert-attributes.sh` now reads every name of an attribute group
+  (`#[Cacheable, Block]`, also over several lines) when it decides which
+  files to skip, and restores a file whose annotation was removed with no
+  attribute added.
+- `php_supported_for` reads `config/targets` and `config/php/versions.json`
+  instead of a table in `common.sh`. Its answers are unchanged (a unit test
+  pins the whole grid). `DRUPILOT_VERSION_DATA_DIR` (internal) points it at
+  another copy of the data.
+- The jq schema validator moved to `scripts/dev/jsonschema.jq` and learned
+  `anyOf`, `pattern`, `propertyNames`, `minItems`, `minLength` and a schema
+  as `additionalProperties`. Every `$ref` of every schema must resolve
+  (checked once per schema, whatever the instances reach), and a pattern's
+  final `$` no longer matches before a trailing newline (as in JSON
+  Schema).
+- The logo moved from `assets/` to `docs/assets/` (the README image paths
+  follow), and `/drupilot-status` and `scripts/env/state.sh` cite
+  `docs/reference/state.md` instead of a README section.
+- CI installs `check-jsonschema` 0.38.2 on the Ubuntu and macOS legs.
+- The `smoke in <image>` CI jobs may run 30 minutes (was 15): debian:12-slim
+  runs the unit tests with mawk and jq 1.6, and the resolver's tests made it
+  pass 15 minutes.
+- The `checks` CI job may run 35 minutes (was 20): on macOS it runs the
+  whole gate twice, and the second run hit the limit.
+- **`subject_digest` uses algorithm 2** (AR-13, T-M4-02): it also hashes
+  `*.twig`, `*.js` and `*.css`, after a header line, so **every existing
+  digest changes once**. A test run, negative control, core matrix or
+  metadata lint recorded by drupilot 0.9 no longer counts as fresh, until it
+  is re-run:
+  - `/drupilot-status`, the port report and the layer report show it stale
+    (`stale_reason: "digest-algorithm"`);
+  - the next step after a green 0.9 run is `/drupilot-test` again;
+  - a failing 0.9 verdict (a regression, a failed core matrix) keeps blocking
+    `port-summary --strict`, since its sources may be unchanged. A result on
+    sources that changed since (`"sources-changed"`) still never blocks.
+
+  `digest_freshness` gives the verdict for one record.
+  Every record that keeps a `subject_digest` now keeps `digest_algo: 2` next
+  to it (`last-test.json`, `test-baseline.json`, `negative-controls.json`,
+  `core-matrix.json`, the Rector dry-run record and
+  `lint-extension-metadata.sh --json`, whose v0.9.0 baseline captures list
+  the change).
+- **No timestamp outside `meta`** in the records drupilot compares or hashes
+  (AR-13, DET-2): `rector-rules.json` keeps `generated_at` and the host path
+  of the subject under `meta`; the `negative_controls` summary of
+  `last-test.json` no longer carries each control's `at`, which moves to
+  `meta.negative_controls` (and stays in `negative-controls.json`). The
+  `last-test.json` schema accepts both shapes.
+- **Deterministic tool invocation** (T-M4-03, 05-R2, DET-1, DET-2).
+  - `run-rector.sh` runs every pass with Rector's JSON report
+    (`--output-format=json --no-progress-bar`). The changed files and the rule
+    hits come from its `file_diffs` and `applied_rectors` instead of parsing
+    the console. A person still sees each diff and its rules on STDERR.
+  - Its `--json` gains `file_diffs` (`[{pass, file, applied_rectors, diff}]`,
+    sorted by file: Rector's parallel jobs end in any order) and `runner`.
+    Rector's file errors are sorted too.
+  - `run-phpstan.sh` and `run-phpcs.sh` sort their reports (files by path,
+    messages by line) and add `drupilot.runner`. `runner` is `{runner:
+    ddev|host, php_version, tool_version}`. Every 0.9 key is kept.
+  - In deterministic mode, these cases exit 3 (`DRUPILOT_DETERMINISTIC=false`
+    accepts them). This also applies to the attributes pass:
+    - a tool whose installed version differs from the one the lock pins (the
+      message names both remedies: restore the pins with `install-toolchain.sh`,
+      or accept the installed versions with `lock-sync.sh`);
+    - a host run on a root that has a DDEV project while the ddev CLI is
+      there. Without ddev, the analyze profile runs on the host by plan.
+  - A DET-1 refusal still prints the documented `--json` shape of exit 3 (Rector
+    `errors[].pass` 0, PHPStan `crashed`, PHPCS `drupilot.error`, the attributes
+    pass `status: "error"`). The prompts read it as "the tool did not run", not
+    as a crash to repair with `--source reference`.
+  - Under DDEV the digests checkout is copied under
+    `<root>/.drupilot/digests/<sha>/`, so that pass runs in the bed instead of
+    on the host's PHP. A config under the root is passed relative to it. An
+    explicit `--config` outside the root is staged alone. A failed copy is a
+    digests error (partial, exit 4).
+  - Two lab runs give byte-identical canonical reports.
+- **The `legacy_widgets` raw goldens are re-recorded** (T-M4-03, lab L-M4) with
+  the deterministic tools. The H10 patch is unchanged.
+  - `rector-dryrun.json` gains `file_diffs` and `runner`.
+  - `phpstan.json` and `phpcs.json` gain `drupilot.runner`.
+  - PHPStan's messages on one line come in identifier order.
+
+### Deprecated
+- **The 0.9 strategy vocabulary** (T-M3-07, CC-07), kept for all of 1.x and
+  removed in 2.0.0. The `DRUPILOT_KEEP_D10` boolean and an old value in a
+  `DRUPILOT_CHOICE_CORE_TARGET` pre-answer warn once per run. The setting's own
+  old values are accepted silently, since drupilot still writes them for
+  Drupal 11.
+  - `DRUPILOT_KEEP_D10` (any 0.9 spelling of the boolean): use
+    `DRUPILOT_CORE_TARGET_STRATEGY` (`keep-previous` / `target-only`). It is
+    still honored only while the strategy is `auto`.
+  - The strategy values `keep-d10` and `d11-only`: use `keep-previous` and
+    `target-only`. For Drupal 11 drupilot still writes and prints the 0.9
+    names (`core-strategy.sh --json`, the lock, `state.json`, a persisted
+    core-target answer), so a 0.9 reader sees no change.
+  - The `CORE_TARGET` tab's options are `auto`, `keep-previous`,
+    `target-only` and `widest`. A 0.9 pre-answer
+    (`DRUPILOT_CHOICE_CORE_TARGET=keep-d10`) is accepted without re-asking
+    (`choice.sh`, `choose_one`); for Drupal 11 `choice.sh` still reports and
+    persists it under its 0.9 name. The "Drupal 10 check" tab keeps its own
+    `d11-only` option.
+  - `make-issue.sh --d10-unverified`: use `--prev-major-unverified`.
+  - The `d10_support` field is to get its `prev_major_support` twin in
+    port-summary v2 (a later 1.x release).
+  - `preflight.sh`'s strategy check accepts both vocabularies.
+
+### Fixed
+- **A PHPStan run whose parallel worker died is a crash, not a clean run.**
+  When a worker reaches its memory limit, fails or times out, PHPStan drops
+  that worker's file errors and still exits 1. `run-phpstan.sh` (and
+  `verify-core-matrix.sh`) recorded such a run as `findings`, so
+  `findings.json` showed PHPStan `ok` with its findings missing, and the
+  result depended on the machine's memory. A report naming "Child process
+  error", "Child process timed out", "PHPStan process crashed" or "Result is
+  incomplete" (`phpstan_crash_ere`, verified in PHPStan 2.x's source) is now
+  `crashed`, exit 3.
+- **Intermittent wrong results and exit 141 under load** (the baseline-0.9
+  flakes of PRs #11, #20 and #22): a pipeline ending in `head`, `grep -q` or
+  an awk `exit` stops reading early, and under `pipefail` a producer still
+  writing then dies of SIGPIPE, which fails the whole pipeline. That made
+  `core-strategy.sh` call a `^10.3` -> `^10.3 || ^11` port a MAJOR bump on
+  a busy Linux runner, and `lint-extension-metadata.sh` exit 141 with
+  BusyBox `ls`. Every such pipeline (about 160) now reads its whole input.
+- `install-toolchain.sh --json` failed with jq 1.6 (Debian 12, Ubuntu
+  22.04: "syntax error, unexpected and"), so the command printed no JSON
+  there; its `ok` value is now parenthesized. The `jq-compat` gate rejects
+  that construct (an object value joined with `and`/`or` outside
+  parentheses).
+- `run-rector.sh` no longer counts a rule Rector only names in a "[WARNING]
+  This skipped rule is never registered" notice as applied: `rules` and
+  `rule_hits` (and the port manifest built from them) list the rules of the
+  "Applied rules:" blocks only (`rector_applied_rules` in `common.sh`).
+  Rector 2.6.1 prints that notice for `NullToStrictStringFuncCallArgRector`,
+  which drupilot's template skips and its php81 set no longer lists.
+- `tests/fixtures/legacy_widgets.EXPECTED.md` no longer calls the fixture valid
+  Drupal 10.3 code without qualification: `WidgetImportForm` redeclares
+  `FormBase`'s `$loggerFactory` as `private readonly` and typed, a fatal error
+  when the class loads. The fixture is unchanged (part of H12).
+- **`classify-deprecations.sh` no longer fails on a large PHPStan report.**
+  It passed every message to jq as one argument. Linux caps an argument at
+  128 KiB, so a module with a few hundred PHPStan errors stopped the script
+  with "Argument list too long". The records now go through a file; the
+  output is unchanged.
+- **`run-rector.sh` now re-renders `rector-compat.php` for the module it
+  runs on** (found by the T-M4-05 lab). On a test-bed shared by several
+  modules, the compat pass kept the config rendered for the previous module,
+  and Rector stopped the pass once that module's path was gone.
+  - An untouched render for another module is now backed up and rendered
+    again, as `rector.php` already was. An untouched render is one whose
+    sha256 the lock keeps, or one that is byte for byte the template's.
+  - A hand-edited copy is kept. A warning names any relative `withPaths()`
+    path in it that does not exist.
+  - Two config backups within the same second no longer share one name, in
+    `run-rector.sh` and `render-templates.sh` alike (`config_backup` in
+    `scripts/lib/paths.sh`).
+
 ## [0.9.2] - 2026-10-04
 
 ### Fixed
@@ -1549,7 +3005,7 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   longer uses the bash 4-only `${x,,}`.
 - **`/drupilot-setup` failed to load (Step 4).** Its load-time line ran
   `ensure-gitignore.sh --root "<drupal_root>"` verbatim (exit 1, "Root directory not
-  found: <drupal_root>"), and even a valid root would have written `.gitignore`
+  found: `<drupal_root>`"), and even a valid root would have written `.gitignore`
   before the Step 1 gate. It is now a fenced block the model runs with the resolved
   root. `ensure-gitignore.sh` rejects an unsubstituted `<placeholder>` with a clear
   error and gains `--subject DIR` (derives the enclosing Drupal root, or the
@@ -2384,7 +3840,14 @@ verdict, what-changed report card, frozen lock), and new insight tools
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.2...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-rc.1...HEAD
+[1.0.0-rc.1]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.6...v1.0.0-rc.1
+[1.0.0-alpha.6]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.5...v1.0.0-alpha.6
+[1.0.0-alpha.5]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.4...v1.0.0-alpha.5
+[1.0.0-alpha.4]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.3...v1.0.0-alpha.4
+[1.0.0-alpha.3]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.2...v1.0.0-alpha.3
+[1.0.0-alpha.2]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.1...v1.0.0-alpha.2
+[1.0.0-alpha.1]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.2...v1.0.0-alpha.1
 [0.9.2]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/thebrokenbrain/drupilot/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/thebrokenbrain/drupilot/compare/v0.8.4...v0.9.0

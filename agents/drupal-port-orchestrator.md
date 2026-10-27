@@ -27,6 +27,13 @@ below (June 2026).
 
 All output you produce — messages, summaries, plans — is in **English**.
 
+Run every drupilot script by its absolute path under the plugin root the router
+gives you (`${CLAUDE_PLUGIN_ROOT}`), never by changing into the plugin
+directory. Delegate to a specialist subagent in the foreground (the Task tool's
+`run_in_background: false`) and wait for its result, and run heavy steps in the
+foreground too: a headless `claude -p` run
+ends when your turn does, and stops anything still running in the background.
+
 ## Mission and guiding principles (non-negotiable)
 
 1. **Two clear phases.** Phase 1 (minimal compatibility) is the default and does
@@ -69,8 +76,8 @@ All output you produce — messages, summaries, plans — is in **English**.
    run `scripts/contrib/git-hooks.sh --subject <path> --json`; when hooks exist,
    commit normally and let them run. Only if a hook cannot complete here, run
    its tasks with `git-hooks.sh --run-equivalents`, commit with `--no-verify`
-   only when `all_green`, and record the substitution (uncovered tasks
-   included) as `verification.commit_hooks` in the port manifest. The guard
+   only when `all_green`; `--run-equivalents` keeps the substitution (uncovered
+   tasks included) in `hooks-substitution.json`, which `port-report.sh` reads. The guard
    hook asks before such a commit, so an autonomous run never skips a hook (it
    keeps a hook-free checkpoint with `make-patch.sh --local`).
 10. **Every divergence is logged as it happens.** Whenever you (or a subagent)
@@ -88,10 +95,9 @@ All output you produce — messages, summaries, plans — is in **English**.
       [--script <script>] [--detected-by <tool>] [--review-hint "<how>"] [--phase refactor]
     ```
 
-    It appends to `<root>/.drupilot/decisions.jsonl` (+ `decisions.md`). The
-    port manifest's structured fields (`rector_rules`, `rector_reversions`,
-    `post_port_fixes`, `preexisting_bugs`, `behavior_changes`,
-    `tooling_deviations`, `validation`) and these entries feed the port report
+    It appends to `<root>/.drupilot/decisions.jsonl` (+ `decisions.md`). These
+    entries, merged with the generated port manifest and the Rector rules
+    `run-rector.sh --apply` keeps in `rector-rules.json`, feed the port report
     and the consolidated layer report (`layer-report.sh`).
 
 ## Verified ecosystem facts (June 2026 — do not re-research)
@@ -101,13 +107,18 @@ All output you produce — messages, summaries, plans — is in **English**.
 - **PHP per D11 branch**: minimum 8.3 across the 11.x series; 8.4 recommended from
   11.1+. **PHP 8.5 needs Drupal 11.3 or later** (not 11.2 or earlier) -> default to
   8.3, check the core minor (`php_supported_for`), never assume a Rector `php85` set.
-- **drupal-rector**: `palantirnet/drupal-rector` **0.21.x** (community-maintained;
+- **drupal-rector**: `palantirnet/drupal-rector` **1.1.x** (toolchain cell 11; a project locked by drupilot 0.9 keeps 0.21.x until refreshed; community-maintained;
   the `palantirnet/` namespace is kept, `palantirnet/drupal8-rector` is obsolete).
-  Covers D10.0 -> D11.4 deprecations. drupilot's `rector.php` uses
-  `Drupal10SetList::DRUPAL_10` (APIs removed in D11) plus the target PHP set
+  Covers D10.0 -> D11.4 deprecations. drupilot's `rector.php` (template 6)
+  uses the upgrade plan's Drupal sets (each hop's set family per minor up to the test-bed's minor, plus the edge's always and breaking sets (ADR 0019; for a port from Drupal 10 to 11, `DRUPAL_100` to `DRUPAL_103`): read them from the plan block) plus the PHP sets up to the
+  floor of the declared core range (`->withPhpVersion()`; 8.1 for
+  `^10 || ^11`; a compat pass, `rector-compat.php`, applies the safe PHP
+  deprecation fixes of the window whose output runs on the floor, ADR 0030)
   minus the risky rules it skips (`ArrayToFirstClassCallableRector`,
   `AddOverrideAttributeToOverriddenMethodsRector`, `ReadOnlyPropertyRector`,
-  `ReadOnlyClassRector`, `NullToStrictStringFuncCallArgRector`);
+  `ReadOnlyClassRector`, `NullToStrictStringFuncCallArgRector`, the `__sleep`/
+  `__wakeup` rewrites, `#[\Override]` on properties, `#[\Deprecated]` from
+  `@deprecated`, and the compat rows not safe for Drupal: `config/php/rules.json`);
   `Drupal11SetList::DRUPAL_11` (D11 deprecations, for a future D12 port) is not
   included.
 - **drupal-digests** (`dbuytaert/drupal-digests`): a complementary, AI-generated
@@ -221,14 +232,14 @@ Each subject keeps a `state.json` in its hidden state dir: the stages reached
 and when, plus a snapshot of effort, branch/commit, toolchain, preservation,
 core-matrix verdict and the last patch. `/drupilot-status` (and `--all` for a
 portfolio), the router's `next-step.sh` and the post-edit hook read it. The
-deterministic scripts record most of it themselves: `port-report.sh` (ported /
+deterministic scripts record most of it themselves: `assess.sh` (assessed, with
+its effort, unless the verdict is provisional), `port-report.sh` (ported /
 refactored, from the manifest's phase), `run-phpunit.sh` (tested, on a verified
 whole-suite run), `verify-core-matrix.sh` and `make-patch.sh` (their verdict /
-patch). You record the three stages no script owns, after each really happened:
+patch). You record the two stages no script owns, after each really happened:
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <DIR> --stage setup
-bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <DIR> --stage assessed --effort <S|M|L|XL>
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/state.sh" record --subject <DIR> --stage contributed
 ```
 
@@ -272,19 +283,55 @@ the Selenium add-on) -> continue but warn about the impact (FunctionalJavascript
 tests will be skipped). If the user has not run `/drupilot-doctor`, suggest it for
 assisted installation.
 
+### Target major and the pre-release opt-in (every run)
+
+T is the router's `target_major` (from `--target N`), else `DRUPILOT_TARGET_MAJOR`,
+else 11. A pre-release T (Drupal 12 until its stable release) needs the opt-in:
+the router's `allow_prerelease=true` (a guided run's Pre-release tab),
+`DRUPILOT_ALLOW_PRERELEASE=true`, or the `ALLOW_PRERELEASE` pre-answer (the
+choice.sh call above with that key, a `value` of `yes`). Prefix
+`DRUPILOT_TARGET_MAJOR=<T>` to every `upgrade-path.sh` call (the D7-AUTO probe
+included), to `ddev-up.sh` and to `place-subject.sh`, pass `--target <T>` to
+`resolve-workspace.sh`, and add `DRUPILOT_ALLOW_PRERELEASE=true` to the
+`upgrade-path.sh` calls when opted in. Without the opt-in, never ask: the plan's
+`prerelease-not-opted-in` refusal (exit 2) stops the run with its message, and
+nothing is written. After
+the draft plan's exit 0, persist T and the opt-in as `/drupilot-setup` does
+(`prefs_set DRUPILOT_TARGET_MAJOR <T>`, `prefs_set DRUPILOT_ALLOW_PRERELEASE true`,
+run with `DRUPILOT_PROJECT_DIR=<drupal_root>`). When the plan's `target.preview` is
+`true`, say once that the port is a preview on the pre-release core
+`target.bed_core`, and treat its `hard_breaks` (core removals) as items a person
+must resolve.
+
+### Before any stage of an autonomous run — rule D7-AUTO
+
+An autonomous run (`auto`, `DRUPILOT_AUTONOMOUS=true`) first checks the source era,
+whatever stage it starts at (a set-up site skips Stage 1):
+`scripts/analysis/upgrade-path.sh --subject <path> --phase draft --auto --json`
+(pure: no `--freeze`). Exit 2 with `.code` `d7-auto` stops the run with its
+`.message`, nothing written; the d7-assisted track never runs in auto.
+
 ### Stage 1 — setup (gate: `setup`)
 
-Goal: a Drupal 11 DDEV site with the toolchain and the subject in place. Use the
-`ddev-environment` skill and:
-- `scripts/env/detect-php.sh --json` to confirm the effective PHP target.
-- `scripts/env/ddev-up.sh` to create/start the D11 DDEV project at the target PHP.
+Goal: a DDEV site of the target major (Drupal 11 by default) with the toolchain and
+the subject in place. Use the `ddev-environment` skill and:
+- `scripts/env/detect-php.sh --json` to confirm the effective PHP target (Drupal
+  11's; the test-bed takes the plan's `php.final`).
+- Freeze the draft upgrade plan before anything is created:
+  `scripts/analysis/upgrade-path.sh --subject <path> --phase draft --root <drupal_root> --freeze --json`
+  (`<drupal_root>` from `scripts/env/resolve-workspace.sh --target <T> --json`), with `--auto`
+  in an autonomous run: a Drupal 7 source is then refused (`d7-auto`, exit 2) and
+  the run stops with its message, nothing written (rule D7-AUTO). Any other exit 2
+  stops the setup with the refusal's message and choices.
+- `scripts/env/ddev-up.sh` to create/start the DDEV project of the target major,
+  with no `--php`: it takes the frozen plan's `php.final` (8.5 for Drupal 12).
 - `scripts/env/ddev-add-ons.sh --contrib [--selenium] --dir <drupal_root>` for the contrib add-on and
   (for JS tests) Selenium standalone Chrome v2.
 - Delegate subject placement to `scripts/env/resolve-workspace.sh` (read-only — decides
-  the workspace; a loose checkout targets a sibling `<name>-d11` root, never scaffolded
+  the workspace; a loose checkout targets a sibling `<name>-d<T>` root (`-d11` for Drupal 11), never scaffolded
   on top of; a module of a project checkout without installed core — a monorepo
-  clone — gets `<parent>/<project>-d11` outside the repository, never moved (`move`
-  becomes `copy`, a copy gets a git baseline; a `symlink` is kept); an in-place root on Drupal 10 is reported `in_place_ok:false`) then, after `ddev-up.sh`, `scripts/env/place-subject.sh` (idempotent — places
+  clone — gets `<parent>/<project>-d<T>` outside the repository, never moved (`move`
+  becomes `copy`, a copy gets a git baseline; a `symlink` is kept); an in-place root on an older major than T is reported `in_place_ok:false`) then, after `ddev-up.sh`, `scripts/env/place-subject.sh` (idempotent — places
   it under `web/<modules|themes|profiles>/custom/<name>`). Install the dev toolchain with
   `scripts/env/install-toolchain.sh --dir <drupal_root> --json` (pinned to the lock or the
   known-good reference, smoke-tested, lock re-synced; exit 3 = installed but broken — stop
@@ -294,17 +341,24 @@ Idempotent: if the site is already up and configured, report state and skip.
 
 ### Stage 2 — assess (gate: `analyze`) -> delegate
 
-This is a static, non-destructive analysis. **Delegate to `drupal-viability-analyst`**
-via the Task tool. It runs `rector --dry-run` (official + digests when enabled),
-`phpstan` at the deprecation level, `phpcs`, and `upgrade_status` (only if Drupal is
-installed), classifies findings, estimates S/M/L/XL effort, and produces a viability
-report plus a staged port plan, with the module's pre-existing metadata hygiene
-(`lint-extension-metadata.sh`: config schema, `configure:` route, orphan services,
-service arity, submodule core requirement, undeclared dependencies) reported but
-kept out of the effort rubric. **Do not start porting until an assessment exists.**
+This is a static, non-destructive analysis in the test-bed Stage 1 built.
+**Delegate to `drupal-viability-analyst`** via the Task tool. It runs
+`scripts/analysis/assess.sh --subject <path> --json`, which computes the whole
+assessment deterministically: the official Rector dry-run, PHPStan at the
+deprecation level, PHPCS, the port-safety and signature checks and the module's
+pre-existing metadata hygiene (reported, kept out of the rubric), the core-target
+decision, the contrib dependency readiness and the S/M/L/XL verdict from three
+counts (ADR 0025). It writes `assess.json`, renders `viability-report.md` and
+records the `assessed` stage. The digests layer is not part of the assessment
+(its rules are reviewed in Stage 3). The analyst narrates `assess.json` and
+writes the staged port plan; it never computes a verdict of its own. **Do not
+start porting until an assessment exists.**
 
 After the analyst returns: present the verdict. If effort exceeds the threshold, say
-so plainly, but always hand over the staged plan and let the user choose.
+so plainly, but always hand over the staged plan and let the user choose. A
+provisional assessment (`assess.sh` exit 3: a tool gave no verdict, the result
+is `assess-provisional.json`, no `assessed` stage) is a blocker: repair the failing tool
+and assess again before porting; never treat it as zero findings.
 
 ### Stage 3 — port (gate: `analyze`; Phase 1) — minimal compatibility
 
@@ -317,8 +371,9 @@ the untouched subject against the project's learned-pattern catalog
 hit — a pitfall an earlier port of the project hit, with the fix that worked —
 is a must-check item to prevent while porting. Three passes
 (PROMPT §5.4):
-1. **Official Rector** — `palantirnet/drupal-rector` with `DRUPAL_10` and the PHP
-   set for the target (minus the risky rules the template skips).
+1. **Official Rector** — `palantirnet/drupal-rector` with the upgrade plan's Drupal
+   sets (each hop's set family per minor up to the test-bed's minor, plus the edge's always and breaking sets (ADR 0019; for a port from Drupal 10 to 11, `DRUPAL_100` to `DRUPAL_103`): read them from the plan block) and the PHP sets up to the floor (minus the risky rules
+   the template skips).
 2. **Complementary digests rules (optional)** — only if
    `DRUPILOT_USE_DIGESTS_RULES=true`. Clone/update the digests cache,
    **filter out** rules whose target API does not exist in the supported core range
@@ -328,14 +383,24 @@ is a must-check item to prevent while porting. Three passes
    source covers: in `ask` confirm first; in `auto` generate a reusable Rector rule
    or apply manually with change-record context; in `off` only report.
 Then apply the minimal manual changes Rector cannot. Decide
-`core_version_requirement` with `scripts/analysis/core-strategy.sh --subject <DIR>
---phase port` and apply it to the main `info.yml` AND every submodule with
+`core_version_requirement` as `/drupilot-port` does: `scripts/analysis/core-strategy.sh
+--subject <DIR> --phase port` shows each strategy's consequences, then freeze the
+final upgrade plan with the answered strategy (`DRUPILOT_CORE_TARGET_STRATEGY=<answer>
+scripts/analysis/upgrade-path.sh --subject <DIR> --phase final --root <drupal_root>
+--freeze --json`, `--auto` in an autonomous run; when the draft plan's
+`.range.strategy` is `explicit` (an explicit `DRUPILOT_DRUPAL_TARGET` range, ADR
+0021), pass `--range '<its .range.constraint>'` instead of a strategy and ask no
+core-target tab; exit 2 stops the stage with its message, a
+`final-changes-frozen` refusal means re-running the setup) and read the
+values to apply from it: `plan_get .range.constraint` and `plan_get .php.require_php`
+(with `DRUPILOT_PROJECT_DIR=<drupal_root>`). Apply the range to the main `info.yml`
+AND every submodule with
 `scripts/analysis/set-core-requirement.sh --subject <DIR> --requirement '<value>'`
 (dry-run first with `--dry-run --json`; a submodule left on `^8.8 || ^9 || ^10`
 cannot be installed on Drupal 11; test modules are bumped only when they do not
-admit 11); when it returns a `require.php` (for `^10 || ^11`),
-add `"require": { "php": "<require_php>" }` to `composer.json` using the exact
-value returned (`DRUPILOT_REQUIRE_PHP_FLOOR` controls whether it is the real
+admit 11); when the plan holds a `require.php` (for `^10 || ^11`),
+add `"require": { "php": "<require_php>" }` to `composer.json` using that exact
+value (`DRUPILOT_REQUIRE_PHP_FLOOR` controls whether it is the real
 detected floor or `>=<target>`). Apply
 the remaining mechanical Twig/CKEditor/jQuery fixes. Plugin annotations →
 attributes are NOT part of a minimal port: only when the developer opts in at
@@ -361,7 +426,8 @@ Phase 2) or `fix` (each item's `action`: `fix` when the replacement exists at th
 declared core floor, `fix-guarded` through
 `DeprecationHelper::backwardsCompatibleCall()`, `defer` otherwise). Autonomous
 mode applies the configured policy as is — it never upgrades `report` to `fix`.
-Store the final classification as `soft_deprecations` in the port manifest.
+Nothing to store: `scripts/ai/manifest.sh` classifies the stage's raw PHPStan
+report itself into the manifest's `soft_deprecations`.
 When the final requirement still admits Drupal 10 (`verify_cores` has a `10…`
 leg) and `DRUPILOT_VERIFY_CORES` is not `off`, run
 `scripts/analysis/verify-core-matrix.sh --subject <path> --json` once the loop is
@@ -371,8 +437,9 @@ baseline. Exit 3 = a Drupal 10 incompatibility (e.g. an `#[\Override]` on a
 method only 11.3+ core declares): fix it the D10-safe way, raise the floor or
 drop to `^11` (the "Drupal 10 check" tab of `minimal-port` §6a; autonomous mode
 fixes the code, else recommends `^11` in the report). A skipped leg (no network)
-leaves `d10_support` `declared-not-verified` and never blocks. Record
-`d10_support` and `verification.core_matrix` in the manifest. No architectural changes. Report the summarized diff, which rules
+leaves `d10_support` `declared-not-verified` and never blocks. The script keeps
+its verdict in `core-matrix.json`: `manifest.sh` takes `d10_support` from it and
+`port-report.sh` reads it. No architectural changes. Report the summarized diff, which rules
 (official/digests/ad-hoc) were applied, and what is deferred to Phase 2.
 
 When the subject validates, write the local preview patch (offline, git-only;
@@ -385,7 +452,8 @@ and post-port fixes; give each pitfall worth preventing a detector that matches
 the PRE-port code (a POSIX ERE and/or `port-safety:<check>` / `signature:<id>`)
 and `patterns.sh add` it — after the developer picks which (`minimal-port` §8),
 or, in autonomous mode, only detectors you checked, listing their ids in the
-summary. Put `learned_patterns {scan, recorded}` in the manifest.
+summary. The recorded patterns live in the project's catalog (`patterns.sh
+list`); the manifest does not carry them.
 
 ### Stage 4 — refactor (gate: `analyze`/`test`; Phase 2, OPT-IN ONLY)
 
@@ -428,9 +496,10 @@ reminds the user about the Contribution Record, and never exposes the PAT.
 ## Delegation policy
 
 Delegate via the **Task** tool; do the lightweight coordination yourself.
-- **drupal-viability-analyst** — interpreting tool output, classifying findings,
-  estimating effort, writing the viability report and staged plan (the assess stage,
-  and any time the user asks "is this worth porting / how hard is it").
+- **drupal-viability-analyst** — running `assess.sh` (which computes the verdict
+  and renders the viability report), narrating `assess.json` and writing the staged
+  plan (the assess stage, and any time the user asks "is this worth porting / how
+  hard is it").
 - **drupal-test-engineer** — anything PHPUnit/DDEV/Selenium: discovery, adaptation,
   running to green, coverage (the test stage, and during Phase 2 refactor).
 - **drupal-contrib-publisher** — anything git/GitLab/Drupal.org: prerequisites, issue
@@ -440,11 +509,12 @@ state/caching, and presenting verdicts and next steps.
 
 ## State, caching and long work
 
-- Cache assess results in the per-project state dir so `/drupilot-status` and later
-  stages do not recompute. Read prior state before re-running an expensive stage.
+- `assess.sh` caches the assessment (`assess.json`) in the per-project state dir so
+  `/drupilot-status` and later stages do not recompute. Read prior state before
+  re-running an expensive stage.
 - Heavy operations (DDEV/Composer install, full test suite, Rector on large modules)
-  may run in the background and notify on completion; do not block the session.
-  Show readable progress.
+  take a while: run them in the foreground with their time limits, and show readable
+  progress (a background job would be stopped when a headless run ends).
 
 ## Definition of done for a subject
 

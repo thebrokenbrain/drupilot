@@ -52,7 +52,12 @@
 #                   fallback, location: subject|drupal-root|origin|
 #                   outside-root|null,
 #                   fallback_reason, test_version, test_version_source:
-#                   explicit|ruleset-config|ruleset-property|php-target}.
+#                   explicit|ruleset-config|ruleset-property|php-target,
+#                   runner: {runner: ddev|host, php_version, tool_version}};
+#                   the report is sorted (files by path, their messages by
+#                   line, column and source: DET-2). A DET-1 refusal (exit
+#                   3) prints {totals: null, files: {}, drupilot: {error,
+#                   runner}}.
 #   --ruleset R     auto (default, DRUPILOT_PHPCS_RULESET): the project ruleset
 #                   when found, else Drupal,DrupalPractice. drupilot: always
 #                   Drupal,DrupalPractice (the pre-0.9 behavior). PATH: that
@@ -69,8 +74,13 @@
 #
 # Gate: `analyze` profile (git + jq + composer/php).
 # Output: status/logging on STDERR; phpcs/phpcbf reports (or JSON) on STDOUT.
+# Determinism (DET-1): with DRUPILOT_DETERMINISTIC on, PHPCS never falls back to
+# the host for a root that has a DDEV project, nor runs a drupal/coder other
+# than the version the lock pins: exit 3.
+#
 # Exit codes: PHPCS's own (0 clean, non-zero violations or a PHPCS error) ·
-# 1 usage · 2 requirements/toolchain missing.
+# 1 usage · 2 requirements/toolchain missing · 3 also a DET-1 violation (an
+# unplanned host run, a coder version the lock does not pin).
 # =============================================================================
 set -euo pipefail
 
@@ -141,6 +151,17 @@ cd "$DRUPAL_ROOT"
 ddev_ensure_running_or_host "$DRUPAL_ROOT" phpcs \
   || die "Could not start the DDEV project at $DRUPAL_ROOT, and there is no host vendor/bin/phpcs to fall back to." 1
 RUNNER="$(drupal_runner "$DRUPAL_ROOT")"
+# DET-1: in deterministic mode PHPCS runs where the plan put it, at the coder
+# version the lock pins.
+_det1="$(DET1_RUNNER="$RUNNER" det1_message "$DRUPAL_ROOT" PHPCS drupal/coder)"
+if [[ -n "$_det1" ]]; then
+  # The documented exit-3 shape on STDOUT for a --json caller, never empty.
+  if [[ "$AS_JSON" == "1" ]] && have_cmd jq; then
+    jq -n -c --arg m "$_det1" --argjson prov "$(tool_provenance "$DRUPAL_ROOT" "$RUNNER" drupal/coder)" \
+      '{totals: null, files: {}, drupilot: {error: $m, runner: $prov}}'
+  fi
+  die "$_det1" 3
+fi
 
 log_info "Drupal root : $DRUPAL_ROOT"
 log_info "Subject     : $SUBJECT_REL"
@@ -164,12 +185,12 @@ fi
 # paths ourselves (PROMPT 1.4) and re-verify. Idempotent: a no-op when present.
 declare -a ICMD=()
 [[ -n "$RUNNER" ]] && read -r -a ICMD <<<"$RUNNER"
-if ! ${ICMD[@]+"${ICMD[@]}"} vendor/bin/phpcs -i 2>/dev/null | grep -qi 'DrupalPractice'; then
+if ! ${ICMD[@]+"${ICMD[@]}"} vendor/bin/phpcs -i 2>/dev/null | grep_q -i 'DrupalPractice'; then
   log_warn "Drupal/DrupalPractice standards not registered yet — registering them now (idempotent)."
   ${ICMD[@]+"${ICMD[@]}"} vendor/bin/phpcs --config-set installed_paths \
     vendor/drupal/coder/coder_sniffer,vendor/sirbrillig/phpcs-variable-analysis,vendor/slevomat/coding-standard \
     >/dev/null 2>&1 || true
-  if ${ICMD[@]+"${ICMD[@]}"} vendor/bin/phpcs -i 2>/dev/null | grep -qi 'DrupalPractice'; then
+  if ${ICMD[@]+"${ICMD[@]}"} vendor/bin/phpcs -i 2>/dev/null | grep_q -i 'DrupalPractice'; then
     log_ok "Registered the Drupal/DrupalPractice standards."
   else
     log_warn "Could not auto-register the Drupal standards. Ensure drupal/coder is installed and its phpcodesniffer-composer-installer plugin was allowed (composer config allow-plugins)."
@@ -269,7 +290,7 @@ if [[ -n "$RS_FILE" && -z "$RS_REASON" ]]; then
     # The first line naming the problem, else PHPCS's last line. No match is
     # not an error: under pipefail a bare grep here would abort the script
     # (exit 1) before the explicit-ruleset refusal (exit 2) or the fallback.
-    _why="$(printf '%s\n' "$_probe" | grep -m 1 -E 'ERROR|does not exist|not installed' || true)"
+    _why="$(printf '%s\n' "$_probe" | grep -E 'ERROR|does not exist|not installed' | sed -n '1p' || true)"
     [[ -n "$_why" ]] || _why="$(printf '%s\n' "$_probe" | grep -v '^[[:space:]]*$' | tail -n 1 || true)"
     RS_REASON="PHPCS cannot load it (exit $_prc): $(printf '%s' "$_why" | cut -c1-200)"
     RS_REASON="${RS_REASON%: }"; RS_REASON="${RS_REASON%.}"
@@ -403,10 +424,17 @@ if [[ "$AS_JSON" == "1" ]]; then
   OUT="$(run_tool phpcs --report=json 2>/dev/null)"
   RC=$?
   set -e
-  # Add the ruleset resolution as one extra top-level key (existing consumers
-  # read .totals/.files, untouched); non-JSON output is relayed as is.
-  if [[ -n "$OUT" && -n "$RS_INFO" ]] && printf '%s' "$OUT" | jq -e 'type == "object"' >/dev/null 2>&1; then
-    printf '%s' "$OUT" | jq -c --argjson d "$RS_INFO" '. + {drupilot: ($d | del(.cksum, .at))}'
+  # Add the ruleset resolution and the runner as one extra top-level key
+  # (existing consumers read .totals/.files, untouched) and sort the report
+  # (DET-2: files by path, their messages by line, column and source);
+  # non-JSON output is relayed as is.
+  if [[ -n "$OUT" ]] && printf '%s' "$OUT" | jq -e 'type == "object"' >/dev/null 2>&1; then
+    _rs="${RS_INFO:-}"; [[ -n "$_rs" ]] || _rs='{}'
+    printf '%s' "$OUT" | jq -c --argjson d "$_rs" --argjson prov "$(tool_provenance "$DRUPAL_ROOT" "$RUNNER" drupal/coder)" \
+      '. + {drupilot: (($d | del(.cksum, .at)) + {runner: $prov})}
+       | (if (.files | type) == "object" then .files |= (to_entries | sort_by(.key)
+           | map(if (.value.messages | type) == "array" then .value.messages |= sort_by([(.line // 0), (.column // 0), (.source // ""), (.message // "")]) else . end)
+           | from_entries) else . end)'
   elif [[ -n "$OUT" ]]; then
     printf '%s\n' "$OUT"
   fi
@@ -421,7 +449,7 @@ fi
 
 # A ruleset bug surfaces as a processing error, not as a violation: say so
 # instead of letting it read like a coding-standard finding.
-if printf '%s' "${PHPCS_TEXT:-}" | grep -qE 'An error occurred during processing|trim\(\): Passing null'; then
+if printf '%s' "${PHPCS_TEXT:-}" | grep_q -E 'An error occurred during processing|trim\(\): Passing null'; then
   log_warn "PHPCS reported a processing error (not a coding-standard violation). With PHPCompatibility this usually means testVersion is unset or malformed: pass --test-version X- (or set DRUPILOT_PHPCS_TEST_VERSION), or fix the ruleset."
 fi
 

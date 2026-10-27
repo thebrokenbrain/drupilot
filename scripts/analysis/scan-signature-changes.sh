@@ -92,7 +92,7 @@ SUBJECT_LOGICAL="$(cd "$SUBJECT" 2>/dev/null && pwd || true)"
 [[ -n "$SUBJECT_LOGICAL" && -d "$SUBJECT_LOGICAL" ]] || die "Subject directory not found: '$SUBJECT'." 1
 SUBJECT_ABS="$(cd "$SUBJECT" 2>/dev/null && pwd -P || true)"
 [[ -n "$SUBJECT_ABS" ]] || SUBJECT_ABS="$SUBJECT_LOGICAL"
-if [[ -n "$FLOOR_OPT" ]] && ! printf '%s' "$FLOOR_OPT" | grep -qE '^[0-9]+(\.[0-9]+)?$'; then
+if [[ -n "$FLOOR_OPT" ]] && ! printf '%s' "$FLOOR_OPT" | grep_q -E '^[0-9]+(\.[0-9]+)?$'; then
   die "--core-floor must be MAJOR.MINOR (e.g. 10.3), got '$FLOOR_OPT'." 1
 fi
 have_cmd jq || die "jq is required for scan-signature-changes.sh." 1

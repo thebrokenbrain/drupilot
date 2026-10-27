@@ -1,0 +1,217 @@
+[
+  {
+    "file": "Widgets.php",
+    "line": 5,
+    "anchor": "{file}"
+  },
+  {
+    "file": "Widgets.php",
+    "line": 8,
+    "anchor": "Drupal\\anchor_fx\\Form\\Widgets"
+  },
+  {
+    "file": "Widgets.php",
+    "line": 11,
+    "anchor": "Drupal\\anchor_fx\\Form\\Widgets"
+  },
+  {
+    "file": "Widgets.php",
+    "line": 14,
+    "anchor": "Drupal\\anchor_fx\\Form\\Widgets"
+  },
+  {
+    "file": "Widgets.php",
+    "line": 17,
+    "anchor": "Drupal\\anchor_fx\\Form\\Widgets::buildForm"
+  },
+  {
+    "file": "Widgets.php",
+    "line": 21,
+    "anchor": "Drupal\\anchor_fx\\Form\\Widgets::buildForm"
+  },
+  {
+    "file": "Widgets.php",
+    "line": 23,
+    "anchor": "Drupal\\anchor_fx\\Form\\Widgets::buildForm"
+  },
+  {
+    "file": "Widgets.php",
+    "line": 26,
+    "anchor": "Drupal\\anchor_fx\\Form\\Widgets::buildForm"
+  },
+  {
+    "file": "Widgets.php",
+    "line": 29,
+    "anchor": "Drupal\\anchor_fx\\Form\\Widgets::buildForm"
+  },
+  {
+    "file": "Widgets.php",
+    "line": 31,
+    "anchor": "Drupal\\anchor_fx\\Form\\Widgets::buildForm"
+  },
+  {
+    "file": "Widgets.php",
+    "line": 33,
+    "anchor": "Drupal\\anchor_fx\\Form\\Widgets::buildForm"
+  },
+  {
+    "file": "Widgets.php",
+    "line": 36,
+    "anchor": "Drupal\\anchor_fx\\Form\\Widgets::create"
+  },
+  {
+    "file": "Widgets.php",
+    "line": 38,
+    "anchor": "Drupal\\anchor_fx\\Form\\Widgets::create"
+  },
+  {
+    "file": "Widgets.php",
+    "line": 40,
+    "anchor": "Drupal\\anchor_fx\\Form\\Widgets"
+  },
+  {
+    "file": "Widgets.php",
+    "line": 99,
+    "anchor": "{file}"
+  },
+  {
+    "file": "Kinds.php",
+    "line": 7,
+    "anchor": "Drupal\\anchor_fx\\Counter::count"
+  },
+  {
+    "file": "Kinds.php",
+    "line": 14,
+    "anchor": "Drupal\\anchor_fx\\Logs::log"
+  },
+  {
+    "file": "Kinds.php",
+    "line": 21,
+    "anchor": "Drupal\\anchor_fx\\Suit"
+  },
+  {
+    "file": "Kinds.php",
+    "line": 25,
+    "anchor": "Drupal\\anchor_fx\\Suit::label"
+  },
+  {
+    "file": "Kinds.php",
+    "line": 33,
+    "anchor": "Drupal\\anchor_fx\\Base::run"
+  },
+  {
+    "file": "Kinds.php",
+    "line": 34,
+    "anchor": "Drupal\\anchor_fx\\Base"
+  },
+  {
+    "file": "Kinds.php",
+    "line": 36,
+    "anchor": "Drupal\\anchor_fx\\Base::go"
+  },
+  {
+    "file": "anchor_fx.module",
+    "line": 8,
+    "anchor": "{file}"
+  },
+  {
+    "file": "anchor_fx.module",
+    "line": 11,
+    "anchor": "{file}"
+  },
+  {
+    "file": "anchor_fx.module",
+    "line": 15,
+    "anchor": "anchor_fx_entity_operation"
+  },
+  {
+    "file": "anchor_fx.module",
+    "line": 18,
+    "anchor": "anchor_fx_entity_operation"
+  },
+  {
+    "file": "anchor_fx.module",
+    "line": 20,
+    "anchor": "anchor_fx_entity_operation"
+  },
+  {
+    "file": "anchor_fx.module",
+    "line": 25,
+    "anchor": "_anchor_fx_helper"
+  },
+  {
+    "file": "braced.php",
+    "line": 5,
+    "anchor": "First\\one"
+  },
+  {
+    "file": "braced.php",
+    "line": 11,
+    "anchor": "two"
+  },
+  {
+    "file": "braced.php",
+    "line": 14,
+    "anchor": "Plain::m"
+  },
+  {
+    "file": "missing.php",
+    "line": 3,
+    "anchor": "{file}"
+  },
+  {
+    "file": "Widgets.php",
+    "line": 0,
+    "anchor": "{file}"
+  },
+  {
+    "file": "Edge.php",
+    "line": 7,
+    "anchor": "Drupal\\anchor_fx\\Routing\\Router"
+  },
+  {
+    "file": "Edge.php",
+    "line": 10,
+    "anchor": "Drupal\\anchor_fx\\Routing\\Router::match"
+  },
+  {
+    "file": "Edge.php",
+    "line": 14,
+    "anchor": "Drupal\\anchor_fx\\Routing\\Router::match"
+  },
+  {
+    "file": "Edge.php",
+    "line": 20,
+    "anchor": "Drupal\\anchor_fx\\Routing\\Router::match"
+  },
+  {
+    "file": "Edge.php",
+    "line": 27,
+    "anchor": "Drupal\\anchor_fx\\Routing\\Router::list"
+  },
+  {
+    "file": "Edge.php",
+    "line": 34,
+    "anchor": "Drupal\\anchor_fx\\Routing\\After::run"
+  },
+  {
+    "file": "anchor_fx.install",
+    "line": 4,
+    "anchor": "{file}"
+  },
+  {
+    "file": "anchor_fx.install",
+    "line": 9,
+    "anchor": "anchor_fx_install"
+  },
+  {
+    "file": "anchor_fx.install",
+    "line": 12,
+    "anchor": "anchor_fx_install"
+  },
+  {
+    "file": "Broken.php",
+    "line": 4,
+    "anchor": "ok"
+  }
+]

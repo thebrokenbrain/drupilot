@@ -100,7 +100,7 @@
 # JSON (STDOUT; also persisted to <state_dir>/core-matrix.json unless --dry-run,
 # and its verdict carried into the subject's state.json):
 #   {tool, subject, machine_name, drupal_root, core_version_requirement, level,
-#    container_php, subject_digest, generated_at, dry_run,
+#    container_php, subject_digest, digest_algo, generated_at, dry_run,
 #    legs:[{core, role: baseline|reference, source: testbed|reference,
 #           constraint, version, php_floor, status: pass|fail|skipped|error,
 #           reason, phpstan:{status, errors, leg_only, incompatible,
@@ -573,7 +573,8 @@ run_phpstan() {
   set -e
   json="$(sed -n '/^{/,$p' "$raw")"
   if [[ -n "$json" ]] && printf '%s' "$json" | jq -e 'type == "object" and has("totals")' >/dev/null 2>&1; then
-    if printf '%s' "$json" | jq -e '[.errors[]? | select(type == "string" and test("Internal error"; "i"))] | length > 0' >/dev/null 2>&1; then status="crashed"
+    if printf '%s' "$json" | jq -e --arg re "$(phpstan_crash_ere)" '[.errors[]? | select(type == "string" and test($re; "i"))] | length > 0' >/dev/null 2>&1 \
+       || grep_q -iE -- "$(phpstan_crash_ere)" "$err"; then status="crashed"
     elif [[ "$rc" -eq 0 ]]; then status="clean"
     elif [[ "$rc" -eq 1 ]]; then status="findings"
     else status="crashed"; fi
@@ -601,7 +602,7 @@ find . \( -name .git -o -name vendor -o -name node_modules \) -prune -o -type f 
   \( -name '*.php' -o -name '*.module' -o -name '*.inc' -o -name '*.install' \
      -o -name '*.theme' -o -name '*.profile' -o -name '*.engine' \) -print |
 while IFS= read -r f; do
-  out="$(php -l "$f" 2>&1)" || printf '%s\t%s\n' "${f#./}" "$(printf '%s\n' "$out" | grep -v '^Errors parsing' | grep -v '^[[:space:]]*$' | head -n 1)"
+  out="$(php -l "$f" 2>&1)" || printf '%s\t%s\n' "${f#./}" "$(printf '%s\n' "$out" | grep -v '^Errors parsing' | grep -v '^[[:space:]]*$' | sed -n '1p')"
 done
 exit 0
 LINT
@@ -626,25 +627,10 @@ fi
 # lint_floor <php X.Y> -> lint JSON on that PHP via Docker. Called in a command
 # substitution, so the per-PHP cache is a file, not a variable.
 lint_floor() {
-  local php="$1" image="php:$1-cli" cache="$TMP/lint-floor-$1.json"
+  local php="$1" cache="$TMP/lint-floor-$1.json" res st
   [[ -s "$cache" ]] && { cat "$cache"; return 0; }
-  local res st="ran"
-  : > "$TMP/lint-$php.tsv"
-  if ! docker image inspect "$image" </dev/null >/dev/null 2>&1; then
-    log_info "Pulling $image for the PHP $php lint (once)."
-    run_with_timeout 300 docker pull -q "$image" </dev/null >/dev/null 2>&1 || st="skipped"
-  fi
-  if [[ "$st" == "ran" ]]; then
-    cp "$MATRIX_DIR/lint.sh" "$TMP/.drupilot-lint.sh"
-    # The tree is streamed in (no bind mount: nothing on the host is relabelled
-    # or written).
-    if ! ( cd "$SUBJECT_PHYS" && tar -cf - --exclude=.git --exclude=vendor --exclude=node_modules . -C "$TMP" .drupilot-lint.sh ) \
-         | run_with_timeout 300 docker run --rm -i --network none "$image" \
-             sh -c 'mkdir -p /s && cd /s && tar -xf - && sh ./.drupilot-lint.sh .' > "$TMP/lint-$php.tsv" 2>/dev/null; then
-      st="error"
-    fi
-  fi
-  res="$(lint_json "$php" "docker $image" "$st" "$TMP/lint-$php.tsv")"
+  st="$(php_lint_docker "$php" "$SUBJECT_PHYS" "$MATRIX_DIR/lint.sh" "$TMP/lint-$php.tsv")"
+  res="$(lint_json "$php" "docker $(php_cli_image "$php")" "$st" "$TMP/lint-$php.tsv")"
   [[ "$st" == "skipped" ]] && res="$(printf '%s' "$res" | jq -c '. + {reason: "the PHP image could not be pulled (network unavailable?)"}')"
   printf '%s' "$res" > "$cache"
   printf '%s' "$res"
@@ -894,7 +880,7 @@ D10_SUPPORT="$(printf '%s' "$LEGS_JSON" | jq -r '
     else "declared-not-verified" end')"
 # A Drupal 10 leg that only exists as the test-bed baseline is not a declared
 # leg: the declared requirement decides.
-if [[ "$D10_SUPPORT" == "n/a" ]] && printf '%s' "$CORE_REQ" | grep -qE '(^|[^0-9])10([^0-9.]|\.|$)'; then
+if [[ "$D10_SUPPORT" == "n/a" ]] && printf '%s' "$CORE_REQ" | grep_q -E '(^|[^0-9])10([^0-9.]|\.|$)'; then
   D10_SUPPORT="declared-not-verified"
 fi
 # The declared Drupal 10 FLOOR (^10 -> 10.0, ^10.3 -> 10.3). A '^10' leg
@@ -902,7 +888,7 @@ fi
 # added in 10.1-10.x passes there and still fatals on 10.0. verified-static is
 # kept for a run that checked the floor minor itself; otherwise the verdict is
 # verified-static-above-floor and names what was (not) checked.
-D10_FLOOR="$(core_verify_legs "$CORE_REQ" | awk -F. '$1 == "10" { print ($2 == "" ? "10.0" : $0); exit }')"
+D10_FLOOR="$(core_verify_legs "$CORE_REQ" | awk -F. '!d && $1 == "10" { print ($2 == "" ? "10.0" : $0); d = 1 }')"
 D10_CHECKED="$(printf '%s' "$LEGS_JSON" | jq -c '[.[] | select(.core | test("^10(\\.|$)")) | select(.status == "pass") | (.version // .core)]')"
 D10_FLOOR_CHECKED="null"
 if [[ -n "$D10_FLOOR" ]]; then
@@ -920,14 +906,14 @@ VERDICT="$(printf '%s' "$LEGS_JSON" | jq -r '
 DIGEST="$(subject_digest "$SUBJECT_ABS")"
 
 OUT="$(jq -n --arg s "$SUBJECT_ABS" --arg n "$NAME" --arg r "$ROOT" --arg req "$CORE_REQ" \
-  --arg lvl "$LEVEL" --arg php "$CONTAINER_PHP" --arg dg "$DIGEST" \
+  --arg lvl "$LEVEL" --arg php "$CONTAINER_PHP" --arg dg "$DIGEST" --argjson da "$(subject_digest_algo)" \
   --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson legs "$LEGS_JSON" \
   --arg d10 "$D10_SUPPORT" --arg v "$VERDICT" --argjson notes "$NOTES_JSON" \
   --arg d10f "$D10_FLOOR" --argjson d10c "$D10_CHECKED" --argjson d10fc "$D10_FLOOR_CHECKED" \
   --argjson tests "$([[ "$EXCLUDE_TESTS" == 1 ]] && echo false || echo true)" \
   '{tool: "verify-core-matrix", subject: $s, machine_name: $n, drupal_root: $r,
     core_version_requirement: ($req | select(. != "") // null), level: $lvl,
-    container_php: $php, subject_digest: $dg, generated_at: $at, dry_run: false,
+    container_php: $php, subject_digest: $dg, digest_algo: $da, generated_at: $at, dry_run: false,
     legs: $legs, d10_support: $d10,
     d10_floor: ($d10f | select(. != "") // null), d10_checked: $d10c, d10_floor_checked: $d10fc,
     verdict: $v, tests_analysed: $tests, notes: $notes}')"

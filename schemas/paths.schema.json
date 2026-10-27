@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thebrokenbrain.github.io/drupilot/schemas/paths.schema.json",
+  "title": "drupilot upgrade paths (config/paths/eras.json, config/paths/graph.json)",
+  "description": "eras.json holds the fingerprint of each source era (the signals source detection reads); graph.json holds the hop graph: one edge per era transition, saying what to run (rule sets, detectors, test conversions), never where (every hop runs in the target workspace). S = T is valid and has no edge. One schema for both files: each carries its own top-level key.",
+  "type": "object",
+  "required": ["schema_version", "as_of"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": 1},
+    "as_of": {"$ref": "#/$defs/date"},
+    "eras": {
+      "type": "object",
+      "propertyNames": {"type": "string", "pattern": "^[0-9]+$"},
+      "additionalProperties": {"$ref": "#/$defs/era"}
+    },
+    "edges": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/edge"}},
+    "forbidden": {"type": "array", "items": {"$ref": "#/$defs/forbidden"}}
+  },
+  "$defs": {
+    "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "signal": {
+      "type": "object",
+      "required": ["id", "kind", "match", "src", "verified"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+        "kind": {"description": "info: an .info/.info.yml key; test-api: a test class or call; symbols: removed API symbols, read from the catalog named in match.", "enum": ["info", "test-api", "symbols"]},
+        "match": {"description": "What to look for: a key: value pair, a POSIX ERE prefixed ere:, or a catalog path prefixed catalog:.", "type": "string", "minLength": 1},
+        "removed_in": {"description": "The core minor that removed the API (a hit means the code predates it).", "type": ["string", "null"], "pattern": "^[0-9]+\\.[0-9]+$"},
+        "src": {"type": "string", "minLength": 1},
+        "verified": {"type": "boolean"},
+        "note": {"type": "string"}
+      }
+    },
+    "era": {
+      "type": "object",
+      "required": ["track", "signals"],
+      "additionalProperties": false,
+      "properties": {
+        "track": {"enum": ["standard", "d7-assisted"]},
+        "signals": {"type": "array", "items": {"$ref": "#/$defs/signal"}},
+        "note": {"type": "string"}
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["id", "from", "to", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^[0-9]+-[0-9]+$"},
+        "from": {"type": "integer", "minimum": 7},
+        "to": {"type": "integer", "minimum": 8},
+        "kind": {"enum": ["rector", "rewrite"]},
+        "track": {"enum": ["standard", "d7-assisted"]},
+        "experimental": {"type": "boolean"},
+        "auto_allowed": {"type": "boolean"},
+        "stages": {"type": "array", "items": {"type": "string"}},
+        "set_family": {"type": "string", "pattern": "^Drupal[0-9]+SetList$"},
+        "set_select": {"type": "string"},
+        "requires_reference_scan": {"description": "Whether the hop needs an old-core reference scan path; decided-by-spike until AR-39 runs.", "enum": [true, false, "decided-by-spike"]},
+        "breaking_sets": {"type": "string"},
+        "always_sets": {"type": "array", "items": {"type": "string", "pattern": "^Drupal[0-9]+SetList::DRUPAL_[0-9]+$"}},
+        "detectors": {"type": "array", "items": {"type": "string"}},
+        "test_conversions": {"type": "array", "items": {"type": "string"}},
+        "note": {"type": "string"}
+      }
+    },
+    "forbidden": {
+      "type": "object",
+      "required": ["from", "to", "reason", "route"],
+      "additionalProperties": false,
+      "properties": {
+        "from": {"type": "integer"},
+        "to": {"type": "integer"},
+        "reason": {"type": "string", "minLength": 1},
+        "route": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[0-9]+-[0-9]+$"}}
+      }
+    }
+  }
+}

@@ -116,7 +116,7 @@ done
 
 # installed_by <needle> -> true/false: an active hook mentions <needle>.
 installed_by() {
-  if printf '%s' "$ACTIVE_TEXT" | grep -qi -- "$1"; then printf 'true'; else printf 'false'; fi
+  if printf '%s' "$ACTIVE_TEXT" | grep_q -i -- "$1"; then printf 'true'; else printf 'false'; fi
   return 0
 }
 
@@ -224,7 +224,7 @@ if [[ -f "$REPO/captainhook.json" ]]; then
 fi
 
 # --- A plain hook script no manager above installed ---------------------------------
-if [[ -n "$ACTIVE" ]] && ! printf '%s' "$ACTIVE_TEXT" | grep -qiE 'grumphp|husky|lefthook|pre-commit\.com|pre_commit|captainhook' \
+if [[ -n "$ACTIVE" ]] && ! printf '%s' "$ACTIVE_TEXT" | grep_q -iE 'grumphp|husky|lefthook|pre-commit\.com|pre_commit|captainhook' \
    && [[ "$HOOKS_PATH_CFG" != *.husky* ]]; then
   : > "$TMP/script.tsv"
   for _h in $ACTIVE; do

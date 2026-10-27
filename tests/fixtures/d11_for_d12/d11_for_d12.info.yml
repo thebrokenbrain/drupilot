@@ -1,0 +1,8 @@
+name: 'D11 for D12'
+type: module
+description: 'Synthetic Drupal 11 fixture that meets the Drupal 12 removals and test changes.'
+package: 'drupilot fixtures'
+core_version_requirement: ^11
+dependencies:
+  - drupal:node
+  - drupal:contact

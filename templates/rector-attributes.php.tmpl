@@ -22,10 +22,10 @@
  *     999.0.0 to keep it next to the attribute (BC: older cores keep reading the
  *     annotation; newer ones prefer the attribute).
  *
- * Names are printed fully qualified (no withImportNames()): the 0.21.x rule
- * detects an existing attribute by comparing its name with the FQCN, so a
- * short, imported attribute would be added a second time on a re-run. Files
- * that already carry such an attribute are listed under withSkip() below.
+ * Names are printed fully qualified (no withImportNames()). The rule takes any
+ * attribute with the converted type's short name for the converted one, so
+ * files that already carry a short, imported attribute of that name are listed
+ * under withSkip() below.
  */
 
 declare(strict_types=1);

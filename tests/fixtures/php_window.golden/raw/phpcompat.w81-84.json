@@ -1,0 +1,48 @@
+{
+  "alpha": true,
+  "counts": {
+    "covered": 1,
+    "deprecated": 0,
+    "floor": 1,
+    "removed": 0
+  },
+  "fallback": null,
+  "findings": [
+    {
+      "covered": false,
+      "file": "php_window.module",
+      "kind": "floor",
+      "line": 21,
+      "message": "The function array_find() is not present in PHP version 8.3 or earlier",
+      "rule": null,
+      "source": "PHPCompatibility.FunctionUse.NewFunctions.array_findFound",
+      "type": "ERROR"
+    },
+    {
+      "covered": true,
+      "file": "src/Connection.php",
+      "kind": "deprecated",
+      "line": 20,
+      "message": "Implicitly marking a parameter as nullable is deprecated since PHP 8.4. Update the type to be explicitly nullable instead. Found implicitly nullable parameter: $prefix.",
+      "rule": "p84-implicit-nullable",
+      "source": "PHPCompatibility.FunctionDeclarations.RemovedImplicitlyNullableParam.Deprecated",
+      "type": "WARNING"
+    }
+  ],
+  "reason": null,
+  "standards": [
+    "PHPCompatibility"
+  ],
+  "status": "ok",
+  "test_version": "8.1-8.4",
+  "tool": "phpcompat",
+  "versions": {
+    "dealerdirect/phpcodesniffer-composer-installer": "v1.2.1",
+    "phpcompatibility/php-compatibility": "10.0.0-alpha2",
+    "phpcompatibility/phpcompatibility-paragonie": "2.0.0-alpha2",
+    "phpcompatibility/phpcompatibility-passwordcompat": "2.0.0-alpha1",
+    "phpcompatibility/phpcompatibility-symfony": "2.0.0-alpha3",
+    "phpcsstandards/phpcsutils": "1.2.3",
+    "squizlabs/php_codesniffer": "4.0.4"
+  }
+}

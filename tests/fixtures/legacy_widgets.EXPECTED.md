@@ -1,9 +1,15 @@
 # legacy_widgets fixture: planted hazards and expected post-port results
 
 Fixture: `tests/fixtures/legacy_widgets` (stored as a plain directory; `scripts/dev/smoke.sh` copies it to a temp dir and commits it there as "Initial legacy_widgets fixture (Drupal 10.3)", so the diff-aware checks have a clean git baseline).
-Pre-port status: valid Drupal 10.3 code (`core_version_requirement: ^10`), `php -l` clean on all PHP files,
+Pre-port status: Drupal 10.3 code (`core_version_requirement: ^10`), `php -l` clean on all PHP files,
 `phpcs.xml.dist` is well-formed XML, YAML/JSON parse. Tests: 1 Unit (4 data sets) + 1 Kernel class (5 tests),
 expected green on D10.3. Submodule `legacy_widgets_extra` is NOT enabled by the tests.
+One class does not load on any core: `src/Form/WidgetImportForm.php` promotes `private readonly
+LoggerChannelFactoryInterface $loggerFactory`, which redeclares the untyped `protected $loggerFactory` that
+`FormBase` gets from `LoggerChannelTrait` (verified in 10.3.0 and 11.4.8), so PHP stops with a fatal error when the
+class loads (opening its route form). `php -l` does not check inheritance and no test loads the form, so the suite
+stays green. It is kept on purpose as part of H12: the v0.9.0 baseline and the `legacy_widgets` golden were captured
+with it, and the H12 fix removes it.
 
 Core facts verified against git.drupalcode.org (10.3.x .. 11.x):
 - `ContentEntityStorageBase::buildRevisionCacheId($id): string` exists only from 11.3.x (absent in 10.3-10.5, 11.0-11.2).
@@ -27,7 +33,7 @@ Paths below are relative to `tests/fixtures/legacy_widgets/`.
 | H9 | Form `#validate` `['::validateForm', [$this, 'validateIntro']]` | src/Form/SettingsForm.php:126 | 2.2 | Unchanged. Post-check finds no `(...)` under `#ajax/#submit/#validate/#element_validate/#process/...` keys. |
 | H10 | ConfigFormBase subclass with custom pre-TypedConfigManager constructor (`parent::__construct($config_factory)`) | src/Form/SettingsForm.php:31-34 (call at :32), create at :39-44 | 2.6 | Constructor takes and forwards `TypedConfigManagerInterface $typed_config_manager` (`parent::__construct($config_factory, $typed_config_manager)`); `create()` passes `$container->get('config.typed')`. Works on 10.3 and 11.x. Signature-catalog detector flags it pre-port. |
 | H11 | Promotion candidate: classic `protected $state` + constructor assignment in a serializable form | src/Form/SettingsForm.php:21 | 2.5 | If promoted, must stay `protected` and NOT `readonly` (DependencySerializationTrait restores it in `__wakeup`). Preferred in Phase 1: unchanged. |
-| H12 | FormBase subclass with `private readonly` promoted properties (serialization hazard: parent-scope `__sleep` cannot see private child props; `__wakeup` cannot reinit readonly) | src/Form/WidgetImportForm.php:20-21 | 2.5 | Flagged by the serialization check (category "serialization"). Correct fix: `protected` non-readonly (e.g. `protected EntityTypeManagerInterface $entityTypeManager`). Phase 1 at least reports it. |
+| H12 | FormBase subclass with `private readonly` promoted properties (serialization hazard: parent-scope `__sleep` cannot see private child props; `__wakeup` cannot reinit readonly) | src/Form/WidgetImportForm.php:20-21 | 2.5 | Flagged by the serialization check (category "serialization"). Correct fix: `protected` non-readonly (e.g. `protected EntityTypeManagerInterface $entityTypeManager`). `$loggerFactory` instead must not be redeclared: it is `FormBase`'s untyped `protected` property, so a typed redeclaration is fatal too ("Type of ... must not be defined"); assign the inherited one from a plain constructor argument. Phase 1 at least reports it. |
 | H13 | `trim($form_state->getValue('labels'))` (mixed arg) - NullToStrictStringFuncCallArgRector candidate | src/Form/WidgetImportForm.php:64 | 2.4 | No semantic `(string)` cast that breaks the project's own PHPStan; if added it must be justified/recorded, not done silently to silence the sandbox. |
 | H14 | Content entity storage defines `buildRevisionCacheId($id): string` - a local helper on D10 that becomes an override on 11.3+ | src/LegacyWidgetStorage.php:24 | 2.3, 2.6 | NO `#[\Override]` added while `^10` is still declared (PHP 8.3 fatals on D10 where no parent method exists). Reported as "becomes an override of core in 11.3+". |
 | H15 | Entity defines untyped `getOriginal()` - fatal "declaration must be compatible" on 11.2+ (`getOriginal(): ?static`) | src/Entity/LegacyWidget.php:57; caller modules/legacy_widgets_extra/legacy_widgets_extra.module:15 | 2.6 | For `^10 \|\| ^11`: helper renamed (e.g. `getOriginalWidget()`) and the submodule caller updated; or, only if the floor becomes ^11.2, method removed in favour of core. Signature catalog flags it pre-port. Leaving it untouched = fatal on 11.2+ (kernel tests red on such a test-bed). |

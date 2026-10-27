@@ -57,11 +57,11 @@ D10 + PHP&lt;target site is blocked at install instead of fataling at runtime.
 
 | Category | Count |
 |---|---|
-| Auto-fixable by Rector (official) | {{RECTOR_AUTOFIX_COUNT}} |
+| Files Rector changes (official and compat passes) | {{RECTOR_AUTOFIX_COUNT}} |
 | Auto-fixable by digests (complementary, AI-generated) | {{DIGESTS_AUTOFIX_COUNT}} |
 | Manual changes required | {{MANUAL_COUNT}} |
 | PHPStan deprecation findings (level {{PHPSTAN_LEVEL}}) | {{PHPSTAN_COUNT}} |
-| — hard (removed on Drupal 11: must fix, counted in the verdict) | {{DEPRECATIONS_HARD_COUNT}} |
+| — hard (removed in the target major: must fix; manual unless a Drupal Rector rule changes the same function) | {{DEPRECATIONS_HARD_COUNT}} |
 | — soft (still work on every Drupal 11 core: per policy, not in the verdict) | {{DEPRECATIONS_SOFT_COUNT}} |
 | — unknown removal version (treated as hard until reviewed) | {{DEPRECATIONS_UNKNOWN_COUNT}} |
 | PHPCS violations (Drupal, DrupalPractice) | {{PHPCS_COUNT}} |
@@ -90,6 +90,17 @@ human review:
 | CKEditor 5 (CKEditor 4 removed since D10) | {{CKEDITOR5_STATUS}} | {{CKEDITOR5_NOTES}} |
 | jQuery / jQuery UI (`core/jquery.ui.*` removed/externalized) | {{JQUERY_STATUS}} | {{JQUERY_NOTES}} |
 | Symfony 7 (event subscriber signatures / typing) | {{SYMFONY7_STATUS}} | {{SYMFONY7_NOTES}} |
+
+## Core removals
+
+What the code still takes from Drupal core that the target major removes
+(`scripts/analysis/scan-removals.sh`): `decision` and `hard-break` are hard breaks,
+`blocked` a blocking dependency, `rewrite` a dependency on the contrib project that
+replaced the module, `verify` a replacement to check by hand.
+
+| Removed | Detector | Action | Where |
+|---|---|---|---|
+{{CORE_REMOVAL_ROWS}}
 
 ## `info.yml` status
 

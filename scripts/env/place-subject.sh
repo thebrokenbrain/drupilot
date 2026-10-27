@@ -102,11 +102,13 @@ if [[ -z "$SUBJECT_ABS" || ! -d "$SUBJECT_ABS" ]]; then
   _parent="$(cd "$(dirname "$SUBJECT")" 2>/dev/null && pwd || true)"
   _ws="$(config_get DRUPILOT_WORKSPACE_DIR "")"
   if [[ -n "$_parent" && -n "$_base" ]]; then
+    _sibs=()
+    while IFS= read -r _sfx; do
+      _sibs+=("$_parent/${_base}$_sfx/web/modules/custom/$_base" "$_parent/${_base}$_sfx/web/themes/custom/$_base"
+              "$_parent/${_base}$_sfx/web/profiles/custom/$_base")
+    done < <(target_workspace_suffixes)
     for _cand in "${_ws:+$_ws/web/modules/custom/$_base}" "${_ws:+$_ws/web/themes/custom/$_base}" \
-                 "${_ws:+$_ws/web/profiles/custom/$_base}" \
-                 "$_parent/${_base}-d11/web/modules/custom/$_base" \
-                 "$_parent/${_base}-d11/web/themes/custom/$_base" \
-                 "$_parent/${_base}-d11/web/profiles/custom/$_base"; do
+                 "${_ws:+$_ws/web/profiles/custom/$_base}" ${_sibs[@]+"${_sibs[@]}"}; do
       [[ -n "$_cand" ]] || continue
       if [[ -d "$_cand" ]] && is_drupal_extension_dir "$_cand"; then
         log_ok "Subject already placed at: $_cand (idempotent — the original path was relocated)."
@@ -123,7 +125,10 @@ fi
 # --- Resolve the plan (single source of truth) -----------------------------
 RESOLVER="$(plugin_root)/scripts/env/resolve-workspace.sh"
 [[ -r "$RESOLVER" ]] || die "resolve-workspace.sh not found: $RESOLVER" 1
-PLAN="$(bash "$RESOLVER" --subject "$SUBJECT_ABS" --json 2>/dev/null || true)"
+# An explicit DRUPILOT_TARGET_MAJOR names the test-bed the setup planned for.
+_rt=(); _tm="$(config_get_explicit DRUPILOT_TARGET_MAJOR)"
+[[ "$_tm" =~ ^[1-9][0-9]*$ ]] && _rt=(--target "$_tm")
+PLAN="$(bash "$RESOLVER" --subject "$SUBJECT_ABS" ${_rt[@]+"${_rt[@]}"} --json 2>/dev/null || true)"
 [[ -n "$PLAN" ]] || die "Could not resolve the workspace plan for '$SUBJECT_ABS'." 1
 
 pget() { printf '%s' "$PLAN" | jq -r "$1 // empty" 2>/dev/null; }
@@ -180,7 +185,7 @@ residue_list() {
   for n in "${COPY_EXCLUDE_TOP[@]}" node_modules; do
     [[ -e "$SUBJECT_ABS/$n" || -L "$SUBJECT_ABS/$n" ]] || continue
     if git -C "$SUBJECT_ABS" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
-       && [[ -n "$(git -C "$SUBJECT_ABS" ls-files -- "$n" 2>/dev/null | head -n1)" ]]; then
+       && [[ -n "$(git -C "$SUBJECT_ABS" ls-files -- "$n" 2>/dev/null | sed -n '1p')" ]]; then
       continue   # tracked: part of the module, not residue
     fi
     printf '%s\n' "$n"
@@ -263,13 +268,13 @@ fi
 src_tracks() {
   local src="$1" path="$2"
   git -C "$src" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
-  [[ -n "$(git -C "$src" ls-files -- "$path" 2>/dev/null | head -n1)" ]]
+  [[ -n "$(git -C "$src" ls-files -- "$path" 2>/dev/null | sed -n '1p')" ]]
 }
 copy_filtered() {
   local src="$1" dest="$2" n l e skip nm_tracked=0
   local -a keep=() excl=() tarx=()
   if git -C "$src" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
-     && git -C "$src" ls-files 2>/dev/null | grep -qE '(^|/)node_modules/'; then
+     && git -C "$src" ls-files 2>/dev/null | grep_q -E '(^|/)node_modules/'; then
     nm_tracked=1
   fi
   for n in "${COPY_EXCLUDE_TOP[@]}"; do

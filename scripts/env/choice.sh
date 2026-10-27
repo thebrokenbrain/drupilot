@@ -8,13 +8,16 @@
 # The value is read through config_get (environment > the Drupal root's
 # .drupilot.json > defaults), so the environment variable is the usual way to
 # set it. It is validated against the registry's option set (a comma-separated
-# subset for a multi-select). An invalid value, or a value for a fork that must
+# subset for a multi-select); an old value of the setting the choice persists
+# (config/migrations.json value_aliases, e.g. CORE_TARGET=keep-d10) is accepted
+# as its new name, with a warning. An invalid value, or a value for a fork that must
 # stay a human decision ('preanswer': false), is ignored with a warning on
 # STDERR and the command asks as usual.
 #
 # With --persist, a valid answer is also written to .drupilot.json through
 # prefs_set, as the tab's answer would be (e.g. CORE_TARGET ->
-# DRUPILOT_CORE_TARGET_STRATEGY). An environment variable of that setting still
+# DRUPILOT_CORE_TARGET_STRATEGY; for T=11 under its 0.9 name, keep-d10 or
+# d11-only, CC-07). An environment variable of that setting still
 # wins over the persisted value: the JSON lists it under env_override.
 #
 # Usage:
@@ -33,7 +36,8 @@
 #    set, raw, value, valid, persist: [{key, value}], persisted,
 #    env_override: [{key, value}], note}
 #   value is the validated answer (normalized: a multi-select keeps the
-#   registry's order) or null when the tab must be asked.
+#   registry's order; a CORE_TARGET answer under its 0.9 name for T=11,
+#   keep-d10 or d11-only, CC-07) or null when the tab must be asked.
 #
 # Exit code: 0 (also when the value is unset or invalid: the command then asks);
 #            1 usage error (unknown key, missing argument).
@@ -43,7 +47,7 @@ set -euo pipefail
 # shellcheck source=../lib/common.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
-KEY=""; SUBJECT=""; PERSIST=0; AS_JSON=0; LIST=0
+KEY=""; SUBJECT=""; PERSIST=0; AS_JSON=0; LIST=0; RAW_NORM=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -96,6 +100,17 @@ fi
 PREANSWER="$(jq -r '.preanswer != false' <<<"$ENTRY")"
 MULTI="$(jq -r '.multi // false' <<<"$ENTRY")"
 OPTIONS="$(jq -r '(.options // []) | join(" ")' <<<"$ENTRY")"
+PKEY="$(jq -r '.persist_key // empty' <<<"$ENTRY")"
+# An old value of the setting the choice persists (a migrations.json
+# value_aliases row, e.g. CORE_TARGET keep-d10 -> keep-previous) is accepted
+# as its new name, with a warning (CC-07); a choice that only maps its options
+# (persist_map, e.g. D10_CHECK's own d11-only) is never renamed.
+if [[ -n "$RAW" && -n "$PKEY" && "$MULTI" != "true" ]]; then
+  case " $OPTIONS " in
+    *" $RAW "*) ;;
+    *) value_alias_normalize "$PKEY" "$RAW" "$VAR"; RAW_NORM="$_DRUPILOT_VALUE_ALIAS";;
+  esac
+fi
 
 VALUE=""; VALID="false"
 if [[ -n "$RAW" ]]; then
@@ -120,16 +135,23 @@ if [[ -n "$RAW" ]]; then
     fi
   else
     case " $OPTIONS " in
-      *" $RAW "*) VALUE="$RAW"; VALID="true";;
+      *" ${RAW_NORM:-$RAW} "*) VALUE="${RAW_NORM:-$RAW}"; VALID="true";;
       *) log_warn "Ignoring $VAR='$RAW' (allowed: ${OPTIONS// /, }); the choice will be asked.";;
     esac
   fi
 fi
 
+# For T=11 a renamed value is emitted and persisted under its 0.9 name (CC-07:
+# keep-d10, d11-only), which every 0.9 reader understands.
+if [[ "$VALID" == "true" && "$PKEY" == "DRUPILOT_CORE_TARGET_STRATEGY" ]]; then
+  VALUE="$(strategy_persist_name "$VALUE" "$(DRUPILOT_PROJECT_DIR="${ROOT:-${DRUPILOT_PROJECT_DIR:-}}" resolve_target_major)")"
+fi
+
 # What a valid answer persists, and any environment variable that overrides it.
 PERSIST_PAIRS="[]"
 if [[ "$VALID" == "true" ]]; then
-  PERSIST_PAIRS="$(jq -c --arg v "$VALUE" '
+  PV="$VALUE"
+  PERSIST_PAIRS="$(jq -c --arg v "$PV" '
     if .persist_key then [{key: .persist_key, value: $v}]
     else ((.persist_map // {})[$v] // {}) | to_entries | map({key: .key, value: .value}) end' <<<"$ENTRY")"
 fi
@@ -144,7 +166,7 @@ if [[ "$n" -gt 0 ]]; then
     pk="$(jq -r --argjson i "$i" '.[$i].key' <<<"$PERSIST_PAIRS")"
     pv="$(jq -r --argjson i "$i" '.[$i].value' <<<"$PERSIST_PAIRS")"
     envv="$(printenv "$pk" 2>/dev/null || true)"
-    if [[ -n "$envv" && "$envv" != "$pv" ]]; then
+    if [[ -n "$envv" && "$(value_alias_legacy "$pk" "$envv")" != "$(value_alias_legacy "$pk" "$pv")" ]]; then
       log_warn "$pk='$envv' is set in the environment and wins over $VAR='$VALUE'."
       ENV_OVERRIDE="$(jq -c --arg k "$pk" --arg v "$envv" '. + [{key: $k, value: $v}]' <<<"$ENV_OVERRIDE")"
     fi

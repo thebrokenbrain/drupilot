@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-10-04",
+  "catalog": "example",
+  "description": "An example detector catalog: the instance schemas/catalog.schema.json is validated against until config/catalog/ holds a real one (M4).",
+  "entries": [
+    {
+      "id": "core-backbone",
+      "src": "core/core.libraries.yml: present at 9.5.11, absent at 10.0.0",
+      "verified": true,
+      "blocking": true,
+      "match": "core/backbone"
+    },
+    {
+      "id": "text-with-summary-namespace",
+      "src": "https://www.drupal.org/api-d7/node.json?nid=3223395",
+      "verified": true,
+      "verified_as": "announced",
+      "reverify_at": ["11.5.0"],
+      "blocking": false
+    }
+  ]
+}

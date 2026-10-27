@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thebrokenbrain.github.io/drupilot/schemas/preflight.schema.json",
+  "title": "drupilot preflight report",
+  "description": "The requirements report printed on STDOUT by scripts/env/preflight.sh --json (any --profile: analyze, setup, test, contribute or all; with or without --extended, --deep, --subject). It is never written to disk by the script itself: /drupilot-doctor, the SessionStart hook and every command gate read it from STDOUT. The object is built in one jq literal ({profile, php_target, ready, checks}); --extended adds exactly extended and toolchain. Every check row is emitted whatever the profile: the profile only selects the exit code.",
+  "type": "object",
+  "required": ["profile", "php_target", "ready", "checks"],
+  "additionalProperties": false,
+  "properties": {
+    "profile": {
+      "description": "The --profile the report was computed for (default all).",
+      "enum": ["analyze", "setup", "test", "contribute", "all"]
+    },
+    "php_target": {
+      "description": "The effective DRUPILOT_PHP_TARGET (resolve_php_target), e.g. \"8.3\". Not validated against a closed set.",
+      "type": "string"
+    },
+    "ready": {
+      "description": "Readiness per profile, computed from the hard requirements whatever --profile says (test always equals setup).",
+      "type": "object",
+      "required": ["analyze", "setup", "test", "contribute"],
+      "additionalProperties": false,
+      "properties": {
+        "analyze": {"type": "boolean"},
+        "setup": {"type": "boolean"},
+        "test": {"type": "boolean"},
+        "contribute": {"type": "boolean"}
+      }
+    },
+    "checks": {
+      "description": "One row per checked requirement, in a fixed order (emit_check). The ids are bash, git, jq, php, composer, docker, docker_daemon, ddev, selenium, ssh_key, pat, git_identity, drupalorg, api_helper; --extended adds the health rows xmllint, sed, phpcs_config, phpstan_config, toolchain:<package>, toolchain_combo, disk_free and origin_residue (each only when it applies).",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "detail", "category", "profiles", "kind", "present", "version", "required", "ok", "hint"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Stable row id; toolchain:<composer package> rows carry the package name.",
+            "type": "string"
+          },
+          "label": {"type": "string"},
+          "detail": {"type": "string"},
+          "category": {
+            "description": "health rows only appear with --extended and never change ready or the exit code.",
+            "enum": ["analysis", "environment", "contribution", "health"]
+          },
+          "profiles": {
+            "description": "The profiles this requirement belongs to.",
+            "type": "array",
+            "items": {"enum": ["analyze", "setup", "test", "contribute"]}
+          },
+          "kind": {
+            "description": "hard gates a profile; soft and info never do; manual cannot be verified by a program (the drupal.org account).",
+            "enum": ["hard", "soft", "manual", "info"]
+          },
+          "present": {"type": "boolean"},
+          "version": {
+            "description": "The detected version, \"unknown\" when present but unparseable, or \"\" when not applicable. Health rows put their finding here (e.g. \"valid\", \"gnu\", \"1234 MB\").",
+            "type": "string"
+          },
+          "required": {
+            "description": "The minimum (or known-good) version, or \"\".",
+            "type": "string"
+          },
+          "ok": {"type": "boolean"},
+          "hint": {
+            "description": "OS-aware install or fix hint; \"\" when none.",
+            "type": "string"
+          }
+        }
+      }
+    },
+    "extended": {
+      "description": "Present (always true) only with --extended.",
+      "const": true
+    },
+    "toolchain": {
+      "description": "Present only with --extended: the dev toolchain installed at the Drupal root (read from composer.lock) compared with config/toolchain-reference.json; null when there is no Drupal root, no composer.lock or no reference file.",
+      "type": ["object", "null"],
+      "required": ["root", "installed", "known_good", "differs", "match", "known_broken"],
+      "additionalProperties": false,
+      "properties": {
+        "root": {"type": "string"},
+        "installed": {
+          "description": "{package: version} for each reference-pinned package found in composer.lock (a leading v stripped).",
+          "type": "object"
+        },
+        "known_good": {
+          "description": "{package: version} from the reference, restricted to the installed packages.",
+          "type": "object"
+        },
+        "differs": {
+          "description": "Installed packages whose version differs from the reference.",
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "match": {
+          "description": "True when nothing differs and at least one package is installed.",
+          "type": "boolean"
+        },
+        "known_broken": {
+          "description": "The reference's known-broken combinations every package of which is installed at a matching version.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["packages", "symptom"],
+            "additionalProperties": false,
+            "properties": {
+              "packages": {
+                "description": "{package: exact version or >=version}.",
+                "type": "object"
+              },
+              "symptom": {"type": "string"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

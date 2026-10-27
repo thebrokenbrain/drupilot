@@ -1,0 +1,16 @@
+<?php
+
+/**
+ * @file
+ * Recipe fixture: a hook implementation and its signature.
+ */
+
+use Drupal\Core\Cache\CacheableMetadata;
+use Drupal\Core\Entity\EntityInterface;
+
+/**
+ * Implements the hook.
+ */
+function m_entity_operation_alter(array &$operations, EntityInterface $entity, CacheableMetadata $cacheability) {
+  return [];
+}

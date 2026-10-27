@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "as_of": "2026-01-01",
+  "major": 11,
+  "status": "supported",
+  "minors": {
+    "11.3": {
+      "php_supported": ["8.3", "8.4", "8.5"],
+      "php_unsupported": ["8.1", "8.2", "8.6"],
+      "php_src": "https://www.drupal.org/api-d7/node.json?nid=2891690",
+      "verified": true,
+      "checked_at": "2026-01-01"
+    },
+    "11.5": {"status": "detect"}
+  },
+  "removed_extensions": [
+    {"name": "book", "kind": "module", "removed_in": "11.0", "deprecated_in": null, "replacement_project": "book", "rewrite": "dependency", "src": "fixture", "verified": true}
+  ],
+  "removed_libraries": [],
+  "hand_sources": [
+    {"id": "php-requirements", "url": "https://www.drupal.org/api-d7/node.json?nid=2891690", "changed": "2026-08-04"}
+  ]
+}

@@ -1,0 +1,999 @@
+{
+  "codemods": [],
+  "core_version_requirement": "^10 || ^11",
+  "d10_support": "declared-not-verified",
+  "decisions": {
+    "by_kind": {
+      "behavior-change": 1
+    },
+    "count": 1
+  },
+  "deferred_to_phase2": [
+    "check_markup",
+    "text_summary",
+    "user_load_by_mail",
+    "user_load_by_name"
+  ],
+  "deprecations_remaining": 0,
+  "digests": {
+    "applied": [],
+    "rejected": [],
+    "skipped": true
+  },
+  "files": [
+    {
+      "path": "legacy_widgets.info.yml",
+      "status": "M"
+    },
+    {
+      "path": "modules/legacy_widgets_extra/legacy_widgets_extra.info.yml",
+      "status": "M"
+    },
+    {
+      "path": "src/Form/WidgetImportForm.php",
+      "status": "M"
+    }
+  ],
+  "files_changed": 3,
+  "inputs": {
+    "actions_hash": null,
+    "base": "28ccfa52a23cf328a638704fefe69569cb0bda8a",
+    "findings_hash": "sha256:5a28c923ad4d3f0429cc4c31945171332527c3e4b826b3eff9c194b361d1b4f8",
+    "findings_stage": "assess",
+    "worklist_hash": "sha256:dae0ee79349076581cf5928d696d6f842cb3ef5e1e9279770886888c5669b4fb"
+  },
+  "machine_name": "legacy_widgets",
+  "manual_edits": [
+    {
+      "change_record": null,
+      "edit": "legacy_widgets.info.yml",
+      "why": null
+    },
+    {
+      "change_record": null,
+      "edit": "modules/legacy_widgets_extra/legacy_widgets_extra.info.yml",
+      "why": null
+    }
+  ],
+  "metadata_lint": {
+    "checks_run": [
+      "config-schema",
+      "plugin-schema",
+      "configure-route",
+      "services-class",
+      "services-arity",
+      "submodule-core-req",
+      "undeclared-deps"
+    ],
+    "digest_algo": 2,
+    "findings": [
+      {
+        "check": "services-class",
+        "extension": "legacy_widgets",
+        "file": "legacy_widgets.services.yml",
+        "line": 8,
+        "message": "Service 'legacy_widgets.lookup' class Drupal\\legacy_widgets\\WidgetLookUp differs in letter case from the real file src/WidgetLookup.php: the autoloader fails on case-sensitive filesystems (Linux servers, DDEV).",
+        "severity": "error",
+        "suggestion": "Use the exact class name: Drupal\\legacy_widgets\\WidgetLookup."
+      },
+      {
+        "check": "services-class",
+        "extension": "legacy_widgets",
+        "file": "legacy_widgets.services.yml",
+        "line": 13,
+        "message": "Service 'legacy_widgets.legacy_exporter' points at class Drupal\\legacy_widgets\\Export\\LegacyExporter, but src/Export/LegacyExporter.php does not exist (orphan service): fetching it is a fatal error.",
+        "severity": "error",
+        "suggestion": "Remove the service definition, or restore/rename the class."
+      },
+      {
+        "check": "config-schema",
+        "extension": "legacy_widgets",
+        "file": "config/install/legacy_widgets.settings.yml",
+        "line": 1,
+        "message": "Config 'legacy_widgets.settings' has no schema in config/schema/*.schema.yml: strict config schema checks (Kernel/Functional tests, config inspector) fail on it and its values are not typed or translatable.",
+        "severity": "warn",
+        "suggestion": "Add a 'legacy_widgets.settings:' entry (type: config_object for simple config) to config/schema/legacy_widgets.schema.yml."
+      },
+      {
+        "check": "configure-route",
+        "extension": "legacy_widgets",
+        "file": "legacy_widgets.info.yml",
+        "line": 6,
+        "message": "configure: 'legacy_widgets.settings' names a route that no *.routing.yml of the extension defines: core drops the Configure link from /admin/modules silently (unless a route subscriber or another module provides it).",
+        "severity": "warn",
+        "suggestion": "Point it at the real route ('legacy_widgets.settings_form'?)."
+      },
+      {
+        "check": "services-arity",
+        "extension": "legacy_widgets",
+        "file": "legacy_widgets.services.yml",
+        "line": 3,
+        "message": "Service 'legacy_widgets.counter' passes 3 argument(s) but Drupal\\legacy_widgets\\WidgetCounter::__construct() takes 2: PHP silently ignores the extra one(s) (a stale argument, or a constructor that lost a parameter).",
+        "severity": "warn",
+        "suggestion": "Drop the extra argument(s), or restore the constructor parameter they were meant for."
+      },
+      {
+        "check": "plugin-schema",
+        "extension": "legacy_widgets",
+        "file": "src/Plugin/Condition/WidgetsEnabledCondition.php",
+        "line": 1,
+        "message": "Condition plugin 'legacy_widgets_enabled' has its own settings but no 'condition.plugin.legacy_widgets_enabled' schema: only core's generic 'condition.plugin.*' covers it, so its extra settings fail strict config schema checks.",
+        "severity": "warn",
+        "suggestion": "Add 'condition.plugin.legacy_widgets_enabled:' to config/schema/legacy_widgets.schema.yml describing the plugin's settings."
+      },
+      {
+        "check": "plugin-schema",
+        "extension": "legacy_widgets",
+        "file": "src/Plugin/Filter/WidgetSummaryFilter.php",
+        "line": 1,
+        "message": "Filter plugin 'legacy_widgets_summary' has its own settings but no 'filter_settings.legacy_widgets_summary' schema: only core's generic 'filter_settings.*' covers it, so its extra settings fail strict config schema checks.",
+        "severity": "warn",
+        "suggestion": "Add 'filter_settings.legacy_widgets_summary:' to config/schema/legacy_widgets.schema.yml describing the plugin's settings."
+      },
+      {
+        "check": "submodule-core-req",
+        "extension": "legacy_widgets_extra",
+        "file": "modules/legacy_widgets_extra/legacy_widgets_extra.info.yml",
+        "line": 5,
+        "message": "Submodule 'legacy_widgets_extra' declares core_version_requirement: ^8.8 || ^9 || ^10, which does not admit Drupal 11: core marks it incompatible and it cannot be installed.",
+        "severity": "warn",
+        "suggestion": "Set it to the parent's constraint ('^10'): /drupilot-port does this with set-core-requirement.sh."
+      },
+      {
+        "check": "undeclared-deps",
+        "extension": "legacy_widgets_extra",
+        "file": "modules/legacy_widgets_extra/legacy_widgets_extra.module",
+        "line": 8,
+        "message": "'legacy_widgets_extra' uses project module 'legacy_widgets' (class,service) without declaring it in legacy_widgets_extra.info.yml dependencies: installing 'legacy_widgets_extra' alone fails or breaks at runtime.",
+        "severity": "warn",
+        "suggestion": "Add '- legacy_widgets:legacy_widgets' to dependencies:."
+      },
+      {
+        "check": "undeclared-deps",
+        "extension": "legacy_widgets_extra",
+        "file": "modules/legacy_widgets_extra/legacy_widgets_extra.module",
+        "line": 9,
+        "message": "'legacy_widgets_extra' uses core module 'node' (class) without declaring it in legacy_widgets_extra.info.yml dependencies: installing 'legacy_widgets_extra' alone fails or breaks at runtime.",
+        "severity": "warn",
+        "suggestion": "Add '- drupal:node' to dependencies:."
+      }
+    ],
+    "subject": "web/modules/custom/legacy_widgets",
+    "subject_digest": "354dfe5da4b538f79a9aeee1b45fd8d56b1d4db35452d5d127c0cef137032da7",
+    "tool": "lint-extension-metadata",
+    "totals": {
+      "error": 2,
+      "info": 0,
+      "warn": 8
+    }
+  },
+  "patch": null,
+  "phase": "port",
+  "php_target": "8.3",
+  "port_safety": {
+    "base": null,
+    "checks": [
+      "plugin-di",
+      "removed-use",
+      "static-factory",
+      "fapi-callable",
+      "serialization",
+      "override-attribute",
+      "class-case"
+    ],
+    "core_requirement": "^10",
+    "diff_mode": false,
+    "drupal_root": ".",
+    "errors": 1,
+    "findings": [
+      {
+        "check": "class-case",
+        "file": "legacy_widgets.services.yml",
+        "introduced": null,
+        "line": 9,
+        "message": "'Drupal\\legacy_widgets\\WidgetLookUp' does not match the real file 'src/WidgetLookup.php' (case differs): works on a case-insensitive filesystem, fatals on Linux.",
+        "severity": "error"
+      },
+      {
+        "check": "serialization",
+        "file": "src/Form/WidgetImportForm.php",
+        "introduced": null,
+        "line": 20,
+        "message": "WidgetImportForm::$entityTypeManager is a private readonly promoted property in a class using DependencySerializationTrait - readonly: __wakeup() cannot re-initialize it ('Cannot initialize readonly property'); private: __sleep() runs in the base-class scope and drops it ('must not be accessed before initialization' after unserialize). Use protected, non-readonly.",
+        "severity": "warn"
+      },
+      {
+        "check": "serialization",
+        "file": "src/Form/WidgetImportForm.php",
+        "introduced": null,
+        "line": 21,
+        "message": "WidgetImportForm::$loggerFactory is a private readonly promoted property in a class using DependencySerializationTrait - readonly: __wakeup() cannot re-initialize it ('Cannot initialize readonly property'); private: __sleep() runs in the base-class scope and drops it ('must not be accessed before initialization' after unserialize). Use protected, non-readonly.",
+        "severity": "warn"
+      }
+    ],
+    "ok": false,
+    "subject": "web/modules/custom/legacy_widgets",
+    "tool": "check-port-safety",
+    "warnings": 2
+  },
+  "rationale": {
+    "W-159f73172c54": "Rector rewrote the callback; it stays an array callable."
+  },
+  "rector_official_files": 1,
+  "rector_rules": {
+    "official": {
+      "FunctionFirstClassCallableRector": 1
+    }
+  },
+  "require_php": ">=8.1",
+  "schema": 1,
+  "signature_changes": {
+    "core_floor": "10.0",
+    "core_requirement": "^10",
+    "drupal_root": ".",
+    "errors": 2,
+    "findings": [
+      {
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=hook_entity_operation%20CacheableMetadata",
+        "class": null,
+        "d10_compat": "An optional second parameter works on every core; a required one breaks Drupal 10 and 11.0-11.2.",
+        "file": "legacy_widgets.module",
+        "fix": "Keep the one-parameter signature, or add the new parameter as optional: ?CacheableMetadata $cacheability = NULL.",
+        "id": "hook-entity-operation",
+        "kind": "hook-params",
+        "line": 24,
+        "member": "hook_entity_operation",
+        "message": "legacy_widgets_entity_operation() implements hook_entity_operation(), which core invokes with 2 argument(s) from Drupal 11.3; the current 1-parameter form works on every core. If you accept the new parameter, keep it optional while the floor (10.0) is below 11.3.",
+        "severity": "info",
+        "since": "11.3"
+      },
+      {
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=getOriginal%20setOriginal",
+        "class": null,
+        "d10_compat": "Not available on Drupal 10.",
+        "file": "modules/legacy_widgets_extra/legacy_widgets_extra.module",
+        "fix": "While the floor is below 11.2: keep the ->original property, or wrap the call in DeprecationHelper::backwardsCompatibleCall() (core 10.1+): backwardsCompatibleCall(\\Drupal::VERSION, '11.2', fn() => $entity->getOriginal(), fn() => $entity->original). Raise the floor to ^11.2 to use it directly.",
+        "id": "entity-original-accessors-call",
+        "kind": "symbol-min-core",
+        "line": 15,
+        "member": "EntityInterface::getOriginal()/setOriginal()",
+        "message": "EntityInterface::getOriginal()/setOriginal() exists only from Drupal 11.2, below the core floor (10.0): a fatal on older cores unless the receiver is the module's own class. Guard it (DeprecationHelper::backwardsCompatibleCall) or raise the floor to ^11.2.",
+        "severity": "warn",
+        "since": "11.2"
+      },
+      {
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=EntityInterface%3A%3AgetOriginal",
+        "class": "Drupal\\legacy_widgets\\Entity\\LegacyWidget",
+        "d10_compat": "Core's getOriginal() does not exist below 11.2: code kept for ^10 must not call it on core entities (use the deprecated ->original property, or DeprecationHelper::backwardsCompatibleCall()).",
+        "file": "src/Entity/LegacyWidget.php",
+        "fix": "While the core floor is below 11.2: rename the local helper (e.g. getOriginalWidget()) and update its callers. Once the floor is ^11.2: delete it and use core's getOriginal().",
+        "id": "entity-get-original",
+        "kind": "method-signature",
+        "line": 57,
+        "member": "getOriginal",
+        "message": "LegacyWidget::getOriginal() collides with core's EntityInterface::getOriginal() added in Drupal 11.2 and is incompatible (return type 'none' (core: ?static or static)): a fatal 'Declaration must be compatible' when the class loads on 11.2+.",
+        "severity": "error",
+        "since": "11.2"
+      },
+      {
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=ConfigFormBase%20TypedConfigManagerInterface",
+        "class": "Drupal\\legacy_widgets\\Form\\SettingsForm",
+        "d10_compat": "Safe for ^10 || ^11: 10.2+ accepts the argument, and PHP ignores an extra argument on older 10.x/9.x cores.",
+        "file": "src/Form/SettingsForm.php",
+        "fix": "Add TypedConfigManagerInterface $typed_config_manager to the subclass constructor, forward it (parent::__construct($config_factory, $typed_config_manager)) and pass $container->get('config.typed') from create().",
+        "id": "config-form-base-ctor",
+        "kind": "constructor-arity",
+        "line": 32,
+        "member": "__construct",
+        "message": "SettingsForm::__construct() passes 1 argument(s) to ConfigFormBase::__construct(), which requires 2 from Drupal 11.0: ArgumentCountError on Drupal 11.",
+        "severity": "error",
+        "since": "10.2"
+      },
+      {
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=buildRevisionCacheId",
+        "class": "Drupal\\legacy_widgets\\LegacyWidgetStorage",
+        "d10_compat": "Never add #[\\Override] to it while the core floor is below 11.3: the parent method does not exist there and PHP 8.3+ fatals at compile time.",
+        "file": "src/LegacyWidgetStorage.php",
+        "fix": "Rename the module's helper (e.g. buildWidgetRevisionCacheId()) unless overriding core's revision cache id on 11.3+ is intended; if kept, match protected function buildRevisionCacheId($id): string exactly.",
+        "id": "revision-cache-id",
+        "kind": "method-signature",
+        "line": 24,
+        "member": "buildRevisionCacheId",
+        "message": "LegacyWidgetStorage::buildRevisionCacheId() is a module method below Drupal 11.3 and silently OVERRIDES core's ContentEntityStorageBase::buildRevisionCacheId() from 11.3 (core calls it). Rename it unless that override is intended; never mark it with the Override attribute while the floor (10.0) is below 11.3.",
+        "severity": "warn",
+        "since": "11.3"
+      }
+    ],
+    "infos": 1,
+    "ok": false,
+    "subject": "web/modules/custom/legacy_widgets",
+    "tool": "scan-signature-changes",
+    "warnings": 2
+  },
+  "soft_deprecations": {
+    "blocking": 0,
+    "core_floor": "10.0",
+    "core_requirement": "^10 || ^11",
+    "counts": {
+      "hard": 0,
+      "other": 30,
+      "soft": 8,
+      "unknown": 0
+    },
+    "hard": [],
+    "phase": "port",
+    "policy": "report",
+    "soft": [
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=user_load_by_mail",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "S",
+        "file": "web/modules/custom/legacy_widgets/legacy_widgets.module",
+        "kind": "function",
+        "line": 58,
+        "message": "Call to deprecated function user_load_by_mail(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties() instead.",
+        "not_found": false,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "\\Drupal::entityTypeManager()->getStorage('user')->loadByProperties(['mail' => $mail]), then reset() (FALSE when empty) - exactly what core's deprecated body does",
+        "replacement_at_floor": true,
+        "replacement_since": "8.0",
+        "symbol": "user_load_by_mail"
+      },
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=user_load_by_name",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "S",
+        "file": "web/modules/custom/legacy_widgets/legacy_widgets.module",
+        "kind": "function",
+        "line": 60,
+        "message": "Call to deprecated function user_load_by_name(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties() instead.",
+        "not_found": false,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "\\Drupal::entityTypeManager()->getStorage('user')->loadByProperties(['name' => $name]), then reset() (FALSE when empty) - exactly what core's deprecated body does",
+        "replacement_at_floor": true,
+        "replacement_since": "8.0",
+        "symbol": "user_load_by_name"
+      },
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=text_summary",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "M",
+        "file": "web/modules/custom/legacy_widgets/legacy_widgets.module",
+        "kind": "function",
+        "line": 75,
+        "message": "Call to deprecated function text_summary(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::service(TextSummary::class)->generate() instead.",
+        "not_found": false,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "\\Drupal::service(\\Drupal\\text\\TextSummary::class)->generate($text, $format, $size) - $size must be an int (core's wrapper falls back to text.settings default_summary_length)",
+        "replacement_at_floor": false,
+        "replacement_since": "11.4",
+        "symbol": "text_summary"
+      },
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=check_markup",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "M",
+        "file": "web/modules/custom/legacy_widgets/src/Plugin/Block/WidgetSummaryBlock.php",
+        "kind": "function",
+        "line": 63,
+        "message": "Call to deprecated function check_markup(): in drupal:11.4.0 and is removed from drupal:13.0.0. There is no direct replacement. It's recommended to always return a renderable array without flattening as markup to pass the cacheability metadata.",
+        "not_found": false,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "a render array ['#type' => 'processed_text', '#text' => $text, '#format' => $format_id] (core's 'There is no direct replacement'): the call site changes from a string to a render array",
+        "replacement_at_floor": true,
+        "replacement_since": "8.0",
+        "symbol": "check_markup"
+      },
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=user_load_by_mail",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "S",
+        "file": "web/modules/custom/legacy_widgets/src/Plugin/Block/WidgetSummaryBlock.php",
+        "kind": "function",
+        "line": 64,
+        "message": "Call to deprecated function user_load_by_mail(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties() instead.",
+        "not_found": false,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "\\Drupal::entityTypeManager()->getStorage('user')->loadByProperties(['mail' => $mail]), then reset() (FALSE when empty) - exactly what core's deprecated body does",
+        "replacement_at_floor": true,
+        "replacement_since": "8.0",
+        "symbol": "user_load_by_mail"
+      },
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=text_summary",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "M",
+        "file": "web/modules/custom/legacy_widgets/src/Plugin/Filter/WidgetSummaryFilter.php",
+        "kind": "function",
+        "line": 59,
+        "message": "Call to deprecated function text_summary(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::service(TextSummary::class)->generate() instead.",
+        "not_found": false,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "\\Drupal::service(\\Drupal\\text\\TextSummary::class)->generate($text, $format, $size) - $size must be an int (core's wrapper falls back to text.settings default_summary_length)",
+        "replacement_at_floor": false,
+        "replacement_since": "11.4",
+        "symbol": "text_summary"
+      },
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=user_load_by_name",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "S",
+        "file": "web/modules/custom/legacy_widgets/src/Plugin/QueueWorker/WidgetReindexWorker.php",
+        "kind": "function",
+        "line": 67,
+        "message": "Call to deprecated function user_load_by_name(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties() instead.",
+        "not_found": false,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "\\Drupal::entityTypeManager()->getStorage('user')->loadByProperties(['name' => $name]), then reset() (FALSE when empty) - exactly what core's deprecated body does",
+        "replacement_at_floor": true,
+        "replacement_since": "8.0",
+        "symbol": "user_load_by_name"
+      },
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=user_load_by_mail",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "S",
+        "file": "web/modules/custom/legacy_widgets/src/WidgetLookup.php",
+        "kind": "function",
+        "line": 39,
+        "message": "Call to deprecated function user_load_by_mail(): in drupal:11.4.0 and is removed from drupal:13.0.0. Use \\Drupal::entityTypeManager()->getStorage('user')->loadByProperties() instead.",
+        "not_found": false,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "\\Drupal::entityTypeManager()->getStorage('user')->loadByProperties(['mail' => $mail]), then reset() (FALSE when empty) - exactly what core's deprecated body does",
+        "replacement_at_floor": true,
+        "replacement_since": "8.0",
+        "symbol": "user_load_by_mail"
+      }
+    ],
+    "symbols": [
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=check_markup",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "M",
+        "locations": [
+          "web/modules/custom/legacy_widgets/src/Plugin/Block/WidgetSummaryBlock.php:63"
+        ],
+        "occurrences": 1,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "a render array ['#type' => 'processed_text', '#text' => $text, '#format' => $format_id] (core's 'There is no direct replacement'): the call site changes from a string to a render array",
+        "replacement_at_floor": true,
+        "replacement_since": "8.0",
+        "symbol": "check_markup"
+      },
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=text_summary",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "M",
+        "locations": [
+          "web/modules/custom/legacy_widgets/legacy_widgets.module:75",
+          "web/modules/custom/legacy_widgets/src/Plugin/Filter/WidgetSummaryFilter.php:59"
+        ],
+        "occurrences": 2,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "\\Drupal::service(\\Drupal\\text\\TextSummary::class)->generate($text, $format, $size) - $size must be an int (core's wrapper falls back to text.settings default_summary_length)",
+        "replacement_at_floor": false,
+        "replacement_since": "11.4",
+        "symbol": "text_summary"
+      },
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=user_load_by_mail",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "S",
+        "locations": [
+          "web/modules/custom/legacy_widgets/legacy_widgets.module:58",
+          "web/modules/custom/legacy_widgets/src/Plugin/Block/WidgetSummaryBlock.php:64",
+          "web/modules/custom/legacy_widgets/src/WidgetLookup.php:39"
+        ],
+        "occurrences": 3,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "\\Drupal::entityTypeManager()->getStorage('user')->loadByProperties(['mail' => $mail]), then reset() (FALSE when empty) - exactly what core's deprecated body does",
+        "replacement_at_floor": true,
+        "replacement_since": "8.0",
+        "symbol": "user_load_by_mail"
+      },
+      {
+        "action": "report",
+        "change_record": "https://www.drupal.org/list-changes/drupal?keywords_description=user_load_by_name",
+        "class": "soft",
+        "deprecated_in": "11.4.0",
+        "effort": "S",
+        "locations": [
+          "web/modules/custom/legacy_widgets/legacy_widgets.module:60",
+          "web/modules/custom/legacy_widgets/src/Plugin/QueueWorker/WidgetReindexWorker.php:67"
+        ],
+        "occurrences": 2,
+        "reason": "soft: works on every Drupal 11 core (removed from drupal:13.0.0); listed, code untouched (policy report)",
+        "removed_in": "13.0.0",
+        "replacement": "\\Drupal::entityTypeManager()->getStorage('user')->loadByProperties(['name' => $name]), then reset() (FALSE when empty) - exactly what core's deprecated body does",
+        "replacement_at_floor": true,
+        "replacement_since": "8.0",
+        "symbol": "user_load_by_name"
+      }
+    ],
+    "target_major": 11,
+    "tool": "classify-deprecations",
+    "unknown": []
+  },
+  "subject": "web/modules/custom/legacy_widgets",
+  "tool": "manifest",
+  "type": "module",
+  "version_bump": null,
+  "worklist": {
+    "by_lane_status": {
+      "ai-free": {
+        "open": 12
+      },
+      "ai-templated": {
+        "open": 5
+      },
+      "codemod": {
+        "open": 2
+      },
+      "deferred": {
+        "deferred": 7
+      },
+      "human": {
+        "open": 6
+      },
+      "rector": {
+        "open": 1
+      },
+      "test-adapt": {
+        "open": 6
+      }
+    },
+    "items": [
+      {
+        "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::submitForm",
+        "blocking": false,
+        "file": "src/Form/WidgetImportForm.php",
+        "findings": 1,
+        "id": "W-159f73172c54",
+        "lane": "rector",
+        "rationale": "Rector rewrote the callback; it stays an array callable.",
+        "recipes": [],
+        "status": "open"
+      },
+      {
+        "anchor": "{file}",
+        "blocking": true,
+        "file": "legacy_widgets.services.yml",
+        "findings": 1,
+        "id": "W-c6e4ecad912a",
+        "lane": "codemod",
+        "recipes": [
+          "safety.class-case"
+        ],
+        "status": "open"
+      },
+      {
+        "anchor": "{file}",
+        "blocking": false,
+        "file": "modules/legacy_widgets_extra/legacy_widgets_extra.info.yml",
+        "findings": 1,
+        "id": "W-c39438304ac6",
+        "lane": "codemod",
+        "recipes": [
+          "meta.submodule-core-req"
+        ],
+        "status": "open"
+      },
+      {
+        "anchor": "legacy_widgets_extra_legacy_widget_presave",
+        "blocking": false,
+        "file": "modules/legacy_widgets_extra/legacy_widgets_extra.module",
+        "findings": 1,
+        "id": "W-35c06ce28544",
+        "lane": "ai-templated",
+        "recipes": [
+          "sig.entity-original-accessors-call"
+        ],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\legacy_widgets\\Entity\\LegacyWidget::getOriginal",
+        "blocking": true,
+        "file": "src/Entity/LegacyWidget.php",
+        "findings": 1,
+        "id": "W-32ae8ec2d063",
+        "lane": "ai-templated",
+        "recipes": [
+          "sig.entity-get-original"
+        ],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\legacy_widgets\\Form\\SettingsForm::__construct",
+        "blocking": true,
+        "file": "src/Form/SettingsForm.php",
+        "findings": 1,
+        "id": "W-10871a6ef443",
+        "lane": "ai-templated",
+        "recipes": [
+          "sig.config-form-base-ctor"
+        ],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::__construct",
+        "blocking": false,
+        "file": "src/Form/WidgetImportForm.php",
+        "findings": 2,
+        "id": "W-ce1976f998f1",
+        "lane": "ai-templated",
+        "recipes": [
+          "safety.serialization"
+        ],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\legacy_widgets\\LegacyWidgetStorage::buildRevisionCacheId",
+        "blocking": false,
+        "file": "src/LegacyWidgetStorage.php",
+        "findings": 1,
+        "id": "W-1329494e46cf",
+        "lane": "ai-templated",
+        "recipes": [
+          "sig.revision-cache-id"
+        ],
+        "status": "open"
+      },
+      {
+        "anchor": "legacy_widgets_entity_operation",
+        "blocking": true,
+        "file": "legacy_widgets.module",
+        "findings": 1,
+        "id": "W-930d804b63be",
+        "lane": "ai-free",
+        "recipes": [],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\legacy_widgets\\Controller\\WidgetStatusController::create",
+        "blocking": true,
+        "file": "src/Controller/WidgetStatusController.php",
+        "findings": 1,
+        "id": "W-846e486f7bdb",
+        "lane": "ai-free",
+        "recipes": [],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\legacy_widgets\\Entity\\LegacyWidget::getOriginal",
+        "blocking": true,
+        "file": "src/Entity/LegacyWidget.php",
+        "findings": 1,
+        "id": "W-367f74d547c8",
+        "lane": "ai-free",
+        "recipes": [],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\legacy_widgets\\Form\\SettingsForm::__construct",
+        "blocking": true,
+        "file": "src/Form/SettingsForm.php",
+        "findings": 1,
+        "id": "W-dbfc31cc6266",
+        "lane": "ai-free",
+        "recipes": [],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\legacy_widgets\\Form\\SettingsForm::create",
+        "blocking": true,
+        "file": "src/Form/SettingsForm.php",
+        "findings": 1,
+        "id": "W-a3341794f042",
+        "lane": "ai-free",
+        "recipes": [],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::__construct",
+        "blocking": true,
+        "file": "src/Form/WidgetImportForm.php",
+        "findings": 7,
+        "id": "W-47b95476d7ed",
+        "lane": "ai-free",
+        "recipes": [],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\legacy_widgets\\Form\\WidgetImportForm::create",
+        "blocking": true,
+        "file": "src/Form/WidgetImportForm.php",
+        "findings": 1,
+        "id": "W-e07b703024b3",
+        "lane": "ai-free",
+        "recipes": [],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\legacy_widgets\\Plugin\\Block\\WidgetSummaryBlock::create",
+        "blocking": true,
+        "file": "src/Plugin/Block/WidgetSummaryBlock.php",
+        "findings": 1,
+        "id": "W-18e5fc432e0b",
+        "lane": "ai-free",
+        "recipes": [],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\legacy_widgets\\Plugin\\Condition\\WidgetsEnabledCondition::create",
+        "blocking": true,
+        "file": "src/Plugin/Condition/WidgetsEnabledCondition.php",
+        "findings": 1,
+        "id": "W-2d397ba8d6eb",
+        "lane": "ai-free",
+        "recipes": [],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\legacy_widgets\\Plugin\\Filter\\WidgetSummaryFilter::create",
+        "blocking": true,
+        "file": "src/Plugin/Filter/WidgetSummaryFilter.php",
+        "findings": 1,
+        "id": "W-56f35f28002c",
+        "lane": "ai-free",
+        "recipes": [],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\legacy_widgets\\Plugin\\QueueWorker\\WidgetReindexWorker::create",
+        "blocking": true,
+        "file": "src/Plugin/QueueWorker/WidgetReindexWorker.php",
+        "findings": 1,
+        "id": "W-023e7068f26f",
+        "lane": "ai-free",
+        "recipes": [],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\legacy_widgets\\Plugin\\QueueWorker\\WidgetReindexWorker::processItem",
+        "blocking": true,
+        "file": "src/Plugin/QueueWorker/WidgetReindexWorker.php",
+        "findings": 2,
+        "id": "W-c54651af7496",
+        "lane": "ai-free",
+        "recipes": [],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testCounterService",
+        "blocking": true,
+        "file": "tests/src/Kernel/LegacyWidgetsKernelTest.php",
+        "findings": 1,
+        "id": "W-1c6b1e5934df",
+        "lane": "test-adapt",
+        "recipes": [],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testEntityOperationWithDrupal10Arguments",
+        "blocking": true,
+        "file": "tests/src/Kernel/LegacyWidgetsKernelTest.php",
+        "findings": 1,
+        "id": "W-4f140323f6a1",
+        "lane": "test-adapt",
+        "recipes": [],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testFilterProducesSummary",
+        "blocking": true,
+        "file": "tests/src/Kernel/LegacyWidgetsKernelTest.php",
+        "findings": 1,
+        "id": "W-74adbead9b5f",
+        "lane": "test-adapt",
+        "recipes": [],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testFindAccount",
+        "blocking": true,
+        "file": "tests/src/Kernel/LegacyWidgetsKernelTest.php",
+        "findings": 2,
+        "id": "W-7ffb8dde54f8",
+        "lane": "test-adapt",
+        "recipes": [],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\Tests\\legacy_widgets\\Kernel\\LegacyWidgetsKernelTest::testQueueWorkerProcessesItem",
+        "blocking": true,
+        "file": "tests/src/Kernel/LegacyWidgetsKernelTest.php",
+        "findings": 4,
+        "id": "W-80598b164c87",
+        "lane": "test-adapt",
+        "recipes": [],
+        "status": "open"
+      },
+      {
+        "anchor": "Drupal\\Tests\\legacy_widgets\\Unit\\WidgetCounterTest::testBucket",
+        "blocking": true,
+        "file": "tests/src/Unit/WidgetCounterTest.php",
+        "findings": 2,
+        "id": "W-a3f3e40a8313",
+        "lane": "test-adapt",
+        "recipes": [],
+        "status": "open"
+      },
+      {
+        "anchor": "{file}",
+        "blocking": false,
+        "file": "config/install/legacy_widgets.settings.yml",
+        "findings": 1,
+        "id": "W-729b5727cfc6",
+        "lane": "human",
+        "recipes": [
+          "meta.config-schema"
+        ],
+        "status": "open"
+      },
+      {
+        "anchor": "{file}",
+        "blocking": false,
+        "file": "legacy_widgets.info.yml",
+        "findings": 1,
+        "id": "W-da87cbe6cb6c",
+        "lane": "human",
+        "recipes": [
+          "meta.configure-route"
+        ],
+        "status": "open"
+      },
+      {
+        "anchor": "{file}",
+        "blocking": true,
+        "file": "legacy_widgets.services.yml",
+        "findings": 3,
+        "id": "W-c51655fc986b",
+        "lane": "human",
+        "recipes": [
+          "meta.services-arity",
+          "meta.services-class"
+        ],
+        "status": "open"
+      },
+      {
+        "anchor": "{file}",
+        "blocking": false,
+        "file": "modules/legacy_widgets_extra/legacy_widgets_extra.module",
+        "findings": 2,
+        "id": "W-ddabc7319c4d",
+        "lane": "human",
+        "recipes": [
+          "meta.undeclared-deps"
+        ],
+        "status": "open"
+      },
+      {
+        "anchor": "{file}",
+        "blocking": false,
+        "file": "src/Plugin/Condition/WidgetsEnabledCondition.php",
+        "findings": 1,
+        "id": "W-7a060cee17db",
+        "lane": "human",
+        "recipes": [
+          "meta.plugin-schema"
+        ],
+        "status": "open"
+      },
+      {
+        "anchor": "{file}",
+        "blocking": false,
+        "file": "src/Plugin/Filter/WidgetSummaryFilter.php",
+        "findings": 1,
+        "id": "W-ff33dd2dc291",
+        "lane": "human",
+        "recipes": [
+          "meta.plugin-schema"
+        ],
+        "status": "open"
+      },
+      {
+        "anchor": "legacy_widgets_entity_operation",
+        "blocking": false,
+        "file": "legacy_widgets.module",
+        "findings": 1,
+        "id": "W-0b4c8218d6e3",
+        "lane": "deferred",
+        "recipes": [],
+        "status": "deferred"
+      },
+      {
+        "anchor": "legacy_widgets_find_account",
+        "blocking": false,
+        "file": "legacy_widgets.module",
+        "findings": 2,
+        "id": "W-8ff3f37d4fde",
+        "lane": "deferred",
+        "recipes": [],
+        "status": "deferred"
+      },
+      {
+        "anchor": "legacy_widgets_summarize",
+        "blocking": false,
+        "file": "legacy_widgets.module",
+        "findings": 1,
+        "id": "W-642e9ddd1546",
+        "lane": "deferred",
+        "recipes": [],
+        "status": "deferred"
+      },
+      {
+        "anchor": "Drupal\\legacy_widgets\\Plugin\\Block\\WidgetSummaryBlock::build",
+        "blocking": false,
+        "file": "src/Plugin/Block/WidgetSummaryBlock.php",
+        "findings": 2,
+        "id": "W-91d5440b6a91",
+        "lane": "deferred",
+        "recipes": [],
+        "status": "deferred"
+      },
+      {
+        "anchor": "Drupal\\legacy_widgets\\Plugin\\Filter\\WidgetSummaryFilter::process",
+        "blocking": false,
+        "file": "src/Plugin/Filter/WidgetSummaryFilter.php",
+        "findings": 1,
+        "id": "W-323ab3f5c0a6",
+        "lane": "deferred",
+        "recipes": [],
+        "status": "deferred"
+      },
+      {
+        "anchor": "Drupal\\legacy_widgets\\Plugin\\QueueWorker\\WidgetReindexWorker::processItem",
+        "blocking": false,
+        "file": "src/Plugin/QueueWorker/WidgetReindexWorker.php",
+        "findings": 1,
+        "id": "W-07b674d94ea2",
+        "lane": "deferred",
+        "recipes": [],
+        "status": "deferred"
+      },
+      {
+        "anchor": "Drupal\\legacy_widgets\\WidgetLookup::findOwnerByMail",
+        "blocking": false,
+        "file": "src/WidgetLookup.php",
+        "findings": 1,
+        "id": "W-37c446def33e",
+        "lane": "deferred",
+        "recipes": [],
+        "status": "deferred"
+      }
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 ---
 description: Phase 1 minimal port of a Drupal 9/10 module/theme to Drupal 11 — apply official drupal-rector, then the version-filtered digests layer, then ad-hoc rules, plus the minimal manual changes (core_version_requirement etc.), and validate with phpcbf/phpcs/phpstan. Use when the user wants the subject to run on D11 with its original behavior intact, without architectural refactoring.
-argument-hint: "[module-or-theme-path]"
+argument-hint: "[module-or-theme-path] [--php X.Y]"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Task, Skill, AskUserQuestion
 ---
 
@@ -11,7 +11,16 @@ functionality**, with the *minimum* changes. This is **not** a refactor — no
 architecture changes, no API modernization for its own sake. Anything beyond
 mechanical compatibility is explicitly deferred to Phase 2 (`/drupilot-refactor`).
 
-Subject path argument: `$1` (fallback: the current working directory).
+Subject path argument: the first argument of `$ARGUMENTS` that is neither a flag
+nor a flag's value (`--php 8.4`), when it is a directory; else the current
+working directory. When it is not `$1` (`/drupilot-port --php 8.4 <path>`, or no
+path), use that path wherever `$1` appears below. A `--php X.Y` in `$ARGUMENTS` names the PHP target the port expects. The
+setup froze it in the plan, and the port never changes it: once the Drupal root is
+known, read the frozen value with
+`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; DRUPILOT_PROJECT_DIR=<drupal_root> plan_get .php.final'`.
+If it differs from X.Y (or there is no frozen plan), stop before changing any file
+and tell the developer to re-plan with `/drupilot-setup <path> --php X.Y`. If it
+matches, go on as usual.
 
 **Decision log — throughout the port.** The moment you revert or hand-edit a
 change Rector made, ignore or override a script's verdict (port-safety,
@@ -52,7 +61,10 @@ tell the user to run `/drupilot-setup` first and stop.
   echo "core_requirement=$(subject_core_requirement "$SUBJECT" 2>/dev/null || echo "<missing>")"; \
   echo "php_target=$(resolve_php_target)"; \
   echo "drupal_target=$(resolve_drupal_target)"; \
-  echo "core_strategy=$(config_get DRUPILOT_CORE_TARGET_STRATEGY auto)"; \
+  echo "core_strategy=$(config_get_noalias DRUPILOT_CORE_TARGET_STRATEGY auto)"; \
+  PROOT="$(subject_project_root "$SUBJECT" 2>/dev/null || true)"; \
+  echo "draft_range=$([[ -n "$PROOT" ]] && plan_get .range.strategy "$PROOT" 2>/dev/null) $([[ -n "$PROOT" ]] && plan_get .range.constraint "$PROOT" 2>/dev/null)"; \
+  echo "target_major=$(DRUPILOT_PROJECT_DIR="${PROOT:-$SUBJECT}" target_names_major)"; \
   echo "use_digests=$(config_get DRUPILOT_USE_DIGESTS_RULES true)"; \
   echo "digests_ref=$(config_get DRUPILOT_DIGESTS_REF main)"; \
   echo "generate_rules=$(config_get DRUPILOT_GENERATE_RULES ask)"' \
@@ -68,18 +80,30 @@ you can show the consequences:
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/core-strategy.sh" --subject "$1" --phase port --json
 ```
 
+`core-strategy.sh` answers for Drupal 11 only. When `target_major` above is not
+11 (a preview port to a pre-release such as Drupal 12), ignore its range,
+`require_php` and `verify_cores`: the plan decides the range (for Drupal 12,
+`^11.3 || ^12` by default, `^12` with `DRUPILOT_CORE_TARGET_STRATEGY=target-only`).
+
 **Decision point — let the developer own the core target (G4/G5).** This is one
 of the most consequential choices in the port, so surface it as a tab with
 **AskUserQuestion** (header "Core target") *unless* the run is autonomous
-(`DRUPILOT_AUTONOMOUS=true`) or `DRUPILOT_CORE_TARGET_STRATEGY` is already
-pinned. A pre-answer comes first, also in an autonomous run:
+(`DRUPILOT_AUTONOMOUS=true`), `DRUPILOT_CORE_TARGET_STRATEGY` is already
+pinned, or the setup's draft plan pinned an explicit range (`draft_range` above
+starts with `explicit`: a `DRUPILOT_DRUPAL_TARGET` such as `^10.3 || ^11`, ADR
+0021): then the range is that one, there is no tab, and the final plan below
+takes it with `--range`. There is no tab either when `target_major` is not 11
+(the options below are Drupal 11's): resolve the final plan without
+`DRUPILOT_CORE_TARGET_STRATEGY` (the script reads the setting), persist nothing,
+and report the plan's range. A pre-answer comes first, also in an autonomous run:
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/choice.sh" --key CORE_TARGET --subject "$1" --persist --json
 ```
 
-When its `value` is not null (`auto` / `keep-d10` / `d11-only`), it is the
-answer: no tab, the script already persisted it as
+When its `value` is not null (`auto` / `keep-d10` / `d11-only` / `widest`: for
+Drupal 11 a 1.0 pre-answer, `keep-previous` or `target-only`, comes back under
+its 0.9 name), it is the answer: no tab, the script already persisted it as
 `DRUPILOT_CORE_TARGET_STRATEGY`; re-run `core-strategy.sh` above with
 `DRUPILOT_CORE_TARGET_STRATEGY=<value>` to get its consequences and say so in one
 line (if `env_override` lists the strategy, the environment variable wins). When
@@ -98,11 +122,49 @@ the JSON (`recommended_core_version_requirement`, `require_php`, `version_bump`)
 - **Let drupilot decide** — apply the helper's `strategy` verdict as-is.
 
 Persist the answer so later runs don't re-ask: write the chosen strategy with
-`prefs_set DRUPILOT_CORE_TARGET_STRATEGY <auto|keep-d10|d11-only>` (env still
-wins). Then apply the resolved `recommended_core_version_requirement` in Step 6.
-When it returns a `require.php` (for `^10 || ^11`, since Drupal 10 allows PHP 8.1
-while the port needs a higher floor), add `"require": { "php": "<require_php>" }`
-to `composer.json` using the **exact** `require_php` value the helper returns
+`prefs_set DRUPILOT_CORE_TARGET_STRATEGY <auto|keep-d10|d11-only>`, run with
+`DRUPILOT_PROJECT_DIR=<drupal_root>` so it lands in the test-bed root's
+`.drupilot.json` (env still wins). `run-rector.sh` reads it there to set Rector's
+PHP floor, so a choice that is not persisted ports to the floor of `auto`.
+
+**Resolve and freeze the final upgrade plan (AR-06, ADR 0018).** The setup froze
+a draft plan in the root's lock; the port resolves the final one over it with
+the answered strategy (add `--auto` in an autonomous run):
+
+```bash
+DRUPILOT_CORE_TARGET_STRATEGY=<auto|keep-d10|d11-only> bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "$1" --phase final --root "<drupal_root>" --freeze --json
+```
+
+With an explicit draft range (`draft_range` starts with `explicit`), pass that
+range instead of a strategy, so the final plan keeps it:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "$1" --phase final --range "<the draft_range constraint>" --root "<drupal_root>" --freeze --json
+```
+
+- **Exit 0**: the final plan is frozen; it may add hops or raise the core floor
+  over the draft, never change the target, the PHP target or the test-bed. When
+  `.target.preview` is `true`, this is a preview port to a pre-release core: say
+  so in the summary, and treat its `hard_breaks` (core removals) as items a
+  person must resolve.
+- **Exit 2**: nothing was written. Show `.message` and `.choices`; a
+  `final-changes-frozen` refusal means the setup's choices no longer hold (for
+  example the PHP target changed since): send the developer to
+  `/drupilot-setup` to re-plan, and stop. A `d7-auto` refusal also stops.
+
+Then read the declared range and the `require.php` floor from the frozen plan,
+never from a script's own output (H4):
+
+```bash
+DRUPILOT_PROJECT_DIR="<drupal_root>" bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; plan_get .range.constraint; plan_get .php.require_php'
+```
+
+The first line is the `core_version_requirement` to apply in Step 6; the second,
+when present, the `require.php` to declare (the plan omits it when the range keeps
+no previous major).
+When the plan holds a `require.php` (for `^10 || ^11`, since Drupal 10 allows PHP
+8.1 while the port needs a higher floor), add `"require": { "php": "<require_php>" }`
+to `composer.json` using the **exact** value `plan_get .php.require_php` returns
 (`DRUPILOT_REQUIRE_PHP_FLOOR=detect`, the default, derives the real floor such as
 `>=8.1`; `target` keeps `>=<target>`). Also relay `php_floor_target_compatible`
 (false → the code uses a construct newer than the target) and the
@@ -151,7 +213,8 @@ hits, the fix that worked before, the module/layer it was learned from). Each
 hit is a **must-check item** for the steps below: prevent it while porting
 instead of repairing it after (the recorded fix is the starting point; the
 `minimal-port` golden rules still decide). No catalog or no hit is normal for a
-first module. Keep the JSON for the manifest's `learned_patterns.scan` (Step 9).
+first module. Nothing to keep for the manifest: the learned patterns live in the
+project's catalog (`patterns.sh list`), which Step 8b extends.
 
 ## Step 3 — Pass 1: official `palantirnet/drupal-rector` (apply)
 
@@ -159,29 +222,56 @@ The stable, maintained layer first. Always dry-run, let the user (or you, on the
 behalf) review the diff, then apply. The script ensures a `rector.php` exists at
 the Drupal root (rendered from the plugin template; one generated by an older
 drupilot template is backed up to `.drupilot/backups/` and regenerated, a
-hand-written one is left alone with a warning) and uses the `DRUPAL_10` set plus
-the PHP set for the resolved target, minus the risky rules the template skips
-(Form API callbacks → closures, `#[\Override]`, `readonly`, `(string)` casts —
-see the `minimal-port` skill §0). `--json` lists the applied rule names in
-`rules` and counts them per pass in `rule_hits` (`{official: {Rule: files},
-digests: {...}}`): copy it into the manifest's `rector_rules` (Step 9); an
-`--apply` that changed files also keeps it as `rector-rules.json` in the state
-dir, the report's fallback. Undo or rewrite any applied hunk only with a
+hand-written one is left alone with a warning) and uses the upgrade plan's Drupal sets (each hop's set family per minor up to the test-bed's minor, plus the edge's always and breaking sets (ADR 0019; for a port from Drupal 10 to 11, `DRUPAL_100` to `DRUPAL_103`): read them from the plan block) plus
+the PHP sets up to the floor of the core range chosen above (`php_floor` in the
+JSON; an untouched `rector.php` rendered for another floor is regenerated),
+minus the risky rules the template skips (Form API callbacks → closures,
+`#[\Override]`, `readonly`, `(string)` casts, `__sleep`/`__wakeup` — see the
+`minimal-port` skill §0). A narrow compat pass (`rector-compat.php`) runs
+right after it whenever its list is not empty: the PHP deprecation fixes of the
+window whose output still runs on the floor and that the floor's level set does
+not run (the plan's `rector.compat_rules`, checked against the installed
+Rector's rule audit, ADR 0030), such as an implicitly nullable parameter
+becoming `?Foo` (`compat_status`, `compat_files`). `--json` lists the applied
+rule names in `rules` and counts them per pass in `rule_hits` (`{official:
+{Rule: files}, compat: {...}, digests: {...}}`); an `--apply` that changed
+files keeps it as `rector-rules.json` in the state dir, which `manifest.sh`
+reads for the manifest's `rector_rules` (Step 9). Undo or rewrite any applied hunk only with a
 `--kind rector-revert --rule <Rule>` decision-log entry.
 
 ```bash
 # Review what it would change:
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "$1"
-# Then apply:
-!bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "$1" --apply
+# Then apply it as the pipeline's upgrade stage (ADR 0028): the official pass,
+# the extraction and the deterministic codemods, with a checkpoint first:
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/pipeline.sh" --subject "$1" --stages upgrade --json
 ```
 
-**Exit 3 means the official Rector pass crashed** (`[ERROR] Could not detect twig set.`, a PHP fatal,
-per-file errors): its output is not a "no changes" result and nothing should be
-applied on top of it. Show the diagnostic (installed vs known-good toolchain),
+`pipeline.sh` needs the module in a git repository (its checkpoints are refs
+under `refs/drupilot/stages/`; the real index and HEAD are never touched).
+Without one, apply with `run-rector.sh --subject "$1" --apply` as before. A
+plan with no hop (a same-major port) runs the stage too: Rector has no Drupal
+set then and applies the PHP floor's sets and the compat pass, and the codemods
+run. Its exit 3
+means the stage failed and the tree is back at its checkpoint:
+`<state_dir>/stages.json` and `<state_dir>/upgrade-rector.json` (the Rector
+`--json`) say why.
+
+**Exit 3 means the official Rector pass or the compat pass after it crashed** (`[ERROR] Could not detect twig set.`, a PHP fatal,
+per-file errors; `errors[].pass` is `1` for the official pass, `3` for the compat
+pass): its output is not a "no changes" result and nothing should be
+applied on top of it. A compat-pass crash with a healthy official pass points at
+`rector-compat.php` first: regenerate it with
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/render-templates.sh" --subject <path> --only rector-compat --force`
+before touching the toolchain. Show the diagnostic (installed vs known-good toolchain),
 repair with `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-toolchain.sh" --dir <drupal_root> --source reference`
 (or fix `rector.php` when the toolchain already matches the known-good set), and
 re-run the pass. The digests pass is skipped automatically after such a crash.
+`errors[].pass` 0 with a message starting `DET-1:` is not a crash: Rector did not run (DDEV is down for a
+root with a DDEV project, or an installed tool differs from the lock's pins). Start DDEV, or restore the pins
+(`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-toolchain.sh" --dir <drupal_root>`) or accept the installed
+versions (`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/lock-sync.sh" --dir <drupal_root>`) — never `--source reference`
+for it — and re-run.
 
 ## Step 4 — Pass 2: complementary digests layer (apply, version-filtered)
 
@@ -204,6 +294,38 @@ they decide.
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "$1" --digests --json
 ```
 
+**A pre-answer first.** When the `DIGESTS_RULES` pre-answer of the decision
+point below has a `value`, it decides: `skip` applies nothing from this layer,
+whatever was recorded.
+
+**Then the recorded verdicts (replay).** The `--json` dry-run carries
+`digests_review`: every rule it would apply with the developer's verdict for
+this digests SHA and these sources (`accept`, `reject` or `pending`); rules
+rejected earlier and rules the official pass already applies are filtered out
+(`digests_filter`). `digests_review` is `null` when the digests pass did not
+finish (exit 4, below): apply nothing from this layer. When
+`digests_review.pending` is empty, every verdict is known: **ask nothing**, say
+in one line that the recorded verdicts are replayed and that
+`digests-decisions.sh --subject <path> --clear` forgets them to review again,
+and apply. Otherwise review only the pending rules, as below, and record each
+answer before applying:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/digests-decisions.sh" --subject <path> --accept <Rule,...> --reject <Rule,...>
+```
+
+(an autonomous run records its safe default the same way, with `--auto`:
+unflagged rules accepted, flagged ones rejected; and it passes `--auto` to every
+`run-rector.sh --digests` call too. Those verdicts are marked as the autonomous
+run's, so a later guided port asks the developer again). Then re-run the dry-run
+(the rejected rules leave the config, and the apply checks its result against
+that dry-run) and apply. Once the module has verdicts, an `--apply` runs the
+digests pass only after a dry-run of these same sources and digests rules, with
+a verdict on every rule that dry-run changed files with; otherwise it refuses
+(exit 4) and says why: run the dry-run again and record the pending rules.
+`digests-decisions.sh` refuses (exit 1) to record verdicts on sources changed
+since the dry-run.
+
 **Decision point — the developer owns the digests pass (G5).** Read the dry-run
 diff and, for each change, note the **rule** and the **API/min-version** it
 targets; **pre-flag** any rule whose target API was added *after* the floor you
@@ -217,9 +339,12 @@ returns a `value`, `apply-unflagged` applies every unflagged rule and `skip`
 applies nothing (say so in one line). The per-rule review cannot be pre-answered.
 
 - **Review and pick** — show the per-rule list (rule → target → files, flagged
-  ones marked) and apply only the rules the developer keeps.
-- **Apply all (unflagged)** — apply every rule that is not pre-flagged.
-- **Skip the digests pass** — apply nothing from this layer.
+  ones marked) and apply only the rules the developer keeps (record the kept
+  ones as accepted, the others as rejected).
+- **Apply all (unflagged)** — apply every rule that is not pre-flagged (record
+  the unflagged as accepted, the flagged as rejected).
+- **Skip the digests pass** — apply nothing from this layer (record every
+  pending rule as rejected).
 
 Before applying, suggest a git checkpoint (`git add -A && git commit`) so a
 disliked digests pass can be dropped cleanly. **Never normalize `--no-verify`:**
@@ -233,19 +358,19 @@ check the repository's git hooks first —
 timeout or a background run for a slow hook). Only if a hook cannot complete
 here, run `git-hooks.sh --subject <path> --run-equivalents`, fix any failure,
 commit with `--no-verify` only when `all_green` is true (the guard hook asks the
-developer to confirm), and record it as `verification.commit_hooks` in the
-manifest. An autonomous run never skips a hook: it keeps a hook-free checkpoint
+developer to confirm); `--run-equivalents` keeps the substitution in
+`hooks-substitution.json`, which `port-report.sh` reads. An autonomous run never skips a hook: it keeps a hook-free checkpoint
 with `make-patch.sh --local` instead. Then apply the accepted subset:
 
 ```bash
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-rector.sh" --subject "$1" --digests --apply
 ```
 
-**Exit 4 means only the digests pass crashed** (`status: "partial"`, `digests_status: "error"` with `--json`; e.g. a broken upstream rule file): the official result stands, the toolchain is fine — do **not** reinstall it. Pin a known-good digests commit (`--digests-ref <sha>` / `DRUPILOT_DIGESTS_REF`) or skip the layer (`DRUPILOT_USE_DIGESTS_RULES=false`); the broken SHA is never frozen in the lockfile.
+**Exit 4 means only the digests pass crashed or was refused** (`status: "partial"`, `digests_status: "error"` with `--json`): the official result stands, the toolchain is fine — do **not** reinstall it. A refusal's message names its remedy (a new dry-run and the pending verdicts; an `all.php` drupilot cannot read whole; a frozen `implemented-digests.yml` it cannot read again). A crash (e.g. a broken upstream rule file): pin a known-good digests commit (`--digests-ref <sha>` / `DRUPILOT_DIGESTS_REF`) or skip the layer (`DRUPILOT_USE_DIGESTS_RULES=false`); the broken SHA is never frozen in the lockfile.
 
-If the developer picked a subset (not "apply all"), apply the kept rules via an
-explicit `--config` pointing at a trimmed rule set, or apply all then revert the
-unwanted hunks — never silently apply a flagged rule they did not accept.
+A rule the developer did not keep is recorded as rejected, so the filtered
+config leaves it out of the apply — never silently apply a flagged rule they did
+not accept.
 
 ## Step 5 — Pass 3: ad-hoc rules / manual fixes (per `DRUPILOT_GENERATE_RULES`)
 
@@ -265,23 +390,22 @@ Keep ad-hoc rules minimal and mechanical; do not slip refactoring in here.
 
 Apply only the mechanical compatibility edits, preserving behavior:
 
-- **`info.yml` + `composer.json`**: set `core_version_requirement` to the target
-  decided in Step 1 (e.g. `^10 || ^11`) in the main `info.yml` **and every
+- **`info.yml` + `composer.json`**: set `core_version_requirement` to the frozen
+  plan's `range.constraint` (Step 1, e.g. `^10 || ^11`) in the main `info.yml` **and every
   submodule's** with the helper (a submodule left on `^8.8 || ^9 || ^10` cannot be
   installed on Drupal 11; it also removes an obsolete `core: 8.x` key and bumps a
   test module only when it does not admit Drupal 11). Dry-run first, show the
   changes, then apply (substitute the requirement):
 
   ```bash
-  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/set-core-requirement.sh" --subject "$1" --requirement '<recommended_core_version_requirement>' --dry-run --json
-  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/set-core-requirement.sh" --subject "$1" --requirement '<recommended_core_version_requirement>' --json
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/set-core-requirement.sh" --subject "$1" --requirement '<range.constraint>' --dry-run --json
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/set-core-requirement.sh" --subject "$1" --requirement '<range.constraint>' --json
   ```
 
-  A missing `core_version_requirement` is blocking — the helper adds it. When Step 1
-  reported a `require.php` (i.e. keeping Drupal 10), add
-  `"require": { "php": "<require_php>" }` to `composer.json` using the exact value
-  the helper returned, so a D10 + low-PHP site is blocked at install, not at
-  runtime.
+  A missing `core_version_requirement` is blocking — the helper adds it. When the
+  plan holds a `require.php` (`plan_get .php.require_php`, i.e. keeping Drupal 10),
+  add `"require": { "php": "<require_php>" }` to `composer.json` using that exact
+  value, so a D10 + low-PHP site is blocked at install, not at runtime.
 - **Twig 3**: replace removed filters/functions and `{% spaceless %}` with their
   mechanical equivalents (whitespace control `{%- -%}` / `{{- -}}` for
   `spaceless`, never the `spaceless` filter, deprecated since Twig 3.12; `~`
@@ -328,8 +452,9 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/convert-attributes.sh" --subject "$
 Then mirror the new floor in `composer.json` (`require.drupal/core`) when the
 module declares one, record the choice (`log-decision.sh --kind manual-override
 --what "Added plugin attributes (keep mode), core floor raised to <req>" --why
-"<the developer's reason>"`), and merge the JSON's `rule_hits` into the
-manifest's `rector_rules`. `restored_files` lists files the pass put back
+"<the developer's reason>"`), and report the JSON's `rule_hits` in the Step 9
+summary (`--apply` keeps its rules and files in `attributes-rules.json`, which
+`manifest.sh` reads; the decision-log entry carries the why). `restored_files` lists files the pass put back
 (duplicate attribute or `php -l` failure) and `skipped_files` those already
 half-converted by hand: report both. Step 7 validates the result (and Step 7b
 checks the new floor when `^10` is still declared).
@@ -419,7 +544,9 @@ findings need no change. Tee the human output into `<state_dir>/change-log.txt`.
 
 The validate loop only ever sees the Drupal 11 test-bed. When the requirement set
 in Step 6 still admits Drupal 10 (`verify_cores` in the Step 1 JSON has a `10…`
-leg) and `DRUPILOT_VERIFY_CORES` is not `off`, verify it statically on a real
+leg), the plan's target major is 11 (`target_major`; a preview's range keeps no
+Drupal 10, and its Drupal 11 half stays declared, not verified) and
+`DRUPILOT_VERIFY_CORES` is not `off`, verify it statically on a real
 Drupal 10 core once the loop is clean (see the `minimal-port` skill §6a):
 
 ```bash
@@ -485,7 +612,7 @@ apply cleanly) is the separate thing produced by `/drupilot-contribute`.
 ## Step 8b — Record what this port learned
 
 List the candidates — the reverted Rector changes and post-port fixes of the
-manifest and the decision log:
+decision log (`rector-revert` / `post-port-fix` entries):
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/patterns.sh" harvest --subject "<subject>" --json
@@ -539,52 +666,81 @@ Summarize in English:
 - Next suggested step: `/drupilot-test` to adapt and run the test suite, then
   optionally `/drupilot-refactor`.
 
-**Write the port report card (the trust + teaching artifact).** Record the
-decisions you made as a small manifest JSON and render the human report, so the
-developer (and a future maintainer reviewing the change) can see what changed and
-why at a glance. The report also **teaches**: as the port ran you should have
-**tee'd** the official Rector output (pass 1), the digests pass output and the
-final validate-loop PHPStan deprecation report into `<state_dir>/change-log.txt`
-(under `$HOME`, never in the project tree, so it never leaks into a patch);
-`port-report.sh` pipes that through `explain-deprecations.sh` to render a
-"Drupal 9/10 → 11 changes, explained" section grouped by migration area. Build
-the manifest from what you actually did, write it to the project state dir, then
-render:
+**The fixpoint gate.** Before the report card, check that the deterministic
+lanes have nothing left. The pipeline's validate stage runs it (below); on its
+own:
 
 ```bash
-# Write <state_dir>/port-manifest.json with: machine_name, type, phase ("port"),
-# core_version_requirement, require_php, php_target, version_bump,
-# rector_official_files, digests {applied, rejected:[{rule,reason}], skipped},
-# manual_edits[], deprecations_remaining, deferred_to_phase2[], patch,
-# d10_support (from verify-core-matrix.sh when Step 7b ran, else the Step 1 value),
-# port_safety (the JSON printed by check-port-safety.sh --json),
-# signature_changes (the JSON printed by scan-signature-changes.sh --json),
-# metadata_lint (the JSON printed by lint-extension-metadata.sh --json, Step 7:
-# rendered as "Pre-existing hygiene (not fixed in Phase 1)"; port-report.sh falls
-# back to the metadata-lint.json it saves),
-# soft_deprecations (the JSON printed by classify-deprecations.sh --json; add its
-# soft symbols with action "defer" to deferred_to_phase2, and count only hard +
-# unknown ones in deprecations_remaining),
-# verification {core_matrix (the JSON of verify-core-matrix.sh --json, Step 7b),
-# phpcs_ruleset (the .drupilot object of run-phpcs.sh --json:
-# which ruleset was used — the project's own, or drupilot's default and why),
-# commit_hooks (the JSON of git-hooks.sh --run-equivalents when a hook was
-# substituted, else {"bypassed": false, "note": "hooks ran on commit"}),
-# negative_controls (the records of negative-control.sh --json, when a test was
-# written for a fix; port-report.sh falls back to negative-controls.json)}.
-# Each manual_edits item may be a plain string OR an object
-# {edit, why?, change_record?} so the report can explain WHY each manual change
-# was made (and link its change record).
-# Structured outcome fields (aggregated across modules and layers by
-# layer-report.sh; the log-decision.sh entries are merged in, deduplicated):
-# rector_rules (the rule_hits of the applying run-rector.sh --json),
-# rector_reversions [{rule, file, why}], post_port_fixes [{fix, file, why,
-# detected_by}], preexisting_bugs [{issue, file, note}], behavior_changes
-# [{change, why, review_hint}], tooling_deviations [{what, why}], validation
-# [strings: how the result was validated], learned_patterns {scan (the JSON of
-# patterns.sh scan --json, Step 2c), recorded [the ids added in Step 8b]}.
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/fixpoint.sh" --subject <path> --json
+```
+
+It runs the extraction again on the tree as it is, then the codemods in
+dry-run, and writes `<state_dir>/fixpoint.json`: the Rector changes still
+proposed by the official dry-run (the digests rules never count), the codemods
+that would still apply, and the open items of the processed lanes (`rector`,
+`rector-custom`, `codemod`). Under `DRUPILOT_FIXPOINT=enforce` (the default)
+a failure exits 3 and the port is not done: fix the items, run the validation
+loop again, then `make-patch.sh --local` again (the local patch was written
+before) and the gate once more. A tool with no verdict (`no_verdict_tools`) is
+fixed by making that scan give one (its own run and log), then the gate again.
+A change you reverted on purpose is accepted once logged
+(`log-decision.sh --kind rector-revert --rule <Rule or recipe id> --file
+<file>`). `<file>` is the module-relative path `fixpoint.json` lists; a later run applies
+the change again unless it is skipped for that path: an official-pass rule in
+`rector.php`, a compat-pass rule in `rector-compat.php` (both kept once edited
+by hand), a codemod through the project's recipe overlay
+`<root>/.drupilot/recipes.json`. Under `warn` a failure is reported and the port goes on:
+name the items in the summary.
+
+**Write the port report card (the trust + teaching artifact).** The manifest is
+generated, never written by hand: `scripts/ai/manifest.sh` builds
+`<state_dir>/port-manifest.json` from what the scripts recorded — the findings,
+the worklist (by lane and status), the codemods applied, the Rector rules and
+files of the applying run, the digests verdicts, the decision log and the git
+diff against the port's base (files changed, and the manual edits: the files
+neither Rector nor a codemod changed). Your only input is the **why** of the
+items you fixed or decided by hand, keyed by worklist item id (the `id`s of
+`<state_dir>/worklist.json`): write `<state_dir>/rationale.json` as
+`{"<item id>": "why"}` and pass it; an id the worklist does not have is refused.
+Every divergence (a Rector change reverted, a post-port fix, a behavior change, a
+pre-existing bug, a tooling deviation) is logged with `log-decision.sh` as it
+happens, never repeated here: `port-report.sh` merges the decision log. As the
+port ran you should have **tee'd** the official Rector output, the digests pass
+output and the final validate-loop PHPStan deprecation report into
+`<state_dir>/change-log.txt` (under `$HOME`, never in the project tree);
+`port-report.sh` pipes it through `explain-deprecations.sh` for the "changes,
+explained" section. Then run the pipeline's last stages, which check the
+fixpoint, generate the manifest and render the report (with a git repository;
+without one, run `fixpoint.sh`, `manifest.sh` and `port-report.sh` in that
+order, as their lines below show):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/pipeline.sh" --subject <path> --stages php,validate,report --rationale <state_dir>/rationale.json --json
+# Without a git repository: the extraction of the ported tree first (the manifest
+# refuses scans of other sources), then the manifest and the report.
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/extract.sh" --subject <path> --stage validate
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/normalize-findings.sh" --subject <path> --stage validate
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/classify.sh" --subject <path>
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/manifest.sh" --subject <path> --phase port --rationale <state_dir>/rationale.json --json
 !bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-report.sh" --subject "$1" --manifest "<state_dir>/port-manifest.json" --changes-log "<state_dir>/change-log.txt"
 ```
+
+(Leave `--rationale` out when no item needs one; an earlier rationale is kept for
+the items still in the worklist.)
+
+The `php` stage checks the PHP window (every PHP from the plan's floor to its
+target): the constructs a PHP of the window removed or deprecated, `php -l`
+on each of those PHP versions, and PHPCompatibility (`run-phpcompat.sh`, an
+alpha, report-only). They become `human` worklist items with a reason:
+`removed-in-target-php` (from the construct scan or a `php -l` leg) and
+`does-not-compile` block, and so does `fix-needs-php-above-floor` when the
+floor's PHP does not compile the file. PHPCompatibility's items
+(`removed-in-target-php`, `fix-needs-php-above-floor`,
+`deprecated-in-php-window`) never block: report them.
+Tell the developer about each blocking one and the file it is in. It is theirs
+to fix (or the floor theirs to raise): never rewrite a removed construct on
+your own, and never drop one from the report. `port-summary.sh --strict` exits 3
+while one is open.
 
 It writes `port-report.md` into the visible `.drupilot/` artifacts dir at the
 Drupal root (and pulls the `preservation` verdict — with the baseline
@@ -593,15 +749,13 @@ comparison: regressions, pre-existing failures, tests the port fixed — from
 `--changes-log` to `<state_dir>/change-log.txt`, so teeing the analyzer output
 there is enough. Given the manifest, it also records the **ported** stage in the
 subject's `state.json` (the per-module registry), so `/drupilot-status` and the
-router move past `/drupilot-port`. `SendUserFile` it so it surfaces as a deliverable. Every field
-is optional — the report still renders from partial data, and never invents a value.
+router move past `/drupilot-port`. `SendUserFile` it so it surfaces as a deliverable. The
+report still renders from partial data, and never invents a value.
 It also refreshes `port-summary.json` beside the report: the versioned machine
 summary (`scripts/analysis/port-summary.sh --subject <dir> --json`: status,
 effort, files changed, Rector rules, reverted rules, manual fixes, preservation,
-core matrix, patch) that wrappers read instead of the Markdown. Add
-`files_changed` (the number of files the port changed, e.g. the `diff --git`
-entries of the local patch) to the manifest so the summary does not have to
-fall back to counting the patch.
+core matrix, patch) that wrappers read instead of the Markdown; the manifest
+carries `files_changed`, so the summary does not fall back to counting the patch.
 
 ## Step 10 — What next? (developer chooses)
 

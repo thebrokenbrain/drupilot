@@ -26,7 +26,8 @@
 #     phpstan_config phpstan.neon does not set the deprecated drupal_root
 #     toolchain:*    one row per known-good package installed at the root
 #                    (composer.lock, read with jq: no PHP, no DDEV), compared
-#                    with config/toolchain-reference.json; plus
+#                    with the root's cell of config/toolchain-reference.json
+#                    (legacy_v1 for a lock drupilot 0.9 wrote); plus
 #                    toolchain_combo, false when the installed set matches a
 #                    known-broken combination (e.g. "Could not detect twig set")
 #     disk_free      free space on the root's (else the current dir's)
@@ -97,7 +98,7 @@ have_cmd jq || die "'jq' is required to run preflight (it builds JSON). Install 
 # This never changes the exit code — preflight gates requirements, not prefs.
 # ---------------------------------------------------------------------------
 config_enum DRUPILOT_CONTRIB_MODE         semi   semi auto              >/dev/null || true
-config_enum DRUPILOT_CORE_TARGET_STRATEGY auto   auto d11-only keep-d10 >/dev/null || true
+config_enum DRUPILOT_CORE_TARGET_STRATEGY auto   auto d11-only keep-d10 target-only keep-previous widest >/dev/null || true
 config_enum DRUPILOT_REQUIRE_PHP_FLOOR    detect detect target          >/dev/null || true
 config_enum DRUPILOT_GENERATE_RULES       ask    ask auto off           >/dev/null || true
 config_enum DRUPILOT_TOOLCHAIN_SOURCE     auto   auto reference range   >/dev/null || true
@@ -105,12 +106,13 @@ config_enum DRUPILOT_SOFT_DEPRECATIONS    report report defer fix        >/dev/n
 config_enum DRUPILOT_ATTRIBUTES_MODE      keep   keep strip             >/dev/null || true
 config_enum DRUPILOT_HOOKS_GUARD          ask    ask off                >/dev/null || true
 config_enum DRUPILOT_CORE_CACHE           auto   auto locked off        >/dev/null || true
+config_enum DRUPILOT_LOCK_LOCATION        state  state project          >/dev/null || true
 [[ -z "$(config_get DRUPILOT_LAYERS_SANDBOX "")" ]] || config_enum DRUPILOT_LAYERS_SANDBOX "" per-module shared >/dev/null || true
 # DRUPILOT_VERIFY_CORES is auto | off | a comma list of MAJOR[.MINOR] legs.
 _vc="$(config_get DRUPILOT_VERIFY_CORES auto)"
 case "$_vc" in
   auto|off) : ;;
-  *) printf '%s' "$_vc" | grep -qE '^[[:space:]]*[0-9]+(\.[0-9]+)?(\.x)?[[:space:]]*(,[[:space:]]*[0-9]+(\.[0-9]+)?(\.x)?[[:space:]]*)*$' \
+  *) printf '%s' "$_vc" | grep_q -E '^[[:space:]]*[0-9]+(\.[0-9]+)?(\.x)?[[:space:]]*(,[[:space:]]*[0-9]+(\.[0-9]+)?(\.x)?[[:space:]]*)*$' \
        || log_err "DRUPILOT_VERIFY_CORES='$_vc' is invalid. Allowed: auto, off, or a comma list of core legs such as 10,11 or 10.3,11";;
 esac
 
@@ -337,7 +339,7 @@ if [[ "$EXTENDED" == "1" ]]; then
   XL_OK="false"; XL_VER=""
   if have_cmd xmllint; then
     XL_OK="true"
-    XL_VER="$(xmllint --version 2>&1 | sed -n 's/.*using libxml version \([0-9][0-9]*\).*/\1/p' | head -n1)"
+    XL_VER="$(xmllint --version 2>&1 | sed -n 's/.*using libxml version \([0-9][0-9]*\).*/\1/p' | sed -n '1p')"
     [[ -n "$XL_VER" ]] && XL_VER="libxml $XL_VER"
   fi
   CHECKS+=("$(emit_check xmllint "xmllint" "validates generated XML configs (optional)" health "setup" soft "$XL_OK" "$XL_VER" "" "$XL_OK" "$(hint_for xmllint)")")
@@ -351,7 +353,7 @@ if [[ "$EXTENDED" == "1" ]]; then
     for _pc in phpcs.xml.dist phpcs.xml; do
       [[ -f "$HROOT/$_pc" ]] || continue
       if have_cmd xmllint; then
-        _xerr="$(xmllint --noout "$HROOT/$_pc" 2>&1 | head -n 2 | tr '\n' ' ' || true)"
+        _xerr="$(xmllint --noout "$HROOT/$_pc" 2>&1 | sed -n '1,2p' | tr '\n' ' ' || true)"
         if [[ -z "$_xerr" ]]; then
           CHECKS+=("$(emit_check phpcs_config "$_pc" "the root's PHPCS ruleset is well-formed XML" health "analyze" soft true "valid" "" true "")")
         else
@@ -376,19 +378,24 @@ if [[ "$EXTENDED" == "1" ]]; then
   # Toolchain at the root vs the known-good reference (composer.lock, jq only).
   REF_FILE="$(toolchain_reference_file)"
   if [[ -n "$HROOT" && -f "$HROOT/composer.lock" && -r "$REF_FILE" ]]; then
-    _installed="$(jq -c --slurpfile ref "$REF_FILE" '
+    # The known-good set of this root's toolchain cell (a 0.9 lock: legacy_v1).
+    _kg="$(toolchain_reference_set "$(toolchain_cell_for "$HROOT")")"
+    # Installed versions of the cell's packages, and of every package a
+    # known-broken rule or the remediation names (so a broken combination is
+    # still found when the cell pins nothing, e.g. Drupal 12's).
+    _watch="$(jq -c --argjson kg "$_kg" '[($kg | keys[]), (.known_broken[]?.packages | keys[]), (.remediation_packages // [])[]] | unique' "$REF_FILE" 2>/dev/null || printf '[]')"
+    _installed="$(jq -c --argjson w "$_watch" '
         ((.packages // []) + (."packages-dev" // [])) as $all
-        | [($ref[0].toolchain // {}) | keys[] as $k
+        | [$w[] as $k
            | ($all | map(select(.name == $k)) | .[0].version // empty) as $v
            | {key: $k, value: ($v | ltrimstr("v"))}] | from_entries' "$HROOT/composer.lock" 2>/dev/null || true)"
     [[ -n "$_installed" ]] || _installed='{}'
-    TOOLCHAIN_JSON="$(jq -c --argjson inst "$_installed" --arg root "$HROOT" '
-        (.toolchain // {}) as $kg
-        | ($kg | with_entries(select($inst[.key] != null))) as $kgi
+    TOOLCHAIN_JSON="$(jq -c --argjson inst "$_installed" --arg root "$HROOT" --argjson kg "$_kg" '
+        ($kg | with_entries(select($inst[.key] != null))) as $kgi
         | {root: $root, installed: $inst, known_good: $kgi,
-           differs: [$inst | to_entries[] | select($kg[.key] != .value) | .key],
+           differs: [$inst | to_entries[] | select(.key as $k | $kg | has($k)) | select($kg[.key] != .value) | .key],
            known_broken_rules: (.known_broken // [])}
-        | .match = ((.differs | length) == 0 and (.installed | length) > 0)' "$REF_FILE" 2>/dev/null || printf 'null')"
+        | .match = ((.differs | length) == 0 and ($kgi | length) > 0)' "$REF_FILE" 2>/dev/null || printf 'null')"
     [[ -n "$TOOLCHAIN_JSON" ]] || TOOLCHAIN_JSON="null"
     if [[ "$TOOLCHAIN_JSON" != "null" ]]; then
       _fix="bash \"\$CLAUDE_PLUGIN_ROOT/scripts/env/install-toolchain.sh\" --dir $HROOT --source reference"
@@ -397,7 +404,7 @@ if [[ "$EXTENDED" == "1" ]]; then
         _ok="true"; [[ "$_have" == "$_want" ]] || _ok="false"
         CHECKS+=("$(emit_check "toolchain:$_pkg" "$_pkg" "compared with the known-good reference" health "setup test" soft true "$_have" "$_want" "$_ok" \
           "$([[ "$_ok" == "true" ]] || printf 'Differs from the known-good reference; if Rector or PHPStan misbehaves, reinstall the reference set: %s' "$_fix")")")
-      done < <(printf '%s' "$TOOLCHAIN_JSON" | jq -r '.installed | to_entries[] | [.key, .value] | join("\u001f")' 2>/dev/null \
+      done < <(printf '%s' "$TOOLCHAIN_JSON" | jq -r '.known_good as $kg | .installed | to_entries[] | select(.key as $k | $kg | has($k)) | [.key, .value] | join("\u001f")' 2>/dev/null \
                 | while IFS=$'\037' read -r _p _v; do
                     printf '%s\037%s\037%s\n' "$_p" "$_v" "$(printf '%s' "$TOOLCHAIN_JSON" | jq -r --arg p "$_p" '.known_good[$p] // ""')"
                   done)

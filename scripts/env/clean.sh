@@ -15,7 +15,9 @@
 #              /drupilot-setup recreates the project.
 #   vendor     (default) + every Composer-installed tree: vendor/ and the
 #              composer installer-paths (core, contrib modules/themes/profiles,
-#              libraries, recipes, drush contrib) — never a */custom path.
+#              libraries, recipes, drush contrib) — never a */custom path —,
+#              and the vendor/ of PHPCompatibility's own tree
+#              (.drupilot/phpcompat, reinstalled on its next run).
 #              /drupilot-setup restores them from composer.lock
 #              (ddev-up.sh runs `ddev composer install` when vendor/ is gone).
 #   workspace  + the whole test-bed directory. Each placed subject is first put
@@ -26,7 +28,8 @@
 #              the origin lacks (same git HEAD, clean tree) or with
 #              --discard-copies. The test-bed's .drupilot/ reports are copied to
 #              each origin's .drupilot/ (self-gitignored; the cores/ cache of
-#              reference cores is not copied) first — or, with no
+#              reference cores and PHPCompatibility's phpcompat/ Composer tree
+#              are not copied) first — or, with no
 #              origin to copy them to, to the root's hidden state dir
 #              (<state>/reports-<UTC time>) — and a discarded copy's *.patch
 #              files go to .drupilot/patches/. "Holds nothing the origin
@@ -47,7 +50,8 @@
 #
 # Afterwards every module of the root gets `.environment = {status: "removed",
 # level, at}` in its state.json, so next-step.sh recommends /drupilot-setup
-# until ddev-up.sh / place-subject.sh rebuild it.
+# until ddev-up.sh / place-subject.sh rebuild it, and its digests verdicts
+# (digests-decisions.json, scripts/analysis/digests-decisions.sh) are reset.
 #
 # Usage:
 #   clean.sh [--subject DIR | --root DIR | --all [--scan DIR]...]
@@ -163,7 +167,7 @@ size_kb() {
 root_docroot() {
   local d=""
   if [[ -f "$1/.ddev/config.yaml" ]]; then
-    d="$(sed -n 's/^docroot:[[:space:]]*//p' "$1/.ddev/config.yaml" 2>/dev/null | head -n1 | tr -d "\"' " || true)"
+    d="$(sed -n 's/^docroot:[[:space:]]*//p' "$1/.ddev/config.yaml" 2>/dev/null | sed -n '1p' | tr -d "\"' " || true)"
   fi
   [[ -n "$d" ]] || d="web"
   printf '%s' "$d"
@@ -172,7 +176,7 @@ root_docroot() {
 # ddev_name <root> -> the DDEV project name, or empty.
 ddev_name() {
   [[ -f "$1/.ddev/config.yaml" ]] || return 0
-  sed -n 's/^name:[[:space:]]*//p' "$1/.ddev/config.yaml" 2>/dev/null | head -n1 | tr -d "\"' " || true
+  sed -n 's/^name:[[:space:]]*//p' "$1/.ddev/config.yaml" 2>/dev/null | sed -n '1p' | tr -d "\"' " || true
   return 0
 }
 
@@ -275,7 +279,7 @@ copy_is_redundant() {
     ho="$(git -C "$o" rev-parse HEAD 2>/dev/null || true)"
     [[ -n "$hc" && "$hc" == "$ho" ]] || return 1
   fi
-  [[ -z "$(git -C "$c" status --porcelain --untracked-files=normal -- . 2>/dev/null | grep -v -E '(^|/| )\.drupilot(/|\.json|$)' | head -n1)" ]] || return 1
+  [[ -z "$(git -C "$c" status --porcelain --untracked-files=normal -- . 2>/dev/null | grep -v -E '(^|/| )\.drupilot(/|\.json|$)' | sed -n '1p')" ]] || return 1
   while IFS= read -r sha; do
     [[ -n "$sha" ]] || continue
     if [[ -n "$bl" ]]; then
@@ -390,6 +394,11 @@ plan_root() {
           actions="${actions}rm${TAB}${root}/${p}${TAB}composer-managed"$'\n'
         done < <(composer_paths "$root")
       fi
+      # PHPCompatibility's own Composer tree (run-phpcompat.sh, ADR 0003):
+      # its vendor/ goes too; the next run reinstalls it from the pins.
+      if [[ -d "$root/.drupilot/phpcompat/vendor" ]]; then
+        actions="${actions}rm${TAB}${root}/.drupilot/phpcompat/vendor${TAB}composer-managed"$'\n'
+      fi
     fi
     # 3. Workspace: put every placed subject back, then remove the root.
     if [[ "$LEVEL" == "workspace" ]]; then
@@ -423,7 +432,7 @@ plan_root() {
           fi
         else
           # move (or an unrecorded placement with a known origin): move it back.
-          if [[ -e "$origin" || -L "$origin" ]] && [[ -n "$(ls -A "$origin" 2>/dev/null | head -n1)" || ! -d "$origin" ]]; then
+          if [[ -e "$origin" || -L "$origin" ]] && [[ -n "$(ls -A "$origin" 2>/dev/null | sed -n '1p')" || ! -d "$origin" ]]; then
             act="refuse"; status="refused"
             reason="cannot move $mn back: $origin already exists and is not empty"
           else
@@ -507,7 +516,7 @@ if [[ "$CORE_CACHE" == "1" ]]; then
     log_info "No cached base core to remove."
   fi
 fi
-log_plain "Always kept: the hidden state (lockfile, assess.json, state.json), the subject's git checkout and branches, .drupilot/ reports, local patches."
+log_plain "Always kept: the hidden state (lockfile, assess.json, state.json; the digests verdicts are reset), the subject's git checkout and branches, .drupilot/ reports, local patches."
 
 # --- Confirm -------------------------------------------------------------------
 EXECUTE=0
@@ -553,7 +562,7 @@ exec_op() {
       ;;
     restore)
       if [[ -d "$b" && ! -L "$b" ]]; then
-        [[ -z "$(ls -A "$b" 2>/dev/null | head -n1)" ]] || { log_err "$b is not empty any more — not moving $a there."; return 1; }
+        [[ -z "$(ls -A "$b" 2>/dev/null | sed -n '1p')" ]] || { log_err "$b is not empty any more — not moving $a there."; return 1; }
         rmdir "$b" || return 1
       elif [[ -e "$b" || -L "$b" ]]; then
         log_err "$b exists — not moving $a there."; return 1
@@ -567,12 +576,13 @@ exec_op() {
       ;;
     rescue-reports)
       mkdir -p "$b" || return 1
-      # Everything but cores/: the core matrix's reference cores (about 200 MB
-      # each) are a rebuildable cache, so rescuing them would only move the
-      # disk use the clean is meant to free.
+      # Everything but cores/ and phpcompat/: the core matrix's reference
+      # cores (about 200 MB each) and PHPCompatibility's Composer tree are
+      # rebuildable caches, so rescuing them would only move the disk use the
+      # clean is meant to free.
       for e in "$a"/* "$a"/.[!.]* "$a"/..?*; do
         [[ -e "$e" || -L "$e" ]] || continue
-        [[ "$(basename "$e")" == "cores" ]] && continue
+        case "$(basename "$e")" in cores|phpcompat) continue;; esac
         cp -R -p "$e" "$b/" || return 1
       done
       [[ -f "$b/.gitignore" ]] || printf '*\n' > "$b/.gitignore"
@@ -632,8 +642,10 @@ for i in $IDX; do
     fi
     freed=$(( ${R_SIZE[i]} - $(size_kb "${ROOTS[i]}") ))
     [[ "$freed" -ge 0 ]] || freed=0
-    # Every module of this root: the environment is gone until the next setup.
+    # Every module of this root: the environment is gone until the next setup,
+    # and its digests verdicts are forgotten (05-R6: a clean starts over).
     env_status_record "${ROOTS[i]}" removed "$LEVEL"
+    while IFS= read -r _s; do if [[ -n "$_s" ]]; then rm -f "$(digests_decisions_file "$_s")"; fi; done < <(subjects_with_state_under "${ROOTS[i]}")
   else
     while IFS="$TAB" read -r _op _a _b; do
       [[ -n "$_op" ]] || continue

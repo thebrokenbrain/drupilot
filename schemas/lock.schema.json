@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thebrokenbrain.github.io/drupilot/schemas/lock.schema.json",
+  "title": "drupilot reproducibility lockfile (drupilot-lock.json)",
+  "description": "The per-project lockfile that freezes what drupilot resolved (DRUPILOT_DETERMINISTIC). It lives in the hidden state dir of the Drupal ROOT (drupilot_lock_file: project_state_dir of the root, under drupilot's data dir), never in the project tree. It is built key by key: the lock_set (string), lock_set_json (raw JSON) and lock_merge_json (several keys in one write) helpers of scripts/lib/lock.sh create it as {\"schema\": 1} on first write (a lock without schema was created by drupilot 0.9) and stamp drupilot_version on every write; scripts/env/lock-sync.sh writes the metadata, php_target, phpstan_level, core_strategy, drupal.core, toolchain.* and ddev_addons.* (and --refresh deletes digests.sha); scripts/analysis/run-rector.sh writes digests.ref/sha; scripts/analysis/verify-core-matrix.sh writes verify_cores.*; scripts/env/install-toolchain.sh re-runs lock-sync.sh and records toolchain_cell; scripts/analysis/upgrade-path.sh --freeze writes upgrade_plan, upgrade_plan_hash, upgrade_plan_phase and data_hash in one write (ADR 0018); scripts/analysis/scan-removals.sh writes replacements.* (ADR 0031). Every section is optional: a lock holds only what was frozen so far.",
+  "type": "object",
+  "required": ["drupilot_version"],
+  "properties": {
+    "drupilot_version": {
+      "description": "plugin.json's version of the drupilot that last wrote the lock (stamped by every lock_set / lock_set_json).",
+      "type": "string"
+    },
+    "drupilot_revision": {
+      "description": "git describe of the drupilot checkout that ran lock-sync.sh; removed again when drupilot runs from an installed copy.",
+      "type": "string"
+    },
+    "created": {
+      "description": "UTC timestamp of the first lock-sync.sh run (a lock first written by run-rector.sh or verify-core-matrix.sh has none until then).",
+      "type": "string"
+    },
+    "updated": {
+      "description": "UTC timestamp of the last lock-sync.sh run.",
+      "type": "string"
+    },
+    "php_target": {
+      "description": "The effective DRUPILOT_PHP_TARGET at the last lock-sync.sh run.",
+      "type": "string"
+    },
+    "phpcompat": {
+      "description": "PHPCompatibility's own Composer tree at <root>/.drupilot/phpcompat (scripts/analysis/run-phpcompat.sh, ADR 0003): its exact pins and the standards the last run used. Its own key, not .toolchain, which holds the test-bed's composer.lock versions.",
+      "type": "object",
+      "required": ["packages", "standards"],
+      "properties": {
+        "packages": {"type": "object", "additionalProperties": {"type": "string"}},
+        "standards": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "replacements": {
+      "description": "The release-feed answers scan-removals.sh froze in deterministic mode (ADR 0031): for each contrib project that replaced a removed core module or theme, and each declared range it was asked about, whether a release covers that range, which one, and whether the target was a pre-release (preview: then alpha, beta and RC releases count). Reused for the same range and preview status; lock-sync.sh --refresh drops them.",
+      "type": "object",
+      "propertyNames": {"pattern": "^[a-z0-9_]+$"},
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "required": ["available", "preview"],
+          "properties": {
+            "available": {"type": "boolean"},
+            "preview": {"type": "boolean"},
+            "release": {"type": ["string", "null"]},
+            "core_compatibility": {"type": ["string", "null"]}
+          }
+        }
+      }
+    },
+    "rector_rule_audit": {
+      "description": "The rule audit of the Rector installed at the root (scripts/analysis/rector-rule-audit.sh, scripts/php/rule-audit.php; AR-11, ADR 0030): every rule its PHP sets register, with its sets, the PHP Rector's PhpVersionedFilter needs before it runs it, its polyfill package and its Rector interfaces. Read back while rector_version is the composer.lock version of rector/rector; it narrows the compat pass and sets its withPhpVersion().",
+      "type": "object",
+      "required": ["rector_version", "rules"],
+      "properties": {
+        "rector_version": {"type": "string", "minLength": 1},
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["rule", "sets", "min_php", "polyfill", "interfaces"],
+            "properties": {
+              "rule": {"type": "string", "pattern": "^[A-Za-z0-9_\\\\]+$"},
+              "sets": {"type": "array", "items": {"type": "string", "pattern": "^PHP_([0-9]{2}|POLYFILLS)$"}},
+              "min_php": {"type": ["string", "null"], "pattern": "^[0-9]+\\.[0-9]+$"},
+              "polyfill": {"type": ["string", "null"]},
+              "interfaces": {"type": "array", "items": {"type": "string"}}
+            }
+          }
+        }
+      }
+    },
+    "phpstan_level": {
+      "description": "The effective DRUPILOT_PHPSTAN_LEVEL (an int setting), written as raw JSON by lock_set_json.",
+      "type": "integer"
+    },
+    "core_strategy": {
+      "description": "The effective DRUPILOT_CORE_TARGET_STRATEGY as configured (auto, d11-only, keep-d10; not validated before it is written).",
+      "type": "string"
+    },
+    "drupal": {
+      "description": "Present once composer.lock was read.",
+      "type": "object",
+      "required": ["core"],
+      "properties": {
+        "core": {
+          "description": "Exact drupal/core (else drupal/core-recommended) version from composer.lock.",
+          "type": "string"
+        }
+      }
+    },
+    "toolchain": {
+      "description": "{composer package: exact version from composer.lock} for each config/defaults.json .packages entry that is installed.",
+      "type": "object",
+      "properties": {
+        "palantirnet/drupal-rector": {"type": "string"},
+        "rector/rector": {"type": "string"},
+        "phpstan/phpstan": {"type": "string"},
+        "phpstan/extension-installer": {"type": "string"},
+        "mglaman/phpstan-drupal": {"type": "string"},
+        "phpstan/phpstan-deprecation-rules": {"type": "string"},
+        "drupal/coder": {"type": "string"},
+        "drush/drush": {"type": "string"},
+        "drupal/upgrade_status": {"type": "string"},
+        "drupal/core-dev": {"type": "string"}
+      }
+    },
+    "schema": {
+      "description": "The lock format: 1 for a lock drupilot 1.0 created (lock_set / lock_set_json start it as {\"schema\": 1}); absent (0) for one drupilot 0.9 created.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "runtime_hash": {
+      "description": "The hash of the PHP helpers stage_runtime staged into <root>/.drupilot/runtime/ (scripts/php/*.php: the sorted \"name sha256\" lines, json_hash), from 1.0 (AR-23).",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "lenient_packages": {
+      "description": "The packages mglaman/composer-drupal-lenient lets install on the test-bed despite their drupal/core constraint, as its composer.json allowed-list has them (lenient_packages; [\"*\"] with allow-all), recorded by install-toolchain.sh when DRUPILOT_LENIENT_DEPS was used (AR-14, AR-28).",
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "toolchain_cell": {
+      "description": "The cell of config/toolchain-reference.json the toolchain was installed from (install-toolchain.sh, from 1.0). A lock that pins rector/rector without it was written by drupilot 0.9 and is read as cell legacy_v1 until it is refreshed.",
+      "type": "string"
+    },
+    "ddev_addons": {
+      "description": "Installed DDEV add-on versions (\"installed\" when the version is unknown); only add-ons found in the project.",
+      "type": "object",
+      "properties": {
+        "ddev-drupal-contrib": {"type": "string"},
+        "ddev-selenium-standalone-chrome": {"type": "string"}
+      }
+    },
+    "digests": {
+      "description": "The dbuytaert/drupal-digests checkout frozen by run-rector.sh after a digests pass finished normally; lock-sync.sh --refresh drops sha.",
+      "type": "object",
+      "properties": {
+        "ref": {
+          "description": "The configured ref (default main).",
+          "type": "string"
+        },
+        "sha": {
+          "description": "The commit the ref resolved to.",
+          "type": "string"
+        },
+        "implemented_yml_sha256": {
+          "description": "The file_hash of drupal-rector's docs/implemented-digests.yml at the installed version, the digests rules drupal-rector already implements (03-R17), frozen by run-rector.sh at the first digests pass.",
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "implemented_yml_ref": {
+          "description": "The drupal-rector version (git tag) that yml was fetched at.",
+          "type": "string"
+        }
+      }
+    },
+    "upgrade_plan": {
+      "description": "The frozen upgrade plan (schemas/upgrade-plan.schema.json, kept whole with its meta) that every stage reads its versions from through plan_get (ADR 0018).",
+      "type": "object",
+      "required": ["schema_version"]
+    },
+    "upgrade_plan_hash": {
+      "description": "sha256 of the plan's canonical JSON without meta (canon_json_hashable | json_hash).",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "upgrade_plan_phase": {
+      "description": "The phase of the frozen plan: draft (setup, static signals) or final (port, with the analyzer signal).",
+      "enum": ["draft", "final"]
+    },
+    "data_hash": {
+      "description": "The version data the frozen plan was resolved with (the plan's own data_hash).",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "templates": {
+      "description": "The configs drupilot rendered, keyed by their path under the root (rector.php, rector-compat.php, phpstan.neon, ...): the sha256 of the file as written and the template version (render_sha_record; ADR 0019). A file whose sha256 is the kept one is an untouched render, regenerated when the plan moves; any other content is hand-edited (INV5).",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["sha256"],
+        "properties": {
+          "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+          "template_version": {"type": ["integer", "null"]}
+        }
+      }
+    },
+    "verify_cores": {
+      "description": "Reference Drupal cores frozen by verify-core-matrix.sh, keyed by leg (e.g. \"10\", \"10.0\", \"10.3\"); each value is {constraint, version}, both strings (the composer constraint the leg resolved and the exact core it got).",
+      "type": "object"
+    }
+  }
+}

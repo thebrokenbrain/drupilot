@@ -1,0 +1,7 @@
+<?php
+
+/**
+ * A SimpleTest case of the Drupal 7 era.
+ */
+class D7MinimalTestCase extends DrupalWebTestCase {
+}

@@ -3,20 +3,44 @@
 # drupilot — scripts/env/render-templates.sh
 # Render the toolchain config templates into the Drupal root, deterministically:
 #   rector   templates/rector.php.tmpl              -> <root>/rector.php
+#   rector-compat
+#            templates/rector-compat.php.tmpl       -> <root>/rector-compat.php
+#                                                      (only when the compat
+#                                                      pass has a rule to run)
 #   phpstan  templates/phpstan.neon.tmpl            -> <root>/phpstan.neon
 #   phpcs    templates/phpcs.xml.dist.tmpl          -> <root>/phpcs.xml.dist
 #   testing  templates/ddev-web-environment.yaml.tmpl
 #                                                   -> <root>/.ddev/config.testing.yaml
 # Tokens: {{SUBJECT_PATH}} (in-root path of the module/theme), {{PHP_TARGET}}
-# (resolve_php_target), {{PHP_SET}} (the Rector ->withPhpSets() argument for
-# that target, rector_php_set_arg: 8.3 -> php83, 8.4 -> php84, an unconfirmed
-# 8.5 -> php84), {{DRUPAL_TARGET}} (resolve_drupal_target),
+# (resolve_php_target), {{PHP_FLOOR}} / {{PHP_FLOOR_ID}} / {{PHP_FLOOR_SET}}
+# (the PHP floor L of the Rector configs, rector_php_bounds: the lowest PHP the
+# core range core-strategy.sh recommends and the effective require.php admit,
+# never above the PHP target, e.g. 8.1 / PHP_81 / php81 for ^10 || ^11; a
+# floor of 8.5 gets php84 sets, rector_floor_tokens), {{PHP_SET}} (the
+# ->withPhpSets() argument for the PHP target, rector_php_set_arg; no current
+# template uses it), {{DRUPAL_TARGET}} (resolve_drupal_target),
 # {{PHPSTAN_LEVEL}} (DRUPILOT_PHPSTAN_LEVEL, default 2) and {{WEBDRIVER_HOST}}
 # (the Selenium service read from .ddev/docker-compose.selenium-chrome.yaml,
 # default selenium-chrome:4444; no current template uses it — the testing
 # template leaves MINK_DRIVER_ARGS_WEBDRIVER to the Selenium add-on — but
 # --set WEBDRIVER_HOST=... is still accepted). Substitution is literal
 # (render_template in common.sh), so no path character can break it.
+#
+# rector.php (template v6) and phpstan.neon (template v3) are rendered from the
+# upgrade plan (ADR 0019, ADR 0020): the frozen plan of the subject
+# (plan_for_subject), else a fresh draft from scripts/analysis/upgrade-path.sh.
+# rector.php's tokens {{RECTOR_SETS}}, {{SKIP_RULES}}, {{BC_BLOCK}},
+# {{PHP_VERSION_L}} / {{PHP_SETS_L}} (the plan's php.floor) and {{POLYFILLS}}
+# (the plan's rector.polyfills) come from rector_sets_block, rector_skip_block,
+# rector_bc_block, rector_floor_tokens and rector_polyfills_block;
+# rector-compat.php's {{COMPAT_RULES}} / {{COMPAT_PHP_VERSION}} from
+# rector_compat_rules_block and rector_compat_php_id; phpstan.neon's {{PHPSTAN_PHP_MIN}} / {{PHPSTAN_PHP_MAX}}
+# (the plan's php.phpstan_phpversion), {{PHPSTAN_PROFILE}} /
+# {{PHPSTAN_PROFILE_BLOCK}} (the plan's phpstan.profile, or --profile;
+# phpstan_profile_block) and {{PHPSTAN_CACHE_KEY}} (the first 12 hex digits of
+# the plan's hash, phpstan_cache_key). The sha256 of every file written goes
+# into the root's lock (.templates, render_sha_record), so a later render
+# regenerates a copy nobody edited.
 #
 # Every rendered file is validated BEFORE it is written: no {{TOKEN}} may be
 # left, phpcs.xml.dist must be well-formed XML (`xmllint --noout`; without
@@ -32,13 +56,28 @@
 # drupilot generated from an OLDER template (its "drupilot — <file>" header is
 # there but the template's current "drupilot-template-version: N" marker is
 # not) is upgraded without --force, after the same backup — e.g. the invalid
-# 0.8.x phpcs.xml.dist or a phpstan.neon with the deprecated drupal_root. A
-# current-generation copy that differs counts as hand-edited.
+# 0.8.x phpcs.xml.dist or a phpstan.neon with the deprecated drupal_root. So is
+# an untouched render: a file whose sha256 is the one kept in the root's lock
+# (ADR 0019), or a rector-compat.php (or template-4 rector.php) that is exactly
+# what its template renders for its own subject (and, for rector.php, its
+# floor) (rector_config_pristine): nobody edited it, and it was rendered for
+# another subject of a shared test-bed, or (rector.php) its plan or floor moved
+# because the core target changed (0.9 reported that as "differs"). Any other current-generation copy
+# that differs counts as hand-edited, a template-6 rector.php whose sha256 the
+# lock no longer keeps included (its sha256 is kept again when it is found up
+# to date).
+#
+# rector-compat.php is rendered only when the compat pass has a rule to run
+# (rector_compat_needed: the plan's rector.compat_rules, checked against the
+# installed Rector's rule audit, rector_compat_list, ADR 0030); otherwise its
+# entry is "skipped" and an existing copy is left alone (run-rector.sh does
+# not run it). The audit runs (scripts/analysis/rector-rule-audit.sh) when
+# the root's lock holds none for that Rector, never with --dry-run.
 #
 # Usage:
 #   render-templates.sh (--root DIR | --subject DIR) [--subject-path REL]
-#                       [--only LIST] [--set KEY=VALUE]... [--force]
-#                       [--dry-run] [--json]
+#                       [--only LIST] [--set KEY=VALUE]... [--profile P]
+#                       [--force] [--dry-run] [--json]
 #
 # Options:
 #   --root DIR          Drupal project root. Without it, the root is found by
@@ -47,18 +86,38 @@
 #                       root). Its path relative to the root is {{SUBJECT_PATH}}.
 #   --subject-path REL  Give {{SUBJECT_PATH}} directly (e.g.
 #                       web/modules/custom/foo); wins over --subject.
-#   --only LIST         Comma-separated subset of rector,phpstan,phpcs,testing
-#                       (default: all; `testing` is skipped when the root has no
+#   --only LIST         Comma-separated subset of
+#                       rector,rector-compat,phpstan,phpcs,testing (default:
+#                       all; `rector` implies `rector-compat`, the pair shares
+#                       the floor; `testing` is skipped when the root has no
 #                       .ddev/ directory).
 #   --set KEY=VALUE     Override one token value (repeatable), e.g.
-#                       --set WEBDRIVER_HOST=selenium-chrome:4444.
+#                       --set WEBDRIVER_HOST=selenium-chrome:4444. The PHP
+#                       floor is not a token: it follows the core target and
+#                       DRUPILOT_REQUIRE_PHP_FLOOR.
+#   --profile P         The PHPStan profile of phpstan.neon: compat (Phase 1:
+#                       phpstan-drupal's rules without its four opinion rules)
+#                       or refactor (Phase 2: every phpstan-drupal rule as it
+#                       ships). Default: the plan's phpstan.profile (compat).
 #   --force             Replace a file that differs (after backing it up).
 #   --dry-run           Render and validate, report what would happen; write
 #                       nothing.
 #   --json              Print a JSON summary on STDOUT:
 #                       {root, subject_path, dry_run, force, ok, restart_needed,
+#                        php_floor, php_ceiling, plan, phpstan_profile,
 #                        files:[{name, template, path, status, valid, validator,
 #                                backup}]}
+#                       php_floor / php_ceiling: the floor L and the ceiling U
+#                       of the Rector configs (null when no rector template is
+#                       selected)
+#                       plan: "plan" (the subject's frozen upgrade plan, else a
+#                       fresh draft, gave rector.php its sets, skips, BC block
+#                       and floor, and phpstan.neon its PHP range), "fallback"
+#                       (no plan resolves: the previous major's sets, the floor
+#                       above and the PHP target) or null (no rector or
+#                       phpstan template selected)
+#                       phpstan_profile: compat | refactor, or null (no
+#                       phpstan template selected)
 #                       status: written | unchanged | differs | replaced |
 #                               upgraded | would-write | would-replace |
 #                               would-upgrade | invalid | skipped
@@ -87,6 +146,7 @@ ONLY=""
 FORCE=0
 DRY=0
 AS_JSON=0
+PROFILE=""
 declare -a OVERRIDES=()
 
 usage() { print_usage "$0"; }
@@ -103,6 +163,8 @@ while [[ $# -gt 0 ]]; do
     --only=*) ONLY="${1#*=}"; shift;;
     --set) OVERRIDES+=("${2:-}"); shift 2;;
     --set=*) OVERRIDES+=("${1#*=}"); shift;;
+    --profile) PROFILE="${2:-}"; shift 2;;
+    --profile=*) PROFILE="${1#*=}"; shift;;
     --force) FORCE=1; shift;;
     --dry-run) DRY=1; shift;;
     --json) AS_JSON=1; shift;;
@@ -120,6 +182,10 @@ reject_placeholder() {
 reject_placeholder --root "$ROOT"
 reject_placeholder --subject "$SUBJECT"
 reject_placeholder --subject-path "$SUBJECT_PATH"
+case "$PROFILE" in
+  ""|compat|refactor) ;;
+  *) die "Invalid --profile '$PROFILE' (expected compat or refactor)." 1;;
+esac
 
 # --- Resolve the Drupal root ------------------------------------------------
 if [[ -z "$ROOT" && -n "$SUBJECT" ]]; then
@@ -159,20 +225,29 @@ case "$SUBJECT_PATH" in
 esac
 
 # --- Which templates ----------------------------------------------------------
-ALL="rector phpstan phpcs testing"
+ALL="rector rector-compat phpstan phpcs testing"
 SELECTED="$ALL"
 if [[ -n "$ONLY" ]]; then
-  SELECTED=""
+  WANT=""
   for n in $(printf '%s' "$ONLY" | tr ',' ' '); do
     case " $ALL " in
-      *" $n "*) SELECTED="$SELECTED $n";;
+      *" $n "*) WANT="$WANT $n "
+                # The compat pass runs only when the floor of rector.php asks
+                # for it (rector_compat_needed): the pair is rendered together.
+                if [[ "$n" == "rector" ]]; then WANT="$WANT rector-compat "; fi;;
       *) die "Unknown template '$n' in --only (expected: ${ALL// /,})." 1;;
     esac
   done
+  SELECTED=""
+  for n in $ALL; do
+    case "$WANT" in *" $n "*) SELECTED="$SELECTED $n";; esac
+  done
 fi
-needs_subject=0
+needs_subject=0; needs_floor=0; needs_plan=0
 for n in $SELECTED; do
-  case "$n" in rector|phpstan|phpcs) needs_subject=1;; esac
+  case "$n" in rector|rector-compat|phpstan|phpcs) needs_subject=1;; esac
+  case "$n" in rector|rector-compat) needs_floor=1; needs_plan=1;; esac
+  case "$n" in phpstan) needs_plan=1;; esac
 done
 if [[ "$needs_subject" == "1" && -z "$SUBJECT_PATH" ]]; then
   die "{{SUBJECT_PATH}} is unknown: pass --subject DIR or --subject-path REL (or --only testing)." 1
@@ -223,6 +298,65 @@ case "$PHPSTAN_LEVEL" in
   *) die "Invalid PHPSTAN_LEVEL '$PHPSTAN_LEVEL' (expected 0-9 or 'max')." 1;;
 esac
 
+# The PHP floor L and ceiling U of the Rector configs (ADR 0002), from the
+# subject's declared core range and require.php, never above the PHP target.
+PHP_FLOOR=""; PHP_CEIL=""; COMPAT=0; PLAN=""; PLAN_SOURCE=""; PHPSTAN_PROFILE=""
+declare -a FLOOR_TOKENS=()
+if [[ "$needs_plan" == "1" ]]; then
+  _b="$(rector_php_bounds "$ROOT/$SUBJECT_PATH" "$PHP_TARGET")"
+  PHP_FLOOR="${_b%% *}"; PHP_CEIL="${_b##* }"
+  # The upgrade plan (H4, ADR 0019): the subject's frozen plan, else a fresh
+  # draft; its PHP floor wins. Without a plan (the resolver refuses), the
+  # floor above and the previous major's sets.
+  PLAN="$(plan_for_subject "$ROOT" "$ROOT/$SUBJECT_PATH" || true)"
+  if [[ -n "$PLAN" ]]; then
+    PLAN_SOURCE="plan"
+    _pf="$(printf '%s' "$PLAN" | jq -r '.php.floor // empty')"
+    [[ -z "$_pf" ]] || PHP_FLOOR="$_pf"
+  else
+    PLAN_SOURCE="fallback"
+    _tm="$(resolve_target_major)"
+    PLAN="$(plan_render_fallback "$_tm")" \
+      || die "No configuration can be rendered for DRUPILOT_TARGET_MAJOR '$_tm' (expected an integer such as 11)." 1
+  fi
+fi
+if [[ "$needs_floor" == "1" ]]; then
+  _ft="$(rector_floor_tokens "$PHP_FLOOR" || true)"
+  for _t in $_ft; do FLOOR_TOKENS+=("$_t"); done
+  [[ "${#FLOOR_TOKENS[@]}" -eq 5 ]] || die "Could not derive the Rector tokens of the PHP floor '$PHP_FLOOR'." 1
+  # The compat pass's rules (ADR 0030): the plan's, checked against the rule
+  # audit of the installed Rector (run when the lock holds none; a dry run
+  # reads the lock only).
+  if [[ "$DRY" == "1" ]]; then RULE_AUDIT="$(rector_audit_cached "$ROOT")"; else RULE_AUDIT="$(rector_audit_ensure "$ROOT")"; fi
+  COMPAT_LIST="$(rector_compat_list "$PLAN" "$PHP_FLOOR" "$PHP_CEIL" "$RULE_AUDIT")"
+  if rector_compat_needed "$COMPAT_LIST"; then COMPAT=1; fi
+  FLOOR_TOKENS+=("RECTOR_SETS=$(rector_sets_block "$PLAN")" "SKIP_RULES=$(rector_skip_block "$PLAN")"
+                 "BC_BLOCK=$(rector_bc_block "$PLAN")" "POLYFILLS=$(rector_polyfills_block "$PLAN")"
+                 "COMPAT_RULES=$(rector_compat_rules_block "$COMPAT_LIST")"
+                 "COMPAT_PHP_VERSION=$(rector_compat_php_id "$COMPAT_LIST" "$RULE_AUDIT" || true)")
+fi
+# phpstan.neon (ADR 0020): the plan's PHP range (without a plan, the floor
+# above and the PHP target), its profile unless --profile names one, and a
+# result cache directory per plan.
+if [[ " $SELECTED " == *" phpstan "* ]]; then
+  _pmin="$(printf '%s' "$PLAN" | jq -r '.php.phpstan_phpversion.min // empty')"
+  _pmax="$(printf '%s' "$PLAN" | jq -r '.php.phpstan_phpversion.max // empty')"
+  [[ -n "$_pmin" ]] || _pmin="$(php_version_id "$PHP_FLOOR" || true)"
+  [[ -n "$_pmax" ]] || _pmax="$(php_version_id "$PHP_TARGET" || true)"
+  [[ "$_pmin" =~ ^[0-9]+$ && "$_pmax" =~ ^[0-9]+$ ]] \
+    || die "Could not derive phpstan.neon's PHP range (floor '$PHP_FLOOR', target '$PHP_TARGET')." 1
+  _pf="$(printf '%s' "$PLAN" | jq -r '.php.final // empty')"
+  if [[ "$PLAN_SOURCE" == "plan" && -n "$_pf" && "$_pf" != "$PHP_TARGET" ]]; then
+    log_warn "phpstan.neon follows the upgrade plan's PHP target $_pf, not $PHP_TARGET: re-plan first (/drupilot-setup, or upgrade-path.sh --phase draft --root \"$ROOT\" --freeze)."
+  fi
+  PHPSTAN_PROFILE="${PROFILE:-$(printf '%s' "$PLAN" | jq -r '.phpstan.profile // "compat"')}"
+  case "$PHPSTAN_PROFILE" in compat|refactor) ;; *) PHPSTAN_PROFILE="compat";; esac
+  _ck="$(phpstan_cache_key "$PLAN" "$_pmin" "$_pmax" || true)"
+  [[ -n "$_ck" ]] || die "Could not derive phpstan.neon's cache key from the plan." 1
+  FLOOR_TOKENS+=("PHPSTAN_PHP_MIN=$_pmin" "PHPSTAN_PHP_MAX=$_pmax" "PHPSTAN_PROFILE=$PHPSTAN_PROFILE"
+                 "PHPSTAN_PROFILE_BLOCK=$(phpstan_profile_block "$PHPSTAN_PROFILE")" "PHPSTAN_CACHE_KEY=$_ck")
+fi
+
 TOKENS=(
   "SUBJECT_PATH=$SUBJECT_PATH"
   "PHP_TARGET=$PHP_TARGET"
@@ -230,11 +364,18 @@ TOKENS=(
   "DRUPAL_TARGET=$DRUPAL_TARGET"
   "PHPSTAN_LEVEL=$PHPSTAN_LEVEL"
   "WEBDRIVER_HOST=$WEBDRIVER_HOST"
+  ${FLOOR_TOKENS[@]+"${FLOOR_TOKENS[@]}"}
 )
 
 log_info "Drupal root  : $ROOT"
 [[ -n "$SUBJECT_PATH" ]] && log_info "Subject path : $SUBJECT_PATH"
-log_info "PHP target   : $PHP_TARGET (Rector set: $PHP_SET) · PHPStan level: $PHPSTAN_LEVEL"
+log_info "PHP target   : $PHP_TARGET · PHPStan level: $PHPSTAN_LEVEL${PHPSTAN_PROFILE:+ · PHPStan profile: $PHPSTAN_PROFILE}"
+if [[ "$needs_floor" == "1" ]]; then
+  log_info "PHP floor    : $PHP_FLOOR (Rector withPhpVersion and level sets) · ceiling: $PHP_CEIL · compat pass: $([[ "$COMPAT" == "1" ]] && echo yes || echo no)"
+fi
+if [[ "$needs_plan" == "1" && "$PLAN_SOURCE" != "plan" ]]; then
+  log_warn "No upgrade plan resolves for this subject: rector.php uses the previous major's sets and the floor above, phpstan.neon the floor and the PHP target."
+fi
 [[ "$DRY" == "1" ]] && log_info "Dry run: nothing will be written."
 
 RUNNER="$(drupal_runner "$ROOT" 2>/dev/null || true)"
@@ -282,18 +423,18 @@ validate() {
         log_warn "phpcs.xml.dist: neither xmllint nor vendor/bin/phpcs is available; XML validity not checked."
       fi
       ;;
-    rector)
+    rector|rector-compat)
       if [[ -n "$RUNNER" ]] || have_cmd php; then
         VALIDATOR="php -l"
         if ( cd "$ROOT" && ${RCMD[@]+"${RCMD[@]}"} php -l "$rel" >/dev/null 2>&1 ); then
           VALID="true"
         else
           VALID="false"
-          log_err "rector.php: 'php -l' reports a syntax error in the rendered file."
+          log_err "$name.php: 'php -l' reports a syntax error in the rendered file."
         fi
       else
         VALIDATOR=""
-        log_warn "rector.php: no php (host or DDEV) available; syntax not checked."
+        log_warn "$name.php: no php (host or DDEV) available; syntax not checked."
       fi
       ;;
     *) VALID="true";;
@@ -308,9 +449,9 @@ validate() {
 # qualify, so their copies keep the hand-edited (differs) treatment.
 older_drupilot_copy() {
   local tpl="$1" dest="$2" marker header
-  marker="$(grep -oE 'drupilot-template-version: [0-9]+' "$tpl" 2>/dev/null | head -n1 || true)"
+  marker="$(grep -oE 'drupilot-template-version: [0-9]+' "$tpl" 2>/dev/null | sed -n '1p' || true)"
   [[ -n "$marker" ]] || return 1
-  header="$(grep -oE 'drupilot — [^ ]+' "$tpl" 2>/dev/null | head -n1 || true)"
+  header="$(grep -oE 'drupilot — [^ ]+' "$tpl" 2>/dev/null | sed -n '1p' || true)"
   [[ -n "$header" ]] || return 1
   grep -qF "$header" "$dest" 2>/dev/null || return 1
   grep -qF "$marker" "$dest" 2>/dev/null && return 1
@@ -320,11 +461,12 @@ older_drupilot_copy() {
 FILES_JSON=""
 RC=0
 RESTART=0
-TS="$(date -u +%Y%m%dT%H%M%SZ)"
 
 for name in $SELECTED; do
   case "$name" in
     rector)  tpl="rector.php.tmpl";               dest="$ROOT/rector.php";;
+    rector-compat)
+             tpl="rector-compat.php.tmpl";        dest="$ROOT/rector-compat.php";;
     phpstan) tpl="phpstan.neon.tmpl";             dest="$ROOT/phpstan.neon";;
     phpcs)   tpl="phpcs.xml.dist.tmpl";           dest="$ROOT/phpcs.xml.dist";;
     testing) tpl="ddev-web-environment.yaml.tmpl"; dest="$ROOT/.ddev/config.testing.yaml";;
@@ -336,6 +478,9 @@ for name in $SELECTED; do
   if [[ "$name" == "testing" && ! -d "$ROOT/.ddev" ]]; then
     status="skipped"
     log_info "$rel: skipped (no .ddev/ directory at the root)."
+  elif [[ "$name" == "rector-compat" && "$COMPAT" != "1" ]]; then
+    status="skipped"
+    log_info "$rel: skipped (the PHP floor $PHP_FLOOR and ceiling $PHP_CEIL leave the compat pass no rule to run)."
   else
     [[ -f "$src" ]] || die "Template not found: $src" 1
     dir="$(dirname "$dest")"
@@ -359,21 +504,23 @@ for name in $SELECTED; do
       diff -u "$dest" "$tmp" 2>/dev/null \
         | sed -e "1s|^--- .*|--- $rel (current)|" -e "2s|^+++ .*|+++ $rel (rendered)|" >&2 || true
       older=0
-      if older_drupilot_copy "$src" "$dest"; then older=1; fi
-      if [[ "$FORCE" != "1" && "$older" != "1" ]]; then
+      if older_drupilot_copy "$src" "$dest"; then older=1
+      elif render_sha_matches "$ROOT" "$rel" "$dest"; then older=2
+      elif [[ "$name" == "rector" || "$name" == "rector-compat" ]] && rector_config_pristine "$src" "$dest"; then older=2; fi
+      if [[ "$FORCE" != "1" && "$older" == "0" ]]; then
         status="differs"; RC=3
         log_warn "$rel left untouched (hand-edited). Re-run with --force to replace it (the current copy is backed up)."
       elif [[ "$DRY" == "1" ]]; then
         if [[ "$FORCE" == "1" ]]; then status="would-replace"; else status="would-upgrade"; fi
       else
-        bdir="$(project_artifacts_dir "$ROOT")/backups"
-        mkdir -p "$bdir"
-        backup="$bdir/$(basename "$dest").$TS"
-        cp -p "$dest" "$backup"
+        backup="$(config_backup "$ROOT" "$dest")" || die "Could not back up $dest." 1
         cat "$tmp" > "$dest"
         if [[ "$FORCE" == "1" ]]; then
           status="replaced"
           log_ok "$rel: replaced (previous copy backed up to ${backup#"$ROOT"/})."
+        elif [[ "$older" == "2" ]]; then
+          status="upgraded"
+          log_ok "$rel: an untouched drupilot render for another plan, PHP floor or subject; regenerated (previous copy backed up to ${backup#"$ROOT"/})."
         else
           status="upgraded"
           log_ok "$rel: generated by an older drupilot template; upgraded (previous copy backed up to ${backup#"$ROOT"/})."
@@ -387,6 +534,12 @@ for name in $SELECTED; do
     fi
   fi
 
+  # Its sha256 goes into the root's lock (never on a dry run).
+  if [[ "$DRY" != "1" ]]; then
+    case "$status" in
+      written|unchanged|replaced|upgraded) render_sha_record "$ROOT" "$rel" "$dest" "$src";;
+    esac
+  fi
   entry="{\"name\":$(json_str "$name"),\"template\":$(json_str "templates/$tpl"),\"path\":$(json_str "$dest"),\"status\":$(json_str "$status"),\"valid\":$VALID,\"validator\":$(json_str "$VALIDATOR"),\"backup\":$(json_str "$backup")}"
   FILES_JSON="${FILES_JSON:+$FILES_JSON,}$entry"
 done
@@ -404,7 +557,11 @@ if [[ "$AS_JSON" == "1" ]]; then
   restart=false; [[ "$RESTART" == "1" ]] && restart=true
   dry=false; [[ "$DRY" == "1" ]] && dry=true
   force=false; [[ "$FORCE" == "1" ]] && force=true
-  printf '{"root":%s,"subject_path":%s,"dry_run":%s,"force":%s,"ok":%s,"restart_needed":%s,"files":[%s]}\n' \
-    "$(json_str "$ROOT")" "$(json_str "$SUBJECT_PATH")" "$dry" "$force" "$ok" "$restart" "$FILES_JSON"
+  fl=null; [[ "$needs_floor" == "1" && -n "$PHP_FLOOR" ]] && fl="$(json_str "$PHP_FLOOR")"
+  ce=null; [[ "$needs_floor" == "1" && -n "$PHP_CEIL" ]] && ce="$(json_str "$PHP_CEIL")"
+  ps=null; [[ -n "$PLAN_SOURCE" ]] && ps="$(json_str "$PLAN_SOURCE")"
+  pp=null; [[ -n "$PHPSTAN_PROFILE" ]] && pp="$(json_str "$PHPSTAN_PROFILE")"
+  printf '{"root":%s,"subject_path":%s,"dry_run":%s,"force":%s,"ok":%s,"restart_needed":%s,"php_floor":%s,"php_ceiling":%s,"plan":%s,"phpstan_profile":%s,"files":[%s]}\n' \
+    "$(json_str "$ROOT")" "$(json_str "$SUBJECT_PATH")" "$dry" "$force" "$ok" "$restart" "$fl" "$ce" "$ps" "$pp" "$FILES_JSON"
 fi
 exit "$RC"

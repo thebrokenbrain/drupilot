@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# rector.php (template 6), rector-compat.php (template 2) and phpstan.neon
+# (template 3) render from the upgrade plan (T-M3-09, T-M5-04, AR-24, ADR
+# 0019, ADR 0020, ADR 0030): for each golden plan of tests/golden/plans that
+# resolves, the renders of rector.php, rector-compat.php (when the plan's
+# compat pass has a rule), phpstan.neon (its compat profile, the plan's) and
+# phpcs.xml.dist equal tests/golden/templates/<plan>/* byte for byte, and
+# `php -l` accepts the Rector configs (host php when present, else skipped
+# with a note). The tokens come from rector_sets_block, rector_skip_block,
+# rector_bc_block, rector_floor_tokens, rector_polyfills_block,
+# rector_compat_list (no rule audit: config/php/rules.json alone),
+# rector_compat_rules_block, rector_compat_php_id, phpstan_profile_block and
+# phpstan_cache_key, as render-templates.sh and run-rector.sh build them.
+# The tests pass (T-M6-05, ADR 0032) is in rector.php's set and skip lists.
+# Capture (on purpose, then golden.sh --update in its own commit):
+#   bash tests/unit/templates_render.sh --capture
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
+t_isolate
+# shellcheck source=../../scripts/lib/common.sh
+. "$T_LIB"
+P="$T_REPO/tests/golden/plans"; G="$T_REPO/tests/golden/templates"
+DRUPILOT_VERSION_DATA_DIR="$T_REPO/tests/fixtures/data-snapshots/$(jq -r .data_hash "$G/golden.json")"
+export DRUPILOT_VERSION_DATA_DIR
+
+# render PLAN_FILE DIR -> rector.php, rector-compat.php (when its list is not
+# empty), phpstan.neon and phpcs.xml.dist for the plan in DIR, its subject
+# under web/modules/custom.
+render() {
+  local plan sub pf fl cl
+  plan="$(jq -c . "$1")"; sub="web/modules/custom/$(printf '%s' "$plan" | jq -r .subject.machine_name)"
+  pf="$(printf '%s' "$plan" | jq -r '.phpstan.profile')"
+  fl="$(printf '%s' "$plan" | jq -r .php.floor)"
+  mkdir -p "$2"
+  # shellcheck disable=SC2046  # one KEY=VALUE word per line, no spaces in them
+  render_template "$T_REPO/templates/rector.php.tmpl" "$2/rector.php" "SUBJECT_PATH=$sub" \
+    $(rector_floor_tokens "$fl") \
+    "RECTOR_SETS=$(rector_sets_block "$plan")" "SKIP_RULES=$(rector_skip_block "$plan")" \
+    "BC_BLOCK=$(rector_bc_block "$plan")" "POLYFILLS=$(rector_polyfills_block "$plan")"
+  cl="$(rector_compat_list "$plan" "$fl" "$(plan_php_top "$plan")")"
+  if rector_compat_needed "$cl"; then
+    render_template "$T_REPO/templates/rector-compat.php.tmpl" "$2/rector-compat.php" "SUBJECT_PATH=$sub" \
+      "SKIP_RULES=$(rector_skip_block "$plan")" "COMPAT_RULES=$(rector_compat_rules_block "$cl")" \
+      "COMPAT_PHP_VERSION=$(rector_compat_php_id "$cl")"
+  fi
+  render_template "$T_REPO/templates/phpstan.neon.tmpl" "$2/phpstan.neon" "SUBJECT_PATH=$sub" PHPSTAN_LEVEL=2 \
+    "PHPSTAN_PHP_MIN=$(printf '%s' "$plan" | jq -r .php.phpstan_phpversion.min)" \
+    "PHPSTAN_PHP_MAX=$(printf '%s' "$plan" | jq -r .php.phpstan_phpversion.max)" \
+    "PHPSTAN_PROFILE=$pf" "PHPSTAN_PROFILE_BLOCK=$(phpstan_profile_block "$pf")" \
+    "PHPSTAN_CACHE_KEY=$(phpstan_cache_key "$plan")"
+  render_template "$T_REPO/templates/phpcs.xml.dist.tmpl" "$2/phpcs.xml.dist" "SUBJECT_PATH=$sub"
+}
+
+n=0
+for f in "$P"/*.json; do
+  name="${f##*/}"; name="${name%.json}"
+  [[ "$name" != golden ]] || continue
+  [[ "$(jq -r '.status // ""' "$f")" != refused ]] || continue
+  if [[ "${1:-}" == "--capture" ]]; then render "$f" "$G/$name"; continue; fi
+  render "$f" "$T_TMP/$name"
+  for _f in rector.php phpstan.neon phpcs.xml.dist; do
+    assert_file_eq "$name: $_f" "$T_TMP/$name/$_f" "$G/$name/$_f"
+  done
+  if [[ -f "$T_TMP/$name/rector-compat.php" || -f "$G/$name/rector-compat.php" ]]; then
+    assert_file_eq "$name: rector-compat.php" "$T_TMP/$name/rector-compat.php" "$G/$name/rector-compat.php"
+  fi
+  assert_eq "$name: no token left" "$(cat "$T_TMP/$name"/* | grep -c '{{' || true)" "0"
+  if have_cmd php; then
+    for _f in rector.php rector-compat.php; do
+      [[ -f "$T_TMP/$name/$_f" ]] || continue
+      assert_eq "$name: php -l $_f" "$(php -l "$T_TMP/$name/$_f" > /dev/null 2>&1 && echo ok)" "ok"
+    done
+  fi
+  n=$((n + 1))
+done
+if [[ "${1:-}" == "--capture" ]]; then printf 'captured\n'; exit 0; fi
+have_cmd php || printf '# note: no host php, php -l skipped (it runs wherever a host php exists, e.g. the ubuntu CI leg)\n'
+assert_eq "every resolving golden plan was rendered" "$n" "$(for f in "$P"/*.json; do [[ "${f##*/}" == golden.json ]] && continue; jq -r 'select(.status != "refused") | 1' "$f"; done | grep -c .)"
+# Spot checks on what the renders say.
+assert_eq "T 11 from D10: the four Drupal 10 sets, no 11.x set" \
+  "$(grep -c "Drupal10SetList::DRUPAL_10[0-3]'," "$G/legacy_widgets.t11-auto-p83/rector.php")|$(grep -c 'Drupal11SetList' "$G/legacy_widgets.t11-auto-p83/rector.php")" "4|0"
+assert_eq "T 12 preview: the 11.x sets, their breaking sets up to 11.3, DRUPAL_120" \
+  "$(grep -c 'Drupal11SetList::DRUPAL_11[0-4]' "$G/legacy_widgets.t12-preview/rector.php")|$(grep -c '_BREAKING' "$G/legacy_widgets.t12-preview/rector.php")|$(grep -c 'Drupal12SetList::DRUPAL_120' "$G/legacy_widgets.t12-preview/rector.php")" "8|3|1"
+assert_eq "D8/D9 sources: no Drupal 8/9 set until the D8/D9 hops are proven" \
+  "$(grep -c 'Drupal[89]SetList' "$G/d8_legacy.t11-auto-p83/rector.php" "$G/d9_module.t11-auto-p83/rector.php" | sed 's/.*://' | tr '\n' ' ')" "0 0 "
+assert_eq "D7 rewrite: no Drupal set at all" "$(grep -c "SetList::DRUPAL_[0-9A-Z_]*'," "$G/d7_minimal.t11-draft/rector.php" || true)" "0"
+assert_eq "^10 || ^11 (F 10.0): no BC block (drupal-rector's default, as in 0.9)" \
+  "$(grep -c setMinimumCoreVersionSupported "$G/legacy_widgets.t11-auto-p83/rector.php" || true)" "0"
+assert_eq "^10.3 || ^11 || ^12 (F 10.3): BC from 10.3.0" \
+  "$(grep -c "setMinimumCoreVersionSupported('10.3.0')" "$G/keep_current.t11-auto-p83/rector.php")" "1"
+assert_eq "phpstan.neon: the plan's PHP range (^10 || ^11, P 8.3: 8.1 to 8.3)" \
+  "$(grep -A2 '^  phpVersion:' "$G/legacy_widgets.t11-auto-p83/phpstan.neon" | tr -d ' \n')" "phpVersion:min:80100max:80300"
+assert_eq "phpstan.neon: ^11 at P 8.4: 8.3 to 8.4" \
+  "$(grep -A2 '^  phpVersion:' "$G/legacy_widgets.t11-target-only-p84/phpstan.neon" | tr -d ' \n')" "phpVersion:min:80300max:80400"
+assert_eq "phpstan.neon: the result cache keyed by the plan's hash" \
+  "$(sed -n 's/^  tmpDir: //p' "$G/legacy_widgets.t11-auto-p83/phpstan.neon")" \
+  ".phpstan-cache/$(jq -c . "$P/legacy_widgets.t11-auto-p83.json" | canon_json_hashable | json_hash | cut -c8-19)"
+assert_eq "phpstan.neon: the compat profile turns the four opinion rules off" \
+  "$(grep -c 'Rule: false$' "$G/legacy_widgets.t11-auto-p83/phpstan.neon")|$(grep -c '^# drupilot-phpstan-profile: compat$' "$G/legacy_widgets.t11-auto-p83/phpstan.neon")" "4|1"
+assert_eq "^10 || ^11: polyfillPackages([]) (no core of 10.x ships polyfill-php84), never the bed's composer.json" \
+  "$(grep -c 'polyfillPackages(\[\]);' "$G/legacy_widgets.t11-auto-p83/rector.php")" "1"
+assert_eq "^11.3 (d11_php_only): polyfill-php84 and -php85" \
+  "$(sed -n "s/^      '\(symfony\/polyfill-[a-z0-9]*\)',\$/\1/p" "$G/d11_php_only.t11-p85/rector.php" | tr '\n' ' ')" \
+  "symfony/polyfill-php84 symfony/polyfill-php85 "
+assert_eq "^10 || ^11, P 8.3, U 8.5: the compat pass lists the implicit-nullable fix, at PHP_85" \
+  "$(grep -c "ExplicitNullableParamTypeRector'," "$G/legacy_widgets.t11-auto-p83/rector-compat.php")|$(grep -c 'withPhpVersion(PhpVersion::PHP_85)' "$G/legacy_widgets.t11-auto-p83/rector-compat.php")" "1|1"
+assert_eq "the compat pass never lists ord() (not drupal_safe), and both configs skip it" \
+  "$(grep -c "OrdSingleByteRector'," "$G/legacy_widgets.t11-auto-p83/rector-compat.php" "$G/legacy_widgets.t11-auto-p83/rector.php" | sed 's/.*://' | tr '\n' ' ')" "1 1 "
+assert_eq "^11 (F 11.0): BC from 11.0.0" \
+  "$(grep -c "setMinimumCoreVersionSupported('11.0.0')" "$G/legacy_widgets.t11-target-only-p83/rector.php")" "1"
+t_done

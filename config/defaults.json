@@ -4,6 +4,8 @@
   "_php_target_comment": "DRUPILOT_PHP_TARGET is the CONSERVATIVE default port floor (8.3, supported on every Drupal 11 branch). It is intentionally distinct from php_support.recommended (8.4), which is the version the /drupilot-setup PHP picker highlights as recommended. Both are valid targets; the default stays at the safe floor while the picker lets the developer move up to 8.4. 8.5 needs Drupal 11.3 or later and has no assumed Rector set (see _php_support_comment).",
   "DRUPILOT_PHP_TARGET": "8.3",
   "DRUPILOT_DRUPAL_TARGET": "^11",
+  "DRUPILOT_TARGET_MAJOR": "11",
+  "DRUPILOT_ALLOW_PRERELEASE": false,
   "DRUPILOT_CORE_TARGET_STRATEGY": "auto",
   "DRUPILOT_REQUIRE_PHP_FLOOR": "detect",
   "DRUPILOT_CODER_CONSTRAINT": "^8.3",
@@ -21,6 +23,9 @@
   "DRUPILOT_GENERATE_RULES": "ask",
   "DRUPILOT_AUTONOMOUS": false,
   "DRUPILOT_DETERMINISTIC": true,
+  "DRUPILOT_FIXPOINT": "enforce",
+  "DRUPILOT_RUNS_KEEP": 10,
+  "DRUPILOT_LOCK_LOCATION": "state",
 
   "_soft_deprecations_comment": "Policy for SOFT deprecations (scripts/analysis/classify-deprecations.sh). A deprecation is HARD when it is removed in a Drupal major <= the target major (e.g. user_roles(), removed in 11.0.0): Phase 1 always fixes it. It is SOFT when it is removed in a later major (e.g. user_load_by_name(), text_summary(), check_markup(): deprecated in 11.4.0, removed from 13.0.0): it still works on every Drupal 11 core. DRUPILOT_SOFT_DEPRECATIONS: 'report' (default) lists soft ones in the viability and port reports (symbol, deprecated in, removed in, effort) and leaves the code alone; 'defer' records them under 'deferred to Phase 2'; 'fix' fixes them in Phase 1 only when the replacement exists at the declared core floor, through DeprecationHelper::backwardsCompatibleCall() when it exists only on newer cores (e.g. the TextSummary service, 11.4+), and defers them otherwise. Phase 2 (/drupilot-refactor) removes soft ones too, still respecting the floor. A deprecation whose removal version cannot be read is treated as hard (blocking) until reviewed.",
   "DRUPILOT_SOFT_DEPRECATIONS": "report",
@@ -65,6 +70,9 @@
 
   "_deterministic_comment": "Reproducibility (DEFAULT ON). When true, drupilot freezes the versions/refs it resolves (Drupal core, the dev toolchain, the digests SHA, DDEV add-ons) into a per-project drupilot-lock.json (under the plugin's state dir, NOT the user's project tree) and reuses them on later runs, so porting the same module twice converges on the same toolchain and result. Set DRUPILOT_DETERMINISTIC=false (the escape hatch) to always resolve fresh (legacy floating behavior) and refresh the lock. This governs only drupilot's own resolution; the Claude Code permission mode still governs Bash/Edit/Write. Helpers: deterministic_mode / lock_get / lock_set / lock_resolve in scripts/lib/common.sh; capture/refresh via scripts/env/lock-sync.sh.",
 
+  "_fixpoint_comment": "The fixpoint gate (scripts/analysis/fixpoint.sh, AR-16, DET-8): at the end of a port or a refactor the extraction runs again on the tree as it is, and Rector, the codemods and the processed lanes (rector, rector-custom, codemod) must have nothing left. DRUPILOT_FIXPOINT: 'warn' (the default before 1.0.0-rc.1) reports a failure and goes on; 'enforce' (the default from 1.0.0-rc.1) exits 3, so the stage is not done; 'off' skips it. Each run is recorded in <state>/runs/<run_id>/run-manifest.json with its input and output hashes; DRUPILOT_RUNS_KEEP (default 10) of them are kept per module.",
+  "_lock_location_comment": "Where the Drupal root's drupilot-lock.json lives (AR-14, OD-06). 'state' (default): drupilot's hidden state dir, never in the project tree. 'project': <root>/drupilot-lock.json, which drupilot's managed .gitignore block leaves out, so a team can commit it and share the frozen core, toolchain, digests SHA and upgrade plan. 'project' applies only to your own Drupal root with an installed core: a test-bed drupilot built (or will build) for a loose module is throwaway, and a module repo carrying its own core must never commit it, so those keep the state dir (with a warning). Switching to 'project' moves the lock at the next write (until then the state copy is read; the moved copy is renamed .moved-to-project); every reader goes through lock_path / drupilot_lock_file (scripts/lib/lock.sh).",
+
   "_autonomous_comment": "Hands-off mode. When true (or invoked as `/drupilot <subject> auto`), the orchestrator runs setup -> assess -> port -> refactor -> test unattended: no initial confirmation, DRUPILOT_GENERATE_RULES is treated as 'auto' unless explicitly set to 'off', and the local .patch is always written at the end. It NEVER performs outward-facing actions on its own (no git push / Merge Request / contribute) — those stay opt-in via /drupilot-contribute. This only relaxes drupilot's own gates; the Claude Code permission mode still governs Bash/Edit/Write prompts (use acceptEdits or a headless bypass for a fully unattended run).",
 
   "_issue_comment": "Defaults for the Drupal.org issue used when contributing a port (PROMPT 3). The issue itself is created on the web (there is no public issue API, and the GitLab API is blocked by default), so drupilot GENERATES ready-to-paste content + recommended field values via scripts/contrib/make-issue.sh — it does not submit the form. For a Drupal 11 compatibility port the conventional values are DRUPILOT_ISSUE_CATEGORY='Task' and DRUPILOT_ISSUE_PRIORITY='Normal'. DRUPILOT_ISSUE_COMPONENT defaults to 'Code' (every project has it) — verify it against the project's own component list, which is project-specific. DRUPILOT_ISSUE_ASSIGNEE='self' means assign the issue to the account opening it ('unassigned' to leave it open). The Version field is derived from the target base branch (e.g. base 4.0.x -> 4.0.x-dev), not configured here. Non-applicable summary sections (Steps to reproduce, User interface / API / Data model changes) are omitted for a behavior-preserving port.",
@@ -101,7 +109,7 @@
 
   "_packages_comment": "Composer constraints for the dev toolchain (PROMPT 1.1), installed inside DDEV. These are the verified SUPPORTED RANGES; the EXACT patch versions resolved on first install are frozen per-project in drupilot-lock.json (see _deterministic_comment) and reused while DRUPILOT_DETERMINISTIC is on. extension-installer only autoconfigures phpstan-drupal and upgrade_status only corroborates findings — neither affects the port result, so they carry a broad range and are pinned exactly by the lock rather than here. core_dev (drupal/core-dev: PHPUnit + the Drupal test dependencies, required by run-phpunit.sh) carries NO constraint here on purpose: it must MATCH the installed drupal/core, so the requirement is derived at install time by core_dev_requirement (scripts/lib/common.sh), e.g. drupal/core-dev:~11.4.8. rector (rector/rector) is a transitive dependency of drupal-rector listed here so it is installed with an explicit range and recorded in the lock: palantirnet/drupal-rector 0.21.x (and 1.x up to 1.1.3) throws 'Could not detect twig set.' with rector/rector >= 2.6.2, whose bundled TwigSetList dropped TWIG_24 (verified in DDEV on 2026-10-02: 2.6.1 works, 2.6.2 and 2.6.7 crash). These ranges are only used for a fresh resolve; by default scripts/env/install-toolchain.sh pins the project lock or the shipped known-good set (config/toolchain-reference.json) instead — see _toolchain_comment.",
   "packages": {
-    "drupal_rector": "palantirnet/drupal-rector:^0.21",
+    "drupal_rector": "palantirnet/drupal-rector:^1.1.3",
     "rector": "rector/rector:^2.0 <2.6.2",
     "phpstan": "phpstan/phpstan:^2.1",
     "phpstan_extension_installer": "phpstan/extension-installer:^1.0",
@@ -110,11 +118,15 @@
     "coder": "drupal/coder",
     "drush": "drush/drush:^13",
     "upgrade_status": "drupal/upgrade_status",
+    "lenient": "mglaman/composer-drupal-lenient:^2.0",
     "core_dev": "drupal/core-dev"
   },
 
-  "_toolchain_comment": "Dev-toolchain installation (scripts/env/install-toolchain.sh). DRUPILOT_TOOLCHAIN_SOURCE picks where each version comes from: 'auto' (default) = in deterministic mode the project lock when it pins the whole known-good set, otherwise the shipped reference config/toolchain-reference.json (exact versions verified together end to end), and the .packages ranges in non-deterministic mode; 'reference' = always the reference set (the repair path after a broken upstream release; the lock is then refreshed); 'range' = the .packages ranges (fresh resolve). Every install ends with a smoke test (a Rector dry-run with the Drupal 10 set + phpstan --version) and exits 3 with the known-good versions when the installed set is broken.",
+  "_toolchain_comment": "Dev-toolchain installation (scripts/env/install-toolchain.sh). DRUPILOT_TOOLCHAIN_SOURCE picks where each version comes from: 'auto' (default) = in deterministic mode the project lock when it pins the whole known-good set, otherwise the shipped reference config/toolchain-reference.json (the cell of the installed core's major: exact versions verified together end to end; an unverified cell uses the ranges; a lock drupilot 0.9 wrote is read as cell legacy_v1 until refreshed), and the .packages ranges in non-deterministic mode; 'reference' = always the reference set (the repair path after a broken upstream release; the lock is then refreshed); 'range' = the .packages ranges (fresh resolve). Every install ends with a smoke test (a Rector dry-run with the Drupal 10 set + phpstan --version) and exits 3 with the known-good versions when the installed set is broken.",
   "DRUPILOT_TOOLCHAIN_SOURCE": "auto",
+
+  "_lenient_deps_comment": "Lenient contrib dependencies on the test-bed (scripts/env/install-toolchain.sh; AR-08, AR-28). 'off' (default), or a comma-separated list of drupal/<project> packages (e.g. drupal/token,drupal/ctools) whose drupal/core constraint does not admit the bed's core yet: install-toolchain.sh then installs mglaman/composer-drupal-lenient (.packages.lenient) and adds them to the bed's composer.json extra.drupal-lenient.allowed-list, so they install and the module's tests can run. Only on a test-bed drupilot built (a warning skips it on your own project); never in production. The list in effect is kept in the lock (.lenient_packages) and in every test record (last-test.json lenient[]), and the port report names it: a green suite with a lenient dependency does not show the dependency supports the core. It never changes the preservation verdict.",
+  "DRUPILOT_LENIENT_DEPS": "off",
 
   "_contrib_comment": "URLs and endpoints for the Drupal.org contribution flow (PROMPT 3).",
   "contrib": {

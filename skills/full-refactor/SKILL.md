@@ -23,6 +23,15 @@ quality: modern Drupal 11 idioms, zero deprecations, PHPStan level 5–6, clean
 `Drupal` + `DrupalPractice`, and a green test suite. Coordinate closely with the
 `drupal-test-engineer` agent / `test-adaptation` skill — nothing breaks silently.
 
+**The upgrade plan.** Every version this procedure needs (target major, test-bed
+core, declared range, PHP floor and target, Rector sets, names) comes from it,
+never from the examples below (AR-26). The block is the working directory's: when it
+names no module, or a module other than the subject, run `plan show --subject <subject_dir>`:
+
+!`bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show 2>/dev/null || true`
+
+If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show
+
 ## 0. Golden rules
 
 - **Phase 1 must be complete first.** If the module still has blocking
@@ -129,7 +138,7 @@ behavior.
 
 `scripts/analysis/convert-attributes.sh` (also `run-rector.sh --attributes`)
 runs drupal-rector's `AnnotationToAttributeRector` (shipped by
-palantirnet/drupal-rector 0.21.x but configured in no set) with a config it
+palantirnet/drupal-rector 1.1.x, as by 0.21.x, but configured in no set) with a config it
 renders from `templates/rector-attributes.php.tmpl` into
 `<root>/.drupilot/rector-attributes.php`. Dry run first, review, then apply:
 
@@ -167,10 +176,10 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/convert-attributes.sh" --subject "<
   A custom type is converted only when its attribute class exists under the
   Drupal root, and stripped only when a plugin manager references the class
   (an annotation-only manager would no longer find the plugin).
-- **What the pass guards.** Attributes are printed fully qualified (the 0.21.x
-  rule only recognises an existing attribute by its FQCN, so a short imported
-  one would be duplicated on a re-run); a file already carrying a short-named
-  attribute of a converted type is skipped (`skipped_files`: finish it by hand);
+- **What the pass guards.** Attributes are printed fully qualified; a file
+  already carrying a short-named attribute with a converted type's short name
+  is skipped (`skipped_files`: finish it by hand), because the rule takes any
+  attribute of that short name for the converted one;
   so is a file whose annotation has a key the attribute constructor does not
   declare (e.g. `source_module` on `@MigrateSource`: core's MigrateSource
   attribute takes only id, requirements_met, minimum_version and deriver, so
@@ -183,7 +192,8 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/convert-attributes.sh" --subject "<
   is fully qualified (`\Drupal\…`), otherwise PHP resolves it inside the
   plugin's namespace and plugin discovery fatals. A re-run is a no-op.
 - Afterwards, `run-phpcs.sh --fix` removes the now-unused annotation `use`
-  statements; merge the JSON's `rule_hits` into the manifest's `rector_rules`.
+  statements; report the JSON's `rule_hits` in the summary (the pass keeps no
+  state file).
 
 ## 1b. Reconsider the core target (a refactor usually warrants a new major)
 
@@ -202,6 +212,18 @@ deliberately keep `^10 || ^11` (an explicit override), the helper returns a
 `require.php` floor (`DRUPILOT_REQUIRE_PHP_FLOOR`: `detect` → the real floor, e.g.
 `>=8.1`; `target` → `>=<target>`) — add it to `composer.json`. State the
 version-bump implication (new major branch) in the summary.
+
+Then refreeze the final upgrade plan for the range you applied, so the PHP floor
+of `rector.php` and `phpstan.neon` follows it (ADR 0018, ADR 0020; `^11` raises
+the floor to the target's PHP):
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "<path>" --phase final \
+  --range "<the core_version_requirement you applied>" --root "<drupal_root>" --freeze --json
+```
+
+Exit 2 (`final-changes-frozen`: another target, PHP target or test-bed) means the
+refactor would change what the setup planned: stop and say so.
 
 ## 2. Refactor loop
 
@@ -223,8 +245,9 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/patterns.sh" scan --subject "<path>
 ```
 
 Every hit is a must-check item for this refactor (the recorded fix is the
-starting point, the golden rules still decide); keep the JSON for the
-manifest's `learned_patterns.scan`.
+starting point, the golden rules still decide). Nothing to keep for the
+manifest: the learned patterns live in the project's catalog (`patterns.sh
+list`).
 
 Work one concern at a time. After each change, re-run the validate loop and the
 relevant tests:
@@ -232,6 +255,11 @@ relevant tests:
 ```bash
 # Coding standards: auto-fix then verify (must end clean):
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpcs.sh" --subject "<path>" --fix
+
+# phpstan.neon's refactor profile, once per refactor (every phpstan-drupal rule;
+# Phase 1's compat profile leaves its opinion rules off; exit 3 = a hand-edited
+# phpstan.neon, kept as it is):
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/render-templates.sh" --subject "<path>" --only phpstan --profile refactor
 
 # Static analysis at the refactor level (5-6):
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/run-phpstan.sh" --subject "<path>" \
@@ -259,7 +287,8 @@ with the PROMPT §2.3 extension list), always passing `--runtime-set testVersion
 which ruleset was used (`--json` → `.drupilot`). "Fully clean" means clean
 against that ruleset. Commits follow the repository's git hooks exactly as in
 `minimal-port` §3: `scripts/contrib/git-hooks.sh` first, never a normalized
-`--no-verify`, and any substitution recorded as `verification.commit_hooks`. `run-phpstan.sh` runs against the
+`--no-verify`, and any substitution kept by `git-hooks.sh --run-equivalents` in
+`hooks-substitution.json`, which `port-report.sh` reads. `run-phpstan.sh` runs against the
 `phpstan.neon` at the Drupal root. Exit 3 means PHPStan crashed or could
 not analyse (invalid config, fatal error): there is no verdict — fix the cause
 shown on stderr, never read it as "issues found" or as clean. Reference commands:
@@ -286,9 +315,9 @@ Coordinate with `test-adaptation` / the `drupal-test-engineer` agent:
   <test> (--revert-to <ref> --path <file> | --mutation-patch <file>) --json`
   (see `test-adaptation` §6.1). It must be `effective` (red with the guarded
   change undone, green once the code is restored byte for byte); an
-  `ineffective` test is strengthened and re-controlled, never accepted. Record
-  the results under `verification.negative_controls` in the manifest (or pass
-  `--manifest <manifest>`); `port-report.md` lists them.
+  `ineffective` test is strengthened and re-controlled, never accepted. The
+  script keeps every result in `negative-controls.json` (state dir), which
+  `port-report.sh` reads; `port-report.md` lists them.
 - Report coverage with `run-phpunit.sh --coverage` (`--coverage-text` /
   `--coverage-html`).
 - If a test cannot pass for an external reason (e.g. a contrib dependency without
@@ -310,8 +339,8 @@ Before declaring the module refactored, all must hold:
   core signature change at the declared floor).
 - When the result still declares `^10`, `verify-core-matrix.sh --subject <path>`
   exits **0** (no Drupal 10 leg failed; see `minimal-port` §6a for the tab when
-  one does) and its `d10_support` goes into the manifest with
-  `verification.core_matrix`.
+  one does); it keeps its verdict in `core-matrix.json`, from which
+  `manifest.sh` takes `d10_support` and which `port-report.sh` reads.
 - `classify-deprecations.sh --file <phpstan.json> --subject <path> --phase refactor
   --json` reports `blocking: 0` and every soft item fixed, or documented with its
   `defer` reason (no replacement usable at the declared core floor).
@@ -324,6 +353,9 @@ Before declaring the module refactored, all must hold:
   `pre-existing-failures` or `not-verified-unbaselined` verdict is reported with
   its list, never presented as green.
 - Every test added in Phase 2 has an `effective` negative control.
+- `fixpoint.sh --subject <path> --stage refactor` exits **0** (§5): under
+  `DRUPILOT_FIXPOINT=enforce`, the default, an exit 3 means the refactor is not
+  done.
 - Plugins use attributes; services are injected; strict types are in place where
   appropriate.
 
@@ -350,19 +382,37 @@ pre-refactor code (a POSIX ERE and/or `port-safety:<check>` /
 it (the command asks which; an autonomous run records only detectors it
 checked and lists their ids).
 
+**The fixpoint gate.** Run
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/fixpoint.sh" --subject "<path>" --stage refactor --json`
+before the report: Rector, the codemods and the processed lanes must have
+nothing left (`<state_dir>/fixpoint.json` lists what they still have). Under
+`DRUPILOT_FIXPOINT=enforce` (the default; exit 3) the refactor is not done:
+fix the items, run the validation loop and `make-patch.sh --local` again, then
+the gate once more, and render no report before it passes. A tool with no
+verdict (`no_verdict_tools`) is fixed by making that scan give one (its own
+run and log), then the gate again. A change you reverted on purpose is accepted
+once logged (`log-decision.sh --kind rector-revert --rule <Rule or recipe id>
+--file <file>`). `<file>` is the module-relative path `fixpoint.json` lists; a later run applies
+the change again unless it is skipped for that path: an official-pass rule in
+`rector.php`, a compat-pass rule in `rector-compat.php` (both kept once edited
+by hand), a codemod through the project's recipe overlay
+`<root>/.drupilot/recipes.json`. Under `warn` report what the gate lists.
+
 **Refresh the didactic report.** Tee the Phase 2 Rector + final PHPStan
 deprecation output into `<state_dir>/change-log.txt` (under `$HOME`, never in the
-project tree), update `<state_dir>/port-manifest.json` (`phase: "refactor"`, `soft_deprecations`
-= the final `classify-deprecations.sh --phase refactor --json`, and the
-structured outcome fields of `minimal-port` §8 for this phase: `rector_rules`,
-`rector_reversions`, `post_port_fixes`, `preexisting_bugs`, `behavior_changes`
-— every architectural change a reviewer must check —, `tooling_deviations`,
-`validation`, and `learned_patterns` `{scan, recorded}`; the `log-decision.sh`
-entries are merged in), and
+project tree), extract the refactored tree (`extract.sh --stage refactor`, then
+`normalize-findings.sh --stage refactor` and `classify.sh`, each with
+`--subject "<path>"`: the manifest refuses scans of other sources), regenerate
+`<state_dir>/port-manifest.json` with
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/manifest.sh" --subject "<path>" --phase refactor --rationale "<state_dir>/rationale.json"`
+(it builds every field from the scripts' records; your only input is the why of
+the items you changed by hand, `{"<worklist item id>": "why"}`; every
+architectural change a reviewer must check is a `behavior-change` entry of
+`log-decision.sh`), and
 re-render with `port-report.sh --subject <path> --manifest <manifest>
 --changes-log <state_dir>/change-log.txt` so `port-report.md` in the visible
 `.drupilot/` dir reflects Phase 2 and its "changes, explained" section (it
-also refreshes the machine summary `port-summary.json`; update `files_changed`).
+also refreshes the machine summary `port-summary.json`; `manifest.sh` fills `files_changed`).
 
 Summarize (in English): each significant change and why (annotations →
 attributes, `\Drupal::` calls → DI, types/`final` added, deprecated APIs

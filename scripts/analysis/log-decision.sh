@@ -25,8 +25,10 @@
 #
 # Options:
 #   --subject DIR    The module/theme the decision is about (default: $PWD).
-#   --kind KIND      rector-revert     a Rector change undone or rewritten by
-#                                      hand (--rule required)
+#   --kind KIND      rector-revert     a Rector change, or a codemod's, undone
+#                                      or rewritten by hand (--rule required);
+#                                      the fixpoint gate accepts it for --rule
+#                                      in --file (every file without one)
 #                    post-port-fix     a fix made after the validate loop,
 #                                      the tests or the core matrix found a
 #                                      problem the port introduced
@@ -42,9 +44,12 @@
 #                    preexisting-bug   a bug found but NOT fixed by the port
 #   --what TEXT      What was done (required).
 #   --why TEXT       Why (required; a decision without a reason is not logged).
-#   --rule RULE      The Rector rule (short name or FQCN).
+#   --rule RULE      The Rector rule (short name or FQCN), or a codemod's
+#                    recipe id (config/recipes.json).
 #   --file PATH      The file concerned (stored relative to the subject when
-#                    it is inside it).
+#                    it is inside it: an absolute path, a ./ path, or a path
+#                    from the working directory, such as the Drupal root's
+#                    web/modules/custom/<name>/... the tools print).
 #   --script NAME    The script whose output was not followed.
 #   --detected-by X  What found the problem (phpstan, phpunit, core-matrix,
 #                    port-safety, review, ...).
@@ -168,16 +173,25 @@ fi
 case " $KINDS " in *" $KIND "*) ;; *) die "Unknown --kind '$KIND' (one of: $KINDS)." 1;; esac
 [[ -n "$(trim "$WHAT")" ]] || die "Missing --what: say what was done." 1
 [[ -n "$(trim "$WHY")" ]] || die "Missing --why: a decision is logged with its reason." 1
-[[ "$KIND" != "rector-revert" || -n "$RULE" ]] || die "--kind rector-revert needs --rule (the Rector rule whose change was undone)." 1
+[[ "$KIND" != "rector-revert" || -n "$RULE" ]] || die "--kind rector-revert needs --rule (the Rector rule, or the codemod's recipe id, whose change was undone)." 1
 if [[ -z "$PHASE" ]]; then
   PHASE="port"
   phase_reached "$SUBJECT" refactored 2>/dev/null && PHASE="refactor"
 fi
 case "$PHASE" in port|refactor) ;; *) die "--phase must be port or refactor: '$PHASE'" 1;; esac
-# A file inside the subject is stored relative to it (stable across a move).
+# A file inside the subject is stored relative to it (stable across a move,
+# and the path the fixpoint gate compares): an absolute path, a ./ path, or a
+# path from the working directory (the web/modules/custom/<name>/... the tools
+# print from the Drupal root).
 if [[ -n "$FILE" ]]; then
-  case "$FILE" in
-    "$SUBJECT"/*) FILE="${FILE#"$SUBJECT"/}";;
+  _f="${FILE#./}"
+  case "$_f" in
+    /*) ;;
+    *) if [[ -e "$PWD/$_f" || ! -e "$SUBJECT/$_f" ]]; then _f="$PWD/$_f"; fi;;
+  esac
+  case "$_f" in
+    "$SUBJECT"/*) FILE="${_f#"$SUBJECT"/}";;
+    *) FILE="${FILE#./}";;
   esac
 fi
 ROOT="$(find_drupal_root "$SUBJECT" 2>/dev/null || true)"

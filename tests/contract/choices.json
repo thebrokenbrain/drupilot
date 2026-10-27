@@ -1,0 +1,37 @@
+{
+  "keys": [
+    "ATTRIBUTE_FLOOR",
+    "CLEAN_CONFIRM",
+    "CLEAN_LEVEL",
+    "CONFIG_CONFLICT",
+    "CONTRIB_MODE",
+    "CORE_TARGET",
+    "D10_CHECK",
+    "DIGESTS_RULES",
+    "DOCTOR_INSTALL",
+    "EXISTING_WORK",
+    "INTENT",
+    "LAYERS_CONFIRM",
+    "LAYERS_NEXT",
+    "LAYERS_PLAN",
+    "LAYERS_SANDBOX",
+    "LEARN",
+    "NEXT_STEP",
+    "PATCH_KIND",
+    "PHPSTAN_LEVEL",
+    "PHP_TARGET",
+    "PLACEMENT",
+    "PORT_ATTRIBUTES",
+    "PUSH",
+    "REFACTOR_SCOPE"
+  ],
+  "php_target": {
+    "default": "8.4",
+    "header": "PHP target",
+    "options": [
+      "8.3",
+      "8.4",
+      "8.5"
+    ]
+  }
+}

@@ -1,0 +1,66 @@
+{
+  "stages": {
+    "setup": "2026-10-04T12:27:54Z",
+    "assessed": "2026-10-04T12:50:34Z",
+    "tested": "2026-10-04T12:58:15Z",
+    "ported": "2026-10-04T13:00:38Z"
+  },
+  "subject": "@HOME@/Proyectos/drupilot-lab/m2/lm22/dpl-m2-mig09-d11/web/modules/custom/legacy_widgets",
+  "updated": "2026-10-04T13:00:38Z",
+  "created": "2026-10-04T12:27:54Z",
+  "schema": 1,
+  "drupilot_version": "0.9.1",
+  "stage": "tested",
+  "machine_name": "legacy_widgets",
+  "type": "module",
+  "drupal_root": "@HOME@/Proyectos/drupilot-lab/m2/lm22/dpl-m2-mig09-d11",
+  "ddev_project": "dpl-m2-mig09-d11",
+  "origin": "@HOME@/Proyectos/drupilot-lab/m2/lm22/src/legacy_widgets",
+  "placement": "move",
+  "git": {
+    "branch": "master",
+    "commit": "518f214ea8572359c4ef8f93daaa8af43b1f1af0",
+    "dirty": true
+  },
+  "toolchain": {
+    "drupal_core": "11.4.8",
+    "php_target": "8.3",
+    "core_strategy": "auto",
+    "packages": {
+      "drush/drush": "13.8.0",
+      "drupal/coder": "8.3.31",
+      "drupal/core-dev": "11.4.8",
+      "palantirnet/drupal-rector": "0.21.2",
+      "phpstan/phpstan": "2.2.2",
+      "phpstan/phpstan-deprecation-rules": "2.0.5",
+      "mglaman/phpstan-drupal": "2.2.2",
+      "phpstan/extension-installer": "1.4.3",
+      "rector/rector": "2.5.2"
+    },
+    "lock_drupilot_version": "0.9.1"
+  },
+  "patch": {
+    "path": "@HOME@/Proyectos/drupilot-lab/m2/lm22/dpl-m2-mig09-d11/web/modules/custom/legacy_widgets/legacy_widgets-port-to-drupal-11.patch",
+    "kind": "local",
+    "at": "2026-10-04T12:58:33Z"
+  },
+  "effort": "S",
+  "assessed_at": "2026-10-04T12:47:22Z",
+  "core_matrix": {
+    "verdict": "pass",
+    "d10_support": "verified-static",
+    "generated_at": "2026-10-04T12:57:50Z",
+    "fresh": true
+  },
+  "tests": {
+    "status": "passed",
+    "preservation": "verified",
+    "executed": 9,
+    "tests_failed": 0,
+    "groups_passed": 2,
+    "groups_failed": 0,
+    "groups_skipped": 0,
+    "recorded_at": "2026-10-04T12:58:15Z",
+    "fresh": true
+  }
+}

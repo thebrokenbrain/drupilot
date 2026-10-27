@@ -8,9 +8,31 @@
       "default": "next",
       "note": "Answers only the ambiguous-intent tab; an explicit mode word wins. 'auto' is as safe as the auto mode word: it never pushes, opens a Merge Request or contributes."
     },
+    "TARGET_MAJOR": {
+      "command": "/drupilot-setup",
+      "header": "Target major",
+      "stage": "plan-draft",
+      "options": [
+        "11",
+        "12"
+      ],
+      "default": "11",
+      "persist_key": "DRUPILOT_TARGET_MAJOR",
+      "note": "12 is a pre-release: it is offered only with DRUPILOT_ALLOW_PRERELEASE=true and ports to it as a preview. A --target N argument wins; the answer is persisted only after the draft upgrade plan resolves."
+    },
+    "ALLOW_PRERELEASE": {
+      "command": "/drupilot-setup",
+      "header": "Pre-release",
+      "stage": "plan-draft",
+      "options": ["no", "yes"],
+      "default": "no",
+      "persist_map": {"yes": {"DRUPILOT_ALLOW_PRERELEASE": "true"}},
+      "note": "Asked only when the target major resolves to a pre-release (Drupal 12 until its stable release) and DRUPILOT_ALLOW_PRERELEASE is not true; never in an autonomous run, where the pre-release refusal stops it with nothing written. 'yes' plans the port to the pre-release as a preview, 'no' ports to Drupal 11. A 'yes' is persisted (DRUPILOT_ALLOW_PRERELEASE=true) once the draft upgrade plan resolves."
+    },
     "PHP_TARGET": {
       "command": "/drupilot-setup",
       "header": "PHP target",
+      "stage": "plan-draft",
       "options": ["8.3", "8.4", "8.5"],
       "default": "8.4",
       "persist_key": "DRUPILOT_PHP_TARGET",
@@ -41,7 +63,7 @@
     "CORE_TARGET": {
       "command": "/drupilot-port",
       "header": "Core target",
-      "options": ["auto", "keep-d10", "d11-only"],
+      "options": ["auto", "keep-previous", "target-only", "widest"],
       "default": "auto",
       "persist_key": "DRUPILOT_CORE_TARGET_STRATEGY"
     },

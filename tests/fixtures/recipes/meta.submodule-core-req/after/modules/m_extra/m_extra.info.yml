@@ -1,0 +1,7 @@
+name: M extra
+type: module
+description: 'Recipe fixture: a submodule.'
+package: Fixtures
+core_version_requirement: ^10 || ^11
+dependencies:
+  - m:m

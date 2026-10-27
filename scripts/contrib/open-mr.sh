@@ -239,7 +239,7 @@ if have_cmd glab; then
   GLAB_RC=$?
   set -e
   if [[ "$GLAB_RC" -eq 0 ]]; then
-    MR_WEB_URL="$(printf '%s\n' "$GLAB_OUT" | grep -oE 'https://[^ ]*/merge_requests/[0-9]+' | head -n1)"
+    MR_WEB_URL="$(printf '%s\n' "$GLAB_OUT" | grep -oE 'https://[^ ]*/merge_requests/[0-9]+' | sed -n '1p')"
     API_DONE=1
     log_ok "Merge request created via glab."
   else

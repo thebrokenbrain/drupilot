@@ -1,0 +1,81 @@
+{
+  "counts": {
+    "blocking": 1,
+    "by_lane": {
+      "ai-free": 1,
+      "deferred": 1
+    },
+    "items": 2,
+    "open": 1
+  },
+  "floor": "10.3",
+  "items": [
+    {
+      "allowed_files": [
+        "src/AcmeFormatter.php"
+      ],
+      "anchor": "Drupal\\acme_core\\AcmeFormatter::__construct",
+      "blocking": true,
+      "category": "analysis",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "PHPDoc tag @param references unknown parameter: $config_factory",
+      "file": "src/AcmeFormatter.php",
+      "finding_ids": [
+        "F-d1e003f0ecc8"
+      ],
+      "id": "W-2fd376352ee8",
+      "lane": "ai-free",
+      "reason": null,
+      "recipe_of": {
+        "F-d1e003f0ecc8": null
+      },
+      "recipes": [],
+      "status": "open",
+      "templates": {}
+    },
+    {
+      "allowed_files": [
+        "src/AcmeFormatter.php"
+      ],
+      "anchor": "Drupal\\acme_core\\AcmeFormatter::__construct",
+      "blocking": false,
+      "category": "style",
+      "change_record_search_url": null,
+      "era": null,
+      "explanation": "Parameter $configFactory is not described in comment",
+      "file": "src/AcmeFormatter.php",
+      "finding_ids": [
+        "F-9e652fe68e47",
+        "F-ad8c7fc8b52f"
+      ],
+      "id": "W-e38157ce39c4",
+      "lane": "deferred",
+      "reason": "style",
+      "recipe_of": {
+        "F-9e652fe68e47": null,
+        "F-ad8c7fc8b52f": null
+      },
+      "recipes": [],
+      "status": "deferred",
+      "templates": {}
+    }
+  ],
+  "meta": {
+    "findings_hash": "sha256:7ae0922d32c50405a02714b54995a5cdc7639a37ad71fdbb095c3b84a5c44138",
+    "recipes_hash": "sha256:c0327819ed44720abb6211cb021db8722b9cbddc4fc45fa311bc791a6c25e446",
+    "worklist_hash": "sha256:7818547245c9f6efbda65f0221f5d49141a4ac6249c118eb927cb444904d32e6"
+  },
+  "schema": 1,
+  "stage": "assess",
+  "subject": {
+    "machine_name": "acme_core",
+    "path": "web/modules/custom/acme_core"
+  },
+  "target": {
+    "major": 11,
+    "php_version": "8.3.33",
+    "runner": "ddev",
+    "soft_policy": "report"
+  }
+}

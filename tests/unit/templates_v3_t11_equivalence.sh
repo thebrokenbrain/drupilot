@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# For a Drupal 11 plan with no new feature (no BC block, sets of the previous
+# major only), rector.php template 5 configures Rector as template 4 did
+# (T-M3-09, AR-24, ADR 0019): the same paths, skipped rules, PHP version and
+# level sets, file extensions, and the same Drupal sets — the per-minor sets
+# plus drupal-rector's bootstrap file are what its DRUPAL_10 aggregate
+# registers (drupal-10-all-deprecations.php in drupal-rector 1.1.3; the lab
+# run in ADR 0019 shows identical Rector diffs). Compared statically on
+# legacy_widgets (the H10 subject): tests/fixtures/rector-render/legacy_widgets/
+# rector.v4.php (template 4, as M2 pinned it) vs rector.php (template 6, which
+# only adds three skipped rules, OrdSingleByteRector,
+# RemoveGetClassGetParentClassNoArgsRector and
+# DeprecatedAnnotationToDeprecatedAttributeRector, and an explicit empty
+# polyfill list for ^10 || ^11: ADR 0030).
+# phpstan.neon template 3 (ADR 0020) keeps template 2's level, paths and
+# excludes, adds the plan's phpVersion range and a per-plan tmpDir under
+# .phpstan-cache/, and its compat profile turns off exactly the four
+# phpstan-drupal opinion rules (the lab run in ADR 0020: the same findings but
+# globalDrupalDependencyInjection ones; the refactor profile gives v2's).
+# phpstan.v2.neon is template 2 rendered for legacy_widgets at level 2.
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
+t_isolate
+# shellcheck source=../../scripts/lib/common.sh
+. "$T_LIB"
+DRUPILOT_VERSION_DATA_DIR="$T_REPO/tests/fixtures/data-snapshots/$(jq -r .data_hash "$T_REPO/tests/golden/plans/golden.json")"
+export DRUPILOT_VERSION_DATA_DIR
+F="$T_REPO/tests/fixtures/rector-render/legacy_widgets"
+V4="$F/rector.v4.php"; V5="$F/rector.php"
+assert_eq "the v4 fixture is template 4" "$(grep -c 'drupilot-template-version: 4' "$V4")" "1"
+assert_eq "the v5 render is template 6" "$(grep -c 'drupilot-template-version: 6' "$V5")" "1"
+
+# list FILE OPENING -> the quoted strings of a PHP array whose opening line
+# contains the literal OPENING, one per line, up to its closing line.
+list() { _OPEN="$2" awk -v q="'" 'index($0, ENVIRON["_OPEN"]) { on = 1; next } on && /^[[:space:]]*\]/ { on = 0 } on { n = split($0, a, q); if (n >= 3) print a[2] }' "$1"; }
+call() { sed -n "s/^[[:space:]]*->$2(\(.*\))\$/\1/p" "$1"; }
+nonempty() { [[ -n "$1" ]] && echo yes || echo no; }
+
+for k in "->withPaths([" '$drupilotRiskySkips = ' "->withFileExtensions(["; do
+  assert_eq "read from both: $k" "$(nonempty "$(list "$V5" "$k")")$(nonempty "$(list "$V4" "$k")")" "yesyes"
+done
+assert_eq "the same paths" "$(list "$V5" "->withPaths([")" "$(list "$V4" "->withPaths([")"
+NEW_SKIPS='OrdSingleByteRector|DeprecatedAnnotationToDeprecatedAttributeRector|RemoveGetClassGetParentClassNoArgsRector'
+assert_eq "the same skipped rules, in order, but the three template 6 adds" \
+  "$(list "$V5" '$drupilotRiskySkips = ' | grep -vE "($NEW_SKIPS)\$" || true)" "$(list "$V4" '$drupilotRiskySkips = ')"
+assert_eq "  the three it adds" "$(list "$V5" '$drupilotRiskySkips = ' | grep -cE "($NEW_SKIPS)\$")" "3"
+assert_eq "  and an explicit empty polyfill list" "$(grep -c 'polyfillPackages(\[\]);' "$V5")|$(grep -c 'polyfillPackages' "$V4" || true)" "1|0"
+assert_eq "the same PHP version" "$(call "$V5" withPhpVersion)" "$(call "$V4" withPhpVersion)"
+assert_eq "  (PHP_81)" "$(call "$V5" withPhpVersion)" "PhpVersion::PHP_81"
+assert_eq "the same PHP level sets" "$(call "$V5" withPhpSets)" "$(call "$V4" withPhpSets)"
+assert_eq "the same file extensions" "$(list "$V5" "->withFileExtensions([")" "$(list "$V4" "->withFileExtensions([")"
+assert_eq "v4: the DRUPAL_10 aggregate" "$(sed -n '/->withSets(\[/,/\])/p' "$V4" | grep -c 'Drupal10SetList::DRUPAL_10,')" "1"
+# What the aggregate registers: the verified per-minor sets of Drupal 10 (the
+# data records them from drupal-rector's Drupal10SetList) and the bootstrap file.
+AGG="$(target_get 10 '.rector_sets.own_major[]' | sed 's/^/DrupalRector\\\\Set\\\\/')"
+assert_eq "v5: the aggregate's per-minor sets, in order" "$(list "$V5" '$drupilotSetNames = ')" "$AGG"
+assert_eq "v5: drupal-rector's bootstrap file, as the aggregate registers it" \
+  "$(grep -c "vendor/palantirnet/drupal-rector/config/drupal-phpunit-bootstrap-file.php" "$V5")|$(grep -c 'withBootstrapFiles' "$V5")" "1|1"
+assert_eq "v5: no BC block for ^10 || ^11 (drupal-rector's default, as in v4)" \
+  "$(grep -c 'DrupalRectorSettings' "$V5" || true)|$(grep -c 'DrupalRectorSettings' "$V4" || true)" "0|0"
+
+# phpstan.neon: template 2 -> template 3 (compat profile).
+S2="$F/phpstan.v2.neon"; S3="$T_REPO/tests/golden/templates/legacy_widgets.t11-auto-p83/phpstan.neon"
+assert_eq "the v2 fixture is template 2, the v3 render template 3" \
+  "$(grep -c 'drupilot-template-version: 2' "$S2")|$(grep -c 'drupilot-template-version: 3' "$S3")" "1|1"
+# neon KEY FILE -> the indented list under `  KEY:`, or the scalar of `  KEY: v`.
+neon() { _K="$1" awk 'index($0, "  " ENVIRON["_K"] ":") == 1 { v = substr($0, length(ENVIRON["_K"]) + 5); if (v != "") { print v; exit }; on = 1; next }
+  on && /^    / { print; next } on { exit }' "$2"; }
+for k in level paths excludePaths; do
+  assert_eq "phpstan.neon: the same $k" "$(neon "$k" "$S3")" "$(neon "$k" "$S2")"
+done
+assert_eq "phpstan.neon: v3 adds the plan's phpVersion range (8.1 to 8.3)" "$(neon phpVersion "$S3" | tr -d ' \n')|$(neon phpVersion "$S2")" "min:80100max:80300|"
+assert_eq "phpstan.neon: tmpDir moves under .phpstan-cache/" "$(neon tmpDir "$S2")|$(neon tmpDir "$S3" | sed 's|/[0-9a-f]\{12\}$|/<plan>|')" ".phpstan-cache|.phpstan-cache/<plan>"
+assert_eq "phpstan.neon: compat turns off exactly the four opinion rules" \
+  "$(sed -n 's/^      \([A-Za-z]*\): false$/\1/p' "$S3" | tr '\n' ' ')" \
+  "globalDrupalDependencyInjectionRule entityStorageDirectInjectionRule testClassSuffixNameRule classExtendsInternalClassRule "
+assert_eq "phpstan.neon: refactor turns off nothing" "$(phpstan_profile_block refactor | grep -c 'false' || true)" "0"
+assert_eq "phpstan.neon: no other drupal parameter (no bleedingEdge, no drupal_root)" \
+  "$(grep -v '^[[:space:]]*#' "$S3" | grep -c 'bleedingEdge\|drupal_root:' || true)" "0"
+t_done

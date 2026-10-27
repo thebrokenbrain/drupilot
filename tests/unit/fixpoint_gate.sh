@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# fixpoint.sh (T-M4-11, AR-16, 05-R9, DET-8): at the end of a stage, Rector,
+# the codemods and the processed lanes (rector, rector-custom, codemod) have
+# nothing left.
+# - legacy_widgets after its port (the findings golden without its one Rector
+#   change and its 18 signature, safety and metadata findings, which the
+#   port's codemods and manual fixes clear; the worklist computed from it):
+#   converged. It checks the gate on a hand-made input, not a port's outcome
+#   (the lab runs the fixture matrix through the port);
+# - an injected non-convergent case lists the exact items: a Rector change, a
+#   codemod that would still apply, an open item in a processed lane; the AI
+#   lanes are not processed yet;
+# - DRUPILOT_FIXPOINT: enforce (the default from 1.0.0-rc.1) exits 3, warn
+#   reports and exits 0, off skips, any other value is the default; a tool
+#   with no verdict never converges, and no_verdict_tools names it;
+# - a deliberate revert the decision log records (rector-revert: a Rector
+#   rule or a recipe id, in a file or every file) is accepted, never blocks;
+#   its --file is stored module-relative whatever its form, and an entry that
+#   covers nothing is listed (accepted_reverts.unmatched) and warned about;
+# - fixpoint.json and the run manifest (<state>/runs/<run_id>/), of which
+#   DRUPILOT_RUNS_KEEP are kept;
+# - the live path (extraction again, the codemods in dry-run) with stub tools.
+# Docker-free.
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
+t_isolate
+# shellcheck source=../../scripts/lib/common.sh
+. "$T_LIB"
+FX="$T_REPO/scripts/analysis/fixpoint.sh"
+CL="$T_REPO/scripts/ai/classify.sh"
+DRUPILOT_VERSION_DATA_DIR="$T_REPO/tests/fixtures/data-snapshots/$(jq -r .data_hash "$T_REPO/tests/golden/findings/golden.json")"
+export DRUPILOT_VERSION_DATA_DIR
+S="$T_TMP/legacy_widgets"; cp -R "$T_REPO/tests/fixtures/legacy_widgets" "$S"
+SD="$(project_state_dir "$S")"
+
+# legacy_widgets after its port: its one Rector change applied, nothing else
+# for the deterministic lanes (the AI lanes stay open: not processed yet).
+jq '.findings |= map(select(.tool != "rector")) | .stage = "validate"' "$T_REPO/tests/golden/findings/legacy_widgets/findings.json" > "$T_TMP/fp.json"
+jq '.findings |= map(select(.class != "signature" and .class != "safety" and .class != "metadata"))' "$T_TMP/fp.json" > "$T_TMP/fp2.json"
+t_run "$T_SH" "$CL" --findings "$T_TMP/fp2.json" --core-floor 10.0 --json
+cp "$T_OUT" "$T_TMP/wp.json"
+t_run "$T_SH" "$FX" --subject "$S" --findings "$T_TMP/fp2.json" --worklist "$T_TMP/wp.json" --json
+assert_eq "legacy_widgets after its port: converged, exit 0 (the default mode, enforce)" "$T_RC|$(jq -c '[.converged, .mode, (.rector | length), (.codemods | length), (.open_items | length)]' "$T_OUT")" '0|[true,"enforce",0,0,0]'
+assert_eq "  fixpoint.json in the state dir" "$(jq -c '.converged' "$SD/fixpoint.json")" "true"
+valid() { jq -r --slurpfile schema "$T_REPO/schemas/$1.schema.json" \
+  "$(cat "$T_REPO/scripts/dev/jsonschema.jq")"' . as $doc | $schema[0] as $root | $doc | chk($root; $root; "$")' "$2" 2>&1; }
+assert_eq "  it validates against schemas/fixpoint.schema.json" "$(valid fixpoint "$SD/fixpoint.json")" ""
+assert_eq "  the run manifest against schemas/run-manifest.schema.json" "$(valid run-manifest "$(ls "$SD"/runs/*/run-manifest.json)")" ""
+assert_eq "  the AI lanes are not processed yet" "$(jq -c '.processed_lanes' "$T_OUT")" '["rector","rector-custom","codemod"]'
+assert_eq "  one run recorded, with its input and output hashes" \
+  "$(ls "$SD/runs" | wc -l | tr -d ' ')|$(jq -c '[.tool, .inputs.findings_hash != null, (.outputs.fixpoint_hash | test("^sha256:")), .outputs.converged]' "$SD"/runs/*/run-manifest.json)" \
+  '1|["fixpoint",true,true,true]'
+
+# An injected non-convergent case: the golden as extracted (its Rector change
+# and both codemods still open).
+F="$T_REPO/tests/golden/findings/legacy_widgets/findings.json"; W="$T_REPO/tests/golden/worklist/legacy_widgets.json"
+DRUPILOT_FIXPOINT=warn t_run "$T_SH" "$FX" --subject "$S" --findings "$F" --worklist "$W" --json
+assert_eq "not converged in warn mode: exit 0, the exact items listed" \
+  "$T_RC|$(jq -c '[.converged, [.rector[].rule], [.open_items[] | [.lane, .file]]]' "$T_OUT")" \
+  '0|[false,["Rector\\CodingStyle\\Rector\\FuncCall\\FunctionFirstClassCallableRector"],[["codemod","legacy_widgets.services.yml"],["codemod","modules/legacy_widgets_extra/legacy_widgets_extra.info.yml"],["rector","src/Form/WidgetImportForm.php"]]]'
+assert_match "  the warning names them" "$(t_err)" "not converged: 1 Rector change\(s\), 3 open item\(s\) in a processed lane"
+DRUPILOT_FIXPOINT=enforce t_run "$T_SH" "$FX" --subject "$S" --findings "$F" --worklist "$W"
+assert_eq "enforce: exit 3" "$T_RC" "3"
+t_run "$T_SH" "$FX" --subject "$S" --findings "$F" --worklist "$W" --json
+assert_eq "  enforce is the default: exit 3" "$T_RC|$(jq -c '[.mode, .converged]' "$T_OUT")" '3|["enforce",false]'
+DRUPILOT_FIXPOINT=bogus t_run "$T_SH" "$FX" --subject "$S" --findings "$F" --worklist "$W" --json
+assert_eq "  an unknown value is the default, with a warning" "$T_RC|$(jq -c '.mode' "$T_OUT")" '3|"enforce"'
+assert_match "    the warning" "$(t_err)" "DRUPILOT_FIXPOINT=bogus is not enforce, warn or off: enforce"
+DRUPILOT_FIXPOINT=off t_run "$T_SH" "$FX" --subject "$S" --findings "$F" --worklist "$W" --json
+assert_eq "off: nothing runs, exit 0" "$T_RC|$(jq -c '[.mode, .converged]' "$T_OUT")" '0|["off",null]'
+# A tool with no verdict never converges.
+jq '.tools.phpstan = "failed"' "$T_TMP/fp2.json" > "$T_TMP/fnv.json"
+DRUPILOT_FIXPOINT=enforce t_run "$T_SH" "$FX" --subject "$S" --findings "$T_TMP/fnv.json" --worklist "$T_TMP/wp.json" --json
+assert_eq "PHPStan with no verdict: not converged (enforce: exit 3)" "$T_RC|$(jq -c '[.converged, .no_verdict, .no_verdict_tools]' "$T_OUT")" '3|[false,true,["phpstan"]]'
+assert_match "  the error names it" "$(t_err)" "not converged: no verdict from phpstan"
+jq '.tools["port-safety"] = "failed"' "$T_TMP/fp2.json" > "$T_TMP/fps.json"
+DRUPILOT_FIXPOINT=warn t_run "$T_SH" "$FX" --subject "$S" --findings "$T_TMP/fps.json" --worklist "$T_TMP/wp.json" --json
+assert_eq "  a port-safety scan with no verdict (it feeds the codemod lane): not converged" "$T_RC|$(jq -c '[.converged, .no_verdict, .no_verdict_tools]' "$T_OUT")" '0|[false,true,["port-safety"]]'
+
+# DRUPILOT_RUNS_KEEP: the oldest runs go.
+rm -rf "${SD:?}/runs"
+for _ in 1 2 3 4; do
+  DRUPILOT_RUNS_KEEP=03 t_run "$T_SH" "$FX" --subject "$S" --findings "$T_TMP/fp2.json" --worklist "$T_TMP/wp.json"
+done
+assert_eq "DRUPILOT_RUNS_KEEP=03 (a leading zero): three runs kept" "$(ls "$SD/runs" | wc -l | tr -d ' ')" "3"
+assert_eq "  two runs on the same inputs differ only under meta (the run id included)" \
+  "$(for f in "$SD"/runs/*/run-manifest.json; do jq -c 'del(.meta)' "$f"; done | sort -u | wc -l | tr -d ' ')" "1"
+
+# The live path, with stub tools in a copy of the plugin: the extraction runs
+# again and the codemods run in dry-run.
+P="$T_TMP/plugin"; mkdir -p "$P/scripts"; cp -R "$T_REPO/scripts/lib" "$T_REPO/scripts/ai" "$T_REPO/scripts/analysis" "$P/scripts/"; cp -R "$T_REPO/config" "$P/"
+printf '#!/bin/sh\necho "$*" >> "%s/calls"\nexit "${STUB_EXTRACT_RC:-0}"\n' "$T_TMP" > "$P/scripts/ai/extract.sh"
+printf '#!/bin/sh\ncp "%s" "%s/findings.json"\n' "$F" "$SD" > "$P/scripts/ai/normalize-findings.sh"
+printf '#!/bin/sh\ncp "%s" "%s/worklist.json"\n' "$W" "$SD" > "$P/scripts/ai/classify.sh"
+printf '#!/bin/sh\necho "{\\"applications\\": [{\\"item_id\\": \\"W-1\\", \\"recipe\\": \\"safety.class-case\\", \\"file\\": \\"legacy_widgets.services.yml\\", \\"status\\": \\"would-apply\\"}, {\\"item_id\\": \\"W-2\\", \\"recipe\\": \\"sig.x\\", \\"file\\": \\"m.module\\", \\"status\\": \\"no-match\\"}]}"\n' > "$P/scripts/ai/apply-recipes.sh"
+t_run env CLAUDE_PLUGIN_ROOT="$P" DRUPILOT_FIXPOINT=warn "$T_SH" "$P/scripts/analysis/fixpoint.sh" --subject "$S" --json
+assert_eq "live: extracted again at the validate stage, the codemod that would apply listed" \
+  "$T_RC|$(grep -c -- '--stage validate' "$T_TMP/calls")|$(jq -c '[.converged, [.codemods[] | [.recipe, .file]]]' "$T_OUT")" \
+  '0|1|[false,[["safety.class-case","legacy_widgets.services.yml"]]]'
+t_run env CLAUDE_PLUGIN_ROOT="$P" DRUPILOT_FIXPOINT=warn STUB_EXTRACT_RC=3 "$T_SH" "$P/scripts/analysis/fixpoint.sh" --subject "$S" --stage refactor --json
+assert_eq "  an extraction with no verdict (exit 3): not converged; --stage passed on" \
+  "$T_RC|$(jq -c '[.converged, .no_verdict, .no_verdict_tools, .stage]' "$T_OUT")|$(grep -c -- '--stage refactor' "$T_TMP/calls")" '0|[false,true,["extraction"],"refactor"]|1'
+t_run env CLAUDE_PLUGIN_ROOT="$P" STUB_EXTRACT_RC=2 "$T_SH" "$P/scripts/analysis/fixpoint.sh" --subject "$S"
+assert_eq "  an extraction that fails: exit 1" "$T_RC" "1"
+
+# A deliberate revert the decision log records is accepted: the reverted
+# Rector change and the open item of that finding never block; a codemod's
+# recipe id, in a file or (no --file) in every file, covers that lane's items.
+LD="$T_REPO/scripts/analysis/log-decision.sh"
+t_run "$T_SH" "$LD" --subject "$S" --kind rector-revert --rule FunctionFirstClassCallableRector \
+  --file src/Form/WidgetImportForm.php --what "Kept the string callable" --why "A test pins it"
+assert_eq "a rector-revert logged" "$T_RC" "0"
+t_run "$T_SH" "$FX" --subject "$S" --findings "$F" --worklist "$W" --json
+assert_eq "  its Rector change and that finding's open item are accepted; the codemod items still block (exit 3)" \
+  "$T_RC|$(jq -c '[.converged, (.rector | length), [.accepted_reverts.rector[].rule], [.accepted_reverts.open_items[].lane], [.open_items[].lane]]' "$T_OUT")" \
+  '3|[false,0,["Rector\\CodingStyle\\Rector\\FuncCall\\FunctionFirstClassCallableRector"],["rector"],["codemod","codemod"]]'
+assert_match "  the accepted reverts are listed" "$(t_err)" "deliberate reverts accepted"
+t_run "$T_SH" "$LD" --subject "$S" --kind rector-revert --rule safety.class-case --file legacy_widgets.services.yml --what "Kept the class name" --why "Checked by hand"
+t_run "$T_SH" "$LD" --subject "$S" --kind rector-revert --rule meta.submodule-core-req --what "Kept the requirement" --why "Checked by hand"
+t_run "$T_SH" "$FX" --subject "$S" --findings "$F" --worklist "$W" --json
+assert_eq "  with the two codemods' reverts (one in every file): converged, exit 0" \
+  "$T_RC|$(jq -c '[.converged, (.accepted_reverts.open_items | length), (.open_items | length)]' "$T_OUT")" '0|[true,3,0]'
+assert_eq "  fixpoint.json still validates against its schema" "$(valid fixpoint "$SD/fixpoint.json")" ""
+rm -f "$(decisions_log_file "$S")"
+# The file of a revert, in the forms a person or a tool gives it: ./src/...,
+# or a path from the working directory (as from a Drupal root).
+t_run "$T_SH" "$LD" --subject "$S" --kind rector-revert --rule FunctionFirstClassCallableRector \
+  --file ./src/Form/WidgetImportForm.php --what "x" --why "y" --json
+assert_eq "a ./ file is stored module-relative" "$(jq -r '.file' "$T_OUT")" "src/Form/WidgetImportForm.php"
+t_run sh -c 'cd "$1" && "$2" "$3" --subject "$4" --kind rector-revert --rule safety.class-case --file legacy_widgets/legacy_widgets.services.yml --what x --why y --json' \
+  _ "$T_TMP" "$T_SH" "$LD" "$S"
+assert_eq "  so is a path from the working directory" "$(jq -r '.file' "$T_OUT")" "legacy_widgets.services.yml"
+t_run "$T_SH" "$LD" --subject "$S" --kind rector-revert --rule RenamedRector --file src/Nowhere.php --what "x" --why "y"
+t_run "$T_SH" "$FX" --subject "$S" --findings "$F" --worklist "$W" --json
+assert_eq "  both accepted; one codemod item still blocks; the entry that covers nothing is listed" \
+  "$T_RC|$(jq -c '[(.accepted_reverts.rector | length), (.accepted_reverts.open_items | length), [.open_items[].file], .accepted_reverts.unmatched]' "$T_OUT")" \
+  '3|[1,2,["modules/legacy_widgets_extra/legacy_widgets_extra.info.yml"],[{"file":"src/Nowhere.php","rule":"RenamedRector"}]]'
+assert_match "  and warned about" "$(t_err)" "covers nothing on this tree"
+rm -f "$(decisions_log_file "$S")"
+
+# Usage errors.
+t_run "$T_SH" "$FX" --subject "$S" --findings "$F"
+assert_eq "--findings without --worklist: exit 1" "$T_RC" "1"
+t_run "$T_SH" "$FX" --subject "$S" --findings "$W" --worklist "$W"
+assert_eq "a file that is not a findings.json: exit 1" "$T_RC" "1"
+t_run "$T_SH" "$FX" --bogus
+assert_eq "an unknown flag: exit 1" "$T_RC" "1"
+t_done

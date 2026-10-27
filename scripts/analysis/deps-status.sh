@@ -105,11 +105,11 @@ d11_status() {
   if [[ -z "$xml" ]]; then printf 'unknown'; return; fi
   # An <error> / "no release history" response means the project is not a contrib
   # project on drupal.org (core submodule, custom, or renamed) — not a real blocker.
-  if printf '%s' "$xml" | grep -qiE '<error>|no release history|no releases|<project_status>unsupported'; then
+  if printf '%s' "$xml" | grep_q -iE '<error>|no release history|no releases|<project_status>unsupported'; then
     printf 'not-on-drupalorg'; return
   fi
   # A release whose <core_compatibility> constraint admits 11 means D11-ready.
-  if printf '%s' "$xml" | grep -oiE '<core_compatibility>[^<]*</core_compatibility>' | grep -q '11'; then
+  if printf '%s' "$xml" | grep -oiE '<core_compatibility>[^<]*</core_compatibility>' | grep_q '11'; then
     printf 'ready'; return
   fi
   printf 'not-ready'

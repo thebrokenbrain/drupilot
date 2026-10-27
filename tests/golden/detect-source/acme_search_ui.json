@@ -1,0 +1,21 @@
+{
+  "confidence": "medium",
+  "evidence": [
+    {
+      "detail": "core_version_requirement: ^8.8 || ^9 || ^10",
+      "era": 8,
+      "file": "acme_search_ui.info.yml",
+      "id": "declared",
+      "signal": 3
+    }
+  ],
+  "signals_used": [
+    1,
+    2,
+    3,
+    5,
+    6
+  ],
+  "source_major": 8,
+  "track": "standard"
+}

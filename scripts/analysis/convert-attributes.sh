@@ -3,8 +3,8 @@
 # drupilot — scripts/analysis/convert-attributes.sh
 # Optional, opt-in pass that converts plugin doc-block annotations (@Block(...),
 # @QueueWorker(...), @Filter(...), ...) into PHP 8 attributes with the
-# AnnotationToAttributeRector rule of palantirnet/drupal-rector (0.21.x ships
-# the rule but configures it in no set). It is independent of run-rector.sh's
+# AnnotationToAttributeRector rule of palantirnet/drupal-rector (0.21.x and
+# 1.1.x ship the rule but configure it in no set). It is independent of run-rector.sh's
 # official and digests passes: it renders its own config,
 # templates/rector-attributes.php.tmpl -> <drupal_root>/.drupilot/rector-attributes.php
 # (reachable at the same relative path inside DDEV, gitignored), and runs only
@@ -33,10 +33,12 @@
 #
 # The annotation is removed by the rule only when the test-bed core is >= the
 # configured removeVersion: drupilot writes the type's `since` to strip and
-# 999.0.0 to keep. Names are printed fully qualified (no import), because the
-# 0.21.x rule detects an existing attribute by its FQCN: a file that already
-# carries a short-named (imported) attribute of a converted type is skipped (it
-# would get a duplicate). The rule copies every annotation key into a named
+# 999.0.0 to keep. Names are printed fully qualified (no import). A file that
+# already carries a short-named (imported) #[X] attribute of a converted
+# type's short name is skipped: the 1.1.x rule takes ANY attribute with that
+# short name for the converted one (an unrelated class of the same name would
+# suppress the Drupal attribute, and strip mode would then lose the plugin),
+# and drupilot does not resolve the imports to tell the cases apart. The rule copies every annotation key into a named
 # argument as is, so before the run each annotation's top-level keys are
 # checked against the attribute constructor's parameters, read from the
 # attribute class in the test-bed core and in every cached reference core at or
@@ -44,7 +46,8 @@
 # does not accept (e.g. `source_module` on @MigrateSource) is skipped and keeps
 # its annotation, as Drupal core does for such plugins, because the attribute
 # would fatal with "Unknown named parameter" when the plugin is discovered.
-# After --apply, every changed file is checked: a duplicate attribute, a
+# After --apply, every changed file is checked: a duplicate attribute, an
+# annotation removed without its attribute, a
 # `php -l` failure or a PHPStan (level 0) finding that names a converted
 # attribute class restores the file from the backup taken just before the run. A class constant the annotation names by a
 # qualified but not fully qualified name (`Drupal\filter\Plugin\FilterInterface::
@@ -89,11 +92,15 @@
 #   attribute_floor: the highest `since` among the converted types (the core
 #   floor the result needs for static analysis; also the runtime floor for the
 #   stripped types). floor_ok: declared_floor >= attribute_floor.
-#   rule_hits merges into the port manifest's rector_rules.
+#   An --apply that converts files also keeps {tool, changed_files, files,
+#   rule_hits, meta} in the subject's state dir (attributes-rules.json), which
+#   scripts/ai/manifest.sh merges into the manifest's rector_rules (and never
+#   counts as manual edits).
 #
 # Gate: `analyze` profile. Exit codes: 0 ok (including nothing to convert) ·
 # 1 usage error · 2 gate (requirements, Drupal root, vendor/bin/rector or the
-# rule missing, unknown core version) · 3 Rector crashed (no verdict).
+# rule missing, unknown core version) · 3 Rector crashed (no verdict), or a
+# DET-1 refusal (an unplanned host run, a Rector the lock does not pin).
 # =============================================================================
 set -euo pipefail
 
@@ -168,7 +175,7 @@ export DRUPILOT_PROJECT_DIR="$DRUPAL_ROOT"
   || die "vendor/bin/rector is missing. Install the toolchain first (/drupilot-setup)." 2
 RULE_SRC="$DRUPAL_ROOT/vendor/palantirnet/drupal-rector/src/Drupal10/Rector/Deprecation/AnnotationToAttributeRector.php"
 [[ -f "$RULE_SRC" ]] \
-  || die "The installed palantirnet/drupal-rector has no AnnotationToAttributeRector (needs 0.20+; the known-good toolchain ships 0.21.x)." 2
+  || die "The installed palantirnet/drupal-rector has no AnnotationToAttributeRector (needs 0.20+; the known-good toolchain ships 1.1.x)." 2
 
 CORE_VER="$(drupal_core_version "$DRUPAL_ROOT")"
 CORE_MM="$(printf '%s' "$CORE_VER" | grep -oE '^[0-9]+\.[0-9]+' || true)"
@@ -227,16 +234,43 @@ fi
 
 # --- Scan the subject: annotation tags and existing attributes per file -----
 # TAG<TAB>file<TAB>Annotation   (a doc-block line ` * @Annotation(`)
-# ATTR<TAB>file<TAB>name        (an attribute as written: `#[\Drupal\...\Block(`)
+# ATTR<TAB>file<TAB>name        (each attribute as written, every name of a
+#                               group `#[A, B(...)]`, one-line or not)
 SCAN="$TMPD/scan.tsv"
 find "$SUBJECT_REL" -type f -name '*.php' ! -path '*/vendor/*' ! -path '*/node_modules/*' -exec awk '
+  FNR == 1 { ingrp = 0; depth = 0; expect = 0; q = "" }
   /^[ \t]*\*[ \t]*@[A-Za-z_][A-Za-z0-9_]*[ \t]*\(/ {
     s = $0; sub(/^[ \t]*\*[ \t]*@/, "", s); sub(/[ \t]*\(.*$/, "", s)
     print "TAG\t" FILENAME "\t" s
   }
-  /^[ \t]*#\[/ {
-    s = $0; sub(/^[ \t]*#\[[ \t]*/, "", s)
-    if (match(s, /^[A-Za-z0-9_\\]+/)) print "ATTR\t" FILENAME "\t" substr(s, RSTART, RLENGTH)
+  # An attribute group opens at a line-leading #[ and ends at its top-level ];
+  # a name follows the #[ and every top-level comma (strings are skipped).
+  ingrp || /^[ \t]*#\[/ {
+    line = $0; n = length(line); i = 1
+    if (!ingrp) { i = index(line, "#[") + 2; ingrp = 1; depth = 0; expect = 1; q = "" }
+    while (i <= n) {
+      ch = substr(line, i, 1)
+      if (q != "") { if (ch == q) q = ""; i++; continue }
+      if (ch == "\047" || ch == "\"") { q = ch; i++; continue }
+      if (expect && ch ~ /[A-Za-z0-9_\\]/) {
+        match(substr(line, i), /^[A-Za-z0-9_\\]+/)
+        print "ATTR\t" FILENAME "\t" substr(line, i, RLENGTH)
+        i += RLENGTH; expect = 0; continue
+      }
+      if (ch == "(" || ch == "[") depth++
+      else if (ch == ")") depth--
+      else if (ch == "]") {
+        if (depth > 0) depth--
+        else {
+          ingrp = 0
+          p = index(substr(line, i + 1), "#[")
+          if (p == 0) break
+          i += p + 2; ingrp = 1; depth = 0; expect = 1; continue
+        }
+      }
+      else if (ch == "," && depth == 0) expect = 1
+      i++
+    }
   }' {} + > "$SCAN" 2>/dev/null || true
 
 # custom_class_file <FQCN> -> a file under the Drupal root declaring it.
@@ -400,8 +434,9 @@ rejected_keys() {
   return 0
 }
 # Files carrying a converted annotation, and those to skip: a short-named
-# attribute of the same type already present (the 0.21.x rule would
-# duplicate), or an annotation key the attribute constructor rejects.
+# attribute with the type's short name already present (the rule matches on
+# the short name and could skip the real conversion), or an annotation key the
+# attribute constructor rejects.
 CAND="$TMPD/cand.txt"; : > "$CAND"
 SKIPPED_JSON="[]"; SKIP_LINES=""
 while IFS= read -r f; do
@@ -411,8 +446,8 @@ while IFS= read -r f; do
     awk -F '\t' -v f="$f" -v a="$ann" '$1 == "TAG" && $2 == f && $3 == a { found = 1 } END { exit !found }' "$SCAN" || continue
     rej="$(rejected_keys "$f" "$ann" "$attr" "$since")"
     if [[ -n "$rej" ]]; then
-      if printf '%s\n' "$rej" | grep -q '^?'; then
-        skip_reason="the constructor of $attr could not be read ($(printf '%s\n' "$rej" | awk -F '\t' '$1 == "?" { print $2; exit }')), so its accepted arguments are unknown: annotation kept"
+      if printf '%s\n' "$rej" | grep_q '^?'; then
+        skip_reason="the constructor of $attr could not be read ($(printf '%s\n' "$rej" | awk -F '\t' '!d && $1 == "?" { print $2; d = 1 }')), so its accepted arguments are unknown: annotation kept"
       else
         skip_reason="@$ann key(s) $(printf '%s\n' "$rej" | cut -f1 | sort -u | paste -sd, - | sed 's/,/, /g') have no parameter in $attr::__construct() ($(printf '%s\n' "$rej" | cut -f2 | sort -u | paste -sd, - | sed 's/,/, /g')): the attribute would fatal with 'Unknown named parameter' when the plugin is discovered. The annotation is kept, as Drupal core does for such plugins"
       fi
@@ -423,7 +458,7 @@ while IFS= read -r f; do
     if AWKV_fq="\\$attr" awk -F '\t' -v f="$f" -v s="$short" '
          $1 == "ATTR" && $2 == f { n = split($3, p, "\\"); if (p[n] == s && $3 != ENVIRON["AWKV_fq"]) bad = 1 }
          END { exit !bad }' "$SCAN"; then
-      skip_reason="already has a non fully-qualified #[$short] attribute (the 0.21.x rule would add a duplicate): finish it by hand"
+      skip_reason="already has a non fully-qualified #[$short] attribute (the rule could take it for the converted one): finish it by hand"
     fi
   done < "$ACTIVE"
   if [[ -n "$skip_reason" ]]; then
@@ -508,6 +543,14 @@ log_info "Config      : ${CFG#"$DRUPAL_ROOT"/} ($(grep -c . "$ACTIVE" || true) t
 ddev_ensure_running_or_host "$DRUPAL_ROOT" rector \
   || die "Could not start the DDEV project at $DRUPAL_ROOT, and there is no host vendor/bin/rector to fall back to." 2
 RUNNER="$(drupal_runner "$DRUPAL_ROOT")"
+# DET-1, as for run-rector.sh's other passes: in deterministic mode no
+# unplanned host run and no Rector the lock does not pin (exit 3).
+_det1="$(DET1_RUNNER="$RUNNER" det1_message "$DRUPAL_ROOT" Rector rector/rector palantirnet/drupal-rector)"
+if [[ -n "$_det1" ]]; then
+  # The documented error shape for a --json caller, never an empty STDOUT.
+  [[ "$AS_JSON" == "1" ]] && emit_json error "" 0 '[]' 0 false "$(jq -nc --arg m "$_det1" '[{exit_code: 3, message: $m}]')"
+  die "$_det1" 3
+fi
 declare -a RUN=()
 [[ -n "$RUNNER" ]] && read -r -a RUN <<<"$RUNNER"
 
@@ -592,6 +635,16 @@ if [[ "$APPLY" == "1" && -n "$CHANGED" ]]; then
       if [[ "${c:-0}" -gt 1 ]]; then dup="$short"; break; fi
     done < "$ACTIVE"
     if [[ -n "$dup" ]]; then restore "$f" "duplicate #[$dup] attribute after the pass"; continue; fi
+    # 2b) No annotation removed without its attribute (the rule takes any
+    #     attribute with the type's short name for the converted one).
+    lost=""
+    while IFS=$'\t' read -r ann attr since action; do
+      grep -qE "^[[:space:]]*\*[[:space:]]*@${ann}[[:space:]]*\(" "$TMPD/backup/$f" 2>/dev/null || continue
+      grep -qE "^[[:space:]]*\*[[:space:]]*@${ann}[[:space:]]*\(" "$f" && continue
+      grep -qF "#[\\${attr}(" "$f" && continue
+      lost="$ann"; break
+    done < "$ACTIVE"
+    if [[ -n "$lost" ]]; then restore "$f" "the @$lost annotation was removed but no attribute was added"; continue; fi
     # 3) It must still parse. (stdin from /dev/null: `ddev exec` would eat the file list.)
     if ! "${RUN[@]+"${RUN[@]}"}" php -l "$f" </dev/null >/dev/null 2>&1; then
       restore "$f" "php -l failed after the pass"; continue
@@ -669,7 +722,7 @@ if [[ "$APPLY" == "1" ]]; then
   log_ok "Attributes pass applied: $COUNT file(s) changed ($MODE mode)."
 else
   log_ok "Attributes dry-run: $COUNT file(s) would change ($MODE mode). Re-run with --apply after reviewing the diff."
-  if printf '%s\n' "$RAW" | grep -E '^\+#\[' | grep -qE '[(, ][A-Za-z_][A-Za-z0-9_]*\\[A-Za-z0-9_\\]*::'; then
+  if printf '%s\n' "$RAW" | grep -E '^\+#\[' | grep_q -E '[(, ][A-Za-z_][A-Za-z0-9_]*\\[A-Za-z0-9_\\]*::'; then
     log_info "Class constants named relative to the annotation's namespace are fully qualified on --apply."
   fi
 fi
@@ -684,6 +737,13 @@ if [[ -n "$ATTR_FLOOR" ]]; then
   fi
 fi
 
+if [[ "$APPLY" == "1" && "${COUNT:-0}" != "0" && -n "$SUBJECT_ABS" ]]; then
+  jq -n --arg fl "$CHANGED" --argjson n "$COUNT" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg s "$SUBJECT_ABS" \
+    '{tool: "attributes", changed_files: $n, files: ($fl | split("\n") | map(select(length > 0)) | sort),
+      rule_hits: {attributes: {AnnotationToAttributeRector: $n}}, meta: {generated_at: $at, subject: $s}}' \
+    > "$(project_state_dir "$SUBJECT_ABS")/attributes-rules.json" 2> /dev/null \
+    || log_warn "Could not record the attribute conversion in the state dir."
+fi
 if [[ "$AS_JSON" == "1" ]]; then
   emit_json ok "$CHANGED" "$COUNT" "$RESTORED_JSON" "$QUALIFIED" "$RAISED" '[]'
 elif [[ -n "$CHANGED" ]]; then

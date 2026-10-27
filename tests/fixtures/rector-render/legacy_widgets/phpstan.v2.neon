@@ -1,0 +1,44 @@
+# drupilot — phpstan.neon
+# drupilot-template-version: 2
+#
+# PHPStan configuration for analyzing a Drupal module/theme on the way to
+# Drupal 11. Generated from a template by scripts/env/render-templates.sh, which
+# fills in the analysis level (DRUPILOT_PHPSTAN_LEVEL: default 2 for deprecation
+# detection, raised to 5-6 during the full refactor) and the extension path
+# under `paths:`.
+#
+# phpstan/extension-installer autoloads the Drupal rules and the deprecation
+# rules automatically, so no `includes:` block is needed in the common case.
+# If extension-installer is NOT present, uncomment the `includes:` block below.
+#
+# PHPStan does not bootstrap the database, but it needs the Drupal core tree
+# present. phpstan-drupal (>= 1.3) discovers the Drupal root automatically from
+# the Composer runtime; the legacy `drupal: drupal_root:` parameter is deprecated
+# (it prints a PHP deprecation on every run) and ignored, so it is intentionally
+# absent.
+parameters:
+  # Level 2 detects deprecations (the level drupal-check pins). Raise to 5-6
+  # for quality/bug analysis during the Drupal 11 way refactor.
+  level: 2
+
+  # Analyze only the target extension.
+  paths:
+    - web/modules/custom/legacy_widgets
+
+  # Drupal generates dynamic code; keep PHPStan from caching across rebuilds in
+  # ways that hide regressions, and ignore the usual generated/contrib noise.
+  excludePaths:
+    - */vendor/*
+    - */node_modules/*
+
+  # Deterministic, project-local result cache: keep PHPStan's cache inside the
+  # project (not the shared system temp) so runs are reproducible and isolated
+  # per project. Safe to delete; PHPStan invalidates it on version/config change.
+  # Add `.phpstan-cache/` to the project's .gitignore.
+  tmpDir: .phpstan-cache
+
+# Fallback when phpstan/extension-installer is not installed. With the
+# extension installer present these are wired in automatically — leave commented.
+# includes:
+#   - vendor/mglaman/phpstan-drupal/extension.neon
+#   - vendor/phpstan/phpstan-deprecation-rules/rules.neon

@@ -1,0 +1,128 @@
+site_name: drupilot
+site_description: Claude Code plugin that ports Drupal modules and themes across major versions, deterministic tools first.
+site_url: https://thebrokenbrain.github.io/drupilot/
+repo_url: https://github.com/thebrokenbrain/drupilot
+repo_name: thebrokenbrain/drupilot
+edit_uri: edit/main/docs/
+docs_dir: docs
+site_dir: site
+copyright: MIT License
+
+theme:
+  name: material
+  variant: classic
+  language: en
+  logo: assets/drupilot.png
+  favicon: assets/drupilot.png
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: {icon: material/brightness-7, name: Switch to dark mode}
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: {icon: material/brightness-4, name: Switch to light mode}
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+    - content.action.edit
+
+markdown_extensions:
+  - toc: {permalink: true}
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - pymdownx.details
+  - pymdownx.highlight: {anchor_linenums: true}
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed: {alternate_style: true}
+  - pymdownx.snippets:
+      base_path: ["."]   # Zensical 0.0.67 rejects !relative $config_dir; "." is the repo root in the container
+      check_paths: true
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+plugins:
+  - search
+
+# NEVER add: hooks, exclude_docs, not_in_nav, draft_docs, remote_branch, remote_name, gen-files, llmstxt.
+# No extra.version (mike) at 1.0.
+
+# The nav lists every docs/**/*.md (the docs gate of scripts/dev/check.sh checks it).
+# Each section arrives with its pages (docs D4); the rest of the guides follow in 1.x.
+nav:
+  - Home: index.md
+  - Getting started:
+      - getting-started/install.md
+  - Upgrading:
+      - upgrading/0.9-to-1.0.md
+  - Guides:
+      - guides/d12-preview.md
+  - Concepts:
+      - concepts/upgrade-paths.md
+      - concepts/pipeline.md
+      - concepts/determinism-and-replay.md
+      - concepts/php-and-core-target.md
+  - Reference:
+      - reference/commands.md
+      - reference/configuration.md
+      - reference/choices.md
+      - reference/pipeline.md
+      - reference/scripts.md
+      - reference/skills-and-agents.md
+      - reference/toolchain.md
+      - reference/deprecations.md
+      - reference/recipes.md
+      - reference/deprecations-of-drupilot.md
+      - reference/version-matrix.md
+      - reference/state.md
+  - Contributing:
+      - contributing/index.md
+      - contributing/checks.md
+      - Decisions:
+          - contributing/adr/index.md
+          - contributing/adr/0000-owner-decisions.md
+          - contributing/adr/0001-toolchain-pins.md
+          - contributing/adr/0002-rector-compat-pass.md
+          - contributing/adr/0003-phpcompatibility.md
+          - contributing/adr/0004-d12-bed.md
+          - contributing/adr/0006-headless-ask.md
+          - contributing/adr/0007-golden-next-to-the-fixture.md
+          - contributing/adr/0008-live-router-evals-harness.md
+          - contributing/adr/0009-tab-sequence-counts-shown-tabs.md
+          - contributing/adr/0010-schema-validator.md
+          - contributing/adr/0011-release-validation-without-strict.md
+          - contributing/adr/0012-docs-site-in-m1.md
+          - contributing/adr/0013-config-keys-scope.md
+          - contributing/adr/0014-version-data-hard-gates.md
+          - contributing/adr/0015-toolchain-cells.md
+          - contributing/adr/0016-source-era-fallback.md
+          - contributing/adr/0017-upgrade-plan-resolver.md
+          - contributing/adr/0018-freezing-the-upgrade-plan.md
+          - contributing/adr/0019-rector-template-from-the-plan.md
+          - contributing/adr/0020-phpstan-neon-from-the-plan.md
+          - contributing/adr/0021-drupal-target-and-target-major.md
+          - contributing/adr/0022-findings-shape.md
+          - contributing/adr/0023-recipe-catalog.md
+          - contributing/adr/0024-worklist-and-actions.md
+          - contributing/adr/0025-assess-rubric-from-findings.md
+          - contributing/adr/0026-digests-rules-the-official-pass-applies.md
+          - contributing/adr/0027-generated-port-manifest.md
+          - contributing/adr/0028-pipeline-stage-contract.md
+          - contributing/adr/0029-core-polyfills-as-version-data.md
+          - contributing/adr/0030-rule-audit-and-generated-compat-pass.md
+          - contributing/adr/0031-core-removals-scanner.md
+          - contributing/adr/0032-tests-pass-as-a-plan-set.md
+          - contributing/adr/0033-1.0-is-the-drupal-11-release.md
+  - Changelog: changelog.md

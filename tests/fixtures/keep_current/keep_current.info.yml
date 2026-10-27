@@ -1,0 +1,4 @@
+name: 'Keep current'
+type: module
+description: 'A Drupal 10 module that already declares 11 and 12 (keep-current).'
+core_version_requirement: ^10.3 || ^11 || ^12

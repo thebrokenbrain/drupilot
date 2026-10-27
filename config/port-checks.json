@@ -55,7 +55,10 @@
         "introduced": "error",
         "preexisting": "error",
         "unknown": "error"
-      }
+      },
+      "recipe": {"lane": "codemod", "engine": "yaml-edit", "applies_when": {"file_ere": "\\.ya?ml$"},
+        "params": {"op": "replace-on-line", "from": {"capture": "^'([^']+)' does not match the real file"},
+                   "to": {"transform": "class-from-file", "capture": "the real file '([^']+)'"}}}
     }
   },
   "fapi_callback_keys": [

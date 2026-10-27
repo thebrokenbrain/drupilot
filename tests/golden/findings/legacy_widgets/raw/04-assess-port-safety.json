@@ -1,0 +1,46 @@
+{
+  "base": null,
+  "checks": [
+    "plugin-di",
+    "removed-use",
+    "static-factory",
+    "fapi-callable",
+    "serialization",
+    "override-attribute",
+    "class-case"
+  ],
+  "core_requirement": "^10",
+  "diff_mode": false,
+  "drupal_root": ".",
+  "errors": 1,
+  "findings": [
+    {
+      "check": "class-case",
+      "file": "legacy_widgets.services.yml",
+      "introduced": null,
+      "line": 9,
+      "message": "'Drupal\\legacy_widgets\\WidgetLookUp' does not match the real file 'src/WidgetLookup.php' (case differs): works on a case-insensitive filesystem, fatals on Linux.",
+      "severity": "error"
+    },
+    {
+      "check": "serialization",
+      "file": "src/Form/WidgetImportForm.php",
+      "introduced": null,
+      "line": 20,
+      "message": "WidgetImportForm::$entityTypeManager is a private readonly promoted property in a class using DependencySerializationTrait - readonly: __wakeup() cannot re-initialize it ('Cannot initialize readonly property'); private: __sleep() runs in the base-class scope and drops it ('must not be accessed before initialization' after unserialize). Use protected, non-readonly.",
+      "severity": "warn"
+    },
+    {
+      "check": "serialization",
+      "file": "src/Form/WidgetImportForm.php",
+      "introduced": null,
+      "line": 21,
+      "message": "WidgetImportForm::$loggerFactory is a private readonly promoted property in a class using DependencySerializationTrait - readonly: __wakeup() cannot re-initialize it ('Cannot initialize readonly property'); private: __sleep() runs in the base-class scope and drops it ('must not be accessed before initialization' after unserialize). Use protected, non-readonly.",
+      "severity": "warn"
+    }
+  ],
+  "ok": false,
+  "subject": "web/modules/custom/legacy_widgets",
+  "tool": "check-port-safety",
+  "warnings": 2
+}

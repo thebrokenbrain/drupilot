@@ -1,6 +1,6 @@
 ---
 description: drupilot router and main entry point for porting. Detects the current state of a Drupal module/theme port (environment, cached assessment, phase). When the user asks to PORT/upgrade/modernize a module ('port this module to Drupal 11', 'upgrade this to D11', 'make it work on Drupal 11'), it RUNS the full setup->assess->port->[refactor]->test flow via the drupal-port-orchestrator — guided with confirmations, or hands-off with the `auto` mode word / DRUPILOT_AUTONOMOUS=true (which writes the local patch and never performs outward-facing contribution). For an exploratory ask or a bare '/drupilot' ('what's next', 'where am I', 'status'), it instead summarizes and recommends the single next step. Use it whenever the user wants to port a module/theme to Drupal 11 or asks what to do next.
-argument-hint: "[subject-path | --subject DIR] [full|auto|status|next] [--no-confirm] [--workspace DIR] [--json]"
+argument-hint: "[subject-path | --subject DIR] [full|auto|status|next] [--no-confirm] [--workspace DIR] [--target N] [--json]"
 allowed-tools: Bash, Read, Task, AskUserQuestion
 ---
 
@@ -42,6 +42,14 @@ the user asked you to port/upgrade the module) or **recommend the next logical s
     `--workspace DIR` to `resolve-workspace.sh`, `ddev-up.sh` and
     `place-subject.sh` (or prefix any script with `DRUPILOT_WORKSPACE_DIR=DIR`),
     and hand it to the orchestrator so every stage uses it.
+  - `--target N` — the Drupal major to port to (T). Pass `--target N` to
+    `/drupilot-setup`'s plan step (it wins over `DRUPILOT_TARGET_MAJOR`), and hand
+    it to the orchestrator as `target_major`; the plan it freezes fixes T for
+    every later stage. A pre-release major (Drupal 12 until its stable release)
+    also needs the pre-release opt-in: a guided `full` run settles it before it
+    delegates (see `full` below); an `auto` run never asks it and stops on the
+    plan's `prerelease-not-opted-in` refusal unless `DRUPILOT_ALLOW_PRERELEASE=true`
+    (or its pre-answer) was given.
   - `--json` — the machine contract: whatever mode runs, your **final message is
     exactly** the output of
     `bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/port-summary.sh" --subject <subject_dir> --json`
@@ -85,6 +93,14 @@ anything:
 
 !`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile all --json`
 
+**The upgrade plan.** Every version this command needs (target major, test-bed
+core, declared range, PHP floor and target, Rector sets, names) comes from it,
+never from the examples in this text (AR-26):
+
+!`bash -c 'S="${1:-}"; case "$S" in --subject) S="${2:-}";; --subject=*) S="${S#--subject=}";; esac; exec bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show --subject "$S"' _ "$1" "$2" 2>/dev/null || true`
+
+If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scripts/drupilot.sh" plan show
+
 From that object read `php_target` and `ready.{analyze,setup,test,contribute}`.
 
 ## Step 2 — Detect the subject and the Drupal/DDEV state
@@ -94,7 +110,7 @@ Resolve the subject directory: use `$1` (or the `DIR` of a leading
 current directory. Then collect facts via common.sh helpers and the
 detect-php script (all read-only):
 
-!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-}"; case "$SUBJ" in --subject) SUBJ="${2:-}";; --subject=*) SUBJ="${SUBJ#--subject=}";; esac; [[ -n "$SUBJ" && -d "$SUBJ" ]] || SUBJ="$PWD"; ROOT="$(find_drupal_root "$SUBJ" 2>/dev/null || true)"; printf "subject_dir=%s\n" "$SUBJ"; printf "is_extension=%s\n" "$(is_drupal_extension_dir "$SUBJ" && echo yes || echo no)"; printf "machine_name=%s\n" "$(subject_machine_name "$SUBJ" 2>/dev/null || echo -)"; printf "subject_type=%s\n" "$(subject_type "$SUBJ" 2>/dev/null || echo -)"; printf "core_requirement=%s\n" "$(subject_core_requirement "$SUBJ" 2>/dev/null || echo -)"; printf "drupal_root=%s\n" "${ROOT:--}"; printf "ddev_config=%s\n" "$([[ -n "$ROOT" && -f "$ROOT/.ddev/config.yaml" ]] && echo yes || echo no)"; printf "ddev_running=%s\n" "$(ddev_running "$ROOT" 2>/dev/null && echo yes || echo no)"; printf "state_dir=%s\n" "$(project_state_path "$SUBJ")"; printf "artifacts_dir=%s\n" "$(project_artifacts_path "$SUBJ")"; printf "lockfile=%s\n" "$(LF="$(project_state_path "${ROOT:-$SUBJ}")/drupilot-lock.json"; [[ -f "$LF" ]] && echo "$LF" || echo -)"' _ "$1" "$2"`
+!`bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; SUBJ="${1:-}"; case "$SUBJ" in --subject) SUBJ="${2:-}";; --subject=*) SUBJ="${SUBJ#--subject=}";; esac; [[ -n "$SUBJ" && -d "$SUBJ" ]] || SUBJ="$PWD"; ROOT="$(find_drupal_root "$SUBJ" 2>/dev/null || true)"; printf "subject_dir=%s\n" "$SUBJ"; printf "is_extension=%s\n" "$(is_drupal_extension_dir "$SUBJ" && echo yes || echo no)"; printf "machine_name=%s\n" "$(subject_machine_name "$SUBJ" 2>/dev/null || echo -)"; printf "subject_type=%s\n" "$(subject_type "$SUBJ" 2>/dev/null || echo -)"; printf "core_requirement=%s\n" "$(subject_core_requirement "$SUBJ" 2>/dev/null || echo -)"; printf "drupal_root=%s\n" "${ROOT:--}"; printf "ddev_config=%s\n" "$([[ -n "$ROOT" && -f "$ROOT/.ddev/config.yaml" ]] && echo yes || echo no)"; printf "ddev_running=%s\n" "$(ddev_running "$ROOT" 2>/dev/null && echo yes || echo no)"; printf "state_dir=%s\n" "$(project_state_path "$SUBJ")"; printf "artifacts_dir=%s\n" "$(project_artifacts_path "$SUBJ")"; printf "lockfile=%s\n" "$(LF="$(lock_path "${ROOT:-$SUBJ}")"; [[ -f "$LF" ]] && echo "$LF" || echo -)"' _ "$1" "$2"`
 
 Then detect the effective PHP target and whether it is confirmed:
 
@@ -173,12 +189,28 @@ If the mode is `full` (or the user explicitly asks to "do the whole thing"):
 
 1. State the plan in English: the ordered phases you will run
    (setup -> assess -> port -> [refactor if opted in] -> test -> [contribute if opted
-   in]), which are gated, and that heavy work may run in the background.
+   in]), which are gated, and that the heavy steps take a while.
 2. **Confirm with the user before starting.**
-3. Delegate the orchestration to the **drupal-port-orchestrator** subagent via the Task
-   tool, passing the subject directory, the detected PHP target, the environment
-   readiness, the cached assessment state, and whether the user opted into refactor
-   and/or contribution. Let the orchestrator decide when to delegate to the other
+3. With `--target N`, settle the pre-release opt-in before delegating (the
+   orchestrator cannot ask). Probe the plan; it is pure and writes nothing:
+
+   ```bash
+   DRUPILOT_TARGET_MAJOR=<N> bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/upgrade-path.sh" --subject "<subject_dir>" --phase draft --json
+   ```
+
+   Only when it exits 2 with `.code` `prerelease-not-opted-in`, this is
+   `/drupilot-setup`'s Pre-release tab, asked here instead of there: resolve
+   its pre-answer exactly as `/drupilot-setup` does (`choice.sh` with the
+   `ALLOW_PRERELEASE` key; a `value` of `yes` is the answer, `no` ports to Drupal
+   11), and when it is null ask it as `/drupilot-setup` describes it
+   (AskUserQuestion; the default ports to Drupal 11). After a yes, hand the
+   orchestrator `target_major=<N>` and `allow_prerelease=true`; after a no,
+   `target_major=11`.
+4. Delegate the orchestration to the **drupal-port-orchestrator** subagent via the Task
+   tool, in the foreground (`run_in_background: false`): wait for its result (a headless `claude -p` run ends with your final message, and stops a subagent still running in the background), passing the plugin root (`${CLAUDE_PLUGIN_ROOT}`), the subject directory, the detected PHP target, the environment
+   readiness, the cached assessment state, `target_major` and `allow_prerelease`
+   (when settled above), and whether the user opted into refactor and/or
+   contribution. Let the orchestrator decide when to delegate to the other
    subagents and when to gate.
 
 ### `auto` — hands-off, unattended
@@ -189,8 +221,8 @@ If the mode is `auto` (the `auto` mode word, or `DRUPILOT_AUTONOMOUS=true`):
    is the point of this mode. (drupilot's own gates are relaxed here, but the
    Claude Code permission mode still governs Bash/Edit/Write prompts; for a truly
    unattended run the user launches with `acceptEdits` or a headless bypass.)
-2. Delegate to **drupal-port-orchestrator** with an explicit `autonomous=true`
-   instruction so it:
+2. Delegate to **drupal-port-orchestrator**, in the foreground (`run_in_background: false`): wait for its result (a headless `claude -p` run ends with your final message, and stops a subagent still running in the background), with the plugin root
+   (`${CLAUDE_PLUGIN_ROOT}`) and an explicit `autonomous=true` instruction so it:
    - runs **setup -> assess -> port -> refactor -> test** in order, gating each
      heavy stage and skipping work already done (idempotent);
    - treats `DRUPILOT_GENERATE_RULES` as `auto` **unless it is explicitly `off`**;

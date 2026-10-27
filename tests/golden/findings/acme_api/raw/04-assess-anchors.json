@@ -1,0 +1,17 @@
+[
+  {
+    "anchor": "{file}",
+    "file": "web/modules/custom/acme_api/src/Controller/StatusController.php",
+    "line": 5
+  },
+  {
+    "anchor": "Drupal\\acme_api\\Controller\\StatusController::create",
+    "file": "web/modules/custom/acme_api/src/Controller/StatusController.php",
+    "line": 23
+  },
+  {
+    "anchor": "Drupal\\acme_api\\Controller\\StatusController::status",
+    "file": "web/modules/custom/acme_api/src/Controller/StatusController.php",
+    "line": 30
+  }
+]

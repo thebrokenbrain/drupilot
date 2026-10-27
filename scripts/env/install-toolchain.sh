@@ -12,20 +12,50 @@
 # via core_dev_requirement) and, with --with-upgrade-status, drupal/upgrade_status.
 # Drush is NOT installed here (ddev-up.sh owns it, as a regular require).
 #
+# Lenient dependencies (DRUPILOT_LENIENT_DEPS, default off; AR-08, AR-28): a
+# comma-separated list of drupal/<project> packages lets those contrib
+# dependencies install on the test-bed although their drupal/core constraint
+# does not admit its core yet. It installs mglaman/composer-drupal-lenient
+# (.packages.lenient) and adds them to the bed's composer.json
+# extra.drupal-lenient.allowed-list, on a test-bed drupilot built only (never
+# your own project, never production; a warning skips it there). The list in
+# effect is lenient_packages: the lock keeps it as .lenient_packages and every
+# test record (last-test.json) as lenient[]. It is never a preservation value:
+# a green suite with a lenient dependency does not show the dependency
+# supports the core.
+#
+# The known-good reference is a matrix (config/toolchain-reference.json): one
+# cell per Drupal major family. The test-bed's cell is the one its lock records
+# (toolchain_cell), else the one config/targets/<major>.json names for the
+# installed core's major; a lock drupilot 0.9 wrote (it pins rector/rector and
+# records no cell) is cell legacy_v1, 0.9's own set, until it is refreshed
+# (--source reference), and a notice says so. A cell that is not verified yet
+# pins nothing: its packages resolve from the ranges, with a warning. A lock
+# recorded for another cell (a Drupal 11 lock on a root now on Drupal 12) is
+# not this cell's set: none of its pins is used.
+#
 # Where each version comes from (--source, default DRUPILOT_TOOLCHAIN_SOURCE=auto):
 #   auto       Deterministic mode (DRUPILOT_DETERMINISTIC, default true):
 #                - the project lock, when it pins EVERY package of the
-#                  known-good reference set (a complete, previously working set);
-#                - otherwise the shipped reference config/toolchain-reference.json
-#                  as a whole (a partial lock is never mixed with the reference:
-#                  that combination was never tested);
+#                  cell's known-good set (a complete, previously working set)
+#                  and records no other cell;
+#                - otherwise the cell's set as a whole (a partial lock is never
+#                  mixed with the reference: that combination was never
+#                  tested);
 #                - packages the reference does not pin: lock, else the range.
 #              Non-deterministic mode: the .packages ranges (fresh resolve).
-#   reference  The reference set, ignoring the lock (the repair path after a
-#              broken resolve); the lock is then refreshed from what got installed.
+#   reference  The set of the installed core's cell, ignoring the lock (the
+#              repair path after a broken resolve, and the refresh of a 0.9
+#              lock); the lock is then refreshed from what got installed and
+#              records the cell.
 #   range      The .packages ranges only (fresh resolve).
 # If Composer cannot resolve the pinned set against this project (e.g. a newer
 # core needs a newer PHPStan), it retries once with the ranges and says so.
+# drupal/coder's range is DRUPILOT_CODER_CONSTRAINT when set, else the
+# major.minor of the cell's own coder pin (drupal/core-dev 12 requires coder 9),
+# else the config default.
+# --with-upgrade-status is skipped, with a note, on a cell that pins drush to
+# null: upgrade_status needs drush to analyse anything (Drupal 12, ADR 0004).
 #
 # After installing it runs the smoke test (rector_smoke in common.sh: a Rector
 # dry-run of a trivial file with the Drupal 10 set, plus `phpstan --version`) and
@@ -42,14 +72,17 @@
 #   --subject DIR          A module/theme path; the Drupal root is derived from it.
 #   --dir ROOT             The Drupal project root (composer.json + .ddev/).
 #   --source S             Version source (see above). Default: auto.
-#   --with-upgrade-status  Also install drupal/upgrade_status.
+#   --with-upgrade-status  Also install drupal/upgrade_status (not where the
+#                          cell has no drush).
 #   --no-core-dev          Skip drupal/core-dev (PHPUnit + test deps).
 #   --smoke-only           Do not install; only run the smoke test (+ diagnostics).
 #   --dry-run              Print the resolved package specs; run nothing.
 #   --json                 JSON summary on STDOUT:
-#                          {ok, status, root, source, deterministic, packages:
-#                           [{name, spec, source, installed}], composer_ran,
-#                           fallback_to_ranges, smoke:{ok, error}, lock_synced}
+#                          {ok, status, root, source, deterministic, cell,
+#                           packages: [{name, spec, source, installed}], composer_ran,
+#                           fallback_to_ranges, smoke:{ok, error}, lock_synced,
+#                           lenient: [packages]} (lenient: the list asked for on
+#                           a dry-run, else the one in effect on the bed)
 #                          status: installed | unchanged | dry-run | smoke-only |
 #                                  smoke-failed | composer-failed
 #   -h, --help             Show this help.
@@ -117,10 +150,42 @@ ROOT="$(cd "$ROOT" && pwd)"
 export DRUPILOT_PROJECT_DIR="$ROOT"
 REF_FILE="$(toolchain_reference_file)"
 
+# --- Lenient dependencies (bed only) -------------------------------------------
+LENIENT=()
+LENIENT_REQ="$(config_get DRUPILOT_LENIENT_DEPS off)"
+case "$(lc "$LENIENT_REQ")" in
+  ""|off|false|no|0) ;;
+  *)
+    IFS=',' read -r -a _lp <<< "$LENIENT_REQ"
+    for _p in ${_lp[@]+"${_lp[@]}"}; do
+      _p="$(printf '%s' "$_p" | tr -d '[:space:]')"
+      [[ -n "$_p" ]] || continue
+      [[ "$_p" =~ ^drupal/[a-z0-9_]+$ ]] \
+        || die "DRUPILOT_LENIENT_DEPS: '$_p' is not a drupal/<project> package (expected off, or a comma-separated list such as drupal/token,drupal/ctools)." 1
+      LENIENT+=("$_p")
+    done
+    if [[ ${#LENIENT[@]} -gt 0 && "$(testbed_kind "$ROOT")" == "none" ]]; then
+      log_warn "DRUPILOT_LENIENT_DEPS applies only to a test-bed drupilot built; $ROOT is your own project, whose composer.json drupilot never makes lenient. Skipped."
+      LENIENT=()
+    fi;;
+esac
+LENIENT_JSON="$(jq -c -n '$ARGS.positional | unique' --args ${LENIENT[@]+"${LENIENT[@]}"})"
+
 DETERMINISTIC=true; deterministic_mode || DETERMINISTIC=false
+# The toolchain cell: the lock's (a 0.9 lock: legacy_v1) when the lock decides
+# (auto, deterministic), else the cell of the installed core's major.
+if [[ "$SOURCE" == "auto" && "$DETERMINISTIC" == "true" ]]; then CELL="$(toolchain_cell_for "$ROOT")"
+else CELL="$(toolchain_cell_for "$ROOT" fresh)"; fi
 log_step "drupilot toolchain"
 log_info "Drupal root   : $ROOT"
 log_info "Version source: $SOURCE (deterministic: $DETERMINISTIC)"
+log_info "Toolchain cell: $CELL"
+if [[ "$CELL" == "legacy_v1" ]]; then
+  log_warn "This project's lock was written by drupilot 0.9: it keeps 0.9's toolchain (legacy_v1) until you refresh it to cell $(toolchain_cell_for "$ROOT" fresh):"
+  log_warn "  bash \"$(plugin_root)/scripts/env/install-toolchain.sh\" --dir \"$ROOT\" --source reference"
+elif [[ "$SOURCE" != "range" ]] && ! toolchain_cell_verified "$CELL"; then
+  log_warn "Toolchain cell $CELL has no verified set yet: its packages come from the project lock when it pins them, else from the config/defaults.json ranges."
+fi
 
 # --- Gate (not for a dry run) -----------------------------------------------
 if [[ "$DRY" != "1" ]]; then
@@ -154,19 +219,44 @@ add_pkg phpstan
 add_pkg phpstan_extension_installer
 add_pkg phpstan_drupal
 add_pkg phpstan_deprecation_rules
-add_pkg coder "$(config_get DRUPILOT_CODER_CONSTRAINT "^8.3")"
+CODER_RANGE="$(config_get_explicit DRUPILOT_CODER_CONSTRAINT)"
+if [[ -z "$CODER_RANGE" ]]; then
+  _cp="$(toolchain_reference_version drupal/coder "$CELL")"
+  [[ "$_cp" =~ ^([0-9]+)\.([0-9]+)\. ]] && CODER_RANGE="^${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+fi
+[[ -n "$CODER_RANGE" ]] || CODER_RANGE="$(config_get DRUPILOT_CODER_CONSTRAINT "^8.3")"
+add_pkg coder "$CODER_RANGE"
+if [[ "$WITH_US" == "1" ]] && toolchain_cell_without_drush "$CELL"; then
+  log_warn "Not installing drupal/upgrade_status: no drush release installs here (toolchain cell $CELL), and upgrade_status needs drush to analyse anything."
+  WITH_US=0
+fi
 [[ "$WITH_US" == "1" ]] && add_pkg upgrade_status
+[[ ${#LENIENT[@]} -gt 0 ]] && add_pkg lenient
 if [[ "$WITH_CORE_DEV" == "1" ]]; then
   _cd="$(core_dev_requirement "$ROOT")"
   PKG_NAMES+=("${_cd%%:*}"); PKG_RANGES+=("${_cd#*:}")
 fi
 
+# A lock recorded for another cell (toolchain_cell_for gave way to the core's
+# cell) is not a set that worked here: none of its pins is used. Only auto in
+# deterministic mode reads the lock's pins.
+LOCK_USABLE=1
+_lc="$(toolchain_lock_cell "$ROOT")"
+if [[ "$SOURCE" == "auto" && "$DETERMINISTIC" == "true" && -n "$_lc" && "$_lc" != "$CELL" ]]; then
+  LOCK_USABLE=0
+  if [[ "$_lc" == "legacy_v1" ]]; then
+    log_info "The project lock holds drupilot 0.9's toolchain, not toolchain cell $CELL's: its pins are not used."
+  else
+    log_info "The project lock was written for toolchain cell $_lc, not $CELL: its pins are not used."
+  fi
+fi
 # Is the lock a COMPLETE known-good set (every reference-pinned package we
 # install is in the lock)? Only then is it preferred over the reference.
-lock_complete=1
+lock_complete="$LOCK_USABLE"
 for i in "${!PKG_NAMES[@]}"; do
   n="${PKG_NAMES[$i]}"
-  [[ -n "$(toolchain_reference_version "$n")" ]] || continue
+  [[ "$lock_complete" == "1" ]] || break
+  [[ -n "$(toolchain_reference_version "$n" "$CELL")" ]] || continue
   [[ -n "$(lock_get ".toolchain.\"$n\"" "")" ]] || { lock_complete=0; break; }
 done
 
@@ -174,8 +264,8 @@ done
 spec_for() {
   local i="$1" mode="$2" n r lockv refv
   n="${PKG_NAMES[$i]}"; r="${PKG_RANGES[$i]}"
-  lockv="$(lock_get ".toolchain.\"$n\"" "")"
-  refv="$(toolchain_reference_version "$n")"
+  lockv=""; [[ "$LOCK_USABLE" == "1" ]] && lockv="$(lock_get ".toolchain.\"$n\"" "")"
+  refv="$(toolchain_reference_version "$n" "$CELL")"
   if [[ "$mode" == "pinned" ]]; then
     case "$SOURCE" in
       reference)
@@ -255,13 +345,14 @@ emit_json() {
         --arg requested "$SOURCE" --argjson det "$DETERMINISTIC" --argjson packages "$pk" \
         --argjson composer_ran "$COMPOSER_RAN" --argjson fallback "$FALLBACK" \
         --argjson smoke_ok "$SMOKE_OK" --arg smoke_err "$SMOKE_ERR" \
-        --argjson lock_synced "$LOCK_SYNCED" --arg reference "$REF_FILE" \
-    '{ok: ($status|IN("installed","unchanged","dry-run","smoke-only")) and ($smoke_ok != false),
+        --argjson lock_synced "$LOCK_SYNCED" --arg reference "$REF_FILE" --arg cell "$CELL" \
+        --argjson lenient "$(if [[ "$STATUS" == "dry-run" ]]; then printf '%s' "$LENIENT_JSON"; else lenient_packages "$ROOT"; fi)" \
+    '{ok: (($status|IN("installed","unchanged","dry-run","smoke-only")) and ($smoke_ok != false)),
       status:$status, root:$root, source:$source, requested_source:$requested,
-      deterministic:$det, reference:$reference, packages:$packages,
+      deterministic:$det, reference:$reference, cell:$cell, packages:$packages,
       composer_ran:$composer_ran, fallback_to_ranges:$fallback,
       smoke:{ok:$smoke_ok, error:(if $smoke_err=="" then null else $smoke_err end)},
-      lock_synced:$lock_synced}'
+      lock_synced:$lock_synced, lenient:$lenient}'
   return 0
 }
 
@@ -276,7 +367,7 @@ run_smoke() {
   SMOKE_OK=false; SMOKE_ERR="$out"
   log_err "Toolchain smoke test FAILED — the installed toolchain is broken:"
   printf '%s\n' "$out" | sed 's/^/     /' >&2
-  toolchain_diagnostics "$ROOT"
+  toolchain_diagnostics "$ROOT" "$CELL"
   return 1
 }
 
@@ -292,12 +383,26 @@ show_specs
 
 # --- Dry run --------------------------------------------------------------------
 if [[ "$DRY" == "1" ]]; then
+  if [[ ${#LENIENT[@]} -gt 0 ]]; then
+    log_info "[dry-run] would run: ddev composer config --no-plugins allow-plugins.mglaman/composer-drupal-lenient true"
+    log_info "[dry-run] would run: ddev composer config --json --merge extra.drupal-lenient.allowed-list '$LENIENT_JSON'"
+  fi
   log_info "[dry-run] would run: ddev composer require --dev -W --no-interaction ${SPECS[*]}"
   log_info "[dry-run] then the smoke test and lock-sync.sh --dir $ROOT"
   STATUS="dry-run"; emit_json; exit 0
 fi
 
 cd "$ROOT"
+
+# --- Lenient dependencies: before the install, and also when the toolchain is
+# already in place (a list changed after the first install still applies) ----
+if [[ ${#LENIENT[@]} -gt 0 ]]; then
+  ddev composer config --no-plugins allow-plugins.mglaman/composer-drupal-lenient true >/dev/null 2>&1 < /dev/null \
+    || log_warn "Could not allow the Composer plugin mglaman/composer-drupal-lenient."
+  log_warn "Lenient dependencies on this test-bed only (DRUPILOT_LENIENT_DEPS): $LENIENT_JSON — their drupal/core constraint is ignored here; tests passing with them do not show they support this core."
+  ddev composer config --json --merge extra.drupal-lenient.allowed-list "$LENIENT_JSON" >/dev/null 2>&1 < /dev/null \
+    || log_warn "Could not add $LENIENT_JSON to extra.drupal-lenient.allowed-list."
+fi
 
 # --- Install ----------------------------------------------------------------------
 if all_exact_installed; then
@@ -307,7 +412,7 @@ else
   # Composer plugins the toolchain relies on must be allowed explicitly, or a
   # non-interactive require refuses to run them.
   for plugin in phpstan/extension-installer dealerdirect/phpcodesniffer-composer-installer; do
-    ddev composer config --no-plugins "allow-plugins.$plugin" true >/dev/null 2>&1 \
+    ddev composer config --no-plugins "allow-plugins.$plugin" true >/dev/null 2>&1 < /dev/null \
       || log_warn "Could not allow the Composer plugin $plugin."
   done
   log_step "ddev composer require --dev -W --no-interaction ${SPECS[*]}"
@@ -336,7 +441,7 @@ else
 fi
 
 # PHPCS: coder's installer plugin registers the standards; report if it did not.
-if ddev exec vendor/bin/phpcs -i 2>/dev/null | grep -q 'DrupalPractice'; then
+if ddev exec vendor/bin/phpcs -i 2>/dev/null | grep_q 'DrupalPractice'; then
   log_ok "PHPCS standards Drupal + DrupalPractice are registered."
 else
   log_warn "phpcs -i does not list Drupal/DrupalPractice yet (run-phpcs.sh registers installed_paths on its first run)."
@@ -348,6 +453,15 @@ run_smoke || SMOKE_RC=3
 
 if bash "$(plugin_root)/scripts/env/lock-sync.sh" --dir "$ROOT" >/dev/null 2>&1; then
   LOCK_SYNCED=true
+  # A refreshed lock names its cell; a 0.9 lock reused as is stays legacy_v1.
+  [[ "$CELL" == "legacy_v1" ]] || DRUPILOT_PROJECT_DIR="$ROOT" lock_set .toolchain_cell "$CELL" \
+    || log_warn "Could not record the toolchain cell in the lock."
+  # The lenient list in effect (also a bed made lenient before, or by hand).
+  _lj="$(lenient_packages "$ROOT")"
+  if [[ "$_lj" != "[]" || -n "$(DRUPILOT_PROJECT_DIR="$ROOT" lock_get .lenient_packages "")" ]]; then
+    DRUPILOT_PROJECT_DIR="$ROOT" lock_set_json .lenient_packages "$_lj" \
+      || log_warn "Could not record the lenient packages in the lock."
+  fi
   log_info "Lock re-synced: $(drupilot_lock_file "$ROOT")"
 else
   log_warn "Could not re-sync the lock (lock-sync.sh)."

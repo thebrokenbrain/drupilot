@@ -1,0 +1,40 @@
+{
+  "stage": "assess",
+  "subject": {
+    "machine_name": "acme_core",
+    "path": "web/modules/custom/acme_core"
+  },
+  "target_major": 11,
+  "tools": [
+    {
+      "exit_code": 0,
+      "file": "04-assess-rector.json",
+      "tool": "rector"
+    },
+    {
+      "exit_code": 1,
+      "file": "04-assess-phpstan.json",
+      "tool": "phpstan"
+    },
+    {
+      "exit_code": 1,
+      "file": "04-assess-phpcs.json",
+      "tool": "phpcs"
+    },
+    {
+      "exit_code": 0,
+      "file": "04-assess-port-safety.json",
+      "tool": "port-safety"
+    },
+    {
+      "exit_code": 0,
+      "file": "04-assess-signatures.json",
+      "tool": "signatures"
+    },
+    {
+      "exit_code": 0,
+      "file": "04-assess-metadata.json",
+      "tool": "metadata"
+    }
+  ]
+}

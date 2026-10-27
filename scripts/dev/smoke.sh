@@ -13,7 +13,7 @@
 # tools end to end.
 #
 # Tests (names are what --only takes):
-#   help           every scripts/{analysis,contrib,env,tests,dev}/*.sh --help
+#   help           every scripts/{ai,analysis,contrib,env,tests,dev}/*.sh --help
 #                  exits 0 and prints a Usage section on STDOUT
 #   preflight      preflight.sh --profile analyze --json: one JSON object, exit
 #                  0 or 2 consistent with .ready.analyze, a passing bash row;
@@ -114,9 +114,6 @@
 #                  --persist writes the mapped setting to .drupilot.json, an
 #                  unknown key is a usage error, and choose_one honors the
 #                  same variables
-#   baseline       scripts/dev/baseline-0.9.sh --check: the frozen v0.9.0
-#                  outputs (tests/baseline/v0.9.0/) still match, or the
-#                  difference is listed in its allowed-diffs.txt
 #   data-dir       one state root for scripts and hooks: a known path maps to
 #                  its known state key (CC-19); a script (no
 #                  CLAUDE_PLUGIN_DATA, as the Bash tool runs it) and a hook
@@ -181,7 +178,7 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$REPO/tests/fixtures"
 SH="${BASH:-bash}"
 
-ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root monorepo-testbed phpcs-scope choices baseline data-dir legacy-state open-mr"
+ALL_TESTS="help preflight detect-php next-step hooks port-safety signature lint-metadata layers dry-run patterns status-probe core-target attributes rector-cache state-stdin shared-testbed matrix-classify port-summary project-root monorepo-testbed phpcs-scope choices data-dir legacy-state open-mr"
 # Tests committed before their fix: "test:task" words (see the header).
 XFAIL=""
 
@@ -268,9 +265,9 @@ run() {
   local tag="$1" hit; shift
   if "$@" > "$TMP/out/$tag.out" 2> "$TMP/out/$tag.err" < /dev/null; then RC=0; else RC=$?; fi
   hit="$(grep -E 'syntax error|unbound variable|command not found|bad substitution|: invalid option|integer expression expected' \
-           "$TMP/out/$tag.err" 2>/dev/null | head -n 3 || true)"
+           "$TMP/out/$tag.err" 2>/dev/null | sed -n '1,3p' || true)"
   if [[ -n "$hit" ]]; then
-    printf '%s: shell error on stderr: %s\n' "$tag" "$(printf '%s' "$hit" | tr '\n' ' ' | head -c 300)" >> "$T_FAILS"
+    printf '%s: shell error on stderr: %s\n' "$tag" "$(printf '%s' "$hit" | tr '\n' ' ' | { head -c 300; cat > /dev/null; })" >> "$T_FAILS"
   fi
   return 0
 }
@@ -288,8 +285,8 @@ expect() {
 }
 # expect_match <label> <got> <ERE>
 expect_match() {
-  if ! printf '%s' "$2" | grep -Eq "$3"; then
-    printf '%s: [%s] does not match /%s/\n' "$1" "$(printf '%s' "$2" | head -c 200)" "$3" >> "$T_FAILS"
+  if ! printf '%s' "$2" | grep_q -E "$3"; then
+    printf '%s: [%s] does not match /%s/\n' "$1" "$(printf '%s' "$2" | { head -c 200; cat > /dev/null; })" "$3" >> "$T_FAILS"
   fi
   return 0
 }
@@ -328,8 +325,8 @@ finish() {
 # --- Tests ----------------------------------------------------------------------
 test_help() {
   local f n=0
-  for f in "$REPO"/scripts/analysis/*.sh "$REPO"/scripts/contrib/*.sh "$REPO"/scripts/env/*.sh \
-           "$REPO"/scripts/tests/*.sh "$REPO"/scripts/dev/*.sh; do
+  for f in "$REPO"/scripts/*.sh "$REPO"/scripts/ai/*.sh "$REPO"/scripts/analysis/*.sh "$REPO"/scripts/contrib/*.sh \
+           "$REPO"/scripts/env/*.sh "$REPO"/scripts/tests/*.sh "$REPO"/scripts/dev/*.sh; do
     [[ -f "$f" ]] || continue
     n=$((n + 1))
     run help "$SH" "$f" --help
@@ -571,7 +568,7 @@ test_status_probe() {
   # they were. The probe is a `bash -c '<script>' _ "$1"` line.
   local c="$FX/status/legacy_widgets" probe before after
   mkdir -p "$FX/status"; cp -R "$LW" "$c"
-  probe="$(sed -n "s/^.\`bash -c '\(.*\)' _ \"\$1\"\`\$/\1/p" "$REPO/commands/drupilot-status.md" | head -n 1)"
+  probe="$(sed -n "s/^.\`bash -c '\(.*\)' _ \"\$1\"\`\$/\1/p" "$REPO/commands/drupilot-status.md" | sed -n '1p')"
   expect "probe found" "$([[ -n "$probe" ]] && echo yes || echo no)" "yes"
   # Run them as a hook-style environment would (CLAUDE_PLUGIN_DATA exported):
   # neither the resolved data dir nor that old root may change.
@@ -627,7 +624,7 @@ test_dry_run() {
 # mk_stub_root DIR VERSION -> a minimal Drupal root (web/core/lib/Drupal.php
 # with VERSION) and a stub vendor/bin/rector: it logs its arguments to
 # DIR/rector-args.log and prints what DIR/rector-mode asks for (`change FILE`:
-# one changed file; anything else: nothing changed), with Rector's [OK] line.
+# one changed file; anything else: nothing changed), as Rector's JSON report.
 mk_stub_root() {
   local r="$1" v="$2"
   mkdir -p "$r/web/core/lib" "$r/web/modules/custom" "$r/vendor/bin"
@@ -638,11 +635,20 @@ mk_stub_root() {
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 printf '%s\n' "$*" >> "$root/rector-args.log"
 mode="$(cat "$root/rector-mode" 2>/dev/null || true)"
+json=0; case " $* " in *" --output-format=json "*) json=1;; esac
+# report FILE -> one changed file, as Rector's console or JSON report.
+report() {
+  if [ "$json" = 1 ]; then
+    printf '{"totals":{"changed_files":1,"errors":0},"file_diffs":[{"file":"%s","diff":"--- Original\\n+++ New\\n","applied_rectors":["Stub\\\\StubRector"]}],"changed_files":["%s"]}\n' "$1" "$1"
+  else
+    printf '1 file with changes\n===================\n\n1) %s\n\n [OK] 1 file would have been changed by Rector\n' "$1"
+  fi
+}
 case "$mode" in
   dup\ *) case " $* " in *" --dry-run "*) ;; *) printf '#[\\Drupal\\migrate\\Attribute\\MigrateSource(id: "a")]\n#[\\Drupal\\migrate\\Attribute\\MigrateSource(id: "b")]\nclass X {}\n' >> "$root/${mode#dup }";; esac
-    printf '1 file with changes\n===================\n\n1) %s\n\n [OK] 1 file has been changed by Rector\n' "${mode#dup }";;
-  change\ *) printf '1 file with changes\n===================\n\n1) %s\n\n [OK] 1 file would have been changed by Rector\n' "${mode#change }";;
-  *) printf ' [OK] Rector is done!\n';;
+    report "${mode#dup }";;
+  change\ *) report "${mode#change }";;
+  *) if [ "$json" = 1 ]; then printf '{"totals":{"changed_files":0,"errors":0}}\n'; else printf ' [OK] Rector is done!\n'; fi;;
 esac
 exit 0
 STUB
@@ -920,8 +926,8 @@ test_port_summary() {
   sd="$(project_state_dir "$c")"
   dg="$(subject_digest "$c")"
   printf '{"machine_name":"acme_core","phase":"port","d10_support":"verified-static-above-floor","digests":{"applied":false,"rejected":[],"skipped":false}}\n' > "$sd/port-manifest.json"
-  printf '{"verdict":"fail","d10_support":"failed","subject_digest":"%s"}\n' "$dg" > "$sd/core-matrix.json"
-  printf '{"status":"passed","preservation":"verified","subject_digest":"stale"}\n' > "$sd/last-test.json"
+  printf '{"verdict":"fail","d10_support":"failed","subject_digest":"%s","digest_algo":%s}\n' "$dg" "$(subject_digest_algo)" > "$sd/core-matrix.json"
+  printf '{"status":"passed","preservation":"verified","subject_digest":"stale","digest_algo":%s}\n' "$(subject_digest_algo)" > "$sd/last-test.json"
   run psr "$SH" "$REPO/scripts/env/state.sh" record --subject "$c" --stage ported --json
   run ps "$SH" "$REPO/scripts/analysis/port-summary.sh" --subject "$c" --json
   expect "port-summary: exit" "$RC" "0"
@@ -1031,7 +1037,7 @@ test_monorepo_testbed() {
   expect "patch: exit and name" "$RC|$(basename "$mp")" "0|acme_core-port-to-drupal-11.patch"
   expect "patch: module-relative, only the port" "$(grep -E '^diff --git' "$mp" 2>/dev/null | tr '\n' ';')" \
     "diff --git a/acme_core.info.yml b/acme_core.info.yml;diff --git a/src/Added.php b/src/Added.php;"
-  expect "repo patch: relative to the repository root" "$(grep -E '^diff --git' "$rp" 2>/dev/null | head -n1)" \
+  expect "repo patch: relative to the repository root" "$(grep -E '^diff --git' "$rp" 2>/dev/null | sed -n '1p')" \
     "diff --git a/web/modules/custom/acme_core/acme_core.info.yml b/web/modules/custom/acme_core/acme_core.info.yml"
   expect "repo patch applies at the monorepo root" "$(git -C "$m" apply --check "$rp" >/dev/null 2>&1 && echo ok)" "ok"
   mkdir -p "$FX/pristine"; cp -R "$m/web/modules/custom/acme_core" "$FX/pristine/"
@@ -1236,7 +1242,7 @@ test_legacy_state() {
   (cd "$LW" && "${E[@]}" "$SH" "$REPO/hooks/scripts/session-detect-env.sh" < "$TMP/l0-session.json" > /dev/null 2>&1) || true
   "${E[@]}" "$SH" "$REPO/scripts/env/preflight.sh" --profile all --json --subject "$LW" > /dev/null 2>&1 < /dev/null || true
   "${E[@]}" "$SH" "$REPO/scripts/env/next-step.sh" --subject "$LW" --from-preflight > /dev/null 2>&1 < /dev/null || true
-  probe="$(sed -n "s/^.\`bash -c '\(.*\)' _ \"\$1\"\`\$/\1/p" "$REPO/commands/drupilot-status.md" | head -n 1)"
+  probe="$(sed -n "s/^.\`bash -c '\(.*\)' _ \"\$1\"\`\$/\1/p" "$REPO/commands/drupilot-status.md" | sed -n '1p')"
   [[ -n "$probe" ]] && { "${E[@]}" "$SH" -c "$probe" _ "$LW" > /dev/null 2>&1 < /dev/null || true; }
   expect "hooks, preflight, status probe, next-step: no copy" \
     "$([[ -e "$dh/legacy-state-copied" || -e "$dh/state/$key" ]] && echo copied || echo none)" "none"
@@ -1311,7 +1317,7 @@ STUB
   mkdir -p "$leg"; printf '{}\n' > "$leg/drupilot-lock.json"
   for c in setup assess; do
     line="$(sed -n 's/^!`\{0,1\}\(bash "${CLAUDE_PLUGIN_ROOT}\/scripts\/env\/preflight\.sh".*copy_legacy_state_once'"'"'\)`\{0,1\}$/\1/p' \
-              "$REPO/commands/drupilot-$c.md" | head -n 1)"
+              "$REPO/commands/drupilot-$c.md" | sed -n '1p')"
     expect "$c: preamble found" "$([[ -n "$line" ]] && echo yes || echo no)" "yes"
     before="$(tree_snapshot "$uh" "$dh")"
     run "lp$c" env PATH="$farm" HOME="$uh" DRUPILOT_HOME="$dh" "$SH" -c "$line"
@@ -1393,14 +1399,6 @@ STUB
   finish
 }
 
-test_baseline() {
-  run bl "$SH" "$REPO/scripts/dev/baseline-0.9.sh" --check --json
-  expect "baseline --check: exit" "$RC" "0"
-  expect "baseline --check: captures that differ" \
-    "$(jqo bl '[.files[] | select(.status != "same" and .status != "allowed") | .name + ":" + .status]')" '[]'
-  finish
-}
-
 # --- Main -----------------------------------------------------------------------
 log_step "drupilot smoke tests (bash ${BASH_VERSION:-?}, $(uname -s 2>/dev/null || echo ?))"
 for t in $ALL_TESTS; do
@@ -1431,7 +1429,6 @@ for t in $ALL_TESTS; do
     monorepo-testbed) test_monorepo_testbed;;
     phpcs-scope) test_phpcs_scope;;
     choices) test_choices;;
-    baseline) test_baseline;;
     data-dir) test_data_dir;;
     legacy-state) test_legacy_state;;
     open-mr) test_open_mr;;

@@ -1,0 +1,8 @@
+<?php
+
+/**
+ * Implements hook_menu().
+ */
+function d7_minimal_menu() {
+  return array();
+}
