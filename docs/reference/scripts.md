@@ -2062,7 +2062,11 @@ Passes, in this order:
                    rector.php loads) and without the rules rejected for this
                    module (digests-decisions.json, 05-R6: per rule, digests
                    SHA and the subject's digest before the passes; record
-                   them with scripts/analysis/digests-decisions.sh). A frozen
+                   them with scripts/analysis/digests-decisions.sh). A rule
+                   file that cannot load (it does not open with <?php, or
+                   `php -l` in the bed rejects it) is left out on its own,
+                   so one broken upstream file never stops the other rules
+                   (lab L-1.0-D9). A frozen
                    yml that cannot be read again, an all.php drupilot cannot
                    read whole, and an --apply on sources changed since the
                    reviewed dry-run are digests errors (exit 4).
@@ -2129,7 +2133,9 @@ Options:
                      a set rector.php loads), implemented_not_loaded and
                      config_only (kept: drupal-rector has them in a set this
                      port does not load, or the yml names no class),
-                     rejected: [rules], kept: n} and digests_review:
+                     rejected: [rules], broken: [{rule, file, reason:
+                     no-open-tag | php-lint}] (left out: they cannot load),
+                     kept: n} and digests_review:
                      {digests_sha, input_hash, rules: [{rule, files,
                      verdict: accept | reject | pending}], rejected,
                      pending: [rules]} (null without the digests pass, or

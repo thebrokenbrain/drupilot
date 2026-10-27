@@ -71,6 +71,14 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `php_bc_fallback_spans` scan), and `classify-deprecations.sh` reports it as
   `guarded`, not blocking, when the call's version is at most the target's
   first core. In findings.json it is an info finding.
+- One broken rule file in the third-party digests layer no longer stops the
+  whole layer. drupal-digests main has had a rule without `<?php` since
+  2026-09-17: PHP reads such a file as inline HTML, its class is never
+  declared, and Rector stopped with "Expected an existing class name" for every
+  commit with rules (`run-rector.sh` exit 4, the official result kept).
+  `run-rector.sh` now leaves out, on its own, a rule file that does not open
+  with `<?php` or that `php -l` rejects in the bed, says so, and runs the
+  others (`digests_filter.broken` in its `--json`).
 
 ## [1.0.0] - 2026-10-27
 
