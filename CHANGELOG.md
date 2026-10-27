@@ -13,6 +13,8 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+## [1.0.0-rc.1] - 2026-10-27
+
 ### Added
 - **Drupal 12 test-beds** (T-M6-03, ADR 0004). A port to Drupal 12 (a preview, experimental:
   off unless you opt in, outside 1.0's release criteria) now runs end to end instead of
@@ -3838,7 +3840,8 @@ verdict, what-changed report card, frozen lock), and new insight tools
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.6...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-rc.1...HEAD
+[1.0.0-rc.1]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.6...v1.0.0-rc.1
 [1.0.0-alpha.6]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.5...v1.0.0-alpha.6
 [1.0.0-alpha.5]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.4...v1.0.0-alpha.5
 [1.0.0-alpha.4]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-alpha.3...v1.0.0-alpha.4
