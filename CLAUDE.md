@@ -98,7 +98,7 @@ The flow is **command → (gate) → skill + subagent → scripts → templates*
 
 - **Bash vs PHP (AR-23):** the host side stays bash + jq. PHP runs only inside the bed, from helpers the plugin ships in `scripts/php/*.php` and `stage_runtime ROOT` (`cache.sh`) copies, hash-verified, into `<root>/.drupilot/runtime/` (`.runtime_hash` in the lock): `$(drupal_runner) php .drupilot/runtime/<helper>.php`. `anchor.php` (`token_get_all`) gives a finding line its anchor (`Ns\Class::method`, a function, or `{file}`). Every PHP helper has a bash fallback or a `skipped` degrade path, never a hard-gate verdict from a heuristic.
 
-- **Plugin layout rule:** only `plugin.json` belongs in `.claude-plugin/`; all component directories (`commands/`, `agents/`, `skills/`, `hooks/`, `scripts/`, `templates/`) live at the plugin root. `marketplace.json` also sits in `.claude-plugin/` and resolves plugin `source` (`"./"`) relative to the repo root. Hook/command paths use the `"${CLAUDE_PLUGIN_ROOT}"`-prefixed form.
+- **Plugin layout rule:** only `plugin.json` belongs in `.claude-plugin/`, besides `marketplace.json` and `icon.png`; all component directories (`commands/`, `agents/`, `skills/`, `hooks/`, `scripts/`, `templates/`) live at the plugin root. `marketplace.json` resolves plugin `source` (`"./"`) relative to the repo root. `icon.png` is the listing icon the plugin directory reads once, at the first submission: a square PNG of 512 to 2048 px a side, under 2 MB (`tests/unit/plugin_icon.sh`), cut from the docs logo with `magick docs/assets/drupilot.png -crop 720x720+110+20 +repage -strip .claude-plugin/icon.png`. Hook/command paths use the `"${CLAUDE_PLUGIN_ROOT}"`-prefixed form.
 
 ## Conventions when adding or editing
 

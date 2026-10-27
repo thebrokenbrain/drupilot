@@ -13,6 +13,16 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+### Added
+
+- The plugin icon, `.claude-plugin/icon.png`: the mascot of the docs logo, cut
+  to a 720×720 square. The plugin directory takes its listing icon from it,
+  once, the first time the plugin is submitted, and `claude plugin validate` no
+  longer warns `ICON_MISSING`. Validate never reads the icon's size in px or
+  checks that the file is complete, so `tests/unit/plugin_icon.sh` holds the
+  directory's limits: a complete, square PNG of 512 to 2048 px a side, under
+  2 MB.
+
 ## [1.0.0] - 2026-10-27
 
 No changes since 1.0.0-rc.1.
