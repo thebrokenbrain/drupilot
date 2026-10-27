@@ -12,7 +12,9 @@
 #      ([Unreleased] then compares from the new tag, so on the integration
 #      branch it compares from the latest pre-release);
 #   4. run `claude plugin validate .` (no warning but the known CLAUDE.md-at-
-#      root one, which is why --strict is not used) and `check.sh --ci`;
+#      root one, which is why --strict is not used; the plugin directory's
+#      own checks a newer CLI prints after the result, such as ICON_MISSING,
+#      are shown and never block) and `check.sh --ci`;
 #   5. commit `chore(release): <version>` and tag it `v<version>` (annotated);
 #   6. print the push commands. It never pushes, and never runs
 #      `claude plugin tag` (09-R12: only vX.Y.Z tags).
@@ -139,7 +141,16 @@ restore() { git -C "$REPO" checkout -- .claude-plugin/plugin.json CHANGELOG.md 2
 if ! ( cd "$REPO" && claude plugin validate . ) > "$TMP/validate.out" 2>&1; then
   sed 's/^/    /' "$TMP/validate.out" >&2; restore; die "claude plugin validate failed; nothing was committed" 1
 fi
-OTHER="$(grep -E '^[[:space:]]*❯' "$TMP/validate.out" | grep -v 'CLAUDE.md at the plugin root is not loaded' || true)"
+# Only the result's warnings count. A newer CLI prints the plugin directory's
+# own checks after it ("Plugin directory checks ...: these checks do not
+# change the result"): shown, never fatal.
+DIRCHECKS="$(awk '/^Plugin directory checks/ { d = 1 } d' "$TMP/validate.out" | grep -E '^[[:space:]]*❯' || true)"
+if [[ -n "$DIRCHECKS" ]]; then
+  log_info "claude plugin validate: the plugin directory's checks (they do not change the result):"
+  printf '%s\n' "$DIRCHECKS" | sed 's/^/    /' >&2
+fi
+OTHER="$(awk '/^Plugin directory checks/ { d = 1 } !d' "$TMP/validate.out" | grep -E '^[[:space:]]*❯' \
+  | grep -v 'CLAUDE.md at the plugin root is not loaded' || true)"
 if [[ -n "$OTHER" ]]; then
   printf '%s\n' "$OTHER" | sed 's/^/    /' >&2; restore
   die "claude plugin validate reports a warning other than the known CLAUDE.md-at-root one; nothing was committed" 1
