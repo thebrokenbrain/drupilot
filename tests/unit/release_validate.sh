@@ -5,8 +5,10 @@
 # directory's own checks a newer CLI prints after the result (ICON_MISSING,
 # "About these checks") are shown and never block; a warning of the result
 # itself still refuses the release with nothing committed, with the directory
-# section present too and in the CLI's ASCII figures (">"); with a CLAUDE.md
-# at the root, a result without its warning was not understood: refused.
+# section present too and in the CLI's ASCII figures (">"), under a heading of
+# its own; with a CLAUDE.md file at the root, a result without its warning was
+# not understood: refused (a symlinked CLAUDE.md, which the CLI does not warn
+# about, is not).
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
 unset GITHUB_BASE_REF GITHUB_REF_NAME GITHUB_REF_TYPE RELEASE_FROM
@@ -86,6 +88,7 @@ OUT
 # A result warning before the directory section, and in ASCII figures: refused.
 awk '{ print } /^  ❯ root: CLAUDE.md/ { print "  ❯ author: No author information provided" }' "$T_TMP/dir.out" > "$T_TMP/dir-bad.out"
 assert_eq "a result warning with the directory section present: refused" "$(rel "$T_TMP/dir-bad.out" 1.0.0-alpha.1)" "1"
+assert_match "  the blocking warning under its own heading" "$(t_err | tr '\n' ' ')" "the warnings of its result \(they block the release\): .*author: No author information provided"
 assert_eq "  nothing committed or tagged" "$(untouched)" "$HEAD0|0|0"
 sed 's/^  ❯ /  > /' "$T_TMP/dir-bad.out" > "$T_TMP/dir-ascii.out"
 assert_eq "  the same in the CLI's ASCII figures: refused" "$(rel "$T_TMP/dir-ascii.out" 1.0.0-alpha.1)" "1"
@@ -95,6 +98,11 @@ grep -v 'CLAUDE.md at the plugin root' "$T_TMP/dir.out" > "$T_TMP/dir-noclaude.o
 assert_eq "a CLAUDE.md at the root and no warning about it in the result: refused" "$(rel "$T_TMP/dir-noclaude.out" 1.0.0-alpha.1)" "1"
 assert_match "  as not understood" "$(t_err)" "output was not understood"
 assert_eq "  nothing committed or tagged" "$(untouched)" "$HEAD0|0|0"
+# A symlinked CLAUDE.md gets no warning from the CLI: no refusal for that.
+g mv CLAUDE.md AGENTS.md && ln -s AGENTS.md "$r/CLAUDE.md" && g add CLAUDE.md && g commit -qm symlink; HEAD0="$(g rev-parse HEAD)"
+assert_eq "a symlinked CLAUDE.md and no warning about it: released" "$(rel "$T_TMP/dir-noclaude.out" 1.0.0-alpha.1)" "0"
+g tag -d v1.0.0-alpha.1 > /dev/null; g reset -q --hard "$HEAD0"
+g rm -q CLAUDE.md && g mv AGENTS.md CLAUDE.md && g commit -qm regular; HEAD0="$(g rev-parse HEAD)"
 
 assert_eq "the plugin directory's checks: released" "$(rel "$T_TMP/dir.out" 1.0.0-alpha.1)" "0"
 assert_eq "  the release commit and the tag" "$(g log -1 --format=%s)|$(g tag -l)" "chore(release): 1.0.0-alpha.1|v1.0.0-alpha.1"

@@ -153,14 +153,17 @@ if [[ -n "$DIRCHECKS" ]]; then
   printf '%s\n' "$DIRCHECKS" | sed 's/^/    /' >&2
 fi
 RESULT="$(awk '/^Plugin directory checks/ { d = 1 } !d' "$TMP/validate.out" | grep -E '^[[:space:]]*(❯|>) ' || true)"
-# Fail closed: with a CLAUDE.md at the root, the result always warns about it,
-# so its absence means the output was not understood.
-if [[ -f "$REPO/CLAUDE.md" ]] && ! printf '%s\n' "$RESULT" | grep_q 'CLAUDE.md at the plugin root is not loaded'; then
+# Fail closed: with a CLAUDE.md file at the root (not a symlink, which the CLI
+# does not warn about), the result always warns about it, so its absence means
+# the output was not understood.
+if [[ -f "$REPO/CLAUDE.md" && ! -L "$REPO/CLAUDE.md" ]] \
+   && ! printf '%s\n' "$RESULT" | grep_q 'CLAUDE.md at the plugin root is not loaded'; then
   sed 's/^/    /' "$TMP/validate.out" >&2; restore
   die "claude plugin validate's output was not understood (no CLAUDE.md-at-root warning in its result); nothing was committed" 1
 fi
 OTHER="$(printf '%s\n' "$RESULT" | grep -v 'CLAUDE.md at the plugin root is not loaded' | grep -v '^$' || true)"
 if [[ -n "$OTHER" ]]; then
+  log_err "claude plugin validate: the warnings of its result (they block the release):"
   printf '%s\n' "$OTHER" | sed 's/^/    /' >&2; restore
   die "claude plugin validate reports a warning other than the known CLAUDE.md-at-root one; nothing was committed" 1
 fi
