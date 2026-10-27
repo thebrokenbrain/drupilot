@@ -193,7 +193,7 @@ jq -c --slurpfile rc "$TMP/recipes.json" --slurpfile asf "$TMP/actions.json" --a
                         elif ($f.rule | startswith("removal:")) then
                           ({"decision": "base-theme-removed", "hard-break": "removed-from-core",
                             "blocked": "removed-dependency-no-release", "verify": "removed-dependency-unverified",
-                            "rewrite": "removed-dependency-replaceable"}[$f.rule | split(":")[2] // ""] // "no recipe")
+                            "rewrite": "removed-dependency-replaceable", "test-update": "removed-test-theme"}[$f.rule | split(":")[2] // ""] // "no recipe")
                         else "no recipe" end)}
             else {lane: "ai-free", recipe: null, reason: null} end
         end

@@ -296,7 +296,10 @@ its detector (`base-theme-removed`, `dependency-removed`, `migrate-drupal-usage`
 removed jQuery UI library counts once, under `jquery_ui`. A `rewrite` (a contrib
 release covers the declared range: depend on `PROJECT:NAME`), a `verify` (the
 release feed was not read) and a `composer-required` are not hard breaks; say
-what each needs.
+what each needs. Nor is a `test-update` (`test-theme-removed`: a test's
+`$defaultTheme` names a removed theme such as `seven`, so that test no longer
+starts): count it as test work of the test stage, which names `stark` (or a
+core theme whose markup the test needs).
 
 **Symfony 7** is the most false-positive-prone (having an event subscriber is
 common and may not break): it still counts for the verdict, but say in the

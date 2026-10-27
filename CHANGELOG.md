@@ -23,6 +23,15 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   directory's limits: a complete, square PNG of 512 to 2048 px a side, under
   2 MB.
 
+### Fixed
+
+- A test whose `$defaultTheme` names a theme core removed (`seven`, `classy`
+  and `stable` left core in 10.0) is now a finding of `scan-removals.sh`:
+  detector `test-theme-removed`, action `test-update`, a warning and never a
+  hard break. The test no longer starts on the target ("Unknown themes"), and
+  the assessment missed that test work: porting the Drupal 9-only optimizedb
+  module showed it. The worklist item's reason is `removed-test-theme`.
+
 ## [1.0.0] - 2026-10-27
 
 No changes since 1.0.0-rc.1.

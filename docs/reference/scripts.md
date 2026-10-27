@@ -2251,6 +2251,8 @@ no toolchain needed (bash, awk and jq; curl for the release feed). It finds:
                         target Drupal 12), their namespace or test
                         namespace (Drupal\Tests\migrate_drupal\) included
   base-theme-removed    a theme's `base theme:` naming a removed theme
+  test-theme-removed    a test's `$defaultTheme` naming a removed theme
+                        (its tests stop running: "Unknown themes")
   library-removed       a removed core library in a *.info.yml or
                         *.libraries.yml (a list item, a flow-sequence item
                         or a key) or quoted in a PHP or Twig file
@@ -2268,6 +2270,9 @@ Each finding has an action:
                      curl, the feed unreachable)
   composer-required  composer.json already requires drupal/PROJECT
   decision           a removed base theme: a person picks the new one
+  test-update        a removed theme a test runs on: the test names a theme
+                     core still ships ('stark' unless it needs a theme's
+                     markup), a test adaptation, never a hard break
   hard-break         removed with no replacement path
   note               an announced namespace move
 A finding is a hard break when its action is decision or hard-break.

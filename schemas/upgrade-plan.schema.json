@@ -165,7 +165,7 @@
         "required": ["detector", "name", "kind", "removed_in", "rewrite", "replacement_project", "core_alternative", "hard_break", "files"],
         "additionalProperties": false,
         "properties": {
-          "detector": {"enum": ["dependency-removed", "migrate-drupal-usage", "base-theme-removed", "library-removed"]},
+          "detector": {"enum": ["dependency-removed", "migrate-drupal-usage", "base-theme-removed", "test-theme-removed", "library-removed"]},
           "name": {"type": "string", "minLength": 1},
           "kind": {"enum": ["module", "theme", "library"]},
           "removed_in": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+"},

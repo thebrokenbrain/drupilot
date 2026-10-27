@@ -19,6 +19,8 @@
 #                         target Drupal 12), their namespace or test
 #                         namespace (Drupal\Tests\migrate_drupal\) included
 #   base-theme-removed    a theme's `base theme:` naming a removed theme
+#   test-theme-removed    a test's `$defaultTheme` naming a removed theme
+#                         (its tests stop running: "Unknown themes")
 #   library-removed       a removed core library in a *.info.yml or
 #                         *.libraries.yml (a list item, a flow-sequence item
 #                         or a key) or quoted in a PHP or Twig file
@@ -36,6 +38,9 @@
 #                      curl, the feed unreachable)
 #   composer-required  composer.json already requires drupal/PROJECT
 #   decision           a removed base theme: a person picks the new one
+#   test-update        a removed theme a test runs on: the test names a theme
+#                      core still ships ('stark' unless it needs a theme's
+#                      markup), a test adaptation, never a hard break
 #   hard-break         removed with no replacement path
 #   note               an announced namespace move
 # A finding is a hard break when its action is decision or hard-break.
@@ -172,6 +177,7 @@ MOVE_NS="$(jq -r '[.[] | .from_ns] | unique | join("\n")' "$TMP/moves.json")"
 # The candidate records, one per line: KIND<TAB>VALUE<TAB>FILE<TAB>LINE<TAB>EVIDENCE.
 #   dep VALUE    a dependencies:/install: entry (PROJECT:NAME, version dropped)
 #   base VALUE   a base theme
+#   dtheme VALUE a test's $defaultTheme
 #   lib VALUE    a core/... library reference
 #   ns VALUE     a line naming Drupal\<removed module>\ or
 #                Drupal\Tests\<removed module>\ (VALUE the module)
@@ -241,6 +247,11 @@ if [[ -n "$MAJORS" || -n "$MOVE_ERE" ]]; then
           printf "lib\t%s\t%s\t%d\t%s\n", substr(s, RSTART + 1, RLENGTH - 2), F, FNR, trim($0)
           s = substr(s, RSTART + RLENGTH)
         }
+        # The default theme of a test (not on a commented-out line).
+        if ($0 !~ /^[[:space:]]*(\/\/|#|\*|\/\*)/ && match($0, /\$defaultTheme[[:space:]]*=[[:space:]]*["\047][A-Za-z0-9_]+["\047]/)) {
+          v = substr($0, RSTART, RLENGTH); sub(/^[^=]*=[[:space:]]*["\047]/, "", v); sub(/["\047]$/, "", v)
+          printf "dtheme\t%s\t%s\t%d\t%s\n", v, F, FNR, trim($0)
+        }
         if (NS != "" && match($0, NS)) {
           v = substr($0, RSTART, RLENGTH); sub(/^Drupal[\\]+/, "", v); sub(/^Tests[\\]+/, "", v); sub(/[\\]+$/, "", v)
           printf "ns\t%s\t%s\t%d\t%s\n", v, F, FNR, trim($0)
@@ -283,6 +294,9 @@ jq -c --slurpfile ext "$TMP/ext.json" --slurpfile lib "$TMP/lib.json" --slurpfil
           file: $r.file, line: $r.line, evidence: $r.evidence}
      elif .k == "base" then $themes[.v] // empty
        | {detector: "base-theme-removed", name, kind, removed_in, rewrite, replacement_project, core_alternative,
+          file: $r.file, line: $r.line, evidence: $r.evidence}
+     elif .k == "dtheme" then $themes[.v] // empty
+       | {detector: "test-theme-removed", name, kind, removed_in, rewrite, replacement_project, core_alternative,
           file: $r.file, line: $r.line, evidence: $r.evidence}
      elif .k == "lib" then $libs[.v] // empty
        | {detector: "library-removed", name, kind: "library", removed_in, rewrite: null, replacement_project: null,
@@ -350,12 +364,15 @@ jq -S --slurpfile cov "$TMP/cov.json" --argjson reqs "$REQS" --arg mn "$MN" --ar
   --arg majors "$MAJORS" '
   $cov[0] as $cv
   # (Not `.available // "unknown"`: `//` reads false as missing.)
-  | def avail: if .replacement_project == null then null
+  # (A test theme is replaced by a core theme: no release is looked up.)
+  | def avail: if .replacement_project == null or .detector == "test-theme-removed" then null
                else ($cv[.replacement_project] // {}) | if has("available") then .available else "unknown" end end;
-    def rel: if .replacement_project == null then null else ($cv[.replacement_project].release // null) end;
+    def rel: if .replacement_project == null or .detector == "test-theme-removed" then null
+             else ($cv[.replacement_project].release // null) end;
     def action:
       (.replacement_project as $rp | $rp != null and ($reqs | index($rp)) != null) as $req
       | if .detector == "namespace-move" then "note"
+      elif .detector == "test-theme-removed" then "test-update"
       elif .detector == "base-theme-removed" then (if $req then "composer-required" else "decision" end)
       elif .detector == "library-removed" or .detector == "migrate-drupal-usage" or .rewrite != "dependency"
            or .via == "namespace" or .via == "class" then "hard-break"
@@ -364,11 +381,14 @@ jq -S --slurpfile cov "$TMP/cov.json" --argjson reqs "$REQS" --arg mn "$MN" --ar
       elif .replacement_available == false then "blocked"
       else "verify" end;
     def sev: if .action == "note" or .action == "composer-required" then "info"
-             elif .action == "rewrite" or .action == "verify" then "warning" else "error" end;
+             elif .action == "rewrite" or .action == "verify" or .action == "test-update" then "warning" else "error" end;
     def msg:
       (if .kind == "library" then "the library \(.name)" elif .kind == "theme" then "the theme \(.name)" else .name end) as $what
       | if .action == "note" then
           "\(.name) moves from \(.from_ns) to \(.to_ns) in \(.introduced_in) (announced): refer to the plugin by its ID, not its class"
+        elif .action == "test-update" then
+          "\($what) was removed from Drupal core in \(.removed_in): a test that runs on it (its $defaultTheme) no longer starts; name a theme core still ships, stark unless the test needs the markup of a theme"
+          + (if .core_alternative then " (core has \(.core_alternative))" else "" end)
         elif .action == "decision" then
           "\($what) was removed from Drupal core in \(.removed_in): choose a new base theme"
           + (if .core_alternative then " (core has \(.core_alternative))" else "" end)
