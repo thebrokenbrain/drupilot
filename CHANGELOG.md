@@ -39,6 +39,38 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `config/php/rules.json`, row `p80-sort-bool-comparator`: a report-only
   warning whose fix, `<=>`, runs on the floor). The scan follows the closures
   and arrow functions written inline, not a named callback.
+- The recommended core range no longer promises a Drupal 10 minor the port
+  cannot run on. `format_size()`, removed in Drupal 11, is replaced by
+  `ByteSizeMarkup`, which exists only from 10.2, yet a keep-Drupal-10 plan said
+  `^10 || ^11`, and only the core matrix caught it at port time (on
+  optimizedb, the model then re-froze the plan by hand). The floor is now
+  raised to the minor that ships the replacement of an API the code still
+  needs, as it already was for plugin attribute classes:
+  `subject_replacement_floor` reads the `lifecycle` catalog of
+  `config/deprecations.json` (a function removed at or below the target that
+  the code still calls, or its new `replacement_class` the code already
+  uses), so the plan, `core-strategy.sh` and a kept range all say
+  `^10.2 || ^11` and why. The catalog gains `format_size()`, verified in core
+  source.
+- No `DeprecationHelper` call is written for a range that admits a core older
+  than 10.1.3, where that class does not exist. A plan whose `rector.bc` is off
+  left drupal-rector's own default in place, which wraps every change newer
+  than 10.1.0 in a `DeprecationHelper::backwardsCompatibleCall()`: a
+  `^10 || ^11` port then fatals on 10.0 to 10.1.2, and the model had to revert
+  the wrappers by hand. `rector.php` now turns drupal-rector's backwards
+  compatibility off there (ADR 0017 item 2's "off"; ADR 0019 is amended), and
+  an untouched render picks the change up on its next run. The `fix` policy for
+  soft deprecations also compares the lowest core with 10.1.3, to the patch,
+  before it guards a call (a `^10.1 || ^11` range now defers), and the fix
+  text of the `getOriginal()` check says 10.1.3 instead of 10.1.
+- A removed function that only the fallback of a `DeprecationHelper` call
+  calls no longer blocks a port. On the target, PHPStan reports
+  `Function format_size not found.` for the deprecated callable that runs only
+  on an older core, and drupilot counted it as a blocking deprecation.
+  `run-phpstan.sh --json` now marks such a message (`drupilot_guard`, from the
+  `php_bc_fallback_spans` scan), and `classify-deprecations.sh` reports it as
+  `guarded`, not blocking, when the call's version is at most the target's
+  first core. In findings.json it is an info finding.
 
 ## [1.0.0] - 2026-10-27
 

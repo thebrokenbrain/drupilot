@@ -180,12 +180,20 @@ The Drupal API deprecations `scripts/analysis/explain-deprecations.sh` explains,
 - **Fix:** Inject the 'date.formatter' service and call -&gt;format().
 - **Change records:** <https://www.drupal.org/list-changes/drupal?keywords_description=format_date>
 
+## `format_size`
+
+- **Pattern:** `format_size\(|Function format_size `
+- **Category:** removed-api
+- **What changed:** format_size() was deprecated in drupal:10.2.0 and REMOVED in drupal:11.0.0: a call is an undefined-function fatal on every Drupal 11 core (a HARD deprecation, always fixed in Phase 1). Its replacement exists only from core 10.2, so a port that keeps Drupal 10 declares at least ^10.2.
+- **Fix:** Use \Drupal\Core\StringTranslation\ByteSizeMarkup::create($size, $langcode) (core 10.2 and later); drupal-rector's FunctionToStaticRector makes this change.
+- **Change records:** <https://www.drupal.org/list-changes/drupal?keywords_description=format_size>
+
 ## `getOriginal setOriginal`
 
 - **Pattern:** `\[signature:entity-original-accessors-call\]`
 - **Category:** signature-change
 - **What changed:** -&gt;getOriginal()/-&gt;setOriginal() on a core entity exist only from Drupal 11.2; while the declared range includes an older core the call is an 'undefined method' fatal there (unless the receiver is the module's own class).
-- **Fix:** While the floor is below 11.2: keep the -&gt;original property, or wrap the call in DeprecationHelper::backwardsCompatibleCall() (core 10.1+): backwardsCompatibleCall(\Drupal::VERSION, '11.2', fn() =&gt; $entity-&gt;getOriginal(), fn() =&gt; $entity-&gt;original). Raise the floor to ^11.2 to use it directly.
+- **Fix:** While the floor is below 11.2: keep the -&gt;original property, or wrap the call in DeprecationHelper::backwardsCompatibleCall() (core 10.1.3+): backwardsCompatibleCall(\Drupal::VERSION, '11.2', fn() =&gt; $entity-&gt;getOriginal(), fn() =&gt; $entity-&gt;original). Raise the floor to ^11.2 to use it directly.
 - **Change records:** <https://www.drupal.org/list-changes/drupal?keywords_description=getOriginal%20setOriginal>
 
 ## `hook_entity_operation CacheableMetadata`

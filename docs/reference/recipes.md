@@ -23,6 +23,7 @@ A codemod applies only when its conditions hold. Its edit must be exact and its 
 | `dep.entity-load` | ai-templated | template | a message pattern (below) | — |
 | `dep.entitymanager` | ai-templated | template | a message pattern (below) | — |
 | `dep.format-date` | ai-templated | template | a message pattern (below) | — |
+| `dep.format-size` | ai-templated | template | a message pattern (below), or symbol `format_size` | — |
 | `dep.jquery-ui` | human | template | a message pattern (below) | — |
 | `dep.phpunit-10` | ai-templated | template | a message pattern (below) | — |
 | `dep.request-time` | ai-templated | template | a message pattern (below) | — |
@@ -70,6 +71,7 @@ Case-insensitive POSIX extended regular expressions, matched against a finding's
 - `dep.entity-load`: `(entity_load|node_load|user_load|taxonomy_term_load)\b`
 - `dep.entitymanager`: `EntityManager(Interface)?\b`
 - `dep.format-date`: `format_date|\\Drupal::service\(.date.\)`
+- `dep.format-size`: `format_size\(|Function format_size `
 - `dep.jquery-ui`: `jquery\.?ui|jquery_ui|core/jquery\.ui`
 - `dep.phpunit-10`: `getMock\b|createMock.*willReturn.*at\(`
 - `dep.request-time`: `REQUEST_TIME`

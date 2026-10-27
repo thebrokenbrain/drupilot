@@ -31,6 +31,14 @@
 #                    by path, their messages by line, identifier and message,
 #                    the general errors by text: DET-2). A DET-1 refusal
 #                    (exit 3) is reported as crashed, its reason in crash.
+#                    A "Function X not found." that only the deprecated
+#                    callable (the fourth argument) of a
+#                    DeprecationHelper::backwardsCompatibleCall() calls gets
+#                    drupilot_guard: {kind: "deprecation-helper-fallback",
+#                    deprecated_version}, the call's second argument (the
+#                    fallback runs only on an older core; the scan is
+#                    php_bc_fallback_spans), so classify-deprecations.sh can
+#                    tell it from a call the target core runs.
 #                    When PHPStan crashed (no
 #                   report produced) `totals` is null, `files` is {} and the
 #                   reason is in `drupilot.crash` — never a fake zero count.
@@ -58,6 +66,8 @@ set -euo pipefail
 
 # shellcheck source=../lib/common.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+# shellcheck source=../lib/php-scan.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/php-scan.sh"
 
 SUBJECT=""
 LEVEL=""
@@ -209,7 +219,7 @@ log_step "PHPStan: ${CMD[*]}"
 # are both captured (never discarded): stdout is re-emitted as the report,
 # stderr is relayed to our stderr, and its deprecation notices are surfaced.
 OUT_F="$(mktemp)"; ERR_F="$(mktemp)"
-trap 'rm -f "$OUT_F" "$ERR_F"' EXIT
+trap 'rm -f "$OUT_F" "$ERR_F" "$OUT_F".* 2> /dev/null || true' EXIT
 set +e
 "${CMD[@]}" >"$OUT_F" 2>"$ERR_F"
 PHPSTAN_RC=$?
@@ -283,7 +293,36 @@ if [[ "$AS_JSON" == "1" ]]; then
       | (if (.files | type) == "object" then .files |= (to_entries | sort_by(.key)
           | map(if (.value.messages | type) == "array" then .value.messages |= sort_by([(.line // 0), (.identifier // ""), (.message // "")]) else . end)
           | from_entries) else . end)
-      | (if (.errors | type) == "array" then .errors |= sort else . end)'
+      | (if (.errors | type) == "array" then .errors |= sort else . end)' > "$OUT_F.sorted"
+    # The not-found functions only a DeprecationHelper fallback calls.
+    printf '{}' > "$OUT_F.spans"
+    jq -r '[(.files // {}) | to_entries[]
+            | select(any((.value.messages // [])[]; (.message // "") | test("^Function [A-Za-z0-9_\\\\]+ not found"))) | .key]
+           | unique[]' "$OUT_F.sorted" 2> /dev/null | while IFS= read -r _k; do
+      _p="${_k% (in context of *}"
+      case "$_p" in /var/www/html/*) _p="$DRUPAL_ROOT/${_p#/var/www/html/}";; /*) : ;; *) _p="$DRUPAL_ROOT/$_p";; esac
+      [[ -f "$_p" ]] || continue
+      php_code_lines "$_p" > "$OUT_F.blank"
+      php_bc_fallback_spans "$OUT_F.blank" "$_p" \
+        | jq -R -s -c --arg k "$_k" --slurpfile acc "$OUT_F.spans" '$acc[0] + {($k): [split("\n")[] | select(length > 0) | split("\t")
+            | {s: (.[0] | tonumber), e: (.[1] | tonumber), v: .[2], f4: (.[3] | split(" ")), f3: (.[4] | split(" "))}]}' \
+          > "$OUT_F.spans.new" 2> /dev/null && mv -f "$OUT_F.spans.new" "$OUT_F.spans"
+    done
+    jq -c --slurpfile sp "$OUT_F.spans" '
+      $sp[0] as $S
+      | if (.files | type) != "object" then . else
+          .files |= with_entries(.key as $k | if ($S[$k] // []) == [] then . else
+            .value.messages |= map(
+              . as $m
+              | ((.message // "") | capture("^Function (?<f>[A-Za-z0-9_\\\\]+) not found")? // null) as $nf
+              | if $nf == null or (.line | type) != "number" then .
+                else (($nf.f | split("\\\\") | last | ascii_downcase)) as $fn
+                  | ([$S[$k][] | select(.s <= $m.line and $m.line <= .e and (.f4 | index($fn)) != null and (.f3 | index($fn)) == null)]
+                     | .[0]) as $hit
+                  | if $hit == null then . else . + {drupilot_guard: {kind: "deprecation-helper-fallback", deprecated_version: (if $hit.v == "" then null else $hit.v end)}} end
+                end) end)
+        end' "$OUT_F.sorted"
+    rm -f "$OUT_F.sorted" "$OUT_F.spans" "$OUT_F.spans.new" "$OUT_F.blank" 2> /dev/null || true
   else
     jq -nc --argjson m "$META" '{totals: null, files: {}, errors: $m.crash, drupilot: $m}'
   fi

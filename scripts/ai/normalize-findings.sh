@@ -43,7 +43,9 @@
 #           {file}
 #   scope   current, or next-major for a soft deprecation under the report or
 #           defer policy (DRUPILOT_SOFT_DEPRECATIONS)
-#   class   hard | soft | unknown (classify-deprecations.sh) | analysis |
+#   class   hard | soft | unknown | guarded (classify-deprecations.sh; a
+#           guarded one, a removed function only a DeprecationHelper fallback
+#           calls, is an info finding) | analysis |
 #           safety | signature | metadata | style | php-target | removal |
 #           rector
 #
@@ -223,7 +225,7 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
     # so a directory named "(in context of ...)" is kept.)
     def ctxless: sub(" \\(in context of (class [^ ()]+|anonymous class|[^ /()]*@anonymous/.*)\\)$"; "");
     # classify-deprecations items, keyed by root-relative file, line and normalized message.
-    ([($cls[0].hard // [])[], ($cls[0].soft // [])[], ($cls[0].unknown // [])[]]
+    ([($cls[0].hard // [])[], ($cls[0].soft // [])[], ($cls[0].unknown // [])[], ($cls[0].guarded // [])[]]
       | map({key: "\(.file)\u001f\(.line)\u001f\(.message | finding_norm_message)", value: .}) | from_entries) as $cmap
   | [
       # Rector: one finding per applied rule and hunk. (Each generator is
@@ -241,7 +243,8 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
         | ($m.message | finding_norm_message) as $nm
         | ($cmap["\($e.key)\u001f\($m.line)\u001f\($nm)"] // null) as $c
         | {tool: "phpstan", rule: ($m.identifier | S), rf: $rf, line: ($m.line | N),
-           symbol: (if $c then $c.symbol else null end), message: $nm, severity: "error",
+           symbol: (if $c then $c.symbol else null end), message: $nm,
+           severity: (if $c and $c.class == "guarded" then "info" else "error" end),
            scope: (if $c and $c.class == "soft" and $policy != "fix" then "next-major" else "current" end),
            class: (if $c then $c.class else "analysis" end), ctx: ($e.key != ($e.key | ctxless)), cx: $e.key}),
       # PHPCS: every file message.

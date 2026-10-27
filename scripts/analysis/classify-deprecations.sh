@@ -16,12 +16,18 @@
 #             fix              fix it in Phase 1 — directly when the replacement
 #                              exists at the declared core floor, else through
 #                              DeprecationHelper::backwardsCompatibleCall()
-#                              (core 10.1+), else defer it with the reason
+#                              (core 10.1.3+), else defer it with the reason
 #           Phase 2 (--phase refactor) fixes soft items regardless of the policy
 #           ("zero deprecations"), still respecting the core floor.
 #   unknown a deprecation whose removal version cannot be read, or belongs to a
 #           contrib project, or a symbol PHPStan cannot find that the catalog
 #           does not date: treated as BLOCKING (conservative) until reviewed.
+#   guarded a function PHPStan cannot find that only the deprecated callable
+#           of a DeprecationHelper::backwardsCompatibleCall() calls, whose
+#           second argument (the core from which the current callable runs)
+#           is at most T.0.0: no core of the target major runs it, so it is
+#           reported, never blocking. run-phpstan.sh --json marks such a
+#           message (drupilot_guard); a plain-text input has no mark.
 #
 # Removal versions come from the analyzer message itself (phpstan-deprecation-
 # rules echoes core's "in drupal:X and is removed from drupal:Y"). The
@@ -50,6 +56,7 @@
 #   --json            Emit the classification JSON on STDOUT:
 #                     {tool, policy, phase, target_major, core_requirement,
 #                      core_floor, blocking, counts:{hard,soft,unknown,other},
+#                      plus counts.guarded and guarded:[..] when there is one,
 #                      symbols:[{symbol, class, deprecated_in, removed_in,
 #                        replacement, replacement_since, replacement_at_floor,
 #                        effort, action, reason, occurrences}],
@@ -149,6 +156,10 @@ if [[ -z "$CORE_REQ" && -n "$SUBJECT" ]]; then
 fi
 CORE_REQ="$(printf '%s' "$CORE_REQ" | tr -d "\"'")"
 if [[ -n "$FLOOR_OPT" ]]; then FLOOR="$FLOOR_OPT"; else FLOOR="$(core_floor_from_requirement "$CORE_REQ")"; fi
+# The lowest core the range admits, to the patch: DeprecationHelper exists
+# from PLAN_BC_MIN_CORE, a patch release ('^10.1 || ^11' admits 10.1.0).
+LOWEST=""
+if [[ -n "$FLOOR_OPT" ]]; then LOWEST="$FLOOR_OPT.0"; elif [[ -n "$CORE_REQ" ]]; then LOWEST="$(core_requirement_lowest "$CORE_REQ")"; fi
 
 # --- Input ------------------------------------------------------------------
 TMP="$(mktemp "${TMPDIR:-/tmp}/drupilot-classify.XXXXXX")"
@@ -168,7 +179,7 @@ if [[ -s "$TMP" ]] && jq -e 'type == "object" and has("files")' "$TMP" >/dev/nul
   RAW="$(jq -c '[ (.files // {}) | to_entries[] | .key as $f
                   | (.value.messages // [])[]
                   | {file: $f, line: (.line // null), message: (.message // ""),
-                     identifier: (.identifier // null)} ]' "$TMP")"
+                     identifier: (.identifier // null), guard: (.drupilot_guard // null)} ]' "$TMP")"
 elif [[ -s "$TMP" ]]; then
   # Plain text (PHPStan table/raw output, upgrade_status, a pasted log): one
   # record per "deprecated <kind> <symbol>" or "Function X not found", with the
@@ -207,7 +218,7 @@ RESULT="$(jq -n \
   --slurpfile cat "$CATALOG" \
   --arg policy "$POLICY" --arg phase "$PHASE" \
   --argjson tmaj "$TARGET_MAJOR" \
-  --arg req "$CORE_REQ" --arg floor "$FLOOR" '
+  --arg req "$CORE_REQ" --arg floor "$FLOOR" --arg lowest "$LOWEST" --arg bcmin "$PLAN_BC_MIN_CORE" '
   def vnum: tostring | split(".") | map(tonumber? // 0) | (. + [0, 0, 0])[:3];
   def major: if . == null then null else (vnum | .[0]) end;
   def norm: sub("^\\\\"; "") | sub("\\(\\)$"; "") | sub(":$"; "");
@@ -254,6 +265,9 @@ RESULT="$(jq -n \
              kind: (if $d != null then $d.kind elif $nf != null then "function" elif $hk != null then "hook"
                     elif $sv != null then "service" elif $cl != null then "class" else "other" end),
              not_found: ($nf != null),
+             guarded: ($nf != null and (($r.guard // null) | type) == "object" and $r.guard.kind == "deprecation-helper-fallback"
+                       and (($r.guard.deprecated_version // "") | test("^[0-9]+(\\.[0-9]+)*$"))
+                       and (($r.guard.deprecated_version | vnum) <= ([$tmaj, 0, 0]))),
              message: ($r.message | split("\n") | map(gsub("^\\s+|\\s+$"; "")) | map(select(. != "")) | join(" ")),
              project: (if $v != null then $v.p2 else (if $c != null then "drupal" else null end) end),
              deprecated_in: (if $v != null then $v.dep elif $c != null then $c.deprecated_in else null end),
@@ -266,7 +280,8 @@ RESULT="$(jq -n \
              change_record: (if $cr != "" and $sym != null then $cr + ($sym | gsub(" "; "%20") | gsub("\\\\"; "%5C") | gsub(":"; "%3A")) else null end) }
          end) ;
     def klass:
-      if .not_found and (.catalogued | not) then "unknown"
+      if .guarded then "guarded"
+      elif .not_found and (.catalogued | not) then "unknown"
       elif .project != "drupal" or .removed_in == null then "unknown"
       elif (.removed_in | major) <= $tmaj then "hard"
       else "soft" end;
@@ -276,7 +291,8 @@ RESULT="$(jq -n \
       elif $fl == null then (if (.replacement_since | vnum) <= ("8.0" | vnum) then true else null end)
       else (($fl | vnum) >= (.replacement_since | vnum)) end;
     def decide($cls):
-      if $cls == "hard" then {action: "fix", reason: "removed in drupal:\(.removed_in), at or below the target major \($tmaj): blocking"}
+      if $cls == "guarded" then {action: "report", reason: "only the fallback of DeprecationHelper::backwardsCompatibleCall() calls it, and no core of Drupal \($tmaj) runs that fallback: reported, not blocking"}
+      elif $cls == "hard" then {action: "fix", reason: "removed in drupal:\(.removed_in), at or below the target major \($tmaj): blocking"}
       elif $cls == "unknown" then {action: "fix", reason: (if .not_found then "symbol not found and not in the lifecycle catalog (removed API or missing dependency): blocking until reviewed" else "removal version not readable as a Drupal core version: blocking until reviewed" end)}
       else
         ( (if $phase == "refactor" then "fix" else $policy end) as $p
@@ -285,23 +301,24 @@ RESULT="$(jq -n \
           elif .no_replacement_entry then {action: "defer", reason: "core offers no replacement on any version; defer to Phase 2"}
           elif .replacement_at_floor == true then {action: "fix", reason: "replacement available at the core floor \($fl)"}
           elif .replacement_since == null then {action: "defer", reason: "not in the lifecycle catalog, so the replacement and the first core that has it are unknown: defer to Phase 2 unless you verify the replacement exists at the core floor (\($fl // "unknown"))"}
-          elif $fl != null and (($fl | vnum) < ("10.1" | vnum)) then {action: "defer", reason: "replacement needs core \(.replacement_since) and the floor \($fl) predates DeprecationHelper (10.1): defer, or raise the floor"}
+          elif $fl != null and ((if $lowest != "" then $lowest else $fl end) | vnum) < ($bcmin | vnum) then {action: "defer", reason: "replacement needs core \(.replacement_since) and the floor \($fl) predates DeprecationHelper (\($bcmin)): defer, or raise the floor"}
           else {action: "fix-guarded", reason: "replacement exists only from core \(.replacement_since); the core floor (\($fl // "unknown")) is below it: wrap it in DeprecationHelper::backwardsCompatibleCall(\\Drupal::VERSION, \(.deprecated_in), <replacement>, <original call>)"}
           end )
       end;
     [ $raw[] | classify | select(. != null) ] as $all
     | [ $all[] | . + {class: klass} | . + {replacement_at_floor: at_floor} | . as $i | $i + ($i | decide($i.class))
-        | del(.no_replacement_entry, .catalogued, .project) ] as $items
+        | del(.no_replacement_entry, .catalogued, .project, .guarded) ] as $items
+    | ([ $items[] | select(.class == "guarded") ] | length) as $ng
     | ($raw | length) as $nraw
     | { tool: "classify-deprecations", policy: $policy, phase: $phase,
         target_major: $tmaj,
         core_requirement: (if $req == "" then null else $req end),
         core_floor: $fl,
         blocking: ([ $items[] | select(.class == "hard" or .class == "unknown") ] | length),
-        counts: { hard: ([ $items[] | select(.class == "hard") ] | length),
-                  soft: ([ $items[] | select(.class == "soft") ] | length),
-                  unknown: ([ $items[] | select(.class == "unknown") ] | length),
-                  other: ($nraw - ($items | length)) },
+        counts: ({ hard: ([ $items[] | select(.class == "hard") ] | length),
+                   soft: ([ $items[] | select(.class == "soft") ] | length),
+                   unknown: ([ $items[] | select(.class == "unknown") ] | length),
+                   other: ($nraw - ($items | length)) } + (if $ng > 0 then {guarded: $ng} else {} end)),
         symbols: ( $items | group_by(.symbol)
                    | map(.[0] as $f | { symbol: $f.symbol, class: $f.class, deprecated_in: $f.deprecated_in,
                                        removed_in: $f.removed_in, replacement: $f.replacement,
@@ -310,10 +327,11 @@ RESULT="$(jq -n \
                                        action: $f.action, reason: $f.reason, change_record: $f.change_record,
                                        occurrences: length,
                                        locations: [ .[] | select(.file != null) | "\(.file):\(.line)" ] })
-                   | sort_by(({"hard": 0, "unknown": 1, "soft": 2})[.class], .symbol) ),
+                   | sort_by(({"hard": 0, "unknown": 1, "soft": 2, "guarded": 3})[.class], .symbol) ),
         hard: [ $items[] | select(.class == "hard") ],
         soft: [ $items[] | select(.class == "soft") ],
         unknown: [ $items[] | select(.class == "unknown") ] }
+      + (if $ng > 0 then {guarded: [ $items[] | select(.class == "guarded") ]} else {} end)
 ')" || die "Could not classify the input (malformed analyzer output?)." 1
 
 if [[ "$AS_JSON" == "1" ]]; then
@@ -324,10 +342,11 @@ fi
 H="$(printf '%s' "$RESULT" | jq -r '.counts.hard')"
 S="$(printf '%s' "$RESULT" | jq -r '.counts.soft')"
 U="$(printf '%s' "$RESULT" | jq -r '.counts.unknown')"
+G="$(printf '%s' "$RESULT" | jq -r '.counts.guarded // 0')"
 hr
 log_plain "Deprecations — target Drupal ${TARGET_MAJOR}, core floor ${FLOOR:-unknown}, soft policy '${POLICY}' (phase ${PHASE})"
 hr
-if [[ "$H" == "0" && "$S" == "0" && "$U" == "0" ]]; then
+if [[ "$H" == "0" && "$S" == "0" && "$U" == "0" && "$G" == "0" ]]; then
   log_ok "No deprecation recognized in the input."
   exit 0
 fi

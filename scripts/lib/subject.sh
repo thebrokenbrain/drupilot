@@ -285,6 +285,51 @@ subject_attribute_floor() {
   return 0
 }
 
+# subject_replacement_floor <subject> [T] -> "MAJOR.MINOR<TAB>reason": the
+# highest core minor that ships the replacement of an API the subject still
+# needs, from the lifecycle catalog of config/deprecations.json: a function
+# removed in a major at or below T (default resolve_target_major) that the
+# code still calls, which Phase 1 replaces, or a replacement_class the code
+# already uses (import or FQCN). An entry counts only with its
+# replacement_since and its replacement_class (format_size(): ByteSizeMarkup,
+# 10.2). The reason completes "Drupal 10 floor X: ...". A comment line (//,
+# #, * or /*) is not code. Prints nothing when none applies or jq is missing.
+subject_replacement_floor() {
+  local subj="${1:-}" t="${2:-}" cat code
+  [[ -n "$t" ]] || t="$(resolve_target_major)"
+  cat="$(plugin_root)/config/deprecations.json"
+  have_cmd jq || return 0
+  [[ -r "$cat" && -d "$subj" && "$t" =~ ^[0-9]+$ ]] || return 0
+  # The code lines (comment lines dropped), once, through a file: one argv
+  # string is capped (128 KiB on Linux).
+  code="$(mktemp "${TMPDIR:-/tmp}/drupilot-replfloor.XXXXXX")" || return 0
+  find "$subj" \( -name vendor -o -name node_modules -o -name .git \) -prune -o -type f \
+      \( -name '*.php' -o -name '*.module' -o -name '*.inc' -o -name '*.install' -o -name '*.theme' \
+         -o -name '*.profile' \) -exec awk '$0 !~ /^[[:space:]]*(\/\/|#|\*|\/\*)/' {} + > "$code" 2>/dev/null || true
+  if [[ ! -s "$code" ]]; then rm -f "$code"; return 0; fi
+  jq -r -n --rawfile code "$code" --argjson t "$t" --slurpfile c "$cat" '
+    def vn: split(".") | map(tonumber? // 0);
+    # Does the code call the function $s (not a method, a variable or a
+    # longer name)?
+    def calls($s): $code | test("(^|[^A-Za-z0-9_>:$\\\\])" + $s + "[[:space:]]*\\(");
+    # Does the code name the class $k (with or without its leading backslash)?
+    def names($k): $code | test("(^|[^A-Za-z0-9_\\\\])\\\\?" + ($k | gsub("\\\\"; "\\\\")) + "([^A-Za-z0-9_\\\\]|$)");
+    [($c[0].lifecycle // [])[]
+     | select((.replacement_since | type) == "string" and (.replacement_class | type) == "string")
+     | . as $e
+     | (($e.kind == "function") and ($e.removed_in | type) == "string" and (($e.removed_in | vn | .[0]) <= $t)
+        and ($e.symbol | test("^[A-Za-z0-9_]+$")) and calls($e.symbol)) as $call
+     | (names($e.replacement_class)) as $uses
+     | select($call or $uses)
+     | {since: $e.replacement_since,
+        why: (if $call
+              then "the port replaces \($e.symbol)() (removed in Drupal \($e.removed_in | vn | .[0])) with \\\($e.replacement_class), which exists only from core \($e.replacement_since)"
+              else "the code uses \\\($e.replacement_class), which exists only from core \($e.replacement_since)" end)}]
+    | if length == 0 then empty else max_by(.since | vn) | "\(.since)\t\(.why)" end' 2>/dev/null || true
+  rm -f "$code"
+  return 0
+}
+
 # subject_digest <dir> -> SHA-256 over the subject's sources (PHP family
 # files, *.yml, composer.json, and since algorithm 2 *.twig, *.js and *.css;
 # .git/vendor/node_modules skipped), in a stable order, after a line naming

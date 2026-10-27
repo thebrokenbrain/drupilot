@@ -18,7 +18,7 @@ H4 hooks/scripts/session-detect-env.sh 2
 H4 scripts/ai/classify.sh 1  # the item id is W- plus 12 hex digits of a sha256 (AR-10): a jq slice, not a version
 H4 scripts/ai/normalize-findings.sh 1  # the finding id is F- plus 12 hex digits of a sha256 (AR-10): a jq slice, not a version
 H4 scripts/analysis/check-port-safety.sh 4
-H4 scripts/analysis/classify-deprecations.sh 6
+H4 scripts/analysis/classify-deprecations.sh 5
 H4 scripts/analysis/convert-attributes.sh 3
 H4 scripts/analysis/core-strategy.sh 1
 H4 scripts/analysis/deps-status.sh 3

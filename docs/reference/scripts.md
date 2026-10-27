@@ -362,7 +362,9 @@ verdict, only when the index names them or their file exists).
           {file}
   scope   current, or next-major for a soft deprecation under the report or
           defer policy (DRUPILOT_SOFT_DEPRECATIONS)
-  class   hard | soft | unknown (classify-deprecations.sh) | analysis |
+  class   hard | soft | unknown | guarded (classify-deprecations.sh; a
+          guarded one, a removed function only a DeprecationHelper fallback
+          calls, is an info finding) | analysis |
           safety | signature | metadata | style | php-target | removal |
           rector
 
@@ -638,12 +640,18 @@ criterion is the same for every module and every layer of the flow.
             fix              fix it in Phase 1 — directly when the replacement
                              exists at the declared core floor, else through
                              DeprecationHelper::backwardsCompatibleCall()
-                             (core 10.1+), else defer it with the reason
+                             (core 10.1.3+), else defer it with the reason
           Phase 2 (--phase refactor) fixes soft items regardless of the policy
           ("zero deprecations"), still respecting the core floor.
   unknown a deprecation whose removal version cannot be read, or belongs to a
           contrib project, or a symbol PHPStan cannot find that the catalog
           does not date: treated as BLOCKING (conservative) until reviewed.
+  guarded a function PHPStan cannot find that only the deprecated callable
+          of a DeprecationHelper::backwardsCompatibleCall() calls, whose
+          second argument (the core from which the current callable runs)
+          is at most T.0.0: no core of the target major runs it, so it is
+          reported, never blocking. run-phpstan.sh --json marks such a
+          message (drupilot_guard); a plain-text input has no mark.
 
 Removal versions come from the analyzer message itself (phpstan-deprecation-
 rules echoes core's "in drupal:X and is removed from drupal:Y"). The
@@ -672,6 +680,7 @@ Usage:
   --json            Emit the classification JSON on STDOUT:
                     {tool, policy, phase, target_major, core_requirement,
                      core_floor, blocking, counts:{hard,soft,unknown,other},
+                     plus counts.guarded and guarded:[..] when there is one,
                      symbols:[{symbol, class, deprecated_in, removed_in,
                        replacement, replacement_since, replacement_at_floor,
                        effort, action, reason, occurrences}],
@@ -1984,6 +1993,14 @@ Options:
                    by path, their messages by line, identifier and message,
                    the general errors by text: DET-2). A DET-1 refusal
                    (exit 3) is reported as crashed, its reason in crash.
+                   A "Function X not found." that only the deprecated
+                   callable (the fourth argument) of a
+                   DeprecationHelper::backwardsCompatibleCall() calls gets
+                   drupilot_guard: {kind: "deprecation-helper-fallback",
+                   deprecated_version}, the call's second argument (the
+                   fallback runs only on an older core; the scan is
+                   php_bc_fallback_spans), so classify-deprecations.sh can
+                   tell it from a call the target core runs.
                    When PHPStan crashed (no
                   report produced) `totals` is null, `files` is {} and the
                   reason is in `drupilot.crash` — never a fake zero count.

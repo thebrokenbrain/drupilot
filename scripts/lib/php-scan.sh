@@ -773,3 +773,86 @@ END {
 }' "$f" 2> /dev/null | LC_ALL=C sort -n -u || true
   return 0
 }
+
+# php_bc_fallback_spans BLANKED RAW -> one TSV record per
+# DeprecationHelper::backwardsCompatibleCall() call with four positional
+# arguments: the first and last line of its fourth argument (the deprecated
+# callable, which runs only on a core older than the second argument), that
+# second argument when it is a quoted literal (read from RAW; empty
+# otherwise), and the functions called in the fourth and in the third
+# argument (lowercased, space-separated; a method, a static call, a `new` or
+# a closure keyword is not a function call). BLANKED is php_code_lines's
+# output for RAW, so the two have the same lines and offsets. A heuristic
+# scan, not a parser; a call with named arguments is skipped.
+php_bc_fallback_spans() {
+  local b="${1:-}" r="${2:-}"
+  [[ -f "$b" && -f "$r" ]] || return 0
+  LC_ALL=C awk '
+function shut(k,   d, ch) {
+  d = 0
+  for (; k <= n; k++) {
+    ch = substr(buf, k, 1)
+    if (ch == "(" || ch == "[" || ch == "{") d++
+    else if (ch == ")" || ch == "]" || ch == "}") { d--; if (d == 0) return k }
+  }
+  return n + 1
+}
+function lineof(k,   t) { t = substr(buf, 1, k); return gsub(/\n/, "", t) + 1 }
+function trim(s) { gsub(/^[ \t\n\r]+|[ \t\n\r]+$/, "", s); return s }
+# funcs(a, b) -> the functions called in buf[a..b], lowercased, one space
+# between them.
+function funcs(a, b,   s, out, nm, pre, tp, k) {
+  s = substr(buf, a, b - a + 1); out = ""; tp = ""
+  while (match(s, /[A-Za-z_][A-Za-z0-9_]*[ \t\n\r]*\(/)) {
+    nm = substr(s, RSTART, RLENGTH); sub(/[ \t\n\r]*\($/, "", nm)
+    # What comes before the name: right before it (a longer name, a
+    # variable), and before it once blanks are dropped (->, ::, new).
+    pre = tp substr(s, 1, RSTART - 1); tp = pre
+    k = tolower(nm)
+    if (pre !~ /[A-Za-z0-9_$]$/) {
+      sub(/[ \t\n\r]+$/, "", pre)
+      if (pre !~ /(->|::)$/ && pre !~ /(^|[^A-Za-z0-9_])new$/ && k != "function" && k != "fn" && k != "array" \
+          && k != "list" && k != "isset" && k != "empty" && k != "use" && k != "static" && k != "match")
+        out = out (out == "" ? "" : " ") k
+    }
+    tp = tp substr(s, RSTART, RLENGTH)
+    s = substr(s, RSTART + RLENGTH)
+  }
+  return out
+}
+FNR == NR { buf = buf $0 "\n"; next }
+{ raw = raw $0 "\n" }
+END {
+  n = length(buf); lb = tolower(buf)
+  for (i = 1; i <= n; i++) {
+    if (substr(lb, i, 1) != "d" || substr(lb, i, 17) != "deprecationhelper") continue
+    j = i + 17
+    while (substr(buf, j, 1) ~ /[ \t\n\r]/) j++
+    if (substr(buf, j, 2) != "::") continue
+    j += 2; while (substr(buf, j, 1) ~ /[ \t\n\r]/) j++
+    if (substr(lb, j, 23) != "backwardscompatiblecall") continue
+    j += 23; while (substr(buf, j, 1) ~ /[ \t\n\r]/) j++
+    if (substr(buf, j, 1) != "(") continue
+    e = shut(j)
+    # The top-level commas of the argument list.
+    na = 0; d = 0; st[1] = j + 1
+    for (k = j; k < e; k++) {
+      ch = substr(buf, k, 1)
+      if (ch == "(" || ch == "[" || ch == "{") d++
+      else if (ch == ")" || ch == "]" || ch == "}") d--
+      else if (ch == "," && d == 1) { na++; en[na] = k - 1; st[na + 1] = k + 1 }
+    }
+    na++; en[na] = e - 1
+    if (na < 4) continue
+    # Named arguments: skipped.
+    if (trim(substr(buf, st[1], en[1] - st[1] + 1)) ~ /^[A-Za-z_][A-Za-z0-9_]*[ \t]*:[^:]/) continue
+    v = trim(substr(raw, st[2], en[2] - st[2] + 1))
+    if (v ~ /^\047[0-9][0-9.]*\047$/ || v ~ /^"[0-9][0-9.]*"$/) v = substr(v, 2, length(v) - 2); else v = ""
+    a4 = st[4]; while (substr(buf, a4, 1) ~ /[ \t\n\r]/) a4++
+    b4 = en[4]; while (b4 > a4 && substr(buf, b4, 1) ~ /[ \t\n\r]/) b4--
+    printf "%d\t%d\t%s\t%s\t%s\n", lineof(a4), lineof(b4), v, funcs(st[4], en[4]), funcs(st[3], en[3])
+    i = e
+  }
+}' "$b" "$r" 2> /dev/null || true
+  return 0
+}

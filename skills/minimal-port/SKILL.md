@@ -112,11 +112,18 @@ If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scri
   installed) are documented in the report as *sandbox-only*, not patched. No
   casts/guards added only to satisfy the sandbox level.
 - **Symbols newer than the kept core floor only through
-  `DeprecationHelper::backwardsCompatibleCall()`** (it exists on the 10.1.x
-  branch and later, not in 10.0 — a floor below 10.1 cannot use it). When
+  `DeprecationHelper::backwardsCompatibleCall()`** (it exists from 10.1.3, not
+  in 10.0 or 10.1.0-10.1.2 — a floor below 10.1.3 cannot use it, and the plan's
+  `rector.bc` then tells drupal-rector not to write it). When
   keeping `^10 || ^11`, a replacement API that does not exist on the lowest
   declared core (e.g. the `TextSummary` service, `getOriginal()` from 11.2)
   breaks Drupal 10; wrap it, or leave the soft-deprecated call and report it.
+  A hard deprecation's replacement newer than the default floor raises the
+  plan's floor instead (`format_size()` → `ByteSizeMarkup`: `^10.2 || ^11`).
+  A removed function that only the fallback (fourth argument) of a
+  `DeprecationHelper` call still calls, written for an older core, is
+  `guarded` in `classify-deprecations.sh` (reported, not blocking): keep the
+  wrapper, do not "fix" its fallback.
 - **Soft deprecations follow one policy, `DRUPILOT_SOFT_DEPRECATIONS`
   (`report` default | `defer` | `fix`).** `classify-deprecations.sh` (§6) splits
   what PHPStan reports: **hard** = removed in a major ≤ the target major (e.g.
@@ -365,8 +372,10 @@ Apply only the mechanical, behavior-preserving fixes:
   by default). For Drupal 11 that range is core-strategy's
   `recommended_core_version_requirement` for the same strategy (`auto` → `^10 || ^11` for a
   BC-preserving port — `^10.N || ^11` when a minor floor was declared (`^10.3`
-  stays `^10.3 || ^11`) or the code uses a plugin attribute class that exists only
-  from 10.N; `^11.N` when such a class exists only in Drupal 11 — or `^11` on a BC break / `d11-only`) to the main `info.yml`
+  stays `^10.3 || ^11`), the code uses a plugin attribute class that exists only
+  from 10.N, or the port replaces an API whose replacement exists only from 10.N
+  (`format_size()` → `ByteSizeMarkup`: `^10.2 || ^11`, from the `lifecycle`
+  catalog of `config/deprecations.json`); `^11.N` when such a class exists only in Drupal 11 — or `^11` on a BC break / `d11-only`) to the main `info.yml`
   **and every submodule's** — a submodule left on `^8.8 || ^9 || ^10` cannot be
   installed on Drupal 11 (core marks it `core_incompatible`):
 

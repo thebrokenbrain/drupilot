@@ -55,6 +55,13 @@ stay byte-identical. AR-24 leaves open:
      wrapper, because that API exists from 10.2.
    - The `^10 || ^11` case, where the default wrappers need a core newer than
      10.1.3, is left as it was for M6 (T-M6-06, ADR 0017 item 2).
+   - Amended in 1.0.1: a plan whose `rector.bc` is off now renders a block
+     that calls `disableBackwardCompatibility()`, which is what ADR 0017
+     item 2's "off" means. drupal-rector's default wraps every change newer
+     than 10.1.0 in a `DeprecationHelper` call, and a `^10 || ^11` port then
+     fatals on 10.0 to 10.1.2 (lab L-1.0-D9, optimizedb). Only the render
+     fallback, a plan-shaped object with no `rector.bc`, still renders
+     nothing.
 4. **The floor is the plan's.** `{{PHP_VERSION_L}}` / `{{PHP_SETS_L}}` come
    from the plan's `php.floor`, so `rector.php` and the plan cannot disagree
    (H4). It equals `rector_php_bounds` unless the code itself needs a newer
