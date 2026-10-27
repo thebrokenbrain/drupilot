@@ -2,8 +2,10 @@
 # .claude-plugin/icon.png is the plugin directory's listing icon, read once,
 # the first time the plugin is submitted: a complete, square PNG of 512 to
 # 2048 px a side, under 2 MB. This test is the guard: `claude plugin validate`
-# (2.1.311) reports only a missing icon (ICON_MISSING) or one over 2 MiB
-# (ICON_INVALID), as a directory warning that never fails the validate gate.
+# (2.1.311) warns only when there is no icon (ICON_MISSING) or when icon.png is
+# under 12 bytes, lacks the PNG signature or is over 2 MiB (ICON_INVALID). It
+# never reads the size in px or the rest of the file, and a directory warning
+# never fails the validate gate.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
 ICON="$T_REPO/.claude-plugin/icon.png"
