@@ -365,6 +365,10 @@ verdict, only when the index names them or their file exists).
           {file}
   scope   current, or next-major for a soft deprecation under the report or
           defer policy (DRUPILOT_SOFT_DEPRECATIONS)
+  attribution  a Rector finding only: hunk when its rule made that hunk (the
+          file had one applied rule, or one hunk), file when several rules
+          changed several hunks (Rector names the rules per file: the rule
+          changed some hunk of the file, maybe not this one)
   class   hard | soft | unknown | guarded (classify-deprecations.sh; a
           guarded one, a removed function only a DeprecationHelper fallback
           calls, is an info finding) | analysis |

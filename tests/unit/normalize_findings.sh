@@ -58,6 +58,8 @@ assert_eq "  an anonymous class loses its file and line in the message" \
 assert_eq "Rector: one finding per applied rule and hunk, at the hunk's first changed line" \
   "$(j '[.findings[] | select(.tool == "rector") | [.line, .message, .anchor, .rule]] | sort')" \
   '[[11,"BarRector","M\\A::run","Rector\\B\\BarRector"],[11,"FooRector","M\\A::run","Rector\\A\\FooRector"],[30,"BarRector","M\\A::other","Rector\\B\\BarRector"],[30,"FooRector","M\\A::other","Rector\\A\\FooRector"]]'
+assert_eq "  two rules, two hunks: attribution file (Rector names the rules per file), only on Rector findings" \
+  "$(j '[([.findings[] | select(.tool == "rector") | .attribution] | unique), ([.findings[] | select(.tool != "rector") | has("attribution")] | unique)]')" '[["file"],[false]]'
 assert_eq "a soft deprecation: next-major under report, merged with the signature finding on its symbol" \
   "$(j '[.findings[] | select(.symbol == "user_load_by_mail") | [.tool, .class, .scope, .file, [.sources[].tool]]]')" \
   '[["phpstan","soft","next-major","src/A.php",["phpstan","catalog"]]]'
@@ -129,6 +131,10 @@ jq '.file_diffs[0].diff = ""' "$R0/04-assess-rector.json" > "$RN/04-assess-recto
 nf --raw-dir "$RN" --target-major 11 --soft-policy report --json
 assert_eq "a diff without hunks: one finding per rule, no line, anchored {file}" \
   "$(j '[.findings[] | select(.tool == "rector") | [.line, .anchor]]')" '[[null,"{file}"],[null,"{file}"]]'
+assert_eq "  one hunk (none here) or one rule: attribution hunk" "$(j '[.findings[] | select(.tool == "rector") | .attribution] | unique')" '["hunk"]'
+jq '.file_diffs[0].applied_rectors = ["Rector\\A\\FooRector"]' "$R0/04-assess-rector.json" > "$RN/04-assess-rector.json"
+nf --raw-dir "$RN" --target-major 11 --soft-policy report --json
+assert_eq "  one rule, two hunks: hunk" "$(j '[.findings[] | select(.tool == "rector") | [.line, .attribution]] | sort')" '[[11,"hunk"],[30,"hunk"]]'
 # A missing raw file is no error.
 rm -f "$RN/04-assess-phpcs.json"
 nf --raw-dir "$RN" --target-major 11 --soft-policy report --json

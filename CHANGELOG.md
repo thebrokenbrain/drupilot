@@ -99,6 +99,15 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   strings, replace a removed `$defaultTheme` with `stark`, turn
   `drupalPostForm()` into `drupalGet()` plus `submitForm()`, and run the check.
   drupilot still runs the suite on the bed's core only.
+- A Rector finding in `findings.json` now says how sure its line is. Rector
+  names the rules it applied per file, and `normalize-findings.sh` paired every
+  rule with every changed hunk, so in a file with several rules and several
+  hunks a rule was shown at a line it never touched (the optimizedb
+  assessment read `TernaryToNullCoalescingRector` as the `format_size()`
+  change). Each Rector finding now carries `attribution`: `hunk` when its rule
+  made that hunk (one rule, or one hunk), `file` when it only changed some
+  hunk of the file. The ids do not change; the findings golden of
+  legacy_widgets gains the field.
 
 ## [1.0.0] - 2026-10-27
 
