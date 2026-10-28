@@ -125,7 +125,10 @@ PHP of the window, not only the test-bed's:
 
 - `scripts/analysis/php-target.sh` finds, in the code only (comments and
   strings blanked), the constructs of `config/php/rules.json` a PHP of the window
-  removed or deprecated (`removed-blocking`, `report-only`);
+  removed or deprecated (`removed-blocking`, `report-only`), among them a
+  `usort()`/`uasort()`/`uksort()` comparator that returns a bool
+  (`p80-sort-bool-comparator`: return `$a <=> $b`, or `$b <=> $a` for the
+  reverse order, so the sort order stays the same);
 - `scripts/analysis/php-lint-window.sh` runs `php -l` on each PHP of the window,
   in throwaway `php:X.Y-cli` containers (skipped without Docker);
 - `scripts/analysis/run-phpcompat.sh` runs PHPCompatibility (an alpha, from its

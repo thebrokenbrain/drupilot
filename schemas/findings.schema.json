@@ -84,7 +84,7 @@
   "$defs": {
     "verdict": {"enum": ["ok", "failed", "missing"]},
     "tool": {"enum": ["rector", "phpstan", "phpcompat", "catalog", "upgrade_status", "phpcs"]},
-    "class": {"enum": ["hard", "soft", "unknown", "analysis", "safety", "signature", "metadata", "style", "php-target", "removal", "rector"]},
+    "class": {"enum": ["hard", "soft", "unknown", "guarded", "analysis", "safety", "signature", "metadata", "style", "php-target", "removal", "rector"]},
     "finding": {
       "type": "object",
       "required": ["id", "tool", "rule", "file", "line", "anchor", "symbol", "message", "occurrence", "severity", "scope", "class", "sources"],
@@ -102,6 +102,7 @@
         "severity": {"enum": ["error", "warning", "info"]},
         "scope": {"enum": ["current", "next-major"]},
         "class": {"$ref": "#/$defs/class"},
+        "attribution": {"description": "A Rector finding only: hunk when its rule made the change at its line (the file had one applied rule, or one change block: a run of -/+ lines); file when several rules made several change blocks of the file (Rector reports the rules per file: this rule changed some place of it, maybe not this line).", "enum": ["hunk", "file"]},
         "sources": {
           "description": "Every tool report merged into this finding, in precedence order.",
           "type": "array",

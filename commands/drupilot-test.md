@@ -65,6 +65,17 @@ Before running, adapt the discovered tests for D11 (the skill lists the specific
 - For FunctionalJavascript, ensure the Mink/WebDriver wiring matches the
   environment (read the generated `.ddev/config.yaml` for the real webdriver host;
   do not assume it).
+- Adapt for the declared floor too, not only the bed's core: a removed
+  `$defaultTheme` (`seven`) becomes `stark`; a `submitForm()` label or a
+  `buttonExists()`/`buttonNotExists()` locator is passed as a string
+  (`(string) $this->t('Save')`), because Drupal 10.2.3 to 10.2.x hand a
+  `TranslatableMarkup` to Mink's `findButton(string)` (a `TypeError` on those
+  cores while the bed is green) and `buttonNotExists()` never casts it.
+  Then run the check:
+
+  ```bash
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/check-port-safety.sh" --subject <DIR> --checks test-label-markup
+  ```
 
 These edits are test-only and must not change the subject's production behavior.
 

@@ -10,7 +10,8 @@
 #   flow sequences on one line (with a comment) or several; composer.json's
 #   require of the replacement (a module's or a base theme's); an announced
 #   namespace move is a note (T 11), and a hard break once a major of (S, T]
-#   removes its module (T 12); the majors scanned are (S, T];
+#   removes its module (T 12); the majors scanned are (S, T]; a test's
+#   $defaultTheme naming a removed theme is a test update (a warning);
 # - the release feed (a cached copy, no network): a covering release is a
 #   rewrite, none a block, a beta counts only in a preview; in deterministic
 #   mode the answer is frozen in the root's lock per project and range, and
@@ -103,6 +104,36 @@ assert_match "  the moved class: what to do" "$(jq -r '.findings[] | select(.nam
 assert_eq "  a base theme composer.json already requires: info, not a hard break" \
   "$(jq -c '[.findings[] | select(.name == "claro") | [.severity, .hard_break]]' "$T_OUT")|$(jq -c '[.hard_breaks[] | .id] | index("base-theme-removed")' "$T_OUT")" \
   '[["info",false]]|null'
+
+# A test's $defaultTheme naming a removed theme (seven left core in 10.0):
+# a test update, a warning, never a hard break nor a release lookup; a
+# commented-out line and a theme core still ships are not findings.
+D="$T_TMP/dt"; mkdir -p "$D/tests/src/Functional"
+printf 'name: D\ntype: module\ncore_version_requirement: ^8 || ^9\n' > "$D/dt.info.yml"
+cat > "$D/tests/src/Functional/GeneralTest.php" <<'EOF2'
+<?php
+
+namespace Drupal\Tests\dt\Functional;
+
+class GeneralTest extends \Drupal\Tests\BrowserTestBase {
+  protected $defaultTheme = 'seven';
+  // protected $defaultTheme = 'classy';
+}
+EOF2
+printf '<?php\nclass B {\n  protected string $defaultTheme = "claro";\n  protected $profile = "stable";\n}\n' > "$D/tests/src/Functional/B.php"
+t_run "$T_SH" "$SR" --subject "$D" --target 11 --source 9 --range '^10 || ^11' --offline --json
+assert_eq "a test's \$defaultTheme: a test update, a warning, no release looked up" \
+  "$(jq -c '[.findings[] | [.detector, .name, .file, .line, .action, .severity, .hard_break, .replacement_available]]' "$T_OUT")" \
+  '[["test-theme-removed","seven","tests/src/Functional/GeneralTest.php",6,"test-update","warning",false,null]]'
+assert_match "  the message says what to name" "$(jq -r '.findings[0].message' "$T_OUT")" \
+  '^the theme seven was removed from Drupal core in 10.0: a test that runs on it .* stark unless'
+assert_eq "  a core removal, not a hard break" \
+  "$(jq -c '[.core_removals[] | [.detector, .action, .hard_break]], .hard_breaks' "$T_OUT" | tr '\n' ' ')" \
+  '[["test-theme-removed","test-update",false]] [] '
+t_run "$T_SH" "$SR" --subject "$D" --target 12 --source 11 --range '^11.3 || ^12' --offline --json
+assert_eq "  T 12: claro (removed in 12.0), with its core alternative" \
+  "$(jq -c '[.findings[] | [.name, .action]]' "$T_OUT")|$(jq -r '.findings[0].message' "$T_OUT" | grep -c 'core has default_admin' || true)" \
+  '[["claro","test-update"]]|1'
 
 # A file awk cannot open is skipped, not the files after it (a non-root
 # user: root reads it anyway).

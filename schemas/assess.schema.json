@@ -90,7 +90,7 @@
       "type": "array"
     },
     "core_removals": {
-      "description": "The core removals of the assessment's findings (class removal, ADR 0031): one entry per detector and removed name, with the scanner's action (rewrite, blocked, verify, composer-required, decision, hard-break, note) and the files. Absent from an assess.json written before 1.0.0-alpha.6.",
+      "description": "The core removals of the assessment's findings (class removal, ADR 0031): one entry per detector and removed name, with the scanner's action (rewrite, blocked, verify, composer-required, decision, hard-break, test-update, note) and the files. Absent from an assess.json written before 1.0.0-alpha.6.",
       "type": "array",
       "items": {
         "type": "object",
@@ -99,7 +99,7 @@
         "properties": {
           "detector": {"type": "string", "pattern": "^[a-z0-9-]+$"},
           "name": {"type": "string", "minLength": 1},
-          "action": {"enum": ["rewrite", "blocked", "verify", "composer-required", "decision", "hard-break", "note"]},
+          "action": {"enum": ["rewrite", "blocked", "verify", "composer-required", "decision", "hard-break", "test-update", "note"]},
           "severity": {"enum": ["error", "warning", "info"]},
           "files": {"type": "array", "items": {"type": "string"}}
         }

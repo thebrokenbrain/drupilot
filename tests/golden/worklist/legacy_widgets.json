@@ -127,7 +127,7 @@
         "sig.entity-original-accessors-call": {
           "change_record_search_url": "https://www.drupal.org/list-changes/drupal?keywords_description=getOriginal%20setOriginal",
           "d10_compat": "Not available on Drupal 10.",
-          "fix": "While the floor is below 11.2: keep the ->original property, or wrap the call in DeprecationHelper::backwardsCompatibleCall() (core 10.1+): backwardsCompatibleCall(\\Drupal::VERSION, '11.2', fn() => $entity->getOriginal(), fn() => $entity->original). Raise the floor to ^11.2 to use it directly.",
+          "fix": "While the floor is below 11.2: keep the ->original property, or wrap the call in DeprecationHelper::backwardsCompatibleCall() (core 10.1.3+): backwardsCompatibleCall(\\Drupal::VERSION, '11.2', fn() => $entity->getOriginal(), fn() => $entity->original). Raise the floor to ^11.2 to use it directly.",
           "since": "11.2",
           "why": "->getOriginal()/->setOriginal() on a core entity exist only from Drupal 11.2; while the declared range includes an older core the call is an 'undefined method' fatal there (unless the receiver is the module's own class)."
         }
@@ -1089,9 +1089,9 @@
     }
   ],
   "meta": {
-    "findings_hash": "sha256:5a28c923ad4d3f0429cc4c31945171332527c3e4b826b3eff9c194b361d1b4f8",
-    "recipes_hash": "sha256:c0327819ed44720abb6211cb021db8722b9cbddc4fc45fa311bc791a6c25e446",
-    "worklist_hash": "sha256:dae0ee79349076581cf5928d696d6f842cb3ef5e1e9279770886888c5669b4fb"
+    "findings_hash": "sha256:17050db757f62f040955c853686ae4eb33d56717f6b42ef14358b62223fe95f4",
+    "recipes_hash": "sha256:3ec439c9e178ffba1bdd0d17a245d4c813dc529975f000781a3bfe2709a489bf",
+    "worklist_hash": "sha256:5785fd2e413d6d1542d3c52f6e75068f544763cf807d534418ee242692daa1ef"
   },
   "schema": 1,
   "stage": "assess",

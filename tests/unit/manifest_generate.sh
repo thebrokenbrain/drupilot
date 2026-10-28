@@ -13,6 +13,10 @@
 #   state snapshot reads the time from meta;
 # - php_window from the php-target and php-lint reports, and its section
 #   in port-report.md;
+# - version_bump: the assessment's for a port whose final requirement is the
+#   one it recommended, else core_version_bump from the requirement before
+#   the port (assess.json or the provisional one, else the info.yml at the
+#   port's base; unknown: null); a refactor is always a major;
 # - the usage errors. Docker-free.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
@@ -167,6 +171,38 @@ rm -f "$SD/raw/04-assess-php-target.json" "$SD/raw/04-assess-php-lint.json"
 cp "$T_TMP/f.keep" "$SD/findings.json"; cp "$T_TMP/w.keep" "$SD/worklist.json"
 mf --no-write --json
 assert_eq "  no PHP-window report: no php_window" "$(jq -c 'has("php_window")' "$T_OUT")" "false"
+
+# The SemVer bump of the final requirement (lab L-1.0-D9: a port that drops
+# Drupal 8 and 9 said "n/a" when the final range was not the assessment's).
+mf --no-write --json
+assert_eq "version_bump without assess.json: from the info.yml at the port's base (^10 -> ^10 || ^11: minor)" \
+  "$(jq -r .version_bump "$T_OUT")" "minor"
+jq -n '{current_core_version_requirement: "^8 || ^9", recommended_core_version_requirement: "^10 || ^11", version_bump: "major"}' > "$SD/assess.json"
+mf --no-write --json
+assert_eq "  the final range is the recommended one: the assessment's own bump" "$(jq -r .version_bump "$T_OUT")" "major"
+jq '.recommended_core_version_requirement = "^10.3 || ^11" | .version_bump = "minor"' "$SD/assess.json" > "$T_TMP/as.json" && mv "$T_TMP/as.json" "$SD/assess.json"
+mf --no-write --json
+assert_eq "  another final range: recomputed from the requirement before the port (^8 || ^9 -> ^10 || ^11: major)" \
+  "$(jq -r .version_bump "$T_OUT")" "major"
+jq '.current_core_version_requirement = "^10"' "$SD/assess.json" > "$T_TMP/as.json" && mv "$T_TMP/as.json" "$SD/assess.json"
+mf --no-write --phase refactor --json
+assert_eq "  a refactor is a BC break: major" "$(jq -r .version_bump "$T_OUT")" "major"
+jq '.recommended_core_version_requirement = "^10 || ^11" | .version_bump = "minor"' "$SD/assess.json" > "$T_TMP/as.json" && mv "$T_TMP/as.json" "$SD/assess.json"
+mf --no-write --phase refactor --json
+assert_eq "  a refactor that ends on the recommended range is still a major (the assessment's bump is the port's)" \
+  "$(jq -r .version_bump "$T_OUT")" "major"
+jq '.current_core_version_requirement = "^8 || ^9"' "$SD/assess.json" > "$SD/assess-provisional.json" && rm -f "$SD/assess.json"
+mf --no-write --json
+assert_eq "  the provisional assessment counts too (^8 || ^9 -> ^10 || ^11: major, where the git base says minor)" \
+  "$(jq -r .version_bump "$T_OUT")" "major"
+rm -f "$SD/assess-provisional.json"
+mv "$S/.git" "$T_TMP/git.keep"
+mf --no-write --json
+assert_eq "  no assessment and no git base: the requirement before the port is unknown, so is the bump" \
+  "$(jq -c .version_bump "$T_OUT")" "null"
+mf --no-write --phase refactor --json
+assert_eq "  a refactor is a major even then" "$(jq -r .version_bump "$T_OUT")" "major"
+mv "$T_TMP/git.keep" "$S/.git"
 
 # Usage errors.
 mkdir -p "$T_TMP/empty"; printf 'name: E\ntype: module\n' > "$T_TMP/empty/empty.info.yml"

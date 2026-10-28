@@ -172,7 +172,7 @@ Follow the `viability-assessment` skill: its §3 is the field guide to
   real type or signature error there.
 - **Core removals** — `core_removals`: what the code takes from core that the
   target removes, each with its action (`decision`, `hard-break`, `blocked`,
-  `rewrite`, `verify`, `composer-required`, `note`) and files.
+  `rewrite`, `verify`, `composer-required`, `test-update`, `note`) and files.
 - **info.yml status + core target** — `info_yml` (present, admits the target
   major, submodules) and `core_target`: the recommended requirement, its
   `require_php`, the `version_bump` verdict, `d10_support` and the warnings.

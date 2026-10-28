@@ -135,7 +135,20 @@ reinvent their logic.
    - Deprecated test base classes / traits and namespace moves.
    - PHPUnit 10/11 API changes (data providers, `expectException`, void return types
      on lifecycle methods, attribute-based `#[Group]`/`#[DataProvider]` where used).
-   - Removed core test helpers and changed assertion signatures.
+   - Removed core test helpers and changed assertion signatures
+     (`drupalPostForm($path, $edit, $submit)` becomes `drupalGet($path)` +
+     `submitForm($edit, $submit)`).
+   - A `$defaultTheme` that names a theme core removed (`seven`, `classy`,
+     `stable`): `stark`, unless the test asserts a core theme's markup.
+   - The floor too: while the plan keeps an older core, pass a `submitForm()`
+     label and a `buttonExists()`/`buttonNotExists()` locator as a string
+     (`(string) $this->t(...)`): Drupal 10.2.3 to 10.2.x hand a
+     `TranslatableMarkup` to Mink's `findButton(string)` (a `TypeError` there,
+     green on the bed), and `buttonNotExists()` never casts it. Then run
+     `check-port-safety.sh --subject <DIR> --checks test-label-markup`. In a
+     test that declares `strict_types=1` (Phase 2 adds it), pass strings to
+     every `assertSession()` method too (`pageTextContains()`,
+     `fieldValueEquals()`, ...): below 10.3 core does not cast them.
    - For FunctionalJavascript: Mink/webdriver wiring matching the generated
      `web_environment` (read the YAML for the real webdriver host).
 4. **Run, per group, then all** (never silence failures):

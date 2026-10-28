@@ -38,9 +38,9 @@
   "inputs": {
     "actions_hash": null,
     "base": "28ccfa52a23cf328a638704fefe69569cb0bda8a",
-    "findings_hash": "sha256:5a28c923ad4d3f0429cc4c31945171332527c3e4b826b3eff9c194b361d1b4f8",
+    "findings_hash": "sha256:17050db757f62f040955c853686ae4eb33d56717f6b42ef14358b62223fe95f4",
     "findings_stage": "assess",
-    "worklist_hash": "sha256:dae0ee79349076581cf5928d696d6f842cb3ef5e1e9279770886888c5669b4fb"
+    "worklist_hash": "sha256:5785fd2e413d6d1542d3c52f6e75068f544763cf807d534418ee242692daa1ef"
   },
   "machine_name": "legacy_widgets",
   "manual_edits": [
@@ -550,7 +550,7 @@
   "subject": "web/modules/custom/legacy_widgets",
   "tool": "manifest",
   "type": "module",
-  "version_bump": null,
+  "version_bump": "minor",
   "worklist": {
     "by_lane_status": {
       "ai-free": {

@@ -58,6 +58,8 @@ assert_eq "  an anonymous class loses its file and line in the message" \
 assert_eq "Rector: one finding per applied rule and hunk, at the hunk's first changed line" \
   "$(j '[.findings[] | select(.tool == "rector") | [.line, .message, .anchor, .rule]] | sort')" \
   '[[11,"BarRector","M\\A::run","Rector\\B\\BarRector"],[11,"FooRector","M\\A::run","Rector\\A\\FooRector"],[30,"BarRector","M\\A::other","Rector\\B\\BarRector"],[30,"FooRector","M\\A::other","Rector\\A\\FooRector"]]'
+assert_eq "  two rules, two hunks: attribution file (Rector names the rules per file), only on Rector findings" \
+  "$(j '[([.findings[] | select(.tool == "rector") | .attribution] | unique), ([.findings[] | select(.tool != "rector") | has("attribution")] | unique)]')" '[["file"],[false]]'
 assert_eq "a soft deprecation: next-major under report, merged with the signature finding on its symbol" \
   "$(j '[.findings[] | select(.symbol == "user_load_by_mail") | [.tool, .class, .scope, .file, [.sources[].tool]]]')" \
   '[["phpstan","soft","next-major","src/A.php",["phpstan","catalog"]]]'
@@ -129,6 +131,18 @@ jq '.file_diffs[0].diff = ""' "$R0/04-assess-rector.json" > "$RN/04-assess-recto
 nf --raw-dir "$RN" --target-major 11 --soft-policy report --json
 assert_eq "a diff without hunks: one finding per rule, no line, anchored {file}" \
   "$(j '[.findings[] | select(.tool == "rector") | [.line, .anchor]]')" '[[null,"{file}"],[null,"{file}"]]'
+assert_eq "  one hunk (none here) or one rule: attribution hunk" "$(j '[.findings[] | select(.tool == "rector") | .attribution] | unique')" '["hunk"]'
+jq '.file_diffs[0].applied_rectors = ["Rector\\A\\FooRector"]' "$R0/04-assess-rector.json" > "$RN/04-assess-rector.json"
+nf --raw-dir "$RN" --target-major 11 --soft-policy report --json
+assert_eq "  one rule, two hunks: hunk" "$(j '[.findings[] | select(.tool == "rector") | [.line, .attribution]] | sort')" '[[11,"hunk"],[30,"hunk"]]'
+jq '.file_diffs[0].diff = "@@ -10,8 +10,8 @@\n ctx\n-a\n+b\n ctx\n ctx\n-c\n+d\n ctx\n"' "$R0/04-assess-rector.json" > "$RN/04-assess-rector.json"
+nf --raw-dir "$RN" --target-major 11 --soft-policy report --json
+assert_eq "  two rules, one hunk holding two change blocks (Rector merges changes a few lines apart): file" \
+  "$(j '[.findings[] | select(.tool == "rector") | [.line, .attribution]] | unique')" '[[11,"file"]]'
+jq '.file_diffs[0].diff = "@@ -2,1 +2,1 @@\n-$a = isset($x) ? $x : format_size(1);\n\\ No newline at end of file\n+$a = $x ?? ByteSizeMarkup::create(1);\n\\ No newline at end of file\n"' "$R0/04-assess-rector.json" > "$RN/04-assess-rector.json"
+nf --raw-dir "$RN" --target-major 11 --soft-policy report --json
+assert_eq "  a last line with no final newline is one change block: hunk" \
+  "$(j '[.findings[] | select(.tool == "rector") | [.line, .attribution]] | unique')" '[[2,"hunk"]]'
 # A missing raw file is no error.
 rm -f "$RN/04-assess-phpcs.json"
 nf --raw-dir "$RN" --target-major 11 --soft-policy report --json
@@ -377,20 +391,21 @@ jq -n '{tool: "scan-removals", target_major: 12, findings: [
   {detector: "dependency-removed", name: "history", action: "blocked", severity: "error", file: "m.info.yml", line: 9, message: "history was removed"},
   {detector: "dependency-removed", name: "ban", action: "verify", severity: "warning", file: "m.info.yml", line: 10, message: "ban was removed"},
   {detector: "migrate-drupal-usage", name: "migrate_drupal", action: "hard-break", severity: "error", file: "src/A.php", line: 30, message: "migrate_drupal was removed"},
-  {detector: "dependency-removed", name: "book", action: "composer-required", severity: "info", file: "m.info.yml", line: 11, message: "book was removed"}]}' \
+  {detector: "dependency-removed", name: "book", action: "composer-required", severity: "info", file: "m.info.yml", line: 11, message: "book was removed"},
+  {detector: "test-theme-removed", name: "seven", action: "test-update", severity: "warning", file: "tests/src/Functional/GT.php", line: 6, message: "the theme seven was removed"}]}' \
   > "$RM/04-assess-removals.json"
 nf --raw-dir "$RM" --target-major 12 --soft-policy report --out "$T_TMP/frm.json"
 assert_eq "removals: its verdict" "$(jq -c '.tools.removals' "$T_TMP/frm.json")" '"ok"'
 assert_eq "removals: rule, symbol, file, line, severity; all class removal" \
   "$(jq -c '[.findings[] | select(.class == "removal") | [.tool, .rule, .symbol, .file, .line, .severity]] | sort' "$T_TMP/frm.json")" \
-  '[["catalog","removal:base-theme-removed:decision","claro","themes/t/t.info.yml",6,"error"],["catalog","removal:dependency-removed:blocked","history","m.info.yml",9,"error"],["catalog","removal:dependency-removed:composer-required","book","m.info.yml",11,"info"],["catalog","removal:dependency-removed:rewrite","contact","m.info.yml",8,"warning"],["catalog","removal:dependency-removed:verify","ban","m.info.yml",10,"warning"],["catalog","removal:migrate-drupal-usage:hard-break","migrate_drupal","src/A.php",30,"error"]]'
+  '[["catalog","removal:base-theme-removed:decision","claro","themes/t/t.info.yml",6,"error"],["catalog","removal:dependency-removed:blocked","history","m.info.yml",9,"error"],["catalog","removal:dependency-removed:composer-required","book","m.info.yml",11,"info"],["catalog","removal:dependency-removed:rewrite","contact","m.info.yml",8,"warning"],["catalog","removal:dependency-removed:verify","ban","m.info.yml",10,"warning"],["catalog","removal:migrate-drupal-usage:hard-break","migrate_drupal","src/A.php",30,"error"],["catalog","removal:test-theme-removed:test-update","seven","tests/src/Functional/GT.php",6,"warning"]]'
 assert_eq "removals: a PHP file's anchored like the other tools'" \
   "$(jq -c '[.findings[] | select(.symbol == "migrate_drupal") | .anchor]' "$T_TMP/frm.json")" '["M\\A::other"]'
 assert_eq "removals: its raw file is in meta.raw" "$(jq -c '.meta.raw | has("04-assess-removals.json")' "$T_TMP/frm.json")" "true"
 t_run "$T_SH" "$T_REPO/scripts/ai/classify.sh" --findings "$T_TMP/frm.json" --json
-assert_eq "classify: human items with the removal reasons, blocking on an error" \
+assert_eq "classify: human items with the removal reasons, blocking on an error (a test theme: a warning)" \
   "$(jq -c '[.items[] | select(.lane == "human" and ((.reason // "") | test("remov"))) | [.file, .reason, .blocking]] | sort' "$T_OUT")" \
-  '[["m.info.yml","removed-dependency-no-release; removed-dependency-replaceable; removed-dependency-unverified",true],["src/A.php","removed-from-core",true],["themes/t/t.info.yml","base-theme-removed",true]]'
+  '[["m.info.yml","removed-dependency-no-release; removed-dependency-replaceable; removed-dependency-unverified",true],["src/A.php","removed-from-core",true],["tests/src/Functional/GT.php","removed-test-theme",false],["themes/t/t.info.yml","base-theme-removed",true]]'
 assert_eq "  the info note deferred" \
   "$(jq -c --slurpfile f "$T_TMP/frm.json" '([$f[0].findings[] | select(.symbol == "book") | .id]) as $b
      | [.items[] | select(.finding_ids | any(.[]; . as $x | $b | index($x))) | [.lane, .reason]]' "$T_OUT")" '[["deferred","info"]]'

@@ -240,11 +240,33 @@ rector_skip_block() {
 # rector_bc_block PLAN -> rector.php v5's {{BC_BLOCK}}: with the plan's
 # rector.bc enabled, a wrapper that registers drupal-rector's settings with
 # backwards-compatible rewrites (DeprecationHelper) for every core from
-# rector.bc.min_core on (ADR 0017 item 2); nothing otherwise, so drupal-rector
-# keeps its own default, as in 0.9.
+# rector.bc.min_core on (ADR 0017 item 2); with it off (enabled false: the
+# range admits one minor, or a core older than PLAN_BC_MIN_CORE, where
+# DeprecationHelper does not exist yet), a wrapper that turns them off, since
+# drupal-rector's own default wraps every change newer than its minimum in a
+# DeprecationHelper call such a core cannot load (lab L-1.0-D9); nothing for
+# a plan without rector.bc, so drupal-rector keeps its default, as in 0.9.
 rector_bc_block() {
-  local min
+  local min en
+  en="$(printf '%s' "${1:-}" | jq -r '.rector.bc.enabled | if type == "boolean" then tostring else empty end' 2> /dev/null || true)"
   min="$(printf '%s' "${1:-}" | jq -r 'select(.rector.bc.enabled == true) | .rector.bc.min_core // empty' 2> /dev/null || true)"
+  if [[ "$en" == "false" ]]; then
+    cat <<EOF
+
+// No backwards-compatible rewrites (the plan's rector.bc is off: the declared
+// range admits one minor only, or a core older than $PLAN_BC_MIN_CORE, which has no
+// DeprecationHelper). Rector writes each replacement directly.
+\$drupilotConfig = static function (RectorConfig \$rectorConfig) use (\$drupilotConfig): void {
+  \$drupilotConfig(\$rectorConfig);
+  if (class_exists(\\DrupalRector\\Services\\DrupalRectorSettings::class)
+      && method_exists(\\DrupalRector\\Services\\DrupalRectorSettings::class, 'disableBackwardCompatibility')) {
+    \$rectorConfig->singleton(\\DrupalRector\\Services\\DrupalRectorSettings::class, static fn () => (new \\DrupalRector\\Services\\DrupalRectorSettings())
+      ->disableBackwardCompatibility());
+  }
+};
+EOF
+    return 0
+  fi
   [[ "$min" =~ ^[0-9]+\.[0-9]+$ ]] || return 0
   cat <<EOF
 

@@ -161,6 +161,17 @@ $drupilotConfig = RectorConfig::configure()
     'engine',
   ]);
 
+// No backwards-compatible rewrites (the plan's rector.bc is off: the declared
+// range admits one minor only, or a core older than 10.1.3, which has no
+// DeprecationHelper). Rector writes each replacement directly.
+$drupilotConfig = static function (RectorConfig $rectorConfig) use ($drupilotConfig): void {
+  $drupilotConfig($rectorConfig);
+  if (class_exists(\DrupalRector\Services\DrupalRectorSettings::class)
+      && method_exists(\DrupalRector\Services\DrupalRectorSettings::class, 'disableBackwardCompatibility')) {
+    $rectorConfig->singleton(\DrupalRector\Services\DrupalRectorSettings::class, static fn () => (new \DrupalRector\Services\DrupalRectorSettings())
+      ->disableBackwardCompatibility());
+  }
+};
 // The polyfills every core of the declared range ships (the plan's
 // rector.polyfills): Rector reads them here, never from the composer.json
 // of the test-bed.

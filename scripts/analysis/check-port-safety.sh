@@ -38,6 +38,20 @@
 #                      a review warning when it cannot be attributed).
 #   class-case         services.yml / routing.yml class references and PSR-4
 #                      class names whose case differs from the real file.
+#   test-label-markup  In a file under tests/, a translated string object
+#                      ($this->t(...)) as a submitForm() label (its second
+#                      argument) or a buttonExists() locator while the
+#                      declared range admits a core from the check's
+#                      strict_from (10.2.3, where core's WebAssert declares
+#                      strict_types) to before its cast_from (10.3.0, where
+#                      it casts the label), or as a buttonNotExists()
+#                      locator while it admits a core from strict_from to
+#                      before not_exists_typed_from (12.0.0, where its
+#                      parameter is typed string and PHP converts the
+#                      label): Mink's findButton(string) gets it, a
+#                      TypeError (lab L-1.0-D9 on 10.2.12). In diff mode, a
+#                      line the port left alone is attributed to the port
+#                      when the range at the base admitted no such core.
 #
 # Diff-aware: when the subject is tracked by git, every finding is attributed —
 # "introduced" (on a line the port added/changed vs the pre-port base) or
@@ -85,7 +99,7 @@ set -euo pipefail
 # shellcheck source=../lib/php-scan.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/php-scan.sh"
 
-ALL_CHECKS="plugin-di removed-use static-factory fapi-callable serialization override-attribute class-case"
+ALL_CHECKS="plugin-di removed-use static-factory fapi-callable serialization override-attribute class-case test-label-markup"
 SUBJECT=""
 BASE=""
 NO_DIFF=0
@@ -175,6 +189,41 @@ IF_PLUGIN="$(jq -r '.interfaces.plugin_factory' "$CFG")"
 IF_INJECT="$(jq -r '.interfaces.container_injection' "$CFG")"
 IF_DERIVER="$(jq -r '.interfaces.container_deriver' "$CFG")"
 TR_SERIAL="$(jq -r '.interfaces.serialization_trait' "$CFG")"
+# test-label-markup (config/port-checks.json): from strict_from, core's
+# WebAssert declares strict_types, so a translated label it passes on to
+# Mink's findButton(string) is a TypeError; from cast_from, buttonExists()
+# (which submitForm() calls) casts it first; buttonNotExists() never does,
+# but from not_exists_typed_from it declares string $button, so PHP converts
+# the label of a test without strict_types.
+LABEL_STRICT="$(jq -r '.checks["test-label-markup"].strict_from // empty' "$CFG")"
+LABEL_CAST="$(jq -r '.checks["test-label-markup"].cast_from // empty' "$CFG")"
+LABEL_TYPED="$(jq -r '.checks["test-label-markup"].not_exists_typed_from // empty' "$CFG")"
+# label_window REQ -> "CAST STRICT": 1 when REQ admits a core of the minors
+# from strict_from's up to before cast_from's (a translated submitForm() /
+# buttonExists() label fails there), and 1 when it admits one from
+# strict_from's minor up to before not_exists_typed_from's (a translated
+# buttonNotExists() locator fails there), read on the minors of the version
+# data; 0 0 for no requirement.
+label_window() {
+  local req="${1:-}" sm cm tm m v win="" all="" c=0 st=0
+  [[ -n "$req" && "$LABEL_STRICT" =~ ^([0-9]+)\.([0-9]+) ]] || { printf '0 0'; return 0; }
+  sm="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"; cm="$(printf '%s' "$LABEL_CAST" | cut -d. -f1-2)"
+  tm="$(printf '%s' "$LABEL_TYPED" | cut -d. -f1-2)"
+  for m in $(seq "${sm%%.*}" "$(( ${sm%%.*} + 3 ))"); do
+    for v in $(target_get "$m" '.minors | keys[]' 2> /dev/null); do
+      version_ge "$v" "$sm" || continue
+      if [[ -z "$tm" ]] || ! version_ge "$v" "$tm"; then all="$all$v"$'\n'; fi
+      if [[ -z "$cm" ]] || ! version_ge "$v" "$cm"; then win="$win$v"$'\n'; fi
+    done
+  done
+  [[ -n "$win" && -n "$(printf '%s' "$win" | core_requirement_minors "$req")" ]] && c=1
+  [[ -n "$all" && -n "$(printf '%s' "$all" | core_requirement_minors "$req")" ]] && st=1
+  printf '%s %s' "$c" "$st"
+  return 0
+}
+read -r LABEL_CASTFAIL LABEL_STRICTFAIL <<EOF
+$(label_window "$CORE_REQ")
+EOF
 FAPI_KEYS="$(jq -r '.fapi_callback_keys | join(" ")' "$CFG")"
 # Methods core added in a known minor (config/deprecations.json
 # .signature_changes, kind method-signature) and their verified ancestry, so an
@@ -204,6 +253,21 @@ if [[ "$NO_DIFF" != "1" ]] && have_cmd git; then
       log_warn "The subject is not in '$BASE_REF' of $REPO; findings cannot be attributed to the port (introduced: null)."
       BASE_REF=""
     fi
+  fi
+fi
+
+# The range at the port's base, for test-label-markup: a label line the port
+# left alone is still the port's when its range change made it fail.
+BASE_CASTFAIL=""; BASE_STRICTFAIL=""
+if [[ "$DIFF_MODE" == "1" ]]; then
+  _bmn="$(subject_machine_name "$SUBJECT_ABS" 2> /dev/null || basename "$SUBJECT_ABS")"
+  if git -C "$SUBJECT_ABS" cat-file -e "$BASE_REF:./$_bmn.info.yml" 2> /dev/null; then
+    _breq="$(git -C "$SUBJECT_ABS" show "$BASE_REF:./$_bmn.info.yml" 2> /dev/null \
+      | sed -n 's/^core_version_requirement[[:space:]]*:[[:space:]]*//p' | sed -n '1p' | tr -d "'\"" \
+      | sed 's/[[:space:]]*#.*$//; s/[[:space:]]*$//' || true)"
+    read -r BASE_CASTFAIL BASE_STRICTFAIL <<EOF
+$(label_window "$_breq")
+EOF
   fi
 fi
 
@@ -376,6 +440,27 @@ while IFS= read -r f; do
           "#[\\Override] in ${cls##*\\} while core_version_requirement '${CORE_REQ}' still includes Drupal 10: confirm the parent method exists on the LOWEST core you declare (without it PHP 8.3+ fatals at compile time). Phase 1 does not add #[\\Override]."
       fi
     done < <(awk -F'\t' '$1 == "OVERRIDE"' "$s")
+  fi
+
+  if check_on test-label-markup && [[ "$LABEL_STRICTFAIL" == "1" ]]; then
+    case "/$(rel "$f")" in
+      */tests/*)
+        php_code_lines "$f" > "$TMP/label.blank"
+        while IFS=$'\t' read -r line call; do
+          [[ -n "$line" ]] || continue
+          intro="$(introduced "$f" "$line")"
+          if [[ "$call" == "buttonNotExists" ]]; then
+            [[ "$BASE_STRICTFAIL" == "0" && "$intro" == "false" ]] && intro=true
+            msg="buttonNotExists() gets a translated string object as its locator while core_version_requirement '${CORE_REQ}' admits a core from ${LABEL_STRICT} to before ${LABEL_TYPED}: there core's WebAssert never casts it and passes it to Mink's findButton(string), a TypeError. Pass a string: (string) \$this->t('...') or the label itself."
+          else
+            [[ "$LABEL_CASTFAIL" == "1" ]] || continue
+            [[ "$BASE_CASTFAIL" == "0" && "$intro" == "false" ]] && intro=true
+            msg="${call}() gets a translated string object as its label while core_version_requirement '${CORE_REQ}' admits a core from ${LABEL_STRICT} to before ${LABEL_CAST}: there core's WebAssert is strict and passes it to Mink's findButton(string) unchanged, a TypeError (from ${LABEL_CAST} it casts the label). Pass a string: (string) \$this->t('...') or the label itself."
+          fi
+          add_finding test-label-markup "$f" "$line" "$intro" "$msg"
+        done < <(php_markup_label_lines "$TMP/label.blank")
+        ;;
+    esac
   fi
 done < "$FILES"
 

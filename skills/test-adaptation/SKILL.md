@@ -83,7 +83,10 @@ changes to look for (Grep + Edit, minimal and explained):
 - **`$modules`**: every Kernel/Functional test must declare `protected static
   $modules = [...]`. Older non-static `$modules` is removed.
 - **`$defaultTheme`**: BrowserTestBase requires `protected $defaultTheme =
-  'stark';` since D9 — fill in if missing.
+  'stark';` since D9 — fill in if missing. A theme core removed (`seven`,
+  `classy`, `stable` left in 10.0; the assessment lists it as
+  `test-theme-removed`) makes the test fail to start ("Unknown themes"): name
+  `stark`, or a core theme whose markup the test asserts (`claro`, `olivero`).
 - **PHPUnit 10/11 API**: data providers must be `public static`; removed
   assertions (`assertFileNotExists` -> `assertFileDoesNotExist`,
   `assertRegExp` -> `assertMatchesRegularExpression`, `assertContains` on strings
@@ -93,6 +96,24 @@ changes to look for (Grep + Edit, minimal and explained):
 - **Deprecated test traits / helpers**: e.g. removed `getMock`, deprecated
   `AssertLegacyTrait` methods, `drupalPostForm` -> `submitForm`,
   `assertResponse`/`assertText` -> `assertSession()->...`.
+  `drupalPostForm($path, $edit, $submit)` becomes `drupalGet($path)` then
+  `submitForm($edit, $submit)`: `submitForm()` takes no path.
+- **Adapt for every core the module declares, not only the bed's.** When the
+  plan's range keeps an older core (`^10.2 || ^11`), the test API of that
+  floor counts too. Pass a `submitForm()` label and a `buttonExists()` /
+  `buttonNotExists()` locator as a string: `(string) $this->t('Save')` or
+  `'Save'`. From 10.2.3 core's `WebAssert` declares `strict_types` and hands a
+  `TranslatableMarkup` to Mink's `findButton(string)`: a `TypeError`.
+  `buttonExists()` (and so `submitForm()`) casts it from 10.3.0, so a range
+  that admits 10.2.3 to 10.2.x breaks there while the bed's run is green;
+  `buttonNotExists()` never casts it, on any core. In a test file that
+  declares `strict_types=1`, pass strings to every `assertSession()` method
+  (`pageTextContains()`, `fieldValueEquals()`, ...): below 10.3 core does not
+  cast them either. After adapting,
+  run the check that catches it (an error for a label you added):
+  `bash "$ROOT/scripts/analysis/check-port-safety.sh" --subject "$SUBJECT" --checks test-label-markup`.
+  drupilot runs the suite on the bed's core only (Drupal 10 is checked
+  statically), so it cannot see such a failure at runtime.
 - **JS tests**: ensure they extend `WebDriverTestBase` and use
   `getSession()`/`assertSession()`; the Mink webdriver config comes from the DDEV
   `web_environment` (see §4).
@@ -102,7 +123,8 @@ philosophy). The suite is the **preservation gate**, so a test adaptation may
 change only the *form* of a test, never *what it verifies*:
 
 - **Allowed** (mechanical API updates that preserve the test's intent):
-  namespaces / base-class relocations, `static $modules`, `$defaultTheme`, renamed
+  namespaces / base-class relocations, `static $modules`, `$defaultTheme` (a
+  removed theme replaced by `stark`), a translated label cast to string, renamed
   assertions (`assertFileNotExists`→`assertFileDoesNotExist`,
   `assertRegExp`→`assertMatchesRegularExpression`, `assertContains`-on-string→
   `assertStringContainsString`), `setUp(): void` return types, `public static`

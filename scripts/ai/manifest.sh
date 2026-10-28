@@ -29,7 +29,11 @@
 #                      manual_edits (the files neither Rector nor a codemod
 #                      changed)
 #   info.yml, composer.json, assess.json, core-matrix.json: the requirement,
-#                      require.php, the SemVer bump, d10_support.
+#                      require.php, the SemVer bump (the assessment's for a
+#                      port whose final requirement is the one it
+#                      recommended, else core_version_bump from the
+#                      requirement before the port, null when that is
+#                      unknown; a refactor is a major), d10_support.
 # The model writes only the rationale: --rationale FILE, a JSON object
 # {"<worklist item id>": "why"}. An id the worklist does not have is refused;
 # a previous manifest's rationale is kept for the ids still in the worklist.
@@ -170,6 +174,33 @@ if [[ -f "$SD/port-manifest.json" ]]; then RAT_PREV="$(jq -c '(.rationale // {})
 RAT_NEW='{}'; [[ -z "$RATIONALE" ]] || RAT_NEW="$(jq -c . "$RATIONALE")"
 COMPOSER_PHP="$(jq -r '.require.php // empty' "$SUBJECT/composer.json" 2> /dev/null || true)"
 SUBREL="$(jq -r '.subject.path // ""' "$F")"
+# The SemVer bump of the final requirement (core_version_bump): from the one
+# the module declared before the port, a refactor being a BC break. That
+# requirement comes from the assessment (assess.json, else the provisional
+# one), else from the info.yml at the port's base; when none of them can be
+# read it is unknown and so is a port's bump (null; a refactor is still a
+# major). The assessment's own bump,
+# computed for the port phase, is kept for a port whose final requirement is
+# the one it recommended.
+VBUMP=""
+if [[ -n "$REQ" ]]; then
+  _known=0; _cur=""
+  for _af in "$SD/assess.json" "$SD/assess-provisional.json"; do
+    if jq -e 'type == "object" and has("current_core_version_requirement")' "$_af" > /dev/null 2>&1; then
+      _cur="$(jq -r '.current_core_version_requirement // empty' "$_af" 2> /dev/null || true)"; _known=1; break
+    fi
+  done
+  if [[ "$_known" == "0" && -n "$BASE_SHA" ]] && git -C "$SUBJECT" cat-file -e "$BASE_SHA:./$MN.info.yml" 2> /dev/null; then
+    _cur="$(git -C "$SUBJECT" show "$BASE_SHA:./$MN.info.yml" 2> /dev/null \
+      | sed -n 's/^core_version_requirement[[:space:]]*:[[:space:]]*//p' | sed -n '1p' | tr -d "'\"" \
+      | sed 's/[[:space:]]*#.*$//; s/[[:space:]]*$//' || true)"
+    _known=1
+  fi
+  # A refactor is a major whatever the requirement before it.
+  if [[ "$_known" == "1" || "$PHASE" == "refactor" ]]; then
+    VBUMP="$(core_version_bump "$_cur" "$REQ" "$([[ "$PHASE" == "refactor" ]] && echo true || echo false)" "$TMAJ")"
+  fi
+fi
 
 # The actions log's hash, without each record's time ("at"): the same
 # actions give the same hash on every run.
@@ -184,7 +215,7 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
   --slurpfile phpt "$TMP/phpt.json" --slurpfile lint "$TMP/lint.json" --slurpfile pc "$TMP/pc.json" --arg phpre "$PHP_WINDOW_REASONS_ERE" \
   --argjson ratprev "$RAT_PREV" --argjson ratnew "$RAT_NEW" --arg phase "$PHASE" --arg mn "$MN" --arg type "$TYPE" \
   --arg req "$REQ" --arg rphp "$COMPOSER_PHP" --arg pt "$(resolve_php_target)" --arg d10 "$D10" --arg patch "$PATCH" \
-  --arg base "$BASE_SHA" --arg subrel "$SUBREL" --arg acth "$ACTH" '
+  --arg base "$BASE_SHA" --arg subrel "$SUBREL" --arg acth "$ACTH" --arg vbump "$VBUMP" '
   $f[0] as $F | $w[0] as $W | $rr[0] as $RR | $asj[0] as $A | $acts[0] as $ST
   | def occ: ([(.sources // [])[] | select(.tool == "phpstan")] | length) as $n | if $n > 0 then $n else 1 end;
     def nz: if . == "" then null else . end;
@@ -205,7 +236,7 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
   | ([($dd[0].decisions // [])[] | select(.verdict == "reject" and ($RR.digests_sha == null or .digests_sha == $RR.digests_sha)) | {rule, by: (.by // "developer")}] | unique_by(.rule)) as $drej
   | {schema: 1, tool: "manifest", phase: $phase, machine_name: $mn, type: $type, subject: (if $subrel == "" then null else $subrel end),
      core_version_requirement: ($req | nz), require_php: ($rphp | nz), php_target: $pt,
-     version_bump: (if ($A.recommended_core_version_requirement // null) == $req then ($A.version_bump // null) else null end),
+     version_bump: (if $phase == "port" and ($A.recommended_core_version_requirement // null) == $req then ($A.version_bump // null) else ($vbump | nz) end),
      d10_support: $d10,
      rector_official_files: ($RR.changed_files // null),
      rector_rules: (if ($RR.rule_hits // null) == null and ($at[0].rule_hits // null) == null then null

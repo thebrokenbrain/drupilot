@@ -605,3 +605,397 @@ BEGIN { st = "html"; lbl = "" }
 }' "$f" 2> /dev/null || true
   return 0
 }
+
+# The three scans below read php_code_lines's output (comments and string
+# contents blanked, the line numbers kept) as one string: RS is a byte PHP
+# code never holds (a file that holds it is still read whole), the lines are
+# indexed once with split(), and the candidates are found with index(), so a
+# large file costs in step with its size under mawk and BusyBox awk too. A
+# file with no candidate is skipped before awk runs.
+
+# php_sort_bool_comparator_lines FILE -> the line of every comparator, passed
+# inline to usort(), uasort() or uksort(), that returns a comparison (a bool)
+# instead of an int, one line number per finding, in order. PHP 8.0
+# deprecated it ("Returning bool from comparison function is deprecated"),
+# and Drupal's test runner turns that notice into a failure. FILE is
+# php_code_lines's output. A heuristic scan, not a parser: a closure
+# (`function`, maybe `static`) or an arrow function written as the second
+# argument is followed; a named callback, an array callable or a variable is
+# not. A closure's reported line is that of a `return` whose expression has,
+# at its top level (outside brackets, and after any outer parentheses are
+# stripped), a comparison (<, >, <=, >=, ==, !=, ===, !==, <>), && or ||, or
+# is true/false or a negation alone (`!$a`, `!empty($a)`; not `!$a - !$b`),
+# and has neither <=> nor a ternary; an arrow function's, the line of its =>.
+# A closure or arrow function that declares a return type other than bool is
+# skipped (PHP converts what it returns), and so are the returns of a closure
+# nested in the comparator.
+php_sort_bool_comparator_lines() {
+  local f="${1:-}"
+  [[ -f "$f" ]] || return 0
+  LC_ALL=C grep -q -i -E 'u[ak]?sort' "$f" 2> /dev/null || return 0
+  LC_ALL=C awk '
+function ws(k) { while (k <= n && substr(buf, k, 1) ~ /[ \t\n\r]/) k++; return k }
+function isid(c) { return c ~ /[A-Za-z0-9_$\\]/ }
+# shut(k) -> the position of the bracket that closes the one at k (n + 1
+# when none does).
+function shut(k,   d, ch) {
+  d = 0
+  for (; k <= n; k++) {
+    ch = substr(buf, k, 1)
+    if (ch == "(" || ch == "[" || ch == "{") d++
+    else if (ch == ")" || ch == "]" || ch == "}") { d--; if (d == 0) return k }
+  }
+  return n + 1
+}
+# lineof(k) -> the line of position k (a binary search of the line starts).
+function lineof(k,   lo, hi, mid) {
+  lo = 1; hi = nl
+  while (lo < hi) { mid = int((lo + hi + 1) / 2); if (bs[mid] <= k) lo = mid; else hi = mid - 1 }
+  return lo
+}
+function trim(s) { gsub(/^[ \t\n\r]+|[ \t\n\r]+$/, "", s); return s }
+# isbool(e) -> 1 when the expression e reads as a bool (see the header).
+function isbool(e,   m, d, k, ch, c2, c3, found, op, neg, ee, dd, kk, cc) {
+  e = trim(e)
+  # Strip outer parentheses that enclose the whole expression.
+  while (substr(e, 1, 1) == "(") {
+    m = length(e); dd = 0
+    for (kk = 1; kk <= m; kk++) {
+      cc = substr(e, kk, 1)
+      if (cc == "(" || cc == "[" || cc == "{") dd++
+      else if (cc == ")" || cc == "]" || cc == "}") { dd--; if (dd == 0) break }
+    }
+    if (kk != m) break
+    e = trim(substr(e, 2, m - 2))
+  }
+  ee = tolower(e)
+  if (ee == "true" || ee == "false") return 1
+  neg = (substr(e, 1, 1) == "!" && substr(e, 2, 1) != "=")
+  m = length(e); d = 0; found = 0; op = 0
+  for (k = 1; k <= m; k++) {
+    ch = substr(e, k, 1)
+    if (ch == "(" || ch == "[" || ch == "{") { d++; continue }
+    if (ch == ")" || ch == "]" || ch == "}") { d--; continue }
+    if (d > 0) continue
+    c3 = substr(e, k, 3); c2 = substr(e, k, 2)
+    if (c3 == "<=>") return 0
+    if (c3 == "===" || c3 == "!==") { found = 1; k += 2; continue }
+    if (c3 == "?->") { k += 2; continue }
+    if (c2 == "??") { op = 1; k++; continue }
+    if (ch == "?") return 0
+    if (c2 == "->" || c2 == "=>" || c2 == "::") { k++; continue }
+    if (c2 == "<<" || c2 == ">>") { op = 1; k++; continue }
+    if (c2 == "==" || c2 == "!=" || c2 == "<>" || c2 == "<=" || c2 == ">=" || c2 == "&&" || c2 == "||") { found = 1; k++; continue }
+    if (ch == "<" || ch == ">") { found = 1; continue }
+    if (k > 1 && (ch == "+" || ch == "-" || ch == "*" || ch == "/" || ch == "%" || ch == "." || ch == "&" || ch == "|" || ch == "^")) op = 1
+  }
+  if (found) return 1
+  # A leading ! is a bool only when nothing applies to the negated operand
+  # after it (!$a - !$b is an int).
+  return (neg && !op)
+}
+# rtype(k, stop) -> the return type declared from k (after a ":") up to the
+# position stop, lowercased, without a leading "?"; "" when none is declared.
+function rtype(k, stop,   t) {
+  k = ws(k)
+  if (substr(buf, k, 1) != ":") return ""
+  t = tolower(trim(substr(buf, k + 1, stop - k - 1))); sub(/^\?/, "", t)
+  return t
+}
+# A closure: the keyword function ends just before k.
+function closure(k,   p, b, e, ch, t, r, x, stop, q) {
+  k = ws(k)
+  if (substr(buf, k, 1) == "&") k = ws(k + 1)
+  if (substr(buf, k, 1) != "(") return
+  p = shut(k); k = ws(p + 1)
+  if (substr(lb, k, 3) == "use" && !isid(substr(buf, k + 3, 1))) {
+    k = ws(k + 3)
+    if (substr(buf, k, 1) != "(") return
+    k = ws(shut(k) + 1)
+  }
+  b = index(substr(buf, k, 4096), "{"); if (b == 0) return
+  b = k + b - 1
+  t = rtype(k, b)
+  if (t != "" && t != "bool") return
+  e = shut(b)
+  # Each return of this body, the bodies of nested closures skipped.
+  for (x = b + 1; x < e; x++) {
+    ch = substr(lb, x, 1)
+    if (ch == "f" && substr(lb, x, 8) == "function" && !isid(substr(buf, x - 1, 1)) && !isid(substr(buf, x + 8, 1))) {
+      q = index(substr(buf, x, e - x), "{"); if (q == 0) break
+      x = shut(x + q - 1); continue
+    }
+    if (ch == "r" && substr(lb, x, 6) == "return" && !isid(substr(buf, x - 1, 1)) && !isid(substr(buf, x + 6, 1))) {
+      stop = x + 6
+      while (stop < e) {
+        r = substr(buf, stop, 1)
+        if (r == ";") break
+        if (r == "(" || r == "[" || r == "{") { stop = shut(stop) + 1; continue }
+        stop++
+      }
+      if (isbool(substr(buf, x + 6, stop - x - 6))) print lineof(x)
+      x = stop
+    }
+  }
+}
+# An arrow function: the keyword fn ends just before k; its body runs to the
+# comma or the parenthesis that ends the argument.
+function arrow(k,   p, a, stop, r, t) {
+  k = ws(k)
+  if (substr(buf, k, 1) == "&") k = ws(k + 1)
+  if (substr(buf, k, 1) != "(") return
+  p = shut(k); k = p + 1
+  a = index(substr(buf, k, 4096), "=>"); if (a == 0) return
+  a = k + a - 1
+  t = rtype(k, a)
+  if (t != "" && t != "bool") return
+  stop = a + 2
+  while (stop <= n) {
+    r = substr(buf, stop, 1)
+    if (r == "," || r == ")" || r == "]" || r == "}" || r == ";") break
+    if (r == "(" || r == "[" || r == "{") { stop = shut(stop) + 1; continue }
+    stop++
+  }
+  if (isbool(substr(buf, a + 2, stop - a - 2))) print lineof(a)
+}
+# A call: its first top-level comma starts the comparator.
+function call(k,   d, ch) {
+  d = 0
+  for (; k <= n; k++) {
+    ch = substr(buf, k, 1)
+    if (ch == "(" || ch == "[" || ch == "{") d++
+    else if (ch == ")" || ch == "]" || ch == "}") { d--; if (d == 0) return }
+    else if (ch == "," && d == 1) break
+  }
+  if (k > n) return
+  k = ws(k + 1)
+  if (substr(lb, k, 6) == "static" && substr(buf, k + 6, 1) ~ /[ \t\n\r]/) k = ws(k + 6)
+  if (substr(lb, k, 8) == "function" && !isid(substr(buf, k + 8, 1))) closure(k + 8)
+  else if (substr(lb, k, 2) == "fn" && !isid(substr(buf, k + 2, 1))) arrow(k + 2)
+}
+# find(w) -> follows every call of the function w (lowercase).
+function find(w,   pos, p, i, pc, j) {
+  pos = 1
+  while ((p = index(substr(lb, pos), w)) > 0) {
+    i = pos + p - 1; pos = i + length(w)
+    pc = (i > 1) ? substr(buf, i - 1, 1) : " "
+    if (pc ~ /[A-Za-z0-9_$>:]/ || isid(substr(buf, i + length(w), 1))) continue
+    j = ws(i + length(w))
+    if (substr(buf, j, 1) == "(") call(j)
+  }
+}
+BEGIN { RS = "\001" }
+{ buf = buf (NR > 1 ? "\001" : "") $0 }
+END {
+  n = length(buf); lb = tolower(buf)
+  nl = split(buf, L, "\n"); bs[1] = 1
+  for (i = 2; i <= nl; i++) bs[i] = bs[i - 1] + length(L[i - 1]) + 1
+  find("usort"); find("uasort"); find("uksort")
+}' "$f" 2> /dev/null | LC_ALL=C sort -n -u || true
+  return 0
+}
+
+# The awk program of php_bc_fallback_calls and php_bc_blank_fallbacks.
+_PHP_BC_AWK='
+function shut(k,   d, ch) {
+  d = 0
+  for (; k <= n; k++) {
+    ch = substr(buf, k, 1)
+    if (ch == "(" || ch == "[" || ch == "{") d++
+    else if (ch == ")" || ch == "]" || ch == "}") { d--; if (d == 0) return k }
+  }
+  return n + 1
+}
+function lineof(k,   lo, hi, mid) {
+  lo = 1; hi = nl
+  while (lo < hi) { mid = int((lo + hi + 1) / 2); if (bs[mid] <= k) lo = mid; else hi = mid - 1 }
+  return lo
+}
+function trim(s) { gsub(/^[ \t\n\r]+|[ \t\n\r]+$/, "", s); return s }
+function isid(c) { return c ~ /[A-Za-z0-9_$]/ }
+# spans() -> sa/sb/sv[1..ns]: the fourth-argument closures and their versions.
+function spans(   pos, p, i, j, k, e, d, ch, na, a4, b4, q, l, col, v, t, x) {
+  pos = 1; ns = 0
+  while ((p = index(substr(lb, pos), "backwardscompatiblecall")) > 0) {
+    i = pos + p - 1; pos = i + 23
+    # Preceded by DeprecationHelper:: (blanks allowed around ::).
+    k = i - 1; while (k > 0 && substr(buf, k, 1) ~ /[ \t\n\r]/) k--
+    if (substr(buf, k - 1, 2) != "::") continue
+    k -= 2; while (k > 0 && substr(buf, k, 1) ~ /[ \t\n\r]/) k--
+    if (k < 17 || substr(lb, k - 16, 17) != "deprecationhelper") continue
+    j = i + 23; while (substr(buf, j, 1) ~ /[ \t\n\r]/) j++
+    if (substr(buf, j, 1) != "(") continue
+    e = shut(j)
+    na = 0; d = 0; st[1] = j + 1
+    for (x = j; x < e; x++) {
+      ch = substr(buf, x, 1)
+      if (ch == "(" || ch == "[" || ch == "{") d++
+      else if (ch == ")" || ch == "]" || ch == "}") d--
+      else if (ch == "," && d == 1) { na++; en[na] = x - 1; st[na + 1] = x + 1 }
+    }
+    na++; en[na] = e - 1
+    if (na < 4) continue
+    if (trim(substr(buf, st[1], en[1] - st[1] + 1)) ~ /^[A-Za-z_][A-Za-z0-9_]*[ \t]*:[^:]/) continue
+    a4 = st[4]; while (substr(buf, a4, 1) ~ /[ \t\n\r]/) a4++
+    b4 = en[4]; while (b4 > a4 && substr(buf, b4, 1) ~ /[ \t\n\r]/) b4--
+    t = tolower(substr(buf, a4, 16)); sub(/^static[ \t\n\r]+/, "", t)
+    if (t !~ /^(fn|function)[ \t\n\r(&]/) continue
+    # The version: the quoted second argument, read from RAW at its line and
+    # column in BLANKED.
+    q = st[2]; while (substr(buf, q, 1) ~ /[ \t\n\r]/) q++
+    x = en[2]; while (x > q && substr(buf, x, 1) ~ /[ \t\n\r]/) x--
+    v = "?"; l = lineof(q)
+    if ((substr(buf, q, 1) == "\047" || substr(buf, q, 1) == "\"") && lineof(x) == l) {
+      col = q - bs[l] + 1
+      t = substr(R[l], col, x - q + 1)
+      if (t ~ /^\047[0-9][0-9.]*\047$/ || t ~ /^"[0-9][0-9.]*"$/) v = substr(t, 2, length(t) - 2)
+    }
+    ns++; sa[ns] = a4; sb[ns] = b4; sv[ns] = v
+  }
+}
+BEGIN { RS = "\001" }
+FNR == NR { buf = buf (FNR > 1 ? "\001" : "") $0; next }
+{ raw = raw (FNR > 1 ? "\001" : "") $0 }
+END {
+  n = length(buf); lb = tolower(buf)
+  nl = split(buf, L, "\n"); bs[1] = 1
+  for (i = 2; i <= nl; i++) bs[i] = bs[i - 1] + length(L[i - 1]) + 1
+  split(raw, R, "\n")
+  spans()
+  # The blank mode: the file with every fallback closure blanked.
+  if (ENVIRON["AWKV_MODE"] == "blank") {
+    out = buf
+    for (s = 1; s <= ns; s++) {
+      seg = substr(out, sa[s], sb[s] - sa[s] + 1); gsub(/[^\n]/, " ", seg)
+      out = substr(out, 1, sa[s] - 1) seg substr(out, sb[s] + 1)
+    }
+    printf "%s", out
+    exit
+  }
+  nn = split(ENVIRON["AWKV_N"], N, " ")
+  for (z = 1; z <= nn; z++) {
+    w = N[z]; if (w == "") continue
+    pos = 1
+    while ((p = index(substr(lb, pos), w)) > 0) {
+      i = pos + p - 1; pos = i + length(w)
+      if (isid(substr(buf, i + length(w), 1))) continue
+      k = i - 1; pc = (k > 0) ? substr(buf, k, 1) : " "
+      if (pc == "\\") { k--; pc = (k > 0) ? substr(buf, k, 1) : " " ; if (pc ~ /[A-Za-z0-9_\\]/) continue }
+      else if (isid(pc) || pc == "\\") continue
+      # Not a method or a static call, not a declaration nor a new.
+      k2 = k; while (k2 > 0 && substr(buf, k2, 1) ~ /[ \t\n\r]/) k2--
+      t = substr(lb, (k2 > 8 ? k2 - 7 : 1), (k2 > 8 ? 8 : k2))
+      if (substr(buf, k2 - 1, 2) == "->" || substr(buf, k2 - 1, 2) == "::") continue
+      if (t ~ /(^|[^a-z0-9_])function$/ || t ~ /(^|[^a-z0-9_])new$/) continue
+      j = i + length(w); while (substr(buf, j, 1) ~ /[ \t\n\r]/) j++
+      if (substr(buf, j, 1) != "(") continue
+      best = 0
+      for (s = 1; s <= ns; s++) if (sa[s] <= i && i <= sb[s] && (best == 0 || sb[s] - sa[s] < sb[best] - sa[best])) best = s
+      printf "%d\t%s\t%s\n", lineof(i), w, (best ? sv[best] : "-")
+    }
+  }
+}
+'
+
+# php_bc_fallback_calls BLANKED RAW NAMES -> "LINE<TAB>NAME<TAB>VERSION" for
+# every call of a function of NAMES (space-separated, lowercase) in the file:
+# VERSION is the second argument of the innermost
+# DeprecationHelper::backwardsCompatibleCall() whose fourth argument, a
+# closure or an arrow function written there (`fn`, `function`, maybe
+# `static`), holds the call (that fallback runs only on a core older than
+# it), "?" when that argument is not a quoted version, "-" when the call is
+# in no such fallback. A file with no backwardsCompatibleCall() at all prints
+# nothing (none of its calls can be guarded). A call is NAME( not after ->,
+# ::, $, a name, `new` or `function` (a declaration); a leading \ (a fully
+# qualified call) is fine. BLANKED is php_code_lines's output for RAW: the
+# two have the same lines, and a line's code keeps its columns
+# (php_code_lines blanks string contents in place and cuts a comment off the
+# end), so the version is read from RAW at the line and column of its quotes
+# in BLANKED. A first-class callable as the fourth argument itself is created
+# before backwardsCompatibleCall() runs: no span. A call with named arguments
+# is skipped. A heuristic scan, not a parser.
+php_bc_fallback_calls() {
+  local b="${1:-}" r="${2:-}" names="${3:-}"
+  [[ -f "$b" && -f "$r" && -n "$names" ]] || return 0
+  LC_ALL=C grep -q -i 'backwardscompatiblecall' "$b" 2> /dev/null || return 0
+  AWKV_N="$names" LC_ALL=C awk "$_PHP_BC_AWK" "$b" "$r" 2> /dev/null || true
+  return 0
+}
+
+# php_bc_blank_fallbacks BLANKED RAW -> BLANKED with the fallback closure of
+# every DeprecationHelper::backwardsCompatibleCall() (the spans
+# php_bc_fallback_calls reads) blanked, the lines kept: the code a target
+# core runs. BLANKED unchanged when the file has no such call.
+php_bc_blank_fallbacks() {
+  local b="${1:-}" r="${2:-}"
+  [[ -f "$b" && -f "$r" ]] || return 0
+  if ! LC_ALL=C grep -q -i 'backwardscompatiblecall' "$b" 2> /dev/null; then cat "$b"; return 0; fi
+  AWKV_MODE=blank LC_ALL=C awk "$_PHP_BC_AWK" "$b" "$r" 2> /dev/null || true
+  return 0
+}
+
+# php_markup_label_lines FILE -> "LINE<TAB>CALL" for every submitForm() whose
+# second argument, and every buttonExists() / buttonNotExists() whose first
+# argument, is a translated string object ($this->t(...), t(...),
+# $this->formatPlural(...), new TranslatableMarkup(...)) rather than a
+# string; LINE is the argument's. A (string) cast or a literal is fine. FILE
+# is php_code_lines's output. A heuristic scan, not a parser: a method call
+# (->) only, the call may span lines.
+php_markup_label_lines() {
+  local f="${1:-}"
+  [[ -f "$f" ]] || return 0
+  LC_ALL=C grep -q -i -E 'submitform|button(not)?exists' "$f" 2> /dev/null || return 0
+  LC_ALL=C awk '
+function shut(k,   d, ch) {
+  d = 0
+  for (; k <= n; k++) {
+    ch = substr(buf, k, 1)
+    if (ch == "(" || ch == "[" || ch == "{") d++
+    else if (ch == ")" || ch == "]" || ch == "}") { d--; if (d == 0) return k }
+  }
+  return n + 1
+}
+function lineof(k,   lo, hi, mid) {
+  lo = 1; hi = nl
+  while (lo < hi) { mid = int((lo + hi + 1) / 2); if (bs[mid] <= k) lo = mid; else hi = mid - 1 }
+  return lo
+}
+function markup(s) {
+  sub(/^[ \t\n\r]+/, "", s)
+  return s ~ /^(\$this[ \t\n\r]*->[ \t\n\r]*(t|formatPlural)|\\?t|new[ \t\n\r]+\\?([A-Za-z0-9_]+\\)*TranslatableMarkup)[ \t\n\r]*\(/
+}
+# scan(w, name, want) -> each ->w( call whose argument want is translated.
+function scan(w, name, want,   pos, p, i, j, k, e, d, arg, st, x, ch, a, q) {
+  pos = 1
+  while ((p = index(substr(lb, pos), w)) > 0) {
+    i = pos + p - 1; pos = i + length(w)
+    if (substr(buf, i + length(w), 1) ~ /[A-Za-z0-9_]/) continue
+    k = i - 1; while (k > 0 && substr(buf, k, 1) ~ /[ \t\n\r]/) k--
+    if (k < 2 || substr(buf, k - 1, 2) != "->") continue
+    j = i + length(w); while (substr(buf, j, 1) ~ /[ \t\n\r]/) j++
+    if (substr(buf, j, 1) != "(") continue
+    e = shut(j); d = 0; arg = 1; st = j + 1
+    for (x = j; x < e; x++) {
+      ch = substr(buf, x, 1)
+      if (ch == "(" || ch == "[" || ch == "{") d++
+      else if (ch == ")" || ch == "]" || ch == "}") d--
+      else if (ch == "," && d == 1) {
+        if (arg == want) break
+        arg++; st = x + 1
+      }
+    }
+    if (arg != want) continue
+    a = substr(buf, st, (x < e ? x : e) - st)
+    if (markup(a)) { q = st; while (substr(buf, q, 1) ~ /[ \t\n\r]/) q++; printf "%d\t%s\n", lineof(q), name }
+  }
+}
+BEGIN { RS = "\001" }
+{ buf = buf (NR > 1 ? "\001" : "") $0 }
+END {
+  n = length(buf); lb = tolower(buf)
+  nl = split(buf, L, "\n"); bs[1] = 1
+  for (i = 2; i <= nl; i++) bs[i] = bs[i - 1] + length(L[i - 1]) + 1
+  scan("submitform", "submitForm", 2); scan("buttonexists", "buttonExists", 1); scan("buttonnotexists", "buttonNotExists", 1)
+}' "$f" 2> /dev/null | LC_ALL=C sort -n -s -k1,1 || true
+  return 0
+}

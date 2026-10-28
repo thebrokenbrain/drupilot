@@ -31,6 +31,16 @@
 #                    by path, their messages by line, identifier and message,
 #                    the general errors by text: DET-2). A DET-1 refusal
 #                    (exit 3) is reported as crashed, its reason in crash.
+#                    A "Function X not found." whose every call on its line
+#                    sits in the deprecated callable (a closure or an arrow
+#                    function written as the fourth argument) of a
+#                    DeprecationHelper::backwardsCompatibleCall() gets
+#                    drupilot_guard: {kind: "deprecation-helper-fallback",
+#                    deprecated_version}, the highest second argument of
+#                    those calls (the fallback runs only on an older core;
+#                    the scan is php_bc_fallback_calls), so
+#                    classify-deprecations.sh can tell it from a call the
+#                    target core runs.
 #                    When PHPStan crashed (no
 #                   report produced) `totals` is null, `files` is {} and the
 #                   reason is in `drupilot.crash` — never a fake zero count.
@@ -58,6 +68,8 @@ set -euo pipefail
 
 # shellcheck source=../lib/common.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
+# shellcheck source=../lib/php-scan.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/php-scan.sh"
 
 SUBJECT=""
 LEVEL=""
@@ -209,7 +221,7 @@ log_step "PHPStan: ${CMD[*]}"
 # are both captured (never discarded): stdout is re-emitted as the report,
 # stderr is relayed to our stderr, and its deprecation notices are surfaced.
 OUT_F="$(mktemp)"; ERR_F="$(mktemp)"
-trap 'rm -f "$OUT_F" "$ERR_F"' EXIT
+trap 'rm -f "$OUT_F" "$ERR_F" "$OUT_F".* 2> /dev/null || true' EXIT
 set +e
 "${CMD[@]}" >"$OUT_F" 2>"$ERR_F"
 PHPSTAN_RC=$?
@@ -283,7 +295,53 @@ if [[ "$AS_JSON" == "1" ]]; then
       | (if (.files | type) == "object" then .files |= (to_entries | sort_by(.key)
           | map(if (.value.messages | type) == "array" then .value.messages |= sort_by([(.line // 0), (.identifier // ""), (.message // "")]) else . end)
           | from_entries) else . end)
-      | (if (.errors | type) == "array" then .errors |= sort else . end)'
+      | (if (.errors | type) == "array" then .errors |= sort else . end)' > "$OUT_F.sorted"
+    # The not-found functions only DeprecationHelper fallbacks call: every
+    # call of the function on the message's line is in one (a call outside,
+    # in the current callable included, keeps the message as it is), and the
+    # mark carries the highest version of those fallbacks.
+    printf '{}' > "$OUT_F.calls"
+    # (The key and the names joined by a tab, never @tsv: it would escape the
+    # backslashes of a trait key's "(in context of class Drupal\m\Foo)".)
+    jq -r '(.files // {}) | to_entries[]
+           | [.key, ([(.value.messages // [])[] | (.message // "") | capture("^Function (?<f>[A-Za-z0-9_\\\\]+) not found")? | .f
+                     | split("\\") | last | ascii_downcase] | unique | join(" "))]
+           | select(.[1] != "") | join("\t")' "$OUT_F.sorted" 2> /dev/null | while IFS= read -r _row; do
+      _k="${_row%%$'\t'*}"; _names="${_row#*$'\t'}"
+      _p="${_k% (in context of *}"
+      case "$_p" in /var/www/html/*) _p="$DRUPAL_ROOT/${_p#/var/www/html/}";; /*) : ;; *) _p="$DRUPAL_ROOT/$_p";; esac
+      [[ -f "$_p" ]] || continue
+      php_code_lines "$_p" > "$OUT_F.blank"
+      php_bc_fallback_calls "$OUT_F.blank" "$_p" "$_names" \
+        | jq -R -s -c --arg k "$_k" --slurpfile acc "$OUT_F.calls" '$acc[0] + {($k): (split("\n") | map(select(length > 0) | split("\t"))
+            | reduce .[] as $c ({}; .[$c[0]][$c[1]] += [$c[2]]))}' \
+          > "$OUT_F.calls.new" 2> /dev/null && mv -f "$OUT_F.calls.new" "$OUT_F.calls"
+    done
+    jq -c --slurpfile cl "$OUT_F.calls" '
+      def vn: split(".") | map(tonumber? // 0);
+      $cl[0] as $C
+      | if (.files | type) != "object" then . else
+          .files |= with_entries(.key as $k | if ($C[$k] // null) == null then . else
+            .value.messages |= (
+              def nf: (.message // "") | capture("^Function (?<f>[A-Za-z0-9_\\\\]+) not found")? // null;
+              # How many messages name each function on each line: never
+              # more than the calls the scan found (a call it could not see,
+              # inside an interpolated string, keeps them all unmarked).
+              ([.[] | nf as $n | select($n != null and (.line | type) == "number")
+                | "\(.line)\u001f\($n.f | split("\\") | last | ascii_downcase)"]
+               | group_by(.) | map({key: .[0], value: length}) | from_entries) as $cnt
+              | map(
+                . as $m
+                | nf as $nf
+                | if $nf == null or (.line | type) != "number" then .
+                  else ($nf.f | split("\\") | last | ascii_downcase) as $fn
+                    | ($C[$k][$m.line | tostring][$fn] // []) as $vs
+                    | if ($vs | length) > 0 and all($vs[]; test("^[0-9]")) and ($cnt["\($m.line)\u001f\($fn)"] // 0) <= ($vs | length)
+                      then . + {drupilot_guard: {kind: "deprecation-helper-fallback", deprecated_version: ($vs | max_by(vn))}}
+                      else . end
+                  end)) end)
+        end' "$OUT_F.sorted"
+    rm -f "$OUT_F.sorted" "$OUT_F.calls" "$OUT_F.calls.new" "$OUT_F.blank" 2> /dev/null || true
   else
     jq -nc --argjson m "$META" '{totals: null, files: {}, errors: $m.crash, drupilot: $m}'
   fi

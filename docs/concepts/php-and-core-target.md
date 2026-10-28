@@ -78,7 +78,10 @@ PHP-window tools besides the analyzers:
   module's PHP files for the `removed-blocking` and `report-only` constructs
   still in the code: `each()`, `create_function()`, the `mysql_*` and `ereg*`
   functions, the old cast names, the `PDO::MYSQL_ATTR_*` constants,
-  `strftime()`, and the others the data has a pattern for. Rector's level
+  `strftime()`, and the others the data has a pattern for. A construct that
+  spans lines has a scan of its own: a `usort()`, `uasort()` or `uksort()`
+  comparator, written inline, that returns a comparison (a bool) instead of
+  an int (deprecated since PHP 8.0; return `$a <=> $b`). Rector's level
   sets rewrite some forms of a few of them during `upgrade`; whatever is left
   is reported here. Only the code is searched: comments, the contents of
   strings, heredocs and inline HTML are blanked first, and `vendor/` is left

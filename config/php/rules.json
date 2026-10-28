@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "as_of": "2026-10-17",
+  "as_of": "2026-10-27",
   "rector_version": "2.5.2",
   "rules": [
     {
@@ -413,6 +413,20 @@
       ],
       "verified": true,
       "construct": "strftime()/gmstrftime()"
+    },
+    {
+      "id": "p80-sort-bool-comparator",
+      "rule": null,
+      "detect": "scan:sort-bool-comparator",
+      "kind": "report-only",
+      "deprecated_in": "8.0",
+      "removed_in": null,
+      "output_min_php": null,
+      "drupal_safe": null,
+      "src": "https://www.php.net/manual/en/migration80.deprecated.php",
+      "verified": true,
+      "construct": "a usort()/uasort()/uksort() comparator that returns a comparison (a bool) instead of an int: return $a <=> $b (or $b <=> $a for the reverse order), never $a > $b",
+      "note": "php.net (read 2026-10-27): sort comparison functions that return true or false throw a deprecation warning since PHP 8.0. Drupal's test runner turns the notice into a failure (lab L-1.0-D9, optimizedb). Found by a heuristic scan of the closures and arrow functions passed inline (php_sort_bool_comparator_lines): a named callback is not followed."
     },
     {
       "id": "p81-filter-sanitize-string",

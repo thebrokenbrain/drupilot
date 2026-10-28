@@ -49,6 +49,18 @@
         "unknown": "warn"
       }
     },
+    "test-label-markup": {
+      "description": "In a test, a translated string object ($this->t(...), t(...), $this->formatPlural(...), new TranslatableMarkup(...)) as a submitForm() label (its second argument) or a buttonExists() locator while the declared core range admits a core from `strict_from` to before `cast_from`, or as a buttonNotExists() locator while it admits one from `strict_from` to before `not_exists_typed_from`. From `strict_from`, core/tests/Drupal/Tests/WebAssert.php declares strict_types=1 and passes the label to Mink's TraversableElement::findButton(string $locator), which throws a TypeError; from `cast_from`, buttonExists() (which submitForm() calls) casts it first (issue 3421105); buttonNotExists() never casts it, but from `not_exists_typed_from` it declares string $button, so PHP converts the label when a test without strict_types calls it. Pass a string: (string) $this->t('Save') or 'Save'.",
+      "strict_from": "10.2.3",
+      "cast_from": "10.3.0",
+      "not_exists_typed_from": "12.0.0",
+      "verified": "core/tests/Drupal/Tests/WebAssert.php: no strict_types on 9.5.x, 10.0.x, 10.1.x and 10.2.0-10.2.2, strict_types=1 from 10.2.3 (10.2.3-10.2.12, 10.3.0, 11.x, 12.0.x); buttonExists() casts a non-string label with the @todo of issue 3421105 from 10.3.0 (not on 10.2.x) and declares string|int|float|bool $button on 12.0.x; buttonNotExists($button) is untyped and casts nothing on 10.2.x-11.x, buttonNotExists(string $button) on 12.0.0-beta2, 12.0.x and main (git.drupalcode.org, read 2026-10-28); the TypeError reproduced on 10.2.12 with behat/mink 1.13 (lab L-1.0-D9).",
+      "severity": {
+        "introduced": "error",
+        "preexisting": "warn",
+        "unknown": "warn"
+      }
+    },
     "class-case": {
       "description": "A class referenced from *.services.yml / *.routing.yml, or a PSR-4 class declaration, whose case differs from the real file name. Works on case-insensitive filesystems (macOS) and fatals on Linux.",
       "severity": {

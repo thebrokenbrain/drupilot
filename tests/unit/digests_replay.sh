@@ -12,7 +12,9 @@
 # autonomous run's verdicts are replayed only by an autonomous run; a frozen
 # yml that cannot be read again is a digests error, and DRUPILOT_DETERMINISTIC
 # =false fetches it again; an all.php drupilot cannot read whole is a digests
-# error; no yml and nothing frozen filters nothing; no rule left runs nothing.
+# error; a rule file that cannot load (no <?php, or php -l rejects it) is left
+# out on its own; no yml and nothing frozen filters nothing; no rule left runs
+# nothing.
 # Docker-free and offline: a local digests checkout in the cache, a stub
 # Rector that applies the rules of the config it is given, a stub curl.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
@@ -277,6 +279,69 @@ assert_match "  it names the file" "$(tr '\n' ' ' < "$T_ERR")" "rules/d-rule-444
 assert_match "  and the registered class without one" "$(tr '\n' ' ' < "$T_ERR")" "DRuleRector \(no rule file\)"
 git -C "$DG" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false revert -q --no-edit HEAD HEAD~1 > /dev/null 2>&1 || true
 DRUPILOT_PROJECT_DIR="$R" lock_set .digests.sha "$SHA" > /dev/null
+
+# A rule file that cannot load (lab L-1.0-D9: an upstream rule without
+# <?php made all.php fail for every rule) is left out on its own, and so is
+# one php -l rejects; the other rules run.
+git -C "$DG" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false reset -q --hard "$SHA"
+printf 'declare(strict_types=1);\n\nfinal readonly class BRuleRector extends AbstractRector\n{\n}\n' > "$DG/rector/rules/b-rule-222.php"
+git -C "$DG" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false commit -qam no-open-tag
+DRUPILOT_PROJECT_DIR="$R" lock_set .digests.sha "$(git -C "$DG" rev-parse HEAD)" > /dev/null
+dd --clear
+rr
+NADIR="$R/.drupilot/digests/$(git -C "$DG" rev-parse HEAD | cut -c1-16)/rector"
+assert_eq "a rule file without <?php: left out, the other rules run (exit 0)" \
+  "$T_RC|$(j '[.digests_status, .digests_filter.broken, .digests_filter.kept, .digests_review.pending]')" \
+  '0|["ok",[{"rule":"BRuleRector","file":"rules/b-rule-222.php","reason":"no-open-tag"}],3,["CRuleRector","DRuleRector","ERuleRector"]]'
+assert_eq "  the filtered config never loads it" "$(grep -c 'b-rule-222' "$NADIR/all.drupilot.php" || true)" "0"
+assert_match "  it says so" "$(tr '\n' ' ' < "$T_ERR")" "cannot load, left out \(the other rules run\): rules/b-rule-222.php \(no-open-tag\)"
+STUBS2="$T_TMP/stubs2"; mkdir -p "$STUBS2"; cp "$STUBS/composer" "$STUBS2/"
+mk_bin "$STUBS2/php" 'case "$1" in -r) echo 8.3.30;; -v) echo "PHP 8.3.30 (cli)";; -l) case "$2" in *c-rule-333*) echo "PHP Parse error: syntax error"; exit 255;; esac; echo "No syntax errors detected in $2";; esac; exit 0'
+: > "$R/calls"; t_run env PATH="$STUBS2:$NONET" DRUPILOT_PHP_TARGET=8.3 "$T_SH" "$T_REPO/scripts/analysis/run-rector.sh" --subject "$R/$S" --digests --json
+assert_eq "  a rule php -l rejects: left out too" \
+  "$T_RC|$(j '[.digests_filter.broken[] | [.rule, .reason]]')|$(j '.digests_filter.kept')" \
+  '0|[["BRuleRector","no-open-tag"],["CRuleRector","php-lint"]]|2'
+# An uppercase open tag loads in PHP: kept, nothing broken.
+git -C "$DG" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false reset -q --hard "$SHA"
+printf '<?PHP\n\ndeclare(strict_types=1);\n\nfinal readonly class BRuleRector extends AbstractRector\n{\n}\n' > "$DG/rector/rules/b-rule-222.php"
+git -C "$DG" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false commit -qam upper
+DRUPILOT_PROJECT_DIR="$R" lock_set .digests.sha "$(git -C "$DG" rev-parse HEAD)" > /dev/null
+rr
+assert_eq "  <?PHP is an open tag: kept, nothing broken" "$T_RC|$(j '[.digests_status, .digests_filter.kept, .digests_filter.broken]')" '0|["ok",4,[]]'
+# A broken file whose rule the official pass already applies never runs:
+# nothing is lost, no warning.
+git -C "$DG" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false reset -q --hard "$SHA"
+printf 'final readonly class ARuleRector extends AbstractRector\n{\n}\n' > "$DG/rector/rules/a-rule-111.php"
+git -C "$DG" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false commit -qam implemented-broken
+DRUPILOT_PROJECT_DIR="$R" lock_set .digests.sha "$(git -C "$DG" rev-parse HEAD)" > /dev/null
+rr
+assert_eq "  a broken file of a rule the official pass applies: skipped, not broken, no warning" \
+  "$T_RC|$(j '[.digests_filter.skipped_implemented, .digests_filter.broken, .digests_filter.kept]')|$(grep -c -E 'cannot load, left out|rule left to run cannot load' "$T_ERR" || true)" \
+  '0|[["ARuleRector","FRuleRector"],[],4]|0'
+# A file with no open tag and no registered class is a layout drupilot cannot
+# read: refused (fail closed).
+printf 'final class NotRegisteredRector {}\n' > "$DG/rector/rules/d-rule-444.php"
+git -C "$DG" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false commit -qam classless
+DRUPILOT_PROJECT_DIR="$R" lock_set .digests.sha "$(git -C "$DG" rev-parse HEAD)" > /dev/null
+rr
+assert_eq "  a file with neither an open tag nor a registered class: refused (exit 4)" "$T_RC|$(j '.digests_status')" '4|"error"'
+assert_match "  it names the file" "$(tr '\n' ' ' < "$T_ERR")" "layout drupilot cannot filter safely.*rules/d-rule-444.php"
+# Every rule left to run cannot load: nothing runs, and the remedy is the
+# upstream commit, not drupilot (the rules the official pass applies, A and
+# F, are not checked: they never run).
+git -C "$DG" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false reset -q --hard "$SHA"
+for r in a-rule-111:ARuleRector b-rule-222:BRuleRector c-rule-333:CRuleRector d-rule-444:DRuleRector e-rule-555:ERuleRector f-rule-666:FRuleRector; do
+  printf 'final readonly class %s extends AbstractRector\n{\n}\n' "${r#*:}" > "$DG/rector/rules/${r%%:*}.php"
+done
+git -C "$DG" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false commit -qam all-broken
+DRUPILOT_PROJECT_DIR="$R" lock_set .digests.sha "$(git -C "$DG" rev-parse HEAD)" > /dev/null
+rr
+assert_eq "every rule file without <?php: nothing runs (exit 0), all listed as broken" \
+  "$T_RC|$(j '[.digests_status, .digests_filter.kept, (.digests_filter.broken | length)]')" '0|["ok",0,4]'
+assert_match "  the remedy names the upstream commit" "$(tr '\n' ' ' < "$T_ERR")" "Every digests rule left to run cannot load.*Pin a known-good digests commit"
+git -C "$DG" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false reset -q --hard "$SHA"
+DRUPILOT_PROJECT_DIR="$R" lock_set .digests.sha "$SHA" > /dev/null
+dd --clear
 
 # The yml: a cached copy that is not the frozen one is fetched again.
 printf '  # edited\n' >> "$YD/implemented-digests.yml"

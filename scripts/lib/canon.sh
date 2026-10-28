@@ -270,7 +270,7 @@ worklist_fresh() {
 PHP_WINDOW_REASONS_ERE='removed-in-target-php|does-not-compile|fix-needs-php-above-floor|deprecated-no-rule|deprecated-in-php-window'
 # The worklist reasons of the core removals' items (classify.sh, ADR 0031),
 # as one ERE.
-REMOVAL_REASONS_ERE='base-theme-removed|removed-from-core|removed-dependency-(no-release|unverified|replaceable)'
+REMOVAL_REASONS_ERE='base-theme-removed|removed-from-core|removed-dependency-(no-release|unverified|replaceable)|removed-test-theme'
 
 # reason_items ERE [SUBJECT] -> the open human worklist items whose reason
 # matches ERE, as one JSON array of {file, reason, blocking, fresh, messages}

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# For a Drupal 11 plan with no new feature (no BC block, sets of the previous
+# For a Drupal 11 plan with no new feature (no backwards-compatible rewrites:
+# since 1.0.1 a block turns drupal-rector's default off; sets of the previous
 # major only), rector.php template 5 configures Rector as template 4 did
 # (T-M3-09, AR-24, ADR 0019): the same paths, skipped rules, PHP version and
 # level sets, file extensions, and the same Drupal sets — the per-minor sets
@@ -55,8 +56,8 @@ AGG="$(target_get 10 '.rector_sets.own_major[]' | sed 's/^/DrupalRector\\\\Set\\
 assert_eq "v5: the aggregate's per-minor sets, in order" "$(list "$V5" '$drupilotSetNames = ')" "$AGG"
 assert_eq "v5: drupal-rector's bootstrap file, as the aggregate registers it" \
   "$(grep -c "vendor/palantirnet/drupal-rector/config/drupal-phpunit-bootstrap-file.php" "$V5")|$(grep -c 'withBootstrapFiles' "$V5")" "1|1"
-assert_eq "v5: no BC block for ^10 || ^11 (drupal-rector's default, as in v4)" \
-  "$(grep -c 'DrupalRectorSettings' "$V5" || true)|$(grep -c 'DrupalRectorSettings' "$V4" || true)" "0|0"
+assert_eq "v5: for ^10 || ^11 the BC block turns drupal-rector's backwards-compatible rewrites off (v4 left its default on, from 10.1.0: lab L-1.0-D9)" \
+  "$(grep -c -- '->disableBackwardCompatibility()' "$V5" || true)|$(grep -c 'enableBackwardCompatibility' "$V5" || true)|$(grep -c 'DrupalRectorSettings' "$V4" || true)" "1|0|0"
 
 # phpstan.neon: template 2 -> template 3 (compat profile).
 S2="$F/phpstan.v2.neon"; S3="$T_REPO/tests/golden/templates/legacy_widgets.t11-auto-p83/phpstan.neon"

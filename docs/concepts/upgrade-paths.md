@@ -92,6 +92,8 @@ looks for them in every major the port crosses, (S, T], from the version data
 - a dependency on `migrate_drupal` or `migrate_drupal_ui`, or code that uses
   their namespace;
 - a `base theme:` that names a removed theme;
+- a test whose `$defaultTheme` names a removed theme (`seven`, `classy` and
+  `stable` left core in 10.0): the test no longer starts ("Unknown themes");
 - a removed library, in a `*.info.yml`, a `*.libraries.yml`, PHP or Twig.
 
 What happens to each:
@@ -102,6 +104,7 @@ What happens to each:
 | The same, with no release that covers the range | `blocked`: a blocking dependency, never rewritten (H8) | no, a blocking dependency |
 | The same, with the release feed not read (offline) | `verify`: check by hand | no |
 | A removed base theme | `decision`: pick a new base theme, or require the contrib theme (then `composer-required`, an info note) | yes, until the contrib theme is required |
+| A removed theme a test runs on | `test-update`: the test names a theme core still ships, `stark` unless it needs the markup of a theme (a test adaptation, a warning) | no |
 | A removed module with no replacement, `migrate_drupal`, a removed library | `hard-break`: the code must change | yes |
 
 The plan lists them as `core_removals` and `hard_breaks`, from an offline scan,

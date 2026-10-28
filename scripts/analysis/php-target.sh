@@ -15,9 +15,13 @@
 #                     whether the fix runs on L, its output_min_php at or
 #                     below L or none)
 # A row is searched only when it has a `detect` ERE (`ere:`, or `ere-i:` for
-# a case-insensitive one: PHP function and cast names); its `exclude` ERE
-# drops the lines it matches (a method of the same name being declared). The
-# rows of those classes without a pattern are listed in `unsearched`. Only the
+# a case-insensitive one: PHP function and cast names) or names a built-in
+# scan (`scan:NAME`, for a construct that spans lines; the one there is,
+# sort-bool-comparator, is php_sort_bool_comparator_lines in
+# scripts/lib/php-scan.sh); its `exclude` ERE drops the lines it matches (a
+# method of the same name being declared). The rows of those classes without
+# a pattern, and those naming a scan this drupilot does not have, are listed
+# in `unsearched`. Only the
 # code is searched: comments, string contents, heredocs and inline HTML are
 # blanked first (php_code_lines, scripts/lib/php-scan.sh), the line numbers
 # kept. vendor/, node_modules/ and .git/ are left out. L and P are --floor /
@@ -87,6 +91,17 @@ jq -r '.[] | select((.class == "removed-blocking" or .class == "report-only") an
 # match is not an error), the row's exclude applied, <n> mapped back to its path.
 while IFS="$US" read -r id cls det exc; do
   [[ -n "$id" ]] || continue
+  # A built-in scan: its line numbers, file by file.
+  if [[ "$det" == scan:* ]]; then
+    [[ "$det" == "scan:sort-bool-comparator" ]] || continue
+    k=0
+    while IFS= read -r f; do
+      k=$((k + 1))
+      php_sort_bool_comparator_lines "$TMP/m/$k" \
+        | AWKV_P="$f" awk -v id="$id" -v cls="$cls" '/^[0-9]+$/ { printf "%s\t%s\t%s\t%s\n", id, cls, ENVIRON["AWKV_P"], $0 }'
+    done < "$TMP/files" >> "$TMP/hits.tsv"
+    continue
+  fi
   gopt=(-E); ere="${det#ere:}"
   case "$det" in ere-i:*) gopt=(-i -E); ere="${det#ere-i:}";; esac
   { ( cd "$TMP/m" && LC_ALL=C find . -type f -exec grep -nH "${gopt[@]}" -- "$ere" {} + 2> /dev/null ) || true; } > "$TMP/raw"
@@ -112,7 +127,9 @@ OUT="$(jq -R -s -c --slurpfile r "$TMP/rules.json" --arg L "$L" --arg P "$P" '
   | {tool: "php-target", floor: $L, target: $P,
      classes: ($r[0] | group_by(.class) | map({key: .[0].class, value: [.[].id]}) | from_entries),
      findings: $f,
-     unsearched: ([$r[0][] | select((.class == "removed-blocking" or .class == "report-only") and .detect == null) | .id] | sort),
+     unsearched: ([$r[0][] | select((.class == "removed-blocking" or .class == "report-only")
+                                    and (.detect == null or ((.detect | startswith("scan:")) and .detect != "scan:sort-bool-comparator")))
+                   | .id] | sort),
      counts: {removed_blocking: ([$f[] | select(.class == "removed-blocking")] | length),
               report_only: ([$f[] | select(.class == "report-only")] | length)}}' "$TMP/hits.tsv")"
 if [[ "$AS_JSON" == "1" ]]; then

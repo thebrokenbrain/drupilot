@@ -282,6 +282,43 @@
       "applies_when": {},
       "engine": "template",
       "fixtures": null,
+      "id": "dep.format-size",
+      "kind": "template",
+      "lane": "ai-templated",
+      "matches": {
+        "message_ere": "format_size\\(|Function format_size ",
+        "symbols": [
+          "format_size"
+        ]
+      },
+      "postconditions": [
+        {
+          "type": "rescan"
+        }
+      ],
+      "source": "config/deprecations.json#/deprecations/33",
+      "template": {
+        "category": "removed-api",
+        "change_record_search_url": "https://www.drupal.org/list-changes/drupal?keywords_description=format_size",
+        "fix": "Use \\Drupal\\Core\\StringTranslation\\ByteSizeMarkup::create($size, $langcode) (core 10.2 and later); drupal-rector's FunctionToStaticRector makes this change.",
+        "lifecycle": [
+          {
+            "deprecated_in": "10.2.0",
+            "kind": "function",
+            "removed_in": "11.0.0",
+            "replacement": "\\Drupal\\Core\\StringTranslation\\ByteSizeMarkup::create($size, $langcode)",
+            "replacement_since": "10.2",
+            "symbol": "format_size"
+          }
+        ],
+        "why": "format_size() was deprecated in drupal:10.2.0 and REMOVED in drupal:11.0.0: a call is an undefined-function fatal on every Drupal 11 core (a HARD deprecation, always fixed in Phase 1). Its replacement exists only from core 10.2, so a port that keeps Drupal 10 declares at least ^10.2."
+      },
+      "version": "fad824351ef0"
+    },
+    {
+      "applies_when": {},
+      "engine": "template",
+      "fixtures": null,
       "id": "dep.jquery-ui",
       "kind": "template",
       "lane": "human",
@@ -910,6 +947,27 @@
       "applies_when": {},
       "engine": "template",
       "fixtures": null,
+      "id": "safety.test-label-markup",
+      "kind": "template",
+      "lane": "ai-templated",
+      "matches": {
+        "rule": "port-safety:test-label-markup"
+      },
+      "postconditions": [
+        {
+          "type": "rescan"
+        }
+      ],
+      "source": "config/port-checks.json#/checks/test-label-markup",
+      "template": {
+        "why": "In a test, a translated string object ($this->t(...), t(...), $this->formatPlural(...), new TranslatableMarkup(...)) as a submitForm() label (its second argument) or a buttonExists() locator while the declared core range admits a core from `strict_from` to before `cast_from`, or as a buttonNotExists() locator while it admits one from `strict_from` to before `not_exists_typed_from`. From `strict_from`, core/tests/Drupal/Tests/WebAssert.php declares strict_types=1 and passes the label to Mink's TraversableElement::findButton(string $locator), which throws a TypeError; from `cast_from`, buttonExists() (which submitForm() calls) casts it first (issue 3421105); buttonNotExists() never casts it, but from `not_exists_typed_from` it declares string $button, so PHP converts the label when a test without strict_types calls it. Pass a string: (string) $this->t('Save') or 'Save'."
+      },
+      "version": "038c1d508ffd"
+    },
+    {
+      "applies_when": {},
+      "engine": "template",
+      "fixtures": null,
       "id": "sig.config-form-base-ctor",
       "kind": "template",
       "lane": "ai-templated",
@@ -1000,11 +1058,11 @@
       "template": {
         "change_record_search_url": "https://www.drupal.org/list-changes/drupal?keywords_description=getOriginal%20setOriginal",
         "d10_compat": "Not available on Drupal 10.",
-        "fix": "While the floor is below 11.2: keep the ->original property, or wrap the call in DeprecationHelper::backwardsCompatibleCall() (core 10.1+): backwardsCompatibleCall(\\Drupal::VERSION, '11.2', fn() => $entity->getOriginal(), fn() => $entity->original). Raise the floor to ^11.2 to use it directly.",
+        "fix": "While the floor is below 11.2: keep the ->original property, or wrap the call in DeprecationHelper::backwardsCompatibleCall() (core 10.1.3+): backwardsCompatibleCall(\\Drupal::VERSION, '11.2', fn() => $entity->getOriginal(), fn() => $entity->original). Raise the floor to ^11.2 to use it directly.",
         "since": "11.2",
         "why": "->getOriginal()/->setOriginal() on a core entity exist only from Drupal 11.2; while the declared range includes an older core the call is an 'undefined method' fatal there (unless the receiver is the module's own class)."
       },
-      "version": "90db8f313511"
+      "version": "fb494b25113e"
     },
     {
       "applies_when": {},
@@ -1147,8 +1205,8 @@
   ],
   "schema": "drupilot.recipes/1",
   "sources": {
-    "config/deprecations.json": "sha256:965721cdfa745cca019dfb155188c5ca880fcc16ada9a5f679cb9a7ff8e06b73",
+    "config/deprecations.json": "sha256:c33c7a5a8fcf54d8c7e4e9f3f225ef66f67ec819ffe2a6538beedfa9979496db",
     "config/metadata-checks.json": "sha256:182f7ce002a63577a327518fcddfe45d61ea44a23826b981843933ee55fa706f",
-    "config/port-checks.json": "sha256:f385130da0e7c0c58032e78a3038d79b7241dff6f3703a53b8878de3dca878f3"
+    "config/port-checks.json": "sha256:b6dd4624fbe9010053463db4f527cd93b76ccc09aa882b00eef7d8d68fbed6cc"
   }
 }

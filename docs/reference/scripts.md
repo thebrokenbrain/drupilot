@@ -188,9 +188,10 @@ codemod > ai-templated > ai-free > test-adapt > human > deferred.
                 removed-dependency-no-release (no release of the contrib
                 replacement covers the range: it blocks),
                 removed-dependency-unverified (the release feed was not
-                read) or removed-dependency-replaceable (a covering release
-                exists: depend on the contrib project); its info notes are
-                deferred
+                read), removed-dependency-replaceable (a covering release
+                exists: depend on the contrib project) or removed-test-theme
+                (a test's $defaultTheme names a removed theme: a warning);
+                its info notes are deferred
   test-adapt    an ai-templated or ai-free finding in a file under a tests/
                 directory (the module's or a submodule's)
 
@@ -293,7 +294,11 @@ state dir. It is built from what the scripts recorded, never from memory:
                      manual_edits (the files neither Rector nor a codemod
                      changed)
   info.yml, composer.json, assess.json, core-matrix.json: the requirement,
-                     require.php, the SemVer bump, d10_support.
+                     require.php, the SemVer bump (the assessment's for a
+                     port whose final requirement is the one it
+                     recommended, else core_version_bump from the
+                     requirement before the port, null when that is
+                     unknown; a refactor is a major), d10_support.
 The model writes only the rationale: --rationale FILE, a JSON object
 {"<worklist item id>": "why"}. An id the worklist does not have is refused;
 a previous manifest's rationale is kept for the ids still in the worklist.
@@ -362,7 +367,14 @@ verdict, only when the index names them or their file exists).
           {file}
   scope   current, or next-major for a soft deprecation under the report or
           defer policy (DRUPILOT_SOFT_DEPRECATIONS)
-  class   hard | soft | unknown (classify-deprecations.sh) | analysis |
+  attribution  a Rector finding only: hunk when its rule made the change at
+          its line (the file had one applied rule, or one change block: a
+          run of -/+ lines), file when several rules made several change
+          blocks (Rector names the rules per file: the rule changed some
+          place of the file, maybe not this line)
+  class   hard | soft | unknown | guarded (classify-deprecations.sh; a
+          guarded one, a removed function only a DeprecationHelper fallback
+          calls, is an info finding) | analysis |
           safety | signature | metadata | style | php-target | removal |
           rector
 
@@ -578,6 +590,20 @@ Checks (--checks selects a subset; default all):
                      a review warning when it cannot be attributed).
   class-case         services.yml / routing.yml class references and PSR-4
                      class names whose case differs from the real file.
+  test-label-markup  In a file under tests/, a translated string object
+                     ($this->t(...)) as a submitForm() label (its second
+                     argument) or a buttonExists() locator while the
+                     declared range admits a core from the check's
+                     strict_from (10.2.3, where core's WebAssert declares
+                     strict_types) to before its cast_from (10.3.0, where
+                     it casts the label), or as a buttonNotExists()
+                     locator while it admits a core from strict_from to
+                     before not_exists_typed_from (12.0.0, where its
+                     parameter is typed string and PHP converts the
+                     label): Mink's findButton(string) gets it, a
+                     TypeError (lab L-1.0-D9 on 10.2.12). In diff mode, a
+                     line the port left alone is attributed to the port
+                     when the range at the base admitted no such core.
 
 Diff-aware: when the subject is tracked by git, every finding is attributed —
 "introduced" (on a line the port added/changed vs the pre-port base) or
@@ -638,12 +664,19 @@ criterion is the same for every module and every layer of the flow.
             fix              fix it in Phase 1 — directly when the replacement
                              exists at the declared core floor, else through
                              DeprecationHelper::backwardsCompatibleCall()
-                             (core 10.1+), else defer it with the reason
+                             (core 10.1.3+), else defer it with the reason
           Phase 2 (--phase refactor) fixes soft items regardless of the policy
           ("zero deprecations"), still respecting the core floor.
   unknown a deprecation whose removal version cannot be read, or belongs to a
           contrib project, or a symbol PHPStan cannot find that the catalog
           does not date: treated as BLOCKING (conservative) until reviewed.
+  guarded a function PHPStan cannot find that only the deprecated callable
+          of a DeprecationHelper::backwardsCompatibleCall() calls, whose
+          second argument (the core from which the current callable runs)
+          is below T.0.0 (a T.0.0 pre-release still runs a T.0.0
+          fallback): no core of the target major runs it, so it is
+          reported, never blocking. run-phpstan.sh --json marks such a
+          message (drupilot_guard); a plain-text input has no mark.
 
 Removal versions come from the analyzer message itself (phpstan-deprecation-
 rules echoes core's "in drupal:X and is removed from drupal:Y"). The
@@ -672,7 +705,9 @@ Usage:
   --json            Emit the classification JSON on STDOUT:
                     {tool, policy, phase, target_major, core_requirement,
                      core_floor, blocking, counts:{hard,soft,unknown,other},
-                     symbols:[{symbol, class, deprecated_in, removed_in,
+                     plus counts.guarded and guarded:[..] when there is one,
+                     symbols (one per symbol and class):[{symbol, class,
+                       deprecated_in, removed_in,
                        replacement, replacement_since, replacement_at_floor,
                        effort, action, reason, occurrences}],
                      hard:[..], soft:[..], unknown:[..]}
@@ -1539,9 +1574,13 @@ reported here):
                     whether the fix runs on L, its output_min_php at or
                     below L or none)
 A row is searched only when it has a `detect` ERE (`ere:`, or `ere-i:` for
-a case-insensitive one: PHP function and cast names); its `exclude` ERE
-drops the lines it matches (a method of the same name being declared). The
-rows of those classes without a pattern are listed in `unsearched`. Only the
+a case-insensitive one: PHP function and cast names) or names a built-in
+scan (`scan:NAME`, for a construct that spans lines; the one there is,
+sort-bool-comparator, is php_sort_bool_comparator_lines in
+scripts/lib/php-scan.sh); its `exclude` ERE drops the lines it matches (a
+method of the same name being declared). The rows of those classes without
+a pattern, and those naming a scan this drupilot does not have, are listed
+in `unsearched`. Only the
 code is searched: comments, string contents, heredocs and inline HTML are
 blanked first (php_code_lines, scripts/lib/php-scan.sh), the line numbers
 kept. vendor/, node_modules/ and .git/ are left out. L and P are --floor /
@@ -1980,6 +2019,16 @@ Options:
                    by path, their messages by line, identifier and message,
                    the general errors by text: DET-2). A DET-1 refusal
                    (exit 3) is reported as crashed, its reason in crash.
+                   A "Function X not found." whose every call on its line
+                   sits in the deprecated callable (a closure or an arrow
+                   function written as the fourth argument) of a
+                   DeprecationHelper::backwardsCompatibleCall() gets
+                   drupilot_guard: {kind: "deprecation-helper-fallback",
+                   deprecated_version}, the highest second argument of
+                   those calls (the fallback runs only on an older core;
+                   the scan is php_bc_fallback_calls), so
+                   classify-deprecations.sh can tell it from a call the
+                   target core runs.
                    When PHPStan crashed (no
                   report produced) `totals` is null, `files` is {} and the
                   reason is in `drupilot.crash` — never a fake zero count.
@@ -2041,7 +2090,12 @@ Passes, in this order:
                    rector.php loads) and without the rules rejected for this
                    module (digests-decisions.json, 05-R6: per rule, digests
                    SHA and the subject's digest before the passes; record
-                   them with scripts/analysis/digests-decisions.sh). A frozen
+                   them with scripts/analysis/digests-decisions.sh). A rule
+                   file that does not open with <?php, or that `php -l` in
+                   the bed rejects, is left out on its own, so such a file
+                   no longer stops the other rules (lab L-1.0-D9); one that
+                   passes both checks and still fails when Rector loads it
+                   stops the pass (exit 4). A frozen
                    yml that cannot be read again, an all.php drupilot cannot
                    read whole, and an --apply on sources changed since the
                    reviewed dry-run are digests errors (exit 4).
@@ -2108,7 +2162,9 @@ Options:
                      a set rector.php loads), implemented_not_loaded and
                      config_only (kept: drupal-rector has them in a set this
                      port does not load, or the yml names no class),
-                     rejected: [rules], kept: n} and digests_review:
+                     rejected: [rules], broken: [{rule, file, reason:
+                     no-open-tag | php-lint}] (left out: they cannot load),
+                     kept: n} and digests_review:
                      {digests_sha, input_hash, rules: [{rule, files,
                      verdict: accept | reject | pending}], rejected,
                      pending: [rules]} (null without the digests pass, or
@@ -2251,6 +2307,8 @@ no toolchain needed (bash, awk and jq; curl for the release feed). It finds:
                         target Drupal 12), their namespace or test
                         namespace (Drupal\Tests\migrate_drupal\) included
   base-theme-removed    a theme's `base theme:` naming a removed theme
+  test-theme-removed    a test's `$defaultTheme` naming a removed theme
+                        (its tests stop running: "Unknown themes")
   library-removed       a removed core library in a *.info.yml or
                         *.libraries.yml (a list item, a flow-sequence item
                         or a key) or quoted in a PHP or Twig file
@@ -2268,6 +2326,9 @@ Each finding has an action:
                      curl, the feed unreachable)
   composer-required  composer.json already requires drupal/PROJECT
   decision           a removed base theme: a person picks the new one
+  test-update        a removed theme a test runs on: the test names a theme
+                     core still ships ('stark' unless it needs a theme's
+                     markup), a test adaptation, never a hard break
   hard-break         removed with no replacement path
   note               an announced namespace move
 A finding is a hard break when its action is decision or hard-break.
