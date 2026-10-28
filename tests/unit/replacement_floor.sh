@@ -29,9 +29,19 @@ mod "$T_TMP/cls" '^10 || ^11' 'use Drupal\Core\StringTranslation\ByteSizeMarkup;
 $size = ByteSizeMarkup::create($length);'
 mod "$T_TMP/fqcn" '^10 || ^11' '$size = \Drupal\Core\StringTranslation\ByteSizeMarkup::create($length);'
 mod "$T_TMP/none" '^8 || ^9' '// format_size($length) was here.
+/**
  * format_size() in a doc block.
-$a = $o->format_size(1) . Foo::format_size(2) . $format_size(3) . my_format_size(4);
-use Drupal\Core\StringTranslation\ByteSizeMarkupLike;'
+ */
+$a = $o->format_size(1) . Foo::format_size(2) . $format_size(3) . my_format_size(4) . Foo\format_size(5);
+$b = 1; // format_size($x) in a trailing comment.
+$c = "format_size(" . "a format_size() call";
+function format_size($bytes) { return $bytes; }
+use Drupal\Core\StringTranslation\ByteSizeMarkupLike;
+use Drupal\Core\StringTranslation\{ByteSizeMarkupX, TranslatableMarkup};'
+mod "$T_TMP/fq" '^8 || ^9' 'namespace Drupal\m;
+return \format_size($length);'
+mod "$T_TMP/group" '^10 || ^11' 'use Drupal\Core\StringTranslation\{TranslatableMarkup, ByteSizeMarkup};'
+mod "$T_TMP/wrap" '^10.1.3 || ^11' '$s = \Drupal\Component\Utility\DeprecationHelper::backwardsCompatibleCall(\Drupal::VERSION, "10.2.0", fn() => \Drupal\Core\StringTranslation\ByteSizeMarkup::create($b), fn() => format_size($b));'
 mod "$T_TMP/high" '^10.3 || ^11' '$size = format_size($length);'
 
 rf() { subject_replacement_floor "$@" | tr '\t' '|'; }
@@ -40,7 +50,12 @@ assert_eq "a call of format_size(): 10.2, the port replaces it" "$(rf "$T_TMP/ca
 assert_eq "an import of ByteSizeMarkup: 10.2, the code uses it" "$(rf "$T_TMP/cls" 11)" \
   '10.2|the code uses \Drupal\Core\StringTranslation\ByteSizeMarkup, which exists only from core 10.2'
 assert_eq "  its FQCN too" "$(rf "$T_TMP/fqcn" 11 | cut -d'|' -f1)" "10.2"
-assert_eq "comments, a method, a static, a variable, longer names: nothing" "$(rf "$T_TMP/none" 11)" ""
+assert_eq "comments, strings, a method, a static, a variable, longer names, a namespaced name, a declaration: nothing" "$(rf "$T_TMP/none" 11)" ""
+assert_eq "a fully qualified call: 10.2" "$(rf "$T_TMP/fq" 11 | cut -d'|' -f1)" "10.2"
+assert_eq "a group use of the class: 10.2, the code uses it" "$(rf "$T_TMP/group" 11)" \
+  '10.2|the code uses \Drupal\Core\StringTranslation\ByteSizeMarkup, which exists only from core 10.2'
+assert_eq "drupal-rector's DeprecationHelper wrapper: the class it uses, not a call the port replaces" "$(rf "$T_TMP/wrap" 11)" \
+  '10.2|the code uses \Drupal\Core\StringTranslation\ByteSizeMarkup, which exists only from core 10.2'
 assert_eq "T 10: format_size() is not removed yet, nothing" "$(rf "$T_TMP/call" 10)" ""
 assert_eq "  but the class still needs 10.2" "$(rf "$T_TMP/cls" 10 | cut -d'|' -f1)" "10.2"
 assert_eq "no PHP file: nothing" "$(mkdir -p "$T_TMP/empty"; rf "$T_TMP/empty" 11)" ""

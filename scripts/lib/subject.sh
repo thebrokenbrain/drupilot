@@ -289,31 +289,50 @@ subject_attribute_floor() {
 # highest core minor that ships the replacement of an API the subject still
 # needs, from the lifecycle catalog of config/deprecations.json: a function
 # removed in a major at or below T (default resolve_target_major) that the
-# code still calls, which Phase 1 replaces, or a replacement_class the code
-# already uses (import or FQCN). An entry counts only with its
-# replacement_since and its replacement_class (format_size(): ByteSizeMarkup,
-# 10.2). The reason completes "Drupal 10 floor X: ...". A comment line (//,
-# #, * or /*) is not code. Prints nothing when none applies or jq is missing.
+# code still calls (also fully qualified, \format_size(), never a method, a
+# static call, a declaration or a longer name), which Phase 1 replaces, or a
+# replacement_class the code already uses (an import, a group use, or the
+# FQCN). An entry counts only with its replacement_since and its
+# replacement_class (format_size(): ByteSizeMarkup, 10.2). The reason
+# completes "Drupal 10 floor X: ..." (the class when the code uses it, as
+# drupal-rector's DeprecationHelper wrapper does, else the call). Only the
+# code counts: the files that name a catalogued symbol or class are read
+# through php_code_lines (scripts/lib/php-scan.sh: comments and strings
+# blanked). Prints nothing when none applies or jq is missing.
 subject_replacement_floor() {
-  local subj="${1:-}" t="${2:-}" cat code
+  local subj="${1:-}" t="${2:-}" cat code ere
   [[ -n "$t" ]] || t="$(resolve_target_major)"
   cat="$(plugin_root)/config/deprecations.json"
   have_cmd jq || return 0
   [[ -r "$cat" && -d "$subj" && "$t" =~ ^[0-9]+$ ]] || return 0
-  # The code lines (comment lines dropped), once, through a file: one argv
+  if ! declare -F php_code_lines > /dev/null 2>&1; then
+    # shellcheck source=php-scan.sh
+    . "$(plugin_root)/scripts/lib/php-scan.sh" 2> /dev/null || return 0
+  fi
+  # The names to look for: the symbols and the short class names.
+  ere="$(jq -r '[(.lifecycle // [])[] | select((.replacement_since | type) == "string" and (.replacement_class | type) == "string")
+      | (.symbol, (.replacement_class | split("\\") | last))] | map(select(test("^[A-Za-z0-9_]+$"))) | unique | join("|")' "$cat" 2> /dev/null || true)"
+  [[ -n "$ere" ]] || return 0
+  # The code of the files that name one, once, through a file: one argv
   # string is capped (128 KiB on Linux).
   code="$(mktemp "${TMPDIR:-/tmp}/drupilot-replfloor.XXXXXX")" || return 0
   find "$subj" \( -name vendor -o -name node_modules -o -name .git \) -prune -o -type f \
       \( -name '*.php' -o -name '*.module' -o -name '*.inc' -o -name '*.install' -o -name '*.theme' \
-         -o -name '*.profile' \) -exec awk '$0 !~ /^[[:space:]]*(\/\/|#|\*|\/\*)/' {} + > "$code" 2>/dev/null || true
+         -o -name '*.profile' \) -exec grep -l -E "$ere" {} + 2> /dev/null \
+    | while IFS= read -r f; do php_code_lines "$f"; done > "$code" 2> /dev/null || true
   if [[ ! -s "$code" ]]; then rm -f "$code"; return 0; fi
   jq -r -n --rawfile code "$code" --argjson t "$t" --slurpfile c "$cat" '
     def vn: split(".") | map(tonumber? // 0);
-    # Does the code call the function $s (not a method, a variable or a
-    # longer name)?
-    def calls($s): $code | test("(^|[^A-Za-z0-9_>:$\\\\])" + $s + "[[:space:]]*\\(");
-    # Does the code name the class $k (with or without its leading backslash)?
-    def names($k): $code | test("(^|[^A-Za-z0-9_\\\\])\\\\?" + ($k | gsub("\\\\"; "\\\\")) + "([^A-Za-z0-9_\\\\]|$)");
+    def re: gsub("\\\\"; "\\\\");
+    # Does the code call the function $s: maybe fully qualified, never a
+    # method, a static call, a variable, a longer name or its declaration?
+    def calls($s): $code | gsub("function[[:space:]]+&?[[:space:]]*" + $s + "[[:space:]]*\\("; " ")
+      | test("(^|[^A-Za-z0-9_>:$\\\\])\\\\?" + $s + "[[:space:]]*\\(");
+    # Does the code name the class $k: its FQCN (maybe with a leading
+    # backslash), or its short name in a group use of its namespace?
+    def names($k): ($k | split("\\") | last) as $short | ($k | split("\\") | .[0:-1] | join("\\")) as $ns
+      | ($code | test("(^|[^A-Za-z0-9_\\\\])\\\\?" + ($k | re) + "([^A-Za-z0-9_\\\\]|$)"))
+        or ($code | test("(^|[^A-Za-z0-9_\\\\])use[[:space:]]+\\\\?" + ($ns | re) + "\\\\[[:space:]]*\\{([^}]*[^A-Za-z0-9_\\\\])?" + $short + "([^A-Za-z0-9_\\\\]|$)"));
     [($c[0].lifecycle // [])[]
      | select((.replacement_since | type) == "string" and (.replacement_class | type) == "string")
      | . as $e
@@ -322,10 +341,10 @@ subject_replacement_floor() {
      | (names($e.replacement_class)) as $uses
      | select($call or $uses)
      | {since: $e.replacement_since,
-        why: (if $call
-              then "the port replaces \($e.symbol)() (removed in Drupal \($e.removed_in | vn | .[0])) with \\\($e.replacement_class), which exists only from core \($e.replacement_since)"
-              else "the code uses \\\($e.replacement_class), which exists only from core \($e.replacement_since)" end)}]
-    | if length == 0 then empty else max_by(.since | vn) | "\(.since)\t\(.why)" end' 2>/dev/null || true
+        why: (if $uses
+              then "the code uses \\\($e.replacement_class), which exists only from core \($e.replacement_since)"
+              else "the port replaces \($e.symbol)() (removed in Drupal \($e.removed_in | vn | .[0])) with \\\($e.replacement_class), which exists only from core \($e.replacement_since)" end)}]
+    | if length == 0 then empty else max_by(.since | vn) | "\(.since)\t\(.why)" end' 2> /dev/null || true
   rm -f "$code"
   return 0
 }

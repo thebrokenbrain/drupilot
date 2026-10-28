@@ -115,9 +115,11 @@ If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scri
   `DeprecationHelper::backwardsCompatibleCall()`** (it exists from 10.1.3, not
   in 10.0 or 10.1.0-10.1.2 — a floor below 10.1.3 cannot use it, and the plan's
   `rector.bc` then tells drupal-rector not to write it). When
-  keeping `^10 || ^11`, a replacement API that does not exist on the lowest
+  keeping Drupal 10, a replacement API that does not exist on the lowest
   declared core (e.g. the `TextSummary` service, `getOriginal()` from 11.2)
-  breaks Drupal 10; wrap it, or leave the soft-deprecated call and report it.
+  breaks it: wrap it only when the range starts at 10.1.3 or later; below
+  (`^10 || ^11`), leave the soft-deprecated call and report it (the classifier
+  says `defer`), or raise the floor first.
   A hard deprecation's replacement newer than the default floor raises the
   plan's floor instead (`format_size()` → `ByteSizeMarkup`: `^10.2 || ^11`).
   A removed function that only the fallback (fourth argument) of a

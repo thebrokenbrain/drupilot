@@ -25,7 +25,8 @@
 #   guarded a function PHPStan cannot find that only the deprecated callable
 #           of a DeprecationHelper::backwardsCompatibleCall() calls, whose
 #           second argument (the core from which the current callable runs)
-#           is at most T.0.0: no core of the target major runs it, so it is
+#           is below T.0.0 (a T.0.0 pre-release still runs a T.0.0
+#           fallback): no core of the target major runs it, so it is
 #           reported, never blocking. run-phpstan.sh --json marks such a
 #           message (drupilot_guard); a plain-text input has no mark.
 #
@@ -57,7 +58,8 @@
 #                     {tool, policy, phase, target_major, core_requirement,
 #                      core_floor, blocking, counts:{hard,soft,unknown,other},
 #                      plus counts.guarded and guarded:[..] when there is one,
-#                      symbols:[{symbol, class, deprecated_in, removed_in,
+#                      symbols (one per symbol and class):[{symbol, class,
+#                        deprecated_in, removed_in,
 #                        replacement, replacement_since, replacement_at_floor,
 #                        effort, action, reason, occurrences}],
 #                      hard:[..], soft:[..], unknown:[..]}
@@ -267,7 +269,7 @@ RESULT="$(jq -n \
              not_found: ($nf != null),
              guarded: ($nf != null and (($r.guard // null) | type) == "object" and $r.guard.kind == "deprecation-helper-fallback"
                        and (($r.guard.deprecated_version // "") | test("^[0-9]+(\\.[0-9]+)*$"))
-                       and (($r.guard.deprecated_version | vnum) <= ([$tmaj, 0, 0]))),
+                       and (($r.guard.deprecated_version | vnum) < ([$tmaj, 0, 0]))),
              message: ($r.message | split("\n") | map(gsub("^\\s+|\\s+$"; "")) | map(select(. != "")) | join(" ")),
              project: (if $v != null then $v.p2 else (if $c != null then "drupal" else null end) end),
              deprecated_in: (if $v != null then $v.dep elif $c != null then $c.deprecated_in else null end),
@@ -319,7 +321,7 @@ RESULT="$(jq -n \
                    soft: ([ $items[] | select(.class == "soft") ] | length),
                    unknown: ([ $items[] | select(.class == "unknown") ] | length),
                    other: ($nraw - ($items | length)) } + (if $ng > 0 then {guarded: $ng} else {} end)),
-        symbols: ( $items | group_by(.symbol)
+        symbols: ( $items | group_by([.symbol, .class])
                    | map(.[0] as $f | { symbol: $f.symbol, class: $f.class, deprecated_in: $f.deprecated_in,
                                        removed_in: $f.removed_in, replacement: $f.replacement,
                                        replacement_since: $f.replacement_since,

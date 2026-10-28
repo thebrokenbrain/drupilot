@@ -135,6 +135,10 @@ assert_eq "  one hunk (none here) or one rule: attribution hunk" "$(j '[.finding
 jq '.file_diffs[0].applied_rectors = ["Rector\\A\\FooRector"]' "$R0/04-assess-rector.json" > "$RN/04-assess-rector.json"
 nf --raw-dir "$RN" --target-major 11 --soft-policy report --json
 assert_eq "  one rule, two hunks: hunk" "$(j '[.findings[] | select(.tool == "rector") | [.line, .attribution]] | sort')" '[[11,"hunk"],[30,"hunk"]]'
+jq '.file_diffs[0].diff = "@@ -10,8 +10,8 @@\n ctx\n-a\n+b\n ctx\n ctx\n-c\n+d\n ctx\n"' "$R0/04-assess-rector.json" > "$RN/04-assess-rector.json"
+nf --raw-dir "$RN" --target-major 11 --soft-policy report --json
+assert_eq "  two rules, one hunk holding two change blocks (Rector merges changes a few lines apart): file" \
+  "$(j '[.findings[] | select(.tool == "rector") | [.line, .attribution]] | unique')" '[[11,"file"]]'
 # A missing raw file is no error.
 rm -f "$RN/04-assess-phpcs.json"
 nf --raw-dir "$RN" --target-major 11 --soft-policy report --json

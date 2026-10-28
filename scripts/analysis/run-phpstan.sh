@@ -31,14 +31,16 @@
 #                    by path, their messages by line, identifier and message,
 #                    the general errors by text: DET-2). A DET-1 refusal
 #                    (exit 3) is reported as crashed, its reason in crash.
-#                    A "Function X not found." that only the deprecated
-#                    callable (the fourth argument) of a
-#                    DeprecationHelper::backwardsCompatibleCall() calls gets
+#                    A "Function X not found." whose every call on its line
+#                    sits in the deprecated callable (a closure or an arrow
+#                    function written as the fourth argument) of a
+#                    DeprecationHelper::backwardsCompatibleCall() gets
 #                    drupilot_guard: {kind: "deprecation-helper-fallback",
-#                    deprecated_version}, the call's second argument (the
-#                    fallback runs only on an older core; the scan is
-#                    php_bc_fallback_spans), so classify-deprecations.sh can
-#                    tell it from a call the target core runs.
+#                    deprecated_version}, the highest second argument of
+#                    those calls (the fallback runs only on an older core;
+#                    the scan is php_bc_fallback_calls), so
+#                    classify-deprecations.sh can tell it from a call the
+#                    target core runs.
 #                    When PHPStan crashed (no
 #                   report produced) `totals` is null, `files` is {} and the
 #                   reason is in `drupilot.crash` — never a fake zero count.
@@ -294,35 +296,41 @@ if [[ "$AS_JSON" == "1" ]]; then
           | map(if (.value.messages | type) == "array" then .value.messages |= sort_by([(.line // 0), (.identifier // ""), (.message // "")]) else . end)
           | from_entries) else . end)
       | (if (.errors | type) == "array" then .errors |= sort else . end)' > "$OUT_F.sorted"
-    # The not-found functions only a DeprecationHelper fallback calls.
-    printf '{}' > "$OUT_F.spans"
-    jq -r '[(.files // {}) | to_entries[]
-            | select(any((.value.messages // [])[]; (.message // "") | test("^Function [A-Za-z0-9_\\\\]+ not found"))) | .key]
-           | unique[]' "$OUT_F.sorted" 2> /dev/null | while IFS= read -r _k; do
+    # The not-found functions only DeprecationHelper fallbacks call: every
+    # call of the function on the message's line is in one (a call outside,
+    # in the current callable included, keeps the message as it is), and the
+    # mark carries the highest version of those fallbacks.
+    printf '{}' > "$OUT_F.calls"
+    jq -r '(.files // {}) | to_entries[]
+           | [.key, ([(.value.messages // [])[] | (.message // "") | capture("^Function (?<f>[A-Za-z0-9_\\\\]+) not found")? | .f
+                     | split("\\") | last | ascii_downcase] | unique | join(" "))]
+           | select(.[1] != "") | @tsv' "$OUT_F.sorted" 2> /dev/null | while IFS="$(printf '\t')" read -r _k _names; do
       _p="${_k% (in context of *}"
       case "$_p" in /var/www/html/*) _p="$DRUPAL_ROOT/${_p#/var/www/html/}";; /*) : ;; *) _p="$DRUPAL_ROOT/$_p";; esac
       [[ -f "$_p" ]] || continue
       php_code_lines "$_p" > "$OUT_F.blank"
-      php_bc_fallback_spans "$OUT_F.blank" "$_p" \
-        | jq -R -s -c --arg k "$_k" --slurpfile acc "$OUT_F.spans" '$acc[0] + {($k): [split("\n")[] | select(length > 0) | split("\t")
-            | {s: (.[0] | tonumber), e: (.[1] | tonumber), v: .[2], f4: (.[3] | split(" ")), f3: (.[4] | split(" "))}]}' \
-          > "$OUT_F.spans.new" 2> /dev/null && mv -f "$OUT_F.spans.new" "$OUT_F.spans"
+      php_bc_fallback_calls "$OUT_F.blank" "$_p" "$_names" \
+        | jq -R -s -c --arg k "$_k" --slurpfile acc "$OUT_F.calls" '$acc[0] + {($k): (split("\n") | map(select(length > 0) | split("\t"))
+            | reduce .[] as $c ({}; .[$c[0]][$c[1]] += [$c[2]]))}' \
+          > "$OUT_F.calls.new" 2> /dev/null && mv -f "$OUT_F.calls.new" "$OUT_F.calls"
     done
-    jq -c --slurpfile sp "$OUT_F.spans" '
-      $sp[0] as $S
+    jq -c --slurpfile cl "$OUT_F.calls" '
+      def vn: split(".") | map(tonumber? // 0);
+      $cl[0] as $C
       | if (.files | type) != "object" then . else
-          .files |= with_entries(.key as $k | if ($S[$k] // []) == [] then . else
+          .files |= with_entries(.key as $k | if ($C[$k] // null) == null then . else
             .value.messages |= map(
               . as $m
               | ((.message // "") | capture("^Function (?<f>[A-Za-z0-9_\\\\]+) not found")? // null) as $nf
               | if $nf == null or (.line | type) != "number" then .
-                else (($nf.f | split("\\\\") | last | ascii_downcase)) as $fn
-                  | ([$S[$k][] | select(.s <= $m.line and $m.line <= .e and (.f4 | index($fn)) != null and (.f3 | index($fn)) == null)]
-                     | .[0]) as $hit
-                  | if $hit == null then . else . + {drupilot_guard: {kind: "deprecation-helper-fallback", deprecated_version: (if $hit.v == "" then null else $hit.v end)}} end
+                else ($nf.f | split("\\") | last | ascii_downcase) as $fn
+                  | ($C[$k][$m.line | tostring][$fn] // []) as $vs
+                  | if ($vs | length) > 0 and all($vs[]; test("^[0-9]"))
+                    then . + {drupilot_guard: {kind: "deprecation-helper-fallback", deprecated_version: ($vs | max_by(vn))}}
+                    else . end
                 end) end)
         end' "$OUT_F.sorted"
-    rm -f "$OUT_F.sorted" "$OUT_F.spans" "$OUT_F.spans.new" "$OUT_F.blank" 2> /dev/null || true
+    rm -f "$OUT_F.sorted" "$OUT_F.calls" "$OUT_F.calls.new" "$OUT_F.blank" 2> /dev/null || true
   else
     jq -nc --argjson m "$META" '{totals: null, files: {}, errors: $m.crash, drupilot: $m}'
   fi

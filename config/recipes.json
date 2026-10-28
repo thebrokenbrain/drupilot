@@ -960,9 +960,9 @@
       ],
       "source": "config/port-checks.json#/checks/test-label-markup",
       "template": {
-        "why": "In a test, a submitForm() label (its second argument) or a buttonExists()/buttonNotExists() locator that is a translated string object ($this->t(...), t(...), $this->formatPlural(...), new TranslatableMarkup(...)) while the declared core range admits a core older than `since`: core/tests/Drupal/Tests/WebAssert.php declares strict_types=1 and, before that minor, passes the label to Mink's TraversableElement::findButton(string $locator) unchanged, so the test errors with a TypeError on those cores; from it on, WebAssert casts it (issue 3421105). Pass a string: (string) $this->t('Save') or 'Save'."
+        "why": "In a test, a translated string object ($this->t(...), t(...), $this->formatPlural(...), new TranslatableMarkup(...)) as a submitForm() label (its second argument) or a buttonExists() locator while the declared core range admits a core from `strict_from` to before `cast_from`, or as a buttonNotExists() locator while it admits any core from `strict_from`. From `strict_from`, core/tests/Drupal/Tests/WebAssert.php declares strict_types=1 and passes the label to Mink's TraversableElement::findButton(string $locator); from `cast_from`, buttonExists() (which submitForm() calls) casts it first (issue 3421105), buttonNotExists() never does. Mink then throws a TypeError. Pass a string: (string) $this->t('Save') or 'Save'."
       },
-      "version": "b77d172e8239"
+      "version": "562cfb0d4a69"
     },
     {
       "applies_when": {},
@@ -1207,6 +1207,6 @@
   "sources": {
     "config/deprecations.json": "sha256:c33c7a5a8fcf54d8c7e4e9f3f225ef66f67ec819ffe2a6538beedfa9979496db",
     "config/metadata-checks.json": "sha256:182f7ce002a63577a327518fcddfe45d61ea44a23826b981843933ee55fa706f",
-    "config/port-checks.json": "sha256:e786714dbc4d0f88db49a8e73b99955b4c257fa8e532c45de4f2813e80ad572d"
+    "config/port-checks.json": "sha256:2d4572c40faebd45fffc950266d455b92f31c75c40f8fc5986fcfb84aaca572a"
   }
 }

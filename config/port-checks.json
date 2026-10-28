@@ -50,9 +50,10 @@
       }
     },
     "test-label-markup": {
-      "description": "In a test, a submitForm() label (its second argument) or a buttonExists()/buttonNotExists() locator that is a translated string object ($this->t(...), t(...), $this->formatPlural(...), new TranslatableMarkup(...)) while the declared core range admits a core older than `since`: core/tests/Drupal/Tests/WebAssert.php declares strict_types=1 and, before that minor, passes the label to Mink's TraversableElement::findButton(string $locator) unchanged, so the test errors with a TypeError on those cores; from it on, WebAssert casts it (issue 3421105). Pass a string: (string) $this->t('Save') or 'Save'.",
-      "since": "10.3",
-      "verified": "core/tests/Drupal/Tests/WebAssert.php: no cast in buttonExists() on 10.1.x and 10.2.x, the cast with the @todo of issue 3421105 on 10.3.0, 10.3.x, 10.6.x and 11.0.0 (git.drupalcode.org and the lab beds, read 2026-10-27); the TypeError reproduced on 10.2.12 with behat/mink 1.13 (lab L-1.0-D9).",
+      "description": "In a test, a translated string object ($this->t(...), t(...), $this->formatPlural(...), new TranslatableMarkup(...)) as a submitForm() label (its second argument) or a buttonExists() locator while the declared core range admits a core from `strict_from` to before `cast_from`, or as a buttonNotExists() locator while it admits any core from `strict_from`. From `strict_from`, core/tests/Drupal/Tests/WebAssert.php declares strict_types=1 and passes the label to Mink's TraversableElement::findButton(string $locator); from `cast_from`, buttonExists() (which submitForm() calls) casts it first (issue 3421105), buttonNotExists() never does. Mink then throws a TypeError. Pass a string: (string) $this->t('Save') or 'Save'.",
+      "strict_from": "10.2.3",
+      "cast_from": "10.3.0",
+      "verified": "core/tests/Drupal/Tests/WebAssert.php: no strict_types on 9.5.x, 10.0.x, 10.1.x and 10.2.0-10.2.2, strict_types=1 from 10.2.3 (10.2.3-10.2.12, 10.3.0, 11.x); buttonExists() casts a non-string label with the @todo of issue 3421105 from 10.3.0 (not on 10.2.x), buttonNotExists() casts it on no branch (11.x included) (git.drupalcode.org, read 2026-10-28); the TypeError reproduced on 10.2.12 with behat/mink 1.13 (lab L-1.0-D9).",
       "severity": {
         "introduced": "error",
         "preexisting": "warn",

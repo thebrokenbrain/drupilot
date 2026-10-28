@@ -35,10 +35,11 @@
 #                    module (digests-decisions.json, 05-R6: per rule, digests
 #                    SHA and the subject's digest before the passes; record
 #                    them with scripts/analysis/digests-decisions.sh). A rule
-#                    file that cannot load (it does not open with <?php, or
-#                    `php -l` in the bed rejects it) is left out on its own,
-#                    so one broken upstream file never stops the other rules
-#                    (lab L-1.0-D9). A frozen
+#                    file that does not open with <?php, or that `php -l` in
+#                    the bed rejects, is left out on its own, so such a file
+#                    no longer stops the other rules (lab L-1.0-D9); one that
+#                    passes both checks and still fails when Rector loads it
+#                    stops the pass (exit 4). A frozen
 #                    yml that cannot be read again, an all.php drupilot cannot
 #                    read whole, and an --apply on sources changed since the
 #                    reviewed dry-run are digests errors (exit 4).
@@ -801,14 +802,17 @@ elif [[ "$USE_DIGESTS" == "1" ]]; then
       ERRORS_JSON="$(printf '%s' "$ERRORS_JSON" | jq -c --arg m "$_m" '. + [{pass: 2, exit_code: 2, message: $m}]')"
     else
       digests_rules "$_adir" > "$TMP_DIGESTS_RULES"
-      # A rule file that does not open with <?php is read as inline HTML: its
-      # class is never declared and the whole pass would stop ("Expected an
-      # existing class name"). It is left out on its own, the others run.
+      # A rule file that does not open with <?php (in any case) is read as
+      # inline HTML: its class is never declared and the whole pass would stop
+      # ("Expected an existing class name"). One whose registered class drupilot
+      # read is left out on its own, the others run; one with none stays, so
+      # the layout check below still refuses it (ADR 0026: fail closed).
       : > "$TMP_DIGESTS_BROKEN"
-      while IFS="$(printf '\t')" read -r _rfile _rcls _rnid; do
-        [[ -n "$_rfile" && -f "$_adir/$_rfile" ]] || continue
-        if ! LC_ALL=C sed -n '1p' "$_adir/$_rfile" 2> /dev/null | tr -d '\r' | grep_q -E '^<\?php([[:space:]]|$)'; then
-          printf '%s\t%s\t%s\n' "$_rfile" "${_rcls:-$(basename "$_rfile" .php)}" "no-open-tag" >> "$TMP_DIGESTS_BROKEN"
+      while IFS= read -r _row; do
+        _rfile="${_row%%$'\t'*}"; _rest="${_row#*$'\t'}"; _rcls="${_rest%%$'\t'*}"
+        [[ -n "$_rfile" && -n "$_rcls" && -f "$_adir/$_rfile" ]] || continue
+        if ! LC_ALL=C sed -n '1p' "$_adir/$_rfile" 2> /dev/null | tr -d '\r' | grep_q -i -E '^<\?php([[:space:]]|$)'; then
+          printf '%s\t%s\t%s\n' "$_rfile" "$_rcls" "no-open-tag" >> "$TMP_DIGESTS_BROKEN"
         fi
       done < "$TMP_DIGESTS_RULES"
       if [[ -s "$TMP_DIGESTS_BROKEN" ]]; then
@@ -825,7 +829,7 @@ elif [[ "$USE_DIGESTS" == "1" ]]; then
                     cat "$TMP_DIGESTS_RULES" "$TMP_DIGESTS_BROKEN" > "$TMP_DIGESTS_RULES.all"
                     digests_registered "$_adir" | awk -F'\t' 'NR == FNR { if ($2 != "") have[$2] = 1; next } !($1 in have) { print $1 " (no rule file)" }' "$TMP_DIGESTS_RULES.all" -
                     grep -oE -- '->with[A-Za-z]+' "$_adir/all.php" | grep -vxE -- '->with(FileExtensions|Rules)' || true; } | LC_ALL=C sort -u | tr '\n' ' ' | sed 's/ $//')"
-      if [[ -z "$(awk -F'\t' '$2 != ""' "$TMP_DIGESTS_RULES")" ]]; then _unread="${_unread:-no rule} (no readable rule at all)"; fi
+      if [[ -z "$(awk -F'\t' '$2 != ""' "$TMP_DIGESTS_RULES.all")" ]]; then _unread="${_unread:-no rule} (no readable rule at all)"; fi
       # An --apply on rules nobody reviewed: once the module has digests
       # verdicts, the last dry-run must be of these sources and these digests
       # rules (an upstream move, or a change of the sources, would otherwise
@@ -901,7 +905,11 @@ elif [[ "$USE_DIGESTS" == "1" ]]; then
         | $f + {broken: [$b[] | {rule, file, reason}]}
         | .kept = [.kept[] | select(.file as $x | ($b | map(.file) | index($x)) | not)]' "$TMP_DIGESTS_BROKEN")"
       if [[ -s "$TMP_DIGESTS_BROKEN" ]]; then
-        log_warn "Digests rule file(s) that cannot load, left out (the other rules run): $(jq -r '[.broken[] | "\(.file) (\(.reason))"] | join(", ")' <<< "$DIGESTS_FILTER")."
+        if [[ "$(jq '.kept | length' <<< "$DIGESTS_FILTER")" == "0" ]]; then
+          log_warn "Every digests rule left to run cannot load ($(jq -r '[.broken[] | "\(.file) (\(.reason))"] | join(", ")' <<< "$DIGESTS_FILTER")): the upstream commit is broken. Pin a known-good digests commit (--digests-ref <sha> or DRUPILOT_DIGESTS_REF), or turn the layer off (DRUPILOT_USE_DIGESTS_RULES=false)."
+        else
+          log_warn "Digests rule file(s) that cannot load, left out (the other rules run): $(jq -r '[.broken[] | "\(.file) (\(.reason))"] | join(", ")' <<< "$DIGESTS_FILTER")."
+        fi
       fi
       {
         printf '<?php\n\ndeclare(strict_types=1);\n\n'

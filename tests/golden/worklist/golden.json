@@ -1,9 +1,9 @@
 {
   "data_hash": "56ec4231aedc8d88d7c207106fdb5d058f49aed6910bdc57d290ec4475604118",
   "files": {
-    "acme_api.json": "8b8b898f7620e969a533c8fa23cee20306187f80ca6cccabad835d09ec8a65d0",
-    "acme_core.json": "116a435e20b45014f346d2ac266ef161d48610299aeb7d41b0667f4cca079c7a",
+    "acme_api.json": "3c1677c45000d471c557f23cd9791309e1699b383dde730998becf6077b80a85",
+    "acme_core.json": "4b9505167813e988a84bb3d8f1d8a3fab6941b74d7b28e38ea7497f86f9a6f09",
     "cases.tsv": "366a3f2d605bf4ce2745bf5d36de60bd9c4a1459ae2e638f6462205917ae758c",
-    "legacy_widgets.json": "ccd7fa5a2eb7285a79b4318bb6e5a6e9477309ae53b8b659081bda99bd6beb89"
+    "legacy_widgets.json": "207eba5e5bdd347d62640577221361d6fa3e9fc454a8110d346820de9f8d52e7"
   }
 }

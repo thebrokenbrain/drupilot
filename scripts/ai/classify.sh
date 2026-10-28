@@ -49,9 +49,10 @@
 #                 removed-dependency-no-release (no release of the contrib
 #                 replacement covers the range: it blocks),
 #                 removed-dependency-unverified (the release feed was not
-#                 read) or removed-dependency-replaceable (a covering release
-#                 exists: depend on the contrib project); its info notes are
-#                 deferred
+#                 read), removed-dependency-replaceable (a covering release
+#                 exists: depend on the contrib project) or removed-test-theme
+#                 (a test's $defaultTheme names a removed theme: a warning);
+#                 its info notes are deferred
 #   test-adapt    an ai-templated or ai-free finding in a file under a tests/
 #                 directory (the module's or a submodule's)
 #

@@ -102,7 +102,7 @@
         "severity": {"enum": ["error", "warning", "info"]},
         "scope": {"enum": ["current", "next-major"]},
         "class": {"$ref": "#/$defs/class"},
-        "attribution": {"description": "A Rector finding only: hunk when its rule made this hunk (the file had one applied rule, or one hunk); file when several rules changed several hunks of the file (Rector reports the rules per file: this rule changed some hunk of it, maybe not this one).", "enum": ["hunk", "file"]},
+        "attribution": {"description": "A Rector finding only: hunk when its rule made the change at its line (the file had one applied rule, or one change block: a run of -/+ lines); file when several rules made several change blocks of the file (Rector reports the rules per file: this rule changed some place of it, maybe not this line).", "enum": ["hunk", "file"]},
         "sources": {
           "description": "Every tool report merged into this finding, in precedence order.",
           "type": "array",

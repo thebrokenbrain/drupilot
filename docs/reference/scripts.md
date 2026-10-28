@@ -188,9 +188,10 @@ codemod > ai-templated > ai-free > test-adapt > human > deferred.
                 removed-dependency-no-release (no release of the contrib
                 replacement covers the range: it blocks),
                 removed-dependency-unverified (the release feed was not
-                read) or removed-dependency-replaceable (a covering release
-                exists: depend on the contrib project); its info notes are
-                deferred
+                read), removed-dependency-replaceable (a covering release
+                exists: depend on the contrib project) or removed-test-theme
+                (a test's $defaultTheme names a removed theme: a warning);
+                its info notes are deferred
   test-adapt    an ai-templated or ai-free finding in a file under a tests/
                 directory (the module's or a submodule's)
 
@@ -293,10 +294,11 @@ state dir. It is built from what the scripts recorded, never from memory:
                      manual_edits (the files neither Rector nor a codemod
                      changed)
   info.yml, composer.json, assess.json, core-matrix.json: the requirement,
-                     require.php, the SemVer bump (the assessment's when the
-                     final requirement is the one it recommended, else
-                     core_version_bump from the requirement before the
-                     port), d10_support.
+                     require.php, the SemVer bump (the assessment's for a
+                     port whose final requirement is the one it
+                     recommended, else core_version_bump from the
+                     requirement before the port, null when that is
+                     unknown; a refactor is a major), d10_support.
 The model writes only the rationale: --rationale FILE, a JSON object
 {"<worklist item id>": "why"}. An id the worklist does not have is refused;
 a previous manifest's rationale is kept for the ids still in the worklist.
@@ -365,10 +367,11 @@ verdict, only when the index names them or their file exists).
           {file}
   scope   current, or next-major for a soft deprecation under the report or
           defer policy (DRUPILOT_SOFT_DEPRECATIONS)
-  attribution  a Rector finding only: hunk when its rule made that hunk (the
-          file had one applied rule, or one hunk), file when several rules
-          changed several hunks (Rector names the rules per file: the rule
-          changed some hunk of the file, maybe not this one)
+  attribution  a Rector finding only: hunk when its rule made the change at
+          its line (the file had one applied rule, or one change block: a
+          run of -/+ lines), file when several rules made several change
+          blocks (Rector names the rules per file: the rule changed some
+          place of the file, maybe not this line)
   class   hard | soft | unknown | guarded (classify-deprecations.sh; a
           guarded one, a removed function only a DeprecationHelper fallback
           calls, is an info finding) | analysis |
@@ -587,14 +590,18 @@ Checks (--checks selects a subset; default all):
                      a review warning when it cannot be attributed).
   class-case         services.yml / routing.yml class references and PSR-4
                      class names whose case differs from the real file.
-  test-label-markup  In a file under tests/, a submitForm() label (its
-                     second argument) or a buttonExists() /
-                     buttonNotExists() locator that is a translated string
-                     object ($this->t(...)) while the declared core range
-                     admits a core older than the check's `since` (10.3):
-                     there core's WebAssert passes it to Mink's
-                     findButton(string) unchanged, a TypeError (lab
-                     L-1.0-D9 on 10.2.12).
+  test-label-markup  In a file under tests/, a translated string object
+                     ($this->t(...)) as a submitForm() label (its second
+                     argument) or a buttonExists() locator while the
+                     declared range admits a core from the check's
+                     strict_from (10.2.3, where core's WebAssert declares
+                     strict_types) to before its cast_from (10.3.0, where
+                     it casts the label), or as a buttonNotExists()
+                     locator while it admits any core from strict_from
+                     (never cast): Mink's findButton(string) gets it, a
+                     TypeError (lab L-1.0-D9 on 10.2.12). In diff mode, a
+                     line the port left alone is attributed to the port
+                     when the range at the base admitted no such core.
 
 Diff-aware: when the subject is tracked by git, every finding is attributed —
 "introduced" (on a line the port added/changed vs the pre-port base) or
@@ -664,7 +671,8 @@ criterion is the same for every module and every layer of the flow.
   guarded a function PHPStan cannot find that only the deprecated callable
           of a DeprecationHelper::backwardsCompatibleCall() calls, whose
           second argument (the core from which the current callable runs)
-          is at most T.0.0: no core of the target major runs it, so it is
+          is below T.0.0 (a T.0.0 pre-release still runs a T.0.0
+          fallback): no core of the target major runs it, so it is
           reported, never blocking. run-phpstan.sh --json marks such a
           message (drupilot_guard); a plain-text input has no mark.
 
@@ -696,7 +704,8 @@ Usage:
                     {tool, policy, phase, target_major, core_requirement,
                      core_floor, blocking, counts:{hard,soft,unknown,other},
                      plus counts.guarded and guarded:[..] when there is one,
-                     symbols:[{symbol, class, deprecated_in, removed_in,
+                     symbols (one per symbol and class):[{symbol, class,
+                       deprecated_in, removed_in,
                        replacement, replacement_since, replacement_at_floor,
                        effort, action, reason, occurrences}],
                      hard:[..], soft:[..], unknown:[..]}
@@ -2008,14 +2017,16 @@ Options:
                    by path, their messages by line, identifier and message,
                    the general errors by text: DET-2). A DET-1 refusal
                    (exit 3) is reported as crashed, its reason in crash.
-                   A "Function X not found." that only the deprecated
-                   callable (the fourth argument) of a
-                   DeprecationHelper::backwardsCompatibleCall() calls gets
+                   A "Function X not found." whose every call on its line
+                   sits in the deprecated callable (a closure or an arrow
+                   function written as the fourth argument) of a
+                   DeprecationHelper::backwardsCompatibleCall() gets
                    drupilot_guard: {kind: "deprecation-helper-fallback",
-                   deprecated_version}, the call's second argument (the
-                   fallback runs only on an older core; the scan is
-                   php_bc_fallback_spans), so classify-deprecations.sh can
-                   tell it from a call the target core runs.
+                   deprecated_version}, the highest second argument of
+                   those calls (the fallback runs only on an older core;
+                   the scan is php_bc_fallback_calls), so
+                   classify-deprecations.sh can tell it from a call the
+                   target core runs.
                    When PHPStan crashed (no
                   report produced) `totals` is null, `files` is {} and the
                   reason is in `drupilot.crash` — never a fake zero count.
@@ -2078,10 +2089,11 @@ Passes, in this order:
                    module (digests-decisions.json, 05-R6: per rule, digests
                    SHA and the subject's digest before the passes; record
                    them with scripts/analysis/digests-decisions.sh). A rule
-                   file that cannot load (it does not open with <?php, or
-                   `php -l` in the bed rejects it) is left out on its own,
-                   so one broken upstream file never stops the other rules
-                   (lab L-1.0-D9). A frozen
+                   file that does not open with <?php, or that `php -l` in
+                   the bed rejects, is left out on its own, so such a file
+                   no longer stops the other rules (lab L-1.0-D9); one that
+                   passes both checks and still fails when Rector loads it
+                   stops the pass (exit 4). A frozen
                    yml that cannot be read again, an all.php drupilot cannot
                    read whole, and an --apply on sources changed since the
                    reviewed dry-run are digests errors (exit 4).

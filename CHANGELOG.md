@@ -38,7 +38,8 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   that spans lines (`detect: "scan:sort-bool-comparator"` in
   `config/php/rules.json`, row `p80-sort-bool-comparator`: a report-only
   warning whose fix, `<=>`, runs on the floor). The scan follows the closures
-  and arrow functions written inline, not a named callback.
+  and arrow functions written inline, not a named callback; a negation that
+  something else applies to (`!$a - !$b`, `!$a <=> !$b`) is not a bool.
 - The recommended core range no longer promises a Drupal 10 minor the port
   cannot run on. `format_size()`, removed in Drupal 11, is replaced by
   `ByteSizeMarkup`, which exists only from 10.2, yet a keep-Drupal-10 plan said
@@ -48,10 +49,11 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   needs, as it already was for plugin attribute classes:
   `subject_replacement_floor` reads the `lifecycle` catalog of
   `config/deprecations.json` (a function removed at or below the target that
-  the code still calls, or its new `replacement_class` the code already
-  uses), so the plan, `core-strategy.sh` and a kept range all say
-  `^10.2 || ^11` and why. The catalog gains `format_size()`, verified in core
-  source.
+  the code still calls, also fully qualified, or its new `replacement_class`
+  the code already uses, also through a group use; comments, strings,
+  methods and declarations do not count), so the plan, `core-strategy.sh` and
+  a kept range all say `^10.2 || ^11` and why. The catalog gains
+  `format_size()`, verified in core source.
 - No `DeprecationHelper` call is written for a range that admits a core older
   than 10.1.3, where that class does not exist. A plan whose `rector.bc` is off
   left drupal-rector's own default in place, which wraps every change newer
@@ -68,35 +70,46 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `Function format_size not found.` for the deprecated callable that runs only
   on an older core, and drupilot counted it as a blocking deprecation.
   `run-phpstan.sh --json` now marks such a message (`drupilot_guard`, from the
-  `php_bc_fallback_spans` scan), and `classify-deprecations.sh` reports it as
-  `guarded`, not blocking, when the call's version is at most the target's
-  first core. In findings.json it is an info finding.
-- One broken rule file in the third-party digests layer no longer stops the
-  whole layer. drupal-digests main has had a rule without `<?php` since
-  2026-09-17: PHP reads such a file as inline HTML, its class is never
-  declared, and Rector stopped with "Expected an existing class name" for every
-  commit with rules (`run-rector.sh` exit 4, the official result kept).
-  `run-rector.sh` now leaves out, on its own, a rule file that does not open
-  with `<?php` or that `php -l` rejects in the bed, says so, and runs the
-  others (`digests_filter.broken` in its `--json`).
+  `php_bc_fallback_calls` scan) when every call of that function on its line
+  sits in a fallback closure, with their highest version, and
+  `classify-deprecations.sh` reports it as `guarded`, not blocking, when that
+  version is below the target's first core (a call outside the wrapper, or a
+  first-class callable passed as the fallback, still blocks). In findings.json
+  it is an info finding that never merges with a blocking one, and the
+  classifier lists a symbol once per class.
+- A digests rule file without `<?php`, or one that `php -l` rejects, no longer
+  stops the whole third-party layer. drupal-digests main has had a rule
+  without `<?php` since 2026-09-17: PHP reads such a file as inline HTML, its
+  class is never declared, and Rector stopped with "Expected an existing class
+  name" for every commit with rules (`run-rector.sh` exit 4, the official
+  result kept). `run-rector.sh` now leaves out, on its own, such a file whose
+  registered class it read, says so, and runs the others
+  (`digests_filter.broken` in its `--json`; when none is left, it names the
+  upstream commit as the cause). A file that passes both checks and still
+  fails when Rector loads it stops the pass as before, and so does one with
+  no open tag and no registered class (ADR 0026, amended).
 - The port report no longer says "Version bump: n/a" when the final range
   differs from the assessment's. `manifest.sh` copied the assessment's bump
   only when the final `core_version_requirement` was the one it recommended,
   so the optimizedb port (`^8 || ^9` to `^10.2 || ^11`, a major) showed n/a.
   It now recomputes it with `core_version_bump` (shared with
   `recommend_core_target`) from the requirement before the port
-  (`assess.json`, else the `info.yml` at the port's base); a refactor is a
-  major. The manifest golden's bump is now `minor`.
-- Test adaptations now hold on the declared floor, not only on the bed's
-  core. The optimizedb tests passed `$this->t('...')` to `submitForm()`:
-  green on 11.4 and 10.6, a `TypeError` on the declared floor 10.2, where
-  core's `WebAssert` hands a `TranslatableMarkup` to Mink's
-  `findButton(string)` unchanged (10.3 and later cast it). A new port-safety
-  check, `test-label-markup` (`config/port-checks.json`, `since` 10.3), reports
-  such a `submitForm()` label or `buttonExists()` locator in a test while the
-  range admits an older core (an error when the port added it), and the
-  test-adaptation skill, the test engineer and `/drupilot-test` pass labels as
-  strings, replace a removed `$defaultTheme` with `stark`, turn
+  (`assess.json` or the provisional assessment, else the `info.yml` at the
+  port's base; unknown: null, as before). A refactor is always a major. The
+  manifest golden's bump is now `minor`.
+- A translated button label in an adapted test no longer breaks the declared
+  floor unseen. The optimizedb tests passed `$this->t('...')` to
+  `submitForm()`: green on 11.4 and 10.6, a `TypeError` on the declared floor
+  10.2.12. From 10.2.3 core's `WebAssert` declares `strict_types` and hands a
+  `TranslatableMarkup` to Mink's `findButton(string)` unchanged; from 10.3.0
+  `buttonExists()` casts it, `buttonNotExists()` never does. A new port-safety
+  check, `test-label-markup` (`config/port-checks.json`, `strict_from` 10.2.3
+  and `cast_from` 10.3.0, verified in core), reports such a `submitForm()`
+  label or `buttonExists()` locator in a test while the range admits a core
+  of that window, and a `buttonNotExists()` locator while it admits any
+  strict core: an error when the port added it or when its range change made
+  it fail. The test-adaptation skill, the test engineer and `/drupilot-test`
+  pass labels as strings, replace a removed `$defaultTheme` with `stark`, turn
   `drupalPostForm()` into `drupalGet()` plus `submitForm()`, and run the check.
   drupilot still runs the suite on the bed's core only.
 - A Rector finding in `findings.json` now says how sure its line is. Rector
@@ -105,8 +118,9 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   hunks a rule was shown at a line it never touched (the optimizedb
   assessment read `TernaryToNullCoalescingRector` as the `format_size()`
   change). Each Rector finding now carries `attribution`: `hunk` when its rule
-  made that hunk (one rule, or one hunk), `file` when it only changed some
-  hunk of the file. The ids do not change; the findings golden of
+  made the change at its line (one rule, or one block of changed lines; Rector
+  merges changes a few lines apart into one hunk), `file` when it only changed
+  some place of the file. The ids do not change; the findings golden of
   legacy_widgets gains the field.
 
 ## [1.0.0] - 2026-10-27

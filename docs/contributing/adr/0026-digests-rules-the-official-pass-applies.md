@@ -35,6 +35,11 @@ lacks (ADR 0019). 112 of the 174 digests rules were then applied by neither pass
   - `all.php` has a directive other than `withFileExtensions` and `withRules`.
 
   The filtered copy would otherwise drop a rule or a directive without saying so.
+
+  Amended in 1.0.1: a `require_once` file whose registered class drupilot read, but that does not open
+  with `<?php` (PHP would read it as inline HTML), or that `php -l` rejects, is left out on its own and
+  listed in `digests_filter.broken`; the other rules run (lab L-1.0-D9: one such upstream file stopped
+  the whole layer). A file with no open tag and no registered class still stops the pass.
 - **Verdicts belong to the sources and the rules they were given on.** Once the module has verdicts, an
   `--apply` runs the digests pass only when the last dry-run was of the same sources and the same digests
   SHA, and every rule that dry-run changed files with has a verdict. Otherwise it stops with exit 4 and
@@ -57,5 +62,5 @@ lacks (ADR 0019). 112 of the 174 digests rules were then applied by neither pass
   did. On a port to 12, where the plan loads those sets, they are skipped.
 - A change of layout upstream stops the digests pass until drupilot reads it. The message names what could
   not be read.
-- `digests_filter` reports `skipped_implemented`, `implemented_not_loaded`, `config_only`, `rejected` and
-  `kept`.
+- `digests_filter` reports `skipped_implemented`, `implemented_not_loaded`, `config_only`, `rejected`,
+  `broken` (since 1.0.1) and `kept`.

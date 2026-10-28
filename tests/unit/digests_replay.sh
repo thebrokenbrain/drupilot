@@ -301,6 +301,29 @@ mk_bin "$STUBS2/php" 'case "$1" in -r) echo 8.3.30;; -v) echo "PHP 8.3.30 (cli)"
 assert_eq "  a rule php -l rejects: left out too" \
   "$T_RC|$(j '[.digests_filter.broken[] | [.rule, .reason]]')|$(j '.digests_filter.kept')" \
   '0|[["BRuleRector","no-open-tag"],["CRuleRector","php-lint"]]|2'
+# An uppercase open tag loads in PHP: kept. A file with no open tag and no
+# registered class is a layout drupilot cannot read: refused (fail closed).
+git -C "$DG" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false reset -q --hard "$SHA"
+printf '<?PHP\n\ndeclare(strict_types=1);\n\nfinal readonly class BRuleRector extends AbstractRector\n{\n}\n' > "$DG/rector/rules/b-rule-222.php"
+printf 'final class NotRegisteredRector {}\n' > "$DG/rector/rules/d-rule-444.php"
+git -C "$DG" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false commit -qam upper-and-classless
+DRUPILOT_PROJECT_DIR="$R" lock_set .digests.sha "$(git -C "$DG" rev-parse HEAD)" > /dev/null
+rr
+assert_eq "  <?PHP is an open tag; a file with neither an open tag nor a registered class is refused (exit 4)" \
+  "$T_RC|$(j '.digests_status')|$(grep -c 'b-rule-222' "$T_ERR" || true)" '4|"error"|0'
+assert_match "  it names the file" "$(tr '\n' ' ' < "$T_ERR")" "layout drupilot cannot filter safely.*rules/d-rule-444.php"
+# Every rule left to run cannot load: nothing runs, and the remedy is the
+# upstream commit, not drupilot.
+git -C "$DG" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false reset -q --hard "$SHA"
+for r in a-rule-111:ARuleRector b-rule-222:BRuleRector c-rule-333:CRuleRector d-rule-444:DRuleRector e-rule-555:ERuleRector f-rule-666:FRuleRector; do
+  printf 'final readonly class %s extends AbstractRector\n{\n}\n' "${r#*:}" > "$DG/rector/rules/${r%%:*}.php"
+done
+git -C "$DG" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false commit -qam all-broken
+DRUPILOT_PROJECT_DIR="$R" lock_set .digests.sha "$(git -C "$DG" rev-parse HEAD)" > /dev/null
+rr
+assert_eq "every rule file without <?php: nothing runs (exit 0), all listed as broken" \
+  "$T_RC|$(j '[.digests_status, .digests_filter.kept, (.digests_filter.broken | length)]')" '0|["ok",0,6]'
+assert_match "  the remedy names the upstream commit" "$(tr '\n' ' ' < "$T_ERR")" "Every digests rule left to run cannot load.*Pin a known-good digests commit"
 git -C "$DG" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false reset -q --hard "$SHA"
 DRUPILOT_PROJECT_DIR="$R" lock_set .digests.sha "$SHA" > /dev/null
 dd --clear

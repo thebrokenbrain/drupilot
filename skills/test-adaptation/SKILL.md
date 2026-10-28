@@ -102,9 +102,14 @@ changes to look for (Grep + Edit, minimal and explained):
   plan's range keeps an older core (`^10.2 || ^11`), the test API of that
   floor counts too. Pass a `submitForm()` label and a `buttonExists()` /
   `buttonNotExists()` locator as a string: `(string) $this->t('Save')` or
-  `'Save'`. Drupal 10.3 and later cast a `TranslatableMarkup` there; 10.2 and
-  older hand it to Mink's `findButton(string)` and the test errors with a
-  `TypeError` on that core, although the bed's run is green. After adapting,
+  `'Save'`. From 10.2.3 core's `WebAssert` declares `strict_types` and hands a
+  `TranslatableMarkup` to Mink's `findButton(string)`: a `TypeError`.
+  `buttonExists()` (and so `submitForm()`) casts it from 10.3.0, so a range
+  that admits 10.2.3 to 10.2.x breaks there while the bed's run is green;
+  `buttonNotExists()` never casts it, on any core. In a test file that
+  declares `strict_types=1`, pass strings to every `assertSession()` method
+  (`pageTextContains()`, `fieldValueEquals()`, ...): below 10.3 core does not
+  cast them either. After adapting,
   run the check that catches it (an error for a label you added):
   `bash "$ROOT/scripts/analysis/check-port-safety.sh" --subject "$SUBJECT" --checks test-label-markup`.
   drupilot runs the suite on the bed's core only (Drupal 10 is checked

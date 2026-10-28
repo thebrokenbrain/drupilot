@@ -7,9 +7,12 @@
 #   object, also across lines; a (string) cast, a literal, another argument,
 #   another method are fine;
 # - check-port-safety.sh test-label-markup reports each in a file under
-#   tests/ while the range admits a core below 10.3 (config/port-checks.json
-#   since): a warning unattributed, an error (exit 3) when the port added it;
-#   nothing for ^10.3 || ^11, nor outside tests/.
+#   tests/ while the range admits a core from 10.2.3 (strict WebAssert) to
+#   before 10.3.0 (where buttonExists() casts), and a buttonNotExists()
+#   locator while it admits any core from 10.2.3 (never cast): a warning
+#   unattributed, an error (exit 3) when the port added it, or when the
+#   port's own range change made it fail (a ^9 base); nothing for ^8 || ^9,
+#   nor outside tests/.
 # Docker-free.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
@@ -51,11 +54,13 @@ assert_eq "check-port-safety: unattributed, a warning per label (exit 0), tests/
   "$T_RC|$(jq -c '[.findings[] | [.file, .line, .severity]]' "$T_OUT")" \
   '0|[["tests/src/Functional/LabelTest.php",7,"warn"],["tests/src/Functional/LabelTest.php",12,"warn"],["tests/src/Functional/LabelTest.php",13,"warn"],["tests/src/Functional/LabelTest.php",14,"warn"]]'
 assert_match "  the message says why and what to pass" "$(jq -r '.findings[0].message' "$T_OUT")" \
-  "admits 10\\.2\\.0: before 10\\.3, core's WebAssert passes it to Mink's findButton\\(string\\).*\\(string\\) \\\$this->t"
+  "admits a core from 10\\.2\\.3 to before 10\\.3\\.0: there core's WebAssert is strict.*findButton\\(string\\).*\\(string\\) \\\$this->t"
 t_run "$T_SH" "$CPS" --subject "$M" --no-diff --checks test-label-markup --core-req '^10.3 || ^11' --json
-assert_eq "^10.3 || ^11: nothing" "$T_RC|$(jq -c '.findings | length' "$T_OUT")" "0|0"
+assert_eq "^10.3 || ^11: only buttonNotExists(), which no core casts" "$T_RC|$(jq -c '[.findings[] | .line]' "$T_OUT")" "0|[14]"
 t_run "$T_SH" "$CPS" --subject "$M" --no-diff --checks test-label-markup --core-req '^11' --json
-assert_eq "^11: nothing" "$(jq -c '.findings | length' "$T_OUT")" "0"
+assert_eq "^11: the same" "$(jq -c '[.findings[] | .line]' "$T_OUT")" "[14]"
+t_run "$T_SH" "$CPS" --subject "$M" --no-diff --checks test-label-markup --core-req '^8 || ^9' --json
+assert_eq "^8 || ^9: nothing (WebAssert is strict only from 10.2.3)" "$(jq -c '.findings | length' "$T_OUT")" "0"
 
 # Attributed: a label the port added is an error, the stage is not done.
 g() { git -C "$M" -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false "$@"; }
@@ -67,4 +72,13 @@ t_run "$T_SH" "$CPS" --subject "$M" --checks test-label-markup --base HEAD --jso
 assert_eq "diff mode: the label the port added is an error (exit 3), the others warnings" \
   "$T_RC|$(jq -c '[.findings[] | [.line, .introduced, .severity]]' "$T_OUT")" \
   '3|[[7,true,"error"],[12,false,"warn"],[13,false,"warn"],[14,false,"warn"]]'
+# A D9-only base: the range change makes every translated label fail, so the
+# lines the port left alone are the port's too.
+sed 's/^core_version_requirement: .*/core_version_requirement: ^9/' "$M/lm.info.yml" > "$T_TMP/info9" && cp "$T_TMP/info9" "$M/lm.info.yml"
+g add -A; g commit -qm base9
+sed 's/^core_version_requirement: .*/core_version_requirement: ^10.2 || ^11/' "$M/lm.info.yml" > "$T_TMP/info10" && cp "$T_TMP/info10" "$M/lm.info.yml"
+t_run "$T_SH" "$CPS" --subject "$M" --checks test-label-markup --base HEAD --json
+assert_eq "  a base on ^9 ported to ^10.2 || ^11: every label is the port's (errors, exit 3)" \
+  "$T_RC|$(jq -c '[.findings[] | [.line, .introduced, .severity]]' "$T_OUT")" \
+  '3|[[7,true,"error"],[12,true,"error"],[13,true,"error"],[14,true,"error"]]'
 t_done

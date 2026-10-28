@@ -43,10 +43,11 @@
 #           {file}
 #   scope   current, or next-major for a soft deprecation under the report or
 #           defer policy (DRUPILOT_SOFT_DEPRECATIONS)
-#   attribution  a Rector finding only: hunk when its rule made that hunk (the
-#           file had one applied rule, or one hunk), file when several rules
-#           changed several hunks (Rector names the rules per file: the rule
-#           changed some hunk of the file, maybe not this one)
+#   attribution  a Rector finding only: hunk when its rule made the change at
+#           its line (the file had one applied rule, or one change block: a
+#           run of -/+ lines), file when several rules made several change
+#           blocks (Rector names the rules per file: the rule changed some
+#           place of the file, maybe not this line)
 #   class   hard | soft | unknown | guarded (classify-deprecations.sh; a
 #           guarded one, a removed function only a DeprecationHelper fallback
 #           calls, is an info finding) | analysis |
@@ -222,6 +223,15 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
             elif .found == false and .start != null and (($s | startswith("-")) or ($s | startswith("+"))) then .out += [.start + .ctx] | .found = true
             else . end)
       | .out;
+    # change_blocks: the runs of -/+ lines of a diff (Rector merges changes a
+    # few lines apart into one hunk, so a hunk can hold several).
+    def change_blocks: split("\n")
+      | reduce .[] as $s ({n: 0, in: false};
+          if ($s | startswith("@@ ")) then .in = false
+          elif ($s | startswith("-") or startswith("+")) and (($s | startswith("--- ") or startswith("+++ ")) | not) then
+            (if .in then . else .n += 1 | .in = true end)
+          else .in = false end)
+      | .n;
     def sev: ascii_downcase | if . == "warn" then "warning" elif . == "notice" then "info" else . end;
     # PHPStan keys an error in a trait "<file> (in context of class X)": the
     # file is the trait'"'"'s, once (the class contexts are deduplicated below).
@@ -233,19 +243,21 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
       | map({key: "\(.file)\u001f\(.line)\u001f\(.message | finding_norm_message)", value: .}) | from_entries) as $cmap
   | [
       # Rector: one finding per applied rule and hunk. Rector names the rules
-      # per file, so with several rules and several hunks a rule is only known
-      # to have changed some hunk of the file: attribution file, else hunk.
+      # per file, so with several rules and several change blocks (runs of
+      # -/+ lines; a hunk can hold several) a rule is only known to have
+      # changed some place of the file: attribution file, else hunk.
       # (Each generator is parenthesized: an unparenthesized "as" binding would
       # scope over the generators after it.)
       (($rector[0] | O | .file_diffs | A | map(O | select((.file | type) == "string")))[] as $d
         | ($d.file | rootrel) as $rf
         | (($d.diff | S // "") | hunk_lines) as $hl
+        | (($d.diff | S // "") | change_blocks) as $nb
         | ($d.applied_rectors | A | map(S | select(. != null))) as $rs
         | ($hl | if length == 0 then [null] else . end)[] as $ln
         | $rs[] as $r
         | {tool: "rector", rule: $r, rf: $rf, line: $ln, symbol: null, message: ($r | short),
            severity: "info", scope: "current", class: "rector",
-           attribution: (if ($rs | length) > 1 and ($hl | length) > 1 then "file" else "hunk" end)}),
+           attribution: (if ($rs | length) > 1 and $nb > 1 then "file" else "hunk" end)}),
       # PHPStan: every file message; deprecations classified.
       (($stan[0] | O | .files | O) | to_entries[] as $e | ($e.value | O | .messages | A | map(O | select((.message | type) == "string")))[] as $m
         | ($e.key | ctxless | rootrel) as $rf
@@ -367,8 +379,10 @@ jq -c --slurpfile idsf "$TMP/ids.json" --slurpfile ix "$INDEX" --slurpfile recto
   | map(. + {id: $ids["\(.n)"]})
   | map({id, tool, rule, file, line, anchor, symbol, message, occurrence, severity, scope, class,
          sources: [{tool, rule, line}]} + (if .attribution then {attribution} else {} end))
-  # The same symbol at the same anchor of a file: one finding, every source kept.
-  | (map(select(.symbol != null)) | group_by([.file, .anchor, .symbol])
+  # The same symbol at the same anchor of a file: one finding, every source
+  # kept (a guarded one merges only with guarded ones, so it never hides a
+  # call the target runs).
+  | (map(select(.symbol != null)) | group_by([.file, .anchor, .symbol, (.class == "guarded")])
       | map(sort_by([(.tool | prec), .id]) | .[0] + {sources: ([.[].sources[]] | sort_by([(.tool | prec), .rule, (.line // 0)]))}))
     + map(select(.symbol == null))
   | sort_by([.file, .anchor, .id])

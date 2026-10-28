@@ -606,25 +606,33 @@ BEGIN { st = "html"; lbl = "" }
   return 0
 }
 
+# The three scans below read php_code_lines's output (comments and string
+# contents blanked, the line numbers kept) as one string: RS is a byte PHP
+# code never holds (a file that holds it is still read whole), the lines are
+# indexed once with split(), and the candidates are found with index(), so a
+# large file costs in step with its size under mawk and BusyBox awk too. A
+# file with no candidate is skipped before awk runs.
+
 # php_sort_bool_comparator_lines FILE -> the line of every comparator, passed
 # inline to usort(), uasort() or uksort(), that returns a comparison (a bool)
 # instead of an int, one line number per finding, in order. PHP 8.0
 # deprecated it ("Returning bool from comparison function is deprecated"),
 # and Drupal's test runner turns that notice into a failure. FILE is
-# php_code_lines's output (comments and string contents blanked, the line
-# numbers kept). A heuristic scan, not a parser: a closure (`function`, maybe
-# `static`) or an arrow function written as the second argument is followed;
-# a named callback, an array callable or a variable is not. A closure's
-# reported line is that of a `return` whose expression has, at its top level
-# (outside brackets, and after any outer parentheses are stripped), a
-# comparison (<, >, <=, >=, ==, !=, ===, !==, <>), &&, ||, a leading ! or
-# true/false, and neither <=> nor a ternary; an arrow function's, the line of
-# its =>. A closure or arrow function that declares a return type other than
-# bool is skipped (PHP converts what it returns), and so are the returns of a
-# closure nested in the comparator.
+# php_code_lines's output. A heuristic scan, not a parser: a closure
+# (`function`, maybe `static`) or an arrow function written as the second
+# argument is followed; a named callback, an array callable or a variable is
+# not. A closure's reported line is that of a `return` whose expression has,
+# at its top level (outside brackets, and after any outer parentheses are
+# stripped), a comparison (<, >, <=, >=, ==, !=, ===, !==, <>), && or ||, or
+# is true/false or a negation alone (`!$a`, `!empty($a)`; not `!$a - !$b`),
+# and has neither <=> nor a ternary; an arrow function's, the line of its =>.
+# A closure or arrow function that declares a return type other than bool is
+# skipped (PHP converts what it returns), and so are the returns of a closure
+# nested in the comparator.
 php_sort_bool_comparator_lines() {
   local f="${1:-}"
   [[ -f "$f" ]] || return 0
+  LC_ALL=C grep -q -i -E 'u[ak]?sort' "$f" 2> /dev/null || return 0
   LC_ALL=C awk '
 function ws(k) { while (k <= n && substr(buf, k, 1) ~ /[ \t\n\r]/) k++; return k }
 function isid(c) { return c ~ /[A-Za-z0-9_$\\]/ }
@@ -639,10 +647,15 @@ function shut(k,   d, ch) {
   }
   return n + 1
 }
-function lineof(k,   t) { t = substr(buf, 1, k); return gsub(/\n/, "", t) + 1 }
+# lineof(k) -> the line of position k (a binary search of the line starts).
+function lineof(k,   lo, hi, mid) {
+  lo = 1; hi = nl
+  while (lo < hi) { mid = int((lo + hi + 1) / 2); if (bs[mid] <= k) lo = mid; else hi = mid - 1 }
+  return lo
+}
 function trim(s) { gsub(/^[ \t\n\r]+|[ \t\n\r]+$/, "", s); return s }
 # isbool(e) -> 1 when the expression e reads as a bool (see the header).
-function isbool(e,   m, d, k, ch, c2, c3, found, ee, dd, kk, cc) {
+function isbool(e,   m, d, k, ch, c2, c3, found, op, neg, ee, dd, kk, cc) {
   e = trim(e)
   # Strip outer parentheses that enclose the whole expression.
   while (substr(e, 1, 1) == "(") {
@@ -657,8 +670,8 @@ function isbool(e,   m, d, k, ch, c2, c3, found, ee, dd, kk, cc) {
   }
   ee = tolower(e)
   if (ee == "true" || ee == "false") return 1
-  if (substr(e, 1, 1) == "!" && substr(e, 2, 1) != "=") return 1
-  m = length(e); d = 0; found = 0
+  neg = (substr(e, 1, 1) == "!" && substr(e, 2, 1) != "=")
+  m = length(e); d = 0; found = 0; op = 0
   for (k = 1; k <= m; k++) {
     ch = substr(e, k, 1)
     if (ch == "(" || ch == "[" || ch == "{") { d++; continue }
@@ -668,13 +681,18 @@ function isbool(e,   m, d, k, ch, c2, c3, found, ee, dd, kk, cc) {
     if (c3 == "<=>") return 0
     if (c3 == "===" || c3 == "!==") { found = 1; k += 2; continue }
     if (c3 == "?->") { k += 2; continue }
-    if (c2 == "??") { k++; continue }
+    if (c2 == "??") { op = 1; k++; continue }
     if (ch == "?") return 0
-    if (c2 == "->" || c2 == "=>" || c2 == "<<" || c2 == ">>") { k++; continue }
+    if (c2 == "->" || c2 == "=>" || c2 == "::") { k++; continue }
+    if (c2 == "<<" || c2 == ">>") { op = 1; k++; continue }
     if (c2 == "==" || c2 == "!=" || c2 == "<>" || c2 == "<=" || c2 == ">=" || c2 == "&&" || c2 == "||") { found = 1; k++; continue }
-    if (ch == "<" || ch == ">") found = 1
+    if (ch == "<" || ch == ">") { found = 1; continue }
+    if (k > 1 && (ch == "+" || ch == "-" || ch == "*" || ch == "/" || ch == "%" || ch == "." || ch == "&" || ch == "|" || ch == "^")) op = 1
   }
-  return found
+  if (found) return 1
+  # A leading ! is a bool only when nothing applies to the negated operand
+  # after it (!$a - !$b is an int).
+  return (neg && !op)
 }
 # rtype(k, stop) -> the return type declared from k (after a ":") up to the
 # position stop, lowercased, without a leading "?"; "" when none is declared.
@@ -695,7 +713,7 @@ function closure(k,   p, b, e, ch, t, r, x, stop, q) {
     if (substr(buf, k, 1) != "(") return
     k = ws(shut(k) + 1)
   }
-  b = index(substr(buf, k), "{"); if (b == 0) return
+  b = index(substr(buf, k, 4096), "{"); if (b == 0) return
   b = k + b - 1
   t = rtype(k, b)
   if (t != "" && t != "bool") return
@@ -704,7 +722,7 @@ function closure(k,   p, b, e, ch, t, r, x, stop, q) {
   for (x = b + 1; x < e; x++) {
     ch = substr(lb, x, 1)
     if (ch == "f" && substr(lb, x, 8) == "function" && !isid(substr(buf, x - 1, 1)) && !isid(substr(buf, x + 8, 1))) {
-      q = index(substr(buf, x), "{"); if (q == 0 || x + q - 1 >= e) break
+      q = index(substr(buf, x, e - x), "{"); if (q == 0) break
       x = shut(x + q - 1); continue
     }
     if (ch == "r" && substr(lb, x, 6) == "return" && !isid(substr(buf, x - 1, 1)) && !isid(substr(buf, x + 6, 1))) {
@@ -727,7 +745,7 @@ function arrow(k,   p, a, stop, r, t) {
   if (substr(buf, k, 1) == "&") k = ws(k + 1)
   if (substr(buf, k, 1) != "(") return
   p = shut(k); k = p + 1
-  a = index(substr(buf, k), "=>"); if (a == 0) return
+  a = index(substr(buf, k, 4096), "=>"); if (a == 0) return
   a = k + a - 1
   t = rtype(k, a)
   if (t != "" && t != "bool") return
@@ -755,39 +773,49 @@ function call(k,   d, ch) {
   if (substr(lb, k, 8) == "function" && !isid(substr(buf, k + 8, 1))) closure(k + 8)
   else if (substr(lb, k, 2) == "fn" && !isid(substr(buf, k + 2, 1))) arrow(k + 2)
 }
-{ buf = buf $0 "\n" }
+# find(w) -> follows every call of the function w (lowercase).
+function find(w,   pos, p, i, pc, j) {
+  pos = 1
+  while ((p = index(substr(lb, pos), w)) > 0) {
+    i = pos + p - 1; pos = i + length(w)
+    pc = (i > 1) ? substr(buf, i - 1, 1) : " "
+    if (pc ~ /[A-Za-z0-9_$>:]/ || isid(substr(buf, i + length(w), 1))) continue
+    j = ws(i + length(w))
+    if (substr(buf, j, 1) == "(") call(j)
+  }
+}
+BEGIN { RS = "\001" }
+{ buf = buf (NR > 1 ? "\001" : "") $0 }
 END {
   n = length(buf); lb = tolower(buf)
-  for (i = 1; i <= n; i++) {
-    if (substr(lb, i, 1) != "u") continue
-    w = 0
-    if (substr(lb, i, 5) == "usort") w = 5
-    else if (substr(lb, i, 6) == "uasort" || substr(lb, i, 6) == "uksort") w = 6
-    if (w == 0) continue
-    pc = (i > 1) ? substr(buf, i - 1, 1) : " "
-    if (pc ~ /[A-Za-z0-9_$>:]/ || isid(substr(buf, i + w, 1))) continue
-    j = ws(i + w)
-    if (substr(buf, j, 1) == "(") call(j)
-    i += w - 1
-  }
+  nl = split(buf, L, "\n"); bs[1] = 1
+  for (i = 2; i <= nl; i++) bs[i] = bs[i - 1] + length(L[i - 1]) + 1
+  find("usort"); find("uasort"); find("uksort")
 }' "$f" 2> /dev/null | LC_ALL=C sort -n -u || true
   return 0
 }
 
-# php_bc_fallback_spans BLANKED RAW -> one TSV record per
-# DeprecationHelper::backwardsCompatibleCall() call with four positional
-# arguments: the first and last line of its fourth argument (the deprecated
-# callable, which runs only on a core older than the second argument), that
-# second argument when it is a quoted literal (read from RAW; empty
-# otherwise), and the functions called in the fourth and in the third
-# argument (lowercased, space-separated; a method, a static call, a `new` or
-# a closure keyword is not a function call). BLANKED is php_code_lines's
-# output for RAW, so the two have the same lines and offsets. A heuristic
-# scan, not a parser; a call with named arguments is skipped.
-php_bc_fallback_spans() {
-  local b="${1:-}" r="${2:-}"
-  [[ -f "$b" && -f "$r" ]] || return 0
-  LC_ALL=C awk '
+# php_bc_fallback_calls BLANKED RAW NAMES -> "LINE<TAB>NAME<TAB>VERSION" for
+# every call of a function of NAMES (space-separated, lowercase) in the file:
+# VERSION is the second argument of the innermost
+# DeprecationHelper::backwardsCompatibleCall() whose fourth argument, a
+# closure or an arrow function written there (`fn`, `function`, maybe
+# `static`), holds the call (that fallback runs only on a core older than
+# it), "?" when that argument is not a quoted version, "-" when the call is
+# in no such fallback. A call is NAME( not after ->, ::, $, a name, `new` or
+# `function` (a declaration); a leading \ (a fully qualified call) is fine.
+# BLANKED is php_code_lines's output for RAW: the two have the same lines,
+# and a line's code keeps its columns (php_code_lines blanks string contents
+# in place and cuts a comment off the end), so the version is read from RAW
+# at the line and column of its quotes in BLANKED. A first-class callable as
+# the fourth argument itself is created before backwardsCompatibleCall() runs:
+# no span. A call with named arguments is skipped. A heuristic scan, not a
+# parser.
+php_bc_fallback_calls() {
+  local b="${1:-}" r="${2:-}" names="${3:-}"
+  [[ -f "$b" && -f "$r" && -n "$names" ]] || return 0
+  LC_ALL=C grep -q -i 'backwardscompatiblecall' "$b" 2> /dev/null || return 0
+  AWKV_N="$names" LC_ALL=C awk '
 function shut(k,   d, ch) {
   d = 0
   for (; k <= n; k++) {
@@ -797,61 +825,83 @@ function shut(k,   d, ch) {
   }
   return n + 1
 }
-function lineof(k,   t) { t = substr(buf, 1, k); return gsub(/\n/, "", t) + 1 }
-function trim(s) { gsub(/^[ \t\n\r]+|[ \t\n\r]+$/, "", s); return s }
-# funcs(a, b) -> the functions called in buf[a..b], lowercased, one space
-# between them.
-function funcs(a, b,   s, out, nm, pre, tp, k) {
-  s = substr(buf, a, b - a + 1); out = ""; tp = ""
-  while (match(s, /[A-Za-z_][A-Za-z0-9_]*[ \t\n\r]*\(/)) {
-    nm = substr(s, RSTART, RLENGTH); sub(/[ \t\n\r]*\($/, "", nm)
-    # What comes before the name: right before it (a longer name, a
-    # variable), and before it once blanks are dropped (->, ::, new).
-    pre = tp substr(s, 1, RSTART - 1); tp = pre
-    k = tolower(nm)
-    if (pre !~ /[A-Za-z0-9_$]$/) {
-      sub(/[ \t\n\r]+$/, "", pre)
-      if (pre !~ /(->|::)$/ && pre !~ /(^|[^A-Za-z0-9_])new$/ && k != "function" && k != "fn" && k != "array" \
-          && k != "list" && k != "isset" && k != "empty" && k != "use" && k != "static" && k != "match")
-        out = out (out == "" ? "" : " ") k
-    }
-    tp = tp substr(s, RSTART, RLENGTH)
-    s = substr(s, RSTART + RLENGTH)
-  }
-  return out
+function lineof(k,   lo, hi, mid) {
+  lo = 1; hi = nl
+  while (lo < hi) { mid = int((lo + hi + 1) / 2); if (bs[mid] <= k) lo = mid; else hi = mid - 1 }
+  return lo
 }
-FNR == NR { buf = buf $0 "\n"; next }
-{ raw = raw $0 "\n" }
-END {
-  n = length(buf); lb = tolower(buf)
-  for (i = 1; i <= n; i++) {
-    if (substr(lb, i, 1) != "d" || substr(lb, i, 17) != "deprecationhelper") continue
-    j = i + 17
-    while (substr(buf, j, 1) ~ /[ \t\n\r]/) j++
-    if (substr(buf, j, 2) != "::") continue
-    j += 2; while (substr(buf, j, 1) ~ /[ \t\n\r]/) j++
-    if (substr(lb, j, 23) != "backwardscompatiblecall") continue
-    j += 23; while (substr(buf, j, 1) ~ /[ \t\n\r]/) j++
+function trim(s) { gsub(/^[ \t\n\r]+|[ \t\n\r]+$/, "", s); return s }
+function isid(c) { return c ~ /[A-Za-z0-9_$]/ }
+# spans() -> sa/sb/sv[1..ns]: the fourth-argument closures and their versions.
+function spans(   pos, p, i, j, k, e, d, ch, na, a4, b4, q, l, col, v, t, x) {
+  pos = 1; ns = 0
+  while ((p = index(substr(lb, pos), "backwardscompatiblecall")) > 0) {
+    i = pos + p - 1; pos = i + 23
+    # Preceded by DeprecationHelper:: (blanks allowed around ::).
+    k = i - 1; while (k > 0 && substr(buf, k, 1) ~ /[ \t\n\r]/) k--
+    if (substr(buf, k - 1, 2) != "::") continue
+    k -= 2; while (k > 0 && substr(buf, k, 1) ~ /[ \t\n\r]/) k--
+    if (k < 17 || substr(lb, k - 16, 17) != "deprecationhelper") continue
+    j = i + 23; while (substr(buf, j, 1) ~ /[ \t\n\r]/) j++
     if (substr(buf, j, 1) != "(") continue
     e = shut(j)
-    # The top-level commas of the argument list.
     na = 0; d = 0; st[1] = j + 1
-    for (k = j; k < e; k++) {
-      ch = substr(buf, k, 1)
+    for (x = j; x < e; x++) {
+      ch = substr(buf, x, 1)
       if (ch == "(" || ch == "[" || ch == "{") d++
       else if (ch == ")" || ch == "]" || ch == "}") d--
-      else if (ch == "," && d == 1) { na++; en[na] = k - 1; st[na + 1] = k + 1 }
+      else if (ch == "," && d == 1) { na++; en[na] = x - 1; st[na + 1] = x + 1 }
     }
     na++; en[na] = e - 1
     if (na < 4) continue
-    # Named arguments: skipped.
     if (trim(substr(buf, st[1], en[1] - st[1] + 1)) ~ /^[A-Za-z_][A-Za-z0-9_]*[ \t]*:[^:]/) continue
-    v = trim(substr(raw, st[2], en[2] - st[2] + 1))
-    if (v ~ /^\047[0-9][0-9.]*\047$/ || v ~ /^"[0-9][0-9.]*"$/) v = substr(v, 2, length(v) - 2); else v = ""
     a4 = st[4]; while (substr(buf, a4, 1) ~ /[ \t\n\r]/) a4++
     b4 = en[4]; while (b4 > a4 && substr(buf, b4, 1) ~ /[ \t\n\r]/) b4--
-    printf "%d\t%d\t%s\t%s\t%s\n", lineof(a4), lineof(b4), v, funcs(st[4], en[4]), funcs(st[3], en[3])
-    i = e
+    t = tolower(substr(buf, a4, 16)); sub(/^static[ \t\n\r]+/, "", t)
+    if (t !~ /^(fn|function)[ \t\n\r(&]/) continue
+    # The version: the quoted second argument, read from RAW at its line and
+    # column in BLANKED.
+    q = st[2]; while (substr(buf, q, 1) ~ /[ \t\n\r]/) q++
+    x = en[2]; while (x > q && substr(buf, x, 1) ~ /[ \t\n\r]/) x--
+    v = "?"; l = lineof(q)
+    if ((substr(buf, q, 1) == "\047" || substr(buf, q, 1) == "\"") && lineof(x) == l) {
+      col = q - bs[l] + 1
+      t = substr(R[l], col, x - q + 1)
+      if (t ~ /^\047[0-9][0-9.]*\047$/ || t ~ /^"[0-9][0-9.]*"$/) v = substr(t, 2, length(t) - 2)
+    }
+    ns++; sa[ns] = a4; sb[ns] = b4; sv[ns] = v
+  }
+}
+BEGIN { RS = "\001" }
+FNR == NR { buf = buf (FNR > 1 ? "\001" : "") $0; next }
+{ raw = raw (FNR > 1 ? "\001" : "") $0 }
+END {
+  n = length(buf); lb = tolower(buf)
+  nl = split(buf, L, "\n"); bs[1] = 1
+  for (i = 2; i <= nl; i++) bs[i] = bs[i - 1] + length(L[i - 1]) + 1
+  split(raw, R, "\n")
+  spans()
+  nn = split(ENVIRON["AWKV_N"], N, " ")
+  for (z = 1; z <= nn; z++) {
+    w = N[z]; if (w == "") continue
+    pos = 1
+    while ((p = index(substr(lb, pos), w)) > 0) {
+      i = pos + p - 1; pos = i + length(w)
+      if (isid(substr(buf, i + length(w), 1))) continue
+      k = i - 1; pc = (k > 0) ? substr(buf, k, 1) : " "
+      if (pc == "\\") { k--; pc = (k > 0) ? substr(buf, k, 1) : " " ; if (pc ~ /[A-Za-z0-9_\\]/) continue }
+      else if (isid(pc) || pc == "\\") continue
+      # Not a method or a static call, not a declaration nor a new.
+      k2 = k; while (k2 > 0 && substr(buf, k2, 1) ~ /[ \t\n\r]/) k2--
+      t = substr(lb, (k2 > 8 ? k2 - 7 : 1), (k2 > 8 ? 8 : k2))
+      if (substr(buf, k2 - 1, 2) == "->" || substr(buf, k2 - 1, 2) == "::") continue
+      if (t ~ /(^|[^a-z0-9_])function$/ || t ~ /(^|[^a-z0-9_])new$/) continue
+      j = i + length(w); while (substr(buf, j, 1) ~ /[ \t\n\r]/) j++
+      if (substr(buf, j, 1) != "(") continue
+      best = 0
+      for (s = 1; s <= ns; s++) if (sa[s] <= i && i <= sb[s] && (best == 0 || sb[s] - sa[s] < sb[best] - sa[best])) best = s
+      printf "%d\t%s\t%s\n", lineof(i), w, (best ? sv[best] : "-")
+    }
   }
 }' "$b" "$r" 2> /dev/null || true
   return 0
@@ -867,6 +917,7 @@ END {
 php_markup_label_lines() {
   local f="${1:-}"
   [[ -f "$f" ]] || return 0
+  LC_ALL=C grep -q -i -E 'submitform|button(not)?exists' "$f" 2> /dev/null || return 0
   LC_ALL=C awk '
 function shut(k,   d, ch) {
   d = 0
@@ -877,29 +928,27 @@ function shut(k,   d, ch) {
   }
   return n + 1
 }
-function lineof(k,   t) { t = substr(buf, 1, k); return gsub(/\n/, "", t) + 1 }
-function at(k, w) { return substr(buf, k, length(w)) == w }
+function lineof(k,   lo, hi, mid) {
+  lo = 1; hi = nl
+  while (lo < hi) { mid = int((lo + hi + 1) / 2); if (bs[mid] <= k) lo = mid; else hi = mid - 1 }
+  return lo
+}
 function markup(s) {
   sub(/^[ \t\n\r]+/, "", s)
   return s ~ /^(\$this[ \t\n\r]*->[ \t\n\r]*(t|formatPlural)|\\?t|new[ \t\n\r]+\\?([A-Za-z0-9_]+\\)*TranslatableMarkup)[ \t\n\r]*\(/
 }
-{ buf = buf $0 "\n" }
-END {
-  n = length(buf)
-  for (i = 1; i <= n; i++) {
-    if (substr(buf, i, 2) != "->") continue
-    j = i + 2; while (substr(buf, j, 1) ~ /[ \t\n\r]/) j++
-    nm = ""
-    if (at(j, "submitForm")) { nm = "submitForm"; want = 2 }
-    else if (at(j, "buttonNotExists")) { nm = "buttonNotExists"; want = 1 }
-    else if (at(j, "buttonExists")) { nm = "buttonExists"; want = 1 }
-    if (nm == "") continue
-    k = j + length(nm)
-    if (substr(buf, k, 1) ~ /[A-Za-z0-9_]/) continue
-    while (substr(buf, k, 1) ~ /[ \t\n\r]/) k++
-    if (substr(buf, k, 1) != "(") continue
-    e = shut(k); d = 0; arg = 1; st = k + 1
-    for (x = k; x < e; x++) {
+# scan(w, name, want) -> each ->w( call whose argument want is translated.
+function scan(w, name, want,   pos, p, i, j, k, e, d, arg, st, x, ch, a, q) {
+  pos = 1
+  while ((p = index(substr(lb, pos), w)) > 0) {
+    i = pos + p - 1; pos = i + length(w)
+    if (substr(buf, i + length(w), 1) ~ /[A-Za-z0-9_]/) continue
+    k = i - 1; while (k > 0 && substr(buf, k, 1) ~ /[ \t\n\r]/) k--
+    if (k < 2 || substr(buf, k - 1, 2) != "->") continue
+    j = i + length(w); while (substr(buf, j, 1) ~ /[ \t\n\r]/) j++
+    if (substr(buf, j, 1) != "(") continue
+    e = shut(j); d = 0; arg = 1; st = j + 1
+    for (x = j; x < e; x++) {
       ch = substr(buf, x, 1)
       if (ch == "(" || ch == "[" || ch == "{") d++
       else if (ch == ")" || ch == "]" || ch == "}") d--
@@ -908,12 +957,18 @@ END {
         arg++; st = x + 1
       }
     }
-    if (arg == want) {
-      a = substr(buf, st, (x < e ? x : e) - st)
-      if (markup(a)) { p = st; while (substr(buf, p, 1) ~ /[ \t\n\r]/) p++; printf "%d\t%s\n", lineof(p), nm }
-    }
-    i = j
+    if (arg != want) continue
+    a = substr(buf, st, (x < e ? x : e) - st)
+    if (markup(a)) { q = st; while (substr(buf, q, 1) ~ /[ \t\n\r]/) q++; printf "%d\t%s\n", lineof(q), name }
   }
-}' "$f" 2> /dev/null || true
+}
+BEGIN { RS = "\001" }
+{ buf = buf (NR > 1 ? "\001" : "") $0 }
+END {
+  n = length(buf); lb = tolower(buf)
+  nl = split(buf, L, "\n"); bs[1] = 1
+  for (i = 2; i <= nl; i++) bs[i] = bs[i - 1] + length(L[i - 1]) + 1
+  scan("submitform", "submitForm", 2); scan("buttonexists", "buttonExists", 1); scan("buttonnotexists", "buttonNotExists", 1)
+}' "$f" 2> /dev/null | LC_ALL=C sort -n -s -k1,1 || true
   return 0
 }
