@@ -565,6 +565,38 @@ strategy_persist_name() {
   return 0
 }
 
+# core_requirement_drops_major CURRENT FINAL -> 0 when FINAL no longer
+# admits a core major CURRENT named ('^8 || ^9' -> '^10 || ^11' drops 8 and
+# 9), 1 otherwise (and for an empty CURRENT). The majors are the leading
+# numbers of the version tokens, as recommend_core_target has always read
+# them.
+core_requirement_drops_major() {
+  local cur="${1:-}" fin="${2:-}" m fin_majors
+  [[ -n "$cur" ]] || return 1
+  fin_majors="$(printf '%s' "$fin" | grep -oE '[0-9]+(\.[0-9]+)*' | sed -E 's/\..*//' | sort -u)"
+  for m in $(printf '%s' "$cur" | grep -oE '[0-9]+(\.[0-9]+)*' | sed -E 's/\..*//' | sort -u); do
+    printf '%s\n' "$fin_majors" | grep_q -x "$m" || return 0
+  done
+  return 1
+}
+
+# core_version_bump CURRENT FINAL [BC] [T] -> major | minor | patch: the
+# SemVer bump of a contrib release whose core_version_requirement goes from
+# CURRENT (empty: none was declared) to FINAL. MAJOR when FINAL drops a core
+# major CURRENT supported (core_requirement_drops_major) or BC is true (a
+# refactor, an asserted API break); MINOR when CURRENT did not admit T
+# (default resolve_target_major); PATCH otherwise. Nothing for an empty
+# FINAL.
+core_version_bump() {
+  local cur="${1:-}" fin="${2:-}" bc="${3:-false}" t="${4:-}"
+  [[ -n "$fin" ]] || return 0
+  [[ -n "$t" ]] || t="$(resolve_target_major)"
+  if [[ "$bc" == "true" ]] || core_requirement_drops_major "$cur" "$fin"; then printf 'major'
+  elif [[ -z "$cur" ]] || ! printf '%s' "$cur" | grep_q -E "(^|[^0-9])$t([^0-9]|\$)"; then printf 'minor'
+  else printf 'patch'; fi
+  return 0
+}
+
 # recommend_core_target <subject> [phase] [bc_override] -> recommendation JSON:
 #   { strategy, phase, current_core_version_requirement,
 #     recommended_core_version_requirement, composer_core_constraint,
@@ -677,24 +709,15 @@ recommend_core_target() {
   # current one did (e.g. '^8 || ^9' -> '^10 || ^11' drops 8 AND 9). Dropping a
   # previously-supported core major is backwards-incompatible -> MAJOR,
   # regardless of the strategy.
-  local drops_major=0
-  if [[ -n "$current_req" ]]; then
-    local _rec_majors _m
-    _rec_majors="$(printf '%s' "$req" | grep -oE '[0-9]+(\.[0-9]+)*' | sed -E 's/\..*//' | sort -u)"
-    for _m in $(printf '%s' "$current_req" | grep -oE '[0-9]+(\.[0-9]+)*' | sed -E 's/\..*//' | sort -u); do
-      printf '%s\n' "$_rec_majors" | grep_q -x "$_m" || drops_major=1
-    done
-  fi
-  local version_bump
-  if [[ "$bc_break" == "true" || "$drops_major" == "1" ]]; then
-    version_bump="major"
+  local drops_major=0 version_bump
+  core_requirement_drops_major "$current_req" "$req" && drops_major=1
+  version_bump="$(core_version_bump "$current_req" "$req" "$bc_break" "$dec_t")"
+  if [[ "$version_bump" == "major" ]]; then
     [[ "$drops_major" == "1" ]] && rationale+=("Dropping a previously-supported Drupal core major (current '${current_req:-none}' -> '$req') is backwards-incompatible -> MAJOR (cut a new N+1.0.x branch).")
     [[ "$bc_break" == "true" ]] && rationale+=("Phase 2 refactor / asserted public-API BC break -> MAJOR.")
-  elif [[ "$current_has_11" == "false" ]]; then
-    version_bump="minor"
+  elif [[ "$version_bump" == "minor" ]]; then
     rationale+=("Adding Drupal 11 support without dropping a supported core major -> MINOR.")
   else
-    version_bump="patch"
     rationale+=("No core-major change and no API break -> PATCH.")
   fi
 

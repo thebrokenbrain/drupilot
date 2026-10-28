@@ -293,7 +293,10 @@ state dir. It is built from what the scripts recorded, never from memory:
                      manual_edits (the files neither Rector nor a codemod
                      changed)
   info.yml, composer.json, assess.json, core-matrix.json: the requirement,
-                     require.php, the SemVer bump, d10_support.
+                     require.php, the SemVer bump (the assessment's when the
+                     final requirement is the one it recommended, else
+                     core_version_bump from the requirement before the
+                     port), d10_support.
 The model writes only the rationale: --rationale FILE, a JSON object
 {"<worklist item id>": "why"}. An id the worklist does not have is refused;
 a previous manifest's rationale is kept for the ids still in the worklist.

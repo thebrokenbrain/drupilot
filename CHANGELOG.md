@@ -79,6 +79,14 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `run-rector.sh` now leaves out, on its own, a rule file that does not open
   with `<?php` or that `php -l` rejects in the bed, says so, and runs the
   others (`digests_filter.broken` in its `--json`).
+- The port report no longer says "Version bump: n/a" when the final range
+  differs from the assessment's. `manifest.sh` copied the assessment's bump
+  only when the final `core_version_requirement` was the one it recommended,
+  so the optimizedb port (`^8 || ^9` to `^10.2 || ^11`, a major) showed n/a.
+  It now recomputes it with `core_version_bump` (shared with
+  `recommend_core_target`) from the requirement before the port
+  (`assess.json`, else the `info.yml` at the port's base); a refactor is a
+  major. The manifest golden's bump is now `minor`.
 
 ## [1.0.0] - 2026-10-27
 

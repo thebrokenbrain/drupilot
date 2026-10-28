@@ -550,7 +550,7 @@
   "subject": "web/modules/custom/legacy_widgets",
   "tool": "manifest",
   "type": "module",
-  "version_bump": null,
+  "version_bump": "minor",
   "worklist": {
     "by_lane_status": {
       "ai-free": {

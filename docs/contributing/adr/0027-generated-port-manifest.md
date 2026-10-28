@@ -29,7 +29,7 @@ the JSON of about ten scripts into it and filling about ten free-text lists. Thr
 | `deprecations_remaining`, `deferred_to_phase2` | `findings.json`, the current hard and unknown PHPStan occurrences and the next-major symbols |
 | `port_safety`, `signature_changes`, `metadata_lint` | the stage's raw reports, the scripts' own `--json` |
 | `soft_deprecations` | `classify-deprecations.sh --json` on the stage's raw PHPStan report |
-| `core_version_requirement`, `require_php`, `version_bump`, `d10_support` | `info.yml`, `composer.json`, `assess.json` (the bump it recommended for that requirement), `core-matrix.json` when fresh |
+| `core_version_requirement`, `require_php`, `version_bump`, `d10_support` | `info.yml`, `composer.json`, `assess.json` (the bump it recommended for that requirement; for another final requirement, since 1.0.1, `core_version_bump` from the requirement before the port), `core-matrix.json` when fresh |
 | `decisions` | the decision log, as a count per kind |
 
 **The free-text fields leave the manifest.**
