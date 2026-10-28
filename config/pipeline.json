@@ -149,7 +149,7 @@
       "weight": 15,
       "when": ["always"],
       "tabs": [],
-      "subs": ["discover", "baseline", "adapt", "run", "coverage"],
+      "subs": ["discover", "baseline", "adapt", "run", "coverage", "refresh"],
       "outputs": ["last-test.json"],
       "gate": "the preservation verdict is computed, never fabricated (INV3)",
       "coarse_stage": "tested",

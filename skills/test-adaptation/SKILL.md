@@ -93,6 +93,19 @@ changes to look for (Grep + Edit, minimal and explained):
   -> `assertStringContainsString`); `setUp(): void` / `tearDown(): void` return
   types; `expectException` patterns; deprecated `withConsecutive`; annotations
   (`@dataProvider`, `@group`) still valid, but prefer attributes only in Phase 2.
+- **An attribute hides the annotations of its level.** PHPUnit 10 and 11
+  (Drupal 11) read the metadata of a class, or of one method, from its
+  attributes as soon as it has one (`#[RunTestsInSeparateProcesses]`, which
+  Drupal 11.3 asks of Kernel tests and the port may add, counts) and then
+  ignore that level's doc-comment: the class loses its `@group` (the test
+  falls into the group "default", and core's `run-tests.sh` cannot list it)
+  and its `@coversDefaultClass`, so a method's relative `@covers ::name` is
+  invalid. PHPUnit 9 (Drupal 10) reads the annotations only. While the range
+  keeps Drupal 10, keep each annotation and add its twin next to it
+  (`@group foo` -> `#[Group('foo')]`, with its `use
+  PHPUnit\Framework\Attributes\Group;`), and write a relative `@covers` in
+  full (`@covers \Drupal\foo\Bar::baz`): both forms then work on PHPUnit 9
+  to 11. The check `test-phpunit-metadata` finds what is left (below).
 - **Deprecated test traits / helpers**: e.g. removed `getMock`, deprecated
   `AssertLegacyTrait` methods, `drupalPostForm` -> `submitForm`,
   `assertResponse`/`assertText` -> `assertSession()->...`.
@@ -110,8 +123,8 @@ changes to look for (Grep + Edit, minimal and explained):
   declares `strict_types=1`, pass strings to every `assertSession()` method
   (`pageTextContains()`, `fieldValueEquals()`, ...): below 10.3 core does not
   cast them either. After adapting,
-  run the check that catches it (an error for a label you added):
-  `bash "$ROOT/scripts/analysis/check-port-safety.sh" --subject "$SUBJECT" --checks test-label-markup`.
+  run the checks that catch these (an error for a line you added):
+  `bash "$ROOT/scripts/analysis/check-port-safety.sh" --subject "$SUBJECT" --checks test-label-markup,test-phpunit-metadata`.
   drupilot runs the suite on the bed's core only (Drupal 10 is checked
   statically), so it cannot see such a failure at runtime.
 - **JS tests**: ensure they extend `WebDriverTestBase` and use
@@ -334,6 +347,20 @@ the subject ships tests at all / in the selected scope), and a `coverage`
 object (`requested`, `html` path, `percent` — `percent` is `null`: Phase 1 does
 not compute a coverage figure, so never invent one). Read that file rather than
 re-running; do not write a second record under a different name.
+
+### 7.1 Refresh the port's artifacts
+
+The adapted tests change the module after the port wrote its local patch, its
+core matrix and `port-report.md`. Once the suite has run, refresh them:
+
+```bash
+bash "$ROOT/scripts/analysis/refresh-artifacts.sh" --subject "$SUBJECT" --json
+```
+
+Each step says whether it ran, was up to date or was skipped: the core matrix
+when it is of other sources, the local patch, the extraction when the worklist
+is of other sources (with the fixpoint gate), the manifest and the report. A
+failed step exits `3`: fix what it found and run it again.
 
 ## 8. Gotchas
 

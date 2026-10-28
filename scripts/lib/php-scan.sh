@@ -999,3 +999,201 @@ END {
 }' "$f" 2> /dev/null | LC_ALL=C sort -n -s -k1,1 || true
   return 0
 }
+
+# php_phpunit_hidden_metadata FILE -> "LINE<TAB>LEVEL<TAB>HIDDEN<TAB>TWINS<TAB>
+# RELATIVE" for every class or method of a test FILE whose doc-comment carries
+# PHPUnit metadata that PHPUnit 10+ ignores. PHPUnit reads the metadata of one
+# level (the class, or one method) from its attributes when it has any — an
+# attribute naming a class of PHPUnit\Framework\Attributes\, through the
+# file's imports — and from its doc-comment only otherwise. LINE is the
+# level's first PHPUnit attribute; LEVEL is Class or Class::method; HIDDEN the
+# annotations that have no attribute twin at that level and TWINS the
+# attribute that carries each one ("; "-separated); RELATIVE, for a class
+# whose @coversDefaultClass or @usesDefaultClass is ignored that way, the
+# relative @covers ::name / @uses ::name its methods still have (invalid
+# without it), each with its line. A @coversDefaultClass with no relative
+# @covers is no finding. FILE is the raw source (the doc-comments are read).
+# A line-oriented heuristic, not a parser: one class per file, attributes on
+# lines of their own.
+php_phpunit_hidden_metadata() {
+  local f="${1:-}"
+  [[ -f "$f" ]] || return 0
+  LC_ALL=C grep -q -F '#[' "$f" 2> /dev/null || return 0
+  LC_ALL=C awk '
+function trim(s) { sub(/^[ \t\r\n]+/, "", s); sub(/[ \t\r\n]+$/, "", s); return s }
+function unq(s) { s = trim(s); sub(/^[\047"]/, "", s); sub(/[\047"]$/, "", s); return s }
+function add_import(t,   nm, al) {
+  t = trim(t); nm = t; al = t
+  if (match(t, /[ \t]+as[ \t]+/)) { nm = trim(substr(t, 1, RSTART - 1)); al = trim(substr(t, RSTART + RLENGTH)) }
+  if (nm != "" && al != "") imp[al] = nm
+}
+# pu(NAME) -> the PHPUnit attribute NAME resolves to (its short name), or "".
+function pu(n,   k, p) {
+  n = trim(n); sub(/^\\/, "", n)
+  if (index(n, PFX "\\") == 1) return substr(n, length(PFX) + 2)
+  k = index(n, "\\")
+  if (k > 0) { p = substr(n, 1, k - 1); return (p in nsal) ? substr(n, k + 1) : "" }
+  return (n in imp) ? imp[n] : ""
+}
+function add_attr(e, ln,   k, nm, args, s) {
+  e = trim(e); if (e == "") return
+  k = index(e, "(")
+  if (k > 0) { nm = substr(e, 1, k - 1); args = substr(e, k + 1); sub(/\)[ \t\r\n]*$/, "", args) }
+  else { nm = e; args = "" }
+  s = pu(nm)
+  if (s == "") return
+  na++; an[na] = tolower(s); aa[na] = trim(args)
+  if (al == 0) al = ln
+}
+# parse_attrs(TEXT, LINE): every attribute of the #[...] groups in TEXT.
+function parse_attrs(b, ln,   i, n, c, q, pd, bd, ent) {
+  n = length(b); q = ""; pd = 0; bd = 0; ent = ""
+  for (i = 1; i <= n; i++) {
+    c = substr(b, i, 1)
+    if (q != "") { ent = ent c; if (c == "\\") { i++; ent = ent substr(b, i, 1) } else if (c == q) q = ""; continue }
+    if (bd == 0) { if (c == "#" && substr(b, i + 1, 1) == "[") { bd = 1; pd = 0; ent = ""; i++ }; continue }
+    if (c == "\047" || c == "\"") { q = c; ent = ent c; continue }
+    if (c == "(") pd++
+    else if (c == ")") pd--
+    else if (c == "[") bd++
+    else if (c == "]") { bd--; if (bd == 0) { add_attr(ent, ln); ent = ""; continue } }
+    if (c == "," && pd == 0 && bd == 1) { add_attr(ent, ln); ent = ""; continue }
+    ent = ent c
+  }
+}
+# depth(TEXT) -> the open [ count after TEXT (quoted strings left out).
+function depth(s,   t, i, c) {
+  t = s; gsub(/\047[^\047]*\047/, "", t); gsub(/"[^"]*"/, "", t)
+  for (i = 1; i <= length(t); i++) { c = substr(t, i, 1); if (c == "[") ad++; else if (c == "]") ad-- }
+  return ad
+}
+function doc_line(s,   t, v) {
+  t = s; sub(/^[ \t]*\/\*\*/, "", t); sub(/\*\/[ \t\r]*$/, "", t); sub(/^[ \t]*\*?[ \t]*/, "", t)
+  if (!match(t, /^@[A-Za-z]+/)) return
+  v = trim(substr(t, RLENGTH + 1)); gsub(/\t/, " ", v)
+  nd++; dt[nd] = substr(t, 2, RLENGTH - 1); dv[nd] = v; dl[nd] = NR
+}
+# twin(TAG, VALUE) -> 1 when the attributes of the level carry TAG.
+function twin(t, v,   i, x) {
+  x = tolower(t)
+  for (i = 1; i <= na; i++) {
+    if (x == "group" || x == "ticket") { if (an[i] == x && unq(aa[i]) == v) return 1; continue }
+    if (x == "covers" || x == "uses") { if (an[i] ~ ("^" x "(class|function|method|trait)$")) return 1; continue }
+    if (x == "backupstaticattributes" || x == "backupstaticproperties") { if (an[i] == "backupstaticproperties") return 1; continue }
+    if (x == "dataprovider" || x == "depends" || x == "testwith") { if (index(an[i], x) == 1) return 1; continue }
+    if (an[i] == x) return 1
+  }
+  return 0
+}
+function sugg(t, v,   x) {
+  x = tolower(t)
+  if (x == "group") return "#[Group(\047" v "\047)]"
+  if (x == "ticket") return "#[Ticket(\047" v "\047)]"
+  if (x == "dataprovider") return "#[DataProvider(\047" v "\047)]"
+  if (x == "depends") return "#[Depends(\047" v "\047)]"
+  if (x == "covers") return "#[CoversClass(...)] or #[CoversFunction(...)]"
+  if (x == "uses") return "#[UsesClass(...)] or #[UsesFunction(...)]"
+  if (x == "testdox") return "#[TestDox(...)]"
+  if (x == "testwith") return "#[TestWith(...)]"
+  if (x == "backupstaticattributes" || x == "backupstaticproperties") return "#[BackupStaticProperties(...)]"
+  return "#[" toupper(substr(t, 1, 1)) substr(t, 2) "]"
+}
+function level(name, kind,   k, h, w) {
+  if (kind == "class") { cls = name; cdc = 0; cline = 0; chid = ""; ctw = "" }
+  if (na == 0) {
+    if (kind == "method" && cdc) {
+      for (k = 1; k <= nd; k++) if ((dt[k] == "covers" || dt[k] == "uses") && dv[k] ~ /^::/)
+        rel = rel (rel == "" ? "" : "; ") "@" dt[k] " " dv[k] " (line " dl[k] ")"
+    }
+    return
+  }
+  h = ""; w = ""
+  for (k = 1; k <= nd; k++) {
+    if (kind == "class" && (dt[k] == "coversDefaultClass" || dt[k] == "usesDefaultClass")) { cdc = 1; continue }
+    if (!(dt[k] in meta) || twin(dt[k], dv[k])) continue
+    h = h (h == "" ? "" : "; ") "@" dt[k] (dv[k] == "" ? "" : " " dv[k])
+    w = w (w == "" ? "" : "; ") sugg(dt[k], dv[k])
+  }
+  if (kind == "class") { cline = al; chid = h; ctw = w; return }
+  if (h != "") printf "%d\t%s\t%s\t%s\t\n", al, name, h, w
+}
+function reset() { nd = 0; na = 0; al = 0 }
+BEGIN {
+  PFX = "PHPUnit\\Framework\\Attributes"
+  n = split("after afterClass backupGlobals backupStaticAttributes backupStaticProperties before beforeClass covers coversNothing dataProvider depends doesNotPerformAssertions excludeGlobalVariableFromBackup excludeStaticPropertyFromBackup group large medium postCondition preCondition preserveGlobalState runClassInSeparateProcess runInSeparateProcess runTestsInSeparateProcesses small test testdox testWith ticket uses", T, " ")
+  for (i = 1; i <= n; i++) meta[T[i]] = 1
+}
+{
+  raw = $0; sub(/\r$/, "", raw)
+  if (indoc) { doc_line(raw); if (raw ~ /\*\//) indoc = 0; next }
+  if (incom) { if (raw ~ /\*\//) incom = 0; next }
+  if (inattr) { abuf = abuf "\n" raw; if (depth(raw) <= 0) { inattr = 0; parse_attrs(abuf, aln) }; next }
+  if (raw ~ /^[ \t]*\/\*\*/) {
+    nd = 0; doc_line(raw); t = raw; sub(/^[ \t]*\/\*\*/, "", t)
+    if (t !~ /\*\//) indoc = 1
+    next
+  }
+  if (raw ~ /^[ \t]*\/\*/) { t = raw; sub(/^[ \t]*\/\*/, "", t); if (t !~ /\*\//) incom = 1; next }
+  if (raw ~ /^[ \t]*$/ || raw ~ /^[ \t]*\/\// || (raw ~ /^[ \t]*#/ && raw !~ /^[ \t]*#\[/)) next
+  if (raw ~ /^[ \t]*#\[/) {
+    abuf = raw; aln = NR; ad = 0
+    if (depth(raw) <= 0) parse_attrs(abuf, aln); else inattr = 1
+    next
+  }
+  if (!seen && raw ~ /^[ \t]*use[ \t]/) {
+    t = raw; sub(/^[ \t]*use[ \t]+/, "", t); sub(/;.*$/, "", t); t = trim(t); sub(/^\\/, "", t)
+    if (index(t, PFX "\\{") == 1) { g = substr(t, length(PFX) + 3); sub(/}.*$/, "", g); m = split(g, P, ","); for (i = 1; i <= m; i++) add_import(P[i]) }
+    else if (index(t, PFX "\\") == 1) add_import(substr(t, length(PFX) + 2))
+    else if (t == PFX) nsal["Attributes"] = 1
+    else if (index(t, PFX) == 1 && match(t, /[ \t]+as[ \t]+[A-Za-z0-9_]+$/)) { g = substr(t, RSTART); sub(/^[ \t]+as[ \t]+/, "", g); nsal[g] = 1 }
+    reset(); next
+  }
+  if (raw ~ /^[ \t]*((abstract|final|readonly)[ \t]+)*class[ \t]+[A-Za-z_]/) {
+    t = raw; sub(/^[ \t]*((abstract|final|readonly)[ \t]+)*class[ \t]+/, "", t); match(t, /^[A-Za-z_][A-Za-z0-9_]*/)
+    seen = 1; level(substr(t, 1, RLENGTH), "class"); reset(); next
+  }
+  if (seen && raw ~ /function[ \t]+&?[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*\(/) {
+    t = raw; sub(/^.*function[ \t]+&?[ \t]*/, "", t); match(t, /^[A-Za-z_][A-Za-z0-9_]*/)
+    level(cls "::" substr(t, 1, RLENGTH), "method"); reset(); next
+  }
+  reset()
+}
+END { if (cls != "" && (chid != "" || rel != "")) printf "%d\t%s\t%s\t%s\t%s\n", cline, cls, chid, ctw, rel }' "$f" 2> /dev/null | LC_ALL=C sort -n -s -k1,1 || true
+  return 0
+}
+
+# php_magic_property_lines FILE PROP -> "LINE<TAB>OP" for every access to the
+# property PROP through ->, nullsafe ?-> included, that is not a method call:
+# OP is set (an assignment to it), unset (inside unset(...)), isset (inside
+# isset(...) or empty(...)) or get (a read). $this->PROP is skipped when the
+# file declares a property of that name. FILE is php_code_lines's output
+# (comments and string contents blanked). A heuristic for a magic property
+# PHPStan cannot see (e.g. the deprecated $entity->original): it cannot tell
+# an entity from another receiver.
+php_magic_property_lines() {
+  local f="${1:-}" p="${2:-}"
+  [[ -f "$f" && "$p" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 0
+  LC_ALL=C grep -q -F -e "->$p" "$f" 2> /dev/null || return 0
+  AWKV_p="$p" LC_ALL=C awk '
+BEGIN { p = ENVIRON["AWKV_p"]; re = "(\\?)?->[ \t]*" p }
+{ L[NR] = $0; if ($0 ~ ("(public|protected|private|var)[ \t][^;=(]*\\$" p "([^A-Za-z0-9_]|$)")) own = 1 }
+END {
+  for (n = 1; n <= NR; n++) {
+    s = L[n]; off = 0
+    while (match(s, re)) {
+      st = off + RSTART; en = off + RSTART + RLENGTH
+      s = substr(s, RSTART + RLENGTH); off = en - 1
+      rest = substr(L[n], en); pre = substr(L[n], 1, st - 1)
+      if (rest ~ /^[A-Za-z0-9_]/) continue
+      if (rest ~ /^[ \t]*\(/) continue
+      if (own && pre ~ /\$this[ \t]*$/) continue
+      op = "get"
+      if (rest ~ /^[ \t]*(=[^=>]|=$|\?\?=)/) op = "set"
+      else if (pre ~ /unset[ \t]*\([^)]*$/) op = "unset"
+      else if (pre ~ /(isset|empty)[ \t]*\([^)]*$/) op = "isset"
+      printf "%d\t%s\n", n, op
+    }
+  }
+}' "$f" 2> /dev/null || true
+  return 0
+}

@@ -142,7 +142,7 @@
         "rule": {"type": "string"}
       }
     },
-    "deprecations_hard": {"description": "Hard deprecations: the PHPStan occurrences of findings.json findings of class hard (classify-deprecations.sh counts.hard in a 0.9 file).", "type": "integer", "minimum": 0},
+    "deprecations_hard": {"description": "Hard deprecations: the PHPStan occurrences of findings.json findings of class hard, plus one per finding of the scan for the deprecations PHPStan cannot see (runtime-deprecation:<id>) (classify-deprecations.sh counts.hard in a 0.9 file).", "type": "integer", "minimum": 0},
     "deprecations_soft": {"description": "Soft deprecations, counted the same way (counts.soft).", "type": "integer", "minimum": 0},
     "deprecations_unknown": {"description": "Unclassified deprecations, counted the same way (counts.unknown).", "type": "integer", "minimum": 0},
     "soft_deprecations_policy": {"description": "The DRUPILOT_SOFT_DEPRECATIONS policy applied (report, defer, fix).", "type": "string"},

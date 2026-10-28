@@ -246,6 +246,46 @@ worklist_set() {
   return 1
 }
 
+# worklist_resolved_file [SUBJECT] -> the subject's worklist-resolved.json, in
+# its hidden state dir (never created here): the items an earlier worklist had
+# and the current one has not, i.e. the ones the port resolved. A rationale
+# the model wrote against an earlier worklist can still name them
+# (manifest.sh).
+worklist_resolved_file() {
+  printf '%s/worklist-resolved.json' "$(project_state_path "${1:-$PWD}")"
+  return 0
+}
+
+# worklist_resolved_update SUBJECT NEW_WORKLIST -> before NEW_WORKLIST (a
+# worklist.json file) replaces the subject's worklist, adds the items of the
+# current worklist that NEW_WORKLIST has not to worklist-resolved.json, and
+# drops an item NEW_WORKLIST has again: {schema: 1, items: [{id, lane, file,
+# anchor, reason, stage}]}, sorted by id, the latest record of an id kept.
+# Atomic (a temporary file, then mv); never fails the caller.
+worklist_resolved_update() {
+  local s="${1:-$PWD}" new="${2:-}" w r d tmp
+  w="$(worklist_file "$s")"; r="$(worklist_resolved_file "$s")"
+  [[ -r "$new" ]] && { [[ -r "$w" ]] || [[ -r "$r" ]]; } || return 0
+  [[ -r "$w" ]] || w=/dev/null
+  [[ -r "$r" ]] || r=/dev/null
+  d="$(project_state_dir "$s")"
+  tmp="$(mktemp "$d/.worklist-resolved.json.XXXXXX" 2> /dev/null || true)"
+  [[ -n "$tmp" ]] || return 0
+  if jq -n --slurpfile n "$new" --slurpfile o "$w" --slurpfile p "$r" '
+       ([($n[0].items // [])[] | .id]) as $now
+       | [ ((($o[0] // {}).items // [])[] | {id: .id, lane: .lane, file: .file, anchor: .anchor,
+                                              reason: (.reason // null), stage: (($o[0] // {}).stage // null)}),
+           ((($p[0] // {}).items // [])[]) ]
+       | map(select((.id | type) == "string" and (.id as $i | $now | index($i) | not)))
+       | unique_by(.id)
+       | {schema: 1, items: .}' 2> /dev/null | canon_json > "$tmp" 2> /dev/null \
+     && jq -e '.schema == 1' "$tmp" > /dev/null 2>&1 && mv -f "$tmp" "$d/worklist-resolved.json"; then
+    return 0
+  fi
+  rm -f "$tmp" 2> /dev/null || true
+  return 0
+}
+
 # worklist_fresh [SUBJECT] -> 0 when the subject's worklist comes from an
 # extraction of its current sources: the raw index of the worklist's stage
 # records the subject_digest the subject has now, findings.json was built from

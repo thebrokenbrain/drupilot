@@ -614,6 +614,40 @@
       "applies_when": {},
       "engine": "template",
       "fixtures": null,
+      "id": "life.entitybase-original",
+      "kind": "template",
+      "lane": "ai-templated",
+      "matches": {
+        "symbols": [
+          "EntityBase::$original"
+        ]
+      },
+      "postconditions": [
+        {
+          "type": "rescan"
+        }
+      ],
+      "source": "config/deprecations.json#/lifecycle/9",
+      "template": {
+        "fix": "Replace it with: $entity->getOriginal() to read it (also for isset()), $entity->setOriginal($value) to set it and setOriginal(NULL) to unset it (EntityInterface, Drupal 11.2+). While the core floor is below 11.2, keep the property or wrap the call in DeprecationHelper::backwardsCompatibleCall() (core 10.1.3+). On Drupal 12 a read of the property returns NULL with no error",
+        "lifecycle": [
+          {
+            "deprecated_in": "11.2.0",
+            "kind": "property",
+            "removed_in": "12.0.0",
+            "replacement": "$entity->getOriginal() to read it (also for isset()), $entity->setOriginal($value) to set it and setOriginal(NULL) to unset it (EntityInterface, Drupal 11.2+). While the core floor is below 11.2, keep the property or wrap the call in DeprecationHelper::backwardsCompatibleCall() (core 10.1.3+). On Drupal 12 a read of the property returns NULL with no error",
+            "replacement_since": "11.2",
+            "symbol": "EntityBase::$original"
+          }
+        ],
+        "why": "EntityBase::$original is deprecated in drupal:11.2.0 and removed from drupal:12.0.0."
+      },
+      "version": "7a435c3ca551"
+    },
+    {
+      "applies_when": {},
+      "engine": "template",
+      "fixtures": null,
       "id": "meta.config-schema",
       "kind": "template",
       "lane": "human",
@@ -968,6 +1002,27 @@
       "applies_when": {},
       "engine": "template",
       "fixtures": null,
+      "id": "safety.test-phpunit-metadata",
+      "kind": "template",
+      "lane": "ai-templated",
+      "matches": {
+        "rule": "port-safety:test-phpunit-metadata"
+      },
+      "postconditions": [
+        {
+          "type": "rescan"
+        }
+      ],
+      "source": "config/port-checks.json#/checks/test-phpunit-metadata",
+      "template": {
+        "why": "In a test, a class or a method that has a PHPUnit attribute (a class of PHPUnit\\Framework\\Attributes\\, e.g. #[RunTestsInSeparateProcesses], which Drupal 11.3 asks of Kernel tests) and whose doc-comment still carries PHPUnit metadata with no attribute twin (@group, @covers, @dataProvider, @depends, ...), while the declared core range admits a core from `attributes_from` on. From there core runs PHPUnit 10 and then 11, which read the metadata of one level (the class, or one method) from its attributes when it has any and ignore that level's doc-comment: the test loses its @group (it falls into the group 'default', and core's run-tests.sh cannot list it), and without the ignored @coversDefaultClass a method's relative @covers ::name is invalid (a coverage run fails under failOnWarning). Below it, core runs PHPUnit 9, which reads the annotations only. Keep the annotations while the range admits Drupal 10, add their twins next to them (@group foo -> #[Group('foo')]), and write a relative @covers in full (@covers \\Namespace\\Class::method)."
+      },
+      "version": "f4693347be74"
+    },
+    {
+      "applies_when": {},
+      "engine": "template",
+      "fixtures": null,
       "id": "sig.config-form-base-ctor",
       "kind": "template",
       "lane": "ai-templated",
@@ -1205,8 +1260,8 @@
   ],
   "schema": "drupilot.recipes/1",
   "sources": {
-    "config/deprecations.json": "sha256:c33c7a5a8fcf54d8c7e4e9f3f225ef66f67ec819ffe2a6538beedfa9979496db",
+    "config/deprecations.json": "sha256:78724096aaf4c25a78416b91f26e2118ac63e4a670c810f97dbce65445df2135",
     "config/metadata-checks.json": "sha256:182f7ce002a63577a327518fcddfe45d61ea44a23826b981843933ee55fa706f",
-    "config/port-checks.json": "sha256:b6dd4624fbe9010053463db4f527cd93b76ccc09aa882b00eef7d8d68fbed6cc"
+    "config/port-checks.json": "sha256:030a1706915ec826182b69c3aa85ef210e43b6676f9eb8a8caf4a5f550e4c5b6"
   }
 }

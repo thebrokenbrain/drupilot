@@ -307,8 +307,10 @@ one, and a change reverted on purpose is accepted once logged
 Phase 2 with `scripts/ai/manifest.sh --phase refactor`: it is built from the
 findings, the worklist, the codemods, the applying Rector run, the digests
 verdicts, the decision log and the git diff, never by hand. Your only input is
-the **why** of the items you changed by hand, `<state_dir>/rationale.json`
-(`{"<worklist item id>": "why"}`), passed with `--rationale`; every
+the **why** of the items you changed by hand and of your manual edits,
+`<state_dir>/rationale.json` (`{"<worklist item id or path>": "why"}`: an item
+the refactor resolved is still nameable, a path relative to the module explains
+that manual edit), passed with `--rationale`; every
 architectural change a reviewer must check is a `behavior-change` entry of
 `log-decision.sh`, logged as it happens. As Phase 2 ran, **tee** the Rector +
 final validate-loop PHPStan deprecation output into `<state_dir>/change-log.txt`

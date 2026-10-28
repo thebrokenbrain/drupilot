@@ -71,10 +71,14 @@ Before running, adapt the discovered tests for D11 (the skill lists the specific
   (`(string) $this->t('Save')`), because Drupal 10.2.3 to 10.2.x hand a
   `TranslatableMarkup` to Mink's `findButton(string)` (a `TypeError` on those
   cores while the bed is green) and `buttonNotExists()` never casts it.
-  Then run the check:
+- A PHPUnit attribute on a class or a method (`#[RunTestsInSeparateProcesses]`
+  too) makes PHPUnit 10/11 ignore that level's doc-comment metadata: add each
+  annotation's twin next to it (`@group foo` -> `#[Group('foo')]`) and write
+  a relative `@covers ::name` in full; keep the annotations while the range
+  admits Drupal 10, whose PHPUnit 9 reads only them. Then run the checks:
 
   ```bash
-  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/check-port-safety.sh" --subject <DIR> --checks test-label-markup
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/check-port-safety.sh" --subject <DIR> --checks test-label-markup,test-phpunit-metadata
   ```
 
 These edits are test-only and must not change the subject's production behavior.
@@ -178,7 +182,25 @@ timeout), the next control refuses to start: run `negative-control.sh --subject
 "$1" --recover` first, which restores each file from the backup manifest while
 it still holds the recorded mutation.
 
-## Step 6 — Report
+## Step 6 — Refresh the port's artifacts
+
+The port wrote its local patch, its core matrix and its report before this
+stage adapted the tests. Once the suite has run, bring them up to the module as
+it is now:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/refresh-artifacts.sh" --subject "$1" --json
+```
+
+It re-runs the core matrix when `core-matrix.json` is of other sources,
+regenerates the local patch, extracts again when the worklist is of other
+sources (the pipeline's `php,validate,report` stages: the fixpoint gate judges
+the adapted tests too), and renders `port-report.md` with this run. A module
+drupilot has not ported has nothing to refresh. A step that fails (exit `3`)
+is reported with its reason: fix what it found (a finding the fixpoint gate
+reports in an adapted test is fixed like any other) and run it again.
+
+## Step 7 — Report
 
 Summarize in English:
 
@@ -192,6 +214,7 @@ Summarize in English:
 - With a baseline: regressions, pre-existing failures (and which now fail
   differently), and the tests the port fixed.
 - Any test that cannot pass for an external reason, with the explicit cause.
+- The refreshed artifacts (Step 6): each step's status, and the patch path.
 - The stage: `run-phpunit.sh` already carried this run's verdict into the
   subject's `state.json` and, for a whole-suite run whose preservation is
   `verified` / `verified-partial`, recorded the **tested** stage — never record

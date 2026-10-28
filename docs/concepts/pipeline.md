@@ -95,4 +95,5 @@ could not close, one at a time, with the recipe's text when one exists, and
 its changes are checked like any other change. The verdicts that matter (the
 viability rubric, the fixpoint, the preservation of behavior) are computed by
 scripts. Until the residual stage arrives, the port command drives these
-fixes, and you explain them in a rationale keyed by worklist item.
+fixes, and you explain them in a rationale keyed by worklist item (one the
+port resolved included) or by the path of a file you edited by hand.

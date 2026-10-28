@@ -196,7 +196,10 @@ codemod > ai-templated > ai-free > test-adapt > human > deferred.
                 directory (the module's or a submodule's)
 
 Idempotent: the same findings.json, recipes, floor and actions give the same
-worklist.json outside meta (DET-2).
+worklist.json outside meta (DET-2). Writing the subject's worklist also
+records the items it no longer has in worklist-resolved.json
+(worklist_resolved_update), so a rationale can name an item the port
+resolved.
 
 Usage:
   classify.sh (--subject DIR | --findings FILE) [--recipes FILE]
@@ -270,7 +273,9 @@ The port manifest, generated (T-M4-10, AR-10, 01-R9, ADR 0027): what a port
 or a refactor did, as port-manifest.json (schema 1) in the subject's hidden
 state dir. It is built from what the scripts recorded, never from memory:
   findings.json      the last extraction: deprecations_remaining (the
-                     current hard and unknown PHPStan occurrences),
+                     current hard and unknown PHPStan occurrences, and
+                     those of the scan for the deprecations PHPStan cannot
+                     see: runtime-deprecation:<id>),
                      deferred_to_phase2 (the next-major symbols), and the
                      stage's raw reports: port_safety, signature_changes,
                      metadata_lint (the scripts' --json, canonical) and
@@ -300,8 +305,13 @@ state dir. It is built from what the scripts recorded, never from memory:
                      requirement before the port, null when that is
                      unknown; a refactor is a major), d10_support.
 The model writes only the rationale: --rationale FILE, a JSON object
-{"<worklist item id>": "why"}. An id the worklist does not have is refused;
-a previous manifest's rationale is kept for the ids still in the worklist.
+{"<key>": "why"}, the key an item id of the worklist, the id of an item an
+earlier worklist had and the port resolved (worklist-resolved.json, which
+classify.sh keeps: the model writes the rationale against the worklist it
+saw, and the next extraction drops the items it fixed), or the path of a
+file the port changed, relative to the subject (the why of a manual edit:
+manual_edits[].why). Any other key is refused; a previous manifest's
+rationale is kept for the keys still valid.
 The same inputs give the same document outside meta; inputs records the
 hashes it was built from. port-report.sh renders it.
 
@@ -310,15 +320,17 @@ Usage:
               [--base REF] [--no-write] [--json] [-h|--help]
     --subject DIR      the module/theme
     --phase P          port (default) or refactor
-    --rationale FILE   {item id: text}, the model's only input
+    --rationale FILE   {item id or changed file: text}, the model's only
+                       input
     --base REF         the port's git base (default: git_port_base_ref)
     --no-write         do not write port-manifest.json (with --json: a dry
                        run)
     --json             print the manifest on STDOUT
 
 Exit codes: 0 done · 1 usage error, no findings.json or worklist.json for
-the subject (run the pipeline first), or a rationale id the worklist does
-not have · 2 jq missing.
+the subject (run the pipeline first), or a rationale key that is neither an
+item of the worklist, one it resolved, nor a file the port changed · 2 jq
+missing.
 ```
 
 ### ai/normalize-findings.sh
@@ -361,6 +373,10 @@ verdict, only when the index names them or their file exists).
           its testVersion); removal:<detector>:<action> from
           scan-removals.sh (its symbol the removed extension or library,
           its severity the scanner's: ADR 0031)
+          runtime-deprecation:<id> for a deprecation PHPStan cannot see
+          (a magic property run-phpstan.sh's scan found, in the raw
+          report's drupilot.runtime_deprecations; classified like
+          PHPStan's deprecations)
   anchor  the innermost Namespace\Class::method or function of the line,
           the Namespace\ClassLike for a line in a class-like body outside
           its methods (the raw anchors file, scripts/php/anchor.php), else
@@ -604,6 +620,20 @@ Checks (--checks selects a subset; default all):
                      TypeError (lab L-1.0-D9 on 10.2.12). In diff mode, a
                      line the port left alone is attributed to the port
                      when the range at the base admitted no such core.
+  test-phpunit-metadata
+                     In a file under tests/, a class or a method with a
+                     PHPUnit attribute (#[RunTestsInSeparateProcesses],
+                     #[Group], ...) whose doc-comment still carries PHPUnit
+                     metadata with no attribute twin (@group, @covers,
+                     @dataProvider, ...), while the declared range admits
+                     a core whose PHPUnit reads attributes (the check's
+                     attributes_from, 11.0): PHPUnit 10+ then reads only
+                     that level's attributes, so the test loses its
+                     @group (it falls into the group "default") and a
+                     method's relative @covers ::name becomes invalid
+                     without the ignored @coversDefaultClass (lab L-PC).
+                     PHPUnit 9 (Drupal 10) reads the annotations only:
+                     keep them and add the twins.
 
 Diff-aware: when the subject is tracked by git, every finding is attributed —
 "introduced" (on a line the port added/changed vs the pre-port base) or
@@ -1712,6 +1742,9 @@ state.json via phase_record (common.sh), which next-step.sh reads.
 Usage:
   port-report.sh --subject DIR [--manifest FILE] [--output DIR] [--changes-log FILE]
 
+--manifest defaults to the module's port-manifest.json in its state dir
+(manifest.sh), when there is one; only a --manifest given records the stage.
+
 Output: writes <output>/port-report.md (default: the visible .drupilot/ artifacts
         dir at the Drupal root) and prints its path on STDOUT. Logging on STDERR.
         It also refreshes <output>/port-summary.json (port-summary.sh: the
@@ -1834,6 +1867,52 @@ Usage:
 Exit codes: 0 audited (or read from the lock) · 1 usage error · 2 no Rector
 installed in the root, no PHP to run the helper (DDEV down and no host
 php), or the helper failed.
+```
+
+### analysis/refresh-artifacts.sh
+
+```text
+drupilot — scripts/analysis/refresh-artifacts.sh
+Bring a port's artifacts up to the module as it is now, after a stage that
+changes the module without regenerating them: the test stage adapts the
+tests after the port wrote its local patch, its core matrix and its report
+(lab L-PC: all three were left from before those changes, and the report
+still said nothing of the run). The steps, in this order:
+  core-matrix  verify-core-matrix.sh again, when core-matrix.json records
+               other sources than the module's now (its subject_digest),
+               the declared range admits the previous major and
+               DRUPILOT_VERIFY_CORES is not off. With no core-matrix.json
+               there is nothing to refresh.
+  patch        make-patch.sh --local (a git checkout only): the same tree
+               gives the same patch, so it always runs.
+  extraction   when the worklist comes from other sources than the module
+               now (worklist_fresh): with a git repository the pipeline's
+               last stages (pipeline.sh --stages php,validate,report, with
+               the manifest's phase; its fixpoint gate judges the changed
+               files too), else extract.sh, normalize-findings.sh and
+               classify.sh at stage validate
+  manifest     manifest.sh, which keeps the earlier rationale
+  report       port-report.sh --manifest, which also reads the last test
+               run
+A module drupilot has not ported (no port-manifest.json in its state dir)
+has nothing to refresh. Every step reports its status, and a failed step
+never stops the next one.
+
+Usage:
+  refresh-artifacts.sh --subject DIR [--skip LIST] [--dry-run] [--json]
+                       [-h|--help]
+    --subject DIR   the module/theme
+    --skip LIST     comma-separated steps to leave alone: core-matrix,
+                    patch, report (report also leaves the extraction and
+                    the manifest alone)
+    --dry-run       say what would run and why; run nothing
+    --json          {subject, digest, manifest, steps: [{step, status,
+                    reason, rc}]} on STDOUT; status: ran | up-to-date |
+                    skipped | failed | would-run
+
+Exit codes: 0 every step ran, was up to date or was skipped (nothing to
+refresh included) · 1 usage error · 3 a step failed (its rc and reason in
+steps).
 ```
 
 ### analysis/run-phpcompat.sh
@@ -2029,6 +2108,19 @@ Options:
                    the scan is php_bc_fallback_calls), so
                    classify-deprecations.sh can tell it from a call the
                    target core runs.
+                   A deprecation PHPStan cannot see (a magic property:
+                   the lifecycle entries of config/deprecations.json with
+                   a scan block, e.g. $entity->original, deprecated in
+                   drupal:11.2.0 and removed from drupal:12.0.0) is
+                   reported by drupilot's own scan of the module's code
+                   (php_magic_property_lines) in
+                   drupilot.runtime_deprecations, when there is one:
+                   [{file (root-relative), line, identifier:
+                   "drupilot.runtimeDeprecation", id, symbol, operation:
+                   get|set|isset|unset, message: core's runtime notice}],
+                   sorted; classify-deprecations.sh classifies it like a
+                   PHPStan deprecation. PHPStan's own totals and files are
+                   never changed.
                    When PHPStan crashed (no
                   report produced) `totals` is null, `files` is {} and the
                   reason is in `drupilot.crash` — never a fake zero count.

@@ -410,7 +410,9 @@ project tree), extract the refactored tree (`extract.sh --stage refactor`, then
 `<state_dir>/port-manifest.json` with
 `bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/manifest.sh" --subject "<path>" --phase refactor --rationale "<state_dir>/rationale.json"`
 (it builds every field from the scripts' records; your only input is the why of
-the items you changed by hand, `{"<worklist item id>": "why"}`; every
+the items you changed by hand and of your manual edits, `{"<worklist item id or
+path>": "why"}`, where an item the refactor resolved is still nameable and a path
+relative to the module explains that manual edit; every
 architectural change a reviewer must check is a `behavior-change` entry of
 `log-decision.sh`), and
 re-render with `port-report.sh --subject <path> --manifest <manifest>

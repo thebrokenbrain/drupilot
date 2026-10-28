@@ -52,6 +52,20 @@
 #                      TypeError (lab L-1.0-D9 on 10.2.12). In diff mode, a
 #                      line the port left alone is attributed to the port
 #                      when the range at the base admitted no such core.
+#   test-phpunit-metadata
+#                      In a file under tests/, a class or a method with a
+#                      PHPUnit attribute (#[RunTestsInSeparateProcesses],
+#                      #[Group], ...) whose doc-comment still carries PHPUnit
+#                      metadata with no attribute twin (@group, @covers,
+#                      @dataProvider, ...), while the declared range admits
+#                      a core whose PHPUnit reads attributes (the check's
+#                      attributes_from, 11.0): PHPUnit 10+ then reads only
+#                      that level's attributes, so the test loses its
+#                      @group (it falls into the group "default") and a
+#                      method's relative @covers ::name becomes invalid
+#                      without the ignored @coversDefaultClass (lab L-PC).
+#                      PHPUnit 9 (Drupal 10) reads the annotations only:
+#                      keep them and add the twins.
 #
 # Diff-aware: when the subject is tracked by git, every finding is attributed —
 # "introduced" (on a line the port added/changed vs the pre-port base) or
@@ -99,7 +113,7 @@ set -euo pipefail
 # shellcheck source=../lib/php-scan.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/php-scan.sh"
 
-ALL_CHECKS="plugin-di removed-use static-factory fapi-callable serialization override-attribute class-case test-label-markup"
+ALL_CHECKS="plugin-di removed-use static-factory fapi-callable serialization override-attribute class-case test-label-markup test-phpunit-metadata"
 SUBJECT=""
 BASE=""
 NO_DIFF=0
@@ -224,6 +238,20 @@ label_window() {
 read -r LABEL_CASTFAIL LABEL_STRICTFAIL <<EOF
 $(label_window "$CORE_REQ")
 EOF
+# test-phpunit-metadata (config/port-checks.json): from attributes_from, core
+# runs a PHPUnit that reads attributes (10, then 11), and an attribute on a
+# class or a method hides that level's doc-comment metadata; below it core
+# runs PHPUnit 9, which reads the annotations only. On when the range admits
+# a major from attributes_from's; the annotations stay needed while it also
+# admits a lower one.
+PUMETA_FROM="$(jq -r '.checks["test-phpunit-metadata"].attributes_from // empty' "$CFG")"
+PUMETA_PHPUNIT="$(jq -r '.checks["test-phpunit-metadata"].phpunit_from // empty' "$CFG")"
+PUMETA_ON=0; PUMETA_KEEP=0; PUMETA_PREV=""
+if [[ -n "$CORE_REQ" && "$PUMETA_FROM" =~ ^([0-9]+) ]]; then
+  _pm="${BASH_REMATCH[1]}"; PUMETA_PREV="$((_pm - 1))"
+  for _m in $(seq "$_pm" "$((_pm + 3))"); do constraint_admits_major "$CORE_REQ" "$_m" && PUMETA_ON=1; done
+  for _m in $(seq "$((_pm - 3))" "$((_pm - 1))"); do constraint_admits_major "$CORE_REQ" "$_m" && PUMETA_KEEP=1; done
+fi
 FAPI_KEYS="$(jq -r '.fapi_callback_keys | join(" ")' "$CFG")"
 # Methods core added in a known minor (config/deprecations.json
 # .signature_changes, kind method-signature) and their verified ancestry, so an
@@ -459,6 +487,28 @@ while IFS= read -r f; do
           fi
           add_finding test-label-markup "$f" "$line" "$intro" "$msg"
         done < <(php_markup_label_lines "$TMP/label.blank")
+        ;;
+    esac
+  fi
+
+  if check_on test-phpunit-metadata && [[ "$PUMETA_ON" == "1" ]]; then
+    case "/$(rel "$f")" in
+      */tests/*)
+        while IFS=$'\t' read -r line level hidden twins relative; do
+          [[ -n "$line" ]] || continue
+          msg="${level} has a PHPUnit attribute (line ${line}), so PHPUnit ${PUMETA_PHPUNIT} and later (Drupal ${PUMETA_FROM} and later) read only the attributes of that level and ignore its doc-comment metadata"
+          [[ -z "$hidden" ]] || msg="${msg}, with no attribute twin there for ${hidden}"
+          case "$hidden" in *@group*) msg="${msg} (the test falls into the group \"default\", and core's run-tests.sh cannot list it)";; esac
+          [[ -z "$relative" ]] || msg="${msg}; its @coversDefaultClass is ignored as well, so ${relative} is invalid there (a coverage run fails under failOnWarning): name the method in full, @covers \\Namespace\\Class::method"
+          if [[ -n "$twins" && "$PUMETA_KEEP" == "1" ]]; then
+            msg="${msg}. Keep the annotations for the PHPUnit of Drupal ${PUMETA_PREV} and before, which '${CORE_REQ}' still admits and which reads only them, and add their twins next to them: ${twins}."
+          elif [[ -n "$twins" ]]; then
+            msg="${msg}. Add their twins: ${twins}."
+          else
+            msg="${msg}."
+          fi
+          add_finding test-phpunit-metadata "$f" "$line" "$(introduced "$f" "$line")" "$msg"
+        done < <(php_phpunit_hidden_metadata "$f")
         ;;
     esac
   fi

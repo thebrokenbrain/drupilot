@@ -6,7 +6,9 @@
 #   fixture), the findings and worklist goldens, a Rector record and a
 #   decision, byte for byte outside meta; it validates against
 #   schemas/port-manifest.schema.json, and a second run gives the same bytes;
-# - the rationale is the model's only input: keyed by worklist item id, an
+# - the rationale is the model's only input: keyed by worklist item id (an
+#   item the port resolved, kept in worklist-resolved.json by classify.sh,
+#   included) or by a manual edit's path (its why), an
 #   unknown id refused, the previous rationale kept for the ids still there;
 # - a codemod in effect is listed and is not a manual edit;
 # - port-report.sh renders the lane x status table and the rationale; the
@@ -203,6 +205,51 @@ assert_eq "  no assessment and no git base: the requirement before the port is u
 mf --no-write --phase refactor --json
 assert_eq "  a refactor is a major even then" "$(jq -r .version_bump "$T_OUT")" "major"
 mv "$T_TMP/git.keep" "$S/.git"
+
+# The rationale of what the port resolved (lab L-PC): the model writes it
+# against the worklist it saw, and the extraction after its fix drops the
+# item; a manual edit's why is keyed by its path.
+cp "$SD/worklist.json" "$T_TMP/w.keep"
+jq '.items += [{id: "W-0000000000r1", lane: "ai-free", file: "src/Form/WidgetImportForm.php", anchor: "{file}",
+      finding_ids: [], recipes: [], blocking: true, reason: null, status: "open"}]' "$T_TMP/w.keep" > "$SD/worklist.json"
+t_run "$T_SH" "$T_REPO/scripts/ai/classify.sh" --subject "$S" --core-floor 10.0
+assert_eq "classify.sh: the item the new worklist drops is kept in worklist-resolved.json" \
+  "$T_RC|$(jq -c '[.items[] | [.id, .lane, .file]]' "$(worklist_resolved_file "$S")")" \
+  '0|[["W-0000000000r1","ai-free","src/Form/WidgetImportForm.php"]]'
+assert_eq "  the new worklist is the findings' own" "$(jq -c '[.items[].id] | index("W-0000000000r1")' "$SD/worklist.json")" "null"
+jq -n '{"W-0000000000r1": "Fixed by hand: the callback became a static method.",
+        "legacy_widgets.info.yml": "core_version_requirement raised to the recommended range."}' > "$T_TMP/rres.json"
+mf --rationale "$T_TMP/rres.json" --json
+assert_eq "a rationale naming a resolved item and a manual edit: accepted" "$T_RC" "0"
+assert_eq "  the resolved item, with its why, under worklist.resolved" \
+  "$(jq -c '[.worklist.resolved[] | [.id, .lane, .file, .rationale]]' "$T_OUT")" \
+  '[["W-0000000000r1","ai-free","src/Form/WidgetImportForm.php","Fixed by hand: the callback became a static method."]]'
+assert_eq "  the manual edit's why" "$(jq -r '.manual_edits[] | select(.edit == "legacy_widgets.info.yml") | .why' "$T_OUT")" \
+  "core_version_requirement raised to the recommended range."
+assert_eq "  it validates against the schema" "$(valid "$T_OUT")" ""
+t_run "$T_SH" "$T_REPO/scripts/analysis/port-report.sh" --subject "$S" --manifest "$SD/port-manifest.json"
+REP="$(cat "$(t_out)" 2> /dev/null || true)"
+assert_match "port-report.sh: the resolved item's why" "$REP" '`W-0000000000r1` \(resolved by the port; ai-free, `src/Form/WidgetImportForm.php`\): Fixed by hand'
+assert_match "  the manual edit's why" "$REP" '- legacy_widgets.info.yml — _why:_ core_version_requirement raised'
+mf --json
+assert_eq "  a later run without --rationale keeps both" \
+  "$(jq -c '[(.worklist.resolved | length), (.manual_edits[] | select(.edit == "legacy_widgets.info.yml") | .why != null)]' "$T_OUT")" '[1,true]'
+printf '{"src/Nope.php": "a file the port never changed"}\n' > "$T_TMP/rnope.json"
+mf --rationale "$T_TMP/rnope.json"
+assert_eq "  a file the port did not change: refused, exit 1" "$T_RC" "1"
+assert_match "  it names it" "$(t_err)" "src/Nope.php"
+cp "$T_TMP/w.keep" "$SD/worklist.json"
+
+# deprecations_remaining counts the scan's deprecations PHPStan cannot see.
+mf --no-write --json
+N0="$(jq -r .deprecations_remaining "$T_OUT")"
+cp "$SD/findings.json" "$T_TMP/f.keep"
+jq '.findings += [{id: "F-0000000000d1", tool: "catalog", rule: "runtime-deprecation:entity-original-property", file: "legacy_widgets.module",
+      line: 3, anchor: "{file}", symbol: "EntityBase::$original", message: "Getting the original property is deprecated", occurrence: 0,
+      severity: "error", scope: "current", class: "hard", sources: [{tool: "catalog"}]}]' "$T_TMP/f.keep" > "$SD/findings.json"
+mf --no-write --json
+assert_eq "deprecations_remaining takes a hard runtime-deprecation finding" "$(jq -r .deprecations_remaining "$T_OUT")" "$((N0 + 1))"
+cp "$T_TMP/f.keep" "$SD/findings.json"
 
 # Usage errors.
 mkdir -p "$T_TMP/empty"; printf 'name: E\ntype: module\n' > "$T_TMP/empty/empty.info.yml"

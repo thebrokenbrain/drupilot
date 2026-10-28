@@ -484,6 +484,12 @@ pre-port baseline it reports regressions and pre-existing failures separately
 marks failures the baseline never meaningfully ran, never pre-existing), and every test it adds
 carries an `effective` negative control (`negative-control.sh`).
 
+When it returns, refresh what the port wrote before the tests changed:
+`scripts/analysis/refresh-artifacts.sh --subject <path> --json` (the core matrix
+when stale, the local patch, the extraction and manifest when the worklist is of
+other sources, and `port-report.md` with the last run). A failed step (exit `3`)
+is reported with its reason; fix it before the stage counts as done.
+
 ### Stage 6 — contribute (gate: `contribute`; conditional) -> delegate
 
 Only if the subject is a **contrib** project (exists on drupal.org). **Delegate to
