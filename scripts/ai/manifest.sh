@@ -178,7 +178,8 @@ SUBREL="$(jq -r '.subject.path // ""' "$F")"
 # the module declared before the port, a refactor being a BC break. That
 # requirement comes from the assessment (assess.json, else the provisional
 # one), else from the info.yml at the port's base; when none of them can be
-# read it is unknown and so is the bump (null). The assessment's own bump,
+# read it is unknown and so is a port's bump (null; a refactor is still a
+# major). The assessment's own bump,
 # computed for the port phase, is kept for a port whose final requirement is
 # the one it recommended.
 VBUMP=""
@@ -195,7 +196,8 @@ if [[ -n "$REQ" ]]; then
       | sed 's/[[:space:]]*#.*$//; s/[[:space:]]*$//' || true)"
     _known=1
   fi
-  if [[ "$_known" == "1" ]]; then
+  # A refactor is a major whatever the requirement before it.
+  if [[ "$_known" == "1" || "$PHASE" == "refactor" ]]; then
     VBUMP="$(core_version_bump "$_cur" "$REQ" "$([[ "$PHASE" == "refactor" ]] && echo true || echo false)" "$TMAJ")"
   fi
 fi

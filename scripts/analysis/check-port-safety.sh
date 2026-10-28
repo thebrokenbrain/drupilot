@@ -45,8 +45,10 @@
 #                      strict_from (10.2.3, where core's WebAssert declares
 #                      strict_types) to before its cast_from (10.3.0, where
 #                      it casts the label), or as a buttonNotExists()
-#                      locator while it admits any core from strict_from
-#                      (never cast): Mink's findButton(string) gets it, a
+#                      locator while it admits a core from strict_from to
+#                      before not_exists_typed_from (12.0.0, where its
+#                      parameter is typed string and PHP converts the
+#                      label): Mink's findButton(string) gets it, a
 #                      TypeError (lab L-1.0-D9 on 10.2.12). In diff mode, a
 #                      line the port left alone is attributed to the port
 #                      when the range at the base admitted no such core.
@@ -190,22 +192,27 @@ TR_SERIAL="$(jq -r '.interfaces.serialization_trait' "$CFG")"
 # test-label-markup (config/port-checks.json): from strict_from, core's
 # WebAssert declares strict_types, so a translated label it passes on to
 # Mink's findButton(string) is a TypeError; from cast_from, buttonExists()
-# (which submitForm() calls) casts it first, buttonNotExists() never does.
+# (which submitForm() calls) casts it first; buttonNotExists() never does,
+# but from not_exists_typed_from it declares string $button, so PHP converts
+# the label of a test without strict_types.
 LABEL_STRICT="$(jq -r '.checks["test-label-markup"].strict_from // empty' "$CFG")"
 LABEL_CAST="$(jq -r '.checks["test-label-markup"].cast_from // empty' "$CFG")"
+LABEL_TYPED="$(jq -r '.checks["test-label-markup"].not_exists_typed_from // empty' "$CFG")"
 # label_window REQ -> "CAST STRICT": 1 when REQ admits a core of the minors
 # from strict_from's up to before cast_from's (a translated submitForm() /
 # buttonExists() label fails there), and 1 when it admits one from
-# strict_from's minor on (a translated buttonNotExists() locator fails
-# there), read on the minors of the version data; 0 0 for no requirement.
+# strict_from's minor up to before not_exists_typed_from's (a translated
+# buttonNotExists() locator fails there), read on the minors of the version
+# data; 0 0 for no requirement.
 label_window() {
-  local req="${1:-}" sm cm m v win="" all="" c=0 st=0
+  local req="${1:-}" sm cm tm m v win="" all="" c=0 st=0
   [[ -n "$req" && "$LABEL_STRICT" =~ ^([0-9]+)\.([0-9]+) ]] || { printf '0 0'; return 0; }
   sm="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"; cm="$(printf '%s' "$LABEL_CAST" | cut -d. -f1-2)"
+  tm="$(printf '%s' "$LABEL_TYPED" | cut -d. -f1-2)"
   for m in $(seq "${sm%%.*}" "$(( ${sm%%.*} + 3 ))"); do
     for v in $(target_get "$m" '.minors | keys[]' 2> /dev/null); do
       version_ge "$v" "$sm" || continue
-      all="$all$v"$'\n'
+      if [[ -z "$tm" ]] || ! version_ge "$v" "$tm"; then all="$all$v"$'\n'; fi
       if [[ -z "$cm" ]] || ! version_ge "$v" "$cm"; then win="$win$v"$'\n'; fi
     done
   done
@@ -444,7 +451,7 @@ while IFS= read -r f; do
           intro="$(introduced "$f" "$line")"
           if [[ "$call" == "buttonNotExists" ]]; then
             [[ "$BASE_STRICTFAIL" == "0" && "$intro" == "false" ]] && intro=true
-            msg="buttonNotExists() gets a translated string object as its locator while core_version_requirement '${CORE_REQ}' admits a core from ${LABEL_STRICT} on: core's WebAssert never casts it and passes it to Mink's findButton(string), a TypeError there. Pass a string: (string) \$this->t('...') or the label itself."
+            msg="buttonNotExists() gets a translated string object as its locator while core_version_requirement '${CORE_REQ}' admits a core from ${LABEL_STRICT} to before ${LABEL_TYPED}: there core's WebAssert never casts it and passes it to Mink's findButton(string), a TypeError. Pass a string: (string) \$this->t('...') or the label itself."
           else
             [[ "$LABEL_CASTFAIL" == "1" ]] || continue
             [[ "$BASE_CASTFAIL" == "0" && "$intro" == "false" ]] && intro=true

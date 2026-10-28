@@ -51,8 +51,9 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `config/deprecations.json` (a function removed at or below the target that
   the code still calls, also fully qualified, or its new `replacement_class`
   the code already uses, also through a group use; comments, strings,
-  methods and declarations do not count), so the plan, `core-strategy.sh` and
-  a kept range all say `^10.2 || ^11` and why. The catalog gains
+  methods, declarations and a call only a `DeprecationHelper` fallback makes
+  do not count), so the plan, `core-strategy.sh` and a kept range all say
+  `^10.2 || ^11` and why. The catalog gains
   `format_size()`, verified in core source.
 - No `DeprecationHelper` call is written for a range that admits a core older
   than 10.1.3, where that class does not exist. A plan whose `rector.bc` is off
@@ -71,7 +72,8 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   on an older core, and drupilot counted it as a blocking deprecation.
   `run-phpstan.sh --json` now marks such a message (`drupilot_guard`, from the
   `php_bc_fallback_calls` scan) when every call of that function on its line
-  sits in a fallback closure, with their highest version, and
+  sits in a fallback closure and no more messages name it there than calls
+  were found, with their highest version (a trait's messages included), and
   `classify-deprecations.sh` reports it as `guarded`, not blocking, when that
   version is below the target's first core (a call outside the wrapper, or a
   first-class callable passed as the fallback, still blocks). In findings.json
@@ -95,20 +97,22 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   It now recomputes it with `core_version_bump` (shared with
   `recommend_core_target`) from the requirement before the port
   (`assess.json` or the provisional assessment, else the `info.yml` at the
-  port's base; unknown: null, as before). A refactor is always a major. The
-  manifest golden's bump is now `minor`.
+  port's base; unknown: null for a port, as before). A refactor is always a
+  major. The manifest golden's bump is now `minor`.
 - A translated button label in an adapted test no longer breaks the declared
   floor unseen. The optimizedb tests passed `$this->t('...')` to
   `submitForm()`: green on 11.4 and 10.6, a `TypeError` on the declared floor
   10.2.12. From 10.2.3 core's `WebAssert` declares `strict_types` and hands a
   `TranslatableMarkup` to Mink's `findButton(string)` unchanged; from 10.3.0
-  `buttonExists()` casts it, `buttonNotExists()` never does. A new port-safety
-  check, `test-label-markup` (`config/port-checks.json`, `strict_from` 10.2.3
-  and `cast_from` 10.3.0, verified in core), reports such a `submitForm()`
-  label or `buttonExists()` locator in a test while the range admits a core
-  of that window, and a `buttonNotExists()` locator while it admits any
-  strict core: an error when the port added it or when its range change made
-  it fail. The test-adaptation skill, the test engineer and `/drupilot-test`
+  `buttonExists()` casts it; `buttonNotExists()` never does, until 12.0.0
+  types its parameter `string` (PHP then converts the label of a test without
+  `strict_types`). A new port-safety check, `test-label-markup`
+  (`config/port-checks.json`: `strict_from` 10.2.3, `cast_from` 10.3.0,
+  `not_exists_typed_from` 12.0.0, verified in core), reports such a
+  `submitForm()` label or `buttonExists()` locator in a test while the range
+  admits a core of the first window, and a `buttonNotExists()` locator while
+  it admits one from 10.2.3 to 11.x: an error when the port added it or when
+  its range change made it fail. The test-adaptation skill, the test engineer and `/drupilot-test`
   pass labels as strings, replace a removed `$defaultTheme` with `stark`, turn
   `drupalPostForm()` into `drupalGet()` plus `submitForm()`, and run the check.
   drupilot still runs the suite on the bed's core only.

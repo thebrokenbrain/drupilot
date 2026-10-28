@@ -139,6 +139,10 @@ jq '.file_diffs[0].diff = "@@ -10,8 +10,8 @@\n ctx\n-a\n+b\n ctx\n ctx\n-c\n+d\n
 nf --raw-dir "$RN" --target-major 11 --soft-policy report --json
 assert_eq "  two rules, one hunk holding two change blocks (Rector merges changes a few lines apart): file" \
   "$(j '[.findings[] | select(.tool == "rector") | [.line, .attribution]] | unique')" '[[11,"file"]]'
+jq '.file_diffs[0].diff = "@@ -2,1 +2,1 @@\n-$a = isset($x) ? $x : format_size(1);\n\\ No newline at end of file\n+$a = $x ?? ByteSizeMarkup::create(1);\n\\ No newline at end of file\n"' "$R0/04-assess-rector.json" > "$RN/04-assess-rector.json"
+nf --raw-dir "$RN" --target-major 11 --soft-policy report --json
+assert_eq "  a last line with no final newline is one change block: hunk" \
+  "$(j '[.findings[] | select(.tool == "rector") | [.line, .attribution]] | unique')" '[[2,"hunk"]]'
 # A missing raw file is no error.
 rm -f "$RN/04-assess-phpcs.json"
 nf --raw-dir "$RN" --target-major 11 --soft-policy report --json

@@ -597,8 +597,10 @@ Checks (--checks selects a subset; default all):
                      strict_from (10.2.3, where core's WebAssert declares
                      strict_types) to before its cast_from (10.3.0, where
                      it casts the label), or as a buttonNotExists()
-                     locator while it admits any core from strict_from
-                     (never cast): Mink's findButton(string) gets it, a
+                     locator while it admits a core from strict_from to
+                     before not_exists_typed_from (12.0.0, where its
+                     parameter is typed string and PHP converts the
+                     label): Mink's findButton(string) gets it, a
                      TypeError (lab L-1.0-D9 on 10.2.12). In diff mode, a
                      line the port left alone is attributed to the port
                      when the range at the base admitted no such core.

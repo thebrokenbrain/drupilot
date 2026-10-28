@@ -11,7 +11,9 @@
 #   in none; methods, statics, declarations and longer names are not calls;
 #   named arguments are skipped;
 # - run-phpstan.sh --json marks a "Function X not found." only when every call
-#   of X on its line is in a fallback, with their highest version;
+#   of X on its line is in a fallback, with their highest version, and no
+#   more messages name X there than calls were found (a call inside an
+#   interpolated string is not seen); a trait's key is marked too;
 # - classify-deprecations.sh: a marked one whose deprecated version is below
 #   T.0.0 is guarded (reported, not blocking), else it stays blocking; a
 #   symbol with both kinds of occurrence gets a row per class;
@@ -68,6 +70,7 @@ function f($length) {
   $i = DeprecationHelper::backwardsCompatibleCall(\Drupal::VERSION, '10.2.0', ByteSizeMarkup::create(...), fcc_api(...));
   $j = DeprecationHelper::backwardsCompatibleCall(\Drupal::VERSION, '11.0.0', fn() => n3(), fn() => exact_api());
   $k = $o->format_size(1) . Foo::format_size(2) . format_size_local(3);
+  $l = DeprecationHelper::backwardsCompatibleCall(\Drupal::VERSION, '10.2.0', fn() => strlen($a), fn() => interp_api($a)) . "{$this->wrap(interp_api($b))}";
 }
 function format_size($x) {}
 EOF
@@ -89,7 +92,8 @@ nf() { printf '{"message": "Function %s not found.", "line": %s, "identifier": "
 { printf '{"totals": {"errors": 0, "file_errors": 12}, "files": {"%s": {"errors": 12, "messages": [' "$F"
   nf format_size 8; printf ','; nf new_api 12; printf ','; nf old_api 14; printf ','; nf both 18; printf ','; nf both 18; printf ','
   nf format_size 19; printf ','; nf format_size 20; printf ','; nf format_size 20; printf ','; nf twice 21; printf ','; nf twice 21; printf ','
-  nf fcc_api 22; printf ','; nf exact_api 23; printf ']}}, "errors": []}\n'; } > "$T_TMP/stan.json"
+  nf fcc_api 22; printf ','; nf exact_api 23; printf ','; nf interp_api 25; printf ','; nf interp_api 25; printf ']},'
+  printf '"%s (in context of class Drupal\\\\m\\\\Foo)": {"errors": 1, "messages": [' "$F"; nf format_size 8; printf ']}}, "errors": []}\n'; } > "$T_TMP/stan.json"
 mk_bin "$r/vendor/bin/phpstan" "cat '$T_TMP/stan.json'; exit 1"
 t_run env PATH="$STUBS:$PATH" DRUPILOT_DETERMINISTIC=false "$T_SH" "$T_REPO/scripts/analysis/run-phpstan.sh" \
   --subject "$M" --json
@@ -97,17 +101,19 @@ assert_eq "run-phpstan: findings, exit 1" "$T_RC" "1"
 jq '.' "$T_OUT" > "$T_TMP/marked.json"
 assert_eq "  marked: a message whose every call on its line is in a fallback, with the highest version" \
   "$(jq -c --arg f "$F" '[.files[$f].messages[] | [.line, (.drupilot_guard.deprecated_version // null)]]' "$T_TMP/marked.json")" \
-  '[[8,"10.3.0"],[12,null],[14,"12.1.0"],[18,null],[18,null],[19,null],[20,null],[20,null],[21,"11.2.0"],[21,"11.2.0"],[22,null],[23,"11.0.0"]]'
+  '[[8,"10.3.0"],[12,null],[14,"12.1.0"],[18,null],[18,null],[19,null],[20,null],[20,null],[21,"11.2.0"],[21,"11.2.0"],[22,null],[23,"11.0.0"],[25,null],[25,null]]'
+assert_eq "  a trait's key (its class context written with backslashes) is marked too" \
+  "$(jq -c --arg f "$F (in context of class Drupal\\m\\Foo)" '[.files[$f].messages[] | (.drupilot_guard.deprecated_version // null)]' "$T_TMP/marked.json")" '["10.3.0"]'
 
 # classify-deprecations.sh.
 t_run "$T_SH" "$T_REPO/scripts/analysis/classify-deprecations.sh" --file "$T_TMP/marked.json" --target-major 11 --json
 assert_eq "classify T 11: only the 10.3.0 fallback is guarded (11.2.0 and 11.0.0 run on 11.x, the 11.0.0 one on its betas)" \
-  "$(jq -c '[.blocking, .counts.guarded, [.guarded[] | [.symbol, .line, .action]]]' "$T_OUT")" \
-  '[11,1,[["format_size",8,"report"]]]'
+  "$(jq -c '[.blocking, .counts.guarded, ([.guarded[] | [.symbol, .line, .action]] | unique)]' "$T_OUT")" \
+  '[13,2,[["format_size",8,"report"]]]'
 assert_eq "  a symbol guarded at one place and blocking at another: one row per class" \
-  "$(jq -c '[.symbols[] | select(.symbol == "format_size") | [.class, .occurrences]]' "$T_OUT")" '[["hard",3],["guarded",1]]'
+  "$(jq -c '[.symbols[] | select(.symbol == "format_size") | [.class, .occurrences]]' "$T_OUT")" '[["hard",3],["guarded",2]]'
 t_run "$T_SH" "$T_REPO/scripts/analysis/classify-deprecations.sh" --file "$T_TMP/marked.json" --target-major 12 --json
-assert_eq "  T 12: below 12.0.0 is guarded (10.3.0, 11.2.0, 11.0.0), 12.1.0 still blocks" "$(jq -c '[.counts.guarded, .blocking]' "$T_OUT")" '[4,8]'
+assert_eq "  T 12: below 12.0.0 is guarded (10.3.0, 11.2.0, 11.0.0), 12.1.0 still blocks" "$(jq -c '[.counts.guarded, .blocking]' "$T_OUT")" '[5,10]'
 jq --arg f "$F" 'del(.files[$f].messages[0])' "$T_TMP/marked.json" | jq '.files[].messages |= map(del(.drupilot_guard))' > "$T_TMP/plain.json"
 t_run "$T_SH" "$T_REPO/scripts/analysis/classify-deprecations.sh" --file "$T_TMP/plain.json" --target-major 11 --json
 assert_eq "  no mark: no guarded key, as before" "$(jq -c '[has("guarded"), (.counts | has("guarded"))]' "$T_OUT")" '[false,false]'

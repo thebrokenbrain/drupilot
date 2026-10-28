@@ -41,6 +41,7 @@ use Drupal\Core\StringTranslation\{ByteSizeMarkupX, TranslatableMarkup};'
 mod "$T_TMP/fq" '^8 || ^9' 'namespace Drupal\m;
 return \format_size($length);'
 mod "$T_TMP/group" '^10 || ^11' 'use Drupal\Core\StringTranslation\{TranslatableMarkup, ByteSizeMarkup};'
+mod "$T_TMP/fbonly" '^10.1.3 || ^11' '$s = \Drupal\Component\Utility\DeprecationHelper::backwardsCompatibleCall(\Drupal::VERSION, "10.2.0", fn() => $this->sizer->label($b), fn() => format_size($b));'
 mod "$T_TMP/wrap" '^10.1.3 || ^11' '$s = \Drupal\Component\Utility\DeprecationHelper::backwardsCompatibleCall(\Drupal::VERSION, "10.2.0", fn() => \Drupal\Core\StringTranslation\ByteSizeMarkup::create($b), fn() => format_size($b));'
 mod "$T_TMP/high" '^10.3 || ^11' '$size = format_size($length);'
 
@@ -54,6 +55,7 @@ assert_eq "comments, strings, a method, a static, a variable, longer names, a na
 assert_eq "a fully qualified call: 10.2" "$(rf "$T_TMP/fq" 11 | cut -d'|' -f1)" "10.2"
 assert_eq "a group use of the class: 10.2, the code uses it" "$(rf "$T_TMP/group" 11)" \
   '10.2|the code uses \Drupal\Core\StringTranslation\ByteSizeMarkup, which exists only from core 10.2'
+assert_eq "a call only the fallback of a DeprecationHelper call makes: nothing (no core of the range runs it)" "$(rf "$T_TMP/fbonly" 11)" ""
 assert_eq "drupal-rector's DeprecationHelper wrapper: the class it uses, not a call the port replaces" "$(rf "$T_TMP/wrap" 11)" \
   '10.2|the code uses \Drupal\Core\StringTranslation\ByteSizeMarkup, which exists only from core 10.2'
 assert_eq "T 10: format_size() is not removed yet, nothing" "$(rf "$T_TMP/call" 10)" ""

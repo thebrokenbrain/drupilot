@@ -4,6 +4,10 @@
 - **Date:** 2026-10-18
 - **Decided by:** the 1.0 working session (R-AUTO-3), during M6 (T-M6-01, T-M6-04, T-M6-07)
 
+- **Amended in 1.0.1:** a sixth detector, `test-theme-removed` (a test's `$defaultTheme` naming a removed
+  theme), with the action `test-update` (a warning, never a hard break) and the worklist reason
+  `removed-test-theme` (lab L-1.0-D9).
+
 ## Context
 
 Drupal 12 removes core extensions and libraries (`config/targets/12.json` `removed_extensions` and

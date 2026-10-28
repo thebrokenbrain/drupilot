@@ -301,10 +301,13 @@ if [[ "$AS_JSON" == "1" ]]; then
     # in the current callable included, keeps the message as it is), and the
     # mark carries the highest version of those fallbacks.
     printf '{}' > "$OUT_F.calls"
+    # (The key and the names joined by a tab, never @tsv: it would escape the
+    # backslashes of a trait key's "(in context of class Drupal\m\Foo)".)
     jq -r '(.files // {}) | to_entries[]
            | [.key, ([(.value.messages // [])[] | (.message // "") | capture("^Function (?<f>[A-Za-z0-9_\\\\]+) not found")? | .f
                      | split("\\") | last | ascii_downcase] | unique | join(" "))]
-           | select(.[1] != "") | @tsv' "$OUT_F.sorted" 2> /dev/null | while IFS="$(printf '\t')" read -r _k _names; do
+           | select(.[1] != "") | join("\t")' "$OUT_F.sorted" 2> /dev/null | while IFS= read -r _row; do
+      _k="${_row%%$'\t'*}"; _names="${_row#*$'\t'}"
       _p="${_k% (in context of *}"
       case "$_p" in /var/www/html/*) _p="$DRUPAL_ROOT/${_p#/var/www/html/}";; /*) : ;; *) _p="$DRUPAL_ROOT/$_p";; esac
       [[ -f "$_p" ]] || continue
@@ -319,16 +322,24 @@ if [[ "$AS_JSON" == "1" ]]; then
       $cl[0] as $C
       | if (.files | type) != "object" then . else
           .files |= with_entries(.key as $k | if ($C[$k] // null) == null then . else
-            .value.messages |= map(
-              . as $m
-              | ((.message // "") | capture("^Function (?<f>[A-Za-z0-9_\\\\]+) not found")? // null) as $nf
-              | if $nf == null or (.line | type) != "number" then .
-                else ($nf.f | split("\\") | last | ascii_downcase) as $fn
-                  | ($C[$k][$m.line | tostring][$fn] // []) as $vs
-                  | if ($vs | length) > 0 and all($vs[]; test("^[0-9]"))
-                    then . + {drupilot_guard: {kind: "deprecation-helper-fallback", deprecated_version: ($vs | max_by(vn))}}
-                    else . end
-                end) end)
+            .value.messages |= (
+              def nf: (.message // "") | capture("^Function (?<f>[A-Za-z0-9_\\\\]+) not found")? // null;
+              # How many messages name each function on each line: never
+              # more than the calls the scan found (a call it could not see,
+              # inside an interpolated string, keeps them all unmarked).
+              ([.[] | nf as $n | select($n != null and (.line | type) == "number")
+                | "\(.line)\u001f\($n.f | split("\\") | last | ascii_downcase)"]
+               | group_by(.) | map({key: .[0], value: length}) | from_entries) as $cnt
+              | map(
+                . as $m
+                | nf as $nf
+                | if $nf == null or (.line | type) != "number" then .
+                  else ($nf.f | split("\\") | last | ascii_downcase) as $fn
+                    | ($C[$k][$m.line | tostring][$fn] // []) as $vs
+                    | if ($vs | length) > 0 and all($vs[]; test("^[0-9]")) and ($cnt["\($m.line)\u001f\($fn)"] // 0) <= ($vs | length)
+                      then . + {drupilot_guard: {kind: "deprecation-helper-fallback", deprecated_version: ($vs | max_by(vn))}}
+                      else . end
+                  end)) end)
         end' "$OUT_F.sorted"
     rm -f "$OUT_F.sorted" "$OUT_F.calls" "$OUT_F.calls.new" "$OUT_F.blank" 2> /dev/null || true
   else

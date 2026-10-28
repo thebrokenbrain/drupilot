@@ -96,7 +96,11 @@ no-op — that is the only discretion.
   in that class.
 - **`declare(strict_types=1);` in EVERY `.php` file** under `src/` and `tests/`.
   Add parameter, return and property types wherever the type is known and
-  unambiguous.
+  unambiguous. In a strict test, pass strings, never a translated string
+  object, to every `assertSession()` method (`pageTextContains()`,
+  `fieldValueEquals()`, `buttonExists()`, ...) and to `submitForm()`: some of
+  them never cast it, and below 10.3 none does, so a `TypeError` hits the
+  cores of a range that keeps Drupal 10 (`(string) $this->t('Saved')`).
 - **`#[\Override]` only when it is true on every declared core.** Add it only
   when `core_version_requirement` is `^11`-only AND the parent method exists in
   the lowest declared 11.x minor (e.g. `ContentEntityStorageBase::buildRevisionCacheId()`

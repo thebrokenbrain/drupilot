@@ -224,10 +224,12 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
             else . end)
       | .out;
     # change_blocks: the runs of -/+ lines of a diff (Rector merges changes a
-    # few lines apart into one hunk, so a hunk can hold several).
+    # few lines apart into one hunk, so a hunk can hold several); a "\ No
+    # newline at end of file" marker is no context line.
     def change_blocks: split("\n")
       | reduce .[] as $s ({n: 0, in: false};
-          if ($s | startswith("@@ ")) then .in = false
+          if ($s | startswith("\\")) then .
+          elif ($s | startswith("@@ ")) then .in = false
           elif ($s | startswith("-") or startswith("+")) and (($s | startswith("--- ") or startswith("+++ ")) | not) then
             (if .in then . else .n += 1 | .in = true end)
           else .in = false end)

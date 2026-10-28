@@ -606,8 +606,9 @@ container, which checks the detected PHP floor for real.
   under a `>=8.1` floor (lint). **Decision point** (AskUserQuestion, header "Drupal
   10 check", default first) unless autonomous:
   - **Fix the code (keep `^10 || ^11`)** — the Drupal 10-safe way (drop the
-    `#[\Override]`, guard the newer API with `DeprecationHelper::backwardsCompatibleCall()`,
-    use the older construct), then re-run the matrix;
+    `#[\Override]`, use the older construct; a `DeprecationHelper::backwardsCompatibleCall()`
+    guard only when the range starts at 10.1.3 or later, never on a `^10 || ^11`
+    floor), then re-run the matrix;
   - **Raise the floor** to the minor that has the API (e.g. `^10.3 || ^11`) and
     re-run (the leg becomes 10.3);
   - **Drop to `^11`** (`prefs_set DRUPILOT_CORE_TARGET_STRATEGY d11-only`; a major

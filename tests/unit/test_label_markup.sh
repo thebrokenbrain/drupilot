@@ -9,7 +9,8 @@
 # - check-port-safety.sh test-label-markup reports each in a file under
 #   tests/ while the range admits a core from 10.2.3 (strict WebAssert) to
 #   before 10.3.0 (where buttonExists() casts), and a buttonNotExists()
-#   locator while it admits any core from 10.2.3 (never cast): a warning
+#   locator while it admits one from 10.2.3 to before 12.0.0 (never cast,
+#   then typed string): a warning
 #   unattributed, an error (exit 3) when the port added it, or when the
 #   port's own range change made it fail (a ^9 base); nothing for ^8 || ^9,
 #   nor outside tests/.
@@ -59,6 +60,8 @@ t_run "$T_SH" "$CPS" --subject "$M" --no-diff --checks test-label-markup --core-
 assert_eq "^10.3 || ^11: only buttonNotExists(), which no core casts" "$T_RC|$(jq -c '[.findings[] | .line]' "$T_OUT")" "0|[14]"
 t_run "$T_SH" "$CPS" --subject "$M" --no-diff --checks test-label-markup --core-req '^11' --json
 assert_eq "^11: the same" "$(jq -c '[.findings[] | .line]' "$T_OUT")" "[14]"
+t_run "$T_SH" "$CPS" --subject "$M" --no-diff --checks test-label-markup --core-req '^12' --json
+assert_eq "^12: nothing (12.0 types buttonNotExists(string): PHP converts the label)" "$(jq -c '.findings | length' "$T_OUT")" "0"
 t_run "$T_SH" "$CPS" --subject "$M" --no-diff --checks test-label-markup --core-req '^8 || ^9' --json
 assert_eq "^8 || ^9: nothing (WebAssert is strict only from 10.2.3)" "$(jq -c '.findings | length' "$T_OUT")" "0"
 

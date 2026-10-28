@@ -191,14 +191,17 @@ jq '.recommended_core_version_requirement = "^10 || ^11" | .version_bump = "mino
 mf --no-write --phase refactor --json
 assert_eq "  a refactor that ends on the recommended range is still a major (the assessment's bump is the port's)" \
   "$(jq -r .version_bump "$T_OUT")" "major"
-mv "$SD/assess.json" "$SD/assess-provisional.json"
+jq '.current_core_version_requirement = "^8 || ^9"' "$SD/assess.json" > "$SD/assess-provisional.json" && rm -f "$SD/assess.json"
 mf --no-write --json
-assert_eq "  the provisional assessment counts too (^10 -> ^10 || ^11: minor)" "$(jq -r .version_bump "$T_OUT")" "minor"
+assert_eq "  the provisional assessment counts too (^8 || ^9 -> ^10 || ^11: major, where the git base says minor)" \
+  "$(jq -r .version_bump "$T_OUT")" "major"
 rm -f "$SD/assess-provisional.json"
 mv "$S/.git" "$T_TMP/git.keep"
 mf --no-write --json
 assert_eq "  no assessment and no git base: the requirement before the port is unknown, so is the bump" \
   "$(jq -c .version_bump "$T_OUT")" "null"
+mf --no-write --phase refactor --json
+assert_eq "  a refactor is a major even then" "$(jq -r .version_bump "$T_OUT")" "major"
 mv "$T_TMP/git.keep" "$S/.git"
 
 # Usage errors.

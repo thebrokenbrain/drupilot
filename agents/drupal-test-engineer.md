@@ -145,7 +145,10 @@ reinvent their logic.
      (`(string) $this->t(...)`): Drupal 10.2.3 to 10.2.x hand a
      `TranslatableMarkup` to Mink's `findButton(string)` (a `TypeError` there,
      green on the bed), and `buttonNotExists()` never casts it. Then run
-     `check-port-safety.sh --subject <DIR> --checks test-label-markup`.
+     `check-port-safety.sh --subject <DIR> --checks test-label-markup`. In a
+     test that declares `strict_types=1` (Phase 2 adds it), pass strings to
+     every `assertSession()` method too (`pageTextContains()`,
+     `fieldValueEquals()`, ...): below 10.3 core does not cast them.
    - For FunctionalJavascript: Mink/webdriver wiring matching the generated
      `web_environment` (read the YAML for the real webdriver host).
 4. **Run, per group, then all** (never silence failures):

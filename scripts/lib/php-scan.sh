@@ -795,27 +795,8 @@ END {
   return 0
 }
 
-# php_bc_fallback_calls BLANKED RAW NAMES -> "LINE<TAB>NAME<TAB>VERSION" for
-# every call of a function of NAMES (space-separated, lowercase) in the file:
-# VERSION is the second argument of the innermost
-# DeprecationHelper::backwardsCompatibleCall() whose fourth argument, a
-# closure or an arrow function written there (`fn`, `function`, maybe
-# `static`), holds the call (that fallback runs only on a core older than
-# it), "?" when that argument is not a quoted version, "-" when the call is
-# in no such fallback. A call is NAME( not after ->, ::, $, a name, `new` or
-# `function` (a declaration); a leading \ (a fully qualified call) is fine.
-# BLANKED is php_code_lines's output for RAW: the two have the same lines,
-# and a line's code keeps its columns (php_code_lines blanks string contents
-# in place and cuts a comment off the end), so the version is read from RAW
-# at the line and column of its quotes in BLANKED. A first-class callable as
-# the fourth argument itself is created before backwardsCompatibleCall() runs:
-# no span. A call with named arguments is skipped. A heuristic scan, not a
-# parser.
-php_bc_fallback_calls() {
-  local b="${1:-}" r="${2:-}" names="${3:-}"
-  [[ -f "$b" && -f "$r" && -n "$names" ]] || return 0
-  LC_ALL=C grep -q -i 'backwardscompatiblecall' "$b" 2> /dev/null || return 0
-  AWKV_N="$names" LC_ALL=C awk '
+# The awk program of php_bc_fallback_calls and php_bc_blank_fallbacks.
+_PHP_BC_AWK='
 function shut(k,   d, ch) {
   d = 0
   for (; k <= n; k++) {
@@ -881,6 +862,16 @@ END {
   for (i = 2; i <= nl; i++) bs[i] = bs[i - 1] + length(L[i - 1]) + 1
   split(raw, R, "\n")
   spans()
+  # The blank mode: the file with every fallback closure blanked.
+  if (ENVIRON["AWKV_MODE"] == "blank") {
+    out = buf
+    for (s = 1; s <= ns; s++) {
+      seg = substr(out, sa[s], sb[s] - sa[s] + 1); gsub(/[^\n]/, " ", seg)
+      out = substr(out, 1, sa[s] - 1) seg substr(out, sb[s] + 1)
+    }
+    printf "%s", out
+    exit
+  }
   nn = split(ENVIRON["AWKV_N"], N, " ")
   for (z = 1; z <= nn; z++) {
     w = N[z]; if (w == "") continue
@@ -903,7 +894,43 @@ END {
       printf "%d\t%s\t%s\n", lineof(i), w, (best ? sv[best] : "-")
     }
   }
-}' "$b" "$r" 2> /dev/null || true
+}
+'
+
+# php_bc_fallback_calls BLANKED RAW NAMES -> "LINE<TAB>NAME<TAB>VERSION" for
+# every call of a function of NAMES (space-separated, lowercase) in the file:
+# VERSION is the second argument of the innermost
+# DeprecationHelper::backwardsCompatibleCall() whose fourth argument, a
+# closure or an arrow function written there (`fn`, `function`, maybe
+# `static`), holds the call (that fallback runs only on a core older than
+# it), "?" when that argument is not a quoted version, "-" when the call is
+# in no such fallback. A file with no backwardsCompatibleCall() at all prints
+# nothing (none of its calls can be guarded). A call is NAME( not after ->,
+# ::, $, a name, `new` or `function` (a declaration); a leading \ (a fully
+# qualified call) is fine. BLANKED is php_code_lines's output for RAW: the
+# two have the same lines, and a line's code keeps its columns
+# (php_code_lines blanks string contents in place and cuts a comment off the
+# end), so the version is read from RAW at the line and column of its quotes
+# in BLANKED. A first-class callable as the fourth argument itself is created
+# before backwardsCompatibleCall() runs: no span. A call with named arguments
+# is skipped. A heuristic scan, not a parser.
+php_bc_fallback_calls() {
+  local b="${1:-}" r="${2:-}" names="${3:-}"
+  [[ -f "$b" && -f "$r" && -n "$names" ]] || return 0
+  LC_ALL=C grep -q -i 'backwardscompatiblecall' "$b" 2> /dev/null || return 0
+  AWKV_N="$names" LC_ALL=C awk "$_PHP_BC_AWK" "$b" "$r" 2> /dev/null || true
+  return 0
+}
+
+# php_bc_blank_fallbacks BLANKED RAW -> BLANKED with the fallback closure of
+# every DeprecationHelper::backwardsCompatibleCall() (the spans
+# php_bc_fallback_calls reads) blanked, the lines kept: the code a target
+# core runs. BLANKED unchanged when the file has no such call.
+php_bc_blank_fallbacks() {
+  local b="${1:-}" r="${2:-}"
+  [[ -f "$b" && -f "$r" ]] || return 0
+  if ! LC_ALL=C grep -q -i 'backwardscompatiblecall' "$b" 2> /dev/null; then cat "$b"; return 0; fi
+  AWKV_MODE=blank LC_ALL=C awk "$_PHP_BC_AWK" "$b" "$r" 2> /dev/null || true
   return 0
 }
 

@@ -631,7 +631,7 @@ TMP_DIGESTS_RULES="$(mktemp "${TMPDIR:-/tmp}/drupilot-digests-rules.XXXXXX")"
 TMP_DIGESTS_SKIPS="$(mktemp "${TMPDIR:-/tmp}/drupilot-digests-skips.XXXXXX")"
 TMP_DIGESTS_OFFICIAL="$(mktemp "${TMPDIR:-/tmp}/drupilot-digests-official.XXXXXX")"
 TMP_DIGESTS_BROKEN="$(mktemp "${TMPDIR:-/tmp}/drupilot-digests-broken.XXXXXX")"
-trap 'rm -f "$TMP_DIGESTS_RULES" "$TMP_DIGESTS_RULES.ok" "$TMP_DIGESTS_RULES.all" "$TMP_DIGESTS_SKIPS" "$TMP_DIGESTS_OFFICIAL" "$TMP_DIGESTS_BROKEN" 2> /dev/null || true' EXIT
+trap 'rm -f "$TMP_DIGESTS_RULES" "$TMP_DIGESTS_SKIPS" "$TMP_DIGESTS_OFFICIAL" "$TMP_DIGESTS_BROKEN" 2> /dev/null || true' EXIT
 DIGESTS_RULESET='null'
 DIGESTS_REFUSED=""
 # A verdict an autonomous run recorded (digests-decisions.sh: by "auto") is
@@ -802,23 +802,7 @@ elif [[ "$USE_DIGESTS" == "1" ]]; then
       ERRORS_JSON="$(printf '%s' "$ERRORS_JSON" | jq -c --arg m "$_m" '. + [{pass: 2, exit_code: 2, message: $m}]')"
     else
       digests_rules "$_adir" > "$TMP_DIGESTS_RULES"
-      # A rule file that does not open with <?php (in any case) is read as
-      # inline HTML: its class is never declared and the whole pass would stop
-      # ("Expected an existing class name"). One whose registered class drupilot
-      # read is left out on its own, the others run; one with none stays, so
-      # the layout check below still refuses it (ADR 0026: fail closed).
       : > "$TMP_DIGESTS_BROKEN"
-      while IFS= read -r _row; do
-        _rfile="${_row%%$'\t'*}"; _rest="${_row#*$'\t'}"; _rcls="${_rest%%$'\t'*}"
-        [[ -n "$_rfile" && -n "$_rcls" && -f "$_adir/$_rfile" ]] || continue
-        if ! LC_ALL=C sed -n '1p' "$_adir/$_rfile" 2> /dev/null | tr -d '\r' | grep_q -i -E '^<\?php([[:space:]]|$)'; then
-          printf '%s\t%s\t%s\n' "$_rfile" "$_rcls" "no-open-tag" >> "$TMP_DIGESTS_BROKEN"
-        fi
-      done < "$TMP_DIGESTS_RULES"
-      if [[ -s "$TMP_DIGESTS_BROKEN" ]]; then
-        awk -F'\t' 'NR == FNR { bad[$1] = 1; next } !($1 in bad)' "$TMP_DIGESTS_BROKEN" "$TMP_DIGESTS_RULES" > "$TMP_DIGESTS_RULES.ok" \
-          && mv -f "$TMP_DIGESTS_RULES.ok" "$TMP_DIGESTS_RULES"
-      fi
       digests_official_classes "$DRUPAL_ROOT" "$RECTOR_PHP" > "$TMP_DIGESTS_OFFICIAL"
       digests_implemented_skips "$_yml" "$TMP_DIGESTS_OFFICIAL" > "$TMP_DIGESTS_SKIPS"
       _df="$(digests_decisions_readable "$SUBJECT_ABS")"
@@ -826,10 +810,9 @@ elif [[ "$USE_DIGESTS" == "1" ]]; then
       # registers, every registered class has its file, and no directive but
       # withFileExtensions / withRules (the filtered copy keeps only those).
       _unread="$( { awk -F'\t' '$2 == "" { print $1 }' "$TMP_DIGESTS_RULES"
-                    cat "$TMP_DIGESTS_RULES" "$TMP_DIGESTS_BROKEN" > "$TMP_DIGESTS_RULES.all"
-                    digests_registered "$_adir" | awk -F'\t' 'NR == FNR { if ($2 != "") have[$2] = 1; next } !($1 in have) { print $1 " (no rule file)" }' "$TMP_DIGESTS_RULES.all" -
+                    digests_registered "$_adir" | awk -F'\t' 'NR == FNR { if ($2 != "") have[$2] = 1; next } !($1 in have) { print $1 " (no rule file)" }' "$TMP_DIGESTS_RULES" -
                     grep -oE -- '->with[A-Za-z]+' "$_adir/all.php" | grep -vxE -- '->with(FileExtensions|Rules)' || true; } | LC_ALL=C sort -u | tr '\n' ' ' | sed 's/ $//')"
-      if [[ -z "$(awk -F'\t' '$2 != ""' "$TMP_DIGESTS_RULES.all")" ]]; then _unread="${_unread:-no rule} (no readable rule at all)"; fi
+      if [[ -z "$(awk -F'\t' '$2 != ""' "$TMP_DIGESTS_RULES")" ]]; then _unread="${_unread:-no rule} (no readable rule at all)"; fi
       # An --apply on rules nobody reviewed: once the module has digests
       # verdicts, the last dry-run must be of these sources and these digests
       # rules (an upstream move, or a change of the sources, would otherwise
@@ -880,11 +863,20 @@ elif [[ "$USE_DIGESTS" == "1" ]]; then
            config_only: [.[] | select($skip[.nid] == "config-only") | .rule] | sort,
            rejected: [.[] | select($skip[.nid] != "implemented" and (.rule as $r | $rej | index($r))) | .rule] | sort,
            kept: [.[] | select($skip[.nid] != "implemented" and (.rule as $r | $rej | index($r) | not))]}' "$TMP_DIGESTS_RULES")"
-      # Each kept rule file through php -l, in one run in the bed (the host
-      # php without one; none: not checked): a file PHP cannot parse is left
-      # out on its own too.
+      # Each kept rule file must load. One that does not open with <?php (in
+      # any case) is read as inline HTML: its class is never declared and the
+      # whole pass would stop ("Expected an existing class name"). One that
+      # php -l rejects (one run in the bed, the host php without one; none:
+      # not checked) would stop it too. Either is left out on its own, the
+      # others run. (A file with no registered class never gets here: the
+      # layout check above refuses it, ADR 0026.)
       _lint_files=""; _rel="$(dirname "$CONFIG_PATH")"
       for _rfile in $(jq -r '.kept[].file' <<< "$DIGESTS_FILTER"); do
+        if ! LC_ALL=C sed -n '1p' "$_adir/$_rfile" 2> /dev/null | tr -d '\r' | grep_q -i -E '^<\?php([[:space:]]|$)'; then
+          _c="$(jq -r --arg f "$_rfile" '.kept[] | select(.file == $f) | .rule' <<< "$DIGESTS_FILTER" | sed -n '1p')"
+          printf '%s\t%s\t%s\n' "$_rfile" "$_c" "no-open-tag" >> "$TMP_DIGESTS_BROKEN"
+          continue
+        fi
         [[ "$_rel/$_rfile" =~ ^[A-Za-z0-9._/-]+$ ]] && _lint_files="$_lint_files $_rel/$_rfile"
       done
       if [[ -n "$_lint_files" ]] && { [[ -n "$DIGESTS_RUNNER" ]] || have_cmd php; }; then
