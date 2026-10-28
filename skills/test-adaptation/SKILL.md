@@ -83,7 +83,10 @@ changes to look for (Grep + Edit, minimal and explained):
 - **`$modules`**: every Kernel/Functional test must declare `protected static
   $modules = [...]`. Older non-static `$modules` is removed.
 - **`$defaultTheme`**: BrowserTestBase requires `protected $defaultTheme =
-  'stark';` since D9 — fill in if missing.
+  'stark';` since D9 — fill in if missing. A theme core removed (`seven`,
+  `classy`, `stable` left in 10.0; the assessment lists it as
+  `test-theme-removed`) makes the test fail to start ("Unknown themes"): name
+  `stark`, or a core theme whose markup the test asserts (`claro`, `olivero`).
 - **PHPUnit 10/11 API**: data providers must be `public static`; removed
   assertions (`assertFileNotExists` -> `assertFileDoesNotExist`,
   `assertRegExp` -> `assertMatchesRegularExpression`, `assertContains` on strings
@@ -93,6 +96,19 @@ changes to look for (Grep + Edit, minimal and explained):
 - **Deprecated test traits / helpers**: e.g. removed `getMock`, deprecated
   `AssertLegacyTrait` methods, `drupalPostForm` -> `submitForm`,
   `assertResponse`/`assertText` -> `assertSession()->...`.
+  `drupalPostForm($path, $edit, $submit)` becomes `drupalGet($path)` then
+  `submitForm($edit, $submit)`: `submitForm()` takes no path.
+- **Adapt for every core the module declares, not only the bed's.** When the
+  plan's range keeps an older core (`^10.2 || ^11`), the test API of that
+  floor counts too. Pass a `submitForm()` label and a `buttonExists()` /
+  `buttonNotExists()` locator as a string: `(string) $this->t('Save')` or
+  `'Save'`. Drupal 10.3 and later cast a `TranslatableMarkup` there; 10.2 and
+  older hand it to Mink's `findButton(string)` and the test errors with a
+  `TypeError` on that core, although the bed's run is green. After adapting,
+  run the check that catches it (an error for a label you added):
+  `bash "$ROOT/scripts/analysis/check-port-safety.sh" --subject "$SUBJECT" --checks test-label-markup`.
+  drupilot runs the suite on the bed's core only (Drupal 10 is checked
+  statically), so it cannot see such a failure at runtime.
 - **JS tests**: ensure they extend `WebDriverTestBase` and use
   `getSession()`/`assertSession()`; the Mink webdriver config comes from the DDEV
   `web_environment` (see §4).
@@ -102,7 +118,8 @@ philosophy). The suite is the **preservation gate**, so a test adaptation may
 change only the *form* of a test, never *what it verifies*:
 
 - **Allowed** (mechanical API updates that preserve the test's intent):
-  namespaces / base-class relocations, `static $modules`, `$defaultTheme`, renamed
+  namespaces / base-class relocations, `static $modules`, `$defaultTheme` (a
+  removed theme replaced by `stark`), a translated label cast to string, renamed
   assertions (`assertFileNotExists`→`assertFileDoesNotExist`,
   `assertRegExp`→`assertMatchesRegularExpression`, `assertContains`-on-string→
   `assertStringContainsString`), `setUp(): void` return types, `public static`

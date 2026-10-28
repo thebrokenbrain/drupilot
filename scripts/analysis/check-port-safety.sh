@@ -38,6 +38,14 @@
 #                      a review warning when it cannot be attributed).
 #   class-case         services.yml / routing.yml class references and PSR-4
 #                      class names whose case differs from the real file.
+#   test-label-markup  In a file under tests/, a submitForm() label (its
+#                      second argument) or a buttonExists() /
+#                      buttonNotExists() locator that is a translated string
+#                      object ($this->t(...)) while the declared core range
+#                      admits a core older than the check's `since` (10.3):
+#                      there core's WebAssert passes it to Mink's
+#                      findButton(string) unchanged, a TypeError (lab
+#                      L-1.0-D9 on 10.2.12).
 #
 # Diff-aware: when the subject is tracked by git, every finding is attributed —
 # "introduced" (on a line the port added/changed vs the pre-port base) or
@@ -85,7 +93,7 @@ set -euo pipefail
 # shellcheck source=../lib/php-scan.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/php-scan.sh"
 
-ALL_CHECKS="plugin-di removed-use static-factory fapi-callable serialization override-attribute class-case"
+ALL_CHECKS="plugin-di removed-use static-factory fapi-callable serialization override-attribute class-case test-label-markup"
 SUBJECT=""
 BASE=""
 NO_DIFF=0
@@ -161,6 +169,8 @@ CORE_REQ="$(printf '%s' "$CORE_REQ" | tr -d "\"'")"
 SPANS_D10=0
 if printf '%s' "$CORE_REQ" | grep_q -E '(^|[^0-9.])(8|9|10)(\.|[^0-9]|$)'; then SPANS_D10=1; fi
 CORE_FLOOR="$(core_floor_from_requirement "$CORE_REQ")"
+# The lowest core the range admits, to the patch, for test-label-markup.
+CORE_LOWEST=""; [[ -n "$CORE_REQ" ]] && CORE_LOWEST="$(core_requirement_lowest "$CORE_REQ")"
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/drupilot-portsafety.XXXXXX")"
 cleanup() { rm -rf "$TMP"; }
@@ -175,6 +185,10 @@ IF_PLUGIN="$(jq -r '.interfaces.plugin_factory' "$CFG")"
 IF_INJECT="$(jq -r '.interfaces.container_injection' "$CFG")"
 IF_DERIVER="$(jq -r '.interfaces.container_deriver' "$CFG")"
 TR_SERIAL="$(jq -r '.interfaces.serialization_trait' "$CFG")"
+LABEL_SINCE="$(jq -r '.checks["test-label-markup"].since // empty' "$CFG")"
+# test-label-markup applies only while the range admits a core below its since.
+LABEL_ON=0
+if [[ -n "$LABEL_SINCE" && -n "$CORE_LOWEST" ]] && ! version_ge "$CORE_LOWEST" "$LABEL_SINCE"; then LABEL_ON=1; fi
 FAPI_KEYS="$(jq -r '.fapi_callback_keys | join(" ")' "$CFG")"
 # Methods core added in a known minor (config/deprecations.json
 # .signature_changes, kind method-signature) and their verified ancestry, so an
@@ -376,6 +390,19 @@ while IFS= read -r f; do
           "#[\\Override] in ${cls##*\\} while core_version_requirement '${CORE_REQ}' still includes Drupal 10: confirm the parent method exists on the LOWEST core you declare (without it PHP 8.3+ fatals at compile time). Phase 1 does not add #[\\Override]."
       fi
     done < <(awk -F'\t' '$1 == "OVERRIDE"' "$s")
+  fi
+
+  if check_on test-label-markup && [[ "$LABEL_ON" == "1" ]]; then
+    case "/$(rel "$f")" in
+      */tests/*)
+        php_code_lines "$f" > "$TMP/label.blank"
+        while IFS=$'\t' read -r line call; do
+          [[ -n "$line" ]] || continue
+          add_finding test-label-markup "$f" "$line" "$(introduced "$f" "$line")" \
+            "${call}() gets a translated string object as its label while core_version_requirement '${CORE_REQ}' admits ${CORE_LOWEST}: before ${LABEL_SINCE}, core's WebAssert passes it to Mink's findButton(string) unchanged and the test errors (TypeError) on those cores. Pass a string: (string) \$this->t('...') or the label itself."
+        done < <(php_markup_label_lines "$TMP/label.blank")
+        ;;
+    esac
   fi
 done < "$FILES"
 

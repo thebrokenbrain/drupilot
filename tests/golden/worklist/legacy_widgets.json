@@ -1090,7 +1090,7 @@
   ],
   "meta": {
     "findings_hash": "sha256:5a28c923ad4d3f0429cc4c31945171332527c3e4b826b3eff9c194b361d1b4f8",
-    "recipes_hash": "sha256:0679818e571e033a244db8934b159867294fcc0fab4429c1a6fbaf20c657d538",
+    "recipes_hash": "sha256:4eb4f94b3fe3eb80980303cbb2fc690de945af8f454ae419abeef64852493bfa",
     "worklist_hash": "sha256:5785fd2e413d6d1542d3c52f6e75068f544763cf807d534418ee242692daa1ef"
   },
   "schema": 1,

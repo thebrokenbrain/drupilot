@@ -87,6 +87,18 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `recommend_core_target`) from the requirement before the port
   (`assess.json`, else the `info.yml` at the port's base); a refactor is a
   major. The manifest golden's bump is now `minor`.
+- Test adaptations now hold on the declared floor, not only on the bed's
+  core. The optimizedb tests passed `$this->t('...')` to `submitForm()`:
+  green on 11.4 and 10.6, a `TypeError` on the declared floor 10.2, where
+  core's `WebAssert` hands a `TranslatableMarkup` to Mink's
+  `findButton(string)` unchanged (10.3 and later cast it). A new port-safety
+  check, `test-label-markup` (`config/port-checks.json`, `since` 10.3), reports
+  such a `submitForm()` label or `buttonExists()` locator in a test while the
+  range admits an older core (an error when the port added it), and the
+  test-adaptation skill, the test engineer and `/drupilot-test` pass labels as
+  strings, replace a removed `$defaultTheme` with `stark`, turn
+  `drupalPostForm()` into `drupalGet()` plus `submitForm()`, and run the check.
+  drupilot still runs the suite on the bed's core only.
 
 ## [1.0.0] - 2026-10-27
 

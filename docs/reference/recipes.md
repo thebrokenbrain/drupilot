@@ -47,6 +47,7 @@ A codemod applies only when its conditions hold. Its edit must be exact and its 
 | `safety.removed-use` | ai-templated | template | rule `port-safety:removed-use` | — |
 | `safety.serialization` | ai-templated | template | rule `port-safety:serialization` | — |
 | `safety.static-factory` | ai-templated | template | rule `port-safety:static-factory` | — |
+| `safety.test-label-markup` | ai-templated | template | rule `port-safety:test-label-markup` | — |
 | `sig.config-form-base-ctor` | ai-templated | template | rule `signature:config-form-base-ctor` | — |
 | `sig.content-translation-controller-ctor` | ai-templated | template | rule `signature:content-translation-controller-ctor` | — |
 | `sig.entity-get-original` | ai-templated | template | rule `signature:entity-get-original` | — |

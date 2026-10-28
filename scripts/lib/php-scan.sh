@@ -856,3 +856,64 @@ END {
 }' "$b" "$r" 2> /dev/null || true
   return 0
 }
+
+# php_markup_label_lines FILE -> "LINE<TAB>CALL" for every submitForm() whose
+# second argument, and every buttonExists() / buttonNotExists() whose first
+# argument, is a translated string object ($this->t(...), t(...),
+# $this->formatPlural(...), new TranslatableMarkup(...)) rather than a
+# string; LINE is the argument's. A (string) cast or a literal is fine. FILE
+# is php_code_lines's output. A heuristic scan, not a parser: a method call
+# (->) only, the call may span lines.
+php_markup_label_lines() {
+  local f="${1:-}"
+  [[ -f "$f" ]] || return 0
+  LC_ALL=C awk '
+function shut(k,   d, ch) {
+  d = 0
+  for (; k <= n; k++) {
+    ch = substr(buf, k, 1)
+    if (ch == "(" || ch == "[" || ch == "{") d++
+    else if (ch == ")" || ch == "]" || ch == "}") { d--; if (d == 0) return k }
+  }
+  return n + 1
+}
+function lineof(k,   t) { t = substr(buf, 1, k); return gsub(/\n/, "", t) + 1 }
+function at(k, w) { return substr(buf, k, length(w)) == w }
+function markup(s) {
+  sub(/^[ \t\n\r]+/, "", s)
+  return s ~ /^(\$this[ \t\n\r]*->[ \t\n\r]*(t|formatPlural)|\\?t|new[ \t\n\r]+\\?([A-Za-z0-9_]+\\)*TranslatableMarkup)[ \t\n\r]*\(/
+}
+{ buf = buf $0 "\n" }
+END {
+  n = length(buf)
+  for (i = 1; i <= n; i++) {
+    if (substr(buf, i, 2) != "->") continue
+    j = i + 2; while (substr(buf, j, 1) ~ /[ \t\n\r]/) j++
+    nm = ""
+    if (at(j, "submitForm")) { nm = "submitForm"; want = 2 }
+    else if (at(j, "buttonNotExists")) { nm = "buttonNotExists"; want = 1 }
+    else if (at(j, "buttonExists")) { nm = "buttonExists"; want = 1 }
+    if (nm == "") continue
+    k = j + length(nm)
+    if (substr(buf, k, 1) ~ /[A-Za-z0-9_]/) continue
+    while (substr(buf, k, 1) ~ /[ \t\n\r]/) k++
+    if (substr(buf, k, 1) != "(") continue
+    e = shut(k); d = 0; arg = 1; st = k + 1
+    for (x = k; x < e; x++) {
+      ch = substr(buf, x, 1)
+      if (ch == "(" || ch == "[" || ch == "{") d++
+      else if (ch == ")" || ch == "]" || ch == "}") d--
+      else if (ch == "," && d == 1) {
+        if (arg == want) break
+        arg++; st = x + 1
+      }
+    }
+    if (arg == want) {
+      a = substr(buf, st, (x < e ? x : e) - st)
+      if (markup(a)) { p = st; while (substr(buf, p, 1) ~ /[ \t\n\r]/) p++; printf "%d\t%s\n", lineof(p), nm }
+    }
+    i = j
+  }
+}' "$f" 2> /dev/null || true
+  return 0
+}

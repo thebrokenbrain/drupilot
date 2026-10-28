@@ -583,6 +583,14 @@ Checks (--checks selects a subset; default all):
                      a review warning when it cannot be attributed).
   class-case         services.yml / routing.yml class references and PSR-4
                      class names whose case differs from the real file.
+  test-label-markup  In a file under tests/, a submitForm() label (its
+                     second argument) or a buttonExists() /
+                     buttonNotExists() locator that is a translated string
+                     object ($this->t(...)) while the declared core range
+                     admits a core older than the check's `since` (10.3):
+                     there core's WebAssert passes it to Mink's
+                     findButton(string) unchanged, a TypeError (lab
+                     L-1.0-D9 on 10.2.12).
 
 Diff-aware: when the subject is tracked by git, every finding is attributed —
 "introduced" (on a line the port added/changed vs the pre-port base) or

@@ -49,6 +49,16 @@
         "unknown": "warn"
       }
     },
+    "test-label-markup": {
+      "description": "In a test, a submitForm() label (its second argument) or a buttonExists()/buttonNotExists() locator that is a translated string object ($this->t(...), t(...), $this->formatPlural(...), new TranslatableMarkup(...)) while the declared core range admits a core older than `since`: core/tests/Drupal/Tests/WebAssert.php declares strict_types=1 and, before that minor, passes the label to Mink's TraversableElement::findButton(string $locator) unchanged, so the test errors with a TypeError on those cores; from it on, WebAssert casts it (issue 3421105). Pass a string: (string) $this->t('Save') or 'Save'.",
+      "since": "10.3",
+      "verified": "core/tests/Drupal/Tests/WebAssert.php: no cast in buttonExists() on 10.1.x and 10.2.x, the cast with the @todo of issue 3421105 on 10.3.0, 10.3.x, 10.6.x and 11.0.0 (git.drupalcode.org and the lab beds, read 2026-10-27); the TypeError reproduced on 10.2.12 with behat/mink 1.13 (lab L-1.0-D9).",
+      "severity": {
+        "introduced": "error",
+        "preexisting": "warn",
+        "unknown": "warn"
+      }
+    },
     "class-case": {
       "description": "A class referenced from *.services.yml / *.routing.yml, or a PSR-4 class declaration, whose case differs from the real file name. Works on case-insensitive filesystems (macOS) and fatals on Linux.",
       "severity": {
