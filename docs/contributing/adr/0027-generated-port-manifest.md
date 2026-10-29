@@ -24,7 +24,7 @@ the JSON of about ten scripts into it and filling about ten free-text lists. Thr
 |---|---|
 | `worklist` (`by_lane_status`, items) | `worklist.json` |
 | `codemods` | `actions.jsonl`: the applications still in effect |
-| `rector_official_files`, `rector_rules` | `rector-rules.json`, which `run-rector.sh --apply` keeps. It now also lists the files. The attribute pass keeps `attributes-rules.json` (`convert-attributes.sh --apply`): its rules join `rector_rules`. |
+| `rector_official_files`, `rector_rules` | `rector-rules.json`, which `run-rector.sh --apply` keeps. It now also lists the files, and the files of the official and compat passes apart from the digests pass (`official_files`, `digests_files`): `rector_official_files` counts the former (training run 03 reported a digests change as the official pass's). The digests rules applied and rejected follow each rule's latest verdict in `digests-decisions.json`. The attribute pass keeps `attributes-rules.json` (`convert-attributes.sh --apply`): its rules join `rector_rules`. |
 | `digests` | the applying run's digests rules, and the verdicts rejected for its SHA |
 | `files_changed`, `files`, `manual_edits` | `git diff` against `git_port_base_ref`, the base `make-patch.sh --local` uses. A manual edit is a file that neither Rector, the attribute pass nor a codemod changed. |
 | `deprecations_remaining`, `deferred_to_phase2` | `findings.json`, the current hard and unknown PHPStan occurrences and the next-major symbols |

@@ -31,6 +31,13 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ### Fixed
 
+- The port report counts the official Rector pass alone: `run-rector.sh`
+  keeps the files of the official and compat passes apart from the digests
+  pass's in `rector-rules.json`, so a digests-only change no longer reads as
+  "Rector (official pass): 1 file(s) changed". A digests rule follows its
+  latest verdict: one applied, then rejected and reverted, is listed as
+  rejected only, not as applied and rejected at once (training run module
+  03, like_dislike).
 - A core requirement that names 11 only as the bound excluding it, such as
   `>=8.9 < 11.0.0-stable`, no longer counts as Drupal 11-compatible: the `auto`
   strategy kept it verbatim (keep-current) and setup then refused the plan

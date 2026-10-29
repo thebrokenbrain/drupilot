@@ -2287,7 +2287,8 @@ Options:
                      --apply that changes files also keeps it in the
                      subject's state dir (rector-rules.json: {tool,
                      changed_files, files (root-relative, sorted),
-                     port_base, digests_sha, rule_hits, meta:
+                     official_files (the official and compat passes),
+                     digests_files, port_base, digests_sha, rule_hits, meta:
                      {generated_at, subject}}; the applying runs on one
                      git base add up), the fallback
                      port-report.sh / layer-report.sh read.
