@@ -393,9 +393,11 @@ verdict, only when the index names them or their file exists).
           run of -/+ lines), file when several rules made several change
           blocks (Rector names the rules per file: the rule changed some
           place of the file, maybe not this line)
-  class   hard | soft | unknown | guarded (classify-deprecations.sh; a
-          guarded one, a removed function only a DeprecationHelper fallback
-          calls, is an info finding) | analysis |
+  class   hard | soft | unknown | guarded | not-removed
+          (classify-deprecations.sh; a guarded one, a removed function only
+          a DeprecationHelper fallback calls, and a not-removed one, a
+          "not found" function core defines in a file it loads on demand or
+          one a *.drush.inc calls, are info findings) | analysis |
           safety | signature | metadata | style | php-target | removal |
           rector
 
@@ -732,6 +734,13 @@ criterion is the same for every module and every layer of the flow.
           fallback): no core of the target major runs it, so it is
           reported, never blocking. run-phpstan.sh --json marks such a
           message (drupilot_guard); a plain-text input has no mark.
+  not-removed  a function PHPStan cannot find that is no removal: the
+          subject's core defines it in a file core loads on demand
+          (module_load_include()/loadInclude(): locale.bulk.inc, ...;
+          core_file names it), or a Drupal 8 era Drush command file
+          (*.drush.inc), which Drush 9 and later never load, calls it.
+          Reported, never blocking (training run 04, drush_language: 14
+          such findings made the verdict L).
 
 Removal versions come from the analyzer message itself (phpstan-deprecation-
 rules echoes core's "in drupal:X and is removed from drupal:Y"). The
@@ -761,6 +770,7 @@ Usage:
                     {tool, policy, phase, target_major, core_requirement,
                      core_floor, blocking, counts:{hard,soft,unknown,other},
                      plus counts.guarded and guarded:[..] when there is one,
+                     counts.not_removed and not_removed:[..] likewise,
                      symbols (one per symbol and class):[{symbol, class,
                        deprecated_in, removed_in,
                        replacement, replacement_since, replacement_at_floor,

@@ -418,6 +418,24 @@ toolchain_json() {
 }
 TOOLCHAIN="$(toolchain_json)"
 
+# Drush: a subject with Drush commands (src/Drush, src/Commands extending
+# DrushCommands, a drush.services.yml) needs drush/drush in each reference
+# core, as the test-bed has it, or every Drupal 10 leg fails on the missing
+# Drush classes (training run 04, drush_language). Composer picks the Drush
+# major the leg's core admits (the current one, or the previous one on an old
+# Drupal 10 minor floor).
+# The toolchain's Drush major (config .packages.drush), widened to the
+# previous major for an old Drupal 10 minor floor.
+_dm="$(config_json '.packages.drush' '' | sed -n 's/.*\^\([0-9][0-9]*\).*/\1/p')"
+VCM_DRUSH_CONSTRAINT="*"
+[[ "$_dm" =~ ^[0-9]+$ ]] && VCM_DRUSH_CONSTRAINT="^$((_dm - 1)) || ^$_dm"
+NEEDS_DRUSH=false
+if [[ -f "$(find "$SUBJECT_ABS" -maxdepth 2 -name 'drush.services.yml' -not -path '*/vendor/*' 2>/dev/null | sed -n '1p')" ]] \
+   || find "$SUBJECT_ABS" \( -name vendor -o -name node_modules -o -name .git -o -name tests \) -prune -o -type f -name '*.php' \
+        -exec grep -l -E '(^|[^A-Za-z0-9_])(use[[:space:]]+)?\\?Drush\\' {} + 2>/dev/null | grep_q .; then
+  NEEDS_DRUSH=true
+fi
+
 # build_reference <leg> <requested constraint or exact version> -> builds
 # $CORES_DIR/drupal-<leg> atomically. Prints nothing; returns 0 on success and
 # sets BUILD_REASON on failure.
@@ -480,13 +498,28 @@ build_reference() {
         _ "$ROOT" "$CONTAINER_ROOT/$CORES_REL/$tmpname" >>"$log" 2>&1 || true
     fi
   fi
+  local drush=false
+  if [[ "$NEEDS_DRUSH" == "true" ]]; then
+    cp "$tmpdir/composer.json" "$TMP/composer.json.bak"; cp "$tmpdir/composer.lock" "$TMP/composer.lock.bak" 2>/dev/null || true
+    jq --arg d "$VCM_DRUSH_CONSTRAINT" '.require["drush/drush"] = $d' "$tmpdir/composer.json" > "$TMP/composer.json" \
+      && cp "$TMP/composer.json" "$tmpdir/composer.json"
+    if run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT $VCM_COMPOSER_BIN update --no-interaction --no-progress --no-audit drush/drush --with-all-dependencies" </dev/null' \
+         _ "$ROOT" "$CONTAINER_ROOT/$CORES_REL/$tmpname" >>"$log" 2>&1; then
+      drush=true
+    else
+      log_warn "Could not add drush/drush to the reference Drupal $want core: the subject's Drush classes will be reported as unknown on this leg."
+      cp "$TMP/composer.json.bak" "$tmpdir/composer.json"; cp "$TMP/composer.lock.bak" "$tmpdir/composer.lock" 2>/dev/null || true
+      run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT $VCM_COMPOSER_BIN install --no-interaction --no-progress" </dev/null' \
+        _ "$ROOT" "$CONTAINER_ROOT/$CORES_REL/$tmpname" >>"$log" 2>&1 || true
+    fi
+  fi
   if ! heal_extension_config "$tmpdir" "$CONTAINER_ROOT/$CORES_REL/$tmpname" "the reference Drupal $want core"; then
     BUILD_REASON="$HEAL_REASON"; rm -rf "$tmpdir"; return 1
   fi
   jq -n --arg leg "$leg" --arg c "$(leg_constraint "$leg")" --arg want "$want" --arg v "$ver" \
-     --arg php "$CONTAINER_PHP" --argjson t "$TOOLCHAIN" --argjson td "$test_deps" \
+     --arg php "$CONTAINER_PHP" --argjson t "$TOOLCHAIN" --argjson td "$test_deps" --argjson dr "$drush" \
      --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-     '{leg: $leg, constraint: $c, requested: $want, version: $v, php: $php, toolchain: $t, test_deps: $td, built_at: $at}' \
+     '{leg: $leg, constraint: $c, requested: $want, version: $v, php: $php, toolchain: $t, test_deps: $td, drush: $dr, built_at: $at}' \
      > "$tmpdir/.drupilot-core.json"
   rm -rf "$final"
   mv "$tmpdir" "$final"
@@ -510,7 +543,8 @@ ensure_reference() {
     mphp="$(jq -r '.php // empty' "$marker" 2>/dev/null || true)"
     mtool="$(jq -c '.toolchain // {}' "$marker" 2>/dev/null || true)"
     if [[ -n "$mver" && ( -z "$locked" || "$locked" == "$mver" ) && "$mphp" == "$CONTAINER_PHP" \
-          && "$(printf '%s' "$mtool" | jq -cS . 2>/dev/null)" == "$(printf '%s' "$TOOLCHAIN" | jq -cS .)" ]]; then
+          && "$(printf '%s' "$mtool" | jq -cS . 2>/dev/null)" == "$(printf '%s' "$TOOLCHAIN" | jq -cS .)" \
+          && ( "$NEEDS_DRUSH" != "true" || "$(jq -r '.drush // false' "$marker" 2>/dev/null)" == "true" ) ]]; then
       if ! deterministic_mode; then
         # Floating mode: refresh within the constraint (best effort, offline-safe).
         if ! run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT $VCM_COMPOSER_BIN update --no-interaction --no-progress --no-audit" </dev/null' \

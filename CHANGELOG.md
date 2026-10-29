@@ -31,6 +31,18 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ### Fixed
 
+- A "Function X not found" that is no removal no longer counts as blocking
+  work: `classify-deprecations.sh` gives the new class `not-removed` to a
+  function the subject's core defines in a file core loads on demand
+  (`locale.fetch.inc` and the like, which PHPStan cannot see; the finding
+  names the file) and to one a Drupal 8 era `*.drush.inc` calls (Drush 9 and
+  later never load it). Reported as info, never blocking: in training run
+  module 04 (drush_language) 14 such findings made the verdict L.
+- `verify-core-matrix.sh` adds `drush/drush` (the major each leg's core
+  admits) to its reference cores when the subject has Drush commands: every
+  Drupal 10 leg failed on the missing Drush classes, and the port model
+  installed Drush in the cached cores by hand (drush_language). A cached core
+  built without Drush is rebuilt for such a subject.
 - The port report counts the official Rector pass alone: `run-rector.sh`
   keeps the files of the official and compat passes apart from the digests
   pass's in `rector-rules.json`, so a digests-only change no longer reads as
