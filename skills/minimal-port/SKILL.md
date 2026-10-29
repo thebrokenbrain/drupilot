@@ -740,9 +740,12 @@ so it never leaks into a patch). Then generate `<state_dir>/port-manifest.json`
 with `scripts/ai/manifest.sh` (ADR 0027): it is built from the findings, the
 worklist, the codemods applied, the applying Rector run, the digests verdicts,
 the decision log and the git diff, never from memory. Your only input is the
-**why** of the items you fixed or decided by hand: `<state_dir>/rationale.json`,
-`{"<worklist item id>": "why"}`, passed with `--rationale` (an unknown id is
-refused; an earlier rationale is kept for the items still there). Divergences
+**why** of the items you fixed or decided by hand and of your manual edits:
+`<state_dir>/rationale.json`, `{"<worklist item id or path>": "why"}`, passed
+with `--rationale`. An item id may be one the port has since resolved (the
+extraction after your fix drops it; `worklist-resolved.json` keeps it); a path,
+relative to the module, gives the why of that manual edit in the report. Any
+other key is refused; an earlier rationale is kept for the keys still valid. Divergences
 (`rector-revert`, `post-port-fix`, `behavior-change`, `preexisting-bug`,
 `tooling-deviation`, ...) go to `log-decision.sh` as they happen, and
 `port-report.sh` merges them; the verification records (core matrix, PHPCS

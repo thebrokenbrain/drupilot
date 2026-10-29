@@ -701,8 +701,14 @@ files of the applying run, the digests verdicts, the decision log and the git
 diff against the port's base (files changed, and the manual edits: the files
 neither Rector nor a codemod changed). Your only input is the **why** of the
 items you fixed or decided by hand, keyed by worklist item id (the `id`s of
-`<state_dir>/worklist.json`): write `<state_dir>/rationale.json` as
-`{"<item id>": "why"}` and pass it; an id the worklist does not have is refused.
+`<state_dir>/worklist.json`; an item you fixed stays nameable after the next
+extraction drops it, through `<state_dir>/worklist-resolved.json`), and of each
+file you edited by hand, keyed by its path relative to the module
+(`src/Foo.php`: the report shows it next to that edit, or under "Also
+explained" when Rector or a codemod changed the file too). Write
+`<state_dir>/rationale.json` as `{"<item id or path>": "why"}` and pass it;
+any other key is refused. A why is kept on later runs only while its file is
+unchanged.
 Every divergence (a Rector change reverted, a post-port fix, a behavior change, a
 pre-existing bug, a tooling deviation) is logged with `log-decision.sh` as it
 happens, never repeated here: `port-report.sh` merges the decision log. As the
@@ -727,7 +733,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/ai/manifest.sh" --subject <path> --phase por
 ```
 
 (Leave `--rationale` out when no item needs one; an earlier rationale is kept for
-the items still in the worklist.)
+the keys still valid.)
 
 The `php` stage checks the PHP window (every PHP from the plan's floor to its
 target): the constructs a PHP of the window removed or deprecated, `php -l`

@@ -144,8 +144,16 @@ reinvent their logic.
      label and a `buttonExists()`/`buttonNotExists()` locator as a string
      (`(string) $this->t(...)`): Drupal 10.2.3 to 10.2.x hand a
      `TranslatableMarkup` to Mink's `findButton(string)` (a `TypeError` there,
-     green on the bed), and `buttonNotExists()` never casts it. Then run
-     `check-port-safety.sh --subject <DIR> --checks test-label-markup`. In a
+     green on the bed), and `buttonNotExists()` never casts it.
+   - A PHPUnit attribute on a class or a method (`#[RunTestsInSeparateProcesses]`
+     included) makes PHPUnit 10/11 ignore that level's doc-comment metadata:
+     add the twin of each annotation next to it (`@group foo` ->
+     `#[Group('foo')]`, with the annotation's value as its arguments) and
+     write a relative `@covers ::name` in full (`@covers
+     \Drupal\foo\Bar::name`); keep the annotations while the range admits
+     Drupal 10 (PHPUnit 9 reads only them). Never put a `Covers*`/`Uses*`
+     attribute on a method: they target the class, and PHPUnit aborts. Then run
+     `check-port-safety.sh --subject <DIR> --checks test-label-markup,test-phpunit-metadata`. In a
      test that declares `strict_types=1` (Phase 2 adds it), pass strings to
      every `assertSession()` method too (`pageTextContains()`,
      `fieldValueEquals()`, ...): below 10.3 core does not cast them.

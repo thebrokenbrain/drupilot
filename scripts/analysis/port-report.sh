@@ -107,6 +107,9 @@
 # Usage:
 #   port-report.sh --subject DIR [--manifest FILE] [--output DIR] [--changes-log FILE]
 #
+# --manifest defaults to the module's port-manifest.json in its state dir
+# (manifest.sh), when there is one; only a --manifest given records the stage.
+#
 # Output: writes <output>/port-report.md (default: the visible .drupilot/ artifacts
 #         dir at the Drupal root) and prints its path on STDOUT. Logging on STDERR.
 #         It also refreshes <output>/port-summary.json (port-summary.sh: the
@@ -156,6 +159,16 @@ REPORT="$OUT_ABS/port-report.md"
 # Default the didactic changes-log to the conventional state-dir path (written by
 # the flow when it tees Rector + PHPStan output); silently skip if absent.
 [[ -n "$CHANGES_LOG" ]] || { [[ -r "$STATE_DIR/change-log.txt" ]] && CHANGES_LOG="$STATE_DIR/change-log.txt"; }
+
+# Without --manifest, the subject's own port-manifest.json (manifest.sh writes
+# it to the state dir) when there is one: a report rendered from the cached
+# state alone says require.php "none" and the version bump "n/a" (lab L-PC).
+# Only an explicit --manifest records the stage (below).
+MANIFEST_GIVEN=0; [[ -n "$MANIFEST" ]] && MANIFEST_GIVEN=1
+if [[ -z "$MANIFEST" && -r "$STATE_DIR/port-manifest.json" ]]; then
+  MANIFEST="$STATE_DIR/port-manifest.json"
+  log_info "No --manifest given: rendering with the module's $MANIFEST."
+fi
 
 # Load the manifest (or an empty object) and the cached state.
 M='{}'
@@ -325,9 +338,9 @@ D10_VERSIONS=""; D10_FLOOR=""
 [[ -n "$V_MATRIX" ]] && D10_FLOOR="$(printf '%s' "$V_MATRIX" | jq -r '.d10_floor // empty')"
 
 # The port record: the manifest's structured fields merged with the decision
-# log (log-decision.sh) and the last Rector apply's rule counts. Without a
-# --manifest only the log and the Rector record are read (never the state
-# file's manifest: a report rendered from cached state alone stays as before).
+# log (log-decision.sh) and the last Rector apply's rule counts. With no
+# manifest at all (none given, none in the state dir) only the log and the
+# Rector record are read.
 PREC="$(port_record_json "$SUBJECT" "${MANIFEST:-/dev/null}" 2>/dev/null || true)"
 printf '%s' "$PREC" | jq -e 'type == "object"' >/dev/null 2>&1 || PREC=""
 
@@ -396,14 +409,28 @@ printf '%s' "$PREC" | jq -e 'type == "object"' >/dev/null 2>&1 || PREC=""
     printf '_Unknown: no git history to compare with, or a Rector record that does not list its files._\n'
   else
   printf '%s' "$M" | jq -r '
-    (.manual_edits // []) | .[]? |
+    ((.rationale_stale // []) | if type == "array" then . else [] end) as $stale
+    | (.manual_edits // []) | .[]? |
     if type == "string" then "- " + .
     else "- " + (.edit // .what // "edit")
-         + (if (.why // "") != "" then " — _why:_ " + .why else "" end)
+         + (if (.why // "") != "" then " — _why:_ " + .why
+            + (if ((.edit // "") as $e | $stale | index($e)) != null then " _(given before the file last changed)_" else "" end) else "" end)
          + (if (.change_record // "") != "" then " ([change record](" + .change_record + "))" else "" end)
     end
   ' 2>/dev/null | { grep . || printf '_none_\n'; }
   fi
+  # The why of a file the rationale names that is not listed above: one that
+  # Rector, the attribute pass or a codemod changed too, or any file when the
+  # manifest could not tell the manual edits (no git history).
+  _also="$(printf '%s' "$M" | jq -r '
+    (.manual_edits | if type == "array" then [.[] | if type == "string" then . else (.edit // empty) end] else null end) as $me
+    | ((.rationale_stale // []) | if type == "array" then . else [] end) as $stale
+    | (.rationale // {}) | if type == "object" then . else {} end | to_entries[]
+    | select((.key | test("^W-[0-9a-f]+$") | not) and ($me == null or (.key as $k | $me | index($k)) == null))
+    | "- `\(.key)`" + (if $me == null then "" else " (changed by Rector, the attribute pass or a codemod too)" end) + " — _why:_ \(.value)"
+      + (if (.key as $k | $stale | index($k)) != null then " _(given before the file last changed)_" else "" end)
+  ' 2>/dev/null || true)"
+  [[ -z "$_also" ]] || printf '\n_Also explained:_\n\n%s\n' "$_also"
   printf '\n'
   printf '### Remaining deprecations\n\n%s\n\n' "$DEPR"
 
@@ -427,9 +454,13 @@ printf '%s' "$PREC" | jq -e 'type == "object"' >/dev/null 2>&1 || PREC=""
       printf '%s' "$M" | jq -r '.codemods[] | "- `\(.recipe)` (\(.version)) on `\(.file)`"' 2>/dev/null || true
       printf '\n'
     fi
-    if [[ "$(printf '%s' "$M" | jq -r '(.rationale // {}) | length' 2>/dev/null)" != "0" ]]; then
+    # The why of the items still in the worklist, and of the items the port
+    # resolved (manifest.sh: worklist.resolved); a manual edit's why is under
+    # "Manual edits".
+    if [[ "$(printf '%s' "$M" | jq -r '[(.worklist.items // [])[] | select(.rationale != null)] + (.worklist.resolved // []) | length' 2>/dev/null)" != "0" ]]; then
       printf '**Why (per item):**\n\n'
       printf '%s' "$M" | jq -r '.worklist.items[] | select(.rationale != null) | "- `\(.id)` (\(.lane), `\(.file)`): \(.rationale)"' 2>/dev/null || true
+      printf '%s' "$M" | jq -r '(.worklist.resolved // [])[] | "- `\(.id)` (resolved by the port; \(.lane), `\(.file)`): \(.rationale)"' 2>/dev/null || true
       printf '\n'
     fi
   fi
@@ -755,9 +786,10 @@ log_ok "Port report written: $REPORT"
 
 # Record the stage the manifest's phase completed (port -> ported, refactor ->
 # refactored) in the subject's state.json, so /drupilot-status and the router
-# stop recommending a step already done. Only a real manifest counts: a report
-# rendered from cached state alone records nothing. Never fails the report.
-if [[ -n "$MANIFEST" && -r "$MANIFEST" ]]; then
+# stop recommending a step already done. Only a manifest given with
+# --manifest counts: a report rendered from the state dir's records nothing.
+# Never fails the report.
+if [[ "$MANIFEST_GIVEN" == "1" && -n "$MANIFEST" && -r "$MANIFEST" ]]; then
   case "$(stage_normalize "$PHASE")" in
     ported|refactored)
       phase_record "$SUBJECT" "$PHASE" 2>/dev/null \

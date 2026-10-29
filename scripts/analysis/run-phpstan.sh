@@ -41,6 +41,22 @@
 #                    the scan is php_bc_fallback_calls), so
 #                    classify-deprecations.sh can tell it from a call the
 #                    target core runs.
+#                    A deprecation PHPStan cannot see (a magic property:
+#                    the lifecycle entries of config/deprecations.json with
+#                    a scan block, e.g. $entity->original, deprecated in
+#                    drupal:11.2.0 and removed from drupal:12.0.0) is
+#                    reported by drupilot's own scan of the module's code
+#                    (php_magic_property_lines, on the code a core with
+#                    the deprecation runs: the deprecated callable of a
+#                    DeprecationHelper call whose version is at most the
+#                    deprecation's is left out) in
+#                    drupilot.runtime_deprecations, when there is one:
+#                    [{file (root-relative), line, identifier:
+#                    "drupilot.runtimeDeprecation", id, symbol, operation:
+#                    get|set|isset|unset, message: core's runtime notice}],
+#                    sorted; classify-deprecations.sh classifies it like a
+#                    PHPStan deprecation. PHPStan's own totals and files are
+#                    never changed.
 #                    When PHPStan crashed (no
 #                   report produced) `totals` is null, `files` is {} and the
 #                   reason is in `drupilot.crash` — never a fake zero count.
@@ -280,18 +296,68 @@ elif [[ -n "$OTHER_ERR" ]]; then
   printf '%s\n' "$OTHER_ERR" >&2
 fi
 
+# runtime_deprecations -> the JSON array of the deprecations PHPStan cannot
+# see: every access to a magic property a lifecycle entry of
+# config/deprecations.json scans for (its scan block), with core's runtime
+# notice for the operation (DET-2: sorted).
+runtime_deprecations() {
+  local cat f rel sid prop depin line op
+  cat="$(plugin_root)/config/deprecations.json"
+  jq -r '(.lifecycle // [])[] | select(((.scan.magic_property // "") | test("^[A-Za-z_][A-Za-z0-9_]*$")) and (.scan.id // "") != "")
+         | [.scan.id, .scan.magic_property, (.deprecated_in // "")] | join("\t")' "$cat" > "$OUT_F.rtcat" 2> /dev/null || true
+  : > "$OUT_F.rt"
+  if [[ -s "$OUT_F.rtcat" ]]; then
+    find "$SUBJECT_ABS" -type f \( -name '*.php' -o -name '*.module' -o -name '*.inc' -o -name '*.install' \
+      -o -name '*.theme' -o -name '*.profile' -o -name '*.engine' \) \
+      -not -path '*/vendor/*' -not -path '*/node_modules/*' -not -path '*/.git/*' 2> /dev/null | LC_ALL=C sort > "$OUT_F.rtfiles"
+    while IFS= read -r f; do
+      php_code_lines "$f" > "$OUT_F.rtcode"
+      rel="${f#"$DRUPAL_ROOT"/}"
+      while IFS=$'\t' read -r sid prop depin; do
+        # The code a core with the deprecation runs: the deprecated callable
+        # of a DeprecationHelper::backwardsCompatibleCall() (drupal-rector's
+        # own BC form) runs only on a core older than its version, so it is
+        # left out when that version is at most the deprecation's.
+        if [[ -n "$depin" ]]; then php_bc_blank_fallbacks "$OUT_F.rtcode" "$f" "$depin" > "$OUT_F.rtblank"
+        else cp "$OUT_F.rtcode" "$OUT_F.rtblank"; fi
+        php_magic_property_lines "$OUT_F.rtblank" "$prop" | while IFS=$'\t' read -r line op; do
+          printf '%s\t%s\t%s\t%s\n' "$rel" "$line" "$sid" "$op"
+        done
+      done < "$OUT_F.rtcat" >> "$OUT_F.rt"
+    done < "$OUT_F.rtfiles"
+  fi
+  jq -R -s -c --slurpfile c "$cat" '
+    ([($c[0].lifecycle // [])[] | select((.scan.id // "") != "") | {key: .scan.id, value: .}] | from_entries) as $byid
+    | split("\n") | map(select(length > 0) | split("\t") | . as $r | ($byid[$r[2]] // null) as $e
+        | select($e != null and ($r[1] | test("^[0-9]+$")))
+        | {file: $r[0], line: ($r[1] | tonumber), identifier: "drupilot.runtimeDeprecation", id: $r[2],
+           symbol: $e.symbol, operation: $r[3],
+           message: ((($e.scan.messages // {})[$r[3]] // ($e.scan.messages // {}).get // "")
+                     + (if ($e.scan.note // "") != "" then " (drupilot source scan: " + $e.scan.note + ")" else "" end))})
+    | sort_by([.file, .line, .id, .operation])' "$OUT_F.rt" 2> /dev/null || printf '[]'
+  rm -f "$OUT_F.rt" "$OUT_F.rtcat" "$OUT_F.rtfiles" "$OUT_F.rtcode" "$OUT_F.rtblank" 2> /dev/null || true
+  return 0
+}
+
 if [[ "$AS_JSON" == "1" ]]; then
+  # (Through a file: one argv string is capped, 128 KiB on Linux.)
+  runtime_deprecations > "$OUT_F.rtjson"
+  jq -e 'type == "array"' "$OUT_F.rtjson" > /dev/null 2>&1 || printf '[]\n' > "$OUT_F.rtjson"
   NOTICES_JSON="$(printf '%s\n' "$NOTICES" | jq -R . | jq -sc 'map(select(length > 0))')"
   CRASH_JSON='[]'
   [[ "$STATUS" == "crashed" ]] && CRASH_JSON="$(printf '%s\n' "$OTHER_ERR" | jq -R . | jq -sc 'map(select(length > 0))')"
   META="$(jq -nc --arg status "$STATUS" --argjson rc "$RC" --argjson prc "$PHPSTAN_RC" \
     --argjson notices "$NOTICES_JSON" --argjson crash "$CRASH_JSON" \
     --argjson prov "$(tool_provenance "$DRUPAL_ROOT" "$RUNNER" phpstan/phpstan)" \
-    '{status: $status, exit_code: $rc, phpstan_exit_code: $prc, notices: $notices, crash: $crash, runner: $prov}')"
+    --slurpfile rt "$OUT_F.rtjson" \
+    '{status: $status, exit_code: $rc, phpstan_exit_code: $prc, notices: $notices, crash: $crash, runner: $prov}
+     + (if ($rt[0] | length) > 0 then {runtime_deprecations: $rt[0]} else {} end)')"
   if [[ "$STATUS" != "crashed" ]] || printf '%s' "${JSON_OUT:-}" | jq -e 'has("totals")' >/dev/null 2>&1; then
     # Sorted (DET-2): files by path, each file's messages by line, identifier
     # and message, the general errors by text.
-    printf '%s' "$JSON_OUT" | jq -c --argjson m "$META" '. + {drupilot: $m}
+    # META goes through a file too (its runtime_deprecations can be long).
+    printf '%s\n' "$META" > "$OUT_F.meta"
+    printf '%s' "$JSON_OUT" | jq -c --slurpfile mf "$OUT_F.meta" '$mf[0] as $m | . + {drupilot: $m}
       | (if (.files | type) == "object" then .files |= (to_entries | sort_by(.key)
           | map(if (.value.messages | type) == "array" then .value.messages |= sort_by([(.line // 0), (.identifier // ""), (.message // "")]) else . end)
           | from_entries) else . end)
@@ -343,7 +409,8 @@ if [[ "$AS_JSON" == "1" ]]; then
         end' "$OUT_F.sorted"
     rm -f "$OUT_F.sorted" "$OUT_F.calls" "$OUT_F.calls.new" "$OUT_F.blank" 2> /dev/null || true
   else
-    jq -nc --argjson m "$META" '{totals: null, files: {}, errors: $m.crash, drupilot: $m}'
+    printf '%s\n' "$META" > "$OUT_F.meta"
+    jq -nc --slurpfile mf "$OUT_F.meta" '$mf[0] as $m | {totals: null, files: {}, errors: $m.crash, drupilot: $m}'
   fi
 fi
 

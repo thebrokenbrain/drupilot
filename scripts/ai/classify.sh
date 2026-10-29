@@ -57,7 +57,10 @@
 #                 directory (the module's or a submodule's)
 #
 # Idempotent: the same findings.json, recipes, floor and actions give the same
-# worklist.json outside meta (DET-2).
+# worklist.json outside meta (DET-2). Writing the subject's worklist also
+# records the items it no longer has in worklist-resolved.json
+# (worklist_resolved_update), so a rationale can name an item the port
+# resolved.
 #
 # Usage:
 #   classify.sh (--subject DIR | --findings FILE) [--recipes FILE]
@@ -269,6 +272,8 @@ jq --arg fh "$(jq -r '.meta.findings_hash // empty' "$FINDINGS")" --arg rh "$(ca
 
 if [[ -n "$OUT" ]]; then
   if [[ -n "$SUBJECT" && "$OUT" == "$(worklist_file "$SUBJECT")" ]]; then
+    # The items the new worklist drops (resolved) stay nameable in a rationale.
+    worklist_resolved_update "$SUBJECT" "$DOC.meta"
     worklist_set "$SUBJECT" < "$DOC.meta" || die "Could not write $OUT." 1
   else
     mkdir -p "$(dirname "$OUT")" 2> /dev/null || true

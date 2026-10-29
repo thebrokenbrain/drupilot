@@ -128,6 +128,7 @@ jq -n -c --arg sp "$SUBJECT_REL" \
     | .out;
   [ (($rector[0].file_diffs // [])[] | .file as $f | ((.diff // "") | hunk_lines)[] | {file: ($f | rootrel), line: .}),
     (($stan[0].files // {}) | to_entries[] | (.key | sub(" \\(in context of (class [^ ()]+|anonymous class|[^ /()]*@anonymous/.*)\\)$"; "")) as $f | (.value.messages // [])[] | {file: ($f | rootrel), line}),
+    ((($stan[0].drupilot // {}).runtime_deprecations // [])[] | {file: (.file | rootrel), line}),
     (($cs[0].files // {}) | to_entries[] | .key as $f | (.value.messages // [])[] | {file: ($f | rootrel), line}),
     (($safety[0].findings // [])[], ($sig[0].findings // [])[], ($meta[0].findings // [])[], ($phpt[0].findings // [])[],
      ($pc[0].findings // [])[], ($rm[0].findings // [])[],

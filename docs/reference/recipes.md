@@ -33,6 +33,7 @@ A codemod applies only when its conditions hold. Its edit must be exact and its 
 | `dep.user-cookie-save` | ai-templated | template | a message pattern (below), or symbol `user_cookie_save`, `user_cookie_delete` | — |
 | `dep.user-load-by-name` | ai-templated | template | a message pattern (below), or symbol `user_load_by_name`, `user_load_by_mail` | — |
 | `dep.user-roles` | ai-templated | template | a message pattern (below), or symbol `user_roles`, `user_role_names` | — |
+| `life.entitybase-original` | ai-templated | template | symbol `EntityBase::$original` | — |
 | `meta.config-schema` | human | template | rule `metadata:config-schema` | — |
 | `meta.configure-route` | human | template | rule `metadata:configure-route` | — |
 | `meta.plugin-schema` | human | template | rule `metadata:plugin-schema` | — |
@@ -48,6 +49,7 @@ A codemod applies only when its conditions hold. Its edit must be exact and its 
 | `safety.serialization` | ai-templated | template | rule `port-safety:serialization` | — |
 | `safety.static-factory` | ai-templated | template | rule `port-safety:static-factory` | — |
 | `safety.test-label-markup` | ai-templated | template | rule `port-safety:test-label-markup` | — |
+| `safety.test-phpunit-metadata` | ai-templated | template | rule `port-safety:test-phpunit-metadata` | — |
 | `sig.config-form-base-ctor` | ai-templated | template | rule `signature:config-form-base-ctor` | — |
 | `sig.content-translation-controller-ctor` | ai-templated | template | rule `signature:content-translation-controller-ctor` | — |
 | `sig.entity-get-original` | ai-templated | template | rule `signature:entity-get-original` | — |

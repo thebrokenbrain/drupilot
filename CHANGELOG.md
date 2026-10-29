@@ -13,6 +13,97 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/analysis/refresh-artifacts.sh` brings a port's artifacts up to the
+  module as it is, after a stage that changed it without regenerating them.
+  It runs the core matrix again when `core-matrix.json` is of other sources
+  (at the PHPStan level the previous run used; only a failing baseline leg,
+  the target major, fails the step, every time: the Drupal 10 support is the
+  port's decision and is reported), regenerates the local patch, runs
+  the pipeline's `php` and `validate` stages, which run only when their inputs
+  moved, so the fixpoint gate judges the changed files too (without git,
+  `fixpoint.sh` unless the worklist is current and the gate converged on it),
+  and renders the manifest and `port-report.md` with the last test run,
+  recording no stage. Each step says whether it ran, was up to date or was
+  skipped (`--json`, `--dry-run`, `--skip`, `--output` for a layer run's
+  per-module report); a failed step exits 3. `/drupilot-test` (Step 6), the test-adaptation skill and the
+  orchestrator's test stage run it once the suite has run, and the pipeline
+  catalog's test stage gains the `refresh` sub-step. Porting preserve_changed
+  showed the gap: after the test stage adapted the tests, the local patch,
+  the core matrix and `port-report.md` were all left from before, and the
+  report still said nothing of the test run.
+
+### Changed
+
+- `port-report.sh` without `--manifest` renders the module's own
+  `port-manifest.json` (the one `manifest.sh` writes to the state dir) when
+  there is one, and says so. It used to render from the cached state alone and
+  showed `require.php` "none" and the version bump "n/a" with no warning. Only
+  a `--manifest` given records the stage, as before.
+
+### Fixed
+
+- A read of the magic property `$entity->original` is now a deprecation
+  drupilot reports. Core deprecated getting, setting, checking and unsetting it
+  in 11.2.0 and removes it from 12.0.0, where a read returns NULL with no error;
+  PHPStan cannot see a magic property, so a module that reads it got "0
+  deprecations" in the assessment and the port report. `run-phpstan.sh --json`
+  now scans the module for the deprecations PHPStan cannot see (a lifecycle
+  entry of `config/deprecations.json` with a `scan` block:
+  `EntityBase::$original`, verified in core source on 10.6.x, 11.1.x, 11.2.x,
+  11.3.x, 11.x and 12.0.x) and lists them in `drupilot.runtime_deprecations`
+  with the runtime notice core gives for each operation; the deprecated
+  callable of a `DeprecationHelper::backwardsCompatibleCall()` whose version is
+  at most the deprecation's (drupal-rector's own backwards-compatible form) is
+  left out, and PHPStan's own totals and files are unchanged. `classify-deprecations.sh` classifies them like
+  PHPStan's (soft for a Drupal 11 port, hard for 12) and also recognizes the
+  notice itself in a pasted PHPUnit log; `normalize-findings.sh` makes them
+  catalog findings, rule `runtime-deprecation:<id>`; the assessment counts
+  them, the port report lists them under "Soft deprecations", and
+  `manifest.sh` counts a hard one in `deprecations_remaining`. The
+  generated recipe of a property no longer reads `EntityBase::$original()`.
+- A test class or method whose PHPUnit attribute makes PHPUnit 10 and 11
+  ignore its doc-comment metadata is now a port-safety finding:
+  `test-phpunit-metadata` (`config/port-checks.json`, `attributes_from` 11.0,
+  verified in PHPUnit's source and on the lab beds). PHPUnit reads the
+  metadata of a class, or of one method, from its attributes as soon as it
+  has one, so the `#[RunTestsInSeparateProcesses]` the digests layer added to
+  preserve_changed's Kernel test made it lose its `@group` (the test fell into
+  the group "default", and core's `run-tests.sh --list` failed), and its
+  method's relative `@covers ::preSave` became invalid without the ignored
+  `@coversDefaultClass`. The finding names the annotations with no attribute
+  twin and the twins to add (`#[Group('preserve_changed')]`), keeping the
+  annotations while the range admits Drupal 10, whose PHPUnit 9 reads only
+  them: an error when the port added the attribute or when its range change
+  made the metadata break, a warning otherwise. A method's `@covers` and
+  `@uses` are left alone (no attribute can carry them on a method, and a
+  hidden one is never read); a `@testWith` counts only next to a
+  `DataProvider` or `TestWith` attribute (PHPUnit reads it otherwise), a
+  `@requires` only when it is PHPUnit's; the twins carry their arguments
+  (`#[PreserveGlobalState(false)]`, `#[DataProviderExternal(...)]`,
+  `#[RequiresPhpExtension('apcu')]`, `@requires PHP 8.1` ->
+  `#[RequiresPhp('>= 8.1')]`, class names fully qualified); every class of a
+  file is read. The test-adaptation skill, the test engineer and
+  `/drupilot-test` add the twins and run the check. The optimizedb port of
+  1.0.1 has the same latent defect in its three Functional tests.
+- A rationale can now explain what the port resolved and why it edited a file
+  by hand. The model writes it against the worklist it saw, and the extraction
+  after its fix drops the item it fixed, so `manifest.sh` refused the id (exit
+  1): the pipeline's report stage failed and ran again without a rationale,
+  and the port report listed the manual edits bare. `classify.sh` now keeps
+  the items a new worklist drops in `worklist-resolved.json`, a rationale may
+  name them (the manifest lists them under `worklist.resolved`, the report as
+  "resolved by the port"), and a key may also be the path of a file the port
+  changed: its text becomes that manual edit's `why` (a file a tool changed
+  too is shown under "Also explained"; with no git history any file of the
+  module may be named). A why given before its file changed (the test stage's
+  edits) is kept and shown as such (`rationale_hashes`, `rationale_stale`),
+  the why of a resolved item open again is dropped, and each port starts
+  `worklist-resolved.json` afresh (the assess stage empties it, the upgrade
+  stage keeps only what it drops). Any other key is still refused (ADR 0027,
+  amended).
+
 ## [1.0.1] - 2026-10-28
 
 ### Added

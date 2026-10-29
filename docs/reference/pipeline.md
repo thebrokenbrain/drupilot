@@ -16,7 +16,7 @@ The stages of a port, in order, from `config/pipeline.json`. A stage id is publi
 | 8 | `php` | Adapt to the PHP target | det | `always` | — | — |
 | 9 | `residual` | Fix what the tools cannot | ai | `worklist:ai` | — | — |
 | 10 | `validate` | Validate | det | `always` | `D10_CHECK` | `phpcbf`, `phpcs`, `phpstan`, `port-safety`, `signatures`, `deprecations`, `core-matrix`, `fixpoint` |
-| 11 | `test` | Test | det | `always` | — | `discover`, `baseline`, `adapt`, `run`, `coverage` |
+| 11 | `test` | Test | det | `always` | — | `discover`, `baseline`, `adapt`, `run`, `coverage`, `refresh` |
 | 12 | `report` | Report and patch | det | `always` | `LEARN`, `NEXT_STEP` | — |
 | 13 | `refactor` | Refactor (opt-in) | det+ai | `optin` | `REFACTOR_SCOPE`, `PHPSTAN_LEVEL`, `ATTRIBUTE_FLOOR`, `D10_CHECK`, `LEARN`, `NEXT_STEP` | — |
 | 14 | `contribute` | Contribute upstream | outward | `optin`, `user-only`, `not-auto` | `CONTRIB_MODE`, `PUSH` | — |

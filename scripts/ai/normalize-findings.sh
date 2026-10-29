@@ -37,6 +37,10 @@
 #           its testVersion); removal:<detector>:<action> from
 #           scan-removals.sh (its symbol the removed extension or library,
 #           its severity the scanner's: ADR 0031)
+#           runtime-deprecation:<id> for a deprecation PHPStan cannot see
+#           (a magic property run-phpstan.sh's scan found, in the raw
+#           report's drupilot.runtime_deprecations; classified like
+#           PHPStan's deprecations)
 #   anchor  the innermost Namespace\Class::method or function of the line,
 #           the Namespace\ClassLike for a line in a class-like body outside
 #           its methods (the raw anchors file, scripts/php/anchor.php), else
@@ -181,7 +185,9 @@ BROKEN="$(for t in $EXPECTED; do f="$(raw "$t")"; [[ -n "$f" ]] || continue
 # report. Without it every deprecation would read as a plain analysis error:
 # stop rather than write that.
 F_CLASS="$TMP/classify.json"
-if jq -e '(.files | type) == "object" and (.files | length) > 0' "$F_PHPSTAN" > /dev/null 2>&1; then
+if jq -e '((.files | type) == "object" and (.files | length) > 0)
+           or (((.drupilot.runtime_deprecations // []) | type) == "array" and ((.drupilot.runtime_deprecations // []) | length) > 0)' \
+     "$F_PHPSTAN" > /dev/null 2>&1; then
   if ! bash "$(plugin_root)/scripts/analysis/classify-deprecations.sh" --file "$F_PHPSTAN" --target-major "$TARGET" \
        --policy "$POLICY" --json < /dev/null > "$F_CLASS" 2> "$TMP/classify.err" \
      || ! jq -e 'type == "object"' "$F_CLASS" > /dev/null 2>&1; then
@@ -270,6 +276,19 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
            severity: (if $c and $c.class == "guarded" then "info" else "error" end),
            scope: (if $c and $c.class == "soft" and $policy != "fix" then "next-major" else "current" end),
            class: (if $c then $c.class else "analysis" end), ctx: ($e.key != ($e.key | ctxless)), cx: $e.key}),
+      # The deprecations PHPStan cannot see (a magic property), from the scan
+      # run-phpstan.sh --json makes: catalog findings, classified like
+      # the deprecations of PHPStan.
+      (($stan[0] | O | .drupilot | O | .runtime_deprecations | A
+        | map(O | select((.file | type) == "string" and (.message | type) == "string" and (.id | type) == "string")))[] as $m
+        | ($m.file | rootrel) as $rf
+        | ($m.message | finding_norm_message) as $nm
+        | ($cmap["\($m.file)\u001f\($m.line)\u001f\($nm)"] // null) as $c
+        | {tool: "catalog", rule: "runtime-deprecation:\($m.id)", rf: $rf, line: ($m.line | N),
+           symbol: (if $c then $c.symbol else ($m.symbol | S) end), message: $nm,
+           severity: "error",
+           scope: (if $c and $c.class == "soft" and $policy != "fix" then "next-major" else "current" end),
+           class: (if $c then $c.class else "unknown" end)}),
       # PHPCS: every file message.
       (($cs[0] | O | .files | O) | to_entries[] as $e | ($e.value | O | .messages | A | map(O | select((.message | type) == "string")))[] as $m
         | {tool: "phpcs", rule: ($m.source | S // "phpcs"), rf: ($e.key | rootrel), line: ($m.line | N), symbol: null,

@@ -5,7 +5,9 @@
 # or a refactor did, as port-manifest.json (schema 1) in the subject's hidden
 # state dir. It is built from what the scripts recorded, never from memory:
 #   findings.json      the last extraction: deprecations_remaining (the
-#                      current hard and unknown PHPStan occurrences),
+#                      current hard and unknown PHPStan occurrences, and
+#                      those of the scan for the deprecations PHPStan cannot
+#                      see: runtime-deprecation:<id>),
 #                      deferred_to_phase2 (the next-major symbols), and the
 #                      stage's raw reports: port_safety, signature_changes,
 #                      metadata_lint (the scripts' --json, canonical) and
@@ -35,8 +37,18 @@
 #                      requirement before the port, null when that is
 #                      unknown; a refactor is a major), d10_support.
 # The model writes only the rationale: --rationale FILE, a JSON object
-# {"<worklist item id>": "why"}. An id the worklist does not have is refused;
-# a previous manifest's rationale is kept for the ids still in the worklist.
+# {"<key>": "why"}, the key an item id of the worklist, the id of an item an
+# earlier worklist had and the port resolved (worklist-resolved.json, which
+# classify.sh keeps: the model writes the rationale against the worklist it
+# saw, and the next extraction drops the items it fixed), or the path of a
+# file the port changed, relative to the subject: the why of a manual edit
+# (manual_edits[].why), or of a file a tool changed too (port-report.sh
+# shows it under "Also explained"); with no git history, any file of the
+# subject. Any other key is refused. A previous manifest's rationale is kept
+# for the keys still valid, except an item it listed as resolved that is
+# open again (a revert); each named file keeps the hash it had when its why
+# was given (rationale_hashes), and rationale_stale lists the files changed
+# since, whose why the report shows as given before the change.
 # The same inputs give the same document outside meta; inputs records the
 # hashes it was built from. port-report.sh renders it.
 #
@@ -45,15 +57,17 @@
 #               [--base REF] [--no-write] [--json] [-h|--help]
 #     --subject DIR      the module/theme
 #     --phase P          port (default) or refactor
-#     --rationale FILE   {item id: text}, the model's only input
+#     --rationale FILE   {item id or changed file: text}, the model's only
+#                        input
 #     --base REF         the port's git base (default: git_port_base_ref)
 #     --no-write         do not write port-manifest.json (with --json: a dry
 #                        run)
 #     --json             print the manifest on STDOUT
 #
 # Exit codes: 0 done · 1 usage error, no findings.json or worklist.json for
-# the subject (run the pipeline first), or a rationale id the worklist does
-# not have · 2 jq missing.
+# the subject (run the pipeline first), or a rationale key that is neither an
+# item of the worklist, one it resolved, nor a file the port changed · 2 jq
+# missing.
 # =============================================================================
 set -euo pipefail
 # shellcheck source=../lib/common.sh
@@ -87,9 +101,7 @@ if [[ -n "$RATIONALE" && ! -f "$RATIONALE" ]]; then
 fi
 if [[ -n "$RATIONALE" ]]; then
   jq -e 'type == "object" and all(.[]; type == "string")' "$RATIONALE" > /dev/null 2>&1 \
-    || die "$RATIONALE is not a JSON object of item id -> text." 1
-  BAD="$(jq -r --slurpfile w "$W" '[keys[] | select(. as $k | [$w[0].items[].id] | index($k) | not)] | join(", ")' "$RATIONALE")"
-  [[ -z "$BAD" ]] || die "Not an item of the worklist: $BAD (see worklist.json)." 1
+    || die "$RATIONALE is not a JSON object of item id (or changed file) -> text." 1
 fi
 MN="$(subject_machine_name "$SUBJECT" 2> /dev/null || basename "$SUBJECT")"
 TYPE="$(subject_type "$SUBJECT" 2> /dev/null || echo module)"
@@ -162,6 +174,45 @@ if git -C "$SUBJECT" rev-parse --git-dir > /dev/null 2>&1; then
 fi
 PATCH=""; _pn="$MN-$(target_patch_desc "$TMAJ").patch"; [[ -f "$SUBJECT/$_pn" ]] && PATCH="$_pn"
 
+# The rationale given now and the previous manifest's (with the items it
+# listed as resolved and the hash each explained file had), each through a
+# file: one argv string is capped.
+printf '{}\n' > "$TMP/ratprev.json"; printf '[]\n' > "$TMP/prevres.json"; printf '{}\n' > "$TMP/prevhash.json"
+if [[ -f "$SD/port-manifest.json" ]]; then
+  jq -c '(.rationale // {}) | if type == "object" then . else {} end' "$SD/port-manifest.json" > "$TMP/ratprev.json" 2> /dev/null \
+    || printf '{}\n' > "$TMP/ratprev.json"
+  jq -c '[((.worklist // {}).resolved // [])[]? | .id? // empty]' "$SD/port-manifest.json" > "$TMP/prevres.json" 2> /dev/null \
+    || printf '[]\n' > "$TMP/prevres.json"
+  jq -c '(.rationale_hashes // {}) | if type == "object" then . else {} end' "$SD/port-manifest.json" > "$TMP/prevhash.json" 2> /dev/null \
+    || printf '{}\n' > "$TMP/prevhash.json"
+fi
+printf '{}\n' > "$TMP/ratnew.json"; [[ -z "$RATIONALE" ]] || jq -c . "$RATIONALE" > "$TMP/ratnew.json"
+# The hash of each file a rationale key names (a key that is not an item id).
+: > "$TMP/hash.tsv"
+jq -r -s '(.[0] + .[1]) | keys[] | select(test("^W-[0-9a-f]+$") | not)' "$TMP/ratprev.json" "$TMP/ratnew.json" 2> /dev/null \
+  | while IFS= read -r _k; do
+      case "$_k" in /*|*..*) continue;; esac
+      if [[ -f "$SUBJECT/$_k" ]]; then printf '%s\t%s\n' "$_k" "$(file_hash "$SUBJECT/$_k")" >> "$TMP/hash.tsv"; fi
+    done
+jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: .[1]}) | from_entries' "$TMP/hash.tsv" > "$TMP/curhash.json"
+# The keys a rationale may name: the worklist's items, the items the port
+# resolved (worklist-resolved.json) and the files it changed; with no git
+# history there is no diff to tell those files, so any file of the module.
+RES="$(worklist_resolved_file "$SUBJECT")"
+jq -e '.schema == 1 and (.items | type) == "array"' "$RES" > /dev/null 2>&1 || RES="$(json_or "" '{"schema": 1, "items": []}')"
+jq -n -c --slurpfile w "$W" --slurpfile r "$RES" --rawfile files "$TMP/files.tsv" --slurpfile ch "$TMP/curhash.json" \
+  --arg git "$([[ -n "$BASE_SHA" ]] && echo 1 || echo 0)" '
+  [($w[0].items // [])[].id, ($r[0].items // [])[].id,
+   ($files | split("\n")[] | select(length > 0) | split("\t") | .[1] | select(. != null)),
+   (if $git == "0" then ($ch[0] | keys[]) else empty end)] | unique' > "$TMP/keys.json"
+if [[ -n "$RATIONALE" ]]; then
+  BAD="$(jq -r --slurpfile k "$TMP/keys.json" '[keys[] | select(. as $x | $k[0] | index($x) | not)] | join(", ")' "$RATIONALE")"
+  if [[ -n "$BAD" && -z "$BASE_SHA" ]]; then
+    die "Not an item of the worklist, one the port resolved (worklist-resolved.json) or a file of the module (no git history to tell which files the port changed): $BAD." 1
+  fi
+  [[ -z "$BAD" ]] || die "Not an item of the worklist, one the port resolved (worklist-resolved.json) or a file it changed: $BAD." 1
+fi
+
 # The other inputs, each read defensively.
 RR="$(json_or "$(rector_rules_file "$SUBJECT")" '{}')"
 AT="$(json_or "$SD/attributes-rules.json" '{}')"
@@ -169,9 +220,6 @@ DD="$(json_or "$(digests_decisions_file "$SUBJECT")" '{"decisions": []}')"
 AS="$(json_or "$SD/assess.json" '{}')"
 actions_state "$SD/actions.jsonl" "$SUBJECT" "$TMP/acts.json" || printf '{"last": {}, "effective": {}, "now": {}, "files": true}\n' > "$TMP/acts.json"
 decisions_for_subject "$SUBJECT" > "$TMP/dec.json"
-RAT_PREV='{}'
-if [[ -f "$SD/port-manifest.json" ]]; then RAT_PREV="$(jq -c '(.rationale // {}) | if type == "object" then . else {} end' "$SD/port-manifest.json" 2> /dev/null || printf '{}')"; fi
-RAT_NEW='{}'; [[ -z "$RATIONALE" ]] || RAT_NEW="$(jq -c . "$RATIONALE")"
 COMPOSER_PHP="$(jq -r '.require.php // empty' "$SUBJECT/composer.json" 2> /dev/null || true)"
 SUBREL="$(jq -r '.subject.path // ""' "$F")"
 # The SemVer bump of the final requirement (core_version_bump): from the one
@@ -213,11 +261,13 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
   --slurpfile acts "$TMP/acts.json" --slurpfile dec "$TMP/dec.json" --slurpfile ps "$TMP/ps.json" --slurpfile sig "$TMP/sig.json" \
   --slurpfile md "$TMP/meta.json" --slurpfile soft "$TMP/soft.json" --rawfile files "$TMP/files.tsv" \
   --slurpfile phpt "$TMP/phpt.json" --slurpfile lint "$TMP/lint.json" --slurpfile pc "$TMP/pc.json" --arg phpre "$PHP_WINDOW_REASONS_ERE" \
-  --argjson ratprev "$RAT_PREV" --argjson ratnew "$RAT_NEW" --arg phase "$PHASE" --arg mn "$MN" --arg type "$TYPE" \
+  --slurpfile res "$RES" --slurpfile keys "$TMP/keys.json" \
+  --slurpfile ratprev "$TMP/ratprev.json" --slurpfile ratnew "$TMP/ratnew.json" --slurpfile prevres "$TMP/prevres.json" \
+  --slurpfile prevhash "$TMP/prevhash.json" --slurpfile curhash "$TMP/curhash.json" --arg phase "$PHASE" --arg mn "$MN" --arg type "$TYPE" \
   --arg req "$REQ" --arg rphp "$COMPOSER_PHP" --arg pt "$(resolve_php_target)" --arg d10 "$D10" --arg patch "$PATCH" \
   --arg base "$BASE_SHA" --arg subrel "$SUBREL" --arg acth "$ACTH" --arg vbump "$VBUMP" '
   $f[0] as $F | $w[0] as $W | $rr[0] as $RR | $asj[0] as $A | $acts[0] as $ST
-  | def occ: ([(.sources // [])[] | select(.tool == "phpstan")] | length) as $n | if $n > 0 then $n else 1 end;
+  | def occ: ([(.sources // [])[] | select(.tool == "phpstan" or ((.rule // "") | startswith("runtime-deprecation:")))] | length) as $n | if $n > 0 then $n else 1 end;
     def nz: if . == "" then null else . end;
     ($files | split("\n") | map(select(length > 0) | split("\t") | {status: .[0], path: .[1]})) as $diff
   # The files of the Rector run and of the attribute pass, relative to the
@@ -232,7 +282,22 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
      | map({recipe, version, file, finding_id}) | sort_by([.file, .recipe, .finding_id])) as $codemods
   | ($codemods | map(.file) | unique) as $cfiles
   | ([$W.items[] | {lane, status}] | group_by(.lane) | map({key: .[0].lane, value: (group_by(.status) | map({key: .[0].status, value: length}) | from_entries)}) | from_entries) as $ls
-  | (($ratprev | with_entries(select(.key as $k | [$W.items[].id] | index($k)))) + $ratnew) as $rat
+  # The previous rationale is kept for the keys still valid, except the why
+  # of an item the previous manifest listed as resolved that is open again
+  # (a revert). A file keeps the hash it had when its why was given, so a
+  # why given before the file last changed is flagged (rationale_stale).
+  | def ispath: test("^W-[0-9a-f]+$") | not;
+    ([$W.items[].id]) as $wids
+  | (($ratprev[0] | with_entries(select(.key as $k
+        | ($keys[0] | index($k)) != null
+          and (($k | ispath) or ($prevres[0] | index($k)) == null or ($wids | index($k)) == null))))
+     + $ratnew[0]) as $rat
+  | ([$rat | keys[] | select(ispath) | . as $p
+      | {key: $p, value: (if ($ratnew[0] | has($p)) then ($curhash[0][$p] // null) else ($prevhash[0][$p] // $curhash[0][$p] // null) end)}
+      | select(.value != null)] | from_entries) as $rhash
+  # The resolved items the rationale names (the ones no longer in the worklist).
+  | ([($res[0].items // [])[] | select(.id as $i | ($rat | has($i)) and ([$W.items[].id] | index($i) | not))
+      | {id, lane, file, anchor, rationale: $rat[.id]}] | sort_by(.id)) as $resolved
   | ([($dd[0].decisions // [])[] | select(.verdict == "reject" and ($RR.digests_sha == null or .digests_sha == $RR.digests_sha)) | {rule, by: (.by // "developer")}] | unique_by(.rule)) as $drej
   | {schema: 1, tool: "manifest", phase: $phase, machine_name: $mn, type: $type, subject: (if $subrel == "" then null else $subrel end),
      core_version_requirement: ($req | nz), require_php: ($rphp | nz), php_target: $pt,
@@ -245,11 +310,17 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
                skipped: ((($RR.rule_hits.digests // {}) | length) == 0 and ($drej | length) == 0)},
      codemods: $codemods,
      manual_edits: (if $base == "" or $rfunknown then null
-                    else [$diff[] | select(.path as $p | ($rfiles | index($p) | not) and ($cfiles | index($p) | not)) | {edit: .path, why: null, change_record: null}] end),
-     worklist: {by_lane_status: $ls,
-                items: [$W.items[] | {id, lane, status, file, anchor, blocking, recipes: (.recipes // []), findings: (.finding_ids | length)}
-                        + (if $rat[.id] then {rationale: $rat[.id]} else {} end)]},
+                    else [$diff[] | select(.path as $p | ($rfiles | index($p) | not) and ($cfiles | index($p) | not)) | {edit: .path, why: ($rat[.path] // null), change_record: null}] end),
+     # (An object value with a binary operator is wrapped whole: jq 1.6.)
+     worklist: ({by_lane_status: $ls,
+                 items: [$W.items[] | {id, lane, status, file, anchor, blocking, recipes: (.recipes // []), findings: (.finding_ids | length)}
+                         + (if $rat[.id] then {rationale: $rat[.id]} else {} end)]}
+                + (if ($resolved | length) > 0 then {resolved: $resolved} else {} end)),
      rationale: $rat,
+     # The hash each explained file had when its why was given, and the
+     # files changed since (their why is shown as given before the change).
+     rationale_hashes: ($rhash | if length > 0 then . else null end),
+     rationale_stale: ([$rhash | to_entries[] | select(($curhash[0][.key] // null) != .value) | .key] | if length > 0 then . else null end),
      # The PHP window: the php -l legs and the human items of its constructs.
      php_window: (if $phpt[0] == null and $lint[0] == null and $pc[0] == null then null
                   else {floor: ($phpt[0].floor // null), target: ($phpt[0].target // null),
@@ -280,7 +351,7 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
                                 | . as $i
                                 | {id, file, anchor, status, blocking, reason,
                                    findings: [$F.findings[] | select(.id as $x | $i.finding_ids | index($x)) | {rule, line, message}]}]} end),
-     deprecations_remaining: ([$F.findings[] | select(.scope == "current" and .tool == "phpstan" and (.class == "hard" or .class == "unknown")) | occ] | add // 0),
+     deprecations_remaining: ([$F.findings[] | select(.scope == "current" and (.tool == "phpstan" or ((.rule // "") | startswith("runtime-deprecation:"))) and (.class == "hard" or .class == "unknown")) | occ] | add // 0),
      deferred_to_phase2: ([$F.findings[] | select(.scope == "next-major") | (.symbol // empty)] | unique),
      files_changed: (if $base == "" then null else ($diff | length) end),
      files: $diff,

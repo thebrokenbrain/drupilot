@@ -7,7 +7,9 @@
 # only narrates it.
 #
 #   manual         the occurrences of scope-current PHPStan deprecations of
-#                  class hard or unknown that no Drupal Rector rule changes in
+#                  class hard or unknown (and of the scan for the
+#                  deprecations PHPStan cannot see, runtime-deprecation:<id>
+#                  catalog findings) that no Drupal Rector rule changes in
 #                  the same function or method (a DrupalRector\ rule, or the
 #                  Renaming/Transform/Arguments/Removing rules drupal-rector
 #                  configures, at the same (file, anchor); a file-level anchor,
@@ -153,15 +155,16 @@ jq -n -c --slurpfile f "$FINDINGS" --slurpfile w "$WORKLIST" --slurpfile cs "$TM
   --arg sd "$(subject_digest "$SUBJECT")" --argjson da "$(subject_digest_algo)" '
   $f[0] as $F | $w[0] as $W | $cs[0] as $C | $dp[0] as $D
   | ($F.findings | map(select(.scope == "current"))) as $cur
-  # The PHPStan occurrences a (merged) finding stands for.
-  | def occ: ([(.sources // [])[] | select(.tool == "phpstan")] | length) as $n | if $n > 0 then $n else 1 end;
+  # The PHPStan occurrences a (merged) finding stands for, and those of the
+  # scan for the deprecations PHPStan cannot see (runtime-deprecation:<id>).
+  | def occ: ([(.sources // [])[] | select(.tool == "phpstan" or ((.rule // "") | startswith("runtime-deprecation:")))] | length) as $n | if $n > 0 then $n else 1 end;
   # A Drupal Rector rule changing the same function or method covers it.
     ([$cur[] | select(.tool == "rector" and $F.anchors == "php" and .anchor != "{file}"
                       and ((.rule // "") | test("^(DrupalRector\\\\|Rector\\\\(Renaming|Transform|Arguments|Removing|Symfony|PHPUnit|Twig)\\\\)")))
       | "\(.file)\u001f\(.anchor)"] | unique) as $rx
   # manual: hard/unknown deprecations no Drupal Rector rule covers, and the
   # signature and port-safety errors.
-  | ([$cur[] | select(.tool == "phpstan" and (.class == "hard" or .class == "unknown")
+  | ([$cur[] | select((.tool == "phpstan" or ((.rule // "") | startswith("runtime-deprecation:"))) and (.class == "hard" or .class == "unknown")
                       and ("\(.file)\u001f\(.anchor)" as $k | $rx | index($k) | not)) | . + {n: occ}]
      + [$cur[] | select((.class == "signature" or .class == "safety") and .severity == "error") | . + {n: 1}]
      | sort_by([.file, .line // 0, .id])) as $man

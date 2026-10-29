@@ -3,6 +3,7 @@
 - **Status:** accepted
 - **Date:** 2026-10-06
 - **Decided by:** the 1.0 working session (R-AUTO-3), during M4 (T-M4-10)
+- **Amended:** 2026-10-28, for 1.0.2 (see "Amendments" at the end)
 
 ## Context
 
@@ -56,3 +57,26 @@ Readers of a 0.9 manifest are unchanged: every field stays optional, and `meta.g
   `rationale.json`.
 - `port-report.sh` renders the lane × status table, the codemods applied and the rationale per item.
 - A manifest golden (`tests/golden/manifest/`) pins the generator on the lab's `legacy_widgets` port.
+
+## Amendments
+
+1.0.2 (2026-10-28, lab L-PC): the rationale could not explain a manual edit. The model writes it against the
+worklist it saw, the extraction after its fix drops the item it fixed, and `manifest.sh` refused the id
+(exit 1): the pipeline's report stage failed, ran again without a rationale, and `manual_edits[].why` stayed
+null, since no input reached it.
+
+- **Resolved items.** `classify.sh` keeps, each time it writes the worklist, the items the new one no longer
+  has in `worklist-resolved.json` (`worklist_resolved_update`). A rationale may name them; the manifest
+  lists the ones it names, with their why, under `worklist.resolved`, and `port-report.sh` renders them
+  as resolved by the port.
+- **Manual edits.** A key may also be the path of a file the port changed, relative to the module: its
+  text is that manual edit's `why`, and the why of a file Rector, the attribute pass or a codemod changed
+  too is shown under "Also explained". With no git history there is no diff, so any file of the module
+  may be named.
+- **No silent stale why.** The manifest records the hash each named file had when its why was given
+  (`rationale_hashes`) and lists the files changed since (`rationale_stale`); the report shows their why as
+  given before the change, so the test stage's later edits never erase the port's explanations. An item
+  the previous manifest listed as resolved loses its why when it is open again (a revert). A port starts
+  `worklist-resolved.json` afresh: the assess stage's worklist empties it, and the upgrade stage's keeps
+  only what it drops, so an earlier port's items never name this one's.
+- Any other key is still refused (exit 1).

@@ -862,10 +862,16 @@ END {
   for (i = 2; i <= nl; i++) bs[i] = bs[i - 1] + length(L[i - 1]) + 1
   split(raw, R, "\n")
   spans()
-  # The blank mode: the file with every fallback closure blanked.
+  # The blank mode: the file with every fallback closure blanked (with
+  # AWKV_MAXV, only the ones whose version is known and at most it).
   if (ENVIRON["AWKV_MODE"] == "blank") {
-    out = buf
+    out = buf; mx = ENVIRON["AWKV_MAXV"]
     for (s = 1; s <= ns; s++) {
+      if (mx != "") {
+        if (sv[s] == "?") continue
+        split(sv[s] ".0.0", va, "."); split(mx ".0.0", vb, ".")
+        if (va[1] + 0 > vb[1] + 0 || (va[1] + 0 == vb[1] + 0 && (va[2] + 0 > vb[2] + 0 || (va[2] + 0 == vb[2] + 0 && va[3] + 0 > vb[3] + 0)))) continue
+      }
       seg = substr(out, sa[s], sb[s] - sa[s] + 1); gsub(/[^\n]/, " ", seg)
       out = substr(out, 1, sa[s] - 1) seg substr(out, sb[s] + 1)
     }
@@ -922,15 +928,17 @@ php_bc_fallback_calls() {
   return 0
 }
 
-# php_bc_blank_fallbacks BLANKED RAW -> BLANKED with the fallback closure of
-# every DeprecationHelper::backwardsCompatibleCall() (the spans
+# php_bc_blank_fallbacks BLANKED RAW [MAXV] -> BLANKED with the fallback
+# closure of every DeprecationHelper::backwardsCompatibleCall() (the spans
 # php_bc_fallback_calls reads) blanked, the lines kept: the code a target
-# core runs. BLANKED unchanged when the file has no such call.
+# core runs. With MAXV (X.Y.Z), only the fallbacks whose version (the call's
+# second argument, a literal) is at most MAXV: the ones no core from MAXV on
+# runs. BLANKED unchanged when the file has no such call.
 php_bc_blank_fallbacks() {
-  local b="${1:-}" r="${2:-}"
+  local b="${1:-}" r="${2:-}" mx="${3:-}"
   [[ -f "$b" && -f "$r" ]] || return 0
   if ! LC_ALL=C grep -q -i 'backwardscompatiblecall' "$b" 2> /dev/null; then cat "$b"; return 0; fi
-  AWKV_MODE=blank LC_ALL=C awk "$_PHP_BC_AWK" "$b" "$r" 2> /dev/null || true
+  AWKV_MODE=blank AWKV_MAXV="$mx" LC_ALL=C awk "$_PHP_BC_AWK" "$b" "$r" 2> /dev/null || true
   return 0
 }
 
@@ -997,5 +1005,308 @@ END {
   for (i = 2; i <= nl; i++) bs[i] = bs[i - 1] + length(L[i - 1]) + 1
   scan("submitform", "submitForm", 2); scan("buttonexists", "buttonExists", 1); scan("buttonnotexists", "buttonNotExists", 1)
 }' "$f" 2> /dev/null | LC_ALL=C sort -n -s -k1,1 || true
+  return 0
+}
+
+# php_phpunit_hidden_metadata FILE -> one record per class or method of a test
+# FILE whose doc-comment carries PHPUnit metadata that PHPUnit 10+ ignores,
+# the fields separated by 0x1f (never a whitespace character, so an empty
+# field survives `read`): LINE LEVEL HIDDEN TWINS RELATIVE GROUPED. PHPUnit
+# reads the metadata of one level (the class, or one method) from its
+# attributes when it has any — an attribute naming a class of
+# PHPUnit\Framework\Attributes\, through the file's imports — and from its
+# doc-comment only otherwise. LINE is the level's first PHPUnit attribute;
+# LEVEL is Class or Class::method; HIDDEN the annotations that have no
+# attribute twin at that level and TWINS the attribute that carries each one
+# ("; "-separated, with its arguments: @preserveGlobalState disabled ->
+# #[PreserveGlobalState(false)], an external @dataProvider ->
+# #[DataProviderExternal(...)], @requires extension apcu ->
+# #[RequiresPhpExtension('apcu')]); RELATIVE, for a class whose
+# @coversDefaultClass or @usesDefaultClass is ignored that way, the relative
+# @covers ::name / @uses ::name its methods still have (invalid without it),
+# each with its line; GROUPED, for a class, 1 when its attributes still give
+# it a group (Group, Ticket, Small, Medium, Large), else 0 ("-" for a method).
+# Not reported: a method's @covers / @uses (no attribute can carry them on a
+# method: Covers* and Uses* target a class only, and a hidden one is never
+# read), a @testWith of a method without a DataProvider* or TestWith*
+# attribute (PHPUnit reads it from the doc-comment whatever the attributes),
+# a @requires that is not PHPUnit's (Drupal's `@requires module`), and a
+# @coversDefaultClass with no relative @covers. FILE is the raw source (the
+# doc-comments are read). A line-oriented heuristic, not a parser:
+# attributes on lines of their own; every class of the file is read.
+php_phpunit_hidden_metadata() {
+  local f="${1:-}"
+  [[ -f "$f" ]] || return 0
+  LC_ALL=C grep -q -F '#[' "$f" 2> /dev/null || return 0
+  LC_ALL=C awk '
+function trim(s) { sub(/^[ \t\r\n]+/, "", s); sub(/[ \t\r\n]+$/, "", s); return s }
+function unq(s) { s = trim(s); sub(/^[\047"]/, "", s); sub(/[\047"]$/, "", s); gsub("\\\\\047", "\047", s); return s }
+function q(s) { gsub(/\047/, "\\\047", s); return "\047" s "\047" }
+# boolv(VALUE) -> true/false for enabled/disabled or true/false, else "".
+function boolv(v) { v = tolower(unq(v)); return (v == "enabled" || v == "true") ? "true" : ((v == "disabled" || v == "false") ? "false" : "") }
+# cls(NAME) -> NAME as a class constant expression. An annotation names a
+# class fully qualified, an attribute relative to the namespace: \Foo::class.
+function cls(n) { n = trim(n); if (substr(n, 1, 1) != "\\") n = "\\" n; return n "::class" }
+# vreq(VERSION) -> the constraint an annotation version means: a bare one is
+# a minimum (PHPUnit reads @requires PHP 8.1 as >= 8.1, an attribute bare
+# version as 8.1.*).
+function vreq(v) { v = trim(v); return (v ~ /^[0-9]/) ? ">= " v : v }
+function nows(v) { gsub(/[ \t]/, "", v); return v }
+function add_import(t,   nm, al) {
+  t = trim(t); nm = t; al = t
+  if (match(t, /[ \t]+as[ \t]+/)) { nm = trim(substr(t, 1, RSTART - 1)); al = trim(substr(t, RSTART + RLENGTH)) }
+  if (nm != "" && al != "") imp[al] = nm
+}
+# pu(NAME) -> the PHPUnit attribute NAME resolves to (its short name), or "".
+function pu(n,   k, p) {
+  n = trim(n); sub(/^\\/, "", n)
+  if (index(n, PFX "\\") == 1) return substr(n, length(PFX) + 2)
+  k = index(n, "\\")
+  if (k > 0) { p = substr(n, 1, k - 1); return (p in nsal) ? substr(n, k + 1) : "" }
+  return (n in imp) ? imp[n] : ""
+}
+function add_attr(e, ln,   k, nm, args, s) {
+  e = trim(e); if (e == "") return
+  k = index(e, "(")
+  if (k > 0) { nm = substr(e, 1, k - 1); args = substr(e, k + 1); sub(/\)[ \t\r\n]*$/, "", args) }
+  else { nm = e; args = "" }
+  s = pu(nm)
+  if (s == "") return
+  na++; an[na] = tolower(s); aa[na] = trim(args)
+  if (al == 0) al = ln
+}
+# parse_attrs(TEXT, LINE): every attribute of the #[...] groups in TEXT.
+function parse_attrs(b, ln,   i, n, c, qc, pd, bd, ent) {
+  n = length(b); qc = ""; pd = 0; bd = 0; ent = ""
+  for (i = 1; i <= n; i++) {
+    c = substr(b, i, 1)
+    if (qc != "") { ent = ent c; if (c == "\\") { i++; ent = ent substr(b, i, 1) } else if (c == qc) qc = ""; continue }
+    if (bd == 0) { if (c == "#" && substr(b, i + 1, 1) == "[") { bd = 1; pd = 0; ent = ""; i++ }; continue }
+    if (c == "\047" || c == "\"") { qc = c; ent = ent c; continue }
+    if (c == "(") pd++
+    else if (c == ")") pd--
+    else if (c == "[") bd++
+    else if (c == "]") { bd--; if (bd == 0) { add_attr(ent, ln); ent = ""; continue } }
+    if (c == "," && pd == 0 && bd == 1) { add_attr(ent, ln); ent = ""; continue }
+    ent = ent c
+  }
+}
+# depth(TEXT) -> the open [ count after TEXT (quoted strings left out).
+function depth(s,   t, i, c) {
+  t = s; gsub(/\047[^\047]*\047/, "", t); gsub(/"[^"]*"/, "", t)
+  for (i = 1; i <= length(t); i++) { c = substr(t, i, 1); if (c == "[") ad++; else if (c == "]") ad-- }
+  return ad
+}
+function doc_line(s,   t, v) {
+  t = s; sub(/^[ \t]*\/\*\*/, "", t); sub(/\*\/[ \t\r]*$/, "", t); sub(/^[ \t]*\*?[ \t]*/, "", t)
+  if (!match(t, /^@[A-Za-z]+/)) return
+  v = trim(substr(t, RLENGTH + 1)); gsub(/[\t\037]/, " ", v)
+  nd++; dt[nd] = substr(t, 2, RLENGTH - 1); dv[nd] = v; dl[nd] = NR
+}
+# req(VALUE) -> the Requires* attribute a @requires VALUE needs, or "" (not
+# a PHPUnit requirement, e.g. Drupal`s "module foo").
+function req(v,   k) {
+  k = tolower(v); sub(/[ \t].*$/, "", k)
+  if (k == "php") return "requiresphp"
+  if (k == "phpunit") return "requiresphpunit"
+  if (k == "os") return "requiresoperatingsystem"
+  if (k == "osfamily") return "requiresoperatingsystemfamily"
+  if (k == "extension") return "requiresphpextension"
+  if (k == "setting") return "requiressetting"
+  if (k == "function") return (index(v, "::") > 0) ? "requiresmethod" : "requiresfunction"
+  return ""
+}
+function rest(v) { v = trim(v); sub(/^[^ \t]+[ \t]*/, "", v); return v }
+function first(v) { v = trim(v); sub(/[ \t].*$/, "", v); return v }
+# arg1(ARGS) -> the first argument of an attribute, unquoted.
+function arg1(s,   k) { k = index(s, ","); if (k > 0) s = substr(s, 1, k - 1); return unq(s) }
+# twin(TAG, VALUE) -> 1 when the attributes of the level carry TAG.
+function twin(t, v,   i, x, w) {
+  x = tolower(t)
+  if (x == "requires") w = req(v)
+  for (i = 1; i <= na; i++) {
+    if (x == "group" || x == "ticket" || x == "testdox") { if (an[i] == x && unq(aa[i]) == v) return 1; continue }
+    if (x == "covers" || x == "uses") { if (an[i] ~ ("^" x "(class|function|method|trait)$") && arg1(aa[i]) != "") return 1; continue }
+    if (x == "backupglobals" || x == "preserveglobalstate") { if (an[i] == x && (boolv(v) == "" || boolv(aa[i]) == boolv(v))) return 1; continue }
+    if (x == "backupstaticattributes" || x == "backupstaticproperties") { if (an[i] == "backupstaticproperties" && (boolv(v) == "" || boolv(aa[i]) == boolv(v))) return 1; continue }
+    if (x == "requires") {
+      if (an[i] != w) continue
+      if (w == "requiresphp" || w == "requiresphpunit") { if (nows(unq(aa[i])) == nows(vreq(rest(v)))) return 1; continue }
+      if (w == "requiresphpextension") { if (arg1(aa[i]) == first(rest(v))) return 1; continue }
+      return 1
+    }
+    if (x == "dataprovider" || x == "depends" || x == "testwith") { if (index(an[i], x) == 1) return 1; continue }
+    if (an[i] == x) return 1
+  }
+  return 0
+}
+# sugg(TAG, VALUE) -> the attribute that carries @TAG VALUE.
+function sugg(t, v,   x, w, r, a, b) {
+  x = tolower(t)
+  if (x == "group") return "#[Group(" q(v) ")]"
+  if (x == "ticket") return "#[Ticket(" q(v) ")]"
+  if (x == "testdox") return "#[TestDox(" q(v) ")]"
+  if (x == "dataprovider") {
+    if (index(v, "::") > 0) { a = substr(v, 1, index(v, "::") - 1); b = substr(v, index(v, "::") + 2); return "#[DataProviderExternal(" cls(a) ", " q(b) ")]" }
+    return "#[DataProvider(" q(v) ")]"
+  }
+  if (x == "depends") {
+    if (v ~ /^clone[ \t]/) return "#[DependsUsingDeepClone(" q(rest(v)) ")]"
+    if (v ~ /^shallowClone[ \t]/) return "#[DependsUsingShallowClone(" q(rest(v)) ")]"
+    if (index(v, "::") > 0) { a = substr(v, 1, index(v, "::") - 1); b = substr(v, index(v, "::") + 2); return "#[DependsExternal(" cls(a) ", " q(b) ")]" }
+    return "#[Depends(" q(v) ")]"
+  }
+  if (x == "covers" || x == "uses") {
+    w = (x == "covers") ? "Covers" : "Uses"; a = v
+    # A relative ::name: a method of the default class, else a
+    # global function.
+    if (substr(a, 1, 2) == "::") {
+      b = (x == "covers") ? cdv : udv
+      if (b != "") return "#[" w "Class(" cls(b) ")]"
+      return "#[" w "Function(" q(substr(a, 3)) ")]"
+    }
+    if (index(a, "::") > 0) a = substr(a, 1, index(a, "::") - 1)
+    if (a ~ /\\/ || a ~ /^[A-Z]/) return "#[" w "Class(" cls(a) ")]"
+    return "#[" w "Function(" q(a) ")]"
+  }
+  if (x == "backupglobals") return "#[BackupGlobals(" (boolv(v) == "" ? "true" : boolv(v)) ")]"
+  if (x == "preserveglobalstate") return "#[PreserveGlobalState(" (boolv(v) == "" ? "false" : boolv(v)) ")]"
+  if (x == "backupstaticattributes" || x == "backupstaticproperties") return "#[BackupStaticProperties(" (boolv(v) == "" ? "true" : boolv(v)) ")]"
+  if (x == "excludeglobalvariablefrombackup") return "#[ExcludeGlobalVariableFromBackup(" q(v) ")]"
+  if (x == "excludestaticpropertyfrombackup") { a = v; sub(/[ \t].*$/, "", a); return "#[ExcludeStaticPropertyFromBackup(" cls(a) ", " q(rest(v)) ")]" }
+  if (x == "testwith") return "#[TestWith(...)]"
+  if (x == "requires") {
+    w = req(v); r = rest(v)
+    if (w == "requiresphp") return "#[RequiresPhp(" q(vreq(r)) ")]"
+    if (w == "requiresphpunit") return "#[RequiresPhpunit(" q(vreq(r)) ")]"
+    if (w == "requiresoperatingsystem") return "#[RequiresOperatingSystem(" q(r) ")]"
+    if (w == "requiresoperatingsystemfamily") return "#[RequiresOperatingSystemFamily(" q(r) ")]"
+    if (w == "requiresfunction") return "#[RequiresFunction(" q(r) ")]"
+    if (w == "requiresmethod") { a = substr(r, 1, index(r, "::") - 1); b = substr(r, index(r, "::") + 2); return "#[RequiresMethod(" cls(a) ", " q(b) ")]" }
+    if (w == "requiresphpextension") { a = r; sub(/[ \t].*$/, "", a); b = rest(r); return "#[RequiresPhpExtension(" q(a) (b == "" ? "" : ", " q(vreq(b))) ")]" }
+    if (w == "requiressetting") { a = r; sub(/[ \t].*$/, "", a); return "#[RequiresSetting(" q(a) ", " q(rest(r)) ")]" }
+  }
+  return "#[" toupper(substr(t, 1, 1)) substr(t, 2) "]"
+}
+# hidden(TAG, VALUE, KIND) -> 1 when PHPUnit ignores @TAG on this level.
+function hidden(t, v, kind,   i, dp) {
+  if (!(t in meta)) return 0
+  if (kind == "method" && (t == "covers" || t == "uses")) return 0
+  if (t == "requires" && req(v) == "") return 0
+  if (t == "testwith" || t == "testWith") {
+    dp = 0; for (i = 1; i <= na; i++) if (index(an[i], "dataprovider") == 1 || index(an[i], "testwith") == 1) dp = 1
+    if (!dp) return 0
+  }
+  return 1
+}
+function flush_class() {
+  if (cls_name != "" && (chid != "" || rel != ""))
+    printf "%d\037%s\037%s\037%s\037%s\037%s\n", cline, cls_name, chid, ctw, rel, cgrp
+  cls_name = ""; cdc = 0; cline = 0; chid = ""; ctw = ""; rel = ""; cgrp = 0
+}
+function level(name, kind,   k, h, w, g) {
+  if (kind == "class") { flush_class(); cls_name = name }
+  if (na == 0) {
+    if (kind == "method" && cdc) {
+      for (k = 1; k <= nd; k++) if ((dt[k] == "covers" || dt[k] == "uses") && dv[k] ~ /^::/)
+        rel = rel (rel == "" ? "" : "; ") "@" dt[k] " " dv[k] " (line " dl[k] ")"
+    }
+    return
+  }
+  h = ""; w = ""
+  if (kind == "class") {
+    cdv = ""; udv = ""
+    for (k = 1; k <= nd; k++) { if (dt[k] == "coversDefaultClass") cdv = dv[k]; if (dt[k] == "usesDefaultClass") udv = dv[k] }
+  }
+  for (k = 1; k <= nd; k++) {
+    if (kind == "class" && (dt[k] == "coversDefaultClass" || dt[k] == "usesDefaultClass")) { cdc = 1; continue }
+    if (!hidden(dt[k], dv[k], kind) || twin(dt[k], dv[k])) continue
+    h = h (h == "" ? "" : "; ") "@" dt[k] (dv[k] == "" ? "" : " " dv[k])
+    w = w (w == "" ? "" : "; ") sugg(dt[k], dv[k])
+  }
+  if (kind == "class") {
+    g = 0; for (k = 1; k <= na; k++) if (an[k] ~ /^(group|ticket|small|medium|large)$/) g = 1
+    cline = al; chid = h; ctw = w; cgrp = g; return
+  }
+  if (h != "") printf "%d\037%s\037%s\037%s\037\037-\n", al, name, h, w
+}
+function reset() { nd = 0; na = 0; al = 0 }
+BEGIN {
+  PFX = "PHPUnit\\Framework\\Attributes"
+  n = split("after afterClass backupGlobals backupStaticAttributes backupStaticProperties before beforeClass covers coversNothing dataProvider depends doesNotPerformAssertions excludeGlobalVariableFromBackup excludeStaticPropertyFromBackup group large medium postCondition preCondition preserveGlobalState requires runClassInSeparateProcess runInSeparateProcess runTestsInSeparateProcesses small test testdox testWith ticket uses", T, " ")
+  for (i = 1; i <= n; i++) meta[T[i]] = 1
+}
+{
+  raw = $0; sub(/\r$/, "", raw)
+  if (indoc) { doc_line(raw); if (raw ~ /\*\//) indoc = 0; next }
+  if (incom) { if (raw ~ /\*\//) incom = 0; next }
+  if (inattr) { abuf = abuf "\n" raw; if (depth(raw) <= 0) { inattr = 0; parse_attrs(abuf, aln) }; next }
+  if (raw ~ /^[ \t]*\/\*\*/) {
+    nd = 0; doc_line(raw); t = raw; sub(/^[ \t]*\/\*\*/, "", t)
+    if (t !~ /\*\//) indoc = 1
+    next
+  }
+  if (raw ~ /^[ \t]*\/\*/) { t = raw; sub(/^[ \t]*\/\*/, "", t); if (t !~ /\*\//) incom = 1; next }
+  if (raw ~ /^[ \t]*$/ || raw ~ /^[ \t]*\/\// || (raw ~ /^[ \t]*#/ && raw !~ /^[ \t]*#\[/)) next
+  if (raw ~ /^[ \t]*#\[/) {
+    abuf = raw; aln = NR; ad = 0
+    if (depth(raw) <= 0) parse_attrs(abuf, aln); else inattr = 1
+    next
+  }
+  if (!seen && raw ~ /^[ \t]*use[ \t]/) {
+    t = raw; sub(/^[ \t]*use[ \t]+/, "", t); sub(/;.*$/, "", t); t = trim(t); sub(/^\\/, "", t)
+    if (index(t, PFX "\\{") == 1) { g = substr(t, length(PFX) + 3); sub(/}.*$/, "", g); m = split(g, P, ","); for (i = 1; i <= m; i++) add_import(P[i]) }
+    else if (index(t, PFX "\\") == 1) add_import(substr(t, length(PFX) + 2))
+    else if (t == PFX) nsal["Attributes"] = 1
+    else if (index(t, PFX) == 1 && match(t, /[ \t]+as[ \t]+[A-Za-z0-9_]+$/)) { g = substr(t, RSTART); sub(/^[ \t]+as[ \t]+/, "", g); nsal[g] = 1 }
+    reset(); next
+  }
+  if (raw ~ /^[ \t]*((abstract|final|readonly)[ \t]+)*class[ \t]+[A-Za-z_]/) {
+    t = raw; sub(/^[ \t]*((abstract|final|readonly)[ \t]+)*class[ \t]+/, "", t); match(t, /^[A-Za-z_][A-Za-z0-9_]*/)
+    seen = 1; level(substr(t, 1, RLENGTH), "class"); reset(); next
+  }
+  if (seen && raw ~ /function[ \t]+&?[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*\(/) {
+    t = raw; sub(/^.*function[ \t]+&?[ \t]*/, "", t); match(t, /^[A-Za-z_][A-Za-z0-9_]*/)
+    level(cls_name "::" substr(t, 1, RLENGTH), "method"); reset(); next
+  }
+  reset()
+}
+END { flush_class() }' "$f" 2> /dev/null | LC_ALL=C sort -n -s -k1,1 -t "$(printf '\037')" || true
+  return 0
+}
+
+# php_magic_property_lines FILE PROP -> "LINE<TAB>OP" for every access to the
+# property PROP through ->, nullsafe ?-> included, that is not a method call:
+# OP is set (an assignment to it), unset (inside unset(...)), isset (inside
+# isset(...) or empty(...)) or get (a read). $this->PROP is skipped when the
+# file declares a property of that name. FILE is php_code_lines's output
+# (comments and string contents blanked). A heuristic for a magic property
+# PHPStan cannot see (e.g. the deprecated $entity->original): it cannot tell
+# an entity from another receiver.
+php_magic_property_lines() {
+  local f="${1:-}" p="${2:-}"
+  [[ -f "$f" && "$p" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 0
+  LC_ALL=C grep -q -F -e "->$p" "$f" 2> /dev/null || return 0
+  AWKV_p="$p" LC_ALL=C awk '
+BEGIN { p = ENVIRON["AWKV_p"]; re = "(\\?)?->[ \t]*" p }
+{ L[NR] = $0; if ($0 ~ ("(public|protected|private|var)[ \t][^;=(]*\\$" p "([^A-Za-z0-9_]|$)")) own = 1 }
+END {
+  for (n = 1; n <= NR; n++) {
+    s = L[n]; off = 0
+    while (match(s, re)) {
+      st = off + RSTART; en = off + RSTART + RLENGTH
+      s = substr(s, RSTART + RLENGTH); off = en - 1
+      rest = substr(L[n], en); pre = substr(L[n], 1, st - 1)
+      if (rest ~ /^[A-Za-z0-9_]/) continue
+      if (rest ~ /^[ \t]*\(/) continue
+      if (own && pre ~ /\$this[ \t]*$/) continue
+      op = "get"
+      if (rest ~ /^[ \t]*(=[^=>]|=$|\?\?=)/) op = "set"
+      else if (pre ~ /unset[ \t]*\([^)]*$/) op = "unset"
+      else if (pre ~ /(isset|empty)[ \t]*\([^)]*$/) op = "isset"
+      printf "%d\t%s\n", n, op
+    }
+  }
+}' "$f" 2> /dev/null || true
   return 0
 }

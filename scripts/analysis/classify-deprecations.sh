@@ -178,10 +178,16 @@ fi
 # Normalize to a JSON array of {file, line, message, identifier}.
 RAW='[]'
 if [[ -s "$TMP" ]] && jq -e 'type == "object" and has("files")' "$TMP" >/dev/null 2>&1; then
-  RAW="$(jq -c '[ (.files // {}) | to_entries[] | .key as $f
+  # PHPStan's messages, then the deprecations PHPStan cannot see that
+  # run-phpstan.sh --json found with its own scan (drupilot.runtime_deprecations).
+  RAW="$(jq -c '[ ((.files // {}) | to_entries[] | .key as $f
                   | (.value.messages // [])[]
                   | {file: $f, line: (.line // null), message: (.message // ""),
-                     identifier: (.identifier // null), guard: (.drupilot_guard // null)} ]' "$TMP")"
+                     identifier: (.identifier // null), guard: (.drupilot_guard // null)}),
+                  ((.drupilot.runtime_deprecations // []) | if type == "array" then .[] else empty end
+                  | select(type == "object" and (.message | type) == "string")
+                  | {file: (.file // null), line: (.line // null), message: .message,
+                     identifier: (.identifier // null), guard: null}) ]' "$TMP")"
 elif [[ -s "$TMP" ]]; then
   # Plain text (PHPStan table/raw output, upgrade_status, a pasted log): one
   # record per "deprecated <kind> <symbol>" or "Function X not found", with the
@@ -226,13 +232,21 @@ RESULT="$(jq -n \
   def norm: sub("^\\\\"; "") | sub("\\(\\)$"; "") | sub(":$"; "");
   $rawf[0] as $raw
   | ($cat[0].lifecycle // []) as $life
+  # The lifecycle entries with a scan block (a deprecation PHPStan cannot see):
+  # the runtime notice core writes for each operation names the entry, up to " is
+  # deprecated" (e.g. "Getting the original property").
+  | [ $life[] | select(((.scan.messages // null) | type) == "object")
+      | {symbol: .symbol, kind: .kind,
+         prefixes: [.scan.messages[] | select(type == "string") | split(" is deprecated")[0] | select(length > 0)]} ] as $scan
   | ($cat[0].change_records_search // "") as $cr
   | (if $floor == "" then null else $floor end) as $fl
   | def lookup($s): ($life | map(select(.symbol == $s)) | .[0]) // null;
     def classify:
       . as $r
       | ($r.message | gsub("\\s+"; " ")) as $m
-      | ($m | capture("[Dd]eprecated (?<kind>function|method|static method|class|interface|trait|constant|class constant|property|static property) (?<sym>[A-Za-z0-9_\\\\:$]+(\\(\\))?)")? // null) as $d
+      | ([ $scan[] | . as $e | select(any($e.prefixes[]; . as $p | $m | contains($p + " is deprecated"))) ] | .[0]) as $sc
+      | (if $sc != null then {kind: $sc.kind, sym: $sc.symbol}
+         else ($m | capture("[Dd]eprecated (?<kind>function|method|static method|class|interface|trait|constant|class constant|property|static property) (?<sym>[A-Za-z0-9_\\\\:$]+(\\(\\))?)")? // null) end) as $d
       | ($m | capture("Function (?<sym>[A-Za-z0-9_\\\\]+) not found")? // null) as $nf
       | (if $d == null then ($m | capture("(?<sym>[A-Za-z0-9_\\\\:]+)\\(\\) is deprecated in [a-z0-9_]+:")? // null) else null end) as $rt
       | (if $d == null and $rt != null then {kind: (if ($rt.sym | test("::")) then "method" else "function" end), sym: $rt.sym} else $d end) as $d

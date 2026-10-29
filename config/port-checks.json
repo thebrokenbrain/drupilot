@@ -61,6 +61,17 @@
         "unknown": "warn"
       }
     },
+    "test-phpunit-metadata": {
+      "description": "In a test, a class or a method that has a PHPUnit attribute (a class of PHPUnit\\Framework\\Attributes\\, e.g. #[RunTestsInSeparateProcesses], which Drupal 11.3 asks of Kernel tests) and whose doc-comment still carries PHPUnit metadata with no attribute twin (@group, @covers, @dataProvider, @depends, ...), while the declared core range admits a core from `attributes_from` on. From there core runs PHPUnit 10 and then 11, which read the metadata of one level (the class, or one method) from its attributes when it has any and ignore that level's doc-comment: the test loses its @group (it falls into the group 'default', and core's run-tests.sh cannot list it), and without the ignored @coversDefaultClass a method's relative @covers ::name is invalid (a coverage run fails under failOnWarning). Below it, core runs PHPUnit 9, which reads the annotations only. Keep the annotations while the range admits Drupal 10, add their twins next to them (@group foo -> #[Group('foo')]), and write a relative @covers in full (@covers \\Namespace\\Class::method).",
+      "attributes_from": "11.0",
+      "phpunit_from": "10",
+      "verified": "phpunit/phpunit src/Metadata/Parser/ParserChain.php: forClass() and forMethod() return the attribute metadata of the class or the method when there is any and read its annotations otherwise, and AttributeParser keeps only the attributes named PHPUnit\\Framework\\Attributes\\* (10.5 branch on GitHub; 11.5.57 on the lab's Drupal 11.4.11 bed); PHPUnit 9.6.38 (the Drupal 10.6.20 bed) has no attribute parser. Core pins phpunit/phpunit 9.5.26 on 10.0.x, 9.6.19 on 10.3.x, 9.6.34 on 10.6.x, 10.5.29 on 11.0.x, 10.5.38 on 11.1.x and 11.5.x on 11.2.x, 11.3.x and 11.x (composer/Metapackage/PinnedDevDependencies/composer.json, git.drupalcode.org, read 2026-10-28). Lab L-PC on 11.4.11: a Kernel test with @group and #[RunTestsInSeparateProcesses] only is listed under 'default' by phpunit --list-groups, and run-tests.sh --list raises 'Undefined array key 0'.",
+      "severity": {
+        "introduced": "error",
+        "preexisting": "warn",
+        "unknown": "warn"
+      }
+    },
     "class-case": {
       "description": "A class referenced from *.services.yml / *.routing.yml, or a PSR-4 class declaration, whose case differs from the real file name. Works on case-insensitive filesystems (macOS) and fatals on Linux.",
       "severity": {

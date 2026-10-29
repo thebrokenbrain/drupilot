@@ -117,7 +117,7 @@ jq -n --slurpfile dep "$REPO/$DEP" --slurpfile pc "$REPO/$PC" --slurpfile mc "$R
         ($life | to_entries[] | .key as $i | .value | . as $l
           | select([$plain[] as $p | ($l.symbol | test($p; "i")) or (($l.symbol + "()") | test($p; "i"))] | any | not)
           | recipe("life." + (.symbol | slug); "ai-templated"; {symbols: [.symbol]};
-              ({why: "\(.symbol)() is deprecated in drupal:\(.deprecated_in // "?") and removed from drupal:\(.removed_in // "?").",
+              ({why: "\(.symbol)\(if (.kind // "") | test("property|constant") then "" else "()" end) is deprecated in drupal:\(.deprecated_in // "?") and removed from drupal:\(.removed_in // "?").",
                 fix: ("Replace it with: " + (.replacement // "see the change record")),
                 lifecycle: [{symbol, kind, deprecated_in, removed_in, replacement, replacement_since} | drop_nulls]} | drop_nulls);
               "\($DEP_PATH)#/lifecycle/\($i)"; null)) ]
