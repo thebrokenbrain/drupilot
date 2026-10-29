@@ -313,7 +313,7 @@ subject_replacement_floor() {
   fi
   # The names to look for: the symbols and the short class names.
   ere="$(jq -r '[(.lifecycle // [])[] | select((.replacement_since | type) == "string" and (.replacement_class | type) == "string")
-      | (.symbol, (.replacement_class | split("\\") | last))] | map(select(test("^[A-Za-z0-9_]+$"))) | unique | join("|")' "$cat" 2> /dev/null || true)"
+      | (.symbol, (.replacement_member // (.replacement_class | split("\\") | last)))] | map(select(test("^[A-Za-z0-9_]+$"))) | unique | join("|")' "$cat" 2> /dev/null || true)"
   [[ -n "$ere" ]] || return 0
   # The code of the files that name one, once, through files (one argv
   # string is capped, 128 KiB on Linux): as written, and with the fallbacks
@@ -337,6 +337,10 @@ subject_replacement_floor() {
     # method, a static call, a variable, a longer name or its declaration?
     def calls($s): $calls | gsub("function[[:space:]]+&?[[:space:]]*" + $s + "[[:space:]]*\\("; " ")
       | test("(^|[^A-Za-z0-9_>:$\\\\])\\\\?" + $s + "[[:space:]]*\\(");
+    # Does the code call the static method $m of the class $k it names
+    # (Short::m( or \\Ns\\Short::m()? For a class older cores already have.
+    def calls_member($k; $m): ($k | split("\\") | last) as $short
+      | $calls | test("(^|[^A-Za-z0-9_])" + $short + "[[:space:]]*::[[:space:]]*" + $m + "[[:space:]]*\\(");
     # Does the code name the class $k: its FQCN (maybe with a leading
     # backslash), or its short name in a group use of its namespace?
     def names($k): ($k | split("\\") | last) as $short | ($k | split("\\") | .[0:-1] | join("\\")) as $ns
@@ -347,12 +351,14 @@ subject_replacement_floor() {
      | . as $e
      | (($e.kind == "function") and ($e.removed_in | type) == "string" and (($e.removed_in | vn | .[0]) <= $t)
         and ($e.symbol | test("^[A-Za-z0-9_]+$")) and calls($e.symbol)) as $call
-     | (names($e.replacement_class)) as $uses
+     | (names($e.replacement_class)
+        and (($e.replacement_member | type) != "string" or calls_member($e.replacement_class; $e.replacement_member))) as $uses
+     | ($e.replacement_class + (if ($e.replacement_member | type) == "string" then "::" + $e.replacement_member + "()" else "" end)) as $repl
      | select($call or $uses)
      | {since: $e.replacement_since,
         why: (if $uses
-              then "the code uses \\\($e.replacement_class), which exists only from core \($e.replacement_since)"
-              else "the port replaces \($e.symbol)() (removed in Drupal \($e.removed_in | vn | .[0])) with \\\($e.replacement_class), which exists only from core \($e.replacement_since)" end)}]
+              then "the code uses \\\($repl), which exists only from core \($e.replacement_since)"
+              else "the port replaces \($e.symbol)() (removed in Drupal \($e.removed_in | vn | .[0])) with \\\($repl), which exists only from core \($e.replacement_since)" end)}]
     | if length == 0 then empty else max_by(.since | vn) | "\(.since)\t\(.why)" end' 2> /dev/null || true
   rm -f "$code" "$calls"
   return 0

@@ -68,6 +68,22 @@
 #                      keep them and add the twins. In diff mode, a line
 #                      the port left alone is attributed to the port when
 #                      the range at the base admitted no such core.
+#   test-phpunit-api   In a file under tests/, a call of a PHPUnit method that
+#                      exists only from the check's phpunit_from (10, Drupal
+#                      11.0) while the declared range admits an older
+#                      Drupal major: $matcher->numberOfInvocations(), which
+#                      Rector's WithConsecutiveRector writes, is
+#                      getInvocationCount() on PHPUnit 9 (training run 01).
+#   config-schema-sequence
+#                      In config/schema/*.yml (test modules included), a
+#                      `sequence:` whose item type is a one-item YAML list
+#                      (`- type: string`), a form core removed from the
+#                      check's removed_in (11.0.0): the items then have no
+#                      type and saving the configuration throws
+#                      SchemaIncompleteException (training run 01, filelog).
+#                      On when the declared range or the target major admits
+#                      that major. Always an error: write the item
+#                      definition as a mapping (drop the '- ').
 #
 # Diff-aware: when the subject is tracked by git, every finding is attributed —
 # "introduced" (on a line the port added/changed vs the pre-port base) or
@@ -115,7 +131,7 @@ set -euo pipefail
 # shellcheck source=../lib/php-scan.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/php-scan.sh"
 
-ALL_CHECKS="plugin-di removed-use static-factory fapi-callable serialization override-attribute class-case test-label-markup test-phpunit-metadata"
+ALL_CHECKS="plugin-di removed-use static-factory fapi-callable serialization override-attribute class-case test-label-markup test-phpunit-metadata test-phpunit-api config-schema-sequence"
 SUBJECT=""
 BASE=""
 NO_DIFF=0
@@ -271,6 +287,18 @@ SIGCAT="$(plugin_root)/config/deprecations.json"
 if [[ -f "$SIGCAT" ]]; then
   jq -r '(.signature_changes // [])[] | select(.kind == "method-signature") | [.id, .target, .method, .since] | join("\t")' "$SIGCAT" > "$TMP/sigmethods.tsv" 2>/dev/null || true
   jq -r '(.signature_changes // [])[] | select(.kind == "method-signature") | .target as $t | (.known_descendants // [])[] | [$t, "yes", .] | join("\t")' "$SIGCAT" >> "$TMP/fallback.tsv" 2>/dev/null || true
+fi
+
+# test-phpunit-api (config/port-checks.json): PHPUnit methods that exist only
+# from phpunit_from (Drupal drupal_from), while the range admits an older
+# Drupal major whose PHPUnit has another name for them (members).
+PUAPI_FROM="$(jq -r '.checks["test-phpunit-api"].drupal_from // empty' "$CFG")"
+PUAPI_PHPUNIT="$(jq -r '.checks["test-phpunit-api"].phpunit_from // empty' "$CFG")"
+PUAPI_ERE="$(jq -r '(.checks["test-phpunit-api"].members // {}) | keys | join("|")' "$CFG")"
+PUAPI_ON=0
+if [[ -n "$CORE_REQ" && -n "$PUAPI_ERE" && "$PUAPI_FROM" =~ ^([0-9]+) ]]; then
+  _pm="${BASH_REMATCH[1]}"
+  for _m in $(seq "$((_pm - 3))" "$((_pm - 1))"); do constraint_admits_major "$CORE_REQ" "$_m" && PUAPI_ON=1; done
 fi
 
 # --- Git base (diff-aware attribution) ---------------------------------------
@@ -531,6 +559,21 @@ while IFS= read -r f; do
         ;;
     esac
   fi
+
+  if check_on test-phpunit-api && [[ "$PUAPI_ON" == "1" ]]; then
+    case "/$(rel "$f")" in
+      */tests/*)
+        php_code_lines "$f" > "$TMP/puapi.code"
+        while IFS=: read -r line member; do
+          [[ -n "$line" && -n "$member" ]] || continue
+          old="$(jq -r --arg m "$member" '.checks["test-phpunit-api"].members[$m] // empty' "$CFG")"
+          add_finding test-phpunit-api "$f" "$line" "$(introduced "$f" "$line")" \
+            "${member}() exists only from PHPUnit ${PUAPI_PHPUNIT} (Drupal ${PUAPI_FROM} and later), while '${CORE_REQ}' admits an older Drupal major whose PHPUnit has ${old}() instead: the test fails there (Rector's WithConsecutiveRector writes this call). Count the calls in the callback itself, for example with a local counter captured by reference, which every PHPUnit runs."
+        done < <(grep -n -o -E -- "->[[:space:]]*(${PUAPI_ERE})[[:space:]]*\(" "$TMP/puapi.code" 2>/dev/null \
+                   | sed -E 's/^([0-9]+):->[[:space:]]*([A-Za-z0-9_]+).*/\1:\2/' || true)
+        ;;
+    esac
+  fi
 done < "$FILES"
 
 # --- Check: removed-use (diff mode) -------------------------------------------
@@ -634,6 +677,40 @@ if check_on class-case; then
       }' "$y")
   done < <(find "$SUBJECT_ABS" \( -name '*.services.yml' -o -name '*.routing.yml' \) \
              -not -path '*/vendor/*' -not -path '*/node_modules/*' 2>/dev/null | LC_ALL=C sort)
+fi
+
+# --- Check: config-schema-sequence ------------------------------------------------
+# config/port-checks.json: the list form of a sequence's item type is removed
+# from removed_in. On when the declared range, or the target major the port
+# declares, admits that major (at assess time the range is still the old one).
+if check_on config-schema-sequence; then
+  SEQ_DEPRECATED="$(jq -r '.checks["config-schema-sequence"].deprecated_in // empty' "$CFG")"
+  SEQ_REMOVED="$(jq -r '.checks["config-schema-sequence"].removed_in // empty' "$CFG")"
+  SEQ_ON=0
+  if [[ "$SEQ_REMOVED" =~ ^([0-9]+) ]]; then
+    _sm="${BASH_REMATCH[1]}"
+    _tm="$(resolve_target_major 2>/dev/null || true)"
+    if [[ "$_tm" =~ ^[0-9]+$ ]] && (( _tm >= _sm )); then SEQ_ON=1; fi
+    if [[ -n "$CORE_REQ" ]]; then
+      for _m in $(seq "$_sm" "$((_sm + 3))"); do constraint_admits_major "$CORE_REQ" "$_m" && SEQ_ON=1; done
+    fi
+  fi
+  if [[ "$SEQ_ON" == "1" ]]; then
+    while IFS= read -r y; do
+      while IFS= read -r line; do
+        add_finding config-schema-sequence "$y" "$line" "$(introduced "$y" "$line")" \
+          "this sequence lists its item type ('- type: ...'), a form deprecated in drupal:${SEQ_DEPRECATED} and removed from drupal:${SEQ_REMOVED}: from Drupal ${SEQ_REMOVED%%.*} its items have no type and saving the configuration throws SchemaIncompleteException. Write the item definition as a mapping under 'sequence:' (drop the '- '), which every core reads."
+      done < <(awk '
+        /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+        {
+          if (pend && $0 ~ /^[[:space:]]*-[[:space:]]/) print NR
+          pend = 0
+          if ($0 ~ /^[[:space:]]*sequence:[[:space:]]*(#.*)?$/) pend = 1
+          else if ($0 ~ /^[[:space:]]*sequence:[[:space:]]*\[/) print NR
+        }' "$y")
+    done < <(find "$SUBJECT_ABS" -type f -path '*/config/schema/*' -name '*.yml' \
+               -not -path '*/vendor/*' -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null | LC_ALL=C sort)
+  fi
 fi
 
 # --- Report ---------------------------------------------------------------------

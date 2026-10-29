@@ -126,9 +126,13 @@ changes to look for (Grep + Edit, minimal and explained):
   `buttonNotExists()` never casts it, on any core. In a test file that
   declares `strict_types=1`, pass strings to every `assertSession()` method
   (`pageTextContains()`, `fieldValueEquals()`, ...): below 10.3 core does not
-  cast them either. After adapting,
+  cast them either. When you replace `withConsecutive()` while the range
+  admits Drupal 10, count the calls with a local counter in the callback:
+  `$matcher->numberOfInvocations()` (what Rector's `WithConsecutiveRector`
+  writes) exists only from PHPUnit 10, and PHPUnit 9 calls it
+  `getInvocationCount()`. After adapting,
   run the checks that catch these (an error for a line you added):
-  `bash "$ROOT/scripts/analysis/check-port-safety.sh" --subject "$SUBJECT" --checks test-label-markup,test-phpunit-metadata`.
+  `bash "$ROOT/scripts/analysis/check-port-safety.sh" --subject "$SUBJECT" --checks test-label-markup,test-phpunit-metadata,test-phpunit-api`.
   drupilot runs the suite on the bed's core only (Drupal 10 is checked
   statically), so it cannot see such a failure at runtime.
 - **JS tests**: ensure they extend `WebDriverTestBase` and use

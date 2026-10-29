@@ -13,6 +13,37 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+### Added
+
+- Port-safety check `config-schema-sequence`: a config schema `sequence:` that
+  lists its item type (`- type: string`), a form deprecated in 8.0.0 and
+  removed from Drupal 11, where the items lose their type and saving the
+  configuration throws `SchemaIncompleteException` (training run module 01,
+  filelog: its settings form failed on Drupal 11 and only its Functional test
+  showed it). An error before and after the port, so the assessment counts
+  it and the port fixes it.
+- Port-safety check `test-phpunit-api`: a PHPUnit method that exists only from
+  PHPUnit 10, such as `$matcher->numberOfInvocations()` (PHPUnit 9 calls it
+  `getInvocationCount()`), in a test while the range admits Drupal 10. Rector's
+  `WithConsecutiveRector` writes it when it removes `withConsecutive()`, so the
+  test failed on Drupal 10 (filelog). The test skill, agent and command run it,
+  and the skill says to count the calls with a local counter.
+
+### Fixed
+
+- The core floor follows `watchdog_exception()`: its replacement
+  `Error::logException()` exists only from 10.1, so a port that keeps Drupal 10
+  declares `^10.1 || ^11` from the assessment on, instead of a `^10 || ^11`
+  that the 10.0 static leg then rejected (filelog). A lifecycle entry may name
+  a `replacement_member`, for a class that older cores have without that
+  method: only a call of `Class::member()` then counts as using it.
+- Rector no longer promotes constructor properties in the port
+  (`ClassPropertyAssignToConstructorPromotionRector` joins the denied rules):
+  a style rewrite, never a compatibility fix, that rewrote a constructor's
+  changes to its parameter into changes to the promoted property (filelog's
+  `LogMessage` lost its placeholder prefixes, so messages were no longer
+  substituted) and moved doc blocks into the parameter list.
+
 ## [1.0.2] - 2026-10-29
 
 ### Added

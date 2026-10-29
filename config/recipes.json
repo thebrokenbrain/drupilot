@@ -627,7 +627,7 @@
           "type": "rescan"
         }
       ],
-      "source": "config/deprecations.json#/lifecycle/9",
+      "source": "config/deprecations.json#/lifecycle/10",
       "template": {
         "fix": "Replace it with: $entity->getOriginal() to read it (also for isset()), $entity->setOriginal($value) to set it and setOriginal(NULL) to unset it (EntityInterface, Drupal 11.2+). While the core floor is below 11.2, keep the property or wrap the call in DeprecationHelper::backwardsCompatibleCall() (core 10.1.3+). On Drupal 12 a read of the property returns NULL with no error",
         "lifecycle": [
@@ -643,6 +643,40 @@
         "why": "EntityBase::$original is deprecated in drupal:11.2.0 and removed from drupal:12.0.0."
       },
       "version": "7a435c3ca551"
+    },
+    {
+      "applies_when": {},
+      "engine": "template",
+      "fixtures": null,
+      "id": "life.watchdog-exception",
+      "kind": "template",
+      "lane": "ai-templated",
+      "matches": {
+        "symbols": [
+          "watchdog_exception"
+        ]
+      },
+      "postconditions": [
+        {
+          "type": "rescan"
+        }
+      ],
+      "source": "config/deprecations.json#/lifecycle/8",
+      "template": {
+        "fix": "Replace it with: \\Drupal\\Core\\Utility\\Error::logException(\\Drupal::logger($type), $exception, $message, $variables, $severity, $link)",
+        "lifecycle": [
+          {
+            "deprecated_in": "10.1.0",
+            "kind": "function",
+            "removed_in": "11.0.0",
+            "replacement": "\\Drupal\\Core\\Utility\\Error::logException(\\Drupal::logger($type), $exception, $message, $variables, $severity, $link)",
+            "replacement_since": "10.1",
+            "symbol": "watchdog_exception"
+          }
+        ],
+        "why": "watchdog_exception() is deprecated in drupal:10.1.0 and removed from drupal:11.0.0."
+      },
+      "version": "c32dfd190b01"
     },
     {
       "applies_when": {},
@@ -843,6 +877,27 @@
       "applies_when": {},
       "engine": "template",
       "fixtures": null,
+      "id": "safety.config-schema-sequence",
+      "kind": "template",
+      "lane": "ai-templated",
+      "matches": {
+        "rule": "port-safety:config-schema-sequence"
+      },
+      "postconditions": [
+        {
+          "type": "rescan"
+        }
+      ],
+      "source": "config/port-checks.json#/checks/config-schema-sequence",
+      "template": {
+        "why": "In a config schema file (config/schema/*.schema.yml), a `sequence:` whose item type is written as a one-item YAML list (`sequence:` then `- type: string`), while the declared core range admits a core from `removed_in`'s major. The list form is deprecated in `deprecated_in` and removed from `removed_in`: core's Sequence::getElementDefinition() then reads `sequence` as the item definition itself, so the items have no type and saving the configuration throws SchemaIncompleteException (training run 01, filelog: its settings form failed on Drupal 11). Write the item definition as a mapping, `sequence:` then `  type: string` (indented one level), which every core reads."
+      },
+      "version": "69d6dd9f477d"
+    },
+    {
+      "applies_when": {},
+      "engine": "template",
+      "fixtures": null,
       "id": "safety.fapi-callable",
       "kind": "template",
       "lane": "ai-templated",
@@ -997,6 +1052,27 @@
         "why": "In a test, a translated string object ($this->t(...), t(...), $this->formatPlural(...), new TranslatableMarkup(...)) as a submitForm() label (its second argument) or a buttonExists() locator while the declared core range admits a core from `strict_from` to before `cast_from`, or as a buttonNotExists() locator while it admits one from `strict_from` to before `not_exists_typed_from`. From `strict_from`, core/tests/Drupal/Tests/WebAssert.php declares strict_types=1 and passes the label to Mink's TraversableElement::findButton(string $locator), which throws a TypeError; from `cast_from`, buttonExists() (which submitForm() calls) casts it first (issue 3421105); buttonNotExists() never casts it, but from `not_exists_typed_from` it declares string $button, so PHP converts the label when a test without strict_types calls it. Pass a string: (string) $this->t('Save') or 'Save'."
       },
       "version": "038c1d508ffd"
+    },
+    {
+      "applies_when": {},
+      "engine": "template",
+      "fixtures": null,
+      "id": "safety.test-phpunit-api",
+      "kind": "template",
+      "lane": "ai-templated",
+      "matches": {
+        "rule": "port-safety:test-phpunit-api"
+      },
+      "postconditions": [
+        {
+          "type": "rescan"
+        }
+      ],
+      "source": "config/port-checks.json#/checks/test-phpunit-api",
+      "template": {
+        "why": "In a file under tests/, a call of a PHPUnit method that exists only from `phpunit_from` (the PHPUnit of Drupal `drupal_from` and later), while the declared core range admits an older Drupal major, whose PHPUnit has the method of `members` instead (for example InvokedCount::numberOfInvocations(), PHPUnit 9's getInvocationCount()). Rector's WithConsecutiveRector (rector-phpunit, in drupal-rector's sets) writes $matcher->numberOfInvocations() when it removes withConsecutive(), so the test fails on Drupal 10 (training run 01, filelog: FileLogTokenTest). Count the calls in the callback itself, for example with a local counter captured by reference, which every PHPUnit runs."
+      },
+      "version": "470ef475daa6"
     },
     {
       "applies_when": {},
@@ -1260,8 +1336,8 @@
   ],
   "schema": "drupilot.recipes/1",
   "sources": {
-    "config/deprecations.json": "sha256:004bf4f729ce39931b67286c742b28d78f4b58ebb120526b7f22d6c158d9df2d",
+    "config/deprecations.json": "sha256:eb255f51cc12f30754e935ada60bb1d1f34e3161ae7109715616fe7544472f2d",
     "config/metadata-checks.json": "sha256:182f7ce002a63577a327518fcddfe45d61ea44a23826b981843933ee55fa706f",
-    "config/port-checks.json": "sha256:030a1706915ec826182b69c3aa85ef210e43b6676f9eb8a8caf4a5f550e4c5b6"
+    "config/port-checks.json": "sha256:93708d0b26d149b440f5ad7ba7bc5277f603a36a16fc6419fc3840f56137a5b3"
   }
 }

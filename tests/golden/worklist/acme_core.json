@@ -63,7 +63,7 @@
   ],
   "meta": {
     "findings_hash": "sha256:7ae0922d32c50405a02714b54995a5cdc7639a37ad71fdbb095c3b84a5c44138",
-    "recipes_hash": "sha256:bd88c9b41c590df97ebef8aec88d5ae91c0c3a3590cc017a0725de83d4bc658e",
+    "recipes_hash": "sha256:9a66ff5a0bc600f7b4b224b32c675dae25a49d67842dc4b519e2282cbc887ba3",
     "worklist_hash": "sha256:7818547245c9f6efbda65f0221f5d49141a4ac6249c118eb927cb444904d32e6"
   },
   "schema": 1,

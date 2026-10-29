@@ -80,7 +80,7 @@ Before running, adapt the discovered tests for D11 (the skill lists the specific
   the checks:
 
   ```bash
-  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/check-port-safety.sh" --subject <DIR> --checks test-label-markup,test-phpunit-metadata
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/check-port-safety.sh" --subject <DIR> --checks test-label-markup,test-phpunit-metadata,test-phpunit-api
   ```
 
 These edits are test-only and must not change the subject's production behavior.

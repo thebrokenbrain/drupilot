@@ -643,6 +643,22 @@ Checks (--checks selects a subset; default all):
                      keep them and add the twins. In diff mode, a line
                      the port left alone is attributed to the port when
                      the range at the base admitted no such core.
+  test-phpunit-api   In a file under tests/, a call of a PHPUnit method that
+                     exists only from the check's phpunit_from (10, Drupal
+                     11.0) while the declared range admits an older
+                     Drupal major: $matcher->numberOfInvocations(), which
+                     Rector's WithConsecutiveRector writes, is
+                     getInvocationCount() on PHPUnit 9 (training run 01).
+  config-schema-sequence
+                     In config/schema/*.yml (test modules included), a
+                     `sequence:` whose item type is a one-item YAML list
+                     (`- type: string`), a form core removed from the
+                     check's removed_in (11.0.0): the items then have no
+                     type and saving the configuration throws
+                     SchemaIncompleteException (training run 01, filelog).
+                     On when the declared range or the target major admits
+                     that major. Always an error: write the item
+                     definition as a mapping (drop the '- ').
 
 Diff-aware: when the subject is tracked by git, every finding is attributed —
 "introduced" (on a line the port added/changed vs the pre-port base) or

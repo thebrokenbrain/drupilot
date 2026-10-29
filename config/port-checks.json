@@ -82,6 +82,31 @@
       "recipe": {"lane": "codemod", "engine": "yaml-edit", "applies_when": {"file_ere": "\\.ya?ml$"},
         "params": {"op": "replace-on-line", "from": {"capture": "^'([^']+)' does not match the real file"},
                    "to": {"transform": "class-from-file", "capture": "the real file '([^']+)'"}}}
+    },
+    "config-schema-sequence": {
+      "description": "In a config schema file (config/schema/*.schema.yml), a `sequence:` whose item type is written as a one-item YAML list (`sequence:` then `- type: string`), while the declared core range admits a core from `removed_in`'s major. The list form is deprecated in `deprecated_in` and removed from `removed_in`: core's Sequence::getElementDefinition() then reads `sequence` as the item definition itself, so the items have no type and saving the configuration throws SchemaIncompleteException (training run 01, filelog: its settings form failed on Drupal 11). Write the item definition as a mapping, `sequence:` then `  type: string` (indented one level), which every core reads.",
+      "deprecated_in": "8.0.0",
+      "removed_in": "11.0.0",
+      "verified": "core/lib/Drupal/Core/Config/Schema/Sequence.php: getElementDefinition() reads $this->definition['sequence'][0] with the @trigger_error 'declares the type of its items in a way that is deprecated in drupal:8.0.0 and is removed from drupal:11.0.0' on 10.6.20 (the lab bed); on 11.4.11 it reads $this->definition['sequence'] only (training run 01 beds, 2026-10-29).",
+      "severity": {
+        "introduced": "error",
+        "preexisting": "error",
+        "unknown": "error"
+      }
+    },
+    "test-phpunit-api": {
+      "description": "In a file under tests/, a call of a PHPUnit method that exists only from `phpunit_from` (the PHPUnit of Drupal `drupal_from` and later), while the declared core range admits an older Drupal major, whose PHPUnit has the method of `members` instead (for example InvokedCount::numberOfInvocations(), PHPUnit 9's getInvocationCount()). Rector's WithConsecutiveRector (rector-phpunit, in drupal-rector's sets) writes $matcher->numberOfInvocations() when it removes withConsecutive(), so the test fails on Drupal 10 (training run 01, filelog: FileLogTokenTest). Count the calls in the callback itself, for example with a local counter captured by reference, which every PHPUnit runs.",
+      "phpunit_from": "10",
+      "drupal_from": "11.0",
+      "members": {
+        "numberOfInvocations": "getInvocationCount"
+      },
+      "verified": "PHPUnit src/Framework/MockObject/Rule/InvocationOrder.php: public function getInvocationCount() on 9.6 (and the 9.6.38 of the Drupal 10.6.20 lab bed), no numberOfInvocations(); src/Framework/MockObject/Runtime/Rule/InvocationOrder.php: public function numberOfInvocations() on 10.5, 11.5 (and the 11.5.57 of the Drupal 11.4.11 bed) and 12.5, no getInvocationCount() (GitHub sebastianbergmann/phpunit, read 2026-10-29). Core pins PHPUnit 9.x for Drupal 10 and 10.5+ from 11.0 (test-phpunit-metadata).",
+      "severity": {
+        "introduced": "error",
+        "preexisting": "warn",
+        "unknown": "warn"
+      }
     }
   },
   "fapi_callback_keys": [
