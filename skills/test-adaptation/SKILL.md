@@ -362,9 +362,10 @@ bash "$ROOT/scripts/analysis/refresh-artifacts.sh" --subject "$SUBJECT" --json
 ```
 
 Each step says whether it ran, was up to date or was skipped: the core matrix
-when it is of other sources, the local patch, the extraction when the worklist
-is of other sources (with the fixpoint gate), the manifest and the report. A
-failed step exits `3`: fix what it found and run it again.
+when it is of other sources, the local patch, the pipeline's `php` and
+`validate` stages (run when their inputs moved; the fixpoint gate judges the
+adapted tests), the manifest and the report. A failed step exits `3`: fix what
+it found and run it again.
 
 ## 8. Gotchas
 

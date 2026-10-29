@@ -11,9 +11,11 @@
 #                sources than the module's now (its subject_digest), the
 #                declared range admits the previous major and
 #                DRUPILOT_VERIFY_CORES is not off. With no core-matrix.json
-#                there is nothing to refresh. A leg that fails (exit 3) is a
-#                verdict: the step ran, and it fails only when the verdict
-#                is worse than the one it replaces.
+#                there is nothing to refresh. The step fails when the
+#                baseline leg (the target major) fails, run again or not; a
+#                failing Drupal T-1 leg is the port's decision (fix, raise
+#                the floor, drop it, or keep it declared) and is reported in
+#                the reason.
 #   patch        make-patch.sh --local (a git checkout only): the same tree
 #                gives the same patch, so it always runs.
 #   extraction   with a git repository, the pipeline's php and validate
@@ -25,7 +27,9 @@
 #                of the module as it is (worklist_fresh) and fixpoint.json
 #                converged on it (with DRUPILOT_FIXPOINT=off, the extraction
 #                alone when the worklist is stale)
-#   manifest     manifest.sh, which keeps the earlier rationale
+#   manifest     manifest.sh, which keeps the earlier rationale (a why
+#                given before its file changed, e.g. by the test stage, is
+#                flagged as such in the report)
 #   report       port-report.sh with the module's own manifest, which also
 #                reads the last test run; it records no stage (the test stage
 #                already did)
@@ -121,23 +125,33 @@ else
   elif [[ "$(lc "$(config_get DRUPILOT_VERIFY_CORES auto)")" == "off" ]]; then step core-matrix skipped 0 "DRUPILOT_VERIFY_CORES is off"
   elif ! [[ "$TMAJ" =~ ^[0-9]+$ ]]; then step core-matrix skipped 0 "the target major is unknown"
   elif ! constraint_admits_major "$REQ" "$((TMAJ - 1))"; then step core-matrix skipped 0 "the range '$REQ' admits no Drupal $((TMAJ - 1))"
-  elif [[ "$(jq -r '.subject_digest // ""' "$CM" 2> /dev/null)" == "$DIGEST" ]]; then step core-matrix up-to-date 0 "core-matrix.json is of the module as it is"
-  elif [[ "$DRY" == "1" ]]; then step core-matrix would-run 0 "core-matrix.json is of other sources than the module now"
+  elif [[ "$DRY" == "1" && "$(jq -r '.subject_digest // ""' "$CM" 2> /dev/null)" != "$DIGEST" ]]; then
+    step core-matrix would-run 0 "core-matrix.json is of other sources than the module now"
   else
-    # At the level the previous run used (a refactor verifies at its own).
-    _lvl="$(jq -r '.level // empty' "$CM" 2> /dev/null || true)"
-    _old="$(jq -r '.d10_support // empty' "$CM" 2> /dev/null || true)"
-    log_step "refresh: core-matrix"
-    _rc=0; bash "$S/analysis/verify-core-matrix.sh" --subject "$SUBJECT" ${_lvl:+--level "$_lvl"} --json < /dev/null > /dev/null || _rc=$?
+    # The verdict, read from core-matrix.json whether it was current or run
+    # again: a failing baseline leg (the target major itself) fails the
+    # step, now and on every later refresh; the Drupal T-1 support (a
+    # decision the port made: fix, raise the floor, drop it or keep it
+    # declared) is reported in the reason.
+    _old="$(jq -r '.d10_support // empty' "$CM" 2> /dev/null || true)"; _rc=0; _how="core-matrix.json is of the module as it is"
+    if [[ "$(jq -r '.subject_digest // ""' "$CM" 2> /dev/null)" != "$DIGEST" ]]; then
+      # At the level the previous run used (a refactor verifies at its own).
+      _lvl="$(jq -r '.level // empty' "$CM" 2> /dev/null || true)"
+      log_step "refresh: core-matrix"
+      bash "$S/analysis/verify-core-matrix.sh" --subject "$SUBJECT" ${_lvl:+--level "$_lvl"} --json < /dev/null > /dev/null || _rc=$?
+      _how="core-matrix.json was of other sources"
+    fi
     _new="$(jq -r '.d10_support // empty' "$CM" 2> /dev/null || true)"
-    if [[ "$_rc" == "0" ]]; then
-      step core-matrix ran 0 "core-matrix.json was of other sources; Drupal $((TMAJ - 1)) support: ${_new:-?}"
-    elif [[ "$_rc" == "3" && "$_old" == "failed" ]]; then
-      step core-matrix ran 3 "core-matrix.json was of other sources; a leg still fails (Drupal $((TMAJ - 1)) support: failed, as before)"
-    elif [[ "$_rc" == "3" ]]; then
-      step core-matrix failed 3 "a leg fails now (Drupal $((TMAJ - 1)) support: failed, was ${_old:-?}): see core-matrix.json"
-    else
+    _base="$(jq -r '[(.legs // [])[] | select(.role == "baseline") | (.result // "")] | if any(.[]; . == "fail" or . == "failed") then "fail" else "ok" end' "$CM" 2> /dev/null || echo ok)"
+    _sup="Drupal $((TMAJ - 1)) support: ${_new:-?}"; [[ "$_how" == *"other sources"* && "$_new" != "$_old" ]] && _sup="$_sup (was ${_old:-?})"
+    if [[ "$_rc" != "0" && "$_rc" != "3" ]]; then
       step core-matrix failed "$_rc" "verify-core-matrix.sh could not run (exit $_rc)"
+    elif [[ "$_base" == "fail" ]]; then
+      step core-matrix failed 3 "$_how; the Drupal $TMAJ baseline leg fails (see core-matrix.json); $_sup"
+    elif [[ "$_how" == *"other sources"* ]]; then
+      step core-matrix ran "$_rc" "$_how; $_sup"
+    else
+      step core-matrix up-to-date 0 "$_how; $_sup"
     fi
   fi
 

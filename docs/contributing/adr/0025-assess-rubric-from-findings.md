@@ -22,7 +22,8 @@ Three points needed a decision before they could be computed:
 ## Decision
 
 **`manual`** counts, among the `scope: current` findings:
-- each PHPStan occurrence of a deprecation of class `hard` or `unknown` that no Drupal Rector rule changes in
+- each PHPStan occurrence of a deprecation of class `hard` or `unknown` (and, from 1.0.2, each occurrence of a
+  `runtime-deprecation:<id>` catalog finding: a deprecation PHPStan cannot see) that no Drupal Rector rule changes in
   the same function or method. normalize-findings.sh merges the calls of one symbol in one function into a
   finding with one source per call, and 0.9 counted each call, so the occurrences are counted. A Drupal
   Rector rule is a `DrupalRector\` rule, or one of the `Renaming`, `Transform`, `Arguments` and `Removing`

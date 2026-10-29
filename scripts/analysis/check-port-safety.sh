@@ -515,7 +515,9 @@ while IFS= read -r f; do
           [[ "$BASE_PUMETA_ON" == "0" && "$intro" == "false" ]] && intro=true
           msg="${level} has a PHPUnit attribute (line ${line}), so PHPUnit ${PUMETA_PHPUNIT} and later (Drupal ${PUMETA_FROM} and later) read only the attributes of that level and ignore its doc-comment metadata"
           [[ -z "$hidden" ]] || msg="${msg}, with no attribute twin there for ${hidden}"
-          case "$level|$grouped|$hidden" in *::*) ;; *"|0|"*@group*) msg="${msg} (the test falls into the group \"default\", and core's run-tests.sh cannot list it)";; esac
+          if [[ "$level" != *::* && "$grouped" == "0" ]]; then
+            case "$hidden" in *@group*) msg="${msg} (the test falls into the group \"default\", and core's run-tests.sh cannot list it)";; esac
+          fi
           [[ -z "$relative" ]] || msg="${msg}; its @coversDefaultClass is ignored as well, so ${relative} is invalid there (a coverage run fails under failOnWarning): name the method in full, @covers \\Namespace\\Class::method"
           if [[ -n "$twins" && "$PUMETA_KEEP" == "1" ]]; then
             msg="${msg}. Keep the annotations for the PHPUnit of Drupal ${PUMETA_PREV} and before, which '${CORE_REQ}' still admits and which reads only them, and add their twins next to them: ${twins}."

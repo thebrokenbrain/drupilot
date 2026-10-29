@@ -409,10 +409,12 @@ printf '%s' "$PREC" | jq -e 'type == "object"' >/dev/null 2>&1 || PREC=""
     printf '_Unknown: no git history to compare with, or a Rector record that does not list its files._\n'
   else
   printf '%s' "$M" | jq -r '
-    (.manual_edits // []) | .[]? |
+    ((.rationale_stale // []) | if type == "array" then . else [] end) as $stale
+    | (.manual_edits // []) | .[]? |
     if type == "string" then "- " + .
     else "- " + (.edit // .what // "edit")
-         + (if (.why // "") != "" then " — _why:_ " + .why else "" end)
+         + (if (.why // "") != "" then " — _why:_ " + .why
+            + (if ((.edit // "") as $e | $stale | index($e)) != null then " _(given before the file last changed)_" else "" end) else "" end)
          + (if (.change_record // "") != "" then " ([change record](" + .change_record + "))" else "" end)
     end
   ' 2>/dev/null | { grep . || printf '_none_\n'; }
@@ -422,9 +424,11 @@ printf '%s' "$PREC" | jq -e 'type == "object"' >/dev/null 2>&1 || PREC=""
   # manifest could not tell the manual edits (no git history).
   _also="$(printf '%s' "$M" | jq -r '
     (.manual_edits | if type == "array" then [.[] | if type == "string" then . else (.edit // empty) end] else null end) as $me
+    | ((.rationale_stale // []) | if type == "array" then . else [] end) as $stale
     | (.rationale // {}) | if type == "object" then . else {} end | to_entries[]
     | select((.key | test("^W-[0-9a-f]+$") | not) and ($me == null or (.key as $k | $me | index($k)) == null))
     | "- `\(.key)`" + (if $me == null then "" else " (changed by Rector, the attribute pass or a codemod too)" end) + " — _why:_ \(.value)"
+      + (if (.key as $k | $stale | index($k)) != null then " _(given before the file last changed)_" else "" end)
   ' 2>/dev/null || true)"
   [[ -z "$_also" ]] || printf '\n_Also explained:_\n\n%s\n' "$_also"
   printf '\n'

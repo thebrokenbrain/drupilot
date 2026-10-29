@@ -309,9 +309,14 @@ The model writes only the rationale: --rationale FILE, a JSON object
 earlier worklist had and the port resolved (worklist-resolved.json, which
 classify.sh keeps: the model writes the rationale against the worklist it
 saw, and the next extraction drops the items it fixed), or the path of a
-file the port changed, relative to the subject (the why of a manual edit:
-manual_edits[].why). Any other key is refused; a previous manifest's
-rationale is kept for the keys still valid.
+file the port changed, relative to the subject: the why of a manual edit
+(manual_edits[].why), or of a file a tool changed too (port-report.sh
+shows it under "Also explained"); with no git history, any file of the
+subject. Any other key is refused. A previous manifest's rationale is kept
+for the keys still valid, except an item it listed as resolved that is
+open again (a revert); each named file keeps the hash it had when its why
+was given (rationale_hashes), and rationale_stale lists the files changed
+since, whose why the report shows as given before the change.
 The same inputs give the same document outside meta; inputs records the
 hashes it was built from. port-report.sh renders it.
 
@@ -509,7 +514,9 @@ the viability report shows, as assess.json; the viability-assessment skill
 only narrates it.
 
   manual         the occurrences of scope-current PHPStan deprecations of
-                 class hard or unknown that no Drupal Rector rule changes in
+                 class hard or unknown (and of the scan for the
+                 deprecations PHPStan cannot see, runtime-deprecation:<id>
+                 catalog findings) that no Drupal Rector rule changes in
                  the same function or method (a DrupalRector\ rule, or the
                  Renaming/Transform/Arguments/Removing rules drupal-rector
                  configures, at the same (file, anchor); a file-level anchor,
@@ -1885,9 +1892,11 @@ still said nothing of the run). The steps, in this order:
                sources than the module's now (its subject_digest), the
                declared range admits the previous major and
                DRUPILOT_VERIFY_CORES is not off. With no core-matrix.json
-               there is nothing to refresh. A leg that fails (exit 3) is a
-               verdict: the step ran, and it fails only when the verdict
-               is worse than the one it replaces.
+               there is nothing to refresh. The step fails when the
+               baseline leg (the target major) fails, run again or not; a
+               failing Drupal T-1 leg is the port's decision (fix, raise
+               the floor, drop it, or keep it declared) and is reported in
+               the reason.
   patch        make-patch.sh --local (a git checkout only): the same tree
                gives the same patch, so it always runs.
   extraction   with a git repository, the pipeline's php and validate
@@ -1899,7 +1908,9 @@ still said nothing of the run). The steps, in this order:
                of the module as it is (worklist_fresh) and fixpoint.json
                converged on it (with DRUPILOT_FIXPOINT=off, the extraction
                alone when the worklist is stale)
-  manifest     manifest.sh, which keeps the earlier rationale
+  manifest     manifest.sh, which keeps the earlier rationale (a why
+               given before its file changed, e.g. by the test stage, is
+               flagged as such in the report)
   report       port-report.sh with the module's own manifest, which also
                reads the last test run; it records no stage (the test stage
                already did)
@@ -2125,9 +2136,10 @@ Options:
                    a scan block, e.g. $entity->original, deprecated in
                    drupal:11.2.0 and removed from drupal:12.0.0) is
                    reported by drupilot's own scan of the module's code
-                   (php_magic_property_lines, on the code a target core
-                   runs: the deprecated callable of a DeprecationHelper
-                   call is left out) in
+                   (php_magic_property_lines, on the code a core with
+                   the deprecation runs: the deprecated callable of a
+                   DeprecationHelper call whose version is at most the
+                   deprecation's is left out) in
                    drupilot.runtime_deprecations, when there is one:
                    [{file (root-relative), line, identifier:
                    "drupilot.runtimeDeprecation", id, symbol, operation:

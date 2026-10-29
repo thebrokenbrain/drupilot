@@ -18,8 +18,9 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 - `scripts/analysis/refresh-artifacts.sh` brings a port's artifacts up to the
   module as it is, after a stage that changed it without regenerating them.
   It runs the core matrix again when `core-matrix.json` is of other sources
-  (at the PHPStan level the previous run used; a leg that failed before and
-  still fails is a verdict, not a failure), regenerates the local patch, runs
+  (at the PHPStan level the previous run used; only a failing baseline leg,
+  the target major, fails the step, every time: the Drupal 10 support is the
+  port's decision and is reported), regenerates the local patch, runs
   the pipeline's `php` and `validate` stages, which run only when their inputs
   moved, so the fixpoint gate judges the changed files too (without git,
   `fixpoint.sh` unless the worklist is current and the gate converged on it),
@@ -53,9 +54,9 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `EntityBase::$original`, verified in core source on 10.6.x, 11.1.x, 11.2.x,
   11.3.x, 11.x and 12.0.x) and lists them in `drupilot.runtime_deprecations`
   with the runtime notice core gives for each operation; the deprecated
-  callable of a `DeprecationHelper::backwardsCompatibleCall()`, drupal-rector's
-  own backwards-compatible form, is left out, and PHPStan's own totals and
-  files are unchanged. `classify-deprecations.sh` classifies them like
+  callable of a `DeprecationHelper::backwardsCompatibleCall()` whose version is
+  at most the deprecation's (drupal-rector's own backwards-compatible form) is
+  left out, and PHPStan's own totals and files are unchanged. `classify-deprecations.sh` classifies them like
   PHPStan's (soft for a Drupal 11 port, hard for 12) and also recognizes the
   notice itself in a pasted PHPUnit log; `normalize-findings.sh` makes them
   catalog findings, rule `runtime-deprecation:<id>`; the assessment counts
@@ -81,7 +82,9 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `DataProvider` or `TestWith` attribute (PHPUnit reads it otherwise), a
   `@requires` only when it is PHPUnit's; the twins carry their arguments
   (`#[PreserveGlobalState(false)]`, `#[DataProviderExternal(...)]`,
-  `#[RequiresPhpExtension('apcu')]`); every class of a file is read. The test-adaptation skill, the test engineer and
+  `#[RequiresPhpExtension('apcu')]`, `@requires PHP 8.1` ->
+  `#[RequiresPhp('>= 8.1')]`, class names fully qualified); every class of a
+  file is read. The test-adaptation skill, the test engineer and
   `/drupilot-test` add the twins and run the check. The optimizedb port of
   1.0.1 has the same latent defect in its three Functional tests.
 - A rationale can now explain what the port resolved and why it edited a file
@@ -94,10 +97,11 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   "resolved by the port"), and a key may also be the path of a file the port
   changed: its text becomes that manual edit's `why` (a file a tool changed
   too is shown under "Also explained"; with no git history any file of the
-  module may be named). A later run keeps a why only while it still explains
-  its key (`rationale_hashes`: the why of a file changed since is dropped, so
-  is that of a resolved item open again), and a new assessment empties
-  `worklist-resolved.json`. Any other key is still refused (ADR 0027,
+  module may be named). A why given before its file changed (the test stage's
+  edits) is kept and shown as such (`rationale_hashes`, `rationale_stale`),
+  the why of a resolved item open again is dropped, and each port starts
+  `worklist-resolved.json` afresh (the assess stage empties it, the upgrade
+  stage keeps only what it drops). Any other key is still refused (ADR 0027,
   amended).
 
 ## [1.0.1] - 2026-10-28

@@ -243,8 +243,10 @@ needed, not just that it is.
 `occurrences`, `source` (`tool:rule`) and `what`. Three kinds of finding land
 there:
 
-- the hard and unknown PHPStan deprecations no Drupal Rector rule covers (§3.2),
-  each item with its PHPStan `occurrences` (`rubric.manual` is their sum);
+- the hard and unknown deprecations no Drupal Rector rule covers (§3.2), each
+  item with its `occurrences` (`rubric.manual` is their sum): PHPStan's, and
+  the catalog's `runtime-deprecation:<id>` ones, which PHPStan cannot see (a
+  magic property such as `$entity->original`, hard only for a later target);
 - the **signature** findings of severity `error` (`scan-signature-changes.sh`).
   Rector and PHPStan judge the module against the ONE core in the test-bed; the
   module declares a RANGE. The catalog (`.signature_changes` in
@@ -382,8 +384,9 @@ count. Its absence never blocks the assessment.
 The verdict comes from three integer counts (ADR 0025), so two assessments of
 the same module reach the same verdict. Never recompute or override it:
 
-- `rubric.manual`: the PHPStan occurrences of the scope-current `hard` and
-  `unknown` deprecations no Drupal Rector rule changes in the same function or
+- `rubric.manual`: the occurrences of the scope-current `hard` and `unknown`
+  deprecations (PHPStan's and `runtime-deprecation:<id>`) no Drupal Rector
+  rule changes in the same function or
   method, plus the signature and port-safety findings of severity `error`
   (`manual_items`, §3.4). Soft and next-major ones never count, whatever
   `DRUPILOT_SOFT_DEPRECATIONS` says.

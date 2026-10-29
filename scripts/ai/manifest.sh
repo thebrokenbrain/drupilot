@@ -41,9 +41,14 @@
 # earlier worklist had and the port resolved (worklist-resolved.json, which
 # classify.sh keeps: the model writes the rationale against the worklist it
 # saw, and the next extraction drops the items it fixed), or the path of a
-# file the port changed, relative to the subject (the why of a manual edit:
-# manual_edits[].why). Any other key is refused; a previous manifest's
-# rationale is kept for the keys still valid.
+# file the port changed, relative to the subject: the why of a manual edit
+# (manual_edits[].why), or of a file a tool changed too (port-report.sh
+# shows it under "Also explained"); with no git history, any file of the
+# subject. Any other key is refused. A previous manifest's rationale is kept
+# for the keys still valid, except an item it listed as resolved that is
+# open again (a revert); each named file keeps the hash it had when its why
+# was given (rationale_hashes), and rationale_stale lists the files changed
+# since, whose why the report shows as given before the change.
 # The same inputs give the same document outside meta; inputs records the
 # hashes it was built from. port-report.sh renders it.
 #
@@ -277,17 +282,19 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
      | map({recipe, version, file, finding_id}) | sort_by([.file, .recipe, .finding_id])) as $codemods
   | ($codemods | map(.file) | unique) as $cfiles
   | ([$W.items[] | {lane, status}] | group_by(.lane) | map({key: .[0].lane, value: (group_by(.status) | map({key: .[0].status, value: length}) | from_entries)}) | from_entries) as $ls
-  # The previous rationale is kept for the keys still valid, and only while
-  # it still explains them: a file changed since its why was given loses it,
-  # and so does an item the previous manifest listed as resolved that is open
-  # again (a revert).
+  # The previous rationale is kept for the keys still valid, except the why
+  # of an item the previous manifest listed as resolved that is open again
+  # (a revert). A file keeps the hash it had when its why was given, so a
+  # why given before the file last changed is flagged (rationale_stale).
   | def ispath: test("^W-[0-9a-f]+$") | not;
     ([$W.items[].id]) as $wids
   | (($ratprev[0] | with_entries(select(.key as $k
         | ($keys[0] | index($k)) != null
-          and (if ($k | ispath) then (($prevhash[0][$k] // null) == null or $prevhash[0][$k] == ($curhash[0][$k] // null))
-               else (($prevres[0] | index($k)) == null or ($wids | index($k)) == null) end))))
+          and (($k | ispath) or ($prevres[0] | index($k)) == null or ($wids | index($k)) == null))))
      + $ratnew[0]) as $rat
+  | ([$rat | keys[] | select(ispath) | . as $p
+      | {key: $p, value: (if ($ratnew[0] | has($p)) then ($curhash[0][$p] // null) else ($prevhash[0][$p] // $curhash[0][$p] // null) end)}
+      | select(.value != null)] | from_entries) as $rhash
   # The resolved items the rationale names (the ones no longer in the worklist).
   | ([($res[0].items // [])[] | select(.id as $i | ($rat | has($i)) and ([$W.items[].id] | index($i) | not))
       | {id, lane, file, anchor, rationale: $rat[.id]}] | sort_by(.id)) as $resolved
@@ -310,10 +317,10 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
                          + (if $rat[.id] then {rationale: $rat[.id]} else {} end)]}
                 + (if ($resolved | length) > 0 then {resolved: $resolved} else {} end)),
      rationale: $rat,
-     # The hash each explained file had when the manifest was built (a later
-     # run drops the why of a file changed since).
-     rationale_hashes: ([$rat | keys[] | select(ispath) | {key: ., value: ($curhash[0][.] // null)} | select(.value != null)]
-                        | from_entries | if length > 0 then . else null end),
+     # The hash each explained file had when its why was given, and the
+     # files changed since (their why is shown as given before the change).
+     rationale_hashes: ($rhash | if length > 0 then . else null end),
+     rationale_stale: ([$rhash | to_entries[] | select(($curhash[0][.key] // null) != .value) | .key] | if length > 0 then . else null end),
      # The PHP window: the php -l legs and the human items of its constructs.
      php_window: (if $phpt[0] == null and $lint[0] == null and $pc[0] == null then null
                   else {floor: ($phpt[0].floor // null), target: ($phpt[0].target // null),

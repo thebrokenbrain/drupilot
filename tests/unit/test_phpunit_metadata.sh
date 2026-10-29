@@ -165,6 +165,35 @@ assert_eq "the twins with their arguments; a helper class after the test" "$(sca
 sed -e "s/^#\[Group('m')\]/#[Group('m')]\\
 #[Group('extra')]\\
 #[\\\\PHPUnit\\\\Framework\\\\Attributes\\\\RequiresPhpExtension('apcu')]/" "$T_TMP/cases.php" > "$T_TMP/cases2.php"
+# Values: a bare @requires version is a minimum; class names fully
+# qualified; a class-level relative @covers names the default class, or a
+# function without one; an apostrophe survives the twin's quoting.
+cat > "$T_TMP/vals.php" <<'EOF'
+<?php
+namespace Drupal\Tests\m\Unit;
+use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
+/**
+ * @requires PHP 8.1
+ * @requires PHPUnit 10
+ * @covers Drupal\m\Foo
+ * @covers ::m_function
+ * @testdox It's a test
+ */
+#[RunTestsInSeparateProcesses]
+class ValsTest extends UnitTestCase {}
+EOF
+assert_eq "values: >= for a bare version, a leading backslash, a function for ::name, the apostrophe kept" "$(scan "$T_TMP/vals.php" | cut -d'|' -f4)" \
+  "#[RequiresPhp('>= 8.1')]; #[RequiresPhpunit('>= 10')]; #[CoversClass(\\Drupal\\m\\Foo::class)]; #[CoversFunction('m_function')]; #[TestDox('It\\'s a test')]"
+sed -e "s/^#\[RunTestsInSeparateProcesses\]/#[RunTestsInSeparateProcesses]\\
+#[\\\\PHPUnit\\\\Framework\\\\Attributes\\\\RequiresPhp('>= 8.1')]\\
+#[\\\\PHPUnit\\\\Framework\\\\Attributes\\\\RequiresPhpunit('10')]\\
+#[\\\\PHPUnit\\\\Framework\\\\Attributes\\\\TestDox('It\\\\'s a test')]/" "$T_TMP/vals.php" > "$T_TMP/vals2.php"
+assert_eq "  the >= twin and the escaped TestDox clear theirs; a bare RequiresPhpunit('10') does not" "$(scan "$T_TMP/vals2.php" | cut -d'|' -f3)" \
+  "@requires PHPUnit 10; @covers Drupal\\m\\Foo; @covers ::m_function"
+printf '%s\n' '<?php' 'namespace Drupal\Tests\m\Unit;' 'use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;' \
+  '/**' ' * @group m' ' * @coversDefaultClass \Drupal\m\Bar' ' * @covers ::baz' ' */' '#[RunTestsInSeparateProcesses]' 'class DefTest extends UnitTestCase {}' > "$T_TMP/def.php"
+assert_eq "  a relative @covers of the class with a default class: the default class" "$(scan "$T_TMP/def.php" | cut -d'|' -f4)" \
+  "#[Group('m')]; #[CoversClass(\\Drupal\\m\\Bar::class)]"
 assert_match "  their twins clear them (the class keeps only its relative @covers)" "$(scan "$T_TMP/cases2.php" | sed -n '1p')" \
   "^13\|CasesTest\|\|\|@covers ::bar \(line 34\)\|1$"
 
@@ -200,7 +229,7 @@ use PHPUnit\\Framework\\Attributes\\RunTestsInSeparateProcesses;/' \
 t_run "$T_SH" "$PS" --subject "$M" --checks test-phpunit-metadata --base HEAD --json
 assert_match "  only the relative @covers left: name the method in full, no lost group" "$(jq -r '.findings[0].message' "$T_OUT")" \
   "its @coversDefaultClass is ignored as well, so @covers ::preSave \(line 26\) is invalid"
-assert_eq "  (no claim about the group \"default\")" "$(jq -r '.findings[0].message' "$T_OUT" | grep -c 'group \"default\"')" "0"
+assert_eq "  (no claim about the group \"default\")" "$(jq -r '.findings[0].message' "$T_OUT" | grep -c 'group "default"')" "0"
 # The base admitted no Drupal 11: the port's range change made it break.
 printf 'name: M\ntype: module\ncore_version_requirement: ^9.5 || ^10\n' > "$M/m.info.yml"
 cp "$T_TMP/ported.php" "$M/tests/src/Kernel/PreservedChangedItemTest.php"
@@ -209,6 +238,15 @@ printf 'name: M\ntype: module\ncore_version_requirement: ^10 || ^11\n' > "$M/m.i
 t_run "$T_SH" "$PS" --subject "$M" --checks test-phpunit-metadata --base HEAD --json
 assert_eq "  the attribute was there, the port widened the range to Drupal 11: an error" \
   "$T_RC|$(jq -c '[.findings[] | [.severity, .introduced]]' "$T_OUT")" '3|[["error",true]]'
+# A class whose hidden list holds a '::' still gets the "default" group
+# clause (only a method record is spared it).
+M2="$T_TMP/m2"; mkdir -p "$M2/tests/src/Unit"
+printf 'name: M2\ntype: module\ncore_version_requirement: ^10 || ^11\n' > "$M2/m2.info.yml"
+printf '%s\n' '<?php' 'namespace Drupal\Tests\m2\Unit;' 'use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;' \
+  '/**' ' * @group m2' ' * @covers \Drupal\m2\Foo::bar' ' */' '#[RunTestsInSeparateProcesses]' 'class ColonTest extends UnitTestCase {}' \
+  > "$M2/tests/src/Unit/ColonTest.php"
+t_run "$T_SH" "$PS" --subject "$M2" --checks test-phpunit-metadata --no-diff --json
+assert_match "  a class with '::' in its hidden list keeps the default-group clause" "$(jq -r '.findings[0].message' "$T_OUT")" 'group "default"'
 cp "$T_TMP/repaired.php" "$M/tests/src/Kernel/PreservedChangedItemTest.php"
 t_run "$T_SH" "$PS" --subject "$M" --json
 assert_eq "  repaired: every check passes" "$T_RC|$(jq -c '[.errors, .warnings]' "$T_OUT")" "0|[0,0]"

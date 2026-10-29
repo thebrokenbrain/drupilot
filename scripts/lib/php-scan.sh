@@ -862,10 +862,16 @@ END {
   for (i = 2; i <= nl; i++) bs[i] = bs[i - 1] + length(L[i - 1]) + 1
   split(raw, R, "\n")
   spans()
-  # The blank mode: the file with every fallback closure blanked.
+  # The blank mode: the file with every fallback closure blanked (with
+  # AWKV_MAXV, only the ones whose version is known and at most it).
   if (ENVIRON["AWKV_MODE"] == "blank") {
-    out = buf
+    out = buf; mx = ENVIRON["AWKV_MAXV"]
     for (s = 1; s <= ns; s++) {
+      if (mx != "") {
+        if (sv[s] == "?") continue
+        split(sv[s] ".0.0", va, "."); split(mx ".0.0", vb, ".")
+        if (va[1] + 0 > vb[1] + 0 || (va[1] + 0 == vb[1] + 0 && (va[2] + 0 > vb[2] + 0 || (va[2] + 0 == vb[2] + 0 && va[3] + 0 > vb[3] + 0)))) continue
+      }
       seg = substr(out, sa[s], sb[s] - sa[s] + 1); gsub(/[^\n]/, " ", seg)
       out = substr(out, 1, sa[s] - 1) seg substr(out, sb[s] + 1)
     }
@@ -922,15 +928,17 @@ php_bc_fallback_calls() {
   return 0
 }
 
-# php_bc_blank_fallbacks BLANKED RAW -> BLANKED with the fallback closure of
-# every DeprecationHelper::backwardsCompatibleCall() (the spans
+# php_bc_blank_fallbacks BLANKED RAW [MAXV] -> BLANKED with the fallback
+# closure of every DeprecationHelper::backwardsCompatibleCall() (the spans
 # php_bc_fallback_calls reads) blanked, the lines kept: the code a target
-# core runs. BLANKED unchanged when the file has no such call.
+# core runs. With MAXV (X.Y.Z), only the fallbacks whose version (the call's
+# second argument, a literal) is at most MAXV: the ones no core from MAXV on
+# runs. BLANKED unchanged when the file has no such call.
 php_bc_blank_fallbacks() {
-  local b="${1:-}" r="${2:-}"
+  local b="${1:-}" r="${2:-}" mx="${3:-}"
   [[ -f "$b" && -f "$r" ]] || return 0
   if ! LC_ALL=C grep -q -i 'backwardscompatiblecall' "$b" 2> /dev/null; then cat "$b"; return 0; fi
-  AWKV_MODE=blank LC_ALL=C awk "$_PHP_BC_AWK" "$b" "$r" 2> /dev/null || true
+  AWKV_MODE=blank AWKV_MAXV="$mx" LC_ALL=C awk "$_PHP_BC_AWK" "$b" "$r" 2> /dev/null || true
   return 0
 }
 
@@ -1032,12 +1040,18 @@ php_phpunit_hidden_metadata() {
   LC_ALL=C grep -q -F '#[' "$f" 2> /dev/null || return 0
   LC_ALL=C awk '
 function trim(s) { sub(/^[ \t\r\n]+/, "", s); sub(/[ \t\r\n]+$/, "", s); return s }
-function unq(s) { s = trim(s); sub(/^[\047"]/, "", s); sub(/[\047"]$/, "", s); return s }
+function unq(s) { s = trim(s); sub(/^[\047"]/, "", s); sub(/[\047"]$/, "", s); gsub("\\\\\047", "\047", s); return s }
 function q(s) { gsub(/\047/, "\\\047", s); return "\047" s "\047" }
 # boolv(VALUE) -> true/false for enabled/disabled or true/false, else "".
 function boolv(v) { v = tolower(unq(v)); return (v == "enabled" || v == "true") ? "true" : ((v == "disabled" || v == "false") ? "false" : "") }
-# cls(NAME) -> NAME as a class constant expression (Foo -> Foo::class).
-function cls(n) { n = trim(n); return n "::class" }
+# cls(NAME) -> NAME as a class constant expression. An annotation names a
+# class fully qualified, an attribute relative to the namespace: \Foo::class.
+function cls(n) { n = trim(n); if (substr(n, 1, 1) != "\\") n = "\\" n; return n "::class" }
+# vreq(VERSION) -> the constraint an annotation version means: a bare one is
+# a minimum (PHPUnit reads @requires PHP 8.1 as >= 8.1, an attribute bare
+# version as 8.1.*).
+function vreq(v) { v = trim(v); return (v ~ /^[0-9]/) ? ">= " v : v }
+function nows(v) { gsub(/[ \t]/, "", v); return v }
 function add_import(t,   nm, al) {
   t = trim(t); nm = t; al = t
   if (match(t, /[ \t]+as[ \t]+/)) { nm = trim(substr(t, 1, RSTART - 1)); al = trim(substr(t, RSTART + RLENGTH)) }
@@ -1112,10 +1126,15 @@ function twin(t, v,   i, x, w) {
   if (x == "requires") w = req(v)
   for (i = 1; i <= na; i++) {
     if (x == "group" || x == "ticket" || x == "testdox") { if (an[i] == x && unq(aa[i]) == v) return 1; continue }
-    if (x == "covers" || x == "uses") { if (an[i] ~ ("^" x "(class|function|method|trait)$")) return 1; continue }
+    if (x == "covers" || x == "uses") { if (an[i] ~ ("^" x "(class|function|method|trait)$") && arg1(aa[i]) != "") return 1; continue }
     if (x == "backupglobals" || x == "preserveglobalstate") { if (an[i] == x && (boolv(v) == "" || boolv(aa[i]) == boolv(v))) return 1; continue }
     if (x == "backupstaticattributes" || x == "backupstaticproperties") { if (an[i] == "backupstaticproperties" && (boolv(v) == "" || boolv(aa[i]) == boolv(v))) return 1; continue }
-    if (x == "requires") { if (an[i] == w && (w != "requiresphpextension" || arg1(aa[i]) == first(rest(v)))) return 1; continue }
+    if (x == "requires") {
+      if (an[i] != w) continue
+      if (w == "requiresphp" || w == "requiresphpunit") { if (nows(unq(aa[i])) == nows(vreq(rest(v)))) return 1; continue }
+      if (w == "requiresphpextension") { if (arg1(aa[i]) == first(rest(v))) return 1; continue }
+      return 1
+    }
     if (x == "dataprovider" || x == "depends" || x == "testwith") { if (index(an[i], x) == 1) return 1; continue }
     if (an[i] == x) return 1
   }
@@ -1139,6 +1158,13 @@ function sugg(t, v,   x, w, r, a, b) {
   }
   if (x == "covers" || x == "uses") {
     w = (x == "covers") ? "Covers" : "Uses"; a = v
+    # A relative ::name: a method of the default class, else a
+    # global function.
+    if (substr(a, 1, 2) == "::") {
+      b = (x == "covers") ? cdv : udv
+      if (b != "") return "#[" w "Class(" cls(b) ")]"
+      return "#[" w "Function(" q(substr(a, 3)) ")]"
+    }
     if (index(a, "::") > 0) a = substr(a, 1, index(a, "::") - 1)
     if (a ~ /\\/ || a ~ /^[A-Z]/) return "#[" w "Class(" cls(a) ")]"
     return "#[" w "Function(" q(a) ")]"
@@ -1151,13 +1177,13 @@ function sugg(t, v,   x, w, r, a, b) {
   if (x == "testwith") return "#[TestWith(...)]"
   if (x == "requires") {
     w = req(v); r = rest(v)
-    if (w == "requiresphp") return "#[RequiresPhp(" q(r) ")]"
-    if (w == "requiresphpunit") return "#[RequiresPhpunit(" q(r) ")]"
+    if (w == "requiresphp") return "#[RequiresPhp(" q(vreq(r)) ")]"
+    if (w == "requiresphpunit") return "#[RequiresPhpunit(" q(vreq(r)) ")]"
     if (w == "requiresoperatingsystem") return "#[RequiresOperatingSystem(" q(r) ")]"
     if (w == "requiresoperatingsystemfamily") return "#[RequiresOperatingSystemFamily(" q(r) ")]"
     if (w == "requiresfunction") return "#[RequiresFunction(" q(r) ")]"
     if (w == "requiresmethod") { a = substr(r, 1, index(r, "::") - 1); b = substr(r, index(r, "::") + 2); return "#[RequiresMethod(" cls(a) ", " q(b) ")]" }
-    if (w == "requiresphpextension") { a = r; sub(/[ \t].*$/, "", a); b = rest(r); return "#[RequiresPhpExtension(" q(a) (b == "" ? "" : ", " q(b)) ")]" }
+    if (w == "requiresphpextension") { a = r; sub(/[ \t].*$/, "", a); b = rest(r); return "#[RequiresPhpExtension(" q(a) (b == "" ? "" : ", " q(vreq(b))) ")]" }
     if (w == "requiressetting") { a = r; sub(/[ \t].*$/, "", a); return "#[RequiresSetting(" q(a) ", " q(rest(r)) ")]" }
   }
   return "#[" toupper(substr(t, 1, 1)) substr(t, 2) "]"
@@ -1188,6 +1214,10 @@ function level(name, kind,   k, h, w, g) {
     return
   }
   h = ""; w = ""
+  if (kind == "class") {
+    cdv = ""; udv = ""
+    for (k = 1; k <= nd; k++) { if (dt[k] == "coversDefaultClass") cdv = dv[k]; if (dt[k] == "usesDefaultClass") udv = dv[k] }
+  }
   for (k = 1; k <= nd; k++) {
     if (kind == "class" && (dt[k] == "coversDefaultClass" || dt[k] == "usesDefaultClass")) { cdc = 1; continue }
     if (!hidden(dt[k], dv[k], kind) || twin(dt[k], dv[k])) continue

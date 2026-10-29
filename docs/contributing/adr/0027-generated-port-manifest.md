@@ -73,9 +73,10 @@ null, since no input reached it.
   text is that manual edit's `why`, and the why of a file Rector, the attribute pass or a codemod changed
   too is shown under "Also explained". With no git history there is no diff, so any file of the module
   may be named.
-- **No stale why.** A later run keeps the rationale only while it still explains its key: the manifest
-  records the hash of each named file (`rationale_hashes`) and drops the why of a file changed since; an
-  item the previous manifest listed as resolved loses its why when it is open again (a revert); and the
-  assess stage's worklist empties `worklist-resolved.json`, so an earlier port's items never name this
-  one's.
+- **No silent stale why.** The manifest records the hash each named file had when its why was given
+  (`rationale_hashes`) and lists the files changed since (`rationale_stale`); the report shows their why as
+  given before the change, so the test stage's later edits never erase the port's explanations. An item
+  the previous manifest listed as resolved loses its why when it is open again (a revert). A port starts
+  `worklist-resolved.json` afresh: the assess stage's worklist empties it, and the upgrade stage's keeps
+  only what it drops, so an earlier port's items never name this one's.
 - Any other key is still refused (exit 1).

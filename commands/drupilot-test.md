@@ -195,12 +195,15 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/refresh-artifacts.sh" --subject "$1
 ```
 
 It re-runs the core matrix when `core-matrix.json` is of other sources,
-regenerates the local patch, extracts again when the worklist is of other
-sources (the pipeline's `php,validate,report` stages: the fixpoint gate judges
-the adapted tests too), and renders `port-report.md` with this run. A module
-drupilot has not ported has nothing to refresh. A step that fails (exit `3`)
-is reported with its reason: fix what it found (a finding the fixpoint gate
-reports in an adapted test is fixed like any other) and run it again.
+regenerates the local patch, asks the pipeline for its `php` and `validate`
+stages (they run when their inputs moved, and the fixpoint gate judges the
+adapted tests too; validate stays failed until the gate converges), and
+renders the manifest and `port-report.md` with this run. A module drupilot
+has not ported has nothing to refresh. A step that fails (exit `3`) is
+reported with its reason: fix what it found (a finding the fixpoint gate
+reports in an adapted test is fixed like any other) and run it again. The
+Drupal 10 support it reports is the port's decision; only a failing Drupal 11
+leg fails the step.
 
 ## Step 7 — Report
 

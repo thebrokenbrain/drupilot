@@ -7,7 +7,9 @@
 # only narrates it.
 #
 #   manual         the occurrences of scope-current PHPStan deprecations of
-#                  class hard or unknown that no Drupal Rector rule changes in
+#                  class hard or unknown (and of the scan for the
+#                  deprecations PHPStan cannot see, runtime-deprecation:<id>
+#                  catalog findings) that no Drupal Rector rule changes in
 #                  the same function or method (a DrupalRector\ rule, or the
 #                  Renaming/Transform/Arguments/Removing rules drupal-rector
 #                  configures, at the same (file, anchor); a file-level anchor,

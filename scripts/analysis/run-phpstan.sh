@@ -46,9 +46,10 @@
 #                    a scan block, e.g. $entity->original, deprecated in
 #                    drupal:11.2.0 and removed from drupal:12.0.0) is
 #                    reported by drupilot's own scan of the module's code
-#                    (php_magic_property_lines, on the code a target core
-#                    runs: the deprecated callable of a DeprecationHelper
-#                    call is left out) in
+#                    (php_magic_property_lines, on the code a core with
+#                    the deprecation runs: the deprecated callable of a
+#                    DeprecationHelper call whose version is at most the
+#                    deprecation's is left out) in
 #                    drupilot.runtime_deprecations, when there is one:
 #                    [{file (root-relative), line, identifier:
 #                    "drupilot.runtimeDeprecation", id, symbol, operation:
@@ -300,23 +301,25 @@ fi
 # config/deprecations.json scans for (its scan block), with core's runtime
 # notice for the operation (DET-2: sorted).
 runtime_deprecations() {
-  local cat f rel sid prop line op
+  local cat f rel sid prop depin line op
   cat="$(plugin_root)/config/deprecations.json"
   jq -r '(.lifecycle // [])[] | select(((.scan.magic_property // "") | test("^[A-Za-z_][A-Za-z0-9_]*$")) and (.scan.id // "") != "")
-         | [.scan.id, .scan.magic_property] | join("\t")' "$cat" > "$OUT_F.rtcat" 2> /dev/null || true
+         | [.scan.id, .scan.magic_property, (.deprecated_in // "")] | join("\t")' "$cat" > "$OUT_F.rtcat" 2> /dev/null || true
   : > "$OUT_F.rt"
   if [[ -s "$OUT_F.rtcat" ]]; then
     find "$SUBJECT_ABS" -type f \( -name '*.php' -o -name '*.module' -o -name '*.inc' -o -name '*.install' \
       -o -name '*.theme' -o -name '*.profile' -o -name '*.engine' \) \
       -not -path '*/vendor/*' -not -path '*/node_modules/*' -not -path '*/.git/*' 2> /dev/null | LC_ALL=C sort > "$OUT_F.rtfiles"
     while IFS= read -r f; do
-      # The code a target core runs: the deprecated callable of a
-      # DeprecationHelper::backwardsCompatibleCall() (drupal-rector's own BC
-      # form) runs only on a core older than its version, so it is blanked.
       php_code_lines "$f" > "$OUT_F.rtcode"
-      php_bc_blank_fallbacks "$OUT_F.rtcode" "$f" > "$OUT_F.rtblank"
       rel="${f#"$DRUPAL_ROOT"/}"
-      while IFS=$'\t' read -r sid prop; do
+      while IFS=$'\t' read -r sid prop depin; do
+        # The code a core with the deprecation runs: the deprecated callable
+        # of a DeprecationHelper::backwardsCompatibleCall() (drupal-rector's
+        # own BC form) runs only on a core older than its version, so it is
+        # left out when that version is at most the deprecation's.
+        if [[ -n "$depin" ]]; then php_bc_blank_fallbacks "$OUT_F.rtcode" "$f" "$depin" > "$OUT_F.rtblank"
+        else cp "$OUT_F.rtcode" "$OUT_F.rtblank"; fi
         php_magic_property_lines "$OUT_F.rtblank" "$prop" | while IFS=$'\t' read -r line op; do
           printf '%s\t%s\t%s\t%s\n' "$rel" "$line" "$sid" "$op"
         done

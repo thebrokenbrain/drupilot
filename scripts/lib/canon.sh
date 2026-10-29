@@ -260,10 +260,12 @@ worklist_resolved_file() {
 # worklist.json file) replaces the subject's worklist, adds the items of the
 # current worklist that NEW_WORKLIST has not to worklist-resolved.json, and
 # drops an item NEW_WORKLIST has again: {schema: 1, items: [{id, lane, file,
-# anchor, reason, stage}]}, sorted by id, the latest record of an id kept. A
-# worklist of the assess stage starts a new port: the record starts empty
-# (what an earlier port resolved never names this one's items). Atomic (a
-# temporary file, then mv); never fails the caller.
+# anchor, reason, stage}]}, sorted by id, the latest record of an id kept.
+# A port starts the record afresh, so what an earlier port resolved never
+# names this one's items: a worklist of the assess stage empties it, and one
+# of the upgrade stage (the first stage of /drupilot-port's pipeline, which a
+# re-port runs without assessing again) keeps only the items it drops now.
+# Atomic (a temporary file, then mv); never fails the caller.
 worklist_resolved_update() {
   local s="${1:-$PWD}" new="${2:-}" w r d tmp
   w="$(worklist_file "$s")"; r="$(worklist_resolved_file "$s")"
@@ -275,10 +277,11 @@ worklist_resolved_update() {
   [[ -n "$tmp" ]] || return 0
   if jq -n --slurpfile n "$new" --slurpfile o "$w" --slurpfile p "$r" '
        ([($n[0].items // [])[] | .id]) as $now
-       | if (($n[0] // {}).stage // "") == "assess" then []
+       | (($n[0] // {}).stage // "") as $ns
+       | if $ns == "assess" then []
          else [ ((($o[0] // {}).items // [])[] | {id: .id, lane: .lane, file: .file, anchor: .anchor,
                                                    reason: (.reason // null), stage: (($o[0] // {}).stage // null)}),
-                ((($p[0] // {}).items // [])[]) ]
+                (if $ns == "upgrade" then empty else ((($p[0] // {}).items // [])[]) end) ]
               | map(select((.id | type) == "string" and (.id as $i | $now | index($i) | not)))
               | unique_by(.id) end
        | {schema: 1, items: .}' 2> /dev/null | canon_json > "$tmp" 2> /dev/null \

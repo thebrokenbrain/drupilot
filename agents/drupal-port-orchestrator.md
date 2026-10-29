@@ -489,9 +489,10 @@ When it returns, refresh what the port wrote before the tests changed:
 when stale, the local patch, the pipeline's php and validate stages when their
 inputs moved, the manifest, and `port-report.md` with the last run). In a layer
 run, add `--output <the module's report directory>`, the one its port stage
-wrote to. A failed step (exit `3`) is reported with its reason (a Drupal 10 leg
-that failed before and still fails is a verdict, not a failure); fix it before
-the stage counts as done.
+wrote to. A failed step (exit `3`) is reported with its reason; fix it before
+the stage counts as done. The Drupal 10 support it reports is the port's
+decision (fix, raise the floor, drop it or keep it declared): only a failing
+Drupal 11 baseline leg fails the core-matrix step.
 
 ### Stage 6 — contribute (gate: `contribute`; conditional) -> delegate
 

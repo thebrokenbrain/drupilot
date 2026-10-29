@@ -249,14 +249,20 @@ t_run "$T_SH" "$T_REPO/scripts/analysis/port-report.sh" --subject "$S" --manifes
 REP="$(cat "$(t_out)" 2> /dev/null || true)"
 assert_match "  port-report.sh shows its why under Also explained" "$REP" '^_Also explained:_$'
 assert_match "  (the line)" "$REP" '^- `src/Form/WidgetImportForm.php` \(changed by Rector, the attribute pass or a codemod too\) — _why:_ After Rector'
-# A why outlives neither its file nor its item.
+# A why given before its file changed is flagged; a reopened item loses its why.
 assert_eq "  the manifest keeps the hash of each explained file" "$(jq -c '.rationale_hashes | keys' "$SD/port-manifest.json")" \
   '["legacy_widgets.info.yml","src/Form/WidgetImportForm.php"]'
 cp "$S/legacy_widgets.info.yml" "$T_TMP/info2.keep"; printf '# edited later\n' >> "$S/legacy_widgets.info.yml"
 mf --json
-assert_eq "a file changed since its why was given: the why is dropped" \
-  "$(jq -c '[(.rationale | has("legacy_widgets.info.yml")), (.manual_edits[] | select(.edit == "legacy_widgets.info.yml") | .why)]' "$T_OUT")" '[false,null]'
+assert_eq "a file changed since its why was given: the why is kept, flagged as given before the change" \
+  "$(jq -c '[(.rationale | has("legacy_widgets.info.yml")), .rationale_stale]' "$T_OUT")" '[true,["legacy_widgets.info.yml"]]'
+assert_eq "  it validates against the schema" "$(valid "$T_OUT")" ""
+t_run "$T_SH" "$T_REPO/scripts/analysis/port-report.sh" --subject "$S" --manifest "$SD/port-manifest.json"
+assert_match "  port-report.sh says so" "$(cat "$(t_out)" 2> /dev/null)" \
+  '^- legacy_widgets.info.yml — _why:_ core_version_requirement raised to the recommended range\. _\(given before the file last changed\)_'
 cp "$T_TMP/info2.keep" "$S/legacy_widgets.info.yml"
+mf --json
+assert_eq "  the file back as it was: not flagged" "$(jq -c '.rationale_stale' "$T_OUT")" "null"
 jq '.items += [{id: "W-00000000000a", lane: "ai-free", file: "src/Form/WidgetImportForm.php", anchor: "{file}",
       finding_ids: [], recipes: [], blocking: true, reason: null, status: "open"}]' "$T_TMP/w.keep" > "$SD/worklist.json"
 mf --json
@@ -279,6 +285,16 @@ mv "$T_TMP/git2.keep" "$S/.git"
 t_run "$T_SH" "$T_REPO/scripts/ai/classify.sh" --subject "$S" --core-floor 10.0
 assert_eq "classify.sh at the assess stage: worklist-resolved.json emptied" \
   "$T_RC|$(jq -c '.items' "$(worklist_resolved_file "$S")")" '0|[]'
+# The upgrade stage (a re-port without a new assessment) keeps only what it drops now.
+printf '{"schema": 1, "items": [{"id": "W-0000000000bb", "lane": "ai-free", "file": "old.php", "anchor": "{file}", "reason": null, "stage": "validate"}]}\n' \
+  > "$(worklist_resolved_file "$S")"
+jq '.items += [{id: "W-0000000000cc", lane: "ai-free", file: "src/Form/WidgetImportForm.php", anchor: "{file}",
+      finding_ids: [], recipes: [], blocking: true, reason: null, status: "open"}]' "$T_TMP/w.keep" > "$SD/worklist.json"
+cp "$SD/findings.json" "$T_TMP/f1.keep"; jq '.stage = "upgrade"' "$T_TMP/f1.keep" > "$SD/findings.json"
+t_run "$T_SH" "$T_REPO/scripts/ai/classify.sh" --subject "$S" --core-floor 10.0
+cp "$T_TMP/f1.keep" "$SD/findings.json"
+assert_eq "classify.sh at the upgrade stage: only the items it drops now" \
+  "$T_RC|$(jq -c '[.items[].id]' "$(worklist_resolved_file "$S")")" '0|["W-0000000000cc"]'
 cp "$T_TMP/w.keep" "$SD/worklist.json"
 
 # deprecations_remaining counts the scan's deprecations PHPStan cannot see.
