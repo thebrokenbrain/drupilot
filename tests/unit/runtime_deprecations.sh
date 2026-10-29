@@ -91,6 +91,28 @@ assert_eq "  drupilot.runtime_deprecations: each access, sorted, root-relative" 
 assert_match "  the message is core's runtime notice of the operation" \
   "$(jq -r '.drupilot.runtime_deprecations[1].message' "$T_TMP/stan.json")" \
   '^Unsetting the original property is deprecated in drupal:11\.2\.0 and is removed from drupal:12\.0\.0\. .*\(drupilot source scan: '
+cp "$M/src/Item.php" "$T_TMP/item.keep"
+cat > "$M/src/Item.php" <<'EOF'
+<?php
+namespace Drupal\m;
+use Drupal\Component\Utility\DeprecationHelper;
+class Item {
+  public function preSave($entity) {
+    $original = DeprecationHelper::backwardsCompatibleCall(\Drupal::VERSION, '11.2.0', fn() => $entity->getOriginal(), fn() => $entity->original);
+  }
+}
+EOF
+t_run env PATH="$STUBS:$PATH" DRUPILOT_DETERMINISTIC=false "$T_SH" "$T_REPO/scripts/analysis/run-phpstan.sh" --subject "$M" --json
+assert_eq "  the deprecated callable of a DeprecationHelper call (drupal-rector's BC form) is left out" \
+  "$(jq -c '.drupilot | has("runtime_deprecations")' "$T_OUT")" "false"
+# Hundreds of accesses: the records never go through one argv string.
+{ printf '<?php\nnamespace Drupal\\m;\nclass Many {\n  public function f($entity) {\n'
+  i=0; while [[ $i -lt 400 ]]; do printf '    $x%s = $entity->original;\n' "$i"; i=$((i + 1)); done
+  printf '  }\n}\n'; } > "$M/src/Many.php"
+t_run env PATH="$STUBS:$PATH" DRUPILOT_DETERMINISTIC=false "$T_SH" "$T_REPO/scripts/analysis/run-phpstan.sh" --subject "$M" --json
+assert_eq "  400 accesses: exit 0, every one reported" "$T_RC|$(jq -c '.drupilot.runtime_deprecations | length' "$T_OUT")" "0|400"
+rm -f "$M/src/Many.php"
+cp "$T_TMP/item.keep" "$M/src/Item.php"
 sed_inplace "$M/src/Item.php" -e 's/\$entity->original/$entity->getOriginal()/' -e '/unset/d'
 t_run env PATH="$STUBS:$PATH" DRUPILOT_DETERMINISTIC=false "$T_SH" "$T_REPO/scripts/analysis/run-phpstan.sh" --subject "$M" --json
 assert_eq "  none left: no runtime_deprecations key" "$(jq -c '.drupilot | has("runtime_deprecations")' "$T_OUT")" "false"

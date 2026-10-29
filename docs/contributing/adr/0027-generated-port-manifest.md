@@ -70,5 +70,12 @@ null, since no input reached it.
   lists the ones it names, with their why, under `worklist.resolved`, and `port-report.sh` renders them
   as resolved by the port.
 - **Manual edits.** A key may also be the path of a file the port changed, relative to the module: its
-  text is that manual edit's `why`.
-- Any other key is still refused (exit 1), and a later run keeps the rationale of the keys still valid.
+  text is that manual edit's `why`, and the why of a file Rector, the attribute pass or a codemod changed
+  too is shown under "Also explained". With no git history there is no diff, so any file of the module
+  may be named.
+- **No stale why.** A later run keeps the rationale only while it still explains its key: the manifest
+  records the hash of each named file (`rationale_hashes`) and drops the why of a file changed since; an
+  item the previous manifest listed as resolved loses its why when it is open again (a revert); and the
+  assess stage's worklist empties `worklist-resolved.json`, so an earlier port's items never name this
+  one's.
+- Any other key is still refused (exit 1).

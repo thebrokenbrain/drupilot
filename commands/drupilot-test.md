@@ -75,7 +75,9 @@ Before running, adapt the discovered tests for D11 (the skill lists the specific
   too) makes PHPUnit 10/11 ignore that level's doc-comment metadata: add each
   annotation's twin next to it (`@group foo` -> `#[Group('foo')]`) and write
   a relative `@covers ::name` in full; keep the annotations while the range
-  admits Drupal 10, whose PHPUnit 9 reads only them. Then run the checks:
+  admits Drupal 10, whose PHPUnit 9 reads only them. A `Covers*`/`Uses*`
+  attribute goes on the class, never on a method (PHPUnit aborts). Then run
+  the checks:
 
   ```bash
   bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/check-port-safety.sh" --subject <DIR> --checks test-label-markup,test-phpunit-metadata

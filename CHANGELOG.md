@@ -17,13 +17,16 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 - `scripts/analysis/refresh-artifacts.sh` brings a port's artifacts up to the
   module as it is, after a stage that changed it without regenerating them.
-  It runs the core matrix again when `core-matrix.json` is of other sources,
-  regenerates the local patch, extracts again when the worklist is of other
-  sources (the pipeline's `php,validate,report` stages, so the fixpoint gate
-  judges the changed files too), and renders the manifest and
-  `port-report.md` with the last test run. Each step says whether it ran, was
-  up to date or was skipped (`--json`, `--dry-run`, `--skip`); a failed step
-  exits 3. `/drupilot-test` (Step 6), the test-adaptation skill and the
+  It runs the core matrix again when `core-matrix.json` is of other sources
+  (at the PHPStan level the previous run used; a leg that failed before and
+  still fails is a verdict, not a failure), regenerates the local patch, runs
+  the pipeline's `php` and `validate` stages, which run only when their inputs
+  moved, so the fixpoint gate judges the changed files too (without git,
+  `fixpoint.sh` unless the worklist is current and the gate converged on it),
+  and renders the manifest and `port-report.md` with the last test run,
+  recording no stage. Each step says whether it ran, was up to date or was
+  skipped (`--json`, `--dry-run`, `--skip`, `--output` for a layer run's
+  per-module report); a failed step exits 3. `/drupilot-test` (Step 6), the test-adaptation skill and the
   orchestrator's test stage run it once the suite has run, and the pipeline
   catalog's test stage gains the `refresh` sub-step. Porting preserve_changed
   showed the gap: after the test stage adapted the tests, the local patch,
@@ -49,8 +52,10 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   entry of `config/deprecations.json` with a `scan` block:
   `EntityBase::$original`, verified in core source on 10.6.x, 11.1.x, 11.2.x,
   11.3.x, 11.x and 12.0.x) and lists them in `drupilot.runtime_deprecations`
-  with the runtime notice core gives for each operation; PHPStan's own totals
-  and files are unchanged. `classify-deprecations.sh` classifies them like
+  with the runtime notice core gives for each operation; the deprecated
+  callable of a `DeprecationHelper::backwardsCompatibleCall()`, drupal-rector's
+  own backwards-compatible form, is left out, and PHPStan's own totals and
+  files are unchanged. `classify-deprecations.sh` classifies them like
   PHPStan's (soft for a Drupal 11 port, hard for 12) and also recognizes the
   notice itself in a pasted PHPUnit log; `normalize-findings.sh` makes them
   catalog findings, rule `runtime-deprecation:<id>`; the assessment counts
@@ -69,8 +74,14 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `@coversDefaultClass`. The finding names the annotations with no attribute
   twin and the twins to add (`#[Group('preserve_changed')]`), keeping the
   annotations while the range admits Drupal 10, whose PHPUnit 9 reads only
-  them: an error when the port added the attribute, a warning when it was
-  already there. The test-adaptation skill, the test engineer and
+  them: an error when the port added the attribute or when its range change
+  made the metadata break, a warning otherwise. A method's `@covers` and
+  `@uses` are left alone (no attribute can carry them on a method, and a
+  hidden one is never read); a `@testWith` counts only next to a
+  `DataProvider` or `TestWith` attribute (PHPUnit reads it otherwise), a
+  `@requires` only when it is PHPUnit's; the twins carry their arguments
+  (`#[PreserveGlobalState(false)]`, `#[DataProviderExternal(...)]`,
+  `#[RequiresPhpExtension('apcu')]`); every class of a file is read. The test-adaptation skill, the test engineer and
   `/drupilot-test` add the twins and run the check. The optimizedb port of
   1.0.1 has the same latent defect in its three Functional tests.
 - A rationale can now explain what the port resolved and why it edited a file
@@ -81,8 +92,13 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   the items a new worklist drops in `worklist-resolved.json`, a rationale may
   name them (the manifest lists them under `worklist.resolved`, the report as
   "resolved by the port"), and a key may also be the path of a file the port
-  changed: its text becomes that manual edit's `why`. Any other key is still
-  refused (ADR 0027, amended).
+  changed: its text becomes that manual edit's `why` (a file a tool changed
+  too is shown under "Also explained"; with no git history any file of the
+  module may be named). A later run keeps a why only while it still explains
+  its key (`rationale_hashes`: the why of a file changed since is dropped, so
+  is that of a resolved item open again), and a new assessment empties
+  `worklist-resolved.json`. Any other key is still refused (ADR 0027,
+  amended).
 
 ## [1.0.1] - 2026-10-28
 

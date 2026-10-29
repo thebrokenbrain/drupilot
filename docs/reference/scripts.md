@@ -633,7 +633,9 @@ Checks (--checks selects a subset; default all):
                      method's relative @covers ::name becomes invalid
                      without the ignored @coversDefaultClass (lab L-PC).
                      PHPUnit 9 (Drupal 10) reads the annotations only:
-                     keep them and add the twins.
+                     keep them and add the twins. In diff mode, a line
+                     the port left alone is attributed to the port when
+                     the range at the base admitted no such core.
 
 Diff-aware: when the subject is tracked by git, every finding is attributed —
 "introduced" (on a line the port added/changed vs the pre-port base) or
@@ -1878,30 +1880,40 @@ changes the module without regenerating them: the test stage adapts the
 tests after the port wrote its local patch, its core matrix and its report
 (lab L-PC: all three were left from before those changes, and the report
 still said nothing of the run). The steps, in this order:
-  core-matrix  verify-core-matrix.sh again, when core-matrix.json records
-               other sources than the module's now (its subject_digest),
-               the declared range admits the previous major and
+  core-matrix  verify-core-matrix.sh again, at the PHPStan level the
+               previous run used, when core-matrix.json records other
+               sources than the module's now (its subject_digest), the
+               declared range admits the previous major and
                DRUPILOT_VERIFY_CORES is not off. With no core-matrix.json
-               there is nothing to refresh.
+               there is nothing to refresh. A leg that fails (exit 3) is a
+               verdict: the step ran, and it fails only when the verdict
+               is worse than the one it replaces.
   patch        make-patch.sh --local (a git checkout only): the same tree
                gives the same patch, so it always runs.
-  extraction   when the worklist comes from other sources than the module
-               now (worklist_fresh): with a git repository the pipeline's
-               last stages (pipeline.sh --stages php,validate,report, with
-               the manifest's phase; its fixpoint gate judges the changed
-               files too), else extract.sh, normalize-findings.sh and
-               classify.sh at stage validate
+  extraction   with a git repository, the pipeline's php and validate
+               stages (pipeline.sh, with the manifest's phase): it runs
+               only the stages whose inputs moved, and its fixpoint gate
+               judges the changed files too (validate stays failed until
+               the gate converges); without one, fixpoint.sh (the
+               extraction again and the same gate) unless the worklist is
+               of the module as it is (worklist_fresh) and fixpoint.json
+               converged on it (with DRUPILOT_FIXPOINT=off, the extraction
+               alone when the worklist is stale)
   manifest     manifest.sh, which keeps the earlier rationale
-  report       port-report.sh --manifest, which also reads the last test
-               run
+  report       port-report.sh with the module's own manifest, which also
+               reads the last test run; it records no stage (the test stage
+               already did)
 A module drupilot has not ported (no port-manifest.json in its state dir)
 has nothing to refresh. Every step reports its status, and a failed step
 never stops the next one.
 
 Usage:
-  refresh-artifacts.sh --subject DIR [--skip LIST] [--dry-run] [--json]
-                       [-h|--help]
+  refresh-artifacts.sh --subject DIR [--output DIR] [--skip LIST]
+                       [--dry-run] [--json] [-h|--help]
     --subject DIR   the module/theme
+    --output DIR    where port-report.sh writes the report (default: the
+                    Drupal root's .drupilot/; a layer run passes each
+                    module's own directory, as its port stage did)
     --skip LIST     comma-separated steps to leave alone: core-matrix,
                     patch, report (report also leaves the extraction and
                     the manifest alone)
@@ -2113,7 +2125,9 @@ Options:
                    a scan block, e.g. $entity->original, deprecated in
                    drupal:11.2.0 and removed from drupal:12.0.0) is
                    reported by drupilot's own scan of the module's code
-                   (php_magic_property_lines) in
+                   (php_magic_property_lines, on the code a target core
+                   runs: the deprecated callable of a DeprecationHelper
+                   call is left out) in
                    drupilot.runtime_deprecations, when there is one:
                    [{file (root-relative), line, identifier:
                    "drupilot.runtimeDeprecation", id, symbol, operation:

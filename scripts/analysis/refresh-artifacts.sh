@@ -6,30 +6,40 @@
 # tests after the port wrote its local patch, its core matrix and its report
 # (lab L-PC: all three were left from before those changes, and the report
 # still said nothing of the run). The steps, in this order:
-#   core-matrix  verify-core-matrix.sh again, when core-matrix.json records
-#                other sources than the module's now (its subject_digest),
-#                the declared range admits the previous major and
+#   core-matrix  verify-core-matrix.sh again, at the PHPStan level the
+#                previous run used, when core-matrix.json records other
+#                sources than the module's now (its subject_digest), the
+#                declared range admits the previous major and
 #                DRUPILOT_VERIFY_CORES is not off. With no core-matrix.json
-#                there is nothing to refresh.
+#                there is nothing to refresh. A leg that fails (exit 3) is a
+#                verdict: the step ran, and it fails only when the verdict
+#                is worse than the one it replaces.
 #   patch        make-patch.sh --local (a git checkout only): the same tree
 #                gives the same patch, so it always runs.
-#   extraction   when the worklist comes from other sources than the module
-#                now (worklist_fresh): with a git repository the pipeline's
-#                last stages (pipeline.sh --stages php,validate,report, with
-#                the manifest's phase; its fixpoint gate judges the changed
-#                files too), else extract.sh, normalize-findings.sh and
-#                classify.sh at stage validate
+#   extraction   with a git repository, the pipeline's php and validate
+#                stages (pipeline.sh, with the manifest's phase): it runs
+#                only the stages whose inputs moved, and its fixpoint gate
+#                judges the changed files too (validate stays failed until
+#                the gate converges); without one, fixpoint.sh (the
+#                extraction again and the same gate) unless the worklist is
+#                of the module as it is (worklist_fresh) and fixpoint.json
+#                converged on it (with DRUPILOT_FIXPOINT=off, the extraction
+#                alone when the worklist is stale)
 #   manifest     manifest.sh, which keeps the earlier rationale
-#   report       port-report.sh --manifest, which also reads the last test
-#                run
+#   report       port-report.sh with the module's own manifest, which also
+#                reads the last test run; it records no stage (the test stage
+#                already did)
 # A module drupilot has not ported (no port-manifest.json in its state dir)
 # has nothing to refresh. Every step reports its status, and a failed step
 # never stops the next one.
 #
 # Usage:
-#   refresh-artifacts.sh --subject DIR [--skip LIST] [--dry-run] [--json]
-#                        [-h|--help]
+#   refresh-artifacts.sh --subject DIR [--output DIR] [--skip LIST]
+#                        [--dry-run] [--json] [-h|--help]
 #     --subject DIR   the module/theme
+#     --output DIR    where port-report.sh writes the report (default: the
+#                     Drupal root's .drupilot/; a layer run passes each
+#                     module's own directory, as its port stage did)
 #     --skip LIST     comma-separated steps to leave alone: core-matrix,
 #                     patch, report (report also leaves the extraction and
 #                     the manifest alone)
@@ -46,7 +56,7 @@ set -euo pipefail
 # shellcheck source=../lib/common.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
-SUBJECT=""; SKIP=""; DRY=0; AS_JSON=0
+SUBJECT=""; SKIP=""; OUTPUT=""; DRY=0; AS_JSON=0
 usage() { print_usage "${BASH_SOURCE[0]}"; }
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -54,6 +64,8 @@ while [[ $# -gt 0 ]]; do
     --subject=*) SUBJECT="${1#*=}"; shift;;
     --skip) SKIP="${2:-}"; shift 2 || die "--skip needs a value" 1;;
     --skip=*) SKIP="${1#*=}"; shift;;
+    --output) OUTPUT="${2:-}"; shift 2 || die "--output needs a value" 1;;
+    --output=*) OUTPUT="${1#*=}"; shift;;
     --dry-run) DRY=1; shift;;
     --json) AS_JSON=1; shift;;
     -h|--help) usage; exit 0;;
@@ -61,6 +73,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 [[ -n "$SUBJECT" && -d "$SUBJECT" ]] || die "Pass --subject DIR (an existing directory)." 1
+SKIP="$(printf '%s' "$SKIP" | tr -d ' \t')"
 for _s in $(printf '%s' "$SKIP" | tr ',' ' '); do
   case "$_s" in core-matrix|patch|report) ;; *) die "--skip: unknown step '$_s' (core-matrix, patch, report)." 1;; esac
 done
@@ -109,7 +122,23 @@ else
   elif ! [[ "$TMAJ" =~ ^[0-9]+$ ]]; then step core-matrix skipped 0 "the target major is unknown"
   elif ! constraint_admits_major "$REQ" "$((TMAJ - 1))"; then step core-matrix skipped 0 "the range '$REQ' admits no Drupal $((TMAJ - 1))"
   elif [[ "$(jq -r '.subject_digest // ""' "$CM" 2> /dev/null)" == "$DIGEST" ]]; then step core-matrix up-to-date 0 "core-matrix.json is of the module as it is"
-  else run core-matrix "core-matrix.json is of other sources than the module now" bash "$S/analysis/verify-core-matrix.sh" --subject "$SUBJECT" --json
+  elif [[ "$DRY" == "1" ]]; then step core-matrix would-run 0 "core-matrix.json is of other sources than the module now"
+  else
+    # At the level the previous run used (a refactor verifies at its own).
+    _lvl="$(jq -r '.level // empty' "$CM" 2> /dev/null || true)"
+    _old="$(jq -r '.d10_support // empty' "$CM" 2> /dev/null || true)"
+    log_step "refresh: core-matrix"
+    _rc=0; bash "$S/analysis/verify-core-matrix.sh" --subject "$SUBJECT" ${_lvl:+--level "$_lvl"} --json < /dev/null > /dev/null || _rc=$?
+    _new="$(jq -r '.d10_support // empty' "$CM" 2> /dev/null || true)"
+    if [[ "$_rc" == "0" ]]; then
+      step core-matrix ran 0 "core-matrix.json was of other sources; Drupal $((TMAJ - 1)) support: ${_new:-?}"
+    elif [[ "$_rc" == "3" && "$_old" == "failed" ]]; then
+      step core-matrix ran 3 "core-matrix.json was of other sources; a leg still fails (Drupal $((TMAJ - 1)) support: failed, as before)"
+    elif [[ "$_rc" == "3" ]]; then
+      step core-matrix failed 3 "a leg fails now (Drupal $((TMAJ - 1)) support: failed, was ${_old:-?}): see core-matrix.json"
+    else
+      step core-matrix failed "$_rc" "verify-core-matrix.sh could not run (exit $_rc)"
+    fi
   fi
 
   # patch: git only; the same tree gives the same patch.
@@ -118,13 +147,19 @@ else
   else run patch "the local patch of the module as it is" bash "$S/contrib/make-patch.sh" --local --subject "$SUBJECT"
   fi
 
-  # report: extract first when the worklist is of other sources.
+  # report: the extraction (and its gate) first.
   if skipped report; then step report skipped 0 "--skip"
   else
-    if ! worklist_fresh "$SUBJECT"; then
-      if [[ "$GIT" == "1" ]]; then
-        run extraction "the findings are of other sources than the module now" \
-          bash "$S/ai/pipeline.sh" --subject "$SUBJECT" --stages php,validate,report --phase "$PHASE"
+    if [[ "$GIT" == "1" ]]; then
+      # The pipeline decides what is up to date (validate only while the
+      # fixpoint gate converges); its report stage is left out, so it
+      # records no stage.
+      run extraction "the pipeline's php and validate stages, run when their inputs moved" \
+        bash "$S/ai/pipeline.sh" --subject "$SUBJECT" --stages php,validate --phase "$PHASE"
+    elif [[ "$(lc "$(config_get DRUPILOT_FIXPOINT enforce)")" == "off" ]]; then
+      # No gate: the extraction alone, when the worklist is of other sources.
+      if worklist_fresh "$SUBJECT"; then
+        step extraction up-to-date 0 "the findings are of the module as it is"
       else
         run extraction "the findings are of other sources than the module now" bash -c '
           set -e; s="$1"; d="$2"
@@ -132,8 +167,12 @@ else
           bash "$d/ai/normalize-findings.sh" --subject "$s" --stage validate
           bash "$d/ai/classify.sh" --subject "$s"' _ "$SUBJECT" "$S"
       fi
+    elif worklist_fresh "$SUBJECT" && jq -e --slurpfile w "$(worklist_file "$SUBJECT")" \
+           '.converged == true and .worklist_hash == ($w[0].meta.worklist_hash // "")' "$SD/fixpoint.json" > /dev/null 2>&1; then
+      step extraction up-to-date 0 "the findings are of the module as it is, and the fixpoint gate converged on them"
     else
-      step extraction up-to-date 0 "the findings are of the module as it is"
+      run extraction "the findings are of other sources, or the fixpoint gate has not converged on them" \
+        bash "$S/analysis/fixpoint.sh" --subject "$SUBJECT" --stage validate
     fi
     if [[ "$DRY" == "1" ]]; then
       step report would-run 0 "the manifest and port-report.md of the module as it is"
@@ -141,7 +180,7 @@ else
       step report failed 3 "not rendered: the extraction failed"
     else
       run manifest "the manifest of the module as it is" bash "$S/ai/manifest.sh" --subject "$SUBJECT" --phase "$PHASE"
-      run report "port-report.md with the last test run" bash "$S/analysis/port-report.sh" --subject "$SUBJECT" --manifest "$MAN"
+      run report "port-report.md with the last test run" bash "$S/analysis/port-report.sh" --subject "$SUBJECT" ${OUTPUT:+--output "$OUTPUT"}
     fi
   fi
 fi

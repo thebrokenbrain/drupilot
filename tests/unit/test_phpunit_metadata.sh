@@ -23,7 +23,7 @@ t_isolate
 . "$T_LIB"
 # shellcheck source=../../scripts/lib/php-scan.sh
 . "$T_REPO/scripts/lib/php-scan.sh"
-scan() { php_phpunit_hidden_metadata "$1" | tr '\t' '|'; }
+scan() { php_phpunit_hidden_metadata "$1" | tr '\037' '|'; }
 
 # The test the port left (lab L-PC), and the test stage's repair.
 cat > "$T_TMP/ported.php" <<'EOF'
@@ -58,7 +58,7 @@ class PreservedChangedItemTest extends KernelTestBase {
 }
 EOF
 assert_eq "the ported test: the lost @group, its twin, the relative @covers" "$(scan "$T_TMP/ported.php")" \
-  "15|PreservedChangedItemTest|@group preserve_changed|#[Group('preserve_changed')]|@covers ::preSave (line 24)"
+  "15|PreservedChangedItemTest|@group preserve_changed|#[Group('preserve_changed')]|@covers ::preSave (line 24)|0"
 sed -e 's/^use PHPUnit\\Framework\\Attributes\\RunTestsInSeparateProcesses;/use PHPUnit\\Framework\\Attributes\\Group;\
 use PHPUnit\\Framework\\Attributes\\RunTestsInSeparateProcesses;/' \
   -e "s/^#\[RunTestsInSeparateProcesses\]/#[Group('preserve_changed')]\\
@@ -107,7 +107,66 @@ class FormsTest extends UnitTestCase {
 EOF
 assert_eq "method level: a twinned @dataProvider is fine, @group slow and @ticket 123 are hidden; the class's relative @covers" \
   "$(scan "$T_TMP/forms.php" | tr '\n' ' ')" \
-  "10|FormsTest|||@covers ::bar (line 29) 19|FormsTest::testA|@group slow|#[Group('slow')]| 25|FormsTest::testB|@ticket 123|#[Ticket('123')]| "
+  "10|FormsTest|||@covers ::bar (line 29)|1 19|FormsTest::testA|@group slow|#[Group('slow')]||- 25|FormsTest::testB|@ticket 123|#[Ticket('123')]||- "
+
+# The twins carry their arguments; a method's @covers, a @testWith next to no
+# provider attribute and Drupal's @requires module are not PHPUnit metadata a
+# method attribute hides; a helper class after the test keeps its record.
+cat > "$T_TMP/cases.php" <<'EOF'
+<?php
+namespace Drupal\Tests\m\Kernel;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
+/**
+ * @group m
+ * @group extra
+ * @requires extension apcu
+ * @requires module node
+ * @coversDefaultClass \Drupal\m\Foo
+ */
+#[Group('m')]
+#[RunTestsInSeparateProcesses]
+class CasesTest extends KernelTestBase {
+  /**
+   * @dataProvider provider
+   * @covers ::foo
+   * @preserveGlobalState disabled
+   * @runInSeparateProcess
+   */
+  #[DataProvider('provider')]
+  public function testA($x): void {}
+  /**
+   * @testWith [1, 2]
+   * @dataProvider \Drupal\Tests\m\Other::provider
+   * @depends clone testA
+   */
+  #[Group('slow')]
+  public function testB(): void {}
+  /**
+   * @covers ::bar
+   */
+  public function testC(): void {}
+  /**
+   * @testWith [1, 2]
+   */
+  #[DataProvider('provider')]
+  public function testD(): void {}
+}
+/**
+ * A helper, not a test.
+ */
+class Helper {
+  public function x(): void {}
+}
+EOF
+assert_eq "the twins with their arguments; a helper class after the test" "$(scan "$T_TMP/cases.php" | tr '\n' ' ')" \
+  "13|CasesTest|@group extra; @requires extension apcu|#[Group('extra')]; #[RequiresPhpExtension('apcu')]|@covers ::bar (line 32)|1 22|CasesTest::testA|@preserveGlobalState disabled; @runInSeparateProcess|#[PreserveGlobalState(false)]; #[RunInSeparateProcess]||- 29|CasesTest::testB|@dataProvider \\Drupal\\Tests\\m\\Other::provider; @depends clone testA|#[DataProviderExternal(\\Drupal\\Tests\\m\\Other::class, 'provider')]; #[DependsUsingDeepClone('testA')]||- 38|CasesTest::testD|@testWith [1, 2]|#[TestWith(...)]||- "
+sed -e "s/^#\[Group('m')\]/#[Group('m')]\\
+#[Group('extra')]\\
+#[\\\\PHPUnit\\\\Framework\\\\Attributes\\\\RequiresPhpExtension('apcu')]/" "$T_TMP/cases.php" > "$T_TMP/cases2.php"
+assert_match "  their twins clear them (the class keeps only its relative @covers)" "$(scan "$T_TMP/cases2.php" | sed -n '1p')" \
+  "^13\|CasesTest\|\|\|@covers ::bar \(line 34\)\|1$"
 
 # check-port-safety.sh: attribution and the range.
 M="$T_TMP/m"; mkdir -p "$M/tests/src/Kernel"
@@ -132,6 +191,24 @@ g add -A; g commit -qm ported
 t_run "$T_SH" "$PS" --subject "$M" --checks test-phpunit-metadata --base HEAD --json
 assert_eq "  already there before the port: a warning (exit 0)" \
   "$T_RC|$(jq -c '[.findings[] | [.severity, .introduced]]' "$T_OUT")" '0|[["warn",false]]'
+# The class with its twin, the relative @covers left: the message says to
+# write it in full (an empty field is not lost on the way).
+sed -e 's/^use PHPUnit\\Framework\\Attributes\\RunTestsInSeparateProcesses;/use PHPUnit\\Framework\\Attributes\\Group;\
+use PHPUnit\\Framework\\Attributes\\RunTestsInSeparateProcesses;/' \
+  -e "s/^#\[RunTestsInSeparateProcesses\]/#[Group('preserve_changed')]\\
+#[RunTestsInSeparateProcesses]/" "$T_TMP/ported.php" > "$M/tests/src/Kernel/PreservedChangedItemTest.php"
+t_run "$T_SH" "$PS" --subject "$M" --checks test-phpunit-metadata --base HEAD --json
+assert_match "  only the relative @covers left: name the method in full, no lost group" "$(jq -r '.findings[0].message' "$T_OUT")" \
+  "its @coversDefaultClass is ignored as well, so @covers ::preSave \(line 26\) is invalid"
+assert_eq "  (no claim about the group \"default\")" "$(jq -r '.findings[0].message' "$T_OUT" | grep -c 'group \"default\"')" "0"
+# The base admitted no Drupal 11: the port's range change made it break.
+printf 'name: M\ntype: module\ncore_version_requirement: ^9.5 || ^10\n' > "$M/m.info.yml"
+cp "$T_TMP/ported.php" "$M/tests/src/Kernel/PreservedChangedItemTest.php"
+g add -A; g commit -qm base-d10-only
+printf 'name: M\ntype: module\ncore_version_requirement: ^10 || ^11\n' > "$M/m.info.yml"
+t_run "$T_SH" "$PS" --subject "$M" --checks test-phpunit-metadata --base HEAD --json
+assert_eq "  the attribute was there, the port widened the range to Drupal 11: an error" \
+  "$T_RC|$(jq -c '[.findings[] | [.severity, .introduced]]' "$T_OUT")" '3|[["error",true]]'
 cp "$T_TMP/repaired.php" "$M/tests/src/Kernel/PreservedChangedItemTest.php"
 t_run "$T_SH" "$PS" --subject "$M" --json
 assert_eq "  repaired: every check passes" "$T_RC|$(jq -c '[.errors, .warnings]' "$T_OUT")" "0|[0,0]"

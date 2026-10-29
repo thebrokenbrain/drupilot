@@ -57,6 +57,9 @@ t_run "$T_SH" "$RF" --subject "$S" --skip core-matrix,patch --json
 assert_eq "an extraction that fails (no Drupal root): failed, the report not rendered, exit 3" \
   "$T_RC|$(st)" '3|[["core-matrix","skipped"],["patch","skipped"],["extraction","failed"],["report","failed"]]'
 
+t_run "$T_SH" "$RF" --subject "$S" --skip "core-matrix, patch, report" --output "$T_TMP/out2" --json
+assert_eq "--skip with spaces after the commas, and --output: every step skipped" "$T_RC|$(st)" \
+  '0|[["core-matrix","skipped"],["patch","skipped"],["report","skipped"]]'
 t_run "$T_SH" "$RF" --subject "$S" --skip nope
 assert_eq "an unknown step to skip: exit 1" "$T_RC" "1"
 t_run "$T_SH" "$RF"

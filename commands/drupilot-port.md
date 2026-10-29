@@ -703,9 +703,12 @@ neither Rector nor a codemod changed). Your only input is the **why** of the
 items you fixed or decided by hand, keyed by worklist item id (the `id`s of
 `<state_dir>/worklist.json`; an item you fixed stays nameable after the next
 extraction drops it, through `<state_dir>/worklist-resolved.json`), and of each
-manual edit, keyed by its path relative to the module (`src/Foo.php`: the
-report shows it next to that edit). Write `<state_dir>/rationale.json` as
-`{"<item id or path>": "why"}` and pass it; any other key is refused.
+file you edited by hand, keyed by its path relative to the module
+(`src/Foo.php`: the report shows it next to that edit, or under "Also
+explained" when Rector or a codemod changed the file too). Write
+`<state_dir>/rationale.json` as `{"<item id or path>": "why"}` and pass it;
+any other key is refused. A why is kept on later runs only while its file is
+unchanged.
 Every divergence (a Rector change reverted, a post-port fix, a behavior change, a
 pre-existing bug, a tooling deviation) is logged with `log-decision.sh` as it
 happens, never repeated here: `port-report.sh` merges the decision log. As the

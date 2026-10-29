@@ -1000,21 +1000,32 @@ END {
   return 0
 }
 
-# php_phpunit_hidden_metadata FILE -> "LINE<TAB>LEVEL<TAB>HIDDEN<TAB>TWINS<TAB>
-# RELATIVE" for every class or method of a test FILE whose doc-comment carries
-# PHPUnit metadata that PHPUnit 10+ ignores. PHPUnit reads the metadata of one
-# level (the class, or one method) from its attributes when it has any — an
-# attribute naming a class of PHPUnit\Framework\Attributes\, through the
-# file's imports — and from its doc-comment only otherwise. LINE is the
-# level's first PHPUnit attribute; LEVEL is Class or Class::method; HIDDEN the
-# annotations that have no attribute twin at that level and TWINS the
-# attribute that carries each one ("; "-separated); RELATIVE, for a class
-# whose @coversDefaultClass or @usesDefaultClass is ignored that way, the
-# relative @covers ::name / @uses ::name its methods still have (invalid
-# without it), each with its line. A @coversDefaultClass with no relative
-# @covers is no finding. FILE is the raw source (the doc-comments are read).
-# A line-oriented heuristic, not a parser: one class per file, attributes on
-# lines of their own.
+# php_phpunit_hidden_metadata FILE -> one record per class or method of a test
+# FILE whose doc-comment carries PHPUnit metadata that PHPUnit 10+ ignores,
+# the fields separated by 0x1f (never a whitespace character, so an empty
+# field survives `read`): LINE LEVEL HIDDEN TWINS RELATIVE GROUPED. PHPUnit
+# reads the metadata of one level (the class, or one method) from its
+# attributes when it has any — an attribute naming a class of
+# PHPUnit\Framework\Attributes\, through the file's imports — and from its
+# doc-comment only otherwise. LINE is the level's first PHPUnit attribute;
+# LEVEL is Class or Class::method; HIDDEN the annotations that have no
+# attribute twin at that level and TWINS the attribute that carries each one
+# ("; "-separated, with its arguments: @preserveGlobalState disabled ->
+# #[PreserveGlobalState(false)], an external @dataProvider ->
+# #[DataProviderExternal(...)], @requires extension apcu ->
+# #[RequiresPhpExtension('apcu')]); RELATIVE, for a class whose
+# @coversDefaultClass or @usesDefaultClass is ignored that way, the relative
+# @covers ::name / @uses ::name its methods still have (invalid without it),
+# each with its line; GROUPED, for a class, 1 when its attributes still give
+# it a group (Group, Ticket, Small, Medium, Large), else 0 ("-" for a method).
+# Not reported: a method's @covers / @uses (no attribute can carry them on a
+# method: Covers* and Uses* target a class only, and a hidden one is never
+# read), a @testWith of a method without a DataProvider* or TestWith*
+# attribute (PHPUnit reads it from the doc-comment whatever the attributes),
+# a @requires that is not PHPUnit's (Drupal's `@requires module`), and a
+# @coversDefaultClass with no relative @covers. FILE is the raw source (the
+# doc-comments are read). A line-oriented heuristic, not a parser:
+# attributes on lines of their own; every class of the file is read.
 php_phpunit_hidden_metadata() {
   local f="${1:-}"
   [[ -f "$f" ]] || return 0
@@ -1022,6 +1033,11 @@ php_phpunit_hidden_metadata() {
   LC_ALL=C awk '
 function trim(s) { sub(/^[ \t\r\n]+/, "", s); sub(/[ \t\r\n]+$/, "", s); return s }
 function unq(s) { s = trim(s); sub(/^[\047"]/, "", s); sub(/[\047"]$/, "", s); return s }
+function q(s) { gsub(/\047/, "\\\047", s); return "\047" s "\047" }
+# boolv(VALUE) -> true/false for enabled/disabled or true/false, else "".
+function boolv(v) { v = tolower(unq(v)); return (v == "enabled" || v == "true") ? "true" : ((v == "disabled" || v == "false") ? "false" : "") }
+# cls(NAME) -> NAME as a class constant expression (Foo -> Foo::class).
+function cls(n) { n = trim(n); return n "::class" }
 function add_import(t,   nm, al) {
   t = trim(t); nm = t; al = t
   if (match(t, /[ \t]+as[ \t]+/)) { nm = trim(substr(t, 1, RSTART - 1)); al = trim(substr(t, RSTART + RLENGTH)) }
@@ -1046,13 +1062,13 @@ function add_attr(e, ln,   k, nm, args, s) {
   if (al == 0) al = ln
 }
 # parse_attrs(TEXT, LINE): every attribute of the #[...] groups in TEXT.
-function parse_attrs(b, ln,   i, n, c, q, pd, bd, ent) {
-  n = length(b); q = ""; pd = 0; bd = 0; ent = ""
+function parse_attrs(b, ln,   i, n, c, qc, pd, bd, ent) {
+  n = length(b); qc = ""; pd = 0; bd = 0; ent = ""
   for (i = 1; i <= n; i++) {
     c = substr(b, i, 1)
-    if (q != "") { ent = ent c; if (c == "\\") { i++; ent = ent substr(b, i, 1) } else if (c == q) q = ""; continue }
+    if (qc != "") { ent = ent c; if (c == "\\") { i++; ent = ent substr(b, i, 1) } else if (c == qc) qc = ""; continue }
     if (bd == 0) { if (c == "#" && substr(b, i + 1, 1) == "[") { bd = 1; pd = 0; ent = ""; i++ }; continue }
-    if (c == "\047" || c == "\"") { q = c; ent = ent c; continue }
+    if (c == "\047" || c == "\"") { qc = c; ent = ent c; continue }
     if (c == "(") pd++
     else if (c == ")") pd--
     else if (c == "[") bd++
@@ -1070,36 +1086,100 @@ function depth(s,   t, i, c) {
 function doc_line(s,   t, v) {
   t = s; sub(/^[ \t]*\/\*\*/, "", t); sub(/\*\/[ \t\r]*$/, "", t); sub(/^[ \t]*\*?[ \t]*/, "", t)
   if (!match(t, /^@[A-Za-z]+/)) return
-  v = trim(substr(t, RLENGTH + 1)); gsub(/\t/, " ", v)
+  v = trim(substr(t, RLENGTH + 1)); gsub(/[\t\037]/, " ", v)
   nd++; dt[nd] = substr(t, 2, RLENGTH - 1); dv[nd] = v; dl[nd] = NR
 }
+# req(VALUE) -> the Requires* attribute a @requires VALUE needs, or "" (not
+# a PHPUnit requirement, e.g. Drupal`s "module foo").
+function req(v,   k) {
+  k = tolower(v); sub(/[ \t].*$/, "", k)
+  if (k == "php") return "requiresphp"
+  if (k == "phpunit") return "requiresphpunit"
+  if (k == "os") return "requiresoperatingsystem"
+  if (k == "osfamily") return "requiresoperatingsystemfamily"
+  if (k == "extension") return "requiresphpextension"
+  if (k == "setting") return "requiressetting"
+  if (k == "function") return (index(v, "::") > 0) ? "requiresmethod" : "requiresfunction"
+  return ""
+}
+function rest(v) { v = trim(v); sub(/^[^ \t]+[ \t]*/, "", v); return v }
+function first(v) { v = trim(v); sub(/[ \t].*$/, "", v); return v }
+# arg1(ARGS) -> the first argument of an attribute, unquoted.
+function arg1(s,   k) { k = index(s, ","); if (k > 0) s = substr(s, 1, k - 1); return unq(s) }
 # twin(TAG, VALUE) -> 1 when the attributes of the level carry TAG.
-function twin(t, v,   i, x) {
+function twin(t, v,   i, x, w) {
   x = tolower(t)
+  if (x == "requires") w = req(v)
   for (i = 1; i <= na; i++) {
-    if (x == "group" || x == "ticket") { if (an[i] == x && unq(aa[i]) == v) return 1; continue }
+    if (x == "group" || x == "ticket" || x == "testdox") { if (an[i] == x && unq(aa[i]) == v) return 1; continue }
     if (x == "covers" || x == "uses") { if (an[i] ~ ("^" x "(class|function|method|trait)$")) return 1; continue }
-    if (x == "backupstaticattributes" || x == "backupstaticproperties") { if (an[i] == "backupstaticproperties") return 1; continue }
+    if (x == "backupglobals" || x == "preserveglobalstate") { if (an[i] == x && (boolv(v) == "" || boolv(aa[i]) == boolv(v))) return 1; continue }
+    if (x == "backupstaticattributes" || x == "backupstaticproperties") { if (an[i] == "backupstaticproperties" && (boolv(v) == "" || boolv(aa[i]) == boolv(v))) return 1; continue }
+    if (x == "requires") { if (an[i] == w && (w != "requiresphpextension" || arg1(aa[i]) == first(rest(v)))) return 1; continue }
     if (x == "dataprovider" || x == "depends" || x == "testwith") { if (index(an[i], x) == 1) return 1; continue }
     if (an[i] == x) return 1
   }
   return 0
 }
-function sugg(t, v,   x) {
+# sugg(TAG, VALUE) -> the attribute that carries @TAG VALUE.
+function sugg(t, v,   x, w, r, a, b) {
   x = tolower(t)
-  if (x == "group") return "#[Group(\047" v "\047)]"
-  if (x == "ticket") return "#[Ticket(\047" v "\047)]"
-  if (x == "dataprovider") return "#[DataProvider(\047" v "\047)]"
-  if (x == "depends") return "#[Depends(\047" v "\047)]"
-  if (x == "covers") return "#[CoversClass(...)] or #[CoversFunction(...)]"
-  if (x == "uses") return "#[UsesClass(...)] or #[UsesFunction(...)]"
-  if (x == "testdox") return "#[TestDox(...)]"
+  if (x == "group") return "#[Group(" q(v) ")]"
+  if (x == "ticket") return "#[Ticket(" q(v) ")]"
+  if (x == "testdox") return "#[TestDox(" q(v) ")]"
+  if (x == "dataprovider") {
+    if (index(v, "::") > 0) { a = substr(v, 1, index(v, "::") - 1); b = substr(v, index(v, "::") + 2); return "#[DataProviderExternal(" cls(a) ", " q(b) ")]" }
+    return "#[DataProvider(" q(v) ")]"
+  }
+  if (x == "depends") {
+    if (v ~ /^clone[ \t]/) return "#[DependsUsingDeepClone(" q(rest(v)) ")]"
+    if (v ~ /^shallowClone[ \t]/) return "#[DependsUsingShallowClone(" q(rest(v)) ")]"
+    if (index(v, "::") > 0) { a = substr(v, 1, index(v, "::") - 1); b = substr(v, index(v, "::") + 2); return "#[DependsExternal(" cls(a) ", " q(b) ")]" }
+    return "#[Depends(" q(v) ")]"
+  }
+  if (x == "covers" || x == "uses") {
+    w = (x == "covers") ? "Covers" : "Uses"; a = v
+    if (index(a, "::") > 0) a = substr(a, 1, index(a, "::") - 1)
+    if (a ~ /\\/ || a ~ /^[A-Z]/) return "#[" w "Class(" cls(a) ")]"
+    return "#[" w "Function(" q(a) ")]"
+  }
+  if (x == "backupglobals") return "#[BackupGlobals(" (boolv(v) == "" ? "true" : boolv(v)) ")]"
+  if (x == "preserveglobalstate") return "#[PreserveGlobalState(" (boolv(v) == "" ? "false" : boolv(v)) ")]"
+  if (x == "backupstaticattributes" || x == "backupstaticproperties") return "#[BackupStaticProperties(" (boolv(v) == "" ? "true" : boolv(v)) ")]"
+  if (x == "excludeglobalvariablefrombackup") return "#[ExcludeGlobalVariableFromBackup(" q(v) ")]"
+  if (x == "excludestaticpropertyfrombackup") { a = v; sub(/[ \t].*$/, "", a); return "#[ExcludeStaticPropertyFromBackup(" cls(a) ", " q(rest(v)) ")]" }
   if (x == "testwith") return "#[TestWith(...)]"
-  if (x == "backupstaticattributes" || x == "backupstaticproperties") return "#[BackupStaticProperties(...)]"
+  if (x == "requires") {
+    w = req(v); r = rest(v)
+    if (w == "requiresphp") return "#[RequiresPhp(" q(r) ")]"
+    if (w == "requiresphpunit") return "#[RequiresPhpunit(" q(r) ")]"
+    if (w == "requiresoperatingsystem") return "#[RequiresOperatingSystem(" q(r) ")]"
+    if (w == "requiresoperatingsystemfamily") return "#[RequiresOperatingSystemFamily(" q(r) ")]"
+    if (w == "requiresfunction") return "#[RequiresFunction(" q(r) ")]"
+    if (w == "requiresmethod") { a = substr(r, 1, index(r, "::") - 1); b = substr(r, index(r, "::") + 2); return "#[RequiresMethod(" cls(a) ", " q(b) ")]" }
+    if (w == "requiresphpextension") { a = r; sub(/[ \t].*$/, "", a); b = rest(r); return "#[RequiresPhpExtension(" q(a) (b == "" ? "" : ", " q(b)) ")]" }
+    if (w == "requiressetting") { a = r; sub(/[ \t].*$/, "", a); return "#[RequiresSetting(" q(a) ", " q(rest(r)) ")]" }
+  }
   return "#[" toupper(substr(t, 1, 1)) substr(t, 2) "]"
 }
-function level(name, kind,   k, h, w) {
-  if (kind == "class") { cls = name; cdc = 0; cline = 0; chid = ""; ctw = "" }
+# hidden(TAG, VALUE, KIND) -> 1 when PHPUnit ignores @TAG on this level.
+function hidden(t, v, kind,   i, dp) {
+  if (!(t in meta)) return 0
+  if (kind == "method" && (t == "covers" || t == "uses")) return 0
+  if (t == "requires" && req(v) == "") return 0
+  if (t == "testwith" || t == "testWith") {
+    dp = 0; for (i = 1; i <= na; i++) if (index(an[i], "dataprovider") == 1 || index(an[i], "testwith") == 1) dp = 1
+    if (!dp) return 0
+  }
+  return 1
+}
+function flush_class() {
+  if (cls_name != "" && (chid != "" || rel != ""))
+    printf "%d\037%s\037%s\037%s\037%s\037%s\n", cline, cls_name, chid, ctw, rel, cgrp
+  cls_name = ""; cdc = 0; cline = 0; chid = ""; ctw = ""; rel = ""; cgrp = 0
+}
+function level(name, kind,   k, h, w, g) {
+  if (kind == "class") { flush_class(); cls_name = name }
   if (na == 0) {
     if (kind == "method" && cdc) {
       for (k = 1; k <= nd; k++) if ((dt[k] == "covers" || dt[k] == "uses") && dv[k] ~ /^::/)
@@ -1110,17 +1190,20 @@ function level(name, kind,   k, h, w) {
   h = ""; w = ""
   for (k = 1; k <= nd; k++) {
     if (kind == "class" && (dt[k] == "coversDefaultClass" || dt[k] == "usesDefaultClass")) { cdc = 1; continue }
-    if (!(dt[k] in meta) || twin(dt[k], dv[k])) continue
+    if (!hidden(dt[k], dv[k], kind) || twin(dt[k], dv[k])) continue
     h = h (h == "" ? "" : "; ") "@" dt[k] (dv[k] == "" ? "" : " " dv[k])
     w = w (w == "" ? "" : "; ") sugg(dt[k], dv[k])
   }
-  if (kind == "class") { cline = al; chid = h; ctw = w; return }
-  if (h != "") printf "%d\t%s\t%s\t%s\t\n", al, name, h, w
+  if (kind == "class") {
+    g = 0; for (k = 1; k <= na; k++) if (an[k] ~ /^(group|ticket|small|medium|large)$/) g = 1
+    cline = al; chid = h; ctw = w; cgrp = g; return
+  }
+  if (h != "") printf "%d\037%s\037%s\037%s\037\037-\n", al, name, h, w
 }
 function reset() { nd = 0; na = 0; al = 0 }
 BEGIN {
   PFX = "PHPUnit\\Framework\\Attributes"
-  n = split("after afterClass backupGlobals backupStaticAttributes backupStaticProperties before beforeClass covers coversNothing dataProvider depends doesNotPerformAssertions excludeGlobalVariableFromBackup excludeStaticPropertyFromBackup group large medium postCondition preCondition preserveGlobalState runClassInSeparateProcess runInSeparateProcess runTestsInSeparateProcesses small test testdox testWith ticket uses", T, " ")
+  n = split("after afterClass backupGlobals backupStaticAttributes backupStaticProperties before beforeClass covers coversNothing dataProvider depends doesNotPerformAssertions excludeGlobalVariableFromBackup excludeStaticPropertyFromBackup group large medium postCondition preCondition preserveGlobalState requires runClassInSeparateProcess runInSeparateProcess runTestsInSeparateProcesses small test testdox testWith ticket uses", T, " ")
   for (i = 1; i <= n; i++) meta[T[i]] = 1
 }
 {
@@ -1154,11 +1237,11 @@ BEGIN {
   }
   if (seen && raw ~ /function[ \t]+&?[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*\(/) {
     t = raw; sub(/^.*function[ \t]+&?[ \t]*/, "", t); match(t, /^[A-Za-z_][A-Za-z0-9_]*/)
-    level(cls "::" substr(t, 1, RLENGTH), "method"); reset(); next
+    level(cls_name "::" substr(t, 1, RLENGTH), "method"); reset(); next
   }
   reset()
 }
-END { if (cls != "" && (chid != "" || rel != "")) printf "%d\t%s\t%s\t%s\t%s\n", cline, cls, chid, ctw, rel }' "$f" 2> /dev/null | LC_ALL=C sort -n -s -k1,1 || true
+END { flush_class() }' "$f" 2> /dev/null | LC_ALL=C sort -n -s -k1,1 -t "$(printf '\037')" || true
   return 0
 }
 

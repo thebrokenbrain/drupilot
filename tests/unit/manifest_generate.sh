@@ -210,26 +210,28 @@ mv "$T_TMP/git.keep" "$S/.git"
 # against the worklist it saw, and the extraction after its fix drops the
 # item; a manual edit's why is keyed by its path.
 cp "$SD/worklist.json" "$T_TMP/w.keep"
-jq '.items += [{id: "W-0000000000r1", lane: "ai-free", file: "src/Form/WidgetImportForm.php", anchor: "{file}",
+jq '.items += [{id: "W-00000000000a", lane: "ai-free", file: "src/Form/WidgetImportForm.php", anchor: "{file}",
       finding_ids: [], recipes: [], blocking: true, reason: null, status: "open"}]' "$T_TMP/w.keep" > "$SD/worklist.json"
+cp "$SD/findings.json" "$T_TMP/f0.keep"; jq '.stage = "validate"' "$T_TMP/f0.keep" > "$SD/findings.json"
 t_run "$T_SH" "$T_REPO/scripts/ai/classify.sh" --subject "$S" --core-floor 10.0
+cp "$T_TMP/f0.keep" "$SD/findings.json"
 assert_eq "classify.sh: the item the new worklist drops is kept in worklist-resolved.json" \
   "$T_RC|$(jq -c '[.items[] | [.id, .lane, .file]]' "$(worklist_resolved_file "$S")")" \
-  '0|[["W-0000000000r1","ai-free","src/Form/WidgetImportForm.php"]]'
-assert_eq "  the new worklist is the findings' own" "$(jq -c '[.items[].id] | index("W-0000000000r1")' "$SD/worklist.json")" "null"
-jq -n '{"W-0000000000r1": "Fixed by hand: the callback became a static method.",
+  '0|[["W-00000000000a","ai-free","src/Form/WidgetImportForm.php"]]'
+assert_eq "  the new worklist is the findings' own" "$(jq -c '[.items[].id] | index("W-00000000000a")' "$SD/worklist.json")" "null"
+jq -n '{"W-00000000000a": "Fixed by hand: the callback became a static method.",
         "legacy_widgets.info.yml": "core_version_requirement raised to the recommended range."}' > "$T_TMP/rres.json"
 mf --rationale "$T_TMP/rres.json" --json
 assert_eq "a rationale naming a resolved item and a manual edit: accepted" "$T_RC" "0"
 assert_eq "  the resolved item, with its why, under worklist.resolved" \
   "$(jq -c '[.worklist.resolved[] | [.id, .lane, .file, .rationale]]' "$T_OUT")" \
-  '[["W-0000000000r1","ai-free","src/Form/WidgetImportForm.php","Fixed by hand: the callback became a static method."]]'
+  '[["W-00000000000a","ai-free","src/Form/WidgetImportForm.php","Fixed by hand: the callback became a static method."]]'
 assert_eq "  the manual edit's why" "$(jq -r '.manual_edits[] | select(.edit == "legacy_widgets.info.yml") | .why' "$T_OUT")" \
   "core_version_requirement raised to the recommended range."
 assert_eq "  it validates against the schema" "$(valid "$T_OUT")" ""
 t_run "$T_SH" "$T_REPO/scripts/analysis/port-report.sh" --subject "$S" --manifest "$SD/port-manifest.json"
 REP="$(cat "$(t_out)" 2> /dev/null || true)"
-assert_match "port-report.sh: the resolved item's why" "$REP" '`W-0000000000r1` \(resolved by the port; ai-free, `src/Form/WidgetImportForm.php`\): Fixed by hand'
+assert_match "port-report.sh: the resolved item's why" "$REP" '`W-00000000000a` \(resolved by the port; ai-free, `src/Form/WidgetImportForm.php`\): Fixed by hand'
 assert_match "  the manual edit's why" "$REP" '- legacy_widgets.info.yml — _why:_ core_version_requirement raised'
 mf --json
 assert_eq "  a later run without --rationale keeps both" \
@@ -238,6 +240,45 @@ printf '{"src/Nope.php": "a file the port never changed"}\n' > "$T_TMP/rnope.jso
 mf --rationale "$T_TMP/rnope.json"
 assert_eq "  a file the port did not change: refused, exit 1" "$T_RC" "1"
 assert_match "  it names it" "$(t_err)" "src/Nope.php"
+# A file a tool changed too: kept, and shown under "Also explained".
+printf '{"src/Form/WidgetImportForm.php": "After Rector, the callback was made static by hand."}\n' > "$T_TMP/rrector.json"
+mf --rationale "$T_TMP/rrector.json" --json
+assert_eq "a file Rector changed too: accepted, not a manual edit" \
+  "$T_RC|$(jq -c '[.manual_edits[].edit] | index("src/Form/WidgetImportForm.php")' "$T_OUT")" "0|null"
+t_run "$T_SH" "$T_REPO/scripts/analysis/port-report.sh" --subject "$S" --manifest "$SD/port-manifest.json"
+REP="$(cat "$(t_out)" 2> /dev/null || true)"
+assert_match "  port-report.sh shows its why under Also explained" "$REP" '^_Also explained:_$'
+assert_match "  (the line)" "$REP" '^- `src/Form/WidgetImportForm.php` \(changed by Rector, the attribute pass or a codemod too\) — _why:_ After Rector'
+# A why outlives neither its file nor its item.
+assert_eq "  the manifest keeps the hash of each explained file" "$(jq -c '.rationale_hashes | keys' "$SD/port-manifest.json")" \
+  '["legacy_widgets.info.yml","src/Form/WidgetImportForm.php"]'
+cp "$S/legacy_widgets.info.yml" "$T_TMP/info2.keep"; printf '# edited later\n' >> "$S/legacy_widgets.info.yml"
+mf --json
+assert_eq "a file changed since its why was given: the why is dropped" \
+  "$(jq -c '[(.rationale | has("legacy_widgets.info.yml")), (.manual_edits[] | select(.edit == "legacy_widgets.info.yml") | .why)]' "$T_OUT")" '[false,null]'
+cp "$T_TMP/info2.keep" "$S/legacy_widgets.info.yml"
+jq '.items += [{id: "W-00000000000a", lane: "ai-free", file: "src/Form/WidgetImportForm.php", anchor: "{file}",
+      finding_ids: [], recipes: [], blocking: true, reason: null, status: "open"}]' "$T_TMP/w.keep" > "$SD/worklist.json"
+mf --json
+assert_eq "  a resolved item open again (a revert): its why is dropped" \
+  "$(jq -c '[(.rationale | has("W-00000000000a")), (.worklist | has("resolved"))]' "$T_OUT")" '[false,false]'
+cp "$T_TMP/w.keep" "$SD/worklist.json"
+# No git history: any file of the module may be named.
+mv "$S/.git" "$T_TMP/git2.keep"
+printf '{"legacy_widgets.info.yml": "Raised to the recommended range."}\n' > "$T_TMP/rnogit.json"
+mf --rationale "$T_TMP/rnogit.json" --json
+assert_eq "no git: a file of the module is accepted (manual edits unknown)" \
+  "$T_RC|$(jq -c '[.manual_edits, .rationale["legacy_widgets.info.yml"]]' "$T_OUT")" '0|[null,"Raised to the recommended range."]'
+t_run "$T_SH" "$T_REPO/scripts/analysis/port-report.sh" --subject "$S" --manifest "$SD/port-manifest.json"
+assert_match "  port-report.sh shows it" "$(cat "$(t_out)" 2> /dev/null)" '- `legacy_widgets.info.yml` — _why:_ Raised to the recommended range\.'
+mf --rationale "$T_TMP/rnope.json"
+assert_eq "  a file that does not exist: refused, exit 1" "$T_RC" "1"
+assert_match "  saying there is no git history" "$(t_err)" 'no git history.*src/Nope\.php'
+mv "$T_TMP/git2.keep" "$S/.git"
+# A new assessment starts a new port: the resolved record starts empty.
+t_run "$T_SH" "$T_REPO/scripts/ai/classify.sh" --subject "$S" --core-floor 10.0
+assert_eq "classify.sh at the assess stage: worklist-resolved.json emptied" \
+  "$T_RC|$(jq -c '.items' "$(worklist_resolved_file "$S")")" '0|[]'
 cp "$T_TMP/w.keep" "$SD/worklist.json"
 
 # deprecations_remaining counts the scan's deprecations PHPStan cannot see.
@@ -246,9 +287,11 @@ N0="$(jq -r .deprecations_remaining "$T_OUT")"
 cp "$SD/findings.json" "$T_TMP/f.keep"
 jq '.findings += [{id: "F-0000000000d1", tool: "catalog", rule: "runtime-deprecation:entity-original-property", file: "legacy_widgets.module",
       line: 3, anchor: "{file}", symbol: "EntityBase::$original", message: "Getting the original property is deprecated", occurrence: 0,
-      severity: "error", scope: "current", class: "hard", sources: [{tool: "catalog"}]}]' "$T_TMP/f.keep" > "$SD/findings.json"
+      severity: "error", scope: "current", class: "hard",
+      sources: [{tool: "catalog", rule: "runtime-deprecation:entity-original-property", line: 3},
+                {tool: "catalog", rule: "runtime-deprecation:entity-original-property", line: 4}]}]' "$T_TMP/f.keep" > "$SD/findings.json"
 mf --no-write --json
-assert_eq "deprecations_remaining takes a hard runtime-deprecation finding" "$(jq -r .deprecations_remaining "$T_OUT")" "$((N0 + 1))"
+assert_eq "deprecations_remaining takes a hard runtime-deprecation finding, each of its occurrences" "$(jq -r .deprecations_remaining "$T_OUT")" "$((N0 + 2))"
 cp "$T_TMP/f.keep" "$SD/findings.json"
 
 # Usage errors.

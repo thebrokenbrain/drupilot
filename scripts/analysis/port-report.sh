@@ -417,6 +417,16 @@ printf '%s' "$PREC" | jq -e 'type == "object"' >/dev/null 2>&1 || PREC=""
     end
   ' 2>/dev/null | { grep . || printf '_none_\n'; }
   fi
+  # The why of a file the rationale names that is not listed above: one that
+  # Rector, the attribute pass or a codemod changed too, or any file when the
+  # manifest could not tell the manual edits (no git history).
+  _also="$(printf '%s' "$M" | jq -r '
+    (.manual_edits | if type == "array" then [.[] | if type == "string" then . else (.edit // empty) end] else null end) as $me
+    | (.rationale // {}) | if type == "object" then . else {} end | to_entries[]
+    | select((.key | test("^W-[0-9a-f]+$") | not) and ($me == null or (.key as $k | $me | index($k)) == null))
+    | "- `\(.key)`" + (if $me == null then "" else " (changed by Rector, the attribute pass or a codemod too)" end) + " — _why:_ \(.value)"
+  ' 2>/dev/null || true)"
+  [[ -z "$_also" ]] || printf '\n_Also explained:_\n\n%s\n' "$_also"
   printf '\n'
   printf '### Remaining deprecations\n\n%s\n\n' "$DEPR"
 

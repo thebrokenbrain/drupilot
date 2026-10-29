@@ -103,9 +103,13 @@ changes to look for (Grep + Edit, minimal and explained):
   invalid. PHPUnit 9 (Drupal 10) reads the annotations only. While the range
   keeps Drupal 10, keep each annotation and add its twin next to it
   (`@group foo` -> `#[Group('foo')]`, with its `use
-  PHPUnit\Framework\Attributes\Group;`), and write a relative `@covers` in
-  full (`@covers \Drupal\foo\Bar::baz`): both forms then work on PHPUnit 9
-  to 11. The check `test-phpunit-metadata` finds what is left (below).
+  PHPUnit\Framework\Attributes\Group;`; a twin carries the annotation's
+  value: `@preserveGlobalState disabled` -> `#[PreserveGlobalState(false)]`),
+  and write a relative `@covers` in full (`@covers \Drupal\foo\Bar::baz`):
+  both forms then work on PHPUnit 9 to 11. A method's `@covers` and `@uses`
+  have no twin: `Covers*`/`Uses*` attributes go on the class, and PHPUnit
+  aborts the run when one sits on a method. The check `test-phpunit-metadata`
+  finds what is left (below).
 - **Deprecated test traits / helpers**: e.g. removed `getMock`, deprecated
   `AssertLegacyTrait` methods, `drupalPostForm` -> `submitForm`,
   `assertResponse`/`assertText` -> `assertSession()->...`.

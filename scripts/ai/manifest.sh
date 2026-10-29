@@ -169,15 +169,42 @@ if git -C "$SUBJECT" rev-parse --git-dir > /dev/null 2>&1; then
 fi
 PATCH=""; _pn="$MN-$(target_patch_desc "$TMAJ").patch"; [[ -f "$SUBJECT/$_pn" ]] && PATCH="$_pn"
 
+# The rationale given now and the previous manifest's (with the items it
+# listed as resolved and the hash each explained file had), each through a
+# file: one argv string is capped.
+printf '{}\n' > "$TMP/ratprev.json"; printf '[]\n' > "$TMP/prevres.json"; printf '{}\n' > "$TMP/prevhash.json"
+if [[ -f "$SD/port-manifest.json" ]]; then
+  jq -c '(.rationale // {}) | if type == "object" then . else {} end' "$SD/port-manifest.json" > "$TMP/ratprev.json" 2> /dev/null \
+    || printf '{}\n' > "$TMP/ratprev.json"
+  jq -c '[((.worklist // {}).resolved // [])[]? | .id? // empty]' "$SD/port-manifest.json" > "$TMP/prevres.json" 2> /dev/null \
+    || printf '[]\n' > "$TMP/prevres.json"
+  jq -c '(.rationale_hashes // {}) | if type == "object" then . else {} end' "$SD/port-manifest.json" > "$TMP/prevhash.json" 2> /dev/null \
+    || printf '{}\n' > "$TMP/prevhash.json"
+fi
+printf '{}\n' > "$TMP/ratnew.json"; [[ -z "$RATIONALE" ]] || jq -c . "$RATIONALE" > "$TMP/ratnew.json"
+# The hash of each file a rationale key names (a key that is not an item id).
+: > "$TMP/hash.tsv"
+jq -r -s '(.[0] + .[1]) | keys[] | select(test("^W-[0-9a-f]+$") | not)' "$TMP/ratprev.json" "$TMP/ratnew.json" 2> /dev/null \
+  | while IFS= read -r _k; do
+      case "$_k" in /*|*..*) continue;; esac
+      if [[ -f "$SUBJECT/$_k" ]]; then printf '%s\t%s\n' "$_k" "$(file_hash "$SUBJECT/$_k")" >> "$TMP/hash.tsv"; fi
+    done
+jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {key: .[0], value: .[1]}) | from_entries' "$TMP/hash.tsv" > "$TMP/curhash.json"
 # The keys a rationale may name: the worklist's items, the items the port
-# resolved (worklist-resolved.json) and the files it changed.
+# resolved (worklist-resolved.json) and the files it changed; with no git
+# history there is no diff to tell those files, so any file of the module.
 RES="$(worklist_resolved_file "$SUBJECT")"
 jq -e '.schema == 1 and (.items | type) == "array"' "$RES" > /dev/null 2>&1 || RES="$(json_or "" '{"schema": 1, "items": []}')"
-jq -n -c --slurpfile w "$W" --slurpfile r "$RES" --rawfile files "$TMP/files.tsv" '
+jq -n -c --slurpfile w "$W" --slurpfile r "$RES" --rawfile files "$TMP/files.tsv" --slurpfile ch "$TMP/curhash.json" \
+  --arg git "$([[ -n "$BASE_SHA" ]] && echo 1 || echo 0)" '
   [($w[0].items // [])[].id, ($r[0].items // [])[].id,
-   ($files | split("\n")[] | select(length > 0) | split("\t") | .[1] | select(. != null))] | unique' > "$TMP/keys.json"
+   ($files | split("\n")[] | select(length > 0) | split("\t") | .[1] | select(. != null)),
+   (if $git == "0" then ($ch[0] | keys[]) else empty end)] | unique' > "$TMP/keys.json"
 if [[ -n "$RATIONALE" ]]; then
   BAD="$(jq -r --slurpfile k "$TMP/keys.json" '[keys[] | select(. as $x | $k[0] | index($x) | not)] | join(", ")' "$RATIONALE")"
+  if [[ -n "$BAD" && -z "$BASE_SHA" ]]; then
+    die "Not an item of the worklist, one the port resolved (worklist-resolved.json) or a file of the module (no git history to tell which files the port changed): $BAD." 1
+  fi
   [[ -z "$BAD" ]] || die "Not an item of the worklist, one the port resolved (worklist-resolved.json) or a file it changed: $BAD." 1
 fi
 
@@ -188,9 +215,6 @@ DD="$(json_or "$(digests_decisions_file "$SUBJECT")" '{"decisions": []}')"
 AS="$(json_or "$SD/assess.json" '{}')"
 actions_state "$SD/actions.jsonl" "$SUBJECT" "$TMP/acts.json" || printf '{"last": {}, "effective": {}, "now": {}, "files": true}\n' > "$TMP/acts.json"
 decisions_for_subject "$SUBJECT" > "$TMP/dec.json"
-RAT_PREV='{}'
-if [[ -f "$SD/port-manifest.json" ]]; then RAT_PREV="$(jq -c '(.rationale // {}) | if type == "object" then . else {} end' "$SD/port-manifest.json" 2> /dev/null || printf '{}')"; fi
-RAT_NEW='{}'; [[ -z "$RATIONALE" ]] || RAT_NEW="$(jq -c . "$RATIONALE")"
 COMPOSER_PHP="$(jq -r '.require.php // empty' "$SUBJECT/composer.json" 2> /dev/null || true)"
 SUBREL="$(jq -r '.subject.path // ""' "$F")"
 # The SemVer bump of the final requirement (core_version_bump): from the one
@@ -233,11 +257,12 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
   --slurpfile md "$TMP/meta.json" --slurpfile soft "$TMP/soft.json" --rawfile files "$TMP/files.tsv" \
   --slurpfile phpt "$TMP/phpt.json" --slurpfile lint "$TMP/lint.json" --slurpfile pc "$TMP/pc.json" --arg phpre "$PHP_WINDOW_REASONS_ERE" \
   --slurpfile res "$RES" --slurpfile keys "$TMP/keys.json" \
-  --argjson ratprev "$RAT_PREV" --argjson ratnew "$RAT_NEW" --arg phase "$PHASE" --arg mn "$MN" --arg type "$TYPE" \
+  --slurpfile ratprev "$TMP/ratprev.json" --slurpfile ratnew "$TMP/ratnew.json" --slurpfile prevres "$TMP/prevres.json" \
+  --slurpfile prevhash "$TMP/prevhash.json" --slurpfile curhash "$TMP/curhash.json" --arg phase "$PHASE" --arg mn "$MN" --arg type "$TYPE" \
   --arg req "$REQ" --arg rphp "$COMPOSER_PHP" --arg pt "$(resolve_php_target)" --arg d10 "$D10" --arg patch "$PATCH" \
   --arg base "$BASE_SHA" --arg subrel "$SUBREL" --arg acth "$ACTH" --arg vbump "$VBUMP" '
   $f[0] as $F | $w[0] as $W | $rr[0] as $RR | $asj[0] as $A | $acts[0] as $ST
-  | def occ: ([(.sources // [])[] | select(.tool == "phpstan")] | length) as $n | if $n > 0 then $n else 1 end;
+  | def occ: ([(.sources // [])[] | select(.tool == "phpstan" or ((.rule // "") | startswith("runtime-deprecation:")))] | length) as $n | if $n > 0 then $n else 1 end;
     def nz: if . == "" then null else . end;
     ($files | split("\n") | map(select(length > 0) | split("\t") | {status: .[0], path: .[1]})) as $diff
   # The files of the Rector run and of the attribute pass, relative to the
@@ -252,7 +277,17 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
      | map({recipe, version, file, finding_id}) | sort_by([.file, .recipe, .finding_id])) as $codemods
   | ($codemods | map(.file) | unique) as $cfiles
   | ([$W.items[] | {lane, status}] | group_by(.lane) | map({key: .[0].lane, value: (group_by(.status) | map({key: .[0].status, value: length}) | from_entries)}) | from_entries) as $ls
-  | (($ratprev | with_entries(select(.key as $k | $keys[0] | index($k)))) + $ratnew) as $rat
+  # The previous rationale is kept for the keys still valid, and only while
+  # it still explains them: a file changed since its why was given loses it,
+  # and so does an item the previous manifest listed as resolved that is open
+  # again (a revert).
+  | def ispath: test("^W-[0-9a-f]+$") | not;
+    ([$W.items[].id]) as $wids
+  | (($ratprev[0] | with_entries(select(.key as $k
+        | ($keys[0] | index($k)) != null
+          and (if ($k | ispath) then (($prevhash[0][$k] // null) == null or $prevhash[0][$k] == ($curhash[0][$k] // null))
+               else (($prevres[0] | index($k)) == null or ($wids | index($k)) == null) end))))
+     + $ratnew[0]) as $rat
   # The resolved items the rationale names (the ones no longer in the worklist).
   | ([($res[0].items // [])[] | select(.id as $i | ($rat | has($i)) and ([$W.items[].id] | index($i) | not))
       | {id, lane, file, anchor, rationale: $rat[.id]}] | sort_by(.id)) as $resolved
@@ -275,6 +310,10 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
                          + (if $rat[.id] then {rationale: $rat[.id]} else {} end)]}
                 + (if ($resolved | length) > 0 then {resolved: $resolved} else {} end)),
      rationale: $rat,
+     # The hash each explained file had when the manifest was built (a later
+     # run drops the why of a file changed since).
+     rationale_hashes: ([$rat | keys[] | select(ispath) | {key: ., value: ($curhash[0][.] // null)} | select(.value != null)]
+                        | from_entries | if length > 0 then . else null end),
      # The PHP window: the php -l legs and the human items of its constructs.
      php_window: (if $phpt[0] == null and $lint[0] == null and $pc[0] == null then null
                   else {floor: ($phpt[0].floor // null), target: ($phpt[0].target // null),

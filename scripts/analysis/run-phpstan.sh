@@ -46,7 +46,9 @@
 #                    a scan block, e.g. $entity->original, deprecated in
 #                    drupal:11.2.0 and removed from drupal:12.0.0) is
 #                    reported by drupilot's own scan of the module's code
-#                    (php_magic_property_lines) in
+#                    (php_magic_property_lines, on the code a target core
+#                    runs: the deprecated callable of a DeprecationHelper
+#                    call is left out) in
 #                    drupilot.runtime_deprecations, when there is one:
 #                    [{file (root-relative), line, identifier:
 #                    "drupilot.runtimeDeprecation", id, symbol, operation:
@@ -308,7 +310,11 @@ runtime_deprecations() {
       -o -name '*.theme' -o -name '*.profile' -o -name '*.engine' \) \
       -not -path '*/vendor/*' -not -path '*/node_modules/*' -not -path '*/.git/*' 2> /dev/null | LC_ALL=C sort > "$OUT_F.rtfiles"
     while IFS= read -r f; do
-      php_code_lines "$f" > "$OUT_F.rtblank"
+      # The code a target core runs: the deprecated callable of a
+      # DeprecationHelper::backwardsCompatibleCall() (drupal-rector's own BC
+      # form) runs only on a core older than its version, so it is blanked.
+      php_code_lines "$f" > "$OUT_F.rtcode"
+      php_bc_blank_fallbacks "$OUT_F.rtcode" "$f" > "$OUT_F.rtblank"
       rel="${f#"$DRUPAL_ROOT"/}"
       while IFS=$'\t' read -r sid prop; do
         php_magic_property_lines "$OUT_F.rtblank" "$prop" | while IFS=$'\t' read -r line op; do
@@ -326,7 +332,7 @@ runtime_deprecations() {
            message: ((($e.scan.messages // {})[$r[3]] // ($e.scan.messages // {}).get // "")
                      + (if ($e.scan.note // "") != "" then " (drupilot source scan: " + $e.scan.note + ")" else "" end))})
     | sort_by([.file, .line, .id, .operation])' "$OUT_F.rt" 2> /dev/null || printf '[]'
-  rm -f "$OUT_F.rt" "$OUT_F.rtcat" "$OUT_F.rtfiles" "$OUT_F.rtblank" 2> /dev/null || true
+  rm -f "$OUT_F.rt" "$OUT_F.rtcat" "$OUT_F.rtfiles" "$OUT_F.rtcode" "$OUT_F.rtblank" 2> /dev/null || true
   return 0
 }
 
@@ -346,7 +352,9 @@ if [[ "$AS_JSON" == "1" ]]; then
   if [[ "$STATUS" != "crashed" ]] || printf '%s' "${JSON_OUT:-}" | jq -e 'has("totals")' >/dev/null 2>&1; then
     # Sorted (DET-2): files by path, each file's messages by line, identifier
     # and message, the general errors by text.
-    printf '%s' "$JSON_OUT" | jq -c --argjson m "$META" '. + {drupilot: $m}
+    # META goes through a file too (its runtime_deprecations can be long).
+    printf '%s\n' "$META" > "$OUT_F.meta"
+    printf '%s' "$JSON_OUT" | jq -c --slurpfile mf "$OUT_F.meta" '$mf[0] as $m | . + {drupilot: $m}
       | (if (.files | type) == "object" then .files |= (to_entries | sort_by(.key)
           | map(if (.value.messages | type) == "array" then .value.messages |= sort_by([(.line // 0), (.identifier // ""), (.message // "")]) else . end)
           | from_entries) else . end)
@@ -398,7 +406,8 @@ if [[ "$AS_JSON" == "1" ]]; then
         end' "$OUT_F.sorted"
     rm -f "$OUT_F.sorted" "$OUT_F.calls" "$OUT_F.calls.new" "$OUT_F.blank" 2> /dev/null || true
   else
-    jq -nc --argjson m "$META" '{totals: null, files: {}, errors: $m.crash, drupilot: $m}'
+    printf '%s\n' "$META" > "$OUT_F.meta"
+    jq -nc --slurpfile mf "$OUT_F.meta" '$mf[0] as $m | {totals: null, files: {}, errors: $m.crash, drupilot: $m}'
   fi
 fi
 

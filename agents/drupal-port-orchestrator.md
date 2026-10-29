@@ -486,9 +486,12 @@ carries an `effective` negative control (`negative-control.sh`).
 
 When it returns, refresh what the port wrote before the tests changed:
 `scripts/analysis/refresh-artifacts.sh --subject <path> --json` (the core matrix
-when stale, the local patch, the extraction and manifest when the worklist is of
-other sources, and `port-report.md` with the last run). A failed step (exit `3`)
-is reported with its reason; fix it before the stage counts as done.
+when stale, the local patch, the pipeline's php and validate stages when their
+inputs moved, the manifest, and `port-report.md` with the last run). In a layer
+run, add `--output <the module's report directory>`, the one its port stage
+wrote to. A failed step (exit `3`) is reported with its reason (a Drupal 10 leg
+that failed before and still fails is a verdict, not a failure); fix it before
+the stage counts as done.
 
 ### Stage 6 — contribute (gate: `contribute`; conditional) -> delegate
 

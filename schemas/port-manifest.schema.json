@@ -23,7 +23,8 @@
         "resolved": {"description": "The items an earlier worklist had and the port resolved (worklist-resolved.json) that the rationale names, with it; absent when there is none.", "type": "array", "items": {"type": "object", "required": ["id", "rationale"], "properties": {"id": {"type": "string"}, "lane": {"type": ["string", "null"]}, "file": {"type": ["string", "null"]}, "anchor": {"type": ["string", "null"]}, "rationale": {"type": "string"}}}}
       }
     },
-    "rationale": {"description": "The model's only input: {key: why}, the key a worklist item id, the id of an item the port resolved (worklist-resolved.json) or the path of a file the port changed, relative to the subject (the why of a manual edit).", "type": "object", "additionalProperties": {"type": "string"}},
+    "rationale": {"description": "The model's only input: {key: why}, the key a worklist item id, the id of an item the port resolved (worklist-resolved.json) or the path of a file the port changed, relative to the subject (any file of the subject when there is no git history): the why of a manual edit, or of a file a tool changed too.", "type": "object", "additionalProperties": {"type": "string"}},
+    "rationale_hashes": {"description": "The hash (file_hash) each file a rationale key names had when the manifest was built: a later run drops the why of a file changed since. Absent when no key names a file.", "type": "object", "additionalProperties": {"type": "string"}},
     "php_window": {
       "description": "The PHP window (manifest.sh, from the stage's php-target, php-lint and phpcompat raw reports): floor and target, the php -l legs and their compile-time deprecations, how PHPCompatibility ran, and the human worklist items of the window's constructs (removed-in-target-php, fix-needs-php-above-floor, does-not-compile, deprecated-no-rule, deprecated-in-php-window).",
       "type": "object",
