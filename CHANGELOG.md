@@ -31,6 +31,13 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ### Fixed
 
+- A core requirement that names 11 only as the bound excluding it, such as
+  `>=8.9 < 11.0.0-stable`, no longer counts as Drupal 11-compatible: the `auto`
+  strategy kept it verbatim (keep-current) and setup then refused the plan
+  (`range-excludes-bed`), so no stage could run (training run module 03,
+  like_dislike). The strategy now asks whether the range admits the target
+  major, as the plan does; it recommends `^10 || ^11` there, and keeps an
+  open range such as `>=9.3 <12` that admits 11 without naming it.
 - The core floor follows `watchdog_exception()`: its replacement
   `Error::logException()` exists only from 10.1, so a port that keeps Drupal 10
   declares `^10.1 || ^11` from the assessment on, instead of a `^10 || ^11`
