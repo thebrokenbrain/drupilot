@@ -166,7 +166,7 @@ Follow the `viability-assessment` skill: its §3 is the field guide to
   `soft_deprecations` (removed only in a later major, e.g. `user_load_by_name()`,
   `text_summary()`, `check_markup()`) follow `soft_deprecations_policy` and are
   never must-fix work.
-- **Hard breaks** — `hard_break_categories` (Twig 3, CKEditor 5, jQuery UI,
+- **Hard breaks** — `hard_break_categories` (Twig 3, CKEditor 5, jQuery UI, jQuery 4,
   Symfony 7, and the core-removal detectors) with the files that matched. A
   Symfony 7 hit is the most likely to be harmless: say whether PHPStan flags a
   real type or signature error there.

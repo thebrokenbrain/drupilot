@@ -52,9 +52,11 @@
 #           run of -/+ lines), file when several rules made several change
 #           blocks (Rector names the rules per file: the rule changed some
 #           place of the file, maybe not this line)
-#   class   hard | soft | unknown | guarded (classify-deprecations.sh; a
-#           guarded one, a removed function only a DeprecationHelper fallback
-#           calls, is an info finding) | analysis |
+#   class   hard | soft | unknown | guarded | not-removed
+#           (classify-deprecations.sh; a guarded one, a removed function only
+#           a DeprecationHelper fallback calls, and a not-removed one, a
+#           "not found" function core defines in a file it loads on demand or
+#           one a *.drush.inc calls, are info findings) | analysis |
 #           safety | signature | metadata | style | php-target | removal |
 #           rector
 #
@@ -247,7 +249,7 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
     # so a directory named "(in context of ...)" is kept.)
     def ctxless: sub(" \\(in context of (class [^ ()]+|anonymous class|[^ /()]*@anonymous/.*)\\)$"; "");
     # classify-deprecations items, keyed by root-relative file, line and normalized message.
-    ([($cls[0].hard // [])[], ($cls[0].soft // [])[], ($cls[0].unknown // [])[], ($cls[0].guarded // [])[]]
+    ([($cls[0].hard // [])[], ($cls[0].soft // [])[], ($cls[0].unknown // [])[], ($cls[0].guarded // [])[], ($cls[0].not_removed // [])[]]
       | map({key: "\(.file)\u001f\(.line)\u001f\(.message | finding_norm_message)", value: .}) | from_entries) as $cmap
   | [
       # Rector: one finding per applied rule and hunk. Rector names the rules
@@ -273,7 +275,7 @@ jq -n -c --slurpfile ix "$INDEX" --slurpfile rector "$F_RECTOR" --slurpfile stan
         | ($cmap["\($e.key)\u001f\($m.line)\u001f\($nm)"] // null) as $c
         | {tool: "phpstan", rule: ($m.identifier | S), rf: $rf, line: ($m.line | N),
            symbol: (if $c then $c.symbol else null end), message: $nm,
-           severity: (if $c and $c.class == "guarded" then "info" else "error" end),
+           severity: (if $c and ($c.class == "guarded" or $c.class == "not-removed") then "info" else "error" end),
            scope: (if $c and $c.class == "soft" and $policy != "fix" then "next-major" else "current" end),
            class: (if $c then $c.class else "analysis" end), ctx: ($e.key != ($e.key | ctxless)), cx: $e.key}),
       # The deprecations PHPStan cannot see (a magic property), from the scan
@@ -403,7 +405,7 @@ jq -c --slurpfile idsf "$TMP/ids.json" --slurpfile ix "$INDEX" --slurpfile recto
   # The same symbol at the same anchor of a file: one finding, every source
   # kept (a guarded one merges only with guarded ones, so it never hides a
   # call the target runs).
-  | (map(select(.symbol != null)) | group_by([.file, .anchor, .symbol, (.class == "guarded")])
+  | (map(select(.symbol != null)) | group_by([.file, .anchor, .symbol, (.class == "guarded" or .class == "not-removed")])
       | map(sort_by([(.tool | prec), .id]) | .[0] + {sources: ([.[].sources[]] | sort_by([(.tool | prec), .rule, (.line // 0)]))}))
     + map(select(.symbol == null))
   | sort_by([.file, .anchor, .id])

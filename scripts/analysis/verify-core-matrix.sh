@@ -24,7 +24,10 @@
 #     11.4's as WebDriverWebAssert), and the runtime proof of the suite on
 #     Drupal 10 belongs to the test phase;
 #   * a finding from one of phpstan-drupal's own best-practice rules (identifiers
-#     read from the installed extension) is reported as `advisory`;
+#     read from the installed extension), or a PHPDoc-only report (varTag.*,
+#     phpDoc.*, *.phpDocType, generics.*, missingType.*: a doc tag at odds
+#     with a newer core's native types never breaks the code), is reported as
+#     `advisory`;
 #   * a finding PHP tolerates at runtime is reported as `tolerated`, never as an
 #     incompatibility. A leg differs from another only through core (same PHP,
 #     same analyser), so the callee is userland code, and the matrix answers
@@ -34,6 +37,9 @@
 #         ConfigFormBase::__construct() call on 10.0, whose constructor takes
 #         one): PHP drops extra arguments to a userland function or method.
 #         TOO FEW arguments stays incompatible (ArgumentCountError);
+#       - `property.notFound` on a magic property core keeps through __get()
+#         with a deprecation notice (the lifecycle catalog's
+#         scan.magic_property, e.g. $original from 11.2);
 #       - `method.void` / `staticMethod.void` / `function.void` ("Result of
 #         method ...::set() (void) is used"), typically a `: void` return type a
 #         newer core/Symfony declares on a method that never returned a value:
@@ -418,6 +424,24 @@ toolchain_json() {
 }
 TOOLCHAIN="$(toolchain_json)"
 
+# Drush: a subject with Drush commands (src/Drush, src/Commands extending
+# DrushCommands, a drush.services.yml) needs drush/drush in each reference
+# core, as the test-bed has it, or every Drupal 10 leg fails on the missing
+# Drush classes (training run 04, drush_language). Composer picks the Drush
+# major the leg's core admits (the current one, or the previous one on an old
+# Drupal 10 minor floor).
+# The toolchain's Drush major (config .packages.drush), widened to the
+# previous major for an old Drupal 10 minor floor.
+_dm="$(config_json '.packages.drush' '' | sed -n 's/.*\^\([0-9][0-9]*\).*/\1/p')"
+VCM_DRUSH_CONSTRAINT="*"
+[[ "$_dm" =~ ^[0-9]+$ ]] && VCM_DRUSH_CONSTRAINT="^$((_dm - 1)) || ^$_dm"
+NEEDS_DRUSH=false
+if [[ -f "$(find "$SUBJECT_ABS" -maxdepth 2 -name 'drush.services.yml' -not -path '*/vendor/*' 2>/dev/null | sed -n '1p')" ]] \
+   || find "$SUBJECT_ABS" \( -name vendor -o -name node_modules -o -name .git -o -name tests \) -prune -o -type f -name '*.php' \
+        -exec grep -l -E '(^|[^A-Za-z0-9_])(use[[:space:]]+)?\\?Drush\\' {} + 2>/dev/null | grep_q .; then
+  NEEDS_DRUSH=true
+fi
+
 # build_reference <leg> <requested constraint or exact version> -> builds
 # $CORES_DIR/drupal-<leg> atomically. Prints nothing; returns 0 on success and
 # sets BUILD_REASON on failure.
@@ -480,13 +504,28 @@ build_reference() {
         _ "$ROOT" "$CONTAINER_ROOT/$CORES_REL/$tmpname" >>"$log" 2>&1 || true
     fi
   fi
+  local drush=false
+  if [[ "$NEEDS_DRUSH" == "true" ]]; then
+    cp "$tmpdir/composer.json" "$TMP/composer.json.bak"; cp "$tmpdir/composer.lock" "$TMP/composer.lock.bak" 2>/dev/null || true
+    jq --arg d "$VCM_DRUSH_CONSTRAINT" '.require["drush/drush"] = $d' "$tmpdir/composer.json" > "$TMP/composer.json" \
+      && cp "$TMP/composer.json" "$tmpdir/composer.json"
+    if run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT $VCM_COMPOSER_BIN update --no-interaction --no-progress --no-audit drush/drush --with-all-dependencies" </dev/null' \
+         _ "$ROOT" "$CONTAINER_ROOT/$CORES_REL/$tmpname" >>"$log" 2>&1; then
+      drush=true
+    else
+      log_warn "Could not add drush/drush to the reference Drupal $want core: the subject's Drush classes will be reported as unknown on this leg."
+      cp "$TMP/composer.json.bak" "$tmpdir/composer.json"; cp "$TMP/composer.lock.bak" "$tmpdir/composer.lock" 2>/dev/null || true
+      run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT $VCM_COMPOSER_BIN install --no-interaction --no-progress" </dev/null' \
+        _ "$ROOT" "$CONTAINER_ROOT/$CORES_REL/$tmpname" >>"$log" 2>&1 || true
+    fi
+  fi
   if ! heal_extension_config "$tmpdir" "$CONTAINER_ROOT/$CORES_REL/$tmpname" "the reference Drupal $want core"; then
     BUILD_REASON="$HEAL_REASON"; rm -rf "$tmpdir"; return 1
   fi
   jq -n --arg leg "$leg" --arg c "$(leg_constraint "$leg")" --arg want "$want" --arg v "$ver" \
-     --arg php "$CONTAINER_PHP" --argjson t "$TOOLCHAIN" --argjson td "$test_deps" \
+     --arg php "$CONTAINER_PHP" --argjson t "$TOOLCHAIN" --argjson td "$test_deps" --argjson dr "$drush" \
      --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-     '{leg: $leg, constraint: $c, requested: $want, version: $v, php: $php, toolchain: $t, test_deps: $td, built_at: $at}' \
+     '{leg: $leg, constraint: $c, requested: $want, version: $v, php: $php, toolchain: $t, test_deps: $td, drush: $dr, built_at: $at}' \
      > "$tmpdir/.drupilot-core.json"
   rm -rf "$final"
   mv "$tmpdir" "$final"
@@ -510,7 +549,8 @@ ensure_reference() {
     mphp="$(jq -r '.php // empty' "$marker" 2>/dev/null || true)"
     mtool="$(jq -c '.toolchain // {}' "$marker" 2>/dev/null || true)"
     if [[ -n "$mver" && ( -z "$locked" || "$locked" == "$mver" ) && "$mphp" == "$CONTAINER_PHP" \
-          && "$(printf '%s' "$mtool" | jq -cS . 2>/dev/null)" == "$(printf '%s' "$TOOLCHAIN" | jq -cS .)" ]]; then
+          && "$(printf '%s' "$mtool" | jq -cS . 2>/dev/null)" == "$(printf '%s' "$TOOLCHAIN" | jq -cS .)" \
+          && ( "$NEEDS_DRUSH" != "true" || "$(jq -r '.drush // false' "$marker" 2>/dev/null)" == "true" ) ]]; then
       if ! deterministic_mode; then
         # Floating mode: refresh within the constraint (best effort, offline-safe).
         if ! run_with_timeout "$COMPOSER_HOST_TIMEOUT" bash -c 'cd "$1" && ddev exec -d "$2" "timeout -k 20 $VCM_COMPOSER_LIMIT $VCM_COMPOSER_BIN update --no-interaction --no-progress --no-audit" </dev/null' \
@@ -702,7 +742,14 @@ for l in "${LEGS[@]}"; do [[ "$l" == "$BASELINE" ]] && BI=$i; i=$((i + 1)); done
 # key/kind classification in jq (shared program).
 # shellcheck disable=SC2016  # jq program, not shell expansions.
 CLASSIFY='
-  def key: "\(.file)|\(.line)|\(.identifier)|\(.message)";
+  # The message with each union type normalized (members sorted, bool read
+  # as false): one error worded "bool|StreamWrapperInterface" on a core whose
+  # doc block says bool and "StreamWrapperInterface|false" on one that says
+  # false is the same error on both legs (training run module 10,
+  # image_resize_filter: every leg failed on it).
+  def normmsg: .message | gsub("(?<u>[A-Za-z0-9_\\\\]+(\\|[A-Za-z0-9_\\\\]+)+)";
+      "\(.u | split("|") | map(if . == "bool" or . == "true" then "false" else . end) | unique | join("|"))");
+  def key: "\(.file)|\(.line)|\(.identifier)|\(normmsg)";
   def is_depr: ((.identifier | test("deprecat"; "i")) or (.message | test("\\bdeprecated\\b"; "i")));
   def is_test: (.file | test("(^|/)tests/"));
   # Runtime-tolerated (see the header): more arguments than the callee accepts
@@ -713,7 +760,19 @@ CLASSIFY='
     and ((.message | capture("invoked with (?<n>[0-9]+) parameters?, (?:[0-9]+-)?(?<m>[0-9]+) required")
           | (.n | tonumber) > (.m | tonumber)) // false);
   def void_used: (.identifier | test("^(method|staticMethod|function)\\.void$"));
-  def tolerated: too_many_args or void_used;
+  # A magic property core keeps through __get() with a deprecation notice
+  # (the scan.magic_property names of config/deprecations.json, such as
+  # EntityBase::$original from 11.2): PHPStan reports property.notFound, the
+  # code still runs (training run module 15, mobile_number).
+  def magic_prop: (.identifier == "property.notFound")
+    and (([.message | capture("::\\$(?<p>[A-Za-z0-9_]+)\\.?$")? | .p] | .[0]) as $p | $p != null and ($mp | index($p)) != null);
+  def tolerated: too_many_args or void_used or magic_prop;
+  # A PHPDoc-only report (an @var, @param or @return that disagrees with the
+  # native type, a malformed tag, a missing iterable value type): it can never
+  # break the code on a core, which only the native types of a newer core
+  # reveal (the typed ItemList::getIterator() of 11.4 against an @var in a
+  # foreach, mobile_number): advisory.
+  def doc_only: (.identifier | test("^(varTag|phpDoc|generics|missingType)\\.|^[a-zA-Z]+\\.phpDocType$"));
   # The type that is MISSING, not the first class named in the message: in
   # "Parameter $x of method Drupal\a\B::f() has invalid type Drupal\c\D" it is
   # the second one. The patterns are tried in order, the most specific first
@@ -739,7 +798,7 @@ CLASSIFY='
       | (if ($okeys | index($k)) != null then "shared"
          elif is_depr then "deprecation"
          elif (missing_class) != null then "sandbox_missing_dependency"
-         elif ($adv | index($f.identifier)) != null then "advisory"
+         elif ($adv | index($f.identifier)) != null or doc_only then "advisory"
          elif tolerated then "tolerated"
          elif $ref and is_test then "test_only"
          else "incompatible" end) as $kind
@@ -755,6 +814,10 @@ CLASSIFY='
 ADV_JSON="$(grep -rhoE "identifier\('[^']+'\)" "$ROOT/vendor/mglaman/phpstan-drupal/src" 2>/dev/null \
   | sed -E "s/^identifier\('//; s/'\)\$//" | LC_ALL=C sort -u | jq -R . | jq -sc 'map(select(length > 0))' 2>/dev/null || printf '[]')"
 [[ -n "$ADV_JSON" ]] || ADV_JSON='[]'
+# The magic properties core keeps through __get() (config/deprecations.json
+# lifecycle scan.magic_property): a property.notFound on one is tolerated.
+MAGIC_JSON="$(jq -c '[.lifecycle[]? | .scan.magic_property? // empty] | unique' "$(plugin_root)/config/deprecations.json" 2>/dev/null || printf '[]')"
+[[ -n "$MAGIC_JSON" ]] || MAGIC_JSON='[]'
 
 # own module names: the subject + its submodules (any *.info.yml below it).
 OWN_JSON="$(cd "$SUBJECT_PHYS" && find . \( -name .git -o -name vendor -o -name node_modules \) -prune -o -name '*.info.yml' -print 2>/dev/null \
@@ -808,7 +871,7 @@ for l in "${LEGS[@]}"; do
   status="${L_STATUS[i]}"; reason="${L_REASON[i]}"
   if [[ "$role" == "baseline" ]]; then other="$REF_FINDINGS"; else other="$BASE_FINDINGS"; fi
   MODS="$(modules_in "${L_CORE_DIR[i]}")"
-  classified="$(jq -c --argjson other "$other" --argjson own "$OWN_JSON" --argjson mods "$MODS" --argjson adv "$ADV_JSON" \
+  classified="$(jq -c --argjson other "$other" --argjson own "$OWN_JSON" --argjson mods "$MODS" --argjson adv "$ADV_JSON" --argjson mp "$MAGIC_JSON" \
     --argjson ref "$([[ "$role" == "reference" ]] && echo true || echo false)" "$CLASSIFY" "$TMP/leg-$i.json")"
   pstatus="$(jq -r .status "$TMP/leg-$i.json")"
 

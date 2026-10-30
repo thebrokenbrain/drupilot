@@ -21,7 +21,7 @@ Before doing anything, run the requirements gate. If it exits non-zero, show the
 report verbatim and STOP — do not run any analysis and do not write any files.
 
 ```bash
-!bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile analyze && bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; copy_legacy_state_once'
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile analyze --subject "$1" && bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; copy_legacy_state_once'
 ```
 
 If the exit code is `2`, a hard requirement (git, jq, and composer-or-php) is
@@ -152,7 +152,7 @@ Hand `assess.json` to the analyst (it reads that file and does not run
   the hard and unknown deprecations no Drupal Rector rule changes in the same
   function or method, plus the signature and port-safety errors.
 - **Auto-fixable**: `auto_fixable` (the official Rector files and rules).
-- **Hard breaks**: `hard_break_categories` (Twig 3, CKEditor 5, jQuery UI,
+- **Hard breaks**: `hard_break_categories` (Twig 3, CKEditor 5, jQuery UI, jQuery 4,
   Symfony 7, and the core-removal detectors) with the files that matched. A
   Symfony 7 hit is the most likely to be harmless: say whether PHPStan flags a
   real type or signature error there.

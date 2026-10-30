@@ -34,6 +34,10 @@ pass for an external reason is documented, not hidden.
   root first so relative paths resolve identically in the container and on host.
 - `${CLAUDE_PLUGIN_ROOT}` is the plugin root; leaf scripts live under
   `${CLAUDE_PLUGIN_ROOT}/scripts/...`.
+- Only drupilot's own environment: never stop, delete or prune a DDEV project,
+  Docker container, network or volume drupilot did not create for this subject,
+  even in an autonomous run; a test-bed that cannot start is a blocked run to
+  report (`not-verified-blocked`), never a reason to free resources yourself.
 - Two phases (PROMPT 0.1): **Phase 1** = make existing tests pass on D11; **Phase
   2** (opt-in) = add missing tests for maximum coverage. Adding tests is a Phase 2
   activity unless the developer asked for it.
@@ -44,7 +48,8 @@ Running tests is a `test` operation (needs DDEV + Docker daemon):
 
 ```bash
 ROOT="${CLAUDE_PLUGIN_ROOT}"
-bash "$ROOT/scripts/env/preflight.sh" --profile test
+SUBJECT="$(cd "${1:-$PWD}" && pwd)"
+bash "$ROOT/scripts/env/preflight.sh" --profile test --subject "$SUBJECT"
 ```
 
 - Exit `0` -> proceed. Exit `2` -> show the report and **stop** (hard reqs:
@@ -61,14 +66,38 @@ bash "$ROOT/scripts/tests/discover-tests.sh" --subject "$SUBJECT" --json
 ```
 
 `discover-tests.sh` classifies the test classes under
-`tests/src/{Unit,Kernel,Functional,FunctionalJavascript}` and returns JSON:
+`tests/src/{Unit,Kernel,Functional,FunctionalJavascript}`, the subject's and
+each submodule's (`modules/<sub>/tests/src/...`, which `run-phpunit.sh` runs
+too, one PHPUnit run per directory), and returns JSON:
 `{unit,kernel,functional,javascript,total,files:[...]}`. Use it to plan run order
 (fast to slow: Unit -> Kernel -> Functional -> FunctionalJavascript) and to know
 whether Selenium is needed at all.
 
-If `total` is 0: report that the subject has no tests. In Phase 1 that is a
+A `legacy` list names test classes in a SimpleTest-era location
+(`src/Tests/`, a top-level `Tests/`) that PHPUnit never reads: they never
+ran. Moving each to `tests/src/<group>/` (`git mv`, so the history follows),
+with the namespace `Drupal\Tests\<module>\<group>`, is a test adaptation
+(form, not what it verifies): do it first, then discover again. A placeholder
+that asserts nothing (`assertEquals(TRUE, TRUE)`) is reported, not moved: it
+would only fake a green run.
+
+If `total` is 0 (and no `legacy` test was moved): report that the subject has no tests. In Phase 1 that is a
 finding (nothing to validate beyond a smoke check); in Phase 2 it becomes the
-mandate to write tests (see §6).
+mandate to write tests (see §6). Run the smoke check then:
+
+```bash
+bash "$ROOT/scripts/tests/install-smoke.sh" --subject "$SUBJECT" --json
+```
+
+It renders drupilot's own BrowserTestBase check into
+`<drupal_root>/.drupilot/smoke/<machine_name>/` (never into the subject, never
+part of the patch) and runs it: the subject installs (core's strict config
+schema check included), serves the front page and `admin/config`, and
+uninstalls (exit 3 = failed: a production defect to fix, such as a missing
+config schema; `deprecations` counts the runtime deprecations it triggered,
+which the static analysis may not see). It is install evidence, not a test of
+the subject's behaviour: the verdict stays `not-verified-no-tests`, and the
+port report shows the smoke next to it.
 
 ## 3. Adapt the tests to Drupal 11 / PHPUnit 10/11
 
@@ -126,9 +155,13 @@ changes to look for (Grep + Edit, minimal and explained):
   `buttonNotExists()` never casts it, on any core. In a test file that
   declares `strict_types=1`, pass strings to every `assertSession()` method
   (`pageTextContains()`, `fieldValueEquals()`, ...): below 10.3 core does not
-  cast them either. After adapting,
+  cast them either. When you replace `withConsecutive()` while the range
+  admits Drupal 10, count the calls with a local counter in the callback:
+  `$matcher->numberOfInvocations()` (what Rector's `WithConsecutiveRector`
+  writes) exists only from PHPUnit 10, and PHPUnit 9 calls it
+  `getInvocationCount()`. After adapting,
   run the checks that catch these (an error for a line you added):
-  `bash "$ROOT/scripts/analysis/check-port-safety.sh" --subject "$SUBJECT" --checks test-label-markup,test-phpunit-metadata`.
+  `bash "$ROOT/scripts/analysis/check-port-safety.sh" --subject "$SUBJECT" --checks test-label-markup,test-phpunit-metadata,test-phpunit-api,test-abstract-suffix,test-field-ui-display-path`.
   drupilot runs the suite on the bed's core only (Drupal 10 is checked
   statically), so it cannot see such a failure at runtime.
 - **JS tests**: ensure they extend `WebDriverTestBase` and use
@@ -177,6 +210,13 @@ bash "$ROOT/scripts/env/ddev-add-ons.sh" --selenium --subject "$SUBJECT"
   on the add-on/DDEV version (PROMPT 2.5 warning). If Selenium is absent,
   proceed with the non-JS suites and record that JS tests were skipped for a
   missing dependency (an external blocker, §7).
+
+**The subject's own requirements.** Before the first run, check that the
+test-bed has every package the subject's `composer.json` requires now (the port
+may have changed a constraint after setup installed them):
+`bash "$ROOT/scripts/env/install-subject-deps.sh" --subject "$SUBJECT" --json`
+(`present` is a no-op; exit 3 names a requirement Composer cannot install, an
+external blocker to record in §7, never a test to skip silently).
 
 ## 5. Run the suites and iterate to green
 

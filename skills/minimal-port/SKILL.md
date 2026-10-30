@@ -412,6 +412,14 @@ Apply only the mechanical, behavior-preserving fixes:
     raise `DRUPILOT_PHP_TARGET` or remove it, and do not call the port done. The
     authoritative check that the port runs on the target is the test suite executing
     on the target PHP version (the preservation gate).
+  - **A dependency constraint the port changes.** When the port edits a library
+    or contrib `require` of the subject's `composer.json` (for example widening
+    `drupal/address: ^1.8` to `^1.8 || ^2.0` because no 1.x release admits
+    Drupal 11), install it into the test-bed right away:
+    `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-subject-deps.sh" --subject "<subject_path>" --json`
+    (setup's run reported the old constraint as a blocker, exit 3; the analysis
+    and the tests cannot see a package the bed lacks, training run modules 07
+    and 12).
   - **Drupal-minor floor (`d10_support`).** A `^10 || ^11` port is emitted as
     `declared-not-verified` until the **core matrix** (§6a) checks it: Rector's
     standard replacements usually exist across all of Drupal 10, but only an

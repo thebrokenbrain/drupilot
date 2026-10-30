@@ -4,8 +4,9 @@
 # Run a Drupal extension's PHPUnit suite inside the DDEV environment.
 #
 # Gates the 'test' profile first (Docker + daemon + DDEV). Runs PHPUnit against
-# the Drupal core configuration (web/core) for the selected test group(s),
-# using the drupal_runner prefix ('ddev exec' when the environment is up). For
+# the Drupal core configuration (web/core) for the selected test group(s) —
+# the subject's tests/src/<group> and each submodule's (modules/foo/tests/src/
+# <group>, one PHPUnit run per directory) —, using the drupal_runner prefix ('ddev exec' when the environment is up). For
 # JavaScript tests it verifies the Selenium add-on is reachable. With
 # --coverage it adds text + HTML coverage reports.
 #
@@ -197,7 +198,7 @@ PREFLIGHT="$(plugin_root)/scripts/env/preflight.sh"
 if [[ -x "$PREFLIGHT" || -f "$PREFLIGHT" ]]; then
   # The human preflight report is diagnostics: STDERR, never mixed into the
   # PHPUnit stream on STDOUT.
-  if ! bash "$PREFLIGHT" --profile test >&2; then
+  if ! bash "$PREFLIGHT" --profile test --subject "$SUBJECT" >&2; then
     die "Cannot run tests: the 'test' requirements are not satisfied (see the report above)." 2
   fi
 else
@@ -222,6 +223,20 @@ fi
 
 # shellcheck disable=SC2206,SC2207  # intentional word-split: runner is a command prefix.
 RUNNER=( $(drupal_runner "$DRUPAL_ROOT") )
+
+# The base URL of the non-JavaScript groups: the add-ons set
+# SIMPLETEST_BASE_URL=http://web for the whole container, which Selenium (in
+# another container) needs; a Unit, Kernel or Functional test then reaches the
+# site over the DDEV network, from the web container's own network address. A
+# test that expects the client address 127.0.0.1, as on core's CI
+# (http://localhost), fails there although the module is right (training run
+# module 11, nodeviewcount). Through DDEV, when the value is the add-on's
+# http://web, those groups get http://localhost; FunctionalJavascript keeps it.
+NONJS_ENV=()
+if [[ ${#RUNNER[@]} -gt 0 ]]; then
+  _sbu="$("${RUNNER[@]}" printenv SIMPLETEST_BASE_URL < /dev/null 2> /dev/null | tr -d '\r' | sed -n '1p' || true)"
+  [[ "$_sbu" == "http://web" ]] && NONJS_ENV=(env SIMPLETEST_BASE_URL=http://localhost)
+fi
 
 # PHPUnit lives in core; use the core configuration explicitly.
 PHPUNIT=( vendor/bin/phpunit -c web/core )
@@ -305,21 +320,27 @@ for _g in "${TEST_GROUPS[@]}"; do
   esac
 done
 
-# group_has_tests <group> -> 0 when tests/src/<group> holds at least one *Test.php.
-group_has_tests() {
-  local d="$SUBJECT/tests/src/$1"
-  [[ -d "$d" ]] || return 1
-  [[ -n "$(find "$d" -type f -name '*Test.php' 2>/dev/null | sed -n '1p')" ]]
+# group_dirs <group> -> the subject-relative tests/src/<group> directories that
+# hold at least one *Test.php: the subject's own and its submodules'
+# (subject_test_dirs).
+group_dirs() {
+  local d
+  while IFS= read -r d; do
+    [[ -n "$d" ]] || continue
+    if [[ -n "$(find "$SUBJECT/$d" -type f -name '*Test.php' 2>/dev/null | sed -n '1p')" ]]; then printf '%s\n' "$d"; fi
+  done < <(subject_test_dirs "$SUBJECT" "$1")
+  return 0
 }
+# group_has_tests <group> -> 0 when one of its directories holds a *Test.php.
+group_has_tests() { [[ -n "$(group_dirs "$1")" ]]; }
 
 # Whether the subject ships ANY PHPUnit test (any group), independent of
 # --type: lets the report tell "no tests in the selected scope" apart from "the
 # subject ships no tests" (F14).
 SUBJECT_HAS_TESTS="false"
-if [[ -d "$SUBJECT/tests/src" ]] \
-   && [[ -n "$(find "$SUBJECT/tests/src" -type f -name '*Test.php' 2>/dev/null | sed -n '1p')" ]]; then
-  SUBJECT_HAS_TESTS="true"
-fi
+for _g in Unit Kernel Functional FunctionalJavascript; do
+  if group_has_tests "$_g"; then SUBJECT_HAS_TESTS="true"; fi
+done
 
 # The selected groups that actually contain tests.
 declare -a GROUPS_WITH_TESTS=()
@@ -499,9 +520,11 @@ fi
 
 run_group() {
   local group="$1"
-  local path="$SUBJECT_REL/tests/src/$group"
+  local -a dirs=()
+  local d
+  while IFS= read -r d; do [[ -n "$d" ]] && dirs+=("$SUBJECT_REL/$d"); done < <(group_dirs "$group")
 
-  if ! group_has_tests "$group"; then
+  if [[ ${#dirs[@]} -eq 0 ]]; then
     log_info "No $group tests under $SUBJECT_REL — skipping group."
     return 0
   fi
@@ -526,37 +549,54 @@ run_group() {
     fi
   fi
 
-  log_step "Running $group tests ($path)"
   RAN=$((RAN + 1))
+  local -a genv=()
+  [[ "$group" != "FunctionalJavascript" ]] && genv=(${NONJS_ENV[@]+"${NONJS_ENV[@]}"})
 
-  # Assemble the full command. PHPUnit's own exit code drives pass/fail; we do
-  # not redirect or swallow its output. --log-junit only adds the per-test file.
-  local junit="$JUNIT_REL/junit-$$-$group.xml"
-  rm -f "$DRUPAL_ROOT/$junit" 2>/dev/null || true
-  local -a cmd=(${RUNNER[@]+"${RUNNER[@]}"} ${COVERAGE_ENV[@]+"${COVERAGE_ENV[@]}"} "${PHPUNIT[@]}" --log-junit "$junit" ${COVERAGE_ARGS[@]+"${COVERAGE_ARGS[@]}"} ${FILTER_ARGS[@]+"${FILTER_ARGS[@]}"} "$path")
+  # One PHPUnit run per directory (the subject's, then each submodule's: PHPUnit
+  # takes one path); the group's exit code is the first failing run's, an
+  # unrunnable PHPUnit (126/127) winning, and its tests are every run's.
+  local rc=0 executed=0 have_log=0 parsed junit path one i=0 n cdirs=""
+  for path in "${dirs[@]}"; do
+    i=$((i + 1))
+    log_step "Running $group tests ($path)"
+    # Assemble the full command. PHPUnit's own exit code drives pass/fail; we do
+    # not redirect or swallow its output. --log-junit only adds the per-test file.
+    junit="$JUNIT_REL/junit-$$-$group-$i.xml"
+    rm -f "$DRUPAL_ROOT/$junit" 2>/dev/null || true
+    local -a cmd=(${RUNNER[@]+"${RUNNER[@]}"} ${genv[@]+"${genv[@]}"} ${COVERAGE_ENV[@]+"${COVERAGE_ENV[@]}"} "${PHPUNIT[@]}" --log-junit "$junit" ${COVERAGE_ARGS[@]+"${COVERAGE_ARGS[@]}"} ${FILTER_ARGS[@]+"${FILTER_ARGS[@]}"} "$path")
 
-  # Temporarily relax errexit around the test run so a failing group does not
-  # abort the script before we summarise it. Through DDEV, `ddev exec`'s red
-  # "Failed to execute command ...: exit status N" line is dropped: the group
-  # verdict below always reports PHPUnit's exit code.
-  local rc=0
-  if [[ ${#RUNNER[@]} -gt 0 ]]; then
-    run_dropping_ddev_failure_line "${cmd[@]}" || rc=$?
-  else
-    set +e
-    "${cmd[@]}"
-    rc=$?
-    set -e
-  fi
+    # Temporarily relax errexit around the test run so a failing group does not
+    # abort the script before we summarise it. Through DDEV, `ddev exec`'s red
+    # "Failed to execute command ...: exit status N" line is dropped: the group
+    # verdict below always reports PHPUnit's exit code.
+    one=0
+    if [[ ${#RUNNER[@]} -gt 0 ]]; then
+      run_dropping_ddev_failure_line "${cmd[@]}" || one=$?
+    else
+      set +e
+      "${cmd[@]}"
+      one=$?
+      set -e
+    fi
+    if [[ "$one" -eq 126 || "$one" -eq 127 ]]; then rc="$one"
+    elif [[ "$one" -ne 0 && "$rc" -eq 0 ]]; then rc="$one"; fi
 
-  local executed=0 parsed have_log=0
-  [[ -f "$DRUPAL_ROOT/$junit" ]] && have_log=1
-  parsed="$(parse_junit "$group" "$DRUPAL_ROOT/$junit")"
-  if [[ -n "$parsed" ]]; then
-    printf '%s\n' "$parsed" >> "$TESTS_TSV"
-    executed="$(printf '%s\n' "$parsed" | grep -c . || true)"
-  fi
-  rm -f "$DRUPAL_ROOT/$junit" 2>/dev/null || true
+    [[ -f "$DRUPAL_ROOT/$junit" ]] && have_log=1
+    parsed="$(parse_junit "$group" "$DRUPAL_ROOT/$junit")"
+    n=0
+    if [[ -n "$parsed" ]]; then
+      printf '%s\n' "$parsed" >> "$TESTS_TSV"
+      n="$(printf '%s\n' "$parsed" | grep -c . || true)"
+      executed=$((executed + n))
+    fi
+    # A directory whose PHPUnit failed without any test result crashed (126/127
+    # is PHPUnit not executable: an environment blocker, never a crash): kept
+    # apart, so a crash next to a directory that ran is never hidden.
+    if [[ "$one" -ne 0 && "$one" -ne 126 && "$one" -ne 127 && "$n" -eq 0 ]]; then cdirs="${cdirs:+$cdirs,}${path#"$SUBJECT_REL"/}"; fi
+    rm -f "$DRUPAL_ROOT/$junit" 2>/dev/null || true
+  done
+  junit="$JUNIT_REL/junit-$$-$group-*.xml"
   EXECUTED=$((EXECUTED + executed))
 
   local gstatus
@@ -593,7 +633,10 @@ run_group() {
     # No per-test result at all: PHPUnit died before writing its log.
     [[ "$executed" -eq 0 ]] && gstatus="crashed"
   fi
-  printf '%s\t%s\t%s\t%s\n' "$group" "$rc" "$gstatus" "$executed" >> "$GROUPS_TSV"
+  # crashed_dirs (subject-relative), in a group of several directories only (a
+  # one-directory group keeps the group-level verdict), never for a blocked one.
+  [[ ${#dirs[@]} -gt 1 && "$gstatus" != "blocked" ]] || cdirs=""
+  printf '%s\t%s\t%s\t%s\t%s\n' "$group" "$rc" "$gstatus" "$executed" "$cdirs" >> "$GROUPS_TSV"
   return 0
 }
 
@@ -703,7 +746,8 @@ else
     echo '[]' > "$TESTS_JSON_FILE"
   fi
   GROUPRES_JSON="$(jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t")
-      | {group: .[0], rc: (.[1] | tonumber? // null), status: .[2], executed: (.[3] | tonumber? // 0)})' \
+      | {group: .[0], rc: (.[1] | tonumber? // null), status: .[2], executed: (.[3] | tonumber? // 0)}
+        + (if (.[4] // "") != "" then {crashed_dirs: (.[4] | split(","))} else {} end))' \
       "$GROUPS_TSV" 2>/dev/null || echo '[]')"
   DIGEST="$(subject_digest "$SUBJECT")"
   GIT_HEAD="$(git -C "$SUBJECT" rev-parse HEAD 2>/dev/null || true)"
@@ -714,7 +758,7 @@ else
   if [[ -z "$BASELINE_MODE" && "$USE_BASELINE" == "1" && -r "$BASELINE_FILE" ]] \
      && jq -e '(.tests | type) == "array"' "$BASELINE_FILE" >/dev/null 2>&1; then
     BASELINE_JSON="$(jq -c -n --slurpfile b "$BASELINE_FILE" --slurpfile curf "$TESTS_JSON_FILE" --argjson cg "$GROUPRES_JSON" \
-        --arg file "$BASELINE_FILE" --arg digest "$DIGEST" '
+        --arg file "$BASELINE_FILE" --arg digest "$DIGEST" --arg mn "$(subject_machine_name "$SUBJECT" 2>/dev/null || true)" '
       def bad: .status == "fail" or .status == "error";
       # The baseline failure was the environment refusing the un-ported
       # extension (install-time), not the behavior under test.
@@ -723,9 +767,16 @@ else
       | $b[0] as $base
       | (reduce ($base.tests // [])[] as $t ({}; .[$t.id] = $t)) as $bm
       | (reduce ($base.group_results // [])[] as $g ({}; .[$g.group] = $g.status)) as $bgs
-      | [ $cur[] | select(bad) | . as $t | ($bm[$t.id]) as $p
+      # The directories of a group that crashed in the baseline while another
+      # one ran (submodule tests, one PHPUnit run per directory), and whether a
+      # test belongs to one: its class is in the namespace Drupal\Tests\<ext>\
+      # of the extension that holds the directory (the subject for tests/src).
+      | (reduce ($base.group_results // [])[] as $g ({}; .[$g.group] = ($g.crashed_dirs // []))) as $bcd
+      | def dir_ext($d): if ($d | startswith("tests/")) then $mn else ($d | split("/tests/src/")[0] | split("/") | last) end;
+        def in_crashed($t): any(($bcd[$t.group] // [])[]; . as $d | ($t.id | startswith("Drupal\\Tests\\" + dir_ext($d) + "\\")));
+        [ $cur[] | select(bad) | . as $t | ($bm[$t.id]) as $p
           | if $p == null then
-              (if $bgs[$t.group] == "crashed"
+              (if $bgs[$t.group] == "crashed" or in_crashed($t)
                then {id: $t.id, group: $t.group, class: "not-baselined", basis: "baseline-group-crashed", now: $t.message}
                else {id: $t.id, group: $t.group, class: "regression", basis: "not-in-baseline", now: $t.message} end)
             elif ($p | bad) and ($p | env_fail) then
@@ -737,12 +788,21 @@ else
             else {id: $t.id, group: $t.group, class: "regression", basis: "passed-before", now: $t.message} end ] as $cls
       | [ $cg[] | select(.status == "failed" or .status == "crashed") | .group as $g
           | select([ $cur[] | select(.group == $g) | select(bad) ] | length == 0)
+          # (A crashed directory explains the failure: its own item below.)
+          | select((.crashed_dirs // []) | length == 0)
           | if $bgs[$g] == "crashed"
             then {id: null, group: $g, class: "not-baselined", basis: "group-\(.status)-baseline-crashed"}
             elif $bgs[$g] == "failed"
             then {id: null, group: $g, class: "pre-existing", basis: "group-\(.status)"}
             else {id: null, group: $g, class: "regression", basis: "group-\(.status)"} end ] as $grp
-      | ($cls + $grp) as $all
+      # A directory that crashed now while its group ran elsewhere: a
+      # regression, unless the baseline never ran it (whole group or that
+      # directory crashed there too).
+      | [ $cg[] | .group as $g | (.crashed_dirs // [])[] as $d
+          | if $bgs[$g] == "crashed" or (($bcd[$g] // []) | index($d)) != null
+            then {id: null, group: $g, dir: $d, class: "not-baselined", basis: "dir-crashed-baseline-crashed"}
+            else {id: null, group: $g, dir: $d, class: "regression", basis: "dir-crashed"} end ] as $dirs
+      | ($cls + $grp + $dirs) as $all
       | {file: $file, source: ($base.source // "run"), taken_at: ($base.taken_at // null),
          type: ($base.type // null), filter: ($base.filter // null),
          same_code: (($base.subject_digest // "") != "" and $base.subject_digest == $digest),
@@ -764,12 +824,12 @@ else
       if [[ "$FAILED" -gt 0 && "$N_REG" -eq 0 && "$N_NOB" -gt 0 ]]; then
         PRESERVATION="not-verified-unbaselined"
         log_warn "$N_NOB failing test(s) were never meaningfully run by the baseline (their group crashed, or the un-ported module could not be installed): they may be regressions, so preservation is NOT verified."
-        printf '%s' "$BASELINE_JSON" | jq -r '.not_baselined[] | "  not baselined: \(.id // ("group " + .group)) (\(.basis))" + (if (.now // "") != "" then " — now: \(.now)" else "" end)' >&2
+        printf '%s' "$BASELINE_JSON" | jq -r '.not_baselined[] | "  not baselined: \(.id // ("group " + .group + (if .dir then ", directory " + .dir else "" end))) (\(.basis))" + (if (.now // "") != "" then " — now: \(.now)" else "" end)' >&2
       elif [[ "$FAILED" -gt 0 && "$N_REG" -eq 0 ]]; then
         PRESERVATION="pre-existing-failures"
         log_warn "Every failing test already failed in the baseline (pre-existing): no regression, but the suite is not green."
       fi
-      [[ "$N_REG" -gt 0 ]] && printf '%s' "$BASELINE_JSON" | jq -r '.regressions[] | "  regression: \(.id // ("group " + .group)) (\(.basis))"' >&2
+      [[ "$N_REG" -gt 0 ]] && printf '%s' "$BASELINE_JSON" | jq -r '.regressions[] | "  regression: \(.id // ("group " + .group + (if .dir then ", directory " + .dir else "" end))) (\(.basis))"' >&2
     else
       BASELINE_JSON="null"
       log_warn "Could not compare with the baseline $BASELINE_FILE (unreadable): verdict computed without it."
@@ -854,9 +914,9 @@ else
          groups: [(.group_results // [])[] | .group],
          tests_failed: [(.tests // [])[] | select(.status == "fail" or .status == "error") | .id],
          baseline: (if (.baseline | type) == "object"
-                    then {regressions: [(.baseline.regressions // [])[] | (.id // ("group " + .group))],
-                          not_baselined: [(.baseline.not_baselined // [])[] | (.id // ("group " + .group))],
-                          pre_existing: [(.baseline.pre_existing // [])[] | (.id // ("group " + .group))]}
+                    then {regressions: [(.baseline.regressions // [])[] | (.id // ("group " + .group + (if .dir then ", directory " + .dir else "" end)))],
+                          not_baselined: [(.baseline.not_baselined // [])[] | (.id // ("group " + .group + (if .dir then ", directory " + .dir else "" end)))],
+                          pre_existing: [(.baseline.pre_existing // [])[] | (.id // ("group " + .group + (if .dir then ", directory " + .dir else "" end)))]}
                     else null end)};
       def rank: {"verified": 0, "not-verified-no-tests": 1, "verified-partial": 2, "pre-existing-failures": 3,
                  "not-verified-blocked": 4, "not-verified-unbaselined": 5, "regression": 6}[.] // 0;

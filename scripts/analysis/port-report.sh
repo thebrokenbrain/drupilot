@@ -235,6 +235,20 @@ fi
 if [[ -n "$TEST_STALE" ]]; then
   PRES_LINE="$PRES_LINE _(stale: ${TEST_STALE}; re-run /drupilot-test.)_"
 fi
+# The install smoke (install-smoke.sh, for a subject with no test): install
+# evidence next to the verdict, never a verdict of its own.
+if [[ -r "$STATE_DIR/install-smoke.json" ]]; then
+  _sm="$(jq -r '"\(.status // "")\t\(.core // "?")\t\(.deprecations // "")\t\((.excerpt // "") | split("\n") | map(select(test("Exception|Error|failed|Failed"))) | .[0] // "")"' "$STATE_DIR/install-smoke.json" 2>/dev/null || true)"
+  IFS=$'\t' read -r _sms _smc _smd _sme <<< "$_sm" || true
+  case "$_sms" in
+    passed) PRES_LINE="$PRES_LINE Install smoke (drupilot's own check, not a test of the subject): **passed** on core ${_smc}: it installs, serves the front page and admin/config, and uninstalls${_smd:+ (${_smd} runtime deprecation(s) triggered)}.";;
+    failed) PRES_LINE="$PRES_LINE Install smoke (drupilot's own check): **failed** on core ${_smc}${_sme:+: ${_sme}}.";;
+  esac
+  if [[ "$_sms" == "passed" || "$_sms" == "failed" ]] \
+     && [[ "$(digest_freshness "$SUBJECT" "$STATE_DIR/install-smoke.json")" == "false"* ]]; then
+    PRES_LINE="$PRES_LINE _(stale: the sources changed since; re-run install-smoke.sh.)_"
+  fi
+fi
 # The test legs (last-test.json legs, T-M5-11): each leg's own verdict under
 # the aggregate, when the record holds more than the CURRENT one.
 TEST_LEGS="$(printf '%s' "$TEST" | jq -r '(.legs // {}) | if (type == "object" and (keys | length) > 1)
@@ -368,11 +382,11 @@ printf '%s' "$PREC" | jq -e 'type == "object"' >/dev/null 2>&1 || PREC=""
     printf '%s' "$T_BASE" | jq -r '
       "Compared with the pre-port baseline (`run-phpunit.sh --baseline`, taken \(.taken_at // "?")): **\(.regressions | length)** regression(s), **\(.not_baselined // [] | length)** not baselined, **\(.pre_existing | length)** pre-existing failure(s), **\(.fixed | length)** test(s) fixed by the port."
         + (if .same_code then " _The baseline was taken on the current code, so it cannot show what the port changed._" else "" end) + "\n",
-      ( if (.regressions | length) > 0 then "**Regressions** (passed before, or not in the baseline, and fail now):\n" + ([ .regressions[] | "- `\(.id // ("group " + .group))` (\(.basis))" + (if (.now // "") != "" then " — \(.now)" else "" end) ] | join("\n")) + "\n" else empty end ),
-      ( if ((.not_baselined // []) | length) > 0 then "**Not baselined** (fail now; the baseline never meaningfully ran them, so they may be regressions):\n" + ([ .not_baselined[] | "- `\(.id // ("group " + .group))`"
-          + (if .basis == "baseline-not-installable" then " — before the port the module could not even be installed (\(.before // "?"))" elif (.basis | test("crashed")) then " — the whole group crashed before the port" else " (\(.basis))" end)
+      ( if (.regressions | length) > 0 then "**Regressions** (passed before, or not in the baseline, and fail now):\n" + ([ .regressions[] | "- `\(.id // ("group " + .group + (if .dir then ", directory " + .dir else "" end)))` (\(.basis))" + (if .basis == "dir-crashed" then " — its PHPUnit run died without any result now, and it ran before the port" else "" end) + (if (.now // "") != "" then " — \(.now)" else "" end) ] | join("\n")) + "\n" else empty end ),
+      ( if ((.not_baselined // []) | length) > 0 then "**Not baselined** (fail now; the baseline never meaningfully ran them, so they may be regressions):\n" + ([ .not_baselined[] | "- `\(.id // ("group " + .group + (if .dir then ", directory " + .dir else "" end)))`"
+          + (if .basis == "baseline-not-installable" then " — before the port the module could not even be installed (\(.before // "?"))" elif .basis == "baseline-group-crashed" then " — its group, or its test directory, crashed before the port" elif .basis == "dir-crashed-baseline-crashed" then " — this directory crashed before the port too" elif (.basis | test("crashed")) then " — the whole group crashed before the port" else " (\(.basis))" end)
           + (if (.now // "") != "" then "; now: \(.now)" else "" end) ] | join("\n")) + "\n" else empty end ),
-      ( if (.pre_existing | length) > 0 then "**Pre-existing failures** (already failing before the port):\n" + ([ .pre_existing[] | "- `\(.id // ("group " + .group))`"
+      ( if (.pre_existing | length) > 0 then "**Pre-existing failures** (already failing before the port):\n" + ([ .pre_existing[] | "- `\(.id // ("group " + .group + (if .dir then ", directory " + .dir else "" end)))`"
           + (if .basis == "baseline-group-crashed" then " — the whole group crashed before the port, so this test never ran then" elif (.basis | startswith("group")) then " — group-level failure" else "" end)
           + (if .message_changed == true then " — **fails differently now** (before: \(.before // "?"); now: \(.now // "?")): review it" elif (.now // "") != "" then " — \(.now)" else "" end) ] | join("\n")) + "\n" else empty end )
     ' 2>/dev/null || true

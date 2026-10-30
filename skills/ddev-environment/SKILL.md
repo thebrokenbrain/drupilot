@@ -39,6 +39,13 @@ If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scri
 - **Gate first.** Setup needs Docker (daemon up) + DDEV. Always run preflight for
   the `setup` profile before touching anything; abort cleanly if a hard
   requirement is missing — never start work that cannot finish.
+- **Only drupilot's own environment.** Never stop, delete or prune a DDEV project,
+  Docker container, network or volume drupilot did not create for this subject
+  (another project, `docker network prune`, `docker system prune`), even when it
+  looks unused and even in an autonomous run. When Docker or DDEV runs out of
+  something (address pools, ports, disk), stop with the report, name what holds
+  it, and let the developer choose (training run module 12: a test run deleted
+  seven networks of other projects to start its bed).
 - **Idempotent.** Detect-and-skip. If the project is already configured/running,
   if an add-on is already installed, or if a config file already exists with the
   right values, do not redo it — report state instead.
@@ -325,6 +332,14 @@ rules autoload — no manual `includes:` needed.
 project converges on the same toolchain; `ddev-up.sh` and `ddev-add-ons.sh` call
 `lock-sync.sh` for core and add-ons. `DRUPILOT_DETERMINISTIC=false` resolves the
 ranges fresh and refreshes the lock.
+
+**The subject's own requirements.** After the toolchain, install what the subject's
+`composer.json` `require` lists (libraries, contrib modules) into the test-bed, and
+its test requirements with `--dev` (`require-dev` without the toolchain, plus the
+`info.yml` `test_dependencies`):
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-subject-deps.sh" --subject "<subject_path>" --json`
+(exit 3 names a requirement Composer cannot install: an external blocker; on your
+own project it only lists them, `report-only`).
 
 ## 7. Write the toolchain config from templates
 

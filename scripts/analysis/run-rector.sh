@@ -97,7 +97,8 @@
 #                      --apply that changes files also keeps it in the
 #                      subject's state dir (rector-rules.json: {tool,
 #                      changed_files, files (root-relative, sorted),
-#                      port_base, digests_sha, rule_hits, meta:
+#                      official_files (the official and compat passes),
+#                      digests_files, port_base, digests_sha, rule_hits, meta:
 #                      {generated_at, subject}}; the applying runs on one
 #                      git base add up), the fallback
 #                      port-report.sh / layer-report.sh read.
@@ -1112,10 +1113,18 @@ if [[ "$APPLY" == "1" && "$PASS1_RAN_OK" == "1" && "$COUNT" != "0" ]] && have_cm
   fi
   jq -n --arg s "$SUBJECT_ABS" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson h "$RULE_HITS" \
     --arg dsha "$DIGESTS_SHA" --arg fl "$CHANGED" --arg pb "$_pb" --argjson p "$_prev" \
-    '(($fl | split("\n") | map(select(length > 0))) + ($p.files // []) | unique) as $files
+    --arg ofl "$(printf '%s\n%s' "$PASS1_FILES" "$PASS3_FILES")" --arg dfl "$PASS2_FILES" \
+    'def lines: split("\n") | map(select(length > 0));
+     (($fl | lines) + ($p.files // []) | unique) as $files
+     # The official and compat passes apart from the digests pass, so the
+     # report counts the official pass alone (training run 03: a digests
+     # change was reported as the official pass changing a file).
+     | (($ofl | lines) + ($p.official_files // []) | unique) as $ofiles
+     | (($dfl | lines) + ($p.digests_files // []) | unique) as $dfiles
      | (reduce (($p.rule_hits // {}), $h) as $r ({}; reduce ($r | to_entries[]) as $pass (.;
           reduce ($pass.value | to_entries[]) as $rule (.; .[$pass.key][$rule.key] += $rule.value)))) as $hits
      | {tool: "run-rector", changed_files: ($files | length), files: $files,
+        official_files: $ofiles, digests_files: $dfiles,
         port_base: (if $pb == "" then null else $pb end),
         digests_sha: (if $dsha == "" then ($p.digests_sha // null) else $dsha end), rule_hits: $hits,
         meta: {generated_at: $at, subject: $s}}' \

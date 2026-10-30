@@ -405,7 +405,9 @@ strategy_decide() {
   # --- current support signals --------------------------------------------
   local had_pre11=0 current_has_11=0
   if [[ -n "$current_req" ]] && printf '%s' "$current_req" | grep_q -E "(^|[^0-9])($pre_re)([^0-9]|\$)"; then had_pre11=1; fi
-  if [[ -n "$current_req" ]] && printf '%s' "$current_req" | grep_q -E "(^|[^0-9])$t([^0-9]|\$)"; then current_has_11=1; fi
+  # Admits T, not merely names it: '>=8.9 < 11.0.0-stable' names 11 as the
+  # bound that excludes it (training run 03, like_dislike), '>=10' admits it.
+  if [[ -n "$current_req" ]] && constraint_admits_major "$current_req" "$t"; then current_has_11=1; fi
 
   # --- BC-break detection (drives the SemVer major bump) ------------------
   local bc_break=0

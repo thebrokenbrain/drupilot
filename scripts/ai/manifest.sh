@@ -298,15 +298,20 @@ jq -n -c --slurpfile f "$F" --slurpfile w "$W" --slurpfile rr "$RR" --slurpfile 
   # The resolved items the rationale names (the ones no longer in the worklist).
   | ([($res[0].items // [])[] | select(.id as $i | ($rat | has($i)) and ([$W.items[].id] | index($i) | not))
       | {id, lane, file, anchor, rationale: $rat[.id]}] | sort_by(.id)) as $resolved
-  | ([($dd[0].decisions // [])[] | select(.verdict == "reject" and ($RR.digests_sha == null or .digests_sha == $RR.digests_sha)) | {rule, by: (.by // "developer")}] | unique_by(.rule)) as $drej
+  # The latest verdict of each digests rule for the digests commit: a rule
+  # applied, then rejected and reverted (training run 03) is rejected only.
+  | ([($dd[0].decisions // [])[] | select($RR.digests_sha == null or .digests_sha == $RR.digests_sha)]
+     | group_by(.rule) | map(max_by(.at // ""))) as $dlast
+  | ([$dlast[] | select(.verdict == "reject") | {rule, by: (.by // "developer")}]) as $drej
+  | ([$drej[].rule]) as $drejr
   | {schema: 1, tool: "manifest", phase: $phase, machine_name: $mn, type: $type, subject: (if $subrel == "" then null else $subrel end),
      core_version_requirement: ($req | nz), require_php: ($rphp | nz), php_target: $pt,
      version_bump: (if $phase == "port" and ($A.recommended_core_version_requirement // null) == $req then ($A.version_bump // null) else ($vbump | nz) end),
      d10_support: $d10,
-     rector_official_files: ($RR.changed_files // null),
+     rector_official_files: (if ($RR.official_files | type) == "array" then ($RR.official_files | length) else ($RR.changed_files // null) end),
      rector_rules: (if ($RR.rule_hits // null) == null and ($at[0].rule_hits // null) == null then null
                     else ($RR.rule_hits // {}) + ($at[0].rule_hits // {}) end),
-     digests: {applied: (($RR.rule_hits.digests // {}) | keys), rejected: [$drej[] | {rule: .rule, reason: (if .by == "auto" then "rejected by an autonomous run (its safe default)" else "rejected by the developer" end)}],
+     digests: {applied: (($RR.rule_hits.digests // {}) | keys | map(select(. as $r | $drejr | index($r) | not))), rejected: [$drej[] | {rule: .rule, reason: (if .by == "auto" then "rejected by an autonomous run (its safe default)" else "rejected by the developer" end)}],
                skipped: ((($RR.rule_hits.digests // {}) | length) == 0 and ($drej | length) == 0)},
      codemods: $codemods,
      manual_edits: (if $base == "" or $rfunknown then null

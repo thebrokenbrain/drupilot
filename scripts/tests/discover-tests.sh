@@ -4,7 +4,8 @@
 # Discover and classify a Drupal extension's PHPUnit test classes.
 #
 # Scans the subject's tests/src/{Unit,Kernel,Functional,FunctionalJavascript}
-# directories and counts the test classes in each group. This is the inventory
+# directories, and those of its submodules (modules/foo/tests/src/...), and
+# counts the test classes in each group. This is the inventory
 # step used by /drupilot-test and the drupal-test-engineer agent before running
 # the suite — it does NOT execute anything, so it needs no environment and no
 # preflight gate.
@@ -16,7 +17,10 @@
 #   default  -> a human-readable English summary on STDOUT.
 #   --json   -> a single JSON object on STDOUT (nothing else):
 #               { unit, kernel, functional, javascript, total,
-#                 files:[ {path, type, class} ] }
+#                 files:[ {path, type, class} ] }, plus legacy:[paths]
+#               when test classes sit in a SimpleTest-era location
+#               (src/Tests/, Tests/) that PHPUnit never reads: never
+#               counted; move them to tests/src/<group>/ (a test adaptation)
 #   Diagnostics/logging always go to STDERR.
 #
 # Exit codes:
@@ -83,15 +87,13 @@ extract_class_name() {
   printf '%s' "$cls"
 }
 
-if [[ -d "$TESTS_DIR" ]]; then
-  # Walk only the four canonical directories so we classify deterministically.
-  # FunctionalJavascript is checked before Functional below only conceptually;
-  # because we match each top-level directory explicitly there is no overlap.
-  for dirname in Unit Kernel Functional FunctionalJavascript; do
-    base="$TESTS_DIR/$dirname"
-    [[ -d "$base" ]] || continue
-    key="$(group_key_for_dir "$dirname")"
-
+# The four canonical directories of the subject and of its submodules
+# (subject_test_dirs: modules/foo/tests/src/<group>), so we classify
+# deterministically.
+for dirname in Unit Kernel Functional FunctionalJavascript; do
+  key="$(group_key_for_dir "$dirname")"
+  while IFS= read -r gdir; do
+    [[ -n "$gdir" ]] || continue
     while IFS= read -r -d '' f; do
       # Skip abstract base classes and traits with no concrete *Test class:
       # the canonical convention is that runnable test classes end in "Test".
@@ -110,20 +112,31 @@ if [[ -d "$TESTS_DIR" ]]; then
       FILES_JSON="$(jq -c \
         --arg path "$rel" --arg type "$key" --arg class "$cls" \
         '. + [{path:$path, type:$type, class:$class}]' <<<"$FILES_JSON")"
-    done < <(find "$base" -type f -name '*.php' -print0 2>/dev/null | LC_ALL=C sort -z)
-  done
-else
+    done < <(find "$SUBJECT/$gdir" -type f -name '*.php' -print0 2>/dev/null | LC_ALL=C sort -z)
+  done < <(subject_test_dirs "$SUBJECT" "$dirname")
+done
+if [[ "$FILES_JSON" == "[]" && ! -d "$TESTS_DIR" ]]; then
   log_info "No tests/src directory under $SUBJECT — the subject has no PHPUnit tests."
 fi
 
 TOTAL=$((UNIT + KERNEL + FUNCTIONAL + JAVASCRIPT))
 
+# Test classes in a SimpleTest-era location (src/Tests/, or a top-level Tests/
+# directory): PHPUnit never finds them, so they never ran (training run modules
+# 03 like_dislike and 11 nodeviewcount). Listed apart, never counted: moving
+# one to tests/src/<group>/ with its namespace is a test adaptation.
+LEGACY_JSON="$(cd "$SUBJECT" && { find . \( -name vendor -o -name node_modules -o -name .git \) -prune -o -type f -name '*Test.php' \
+    \( -path './src/Tests/*' -o -path './Tests/*' \) -print 2>/dev/null || true; } | sed 's#^\./##' | LC_ALL=C sort \
+  | jq -R -s -c 'split("\n") | map(select(length > 0))')"
+[[ -n "$LEGACY_JSON" ]] || LEGACY_JSON='[]'
+
 RESULT="$(jq -n \
   --argjson unit "$UNIT" --argjson kernel "$KERNEL" \
   --argjson functional "$FUNCTIONAL" --argjson javascript "$JAVASCRIPT" \
-  --argjson total "$TOTAL" --argjson files "$FILES_JSON" \
+  --argjson total "$TOTAL" --argjson files "$FILES_JSON" --argjson legacy "$LEGACY_JSON" \
   '{unit:$unit, kernel:$kernel, functional:$functional, javascript:$javascript,
-    total:$total, files:$files}')"
+    total:$total, files:$files}
+   + (if ($legacy | length) > 0 then {legacy: $legacy} else {} end)')"
 
 # ---------------------------------------------------------------------------
 # Output
@@ -143,6 +156,12 @@ else
   if [[ "$TOTAL" -eq 0 ]]; then
     printf '\n%sNo PHPUnit tests found.%s In Phase 2 (refactor), add coverage to maximise it.\n' \
       "$_C_YELLOW" "$_C_RESET"
+  fi
+  _nl="$(printf '%s' "$LEGACY_JSON" | jq 'length')"
+  if [[ "$_nl" -gt 0 ]]; then
+    printf '\n%s%s test class file(s) in a SimpleTest-era location PHPUnit never reads:%s\n' "$_C_YELLOW" "$_nl" "$_C_RESET"
+    printf '%s' "$LEGACY_JSON" | jq -r '.[] | "  - \(.)"'
+    printf '  Move each to tests/src/<Unit|Kernel|Functional|FunctionalJavascript>/ with the namespace\n  Drupal\\Tests\\<module>\\<group> (a test adaptation), or they never run.\n'
   fi
   printf '\n'
 fi

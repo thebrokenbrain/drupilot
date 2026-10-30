@@ -240,13 +240,18 @@ needed, not just that it is.
 
 `manual_items` lists the work the rubric counts as `rubric.manual`, each with
 `id` (`M1`, ...), `finding_id` (its `findings.json` id), `file`, `line`,
-`occurrences`, `source` (`tool:rule`) and `what`. Three kinds of finding land
+`occurrences`, `source` (`tool:rule`) and `what`. Four kinds of finding land
 there:
 
 - the hard and unknown deprecations no Drupal Rector rule covers (§3.2), each
   item with its `occurrences` (`rubric.manual` is their sum): PHPStan's, and
   the catalog's `runtime-deprecation:<id>` ones, which PHPStan cannot see (a
   magic property such as `$entity->original`, hard only for a later target);
+- PHPStan's `class.notFound` outside `tests/` for a class of Symfony or of
+  `Drupal\Core` / `Drupal\Component` (source `phpstan:class.notFound`): the bed
+  always has those packages, so the class was removed (a module extending
+  `Symfony\Component\EventDispatcher\Event`); a missing contrib class does not
+  count (the dependency is not installed);
 - the **signature** findings of severity `error` (`scan-signature-changes.sh`).
   Rector and PHPStan judge the module against the ONE core in the test-bed; the
   module declares a RANGE. The catalog (`.signature_changes` in
@@ -281,8 +286,10 @@ bash "$ROOT/scripts/analysis/check-port-safety.sh" --subject "$SUBJECT" --json
 
 ### 3.5 Hard breaks
 
-`config/catalog/hard-breaks.json` holds four categories — Twig 3 (`twig3`),
-CKEditor 5 (`ckeditor5`), jQuery UI (`jquery_ui`), Symfony 7 (`symfony7`) — each
+`config/catalog/hard-breaks.json` holds five categories — Twig 3 (`twig3`),
+CKEditor 5 (`ckeditor5`), jQuery UI (`jquery_ui`), jQuery 4 (`jquery4`: the jQuery 3
+utilities jQuery 4 removed, such as `$.isNumeric()` or `$.trim()`, in `*.js`),
+Symfony 7 (`symfony7`) — each
 a POSIX ERE over the files its globs name (`vendor/`, `node_modules/` and `.git/`
 left out), each fact verified in core. `hard_break_categories.<id>` lists the
 matching files, `hard_breaks` the categories present, and `rubric.hard_breaks`
@@ -387,8 +394,9 @@ the same module reach the same verdict. Never recompute or override it:
 - `rubric.manual`: the occurrences of the scope-current `hard` and `unknown`
   deprecations (PHPStan's and `runtime-deprecation:<id>`) no Drupal Rector
   rule changes in the same function or
-  method, plus the signature and port-safety findings of severity `error`
-  (`manual_items`, §3.4). Soft and next-major ones never count, whatever
+  method, plus PHPStan's `class.notFound` outside `tests/` for a Symfony or
+  `Drupal\Core`/`Drupal\Component` class, and the signature and port-safety
+  findings of severity `error` (`manual_items`, §3.4). Soft and next-major ones never count, whatever
   `DRUPILOT_SOFT_DEPRECATIONS` says.
 - `rubric.hard_breaks`: the hard-break categories present, the core-removal
   detectors included (§3.5).
@@ -436,7 +444,7 @@ Suggested phasing to encode in the plan:
    in the main and every submodule `info.yml` (`set-core-requirement.sh`),
    apply `palantirnet/drupal-rector` (dry-run -> review -> apply -> validate).
 3. **Stage 2 — Manual items + hard breaks**: the `manual_items`, then Twig 3,
-   CKEditor 5, jQuery UI, Symfony 7, in risk order; optionally the filtered
+   CKEditor 5, jQuery UI, jQuery 4, Symfony 7, in risk order; optionally the filtered
    digests layer of the port.
 4. **Stage 3 — Tests green**: adapt + run the full suite (`test-adaptation`).
 5. **Phase 2 (opt-in) — Refactor**: "the target major's way", PHPStan 5-6,

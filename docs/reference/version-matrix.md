@@ -299,6 +299,7 @@ As of 2026-10-27; rule classes read in rector-src 2.5.2. compat: a deprecation f
 | `deny-override-on-methods` | deny | `AddOverrideAttributeToOverriddenMethodsRector` |  |  | 8.3 | false | yes |
 | `deny-readonly-property` | deny | `ReadOnlyPropertyRector` |  |  | 8.1 | false | yes |
 | `deny-readonly-class` | deny | `ReadOnlyClassRector` |  |  | 8.2 | false | yes |
+| `deny-constructor-promotion` | deny | `ClassPropertyAssignToConstructorPromotionRector` |  |  | 8.0 | false | yes |
 | `p81-null-to-internal` | deny | `NullToStrictStringFuncCallArgRector` | 8.1 |  |  | false | yes |
 | `deny-sleep-to-serialize` | deny | `SleepToSerializeRector` | 8.5 |  | 7.4 | false | yes |
 | `deny-wakeup-to-unserialize` | deny | `WakeupToUnserializeRector` | 8.5 |  | 7.4 | false | yes |
@@ -338,6 +339,7 @@ Sources:
 - `deny-override-on-methods`: https://www.php.net/manual/en/class.override.php Adds #[\Override] by looking at the test-bed core only: a method that exists in the parent only on newer cores then fatals on PHP 8.3+ with every older core the module declares. templates/rector.php.tmpl skips it (S4); check-port-safety.sh flags #[\Override] while the range spans Drupal 10.
 - `deny-readonly-property`: https://www.php.net/manual/en/language.oop5.properties.php#language.oop5.properties.readonly-properties A readonly property cannot be re-initialized by DependencySerializationTrait::__wakeup() (forms, plugins, controllers that get serialized). templates/rector.php.tmpl skips it (S4).
 - `deny-readonly-class`: https://www.php.net/manual/en/language.oop5.basic.php#language.oop5.basic.class.readonly Makes every property readonly, with the same DependencySerializationTrait::__wakeup() breakage as ReadOnlyPropertyRector. templates/rector.php.tmpl skips it (S4).
+- `deny-constructor-promotion`: https://www.php.net/manual/en/language.oop5.decon.php#language.oop5.decon.constructor.promotion A style rewrite, never a compatibility fix, in the php80 level set the floor's sets include. Rector 2.6.1 promotes a parameter the constructor body later changes and rewrites those changes to the property (training run 01, filelog LogMessage: $this-&gt;placeholders lost its @/%/: prefixes, so messages were no longer substituted), and it moves each property's doc block into the parameter list, which phpcbf cannot fix. templates/rector.php.tmpl skips it (S4).
 - `p81-null-to-internal`: https://www.php.net/manual/en/migration81.deprecated.php templates/rector.php.tmpl skips it (S4): it adds (string) casts that change semantics and fail stricter project PHPStan levels. The deprecation is reported, never fixed by this rule.
 - `deny-sleep-to-serialize`: https://www.php.net/manual/en/migration85.deprecated.php DependencySerializationTrait implements __sleep()/__wakeup(): the rewrite breaks the service re-injection drupilot code relies on (03-F-D7). PHP 8.5 only soft-deprecates them (no E_DEPRECATED).
 - `deny-wakeup-to-unserialize`: https://www.php.net/manual/en/migration85.deprecated.php See deny-sleep-to-serialize.

@@ -314,7 +314,9 @@ whatever stage it starts at (a set-up site skips Stage 1):
 ### Stage 1 — setup (gate: `setup`)
 
 Goal: a DDEV site of the target major (Drupal 11 by default) with the toolchain and
-the subject in place. Use the `ddev-environment` skill and:
+the subject in place. Never stop, delete or prune a DDEV project, Docker container,
+network or volume drupilot did not create (not even to free address pools or ports):
+a bed that cannot start is a blocker to report. Use the `ddev-environment` skill and:
 - `scripts/env/detect-php.sh --json` to confirm the effective PHP target (Drupal
   11's; the test-bed takes the plan's `php.final`).
 - Freeze the draft upgrade plan before anything is created:
@@ -335,7 +337,9 @@ the subject in place. Use the `ddev-environment` skill and:
   it under `web/<modules|themes|profiles>/custom/<name>`). Install the dev toolchain with
   `scripts/env/install-toolchain.sh --dir <drupal_root> --json` (pinned to the lock or the
   known-good reference, smoke-tested, lock re-synced; exit 3 = installed but broken — stop
-  and repair with `--source reference`, never assess on it), and write `rector.php`, `phpstan.neon`, `phpcs.xml.dist`, and the testing
+  and repair with `--source reference`, never assess on it), install the subject's own Composer
+  requirements with `scripts/env/install-subject-deps.sh --subject <path> --json` (exit 3 = a
+  requirement cannot be installed: an external blocker to report), and write `rector.php`, `phpstan.neon`, `phpcs.xml.dist`, and the testing
   `web_environment` from the templates.
 Idempotent: if the site is already up and configured, report state and skip.
 

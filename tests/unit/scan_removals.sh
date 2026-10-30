@@ -200,4 +200,20 @@ assert_exit "--help: exit 0" 0 "$T_SH" "$SR" --help
 assert_match "  it has a Usage section" "$(cat "$T_OUT")" 'Usage:'
 assert_exit "an unknown flag: exit 1" 1 "$T_SH" "$SR" --nope
 assert_exit "a missing subject: exit 1" 1 "$T_SH" "$SR" --subject "$T_TMP/none"
+# A module moved to a contrib project, named only in code (training run 07,
+# ckeditor_oembed: the port dropped drupal:ckeditor from info.yml while its
+# plugins still extend a ckeditor class): its namespace is a dependency on
+# the project, not a hard break; composer-required once composer.json
+# requires it.
+N="$T_TMP/contribns07"; mkdir -p "$N/src"
+printf 'name: N\ntype: module\ncore_version_requirement: ^10.3\n' > "$N/n.info.yml"
+printf '<?php\n\nnamespace Drupal\\n;\n\nuse Drupal\\forum\\ForumManagerInterface;\n' > "$N/src/B.php"
+t_run "$T_SH" "$SR" --subject "$N" --target 11 --source 10 --range '^10.3 || ^11' --offline --json
+assert_eq "a contrib-moved module named in code only: dependency-removed, verify (offline), not a hard break" \
+  "$(jq -c '[.findings[] | [.detector, .name, .file, .line, .action]], [.core_removals[] | .hard_break]' "$T_OUT" | tr '\n' ' ')" \
+  '[["dependency-removed","forum","src/B.php",5,"verify"]] [false] '
+printf '{"require": {"drupal/forum": "^1"}}\n' > "$N/composer.json"
+t_run "$T_SH" "$SR" --subject "$N" --target 11 --source 10 --range '^10.3 || ^11' --offline --json
+assert_eq "  composer.json requires the project: composer-required" "$(jq -c '[.findings[] | .action]' "$T_OUT")" '["composer-required"]'
+
 t_done

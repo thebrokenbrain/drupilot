@@ -320,4 +320,20 @@ mf --base no-such-ref
 assert_eq "a base that does not exist: exit 1" "$T_RC" "1"
 mf --bogus
 assert_eq "an unknown flag: exit 1" "$T_RC" "1"
+# Training run 03 (like_dislike): the official pass changed nothing, the
+# digests pass changed one file, and that rule was then rejected and its
+# change reverted: the official count is 0 and the rule is rejected only.
+jq -n '{tool: "run-rector", changed_files: 1, files: ["web/modules/custom/legacy_widgets/tests/src/FooTest.php"],
+        official_files: [], digests_files: ["web/modules/custom/legacy_widgets/tests/src/FooTest.php"], digests_sha: "abc",
+        rule_hits: {digests: {AddRunTestsInSeparateProcessesAttributeRector: 1}}, meta: {generated_at: "2026-01-01T00:00:00Z", subject: "x"}}' > "$SD/rector-rules.json"
+jq -n '{schema: 1, decisions: [
+  {at: "2026-01-01T00:00:02Z", by: "auto", digests_sha: "abc", input_hash: "h2", rule: "AddRunTestsInSeparateProcessesAttributeRector", verdict: "reject"},
+  {at: "2026-01-01T00:00:01Z", by: "auto", digests_sha: "abc", input_hash: "h1", rule: "AddRunTestsInSeparateProcessesAttributeRector", verdict: "accept"},
+  {at: "2026-01-01T00:00:01Z", by: "auto", digests_sha: "abc", input_hash: "h1", rule: "OtherRector", verdict: "reject"},
+  {at: "2026-01-01T00:00:03Z", by: "developer", digests_sha: "abc", input_hash: "h3", rule: "OtherRector", verdict: "accept"}]}' > "$SD/digests-decisions.json"
+mf --no-write --json
+assert_eq "a digests-only change: the official pass changed 0 files; a rule rejected after it was applied is rejected only, one accepted after a rejection is not" \
+  "$(jq -c '[.rector_official_files, .digests.applied, [.digests.rejected[].rule]]' "$T_OUT")" \
+  '[0,[],["AddRunTestsInSeparateProcessesAttributeRector"]]'
+
 t_done

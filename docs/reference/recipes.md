@@ -34,6 +34,7 @@ A codemod applies only when its conditions hold. Its edit must be exact and its 
 | `dep.user-load-by-name` | ai-templated | template | a message pattern (below), or symbol `user_load_by_name`, `user_load_by_mail` | — |
 | `dep.user-roles` | ai-templated | template | a message pattern (below), or symbol `user_roles`, `user_role_names` | — |
 | `life.entitybase-original` | ai-templated | template | symbol `EntityBase::$original` | — |
+| `life.watchdog-exception` | ai-templated | template | symbol `watchdog_exception` | — |
 | `meta.config-schema` | human | template | rule `metadata:config-schema` | — |
 | `meta.configure-route` | human | template | rule `metadata:configure-route` | — |
 | `meta.plugin-schema` | human | template | rule `metadata:plugin-schema` | — |
@@ -42,13 +43,19 @@ A codemod applies only when its conditions hold. Its edit must be exact and its 
 | `meta.submodule-core-req` | codemod | info-yml | rule `metadata:submodule-core-req` | `severity`: `error, warning` |
 | `meta.undeclared-deps` | human | template | rule `metadata:undeclared-deps` | — |
 | `safety.class-case` | codemod | yaml-edit | rule `port-safety:class-case` | `file_ere`: `\.ya?ml$` |
+| `safety.config-schema-sequence` | ai-templated | template | rule `port-safety:config-schema-sequence` | — |
+| `safety.event-dispatch-order` | ai-templated | template | rule `port-safety:event-dispatch-order` | — |
 | `safety.fapi-callable` | ai-templated | template | rule `port-safety:fapi-callable` | — |
+| `safety.migrate-dependencies-expand` | ai-templated | template | rule `port-safety:migrate-dependencies-expand` | — |
 | `safety.override-attribute` | ai-templated | template | rule `port-safety:override-attribute` | — |
 | `safety.plugin-di` | ai-templated | template | rule `port-safety:plugin-di` | — |
 | `safety.removed-use` | ai-templated | template | rule `port-safety:removed-use` | — |
 | `safety.serialization` | ai-templated | template | rule `port-safety:serialization` | — |
 | `safety.static-factory` | ai-templated | template | rule `port-safety:static-factory` | — |
+| `safety.test-abstract-suffix` | ai-templated | template | rule `port-safety:test-abstract-suffix` | — |
+| `safety.test-field-ui-display-path` | ai-templated | template | rule `port-safety:test-field-ui-display-path` | — |
 | `safety.test-label-markup` | ai-templated | template | rule `port-safety:test-label-markup` | — |
+| `safety.test-phpunit-api` | ai-templated | template | rule `port-safety:test-phpunit-api` | — |
 | `safety.test-phpunit-metadata` | ai-templated | template | rule `port-safety:test-phpunit-metadata` | — |
 | `sig.config-form-base-ctor` | ai-templated | template | rule `signature:config-form-base-ctor` | — |
 | `sig.content-translation-controller-ctor` | ai-templated | template | rule `signature:content-translation-controller-ctor` | — |

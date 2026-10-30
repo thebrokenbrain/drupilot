@@ -18,7 +18,7 @@ Subject path argument: `$1` (fallback: the current working directory).
 Tests run inside DDEV, so this gates on Docker (daemon up) + DDEV.
 
 ```bash
-!bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile test && bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; copy_legacy_state_once'
+!bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile test --subject "$1" && bash -c '. "${CLAUDE_PLUGIN_ROOT}/scripts/lib/common.sh"; copy_legacy_state_once'
 ```
 
 If it exits `2`, show the report, route the user to `/drupilot-doctor` (and
@@ -42,8 +42,15 @@ If DDEV is down, tell the user to run `/drupilot-setup` (or `ddev start`) and st
 
 This classifies the test classes under
 `tests/src/{Unit,Kernel,Functional,FunctionalJavascript}` and returns counts plus
-the file list. If there are zero tests, say so: there is nothing to run in
-Phase 1 (and Phase 2 is where new tests get authored). Report the breakdown.
+the file list, plus `legacy`: test classes in a SimpleTest-era location
+(`src/Tests/`, `Tests/`) that PHPUnit never reads. Move those to
+`tests/src/<group>/` first (a test adaptation; the test-adaptation skill says
+how) and discover again. The counts include the submodules' tests
+(`modules/<sub>/tests/src/...`). If there are zero tests, say so: there is
+nothing to run in Phase 1 (and Phase 2 is where new tests get authored); run
+the install smoke instead (`bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/install-smoke.sh" --subject "$1" --json`:
+the subject installs, serves its pages and uninstalls; install evidence, not a
+verdict, the skill says how to read it). Report the breakdown.
 
 ## Step 2 — Load the procedure and delegate iteration
 
@@ -80,7 +87,7 @@ Before running, adapt the discovered tests for D11 (the skill lists the specific
   the checks:
 
   ```bash
-  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/check-port-safety.sh" --subject <DIR> --checks test-label-markup,test-phpunit-metadata
+  bash "${CLAUDE_PLUGIN_ROOT}/scripts/analysis/check-port-safety.sh" --subject <DIR> --checks test-label-markup,test-phpunit-metadata,test-phpunit-api,test-abstract-suffix,test-field-ui-display-path
   ```
 
 These edits are test-only and must not change the subject's production behavior.

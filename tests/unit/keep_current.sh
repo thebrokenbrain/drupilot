@@ -19,6 +19,19 @@ printf "name: Keep me\ntype: module\ncore_version_requirement: ^10 || ^11\n" > "
 t_run env DRUPILOT_CORE_TARGET_STRATEGY=keep-d10 "$T_SH" "$T_REPO/scripts/analysis/core-strategy.sh" --subject "$m" --json
 assert_eq "an explicit strategy is not keep-current" "$(jq -r .strategy "$T_OUT")" "keep-d10"
 
+# A range that names 11 only as the bound excluding it is not Drupal
+# 11-compatible (training run 03, like_dislike: '>=8.9 < 11.0.0-stable' was
+# kept verbatim and the plan refused it, range-excludes-bed).
+printf "name: Keep me\ntype: module\ncore_version_requirement: '>=8.9 < 11.0.0-stable'\n" > "$m/keepme.info.yml"
+t_run "$T_SH" "$T_REPO/scripts/analysis/core-strategy.sh" --subject "$m" --json
+assert_eq "an upper bound '< 11.0.0-stable': keep-d10, '^10 || ^11'" \
+  "$(jq -c '[.strategy, .recommended_core_version_requirement]' "$T_OUT")" '["keep-d10","^10 || ^11"]'
+t_run "$T_SH" "$T_REPO/scripts/analysis/upgrade-path.sh" --subject "$m" --json
+assert_eq "  the plan agrees" "$T_RC|$(jq -c '[.range.resolved_strategy, .range.constraint]' "$T_OUT")" '0|["keep-previous","^10 || ^11"]'
+printf "name: Keep me\ntype: module\ncore_version_requirement: '>=9.3 <12'\n" > "$m/keepme.info.yml"
+t_run "$T_SH" "$T_REPO/scripts/analysis/core-strategy.sh" --subject "$m" --json
+assert_eq "  a range that admits 11 without naming it ('>=9.3 <12'): kept" "$(jq -r .strategy "$T_OUT")" "keep-current"
+
 # keep_current_alias (CC-36): the keep_current fixture under auto is kept by
 # both views of the decision — core-strategy's strategy keep-current, the
 # upgrade plan's resolved_strategy keep-current — with the same range,

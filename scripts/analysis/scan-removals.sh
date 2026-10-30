@@ -11,7 +11,10 @@
 #                         names a removed module as core's (drupal:NAME or a
 #                         bare NAME; PROJECT:NAME already names a contrib
 #                         project), a reference to the namespace of a
-#                         module removed with no replacement, or a class of a
+#                         removed module (one moved to a contrib project
+#                         too, outside tests/: the code needs that project
+#                         whatever its info.yml says; one with no
+#                         replacement is a hard break), or a class of a
 #                         namespace move whose module a major of (S, T]
 #                         removes (Text with Summary on Drupal 12)
 #   migrate-drupal-usage  the same for migrate_drupal and migrate_drupal_ui
@@ -166,10 +169,15 @@ while (( m <= TARGET )); do
   jq -s -c '.[0] + .[1]' "$TMP/moves.json" "$TMP/mv.json" > "$TMP/x" && mv -f "$TMP/x" "$TMP/moves.json"
   m=$((m + 1))
 done
-# The namespaces of the modules removed with no replacement, as one ERE
-# ("Drupal\\migrate_drupal\\" or "Drupal\\Tests\\migrate_drupal\\"), and the
-# namespace-move classes.
-NS_ERE="$(jq -r '[.[] | select(.kind == "module" and .rewrite == "hard-break") | .name] | unique
+# The namespaces of the removed modules, as one ERE ("Drupal\\migrate_drupal\\"
+# or "Drupal\\Tests\\migrate_drupal\\"), and the namespace-move classes. A
+# module moved to a contrib project counts too: code that names its classes
+# needs that project, whatever its info.yml says (training run module 07,
+# ckeditor_oembed: the port dropped drupal:ckeditor from info.yml, its plugins
+# still extend Drupal\ckeditor\CKEditorPluginBase).
+# (The subject itself left out: porting a removed module's contrib replacement
+# names its own namespace.)
+NS_ERE="$(jq -r --arg mn "$MN" '[.[] | select(.kind == "module" and (.rewrite == "hard-break" or .rewrite == "dependency") and .name != $mn) | .name] | unique
   | if length == 0 then "" else "Drupal[\\\\]+(Tests[\\\\]+)?(" + join("|") + ")[\\\\]" end' "$TMP/ext.json")"
 MOVE_ERE="$(jq -r '[.[] | .classes[]] | unique | if length == 0 then "" else "(" + join("|") + ")" end' "$TMP/moves.json")"
 MOVE_NS="$(jq -r '[.[] | .from_ns] | unique | join("\n")' "$TMP/moves.json")"
@@ -302,6 +310,9 @@ jq -c --slurpfile ext "$TMP/ext.json" --slurpfile lib "$TMP/lib.json" --slurpfil
        | {detector: "library-removed", name, kind: "library", removed_in, rewrite: null, replacement_project: null,
           core_alternative: null, file: $r.file, line: $r.line, evidence: $r.evidence}
      elif .k == "ns" then $mods[.v] // empty
+       # A test that names a contrib-moved module (a SimpleTest WebTestBase) is
+       # converted, not given the project: production code only.
+       | select(.rewrite != "dependency" or (($r.file // "") | test("(^|/)(tests|src/Tests)/") | not))
        | {detector: det(.name), name, kind, removed_in, rewrite, replacement_project, core_alternative,
           file: $r.file, line: $r.line, evidence: $r.evidence, via: "namespace"}
      elif .k == "move" then $mvc[.v] // empty
@@ -375,7 +386,7 @@ jq -S --slurpfile cov "$TMP/cov.json" --argjson reqs "$REQS" --arg mn "$MN" --ar
       elif .detector == "test-theme-removed" then "test-update"
       elif .detector == "base-theme-removed" then (if $req then "composer-required" else "decision" end)
       elif .detector == "library-removed" or .detector == "migrate-drupal-usage" or .rewrite != "dependency"
-           or .via == "namespace" or .via == "class" then "hard-break"
+           or .via == "class" then "hard-break"
       elif $req then "composer-required"
       elif .replacement_available == true then "rewrite"
       elif .replacement_available == false then "blocked"

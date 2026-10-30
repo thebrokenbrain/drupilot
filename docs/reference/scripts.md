@@ -393,9 +393,11 @@ verdict, only when the index names them or their file exists).
           run of -/+ lines), file when several rules made several change
           blocks (Rector names the rules per file: the rule changed some
           place of the file, maybe not this line)
-  class   hard | soft | unknown | guarded (classify-deprecations.sh; a
-          guarded one, a removed function only a DeprecationHelper fallback
-          calls, is an info finding) | analysis |
+  class   hard | soft | unknown | guarded | not-removed
+          (classify-deprecations.sh; a guarded one, a removed function only
+          a DeprecationHelper fallback calls, and a not-removed one, a
+          "not found" function core defines in a file it loads on demand or
+          one a *.drush.inc calls, are info findings) | analysis |
           safety | signature | metadata | style | php-target | removal |
           rector
 
@@ -521,7 +523,11 @@ only narrates it.
                  Renaming/Transform/Arguments/Removing rules drupal-rector
                  configures, at the same (file, anchor); a file-level anchor,
                  or anchors unavailable, never counts as covered), plus the
-                 signature and port-safety findings of severity error
+                 signature and port-safety findings of severity error, and
+                 PHPStan's class.notFound outside tests/ for a class of
+                 Symfony or Drupal\Core / Drupal\Component: the bed always
+                 has them, so the class was removed (training run module
+                 13, log_entity: Symfony\Component\EventDispatcher\Event)
                  (manual_items, each with its occurrences)
   hard_breaks    the categories of config/catalog/hard-breaks.json with at
                  least one matching file of the subject, plus the detectors
@@ -643,6 +649,51 @@ Checks (--checks selects a subset; default all):
                      keep them and add the twins. In diff mode, a line
                      the port left alone is attributed to the port when
                      the range at the base admitted no such core.
+  test-phpunit-api   In a file under tests/, a call of a PHPUnit method that
+                     exists only from the check's phpunit_from (10, Drupal
+                     11.0) while the declared range admits an older
+                     Drupal major: $matcher->numberOfInvocations(), which
+                     Rector's WithConsecutiveRector writes, is
+                     getInvocationCount() on PHPUnit 9 (training run 01).
+  test-abstract-suffix
+                     An abstract class in a tests/ file named *Test.php while
+                     the range admits Drupal 11.0+ (PHPUnit 10+ throws 'Class
+                     X is abstract': failOnWarning fails the run; training
+                     run module 08). Name it *TestBase.
+  test-field-ui-display-path
+                     A tests/ path ending in /display given to drupalGet()
+                     or a Url while the range admits the check's
+                     overview_from (11.4.0): Field UI serves an overview
+                     there; the default form is .../display/default on
+                     every core (training run modules 05 and 08).
+  config-schema-sequence
+                     In config/schema/*.yml (test modules included), a
+                     `sequence:` whose item type is a one-item YAML list
+                     (`- type: string`), a form core removed from the
+                     check's removed_in (11.0.0): the items then have no
+                     type and saving the configuration throws
+                     SchemaIncompleteException (training run 01, filelog).
+                     On when the declared range or the target major admits
+                     that major. Always an error: write the item
+                     definition as a mapping (drop the '- ').
+  migrate-dependencies-expand
+                     In src/, a ->getMigrationDependencies() call in a
+                     migrate field plugin (src/Plugin/migrate/field/) or a
+                     deriver (*Deriver*.php), while the range or the target
+                     admits the check's expands_from (11.0.0): from there
+                     the call always expands the plugin IDs, which reads
+                     the migration definitions that are being built and
+                     can recurse endlessly (training run module 12,
+                     location_migration). A warning: read the unexpanded
+                     getPluginDefinition()['migration_dependencies'].
+  event-dispatch-order
+                     A ->dispatch() call whose first argument is an event
+                     name (a class constant such as Events::NAME, or a string
+                     literal), alone or before the event, the Symfony 4.2 order, while the range or the
+                     target admits the check's removed_in (10.0.0, Symfony
+                     6): dispatch(object $event, ?string $eventName) then
+                     throws a TypeError (training run module 13, log_entity:
+                     its login hooks). An error: swap the two arguments.
 
 Diff-aware: when the subject is tracked by git, every finding is attributed —
 "introduced" (on a line the port added/changed vs the pre-port base) or
@@ -716,6 +767,13 @@ criterion is the same for every module and every layer of the flow.
           fallback): no core of the target major runs it, so it is
           reported, never blocking. run-phpstan.sh --json marks such a
           message (drupilot_guard); a plain-text input has no mark.
+  not-removed  a function PHPStan cannot find that is no removal: the
+          subject's core defines it in a file core loads on demand
+          (module_load_include()/loadInclude(): locale.bulk.inc, ...;
+          core_file names it), or a Drupal 8 era Drush command file
+          (*.drush.inc), which Drush 9 and later never load, calls it.
+          Reported, never blocking (training run 04, drush_language: 14
+          such findings made the verdict L).
 
 Removal versions come from the analyzer message itself (phpstan-deprecation-
 rules echoes core's "in drupal:X and is removed from drupal:Y"). The
@@ -745,6 +803,7 @@ Usage:
                     {tool, policy, phase, target_major, core_requirement,
                      core_floor, blocking, counts:{hard,soft,unknown,other},
                      plus counts.guarded and guarded:[..] when there is one,
+                     counts.not_removed and not_removed:[..] likewise,
                      symbols (one per symbol and class):[{symbol, class,
                        deprecated_in, removed_in,
                        replacement, replacement_since, replacement_at_floor,
@@ -927,6 +986,11 @@ Usage:
     --offline  skip the network checks (all contrib deps -> `unknown`).
 
 Output: a human table on STDERR + STDOUT, or a JSON object on STDOUT with --json.
+  A `ready` project the subject's composer.json requires also carries
+  {constraint, constraint_admits_ready, ready_majors}: false when that
+  constraint admits none of the majors with a release for the target
+  (drupal/address ^1.8 while only 2.x supports Drupal 11) — the port has to
+  widen it, or the test-bed cannot install the dependency.
 Exit codes: 0 ok (even if a dep is not ready — that is data, not an error)
             1 usage/error. Read-only; never mutates anything.
 ```
@@ -2271,7 +2335,8 @@ Options:
                      --apply that changes files also keeps it in the
                      subject's state dir (rector-rules.json: {tool,
                      changed_files, files (root-relative, sorted),
-                     port_base, digests_sha, rule_hits, meta:
+                     official_files (the official and compat passes),
+                     digests_files, port_base, digests_sha, rule_hits, meta:
                      {generated_at, subject}}; the applying runs on one
                      git base add up), the fallback
                      port-report.sh / layer-report.sh read.
@@ -2417,7 +2482,10 @@ no toolchain needed (bash, awk and jq; curl for the release feed). It finds:
                         names a removed module as core's (drupal:NAME or a
                         bare NAME; PROJECT:NAME already names a contrib
                         project), a reference to the namespace of a
-                        module removed with no replacement, or a class of a
+                        removed module (one moved to a contrib project
+                        too, outside tests/: the code needs that project
+                        whatever its info.yml says; one with no
+                        replacement is a hard break), or a class of a
                         namespace move whose module a major of (S, T]
                         removes (Text with Summary on Drupal 12)
   migrate-drupal-usage  the same for migrate_drupal and migrate_drupal_ui
@@ -2731,7 +2799,10 @@ cached REFERENCE core per extra leg (e.g. the latest Drupal 10, or 10.3 for a
     11.4's as WebDriverWebAssert), and the runtime proof of the suite on
     Drupal 10 belongs to the test phase;
   * a finding from one of phpstan-drupal's own best-practice rules (identifiers
-    read from the installed extension) is reported as `advisory`;
+    read from the installed extension), or a PHPDoc-only report (varTag.*,
+    phpDoc.*, *.phpDocType, generics.*, missingType.*: a doc tag at odds
+    with a newer core's native types never breaks the code), is reported as
+    `advisory`;
   * a finding PHP tolerates at runtime is reported as `tolerated`, never as an
     incompatibility. A leg differs from another only through core (same PHP,
     same analyser), so the callee is userland code, and the matrix answers
@@ -2741,6 +2812,9 @@ cached REFERENCE core per extra leg (e.g. the latest Drupal 10, or 10.3 for a
         ConfigFormBase::__construct() call on 10.0, whose constructor takes
         one): PHP drops extra arguments to a userland function or method.
         TOO FEW arguments stays incompatible (ArgumentCountError);
+      - `property.notFound` on a magic property core keeps through __get()
+        with a deprecation notice (the lifecycle catalog's
+        scan.magic_property, e.g. $original from 11.2);
       - `method.void` / `staticMethod.void` / `function.void` ("Result of
         method ...::set() (void) is used"), typically a `: void` return type a
         newer core/Symfony declares on a method that never returned a value:
@@ -3574,6 +3648,61 @@ Exit codes:
   1 -> usage error / unsupported OS / an install failed.
 ```
 
+### env/install-subject-deps.sh
+
+```text
+drupilot — scripts/env/install-subject-deps.sh
+Install the subject's own Composer requirements into its test-bed: the
+libraries and contrib modules its composer.json `require` lists
+(fightbulc/moment, giggsey/libphonenumber-for-php, drupal/address, ...).
+A test-bed is a fresh drupal/recommended-project with the subject placed
+under web/*/custom/, so nothing installs them otherwise: PHPStan then reports
+their classes as not found, the module cannot be enabled and its tests
+cannot run (training run module 06, twig_extender). Runs after
+place-subject.sh and install-toolchain.sh.
+
+Left out: php, ext-*, lib-*, composer-plugin-api, composer/*,
+cweagans/composer-patches, drupal/core and drupal/core-* (the bed's own).
+A package the bed already has is "present" (never upgraded here).
+
+The test requirements too (dev: true, installed with --dev after the
+others): the composer.json `require-dev` without the bed's toolchain
+(phpunit/*, phpstan/*, mglaman/*, palantirnet/*, rector/*, squizlabs/*,
+drupal/coder, dealerdirect/*, slevomat/*), and each project of the
+info.yml `test_dependencies` (smsframework:sms -> drupal/smsframework, any
+version Composer can install) that composer.json does not list. A test
+requirement the bed lacks makes its tests fail in setUp() with "missing
+modules" (training run module 15, mobile_number).
+
+Only on a test-bed drupilot built (testbed_kind not none): the composer.json
+of your own project is never changed; there the missing packages are only
+listed (status report-only), with the command to add them.
+
+A package Composer cannot install (a contrib module with no release for the
+bed's core, a library whose constraint conflicts) is a blocker: the run says
+which one and why, installs the others, and exits 3. To install a contrib
+module whose drupal/core constraint does not admit the bed's core yet, set
+DRUPILOT_LENIENT_DEPS and rerun install-toolchain.sh (it installs
+composer-drupal-lenient and writes its allowed-list; this script does not
+read the variable), then rerun this one.
+
+Usage:
+  install-subject-deps.sh --subject DIR [--root ROOT] [--dry-run] [--json]
+                          [-h|--help]
+  --subject DIR  the placed module/theme (its composer.json is read)
+  --root ROOT    the Drupal project root (default: find_drupal_root)
+  --dry-run      list what would be installed; Composer is not run
+  --json         {status, root, testbed, requested, present, installed,
+                  failed: [{name, constraint, dev, reason}], skipped} on
+                  STDOUT (every item has {name, constraint, dev})
+                  status: nothing | present | installed | report-only |
+                  partial | failed | dry-run
+
+Exit codes: 0 nothing to do, installed, present, report-only or dry-run ·
+            1 usage error · 2 no Drupal root / DDEV not running ·
+            3 at least one requirement could not be installed (a blocker).
+```
+
 ### env/install-toolchain.sh
 
 ```text
@@ -4265,7 +4394,8 @@ drupilot — scripts/tests/discover-tests.sh
 Discover and classify a Drupal extension's PHPUnit test classes.
 
 Scans the subject's tests/src/{Unit,Kernel,Functional,FunctionalJavascript}
-directories and counts the test classes in each group. This is the inventory
+directories, and those of its submodules (modules/foo/tests/src/...), and
+counts the test classes in each group. This is the inventory
 step used by /drupilot-test and the drupal-test-engineer agent before running
 the suite — it does NOT execute anything, so it needs no environment and no
 preflight gate.
@@ -4277,12 +4407,55 @@ Output:
   default  -> a human-readable English summary on STDOUT.
   --json   -> a single JSON object on STDOUT (nothing else):
               { unit, kernel, functional, javascript, total,
-                files:[ {path, type, class} ] }
+                files:[ {path, type, class} ] }, plus legacy:[paths]
+              when test classes sit in a SimpleTest-era location
+              (src/Tests/, Tests/) that PHPUnit never reads: never
+              counted; move them to tests/src/<group>/ (a test adaptation)
   Diagnostics/logging always go to STDERR.
 
 Exit codes:
   0  -> discovery completed (zero tests is still success).
   1  -> usage/internal error (e.g. subject is not a Drupal extension).
+```
+
+### tests/install-smoke.sh
+
+```text
+drupilot — scripts/tests/install-smoke.sh
+Install smoke check for a subject that ships no PHPUnit test (training run
+modules 03, 06 and 14: their ports had no runtime evidence at all). It
+renders templates/install-smoke-test.php.tmpl into
+<drupal_root>/.drupilot/smoke/<machine_name>/DrupilotInstallSmokeTest.php
+and runs it with the bed's PHPUnit: a BrowserTestBase site installs the
+subject (core's strict config schema check included), serves the front page
+as anonymous and as an administrator plus admin/config, uninstalls it and
+serves the front page again. The test lives outside the subject, so it is
+never part of the patch, and it is NOT a test of the module's behaviour:
+preservation stays not-verified-no-tests; this only adds install evidence.
+
+Gates the 'test' profile (Docker + daemon + DDEV) like run-phpunit.sh and
+starts a stopped DDEV project. The test runs in its own database prefix:
+the bed's site is never touched.
+
+Usage:
+  install-smoke.sh --subject DIR [--dry-run] [--no-record] [--json] [-h|--help]
+  --subject DIR  the placed module/theme
+  --dry-run      render the test and print the command; PHPUnit is not run
+  --no-record    do not write install-smoke.json to the state dir
+  --json         {status, machine_name, type, core, test_file, phpunit_rc,
+                  deprecations, excerpt} on STDOUT; status: passed | failed |
+                  blocked | dry-run (deprecations: the runtime deprecations
+                  PHPUnit counted, core's own included, which the static
+                  analysis may not see: read them in phpunit.log;
+                  excerpt: the tail of PHPUnit's output on failure)
+
+The result is recorded in the subject's hidden state dir (install-smoke.json,
+with subject_digest/digest_algo, so a later change of the sources makes it
+stale).
+
+Exit codes: 0 passed (or dry-run) · 1 usage error · 2 blocked (the 'test'
+            requirements, no Drupal root, DDEV down, PHPUnit missing) ·
+            3 failed (the subject does not install, or a page fails).
 ```
 
 ### tests/negative-control.sh
@@ -4365,8 +4538,9 @@ drupilot — scripts/tests/run-phpunit.sh
 Run a Drupal extension's PHPUnit suite inside the DDEV environment.
 
 Gates the 'test' profile first (Docker + daemon + DDEV). Runs PHPUnit against
-the Drupal core configuration (web/core) for the selected test group(s),
-using the drupal_runner prefix ('ddev exec' when the environment is up). For
+the Drupal core configuration (web/core) for the selected test group(s) —
+the subject's tests/src/<group> and each submodule's (modules/foo/tests/src/
+<group>, one PHPUnit run per directory) —, using the drupal_runner prefix ('ddev exec' when the environment is up). For
 JavaScript tests it verifies the Selenium add-on is reachable. With
 --coverage it adds text + HTML coverage reports.
 

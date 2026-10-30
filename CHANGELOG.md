@@ -13,6 +13,197 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/tests/install-smoke.sh`: the install smoke for a subject that ships
+  no PHPUnit test. It renders drupilot's own BrowserTestBase check
+  (`templates/install-smoke-test.php.tmpl`) into
+  `<drupal_root>/.drupilot/smoke/<machine_name>/` (never into the subject or
+  the patch) and runs it with the bed's PHPUnit: the subject installs (core's
+  strict config schema check included), serves the front page and
+  `admin/config` and uninstalls, in the test's own database prefix. The
+  result (`install-smoke.json`, with the runtime deprecations PHPUnit counted)
+  shows next to the `not-verified-no-tests` verdict in the port report; it is
+  install evidence, never a verdict. The test command, skill and agent run it
+  when discovery finds no test (training run modules 03, 06 and 14: ports
+  with no runtime evidence at all; views_complex_grouping passed on 11.4.11
+  with 12 runtime deprecations and on 10.6.20, a missing config schema fails
+  it).
+- Port-safety check `event-dispatch-order` (error): a `->dispatch()` call
+  whose first argument is an event name (`Events::NAME` or a string), alone
+  or before the event, the Symfony 4.2 order, which Drupal 10's Symfony 6 rejects with a TypeError;
+  PHPStan misses it when the dispatcher comes from `\Drupal::service()`
+  (training run module 13, log_entity: its login hooks).
+- The assess verdict counts as manual a PHPStan `class.notFound` outside
+  `tests/` for a class of Symfony or of `Drupal\Core`/`Drupal\Component`,
+  which the bed always has: the class was removed (log_entity extended
+  `Symfony\Component\EventDispatcher\Event`). A missing contrib class still
+  does not count (training run module 13).
+- Port-safety check `migrate-dependencies-expand` (warning): a
+  `->getMigrationDependencies()` call in a migrate field plugin
+  (`src/Plugin/migrate/field/`) or a deriver while the range or the target
+  admits Drupal 11.0. From 11.0 the call always expands the plugin IDs, which
+  reads the migration definitions being built and can recurse until PHP runs
+  out of memory; the fix reads `getPluginDefinition()['migration_dependencies']`
+  (training run module 12, location_migration).
+- `deps-status.sh` tells when a ready dependency's composer.json constraint
+  admits none of its Drupal 11 releases (`constraint`,
+  `constraint_admits_ready`, `ready_majors`; drupal/address `^1.8` while only
+  2.x supports Drupal 11), in the table and in the viability report. The port
+  skill reinstalls the subject's requirements after it widens a constraint, and
+  the test skill checks them before the first run (training run modules 07
+  and 12).
+- Hard-break category `jquery4`: a JavaScript call of a jQuery 3 utility that
+  jQuery 4, which core ships from Drupal 11.0, removed (`$.isNumeric()`,
+  `$.trim()`, `$.isArray()`, `$.parseJSON()`, `$.isFunction()`, `$.type()`,
+  `$.now()` and others).
+  The material_admin theme (training run module 09) called `$.isNumeric()`,
+  and only the port model noticed.
+- Port-safety checks `test-abstract-suffix` and `test-field-ui-display-path`,
+  run by the test skill, agent and command with the other test checks:
+  - an abstract base class in a file named `*Test.php`: PHPUnit 10+ (Drupal
+    11) throws "Class X is abstract" when core's configuration collects it,
+    and `failOnWarning` fails the run although every test passed (training
+    run module 08, pbf: `PbfBaseTest.php`); name it `*TestBase`;
+  - a test's Field UI path ending in `/display` (`.../manage/<bundle>/display`,
+    not a module's own route): from Drupal 11.4 Field UI serves an
+    overview of the view modes there, and the default display form moved to
+    `.../display/default`, which every core serves (fotorama_gallery and pbf
+    both had to change it in the test stage).
+- `scripts/env/install-subject-deps.sh` installs the subject's own Composer
+  requirements (the libraries and contrib modules its `composer.json` lists)
+  into the test-bed; `/drupilot-setup` runs it after the toolchain (step 3d).
+  Before, nothing installed them: PHPStan reported their classes as not found
+  and a test could not enable the module (training run module 06,
+  twig_extender, whose `fightbulc/moment` gave 7 errors). A requirement
+  Composer cannot install is reported as a blocker (exit 3); on your own
+  project the script only lists the missing packages.
+
+- Port-safety check `config-schema-sequence`: a config schema `sequence:` that
+  lists its item type (`- type: string`), a form deprecated in 8.0.0 and
+  removed from Drupal 11, where the items lose their type and saving the
+  configuration throws `SchemaIncompleteException` (training run module 01,
+  filelog: its settings form failed on Drupal 11 and only its Functional test
+  showed it). An error before and after the port, so the assessment counts
+  it and the port fixes it.
+- Port-safety check `test-phpunit-api`: a PHPUnit method that exists only from
+  PHPUnit 10, such as `$matcher->numberOfInvocations()` (PHPUnit 9 calls it
+  `getInvocationCount()`), in a test while the range admits Drupal 10. Rector's
+  `WithConsecutiveRector` writes it when it removes `withConsecutive()`, so the
+  test failed on Drupal 10 (filelog). The test skill, agent and command run it,
+  and the skill says to count the calls with a local counter.
+
+### Fixed
+
+- `install-subject-deps.sh` installs the subject's test requirements too,
+  with `--dev` after the runtime ones: its `composer.json` `require-dev`
+  without the bed's toolchain and the `info.yml` `test_dependencies` the
+  composer.json does not list (`dev: true` on each JSON item). mobile_number's
+  `MobileNumberClassTest` failed in `setUp()` with "missing modules sms" until
+  the test stage installed drupal/smsframework by hand (training run
+  module 15).
+- `verify-core-matrix.sh` no longer fails a leg on findings that cannot break
+  the code there: a PHPDoc-only report (`varTag.*`, `phpDoc.*`,
+  `*.phpDocType`, `generics.*`, `missingType.*`) is `advisory`, and a
+  `property.notFound` on a magic property core keeps through `__get()` (the
+  lifecycle catalog's `scan.magic_property`, `$original` from 11.2) is
+  `tolerated`. mobile_number's 11.4 leg failed on three `@var` tags at odds
+  with the typed `ItemList::getIterator()` and a test's `$field->original`,
+  so `port-summary --strict` reported the port blocked (training run
+  module 15).
+- `discover-tests.sh` and `run-phpunit.sh` find the tests of the subject's
+  submodules (`modules/<sub>/tests/src/<group>`, a nested extension with its
+  own `*.info.yml`; `subject_test_dirs` in `subject.sh`): `run-phpunit.sh`
+  runs one PHPUnit per directory and records every test; a directory whose
+  run died without any test result while another one ran is listed in the
+  group's `crashed_dirs` and classified on its own against the baseline
+  (`dir-crashed`: a regression, or not baselined when it crashed there too).
+  A subject whose
+  only tests sat in a submodule was reported `not-verified-no-tests`, and
+  the port took no baseline (training run module 13, log_entity).
+- The ddev-environment and test-adaptation skills forbid stopping, deleting or
+  pruning a DDEV project or a Docker container, network or volume drupilot did
+  not create for the subject, even in an autonomous run: when Docker ran out
+  of address pools, a test run deleted seven networks of other projects to
+  start its bed (training run module 12). Such a shortage is reported for the
+  developer to resolve.
+- `run-phpunit.sh` runs the Unit, Kernel and Functional groups with
+  `SIMPLETEST_BASE_URL=http://localhost` when the DDEV add-ons set the
+  container's value to `http://web` (FunctionalJavascript keeps it: Selenium,
+  in another container, needs it). A Functional test that expects the
+  client address `127.0.0.1`, as on core's CI, failed there although the
+  module was right, and the verdict said regression (training run module
+  11, nodeviewcount: 2 of its 10 tests).
+- `discover-tests.sh` lists the test classes in a SimpleTest-era location
+  (`src/Tests/`, a top-level `Tests/`) under `legacy`: PHPUnit never reads
+  them, so a module with five test classes there was reported as having no
+  tests until the test stage found them (nodeviewcount, like_dislike). The
+  test command and skill move them first.
+- `deps-status.sh` classifies an unsupported (abandoned) drupal.org project by
+  its releases instead of calling it "not on drupal.org", and reads each
+  release's core compatibility as a constraint (`>=8.9 <11` does not admit
+  11). image_resize_filter depends on `ckeditor`, unsupported with releases
+  for `^9.4 || ^10` only: the assessment counted no blocking dependency and
+  said S (training run module 10).
+- `verify-core-matrix.sh` compares the legs' PHPStan errors with each union
+  type normalized: the same error worded `bool|StreamWrapperInterface` on
+  Drupal 10 and `StreamWrapperInterface|false` on Drupal 11 (core's doc block
+  changed) made every leg fail with "errors only on this core", and Drupal 10
+  support "failed" (image_resize_filter).
+- The core-removals scan reads the code's references to a module core moved
+  to a contrib project, not only its info.yml line: a port that drops
+  `drupal:ckeditor` from info.yml while the plugins still extend a
+  `Drupal\ckeditor\` class keeps the blocking dependency (no release of the
+  `ckeditor` project covers Drupal 11), so the port summary no longer says
+  "ported" with no blocker (training run module 07, ckeditor_oembed). Such a
+  reference follows the project's releases (rewrite, verify, blocked,
+  composer-required) instead of always being a hard break.
+- `/drupilot-assess`, `/drupilot-port`, `/drupilot-refactor` and
+  `/drupilot-test` pass the subject to their preflight, which then reads the
+  DDEV project of the subject's Drupal root: run from another directory, the
+  Selenium add-on was always reported missing although it was installed
+  (training run module 05, fotorama_gallery). `run-phpunit.sh`,
+  `run-phpstan.sh`, `run-phpcs.sh` and `convert-attributes.sh` pass their
+  subject to their own preflight for the same reason (module 09).
+- A "Function X not found" that is no removal no longer counts as blocking
+  work: `classify-deprecations.sh` gives the new class `not-removed` to a
+  function the subject's core defines in a file core loads on demand
+  (`locale.fetch.inc` and the like, which PHPStan cannot see; the finding
+  names the file) and to one a Drupal 8 era `*.drush.inc` calls (Drush 9 and
+  later never load it). Reported as info, never blocking: in training run
+  module 04 (drush_language) 14 such findings made the verdict L.
+- `verify-core-matrix.sh` adds `drush/drush` (the major each leg's core
+  admits) to its reference cores when the subject has Drush commands: every
+  Drupal 10 leg failed on the missing Drush classes, and the port model
+  installed Drush in the cached cores by hand (drush_language). A cached core
+  built without Drush is rebuilt for such a subject.
+- The port report counts the official Rector pass alone: `run-rector.sh`
+  keeps the files of the official and compat passes apart from the digests
+  pass's in `rector-rules.json`, so a digests-only change no longer reads as
+  "Rector (official pass): 1 file(s) changed". A digests rule follows its
+  latest verdict: one applied, then rejected and reverted, is listed as
+  rejected only, not as applied and rejected at once (training run module
+  03, like_dislike).
+- A core requirement that names 11 only as the bound excluding it, such as
+  `>=8.9 < 11.0.0-stable`, no longer counts as Drupal 11-compatible: the `auto`
+  strategy kept it verbatim (keep-current) and setup then refused the plan
+  (`range-excludes-bed`), so no stage could run (training run module 03,
+  like_dislike). The strategy now asks whether the range admits the target
+  major, as the plan does; it recommends `^10 || ^11` there, and keeps an
+  open range such as `>=9.3 <12` that admits 11 without naming it.
+- The core floor follows `watchdog_exception()`: its replacement
+  `Error::logException()` exists only from 10.1, so a port that keeps Drupal 10
+  declares `^10.1 || ^11` from the assessment on, instead of a `^10 || ^11`
+  that the 10.0 static leg then rejected (filelog). A lifecycle entry may name
+  a `replacement_member`, for a class that older cores have without that
+  method: only a call of `Class::member()` then counts as using it.
+- Rector no longer promotes constructor properties in the port
+  (`ClassPropertyAssignToConstructorPromotionRector` joins the denied rules):
+  a style rewrite, never a compatibility fix, that rewrote a constructor's
+  changes to its parameter into changes to the promoted property (filelog's
+  `LogMessage` lost its placeholder prefixes, so messages were no longer
+  substituted) and moved doc blocks into the parameter list.
+
 ## [1.0.2] - 2026-10-29
 
 ### Added

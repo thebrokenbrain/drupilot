@@ -29,6 +29,13 @@
 #           fallback): no core of the target major runs it, so it is
 #           reported, never blocking. run-phpstan.sh --json marks such a
 #           message (drupilot_guard); a plain-text input has no mark.
+#   not-removed  a function PHPStan cannot find that is no removal: the
+#           subject's core defines it in a file core loads on demand
+#           (module_load_include()/loadInclude(): locale.bulk.inc, ...;
+#           core_file names it), or a Drupal 8 era Drush command file
+#           (*.drush.inc), which Drush 9 and later never load, calls it.
+#           Reported, never blocking (training run 04, drush_language: 14
+#           such findings made the verdict L).
 #
 # Removal versions come from the analyzer message itself (phpstan-deprecation-
 # rules echoes core's "in drupal:X and is removed from drupal:Y"). The
@@ -58,6 +65,7 @@
 #                     {tool, policy, phase, target_major, core_requirement,
 #                      core_floor, blocking, counts:{hard,soft,unknown,other},
 #                      plus counts.guarded and guarded:[..] when there is one,
+#                      counts.not_removed and not_removed:[..] likewise,
 #                      symbols (one per symbol and class):[{symbol, class,
 #                        deprecated_in, removed_in,
 #                        replacement, replacement_since, replacement_at_floor,
@@ -221,8 +229,28 @@ fi
 # The records go through a file: one argv string is capped (128 KiB on Linux),
 # and a report of a few hundred messages exceeds it.
 printf '%s\n' "$RAW" > "$RAWF"
+# "Function X not found" for a function core defines in a file it loads on
+# demand (module_load_include()/loadInclude(): locale.bulk.inc, ...): PHPStan
+# cannot see it, but it is not removed (training run 04, drush_language).
+# {name: core-relative file}, from the subject's Drupal root.
+DEFF="$(mktemp "${TMPDIR:-/tmp}/drupilot-classify-def.XXXXXX")"
+trap 'rm -f "$TMP" "$RAWF" "$DEFF"' EXIT
+printf '{}\n' > "$DEFF"
+NF_ERE="$(jq -r '[.[] | (.message // "") | capture("Function (?<s>[A-Za-z0-9_]+) not found")? | .s] | unique | join("|")' "$RAWF" 2>/dev/null || true)"
+if [[ -n "$NF_ERE" && -n "$SUBJECT" ]]; then
+  _root="$(find_drupal_root "$SUBJECT" 2>/dev/null || true)"; _core=""
+  for _d in "$_root/web/core" "$_root/docroot/core" "$_root/core"; do [[ -n "$_root" && -d "$_d/lib/Drupal" ]] && { _core="$_d"; break; }; done
+  if [[ -n "$_core" ]]; then
+    ( cd "$_core" && find . \( -name tests -o -name vendor -o -name node_modules \) -prune -o -type f \
+        \( -name '*.inc' -o -name '*.module' -o -name '*.install' -o -name '*.php' \) \
+        -exec grep -H -o -E "^function ($NF_ERE)\(" {} + 2>/dev/null || true ) \
+      | sed -E 's#^\./##; s#\($##' \
+      | jq -R -s -c 'split("\n") | map(select(length > 0) | split(":function ") | {key: .[1], value: ("core/" + .[0])}) | from_entries' \
+      > "$DEFF" 2>/dev/null || printf '{}\n' > "$DEFF"
+  fi
+fi
 RESULT="$(jq -n \
-  --slurpfile rawf "$RAWF" \
+  --slurpfile rawf "$RAWF" --slurpfile defs "$DEFF" \
   --slurpfile cat "$CATALOG" \
   --arg policy "$POLICY" --arg phase "$PHASE" \
   --argjson tmaj "$TARGET_MAJOR" \
@@ -281,6 +309,8 @@ RESULT="$(jq -n \
              kind: (if $d != null then $d.kind elif $nf != null then "function" elif $hk != null then "hook"
                     elif $sv != null then "service" elif $cl != null then "class" else "other" end),
              not_found: ($nf != null),
+             core_file: (if $nf != null then ($defs[0][$nf.sym | norm] // null) else null end),
+             drush8: ($nf != null and (($r.file // "") | test("\\.drush\\.inc$"))),
              guarded: ($nf != null and (($r.guard // null) | type) == "object" and $r.guard.kind == "deprecation-helper-fallback"
                        and (($r.guard.deprecated_version // "") | test("^[0-9]+(\\.[0-9]+)*$"))
                        and (($r.guard.deprecated_version | vnum) < ([$tmaj, 0, 0]))),
@@ -297,6 +327,7 @@ RESULT="$(jq -n \
          end) ;
     def klass:
       if .guarded then "guarded"
+      elif .not_found and (.catalogued | not) and (.core_file != null or .drush8) then "not-removed"
       elif .not_found and (.catalogued | not) then "unknown"
       elif .project != "drupal" or .removed_in == null then "unknown"
       elif (.removed_in | major) <= $tmaj then "hard"
@@ -308,6 +339,9 @@ RESULT="$(jq -n \
       else (($fl | vnum) >= (.replacement_since | vnum)) end;
     def decide($cls):
       if $cls == "guarded" then {action: "report", reason: "only the fallback of DeprecationHelper::backwardsCompatibleCall() calls it, and no core of Drupal \($tmaj) runs that fallback: reported, not blocking"}
+      elif $cls == "not-removed" then {action: "report", reason: (if .core_file != null
+          then "not removed: core defines it in \(.core_file), which core loads on demand (module_load_include() or loadInclude()), so PHPStan cannot see it; check that the code loads that file first: reported, not blocking"
+          else "a Drupal 8 era Drush command file (*.drush.inc): Drush 9 and later never load it, so no Drush of a supported core runs this code: reported, not blocking (removing the file is a Phase 2 cleanup)" end)}
       elif $cls == "hard" then {action: "fix", reason: "removed in drupal:\(.removed_in), at or below the target major \($tmaj): blocking"}
       elif $cls == "unknown" then {action: "fix", reason: (if .not_found then "symbol not found and not in the lifecycle catalog (removed API or missing dependency): blocking until reviewed" else "removal version not readable as a Drupal core version: blocking until reviewed" end)}
       else
@@ -323,8 +357,10 @@ RESULT="$(jq -n \
       end;
     [ $raw[] | classify | select(. != null) ] as $all
     | [ $all[] | . + {class: klass} | . + {replacement_at_floor: at_floor} | . as $i | $i + ($i | decide($i.class))
-        | del(.no_replacement_entry, .catalogued, .project, .guarded) ] as $items
+        | del(.no_replacement_entry, .catalogued, .project, .guarded, .drush8)
+        | if .core_file == null then del(.core_file) else . end ] as $items
     | ([ $items[] | select(.class == "guarded") ] | length) as $ng
+    | ([ $items[] | select(.class == "not-removed") ] | length) as $nn
     | ($raw | length) as $nraw
     | { tool: "classify-deprecations", policy: $policy, phase: $phase,
         target_major: $tmaj,
@@ -334,7 +370,8 @@ RESULT="$(jq -n \
         counts: ({ hard: ([ $items[] | select(.class == "hard") ] | length),
                    soft: ([ $items[] | select(.class == "soft") ] | length),
                    unknown: ([ $items[] | select(.class == "unknown") ] | length),
-                   other: ($nraw - ($items | length)) } + (if $ng > 0 then {guarded: $ng} else {} end)),
+                   other: ($nraw - ($items | length)) } + (if $ng > 0 then {guarded: $ng} else {} end)
+                 + (if $nn > 0 then {not_removed: $nn} else {} end)),
         symbols: ( $items | group_by([.symbol, .class])
                    | map(.[0] as $f | { symbol: $f.symbol, class: $f.class, deprecated_in: $f.deprecated_in,
                                        removed_in: $f.removed_in, replacement: $f.replacement,
@@ -343,11 +380,12 @@ RESULT="$(jq -n \
                                        action: $f.action, reason: $f.reason, change_record: $f.change_record,
                                        occurrences: length,
                                        locations: [ .[] | select(.file != null) | "\(.file):\(.line)" ] })
-                   | sort_by(({"hard": 0, "unknown": 1, "soft": 2, "guarded": 3})[.class], .symbol) ),
+                   | sort_by(({"hard": 0, "unknown": 1, "soft": 2, "guarded": 3, "not-removed": 4})[.class], .symbol) ),
         hard: [ $items[] | select(.class == "hard") ],
         soft: [ $items[] | select(.class == "soft") ],
         unknown: [ $items[] | select(.class == "unknown") ] }
       + (if $ng > 0 then {guarded: [ $items[] | select(.class == "guarded") ]} else {} end)
+      + (if $nn > 0 then {not_removed: [ $items[] | select(.class == "not-removed") ]} else {} end)
 ')" || die "Could not classify the input (malformed analyzer output?)." 1
 
 if [[ "$AS_JSON" == "1" ]]; then
@@ -362,7 +400,8 @@ G="$(printf '%s' "$RESULT" | jq -r '.counts.guarded // 0')"
 hr
 log_plain "Deprecations — target Drupal ${TARGET_MAJOR}, core floor ${FLOOR:-unknown}, soft policy '${POLICY}' (phase ${PHASE})"
 hr
-if [[ "$H" == "0" && "$S" == "0" && "$U" == "0" && "$G" == "0" ]]; then
+NR_="$(printf '%s' "$RESULT" | jq -r '.counts.not_removed // 0')"
+if [[ "$H" == "0" && "$S" == "0" && "$U" == "0" && "$G" == "0" && "$NR_" == "0" ]]; then
   log_ok "No deprecation recognized in the input."
   exit 0
 fi

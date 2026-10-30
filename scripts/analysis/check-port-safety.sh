@@ -68,6 +68,51 @@
 #                      keep them and add the twins. In diff mode, a line
 #                      the port left alone is attributed to the port when
 #                      the range at the base admitted no such core.
+#   test-phpunit-api   In a file under tests/, a call of a PHPUnit method that
+#                      exists only from the check's phpunit_from (10, Drupal
+#                      11.0) while the declared range admits an older
+#                      Drupal major: $matcher->numberOfInvocations(), which
+#                      Rector's WithConsecutiveRector writes, is
+#                      getInvocationCount() on PHPUnit 9 (training run 01).
+#   test-abstract-suffix
+#                      An abstract class in a tests/ file named *Test.php while
+#                      the range admits Drupal 11.0+ (PHPUnit 10+ throws 'Class
+#                      X is abstract': failOnWarning fails the run; training
+#                      run module 08). Name it *TestBase.
+#   test-field-ui-display-path
+#                      A tests/ path ending in /display given to drupalGet()
+#                      or a Url while the range admits the check's
+#                      overview_from (11.4.0): Field UI serves an overview
+#                      there; the default form is .../display/default on
+#                      every core (training run modules 05 and 08).
+#   config-schema-sequence
+#                      In config/schema/*.yml (test modules included), a
+#                      `sequence:` whose item type is a one-item YAML list
+#                      (`- type: string`), a form core removed from the
+#                      check's removed_in (11.0.0): the items then have no
+#                      type and saving the configuration throws
+#                      SchemaIncompleteException (training run 01, filelog).
+#                      On when the declared range or the target major admits
+#                      that major. Always an error: write the item
+#                      definition as a mapping (drop the '- ').
+#   migrate-dependencies-expand
+#                      In src/, a ->getMigrationDependencies() call in a
+#                      migrate field plugin (src/Plugin/migrate/field/) or a
+#                      deriver (*Deriver*.php), while the range or the target
+#                      admits the check's expands_from (11.0.0): from there
+#                      the call always expands the plugin IDs, which reads
+#                      the migration definitions that are being built and
+#                      can recurse endlessly (training run module 12,
+#                      location_migration). A warning: read the unexpanded
+#                      getPluginDefinition()['migration_dependencies'].
+#   event-dispatch-order
+#                      A ->dispatch() call whose first argument is an event
+#                      name (a class constant such as Events::NAME, or a string
+#                      literal), alone or before the event, the Symfony 4.2 order, while the range or the
+#                      target admits the check's removed_in (10.0.0, Symfony
+#                      6): dispatch(object $event, ?string $eventName) then
+#                      throws a TypeError (training run module 13, log_entity:
+#                      its login hooks). An error: swap the two arguments.
 #
 # Diff-aware: when the subject is tracked by git, every finding is attributed —
 # "introduced" (on a line the port added/changed vs the pre-port base) or
@@ -115,7 +160,7 @@ set -euo pipefail
 # shellcheck source=../lib/php-scan.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/php-scan.sh"
 
-ALL_CHECKS="plugin-di removed-use static-factory fapi-callable serialization override-attribute class-case test-label-markup test-phpunit-metadata"
+ALL_CHECKS="plugin-di removed-use static-factory fapi-callable serialization override-attribute class-case test-label-markup test-phpunit-metadata test-phpunit-api test-abstract-suffix test-field-ui-display-path config-schema-sequence migrate-dependencies-expand event-dispatch-order"
 SUBJECT=""
 BASE=""
 NO_DIFF=0
@@ -271,6 +316,36 @@ SIGCAT="$(plugin_root)/config/deprecations.json"
 if [[ -f "$SIGCAT" ]]; then
   jq -r '(.signature_changes // [])[] | select(.kind == "method-signature") | [.id, .target, .method, .since] | join("\t")' "$SIGCAT" > "$TMP/sigmethods.tsv" 2>/dev/null || true
   jq -r '(.signature_changes // [])[] | select(.kind == "method-signature") | .target as $t | (.known_descendants // [])[] | [$t, "yes", .] | join("\t")' "$SIGCAT" >> "$TMP/fallback.tsv" 2>/dev/null || true
+fi
+
+# test-phpunit-api (config/port-checks.json): PHPUnit methods that exist only
+# from phpunit_from (Drupal drupal_from), while the range admits an older
+# Drupal major whose PHPUnit has another name for them (members).
+PUAPI_FROM="$(jq -r '.checks["test-phpunit-api"].drupal_from // empty' "$CFG")"
+PUAPI_PHPUNIT="$(jq -r '.checks["test-phpunit-api"].phpunit_from // empty' "$CFG")"
+PUAPI_ERE="$(jq -r '(.checks["test-phpunit-api"].members // {}) | keys | join("|")' "$CFG")"
+PUAPI_ON=0
+if [[ -n "$CORE_REQ" && -n "$PUAPI_ERE" && "$PUAPI_FROM" =~ ^([0-9]+) ]]; then
+  _pm="${BASH_REMATCH[1]}"
+  for _m in $(seq "$((_pm - 3))" "$((_pm - 1))"); do constraint_admits_major "$CORE_REQ" "$_m" && PUAPI_ON=1; done
+fi
+
+# test-abstract-suffix / test-field-ui-display-path (config/port-checks.json).
+TABS_FROM="$(jq -r '.checks["test-abstract-suffix"].drupal_from // empty' "$CFG")"
+TABS_PHPUNIT="$(jq -r '.checks["test-abstract-suffix"].phpunit_from // empty' "$CFG")"
+TABS_ON=0
+if [[ "$TABS_FROM" =~ ^([0-9]+) ]]; then
+  _am="${BASH_REMATCH[1]}"
+  if [[ -z "$CORE_REQ" ]]; then TABS_ON=1
+  else for _m in $(seq "$_am" "$((_am + 3))"); do constraint_admits_major "$CORE_REQ" "$_m" && TABS_ON=1; done; fi
+fi
+FUID_FROM="$(jq -r '.checks["test-field-ui-display-path"].overview_from // empty' "$CFG")"
+FUID_ON=0
+if [[ -n "$FUID_FROM" ]]; then
+  if [[ -z "$CORE_REQ" ]]; then FUID_ON=1
+  # (A range that admits the major admits its later minors: ^11 reaches 11.4.)
+  else _fm="${FUID_FROM%%.*}"; for _m in $(seq "$_fm" "$((_fm + 3))"); do constraint_admits_major "$CORE_REQ" "$_m" && FUID_ON=1; done
+  fi
 fi
 
 # --- Git base (diff-aware attribution) ---------------------------------------
@@ -531,6 +606,51 @@ while IFS= read -r f; do
         ;;
     esac
   fi
+
+  if check_on test-abstract-suffix && [[ "$TABS_ON" == "1" ]]; then
+    case "/$(rel "$f")" in
+      */tests/*Test.php)
+        while IFS=$'\t' read -r _ cline _ cfq cmods _; do
+          case ",$cmods," in *,abstract,*) ;; *) continue;; esac
+          add_finding test-abstract-suffix "$f" "$cline" "$(introduced "$f" "$cline")" \
+            "${cfq##*\\} is abstract in a file named *Test.php: from PHPUnit ${TABS_PHPUNIT} (Drupal ${TABS_FROM} and later) collecting it throws 'Class ${cfq##*\\} is abstract', a warning that core's failOnWarning turns into a failed run. Name the class and its file *TestBase, as core does, and update the classes that extend it."
+        done < <(awk -F'\t' '$1 == "CLASS" && $3 == "class"' "$s")
+        ;;
+    esac
+  fi
+
+  if check_on test-field-ui-display-path && [[ "$FUID_ON" == "1" ]]; then
+    case "/$(rel "$f")" in
+      */tests/*)
+        while IFS=: read -r line _; do
+          [[ -n "$line" ]] || continue
+          add_finding test-field-ui-display-path "$f" "$line" "$(introduced "$f" "$line")" \
+            "this path ends in /display: from Drupal ${FUID_FROM} Field UI serves an overview of the view modes there, so a test that opens it to configure a display finds no form. Open .../display/default, which serves the default display form on every core."
+        # Field UI paths only: .../manage/<bundle>/display, a vocabulary's
+        # .../manage/<vocab>/overview/display, the user entity's
+        # admin/config/people/accounts/display, or /display after a variable
+        # prefix ($bundle_path . '/display', "$bundle_path/display", the
+        # FieldUiTestTrait idiom); a module's own literal .../display route
+        # is not one (the PR #64 review).
+        done < <(grep -n -E "(drupalGet|fromUri|fromUserInput|->visit)[[:space:]]*\(.*(manage/[^/]+(/overview)?|admin/config/people/accounts|\\\$[A-Za-z_][A-Za-z0-9_>-]*[[:space:]]*\.[[:space:]]*['\"]|\"\\\$[A-Za-z_][A-Za-z0-9_>-]*)/display(['\"]|[[:space:]]*\))" "$f" 2>/dev/null | grep -v -E '^[0-9]+:[[:space:]]*(//|\*|#)' || true)
+        ;;
+    esac
+  fi
+
+  if check_on test-phpunit-api && [[ "$PUAPI_ON" == "1" ]]; then
+    case "/$(rel "$f")" in
+      */tests/*)
+        php_code_lines "$f" > "$TMP/puapi.code"
+        while IFS=: read -r line member; do
+          [[ -n "$line" && -n "$member" ]] || continue
+          old="$(jq -r --arg m "$member" '.checks["test-phpunit-api"].members[$m] // empty' "$CFG")"
+          add_finding test-phpunit-api "$f" "$line" "$(introduced "$f" "$line")" \
+            "${member}() exists only from PHPUnit ${PUAPI_PHPUNIT} (Drupal ${PUAPI_FROM} and later), while '${CORE_REQ}' admits an older Drupal major whose PHPUnit has ${old}() instead: the test fails there (Rector's WithConsecutiveRector writes this call). Count the calls in the callback itself, for example with a local counter captured by reference, which every PHPUnit runs."
+        done < <(grep -n -o -E -- "->[[:space:]]*(${PUAPI_ERE})[[:space:]]*\(" "$TMP/puapi.code" 2>/dev/null \
+                   | sed -E 's/^([0-9]+):->[[:space:]]*([A-Za-z0-9_]+).*/\1:\2/' || true)
+        ;;
+    esac
+  fi
 done < "$FILES"
 
 # --- Check: removed-use (diff mode) -------------------------------------------
@@ -634,6 +754,116 @@ if check_on class-case; then
       }' "$y")
   done < <(find "$SUBJECT_ABS" \( -name '*.services.yml' -o -name '*.routing.yml' \) \
              -not -path '*/vendor/*' -not -path '*/node_modules/*' 2>/dev/null | LC_ALL=C sort)
+fi
+
+# --- Check: config-schema-sequence ------------------------------------------------
+# config/port-checks.json: the list form of a sequence's item type is removed
+# from removed_in. On when the declared range, or the target major the port
+# declares, admits that major (at assess time the range is still the old one).
+if check_on config-schema-sequence; then
+  SEQ_DEPRECATED="$(jq -r '.checks["config-schema-sequence"].deprecated_in // empty' "$CFG")"
+  SEQ_REMOVED="$(jq -r '.checks["config-schema-sequence"].removed_in // empty' "$CFG")"
+  SEQ_ON=0
+  if [[ "$SEQ_REMOVED" =~ ^([0-9]+) ]]; then
+    _sm="${BASH_REMATCH[1]}"
+    _tm="$(resolve_target_major 2>/dev/null || true)"
+    if [[ "$_tm" =~ ^[0-9]+$ ]] && (( _tm >= _sm )); then SEQ_ON=1; fi
+    if [[ -n "$CORE_REQ" ]]; then
+      for _m in $(seq "$_sm" "$((_sm + 3))"); do constraint_admits_major "$CORE_REQ" "$_m" && SEQ_ON=1; done
+    fi
+  fi
+  if [[ "$SEQ_ON" == "1" ]]; then
+    while IFS= read -r y; do
+      while IFS= read -r line; do
+        add_finding config-schema-sequence "$y" "$line" "$(introduced "$y" "$line")" \
+          "this sequence lists its item type ('- type: ...'), a form deprecated in drupal:${SEQ_DEPRECATED} and removed from drupal:${SEQ_REMOVED}: from Drupal ${SEQ_REMOVED%%.*} its items have no type and saving the configuration throws SchemaIncompleteException. Write the item definition as a mapping under 'sequence:' (drop the '- '), which every core reads."
+      done < <(awk '
+        /^[[:space:]]*#/ || /^[[:space:]]*$/ { next }
+        {
+          if (pend && $0 ~ /^[[:space:]]*-[[:space:]]/) print NR
+          pend = 0
+          if ($0 ~ /^[[:space:]]*sequence:[[:space:]]*(#.*)?$/) pend = 1
+          else if ($0 ~ /^[[:space:]]*sequence:[[:space:]]*\[/) print NR
+        }' "$y")
+    done < <(find "$SUBJECT_ABS" -type f -path '*/config/schema/*' -name '*.yml' \
+               -not -path '*/vendor/*' -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null | LC_ALL=C sort)
+  fi
+fi
+
+# --- Check: migrate-dependencies-expand -----------------------------------------
+# config/port-checks.json: getMigrationDependencies() expands the plugin IDs
+# from expands_from. On like config-schema-sequence (range or target major).
+if check_on migrate-dependencies-expand; then
+  MDE_FROM="$(jq -r '.checks["migrate-dependencies-expand"].expands_from // empty' "$CFG")"
+  MDE_ON=0
+  if [[ "$MDE_FROM" =~ ^([0-9]+) ]]; then
+    _dm="${BASH_REMATCH[1]}"
+    _tm="$(resolve_target_major 2>/dev/null || true)"
+    if [[ "$_tm" =~ ^[0-9]+$ ]] && (( _tm >= _dm )); then MDE_ON=1; fi
+    if [[ -n "$CORE_REQ" ]]; then
+      for _m in $(seq "$_dm" "$((_dm + 3))"); do constraint_admits_major "$CORE_REQ" "$_m" && MDE_ON=1; done
+    fi
+  fi
+  if [[ "$MDE_ON" == "1" ]]; then
+    while IFS= read -r f; do
+      case "/$(rel "$f")" in
+        */src/Plugin/migrate/field/*.php|*/src/*Deriver*.php) ;;
+        *) continue;;
+      esac
+      php_code_lines "$f" > "$TMP/mde.code"
+      while IFS=: read -r line _; do
+        [[ -n "$line" ]] || continue
+        add_finding migrate-dependencies-expand "$f" "$line" "$(introduced "$f" "$line")" \
+          "getMigrationDependencies() here runs while the migration definitions are being built (a migrate field plugin or a deriver): from Drupal ${MDE_FROM} it always expands the plugin IDs, which reads those definitions again and can recurse until PHP runs out of memory. Read the unexpanded dependencies, \$migration->getPluginDefinition()['migration_dependencies'], which every core keeps."
+      done < <(grep -n -E -- '->[[:space:]]*getMigrationDependencies[[:space:]]*\(' "$TMP/mde.code" 2>/dev/null || true)
+    done < "$FILES"
+  fi
+fi
+
+# --- Check: event-dispatch-order ------------------------------------------------
+# config/port-checks.json: the event name first, removed with removed_in's
+# Symfony. On like config-schema-sequence (range or target major). The first
+# argument may start on the line after 'dispatch('.
+if check_on event-dispatch-order; then
+  EDO_REMOVED="$(jq -r '.checks["event-dispatch-order"].removed_in // empty' "$CFG")"
+  EDO_ON=0
+  if [[ "$EDO_REMOVED" =~ ^([0-9]+) ]]; then
+    _em="${BASH_REMATCH[1]}"
+    _tm="$(resolve_target_major 2>/dev/null || true)"
+    if [[ "$_tm" =~ ^[0-9]+$ ]] && (( _tm >= _em )); then EDO_ON=1; fi
+    if [[ -n "$CORE_REQ" ]]; then
+      for _m in $(seq "$_em" "$((_em + 3))"); do constraint_admits_major "$CORE_REQ" "$_m" && EDO_ON=1; done
+    fi
+  fi
+  if [[ "$EDO_ON" == "1" ]]; then
+    while IFS= read -r f; do
+      php_code_lines "$f" > "$TMP/edo.code"
+      while IFS= read -r line; do
+        [[ -n "$line" ]] || continue
+        add_finding event-dispatch-order "$f" "$line" "$(introduced "$f" "$line")" \
+          "dispatch() gets the event name first, the order of Symfony 4.2 and before: from Drupal ${EDO_REMOVED%%.*} (Symfony 6 and later) the signature is dispatch(object \$event, ?string \$eventName = NULL), so this call throws a TypeError. Pass the event object first and the name second: dispatch(\$event, NAME); a call with the name alone needs an event object, dispatch(new Event(), NAME)."
+      done < <(awk '
+        function first_is_alone(t) {
+          sub(/^[[:space:]]+/, "", t)
+          return t ~ /^(\\?[A-Za-z_][A-Za-z0-9_\\]*::[A-Z][A-Z0-9_]*|\047[^\047]*\047|"[^"]*")[[:space:]]*$/
+        }
+        function first_is_name(t) {
+          sub(/^[[:space:]]+/, "", t)
+          return t ~ /^(\\?[A-Za-z_][A-Za-z0-9_\\]*::[A-Z][A-Z0-9_]*|\047[^\047]*\047|"[^"]*")[[:space:]]*[,)]/
+        }
+        # (On the line after "dispatch(", the name may end the line: its ")"
+        # follows on a later one.)
+        pend { if ($0 ~ /^[[:space:]]*$/) next; if (first_is_name($0) || first_is_alone($0)) print pend; pend = 0 }
+        {
+          t = $0
+          while (match(t, /->[[:space:]]*dispatch[[:space:]]*\(/)) {
+            t = substr(t, RSTART + RLENGTH)
+            if (t ~ /^[[:space:]]*$/) { pend = NR; break }
+            if (first_is_name(t)) { print NR; break }
+          }
+        }' "$TMP/edo.code")
+    done < "$FILES"
+  fi
 fi
 
 # --- Report ---------------------------------------------------------------------

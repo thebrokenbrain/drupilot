@@ -85,6 +85,21 @@ assert_eq "without the API: '^10 || ^11' as before" "$(jq -r '.recommended_core_
 assert_eq "T 12 keep-previous: its own floor" \
   "$(DRUPILOT_CORE_TARGET_STRATEGY=keep-previous strategy_decide "$T_TMP/call" 12 | jq -c '[.req, .repl_floor]')" '["^11.3 || ^12","10.2"]'
 
+# A replacement_member (training run 01, filelog): watchdog_exception() is
+# replaced by Error::logException(), new in 10.1 on a class every core has.
+mod "$T_TMP/wd" '^9 || ^10' 'try { f(); } catch (\Exception $e) { watchdog_exception("m", $e); }'
+mod "$T_TMP/wdnew" '^10.1 || ^11' 'use Drupal\Core\Utility\Error;
+Error::logException(\Drupal::logger("m"), $e);'
+mod "$T_TMP/wdfq" '^10.1 || ^11' '\Drupal\Core\Utility\Error::logException(\Drupal::logger("m"), $e);'
+mod "$T_TMP/wdother" '^10 || ^11' 'use Drupal\Core\Utility\Error;
+$v = Error::decodeException($e);'
+assert_eq "a call of watchdog_exception(): 10.1, the port replaces it with the member" "$(rf "$T_TMP/wd" 11)" \
+  '10.1|the port replaces watchdog_exception() (removed in Drupal 11) with \Drupal\Core\Utility\Error::logException(), which exists only from core 10.1'
+assert_eq "Error::logException() through an import: 10.1, the code uses it" "$(rf "$T_TMP/wdnew" 11)" \
+  '10.1|the code uses \Drupal\Core\Utility\Error::logException(), which exists only from core 10.1'
+assert_eq "  fully qualified too" "$(rf "$T_TMP/wdfq" 11 | cut -d'|' -f1)" "10.1"
+assert_eq "another method of the same class (on every core): nothing" "$(rf "$T_TMP/wdother" 11)" ""
+
 # The draft plan: its range and its backwards-compatible rewrites.
 t_run env DRUPILOT_CORE_TARGET_STRATEGY=keep-d10 "$T_SH" "$T_REPO/scripts/analysis/upgrade-path.sh" \
   --subject "$T_TMP/call" --root "$T_TMP/call-d11" --json
