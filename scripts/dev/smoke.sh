@@ -910,13 +910,16 @@ test_matrix_classify() {
  {"file":"src/BillingManager.php","line":9,"identifier":"class.notFound","message":"Property Drupal\\acme_billing\\BillingManager::$generator has unknown class Drupal\\acme_invoice\\InvoiceGenerator as its type."},
  {"file":"src/BillingManager.php","line":20,"identifier":"class.notFound","message":"Call to method generate() on an unknown class Drupal\\acme_invoice\\InvoiceGenerator."},
  {"file":"src/Foo.php","line":3,"identifier":"class.notFound","message":"Class Drupal\\acme_billing\\Foo extends unknown class Drupal\\acme_invoice\\Base."},
- {"file":"src/Bar.php","line":5,"identifier":"method.notFound","message":"Call to an undefined method Drupal\\acme_billing\\Bar::baz()."}]}
+ {"file":"src/Bar.php","line":5,"identifier":"method.notFound","message":"Call to an undefined method Drupal\\acme_billing\\Bar::baz()."},
+ {"file":"src/Fmt.php","line":7,"identifier":"varTag.nativeType","message":"PHPDoc tag @var with type Drupal\\acme_billing\\Item is not subtype of native type Drupal\\Core\\Field\\FieldItemInterface."},
+ {"file":"src/Hook.php","line":9,"identifier":"property.notFound","message":"Access to an undefined property Drupal\\field\\Entity\\FieldConfig::$original."},
+ {"file":"src/Hook.php","line":11,"identifier":"property.notFound","message":"Access to an undefined property Drupal\\field\\Entity\\FieldConfig::$label2."}]}
 JSON
   run mc jq -c --argjson other '[]' --argjson own '["acme_billing"]' --argjson mods '[]' --argjson adv '[]' \
-    --argjson ref true "$prog" "$TMP/matrix-leg.json"
+    --argjson mp '["original"]' --argjson ref true "$prog" "$TMP/matrix-leg.json"
   expect "classifier: exit" "$RC" "0"
-  expect "classifier: kinds" "$(jqo mc '[.[] | .kind]')" \
-    '["sandbox_missing_dependency","sandbox_missing_dependency","sandbox_missing_dependency","sandbox_missing_dependency","incompatible"]'
+  expect "classifier: kinds (a PHPDoc-only report advisory, a magic property core keeps tolerated, another missing property incompatible)" "$(jqo mc '[.[] | .kind]')" \
+    '["sandbox_missing_dependency","sandbox_missing_dependency","sandbox_missing_dependency","sandbox_missing_dependency","incompatible","advisory","tolerated","incompatible"]'
   finish
 }
 

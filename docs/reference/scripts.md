@@ -2799,7 +2799,10 @@ cached REFERENCE core per extra leg (e.g. the latest Drupal 10, or 10.3 for a
     11.4's as WebDriverWebAssert), and the runtime proof of the suite on
     Drupal 10 belongs to the test phase;
   * a finding from one of phpstan-drupal's own best-practice rules (identifiers
-    read from the installed extension) is reported as `advisory`;
+    read from the installed extension), or a PHPDoc-only report (varTag.*,
+    phpDoc.*, *.phpDocType, generics.*, missingType.*: a doc tag at odds
+    with a newer core's native types never breaks the code), is reported as
+    `advisory`;
   * a finding PHP tolerates at runtime is reported as `tolerated`, never as an
     incompatibility. A leg differs from another only through core (same PHP,
     same analyser), so the callee is userland code, and the matrix answers
@@ -2809,6 +2812,9 @@ cached REFERENCE core per extra leg (e.g. the latest Drupal 10, or 10.3 for a
         ConfigFormBase::__construct() call on 10.0, whose constructor takes
         one): PHP drops extra arguments to a userland function or method.
         TOO FEW arguments stays incompatible (ArgumentCountError);
+      - `property.notFound` on a magic property core keeps through __get()
+        with a deprecation notice (the lifecycle catalog's
+        scan.magic_property, e.g. $original from 11.2);
       - `method.void` / `staticMethod.void` / `function.void` ("Result of
         method ...::set() (void) is used"), typically a `: void` return type a
         newer core/Symfony declares on a method that never returned a value:
@@ -3659,6 +3665,15 @@ Left out: php, ext-*, lib-*, composer-plugin-api, composer/*,
 cweagans/composer-patches, drupal/core and drupal/core-* (the bed's own).
 A package the bed already has is "present" (never upgraded here).
 
+The test requirements too (dev: true, installed with --dev after the
+others): the composer.json `require-dev` without the bed's toolchain
+(phpunit/*, phpstan/*, mglaman/*, palantirnet/*, rector/*, squizlabs/*,
+drupal/coder, dealerdirect/*, slevomat/*), and each project of the
+info.yml `test_dependencies` (smsframework:sms -> drupal/smsframework, any
+version Composer can install) that composer.json does not list. A test
+requirement the bed lacks makes its tests fail in setUp() with "missing
+modules" (training run module 15, mobile_number).
+
 Only on a test-bed drupilot built (testbed_kind not none): the composer.json
 of your own project is never changed; there the missing packages are only
 listed (status report-only), with the command to add them.
@@ -3676,7 +3691,8 @@ Usage:
   --root ROOT    the Drupal project root (default: find_drupal_root)
   --dry-run      list what would be installed; Composer is not run
   --json         {status, root, testbed, requested, present, installed,
-                  failed: [{name, constraint, reason}], skipped} on STDOUT
+                  failed: [{name, constraint, dev, reason}], skipped} on
+                  STDOUT (every item has {name, constraint, dev})
                   status: nothing | present | installed | report-only |
                   partial | failed | dry-run
 

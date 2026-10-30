@@ -10,6 +10,9 @@
 # - --dry-run lists them (skipped), Composer is not run;
 # - on your own project (no test-bed marker): report-only, exit 0, its
 #   composer.json untouched;
+# - the test requirements (module 15, mobile_number): require-dev without the
+#   bed's toolchain, plus the info.yml test_dependencies composer.json does
+#   not list (drupal/<project>, any version), each with dev true;
 # - no Drupal root: exit 2; --help and an unknown flag (AR-22).
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
@@ -42,6 +45,15 @@ printf '{"packages": [{"name": "fightbulc/moment", "version": "1.33.0"}, {"name"
 t_run "$T_SH" "$IS" --subject "$M" --json
 assert_eq "everything in the bed already: present" "$T_RC|$(jq -r .status "$T_OUT")" "0|present"
 
+cat > "$M/composer.json" <<'EOF'
+{"require": {"fightbulc/moment": "^1.26"},
+ "require-dev": {"drupal/smsframework": "^2.2@RC", "phpunit/phpunit": "^9", "drupal/coder": "*", "mglaman/phpstan-drupal": "*"}}
+EOF
+printf 'name: M\ntype: module\ncore_version_requirement: ^10 || ^11\ntest_dependencies:\n - smsframework:sms\n - "dynamic_entity_reference:dynamic_entity_reference (>=3)"\n' > "$M/m.info.yml"
+t_run "$T_SH" "$IS" --subject "$M" --dry-run --json
+assert_eq "test requirements: require-dev without the toolchain, then the test_dependencies composer.json lacks, dev true" \
+  "$T_RC|$(jq -c '[.requested[] | [.name, .constraint, .dev]]' "$T_OUT")" \
+  '0|[["fightbulc/moment","^1.26",false],["drupal/smsframework","^2.2@RC",true],["drupal/dynamic_entity_reference","*",true]]'
 L="$T_TMP/loose"; mkdir -p "$L"; printf 'name: L\ntype: module\n' > "$L/l.info.yml"
 t_run "$T_SH" "$IS" --subject "$L" --json
 assert_eq "no Drupal root: exit 2" "$T_RC" "2"

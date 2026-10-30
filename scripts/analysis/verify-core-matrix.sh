@@ -24,7 +24,10 @@
 #     11.4's as WebDriverWebAssert), and the runtime proof of the suite on
 #     Drupal 10 belongs to the test phase;
 #   * a finding from one of phpstan-drupal's own best-practice rules (identifiers
-#     read from the installed extension) is reported as `advisory`;
+#     read from the installed extension), or a PHPDoc-only report (varTag.*,
+#     phpDoc.*, *.phpDocType, generics.*, missingType.*: a doc tag at odds
+#     with a newer core's native types never breaks the code), is reported as
+#     `advisory`;
 #   * a finding PHP tolerates at runtime is reported as `tolerated`, never as an
 #     incompatibility. A leg differs from another only through core (same PHP,
 #     same analyser), so the callee is userland code, and the matrix answers
@@ -34,6 +37,9 @@
 #         ConfigFormBase::__construct() call on 10.0, whose constructor takes
 #         one): PHP drops extra arguments to a userland function or method.
 #         TOO FEW arguments stays incompatible (ArgumentCountError);
+#       - `property.notFound` on a magic property core keeps through __get()
+#         with a deprecation notice (the lifecycle catalog's
+#         scan.magic_property, e.g. $original from 11.2);
 #       - `method.void` / `staticMethod.void` / `function.void` ("Result of
 #         method ...::set() (void) is used"), typically a `: void` return type a
 #         newer core/Symfony declares on a method that never returned a value:
@@ -754,7 +760,19 @@ CLASSIFY='
     and ((.message | capture("invoked with (?<n>[0-9]+) parameters?, (?:[0-9]+-)?(?<m>[0-9]+) required")
           | (.n | tonumber) > (.m | tonumber)) // false);
   def void_used: (.identifier | test("^(method|staticMethod|function)\\.void$"));
-  def tolerated: too_many_args or void_used;
+  # A magic property core keeps through __get() with a deprecation notice
+  # (the scan.magic_property names of config/deprecations.json, such as
+  # EntityBase::$original from 11.2): PHPStan reports property.notFound, the
+  # code still runs (training run module 15, mobile_number).
+  def magic_prop: (.identifier == "property.notFound")
+    and ((.message | capture("::\\$(?<p>[A-Za-z0-9_]+)\\.?$") | .p) as $p | ($mp | index($p)) != null);
+  def tolerated: too_many_args or void_used or magic_prop;
+  # A PHPDoc-only report (an @var, @param or @return that disagrees with the
+  # native type, a malformed tag, a missing iterable value type): it can never
+  # break the code on a core, which only the native types of a newer core
+  # reveal (the typed ItemList::getIterator() of 11.4 against an @var in a
+  # foreach, mobile_number): advisory.
+  def doc_only: (.identifier | test("^(varTag|phpDoc|generics|missingType)\\.|^[a-zA-Z]+\\.phpDocType$"));
   # The type that is MISSING, not the first class named in the message: in
   # "Parameter $x of method Drupal\a\B::f() has invalid type Drupal\c\D" it is
   # the second one. The patterns are tried in order, the most specific first
@@ -780,7 +798,7 @@ CLASSIFY='
       | (if ($okeys | index($k)) != null then "shared"
          elif is_depr then "deprecation"
          elif (missing_class) != null then "sandbox_missing_dependency"
-         elif ($adv | index($f.identifier)) != null then "advisory"
+         elif ($adv | index($f.identifier)) != null or doc_only then "advisory"
          elif tolerated then "tolerated"
          elif $ref and is_test then "test_only"
          else "incompatible" end) as $kind
@@ -796,6 +814,10 @@ CLASSIFY='
 ADV_JSON="$(grep -rhoE "identifier\('[^']+'\)" "$ROOT/vendor/mglaman/phpstan-drupal/src" 2>/dev/null \
   | sed -E "s/^identifier\('//; s/'\)\$//" | LC_ALL=C sort -u | jq -R . | jq -sc 'map(select(length > 0))' 2>/dev/null || printf '[]')"
 [[ -n "$ADV_JSON" ]] || ADV_JSON='[]'
+# The magic properties core keeps through __get() (config/deprecations.json
+# lifecycle scan.magic_property): a property.notFound on one is tolerated.
+MAGIC_JSON="$(jq -c '[.lifecycle[]? | .scan.magic_property? // empty] | unique' "$(plugin_root)/config/deprecations.json" 2>/dev/null || printf '[]')"
+[[ -n "$MAGIC_JSON" ]] || MAGIC_JSON='[]'
 
 # own module names: the subject + its submodules (any *.info.yml below it).
 OWN_JSON="$(cd "$SUBJECT_PHYS" && find . \( -name .git -o -name vendor -o -name node_modules \) -prune -o -name '*.info.yml' -print 2>/dev/null \
@@ -849,7 +871,7 @@ for l in "${LEGS[@]}"; do
   status="${L_STATUS[i]}"; reason="${L_REASON[i]}"
   if [[ "$role" == "baseline" ]]; then other="$REF_FINDINGS"; else other="$BASE_FINDINGS"; fi
   MODS="$(modules_in "${L_CORE_DIR[i]}")"
-  classified="$(jq -c --argjson other "$other" --argjson own "$OWN_JSON" --argjson mods "$MODS" --argjson adv "$ADV_JSON" \
+  classified="$(jq -c --argjson other "$other" --argjson own "$OWN_JSON" --argjson mods "$MODS" --argjson adv "$ADV_JSON" --argjson mp "$MAGIC_JSON" \
     --argjson ref "$([[ "$role" == "reference" ]] && echo true || echo false)" "$CLASSIFY" "$TMP/leg-$i.json")"
   pstatus="$(jq -r .status "$TMP/leg-$i.json")"
 

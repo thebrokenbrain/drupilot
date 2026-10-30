@@ -94,6 +94,22 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ### Fixed
 
+- `install-subject-deps.sh` installs the subject's test requirements too,
+  with `--dev` after the runtime ones: its `composer.json` `require-dev`
+  without the bed's toolchain and the `info.yml` `test_dependencies` the
+  composer.json does not list (`dev: true` on each JSON item). mobile_number's
+  `MobileNumberClassTest` failed in `setUp()` with "missing modules sms" until
+  the test stage installed drupal/smsframework by hand (training run
+  module 15).
+- `verify-core-matrix.sh` no longer fails a leg on findings that cannot break
+  the code there: a PHPDoc-only report (`varTag.*`, `phpDoc.*`,
+  `*.phpDocType`, `generics.*`, `missingType.*`) is `advisory`, and a
+  `property.notFound` on a magic property core keeps through `__get()` (the
+  lifecycle catalog's `scan.magic_property`, `$original` from 11.2) is
+  `tolerated`. mobile_number's 11.4 leg failed on three `@var` tags at odds
+  with the typed `ItemList::getIterator()` and a test's `$field->original`,
+  so `port-summary --strict` reported the port blocked (training run
+  module 15).
 - `discover-tests.sh` and `run-phpunit.sh` find the tests of the subject's
   submodules (`modules/<sub>/tests/src/<group>`, a nested extension with its
   own `*.info.yml`; `subject_test_dirs` in `subject.sh`): `run-phpunit.sh`

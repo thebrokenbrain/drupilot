@@ -368,7 +368,9 @@ not just `coder_sniffer`, or phpcs aborts with "Referenced sniff ... does not ex
 The test-bed is a fresh project with the subject placed in it, so the libraries and
 contrib modules the subject's `composer.json` requires (`require`, minus PHP, extensions
 and core) are not installed yet: PHPStan would report their classes as not found and the
-tests could not enable the module. Install them, substituting `<subject_path>` with the
+tests could not enable the module. Its test requirements too (`require-dev` without the
+toolchain, and the `test_dependencies` of its `info.yml`, installed with `--dev`, `dev: true`
+in the JSON), or its tests fail in `setUp()` with "missing modules". Install them, substituting `<subject_path>` with the
 placed subject:
 
 ```bash

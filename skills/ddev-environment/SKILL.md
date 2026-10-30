@@ -334,7 +334,9 @@ project converges on the same toolchain; `ddev-up.sh` and `ddev-add-ons.sh` call
 ranges fresh and refreshes the lock.
 
 **The subject's own requirements.** After the toolchain, install what the subject's
-`composer.json` `require` lists (libraries, contrib modules) into the test-bed:
+`composer.json` `require` lists (libraries, contrib modules) into the test-bed, and
+its test requirements with `--dev` (`require-dev` without the toolchain, plus the
+`info.yml` `test_dependencies`):
 `bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-subject-deps.sh" --subject "<subject_path>" --json`
 (exit 3 names a requirement Composer cannot install: an external blocker; on your
 own project it only lists them, `report-only`).
