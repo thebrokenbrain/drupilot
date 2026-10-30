@@ -107,6 +107,27 @@
         "preexisting": "warn",
         "unknown": "warn"
       }
+    },
+    "test-field-ui-display-path": {
+      "description": "In a file under tests/, a path ending in /display (admin/structure/types/manage/<bundle>/display) given to drupalGet() or a Url while the declared core range admits a core from `overview_from`. From that release Field UI serves an overview of the view modes at .../display and the default display form at .../display/default, so a test that opens .../display to configure a formatter finds no form (training run modules 05, fotorama_gallery, and 08, pbf). .../display/default opens the same form on every core: on older ones it matches the .../display/{view_mode_name} route.",
+      "overview_from": "11.4.0",
+      "verified": "core/modules/field_ui/src/Routing/RouteSubscriber.php: '$path/display' is the entity_view_display edit form with view_mode_name default on 10.6.20 (lab bed), 11.1.x, 11.2.x and 11.3.x; from 11.4.x (and 11.x, and the 11.4.11 lab bed) '$path/display' is EntityViewDisplayOverviewController::overview and '$path/display/default' the default form (git.drupalcode.org, read 2026-10-30).",
+      "severity": {
+        "introduced": "error",
+        "preexisting": "warn",
+        "unknown": "warn"
+      }
+    },
+    "test-abstract-suffix": {
+      "description": "In a file under tests/ whose name ends in Test.php, an abstract class, while the declared core range admits a core whose PHPUnit is `phpunit_from` or later (Drupal `drupal_from` and later). Core's phpunit.xml.dist collects every *Test.php file, and from that PHPUnit TestSuite::addTestSuite() throws 'Class X is abstract' for it: a warning that core's failOnWarning turns into a failed run although every test passed (training run module 08, pbf: PbfBaseTest.php). Name the base class and its file *TestBase (PbfTestBase.php), as core does, and update the classes that extend it.",
+      "phpunit_from": "10",
+      "drupal_from": "11.0",
+      "verified": "PHPUnit src/Framework/TestSuite.php: addTestSuite() throws Exception('Class %s is abstract') on 10.5 and 11.5 (and the 11.5.57 of the Drupal 11.4.11 lab bed), no such check on 9.6 (GitHub sebastianbergmann/phpunit, read 2026-10-30); the pbf group failed on it under failOnWarning in the lab.",
+      "severity": {
+        "introduced": "error",
+        "preexisting": "warn",
+        "unknown": "warn"
+      }
     }
   },
   "fapi_callback_keys": [

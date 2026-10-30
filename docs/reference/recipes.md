@@ -50,6 +50,8 @@ A codemod applies only when its conditions hold. Its edit must be exact and its 
 | `safety.removed-use` | ai-templated | template | rule `port-safety:removed-use` | — |
 | `safety.serialization` | ai-templated | template | rule `port-safety:serialization` | — |
 | `safety.static-factory` | ai-templated | template | rule `port-safety:static-factory` | — |
+| `safety.test-abstract-suffix` | ai-templated | template | rule `port-safety:test-abstract-suffix` | — |
+| `safety.test-field-ui-display-path` | ai-templated | template | rule `port-safety:test-field-ui-display-path` | — |
 | `safety.test-label-markup` | ai-templated | template | rule `port-safety:test-label-markup` | — |
 | `safety.test-phpunit-api` | ai-templated | template | rule `port-safety:test-phpunit-api` | — |
 | `safety.test-phpunit-metadata` | ai-templated | template | rule `port-safety:test-phpunit-metadata` | — |

@@ -15,6 +15,16 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ### Added
 
+- Port-safety checks `test-abstract-suffix` and `test-field-ui-display-path`,
+  run by the test skill, agent and command with the other test checks:
+  - an abstract base class in a file named `*Test.php`: PHPUnit 10+ (Drupal
+    11) throws "Class X is abstract" when core's configuration collects it,
+    and `failOnWarning` fails the run although every test passed (training
+    run module 08, pbf: `PbfBaseTest.php`); name it `*TestBase`;
+  - a test path ending in `/display`: from Drupal 11.4 Field UI serves an
+    overview of the view modes there, and the default display form moved to
+    `.../display/default`, which every core serves (fotorama_gallery and pbf
+    both had to change it in the test stage).
 - `scripts/env/install-subject-deps.sh` installs the subject's own Composer
   requirements (the libraries and contrib modules its `composer.json` lists)
   into the test-bed; `/drupilot-setup` runs it after the toolchain (step 3d).

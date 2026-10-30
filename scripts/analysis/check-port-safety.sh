@@ -74,6 +74,17 @@
 #                      Drupal major: $matcher->numberOfInvocations(), which
 #                      Rector's WithConsecutiveRector writes, is
 #                      getInvocationCount() on PHPUnit 9 (training run 01).
+#   test-abstract-suffix
+#                      An abstract class in a tests/ file named *Test.php while
+#                      the range admits Drupal 11.0+ (PHPUnit 10+ throws 'Class
+#                      X is abstract': failOnWarning fails the run; training
+#                      run module 08). Name it *TestBase.
+#   test-field-ui-display-path
+#                      A tests/ path ending in /display given to drupalGet()
+#                      or a Url while the range admits the check's
+#                      overview_from (11.4.0): Field UI serves an overview
+#                      there; the default form is .../display/default on
+#                      every core (training run modules 05 and 08).
 #   config-schema-sequence
 #                      In config/schema/*.yml (test modules included), a
 #                      `sequence:` whose item type is a one-item YAML list
@@ -131,7 +142,7 @@ set -euo pipefail
 # shellcheck source=../lib/php-scan.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/php-scan.sh"
 
-ALL_CHECKS="plugin-di removed-use static-factory fapi-callable serialization override-attribute class-case test-label-markup test-phpunit-metadata test-phpunit-api config-schema-sequence"
+ALL_CHECKS="plugin-di removed-use static-factory fapi-callable serialization override-attribute class-case test-label-markup test-phpunit-metadata test-phpunit-api test-abstract-suffix test-field-ui-display-path config-schema-sequence"
 SUBJECT=""
 BASE=""
 NO_DIFF=0
@@ -299,6 +310,24 @@ PUAPI_ON=0
 if [[ -n "$CORE_REQ" && -n "$PUAPI_ERE" && "$PUAPI_FROM" =~ ^([0-9]+) ]]; then
   _pm="${BASH_REMATCH[1]}"
   for _m in $(seq "$((_pm - 3))" "$((_pm - 1))"); do constraint_admits_major "$CORE_REQ" "$_m" && PUAPI_ON=1; done
+fi
+
+# test-abstract-suffix / test-field-ui-display-path (config/port-checks.json).
+TABS_FROM="$(jq -r '.checks["test-abstract-suffix"].drupal_from // empty' "$CFG")"
+TABS_PHPUNIT="$(jq -r '.checks["test-abstract-suffix"].phpunit_from // empty' "$CFG")"
+TABS_ON=0
+if [[ "$TABS_FROM" =~ ^([0-9]+) ]]; then
+  _am="${BASH_REMATCH[1]}"
+  if [[ -z "$CORE_REQ" ]]; then TABS_ON=1
+  else for _m in $(seq "$_am" "$((_am + 3))"); do constraint_admits_major "$CORE_REQ" "$_m" && TABS_ON=1; done; fi
+fi
+FUID_FROM="$(jq -r '.checks["test-field-ui-display-path"].overview_from // empty' "$CFG")"
+FUID_ON=0
+if [[ -n "$FUID_FROM" ]]; then
+  if [[ -z "$CORE_REQ" ]]; then FUID_ON=1
+  # (A range that admits the major admits its later minors: ^11 reaches 11.4.)
+  else _fm="${FUID_FROM%%.*}"; for _m in $(seq "$_fm" "$((_fm + 3))"); do constraint_admits_major "$CORE_REQ" "$_m" && FUID_ON=1; done
+  fi
 fi
 
 # --- Git base (diff-aware attribution) ---------------------------------------
@@ -556,6 +585,30 @@ while IFS= read -r f; do
           fi
           add_finding test-phpunit-metadata "$f" "$line" "$intro" "$msg"
         done < <(php_phpunit_hidden_metadata "$f")
+        ;;
+    esac
+  fi
+
+  if check_on test-abstract-suffix && [[ "$TABS_ON" == "1" ]]; then
+    case "/$(rel "$f")" in
+      */tests/*Test.php)
+        while IFS=$'\t' read -r _ cline _ cfq cmods _; do
+          case ",$cmods," in *,abstract,*) ;; *) continue;; esac
+          add_finding test-abstract-suffix "$f" "$cline" "$(introduced "$f" "$cline")" \
+            "${cfq##*\\} is abstract in a file named *Test.php: from PHPUnit ${TABS_PHPUNIT} (Drupal ${TABS_FROM} and later) collecting it throws 'Class ${cfq##*\\} is abstract', a warning that core's failOnWarning turns into a failed run. Name the class and its file *TestBase, as core does, and update the classes that extend it."
+        done < <(awk -F'\t' '$1 == "CLASS" && $3 == "class"' "$s")
+        ;;
+    esac
+  fi
+
+  if check_on test-field-ui-display-path && [[ "$FUID_ON" == "1" ]]; then
+    case "/$(rel "$f")" in
+      */tests/*)
+        while IFS=: read -r line _; do
+          [[ -n "$line" ]] || continue
+          add_finding test-field-ui-display-path "$f" "$line" "$(introduced "$f" "$line")" \
+            "this path ends in /display: from Drupal ${FUID_FROM} Field UI serves an overview of the view modes there, so a test that opens it to configure a display finds no form. Open .../display/default, which serves the default display form on every core."
+        done < <(grep -n -E "(drupalGet|fromUri|fromUserInput|->visit)[[:space:]]*\(.*/display(['\"]|[[:space:]]*\))" "$f" 2>/dev/null | grep -v -E '^[0-9]+:[[:space:]]*(//|\*|#)' || true)
         ;;
     esac
   fi

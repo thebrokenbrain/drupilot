@@ -132,7 +132,7 @@ changes to look for (Grep + Edit, minimal and explained):
   writes) exists only from PHPUnit 10, and PHPUnit 9 calls it
   `getInvocationCount()`. After adapting,
   run the checks that catch these (an error for a line you added):
-  `bash "$ROOT/scripts/analysis/check-port-safety.sh" --subject "$SUBJECT" --checks test-label-markup,test-phpunit-metadata,test-phpunit-api`.
+  `bash "$ROOT/scripts/analysis/check-port-safety.sh" --subject "$SUBJECT" --checks test-label-markup,test-phpunit-metadata,test-phpunit-api,test-abstract-suffix,test-field-ui-display-path`.
   drupilot runs the suite on the bed's core only (Drupal 10 is checked
   statically), so it cannot see such a failure at runtime.
 - **JS tests**: ensure they extend `WebDriverTestBase` and use

@@ -651,6 +651,17 @@ Checks (--checks selects a subset; default all):
                      Drupal major: $matcher->numberOfInvocations(), which
                      Rector's WithConsecutiveRector writes, is
                      getInvocationCount() on PHPUnit 9 (training run 01).
+  test-abstract-suffix
+                     An abstract class in a tests/ file named *Test.php while
+                     the range admits Drupal 11.0+ (PHPUnit 10+ throws 'Class
+                     X is abstract': failOnWarning fails the run; training
+                     run module 08). Name it *TestBase.
+  test-field-ui-display-path
+                     A tests/ path ending in /display given to drupalGet()
+                     or a Url while the range admits the check's
+                     overview_from (11.4.0): Field UI serves an overview
+                     there; the default form is .../display/default on
+                     every core (training run modules 05 and 08).
   config-schema-sequence
                      In config/schema/*.yml (test modules included), a
                      `sequence:` whose item type is a one-item YAML list

@@ -153,7 +153,7 @@ reinvent their logic.
      \Drupal\foo\Bar::name`); keep the annotations while the range admits
      Drupal 10 (PHPUnit 9 reads only them). Never put a `Covers*`/`Uses*`
      attribute on a method: they target the class, and PHPUnit aborts. Then run
-     `check-port-safety.sh --subject <DIR> --checks test-label-markup,test-phpunit-metadata,test-phpunit-api`. In a
+     `check-port-safety.sh --subject <DIR> --checks test-label-markup,test-phpunit-metadata,test-phpunit-api,test-abstract-suffix,test-field-ui-display-path`. In a
      test that declares `strict_types=1` (Phase 2 adds it), pass strings to
      every `assertSession()` method too (`pageTextContains()`,
      `fieldValueEquals()`, ...): below 10.3 core does not cast them.

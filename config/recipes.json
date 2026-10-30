@@ -1036,6 +1036,48 @@
       "applies_when": {},
       "engine": "template",
       "fixtures": null,
+      "id": "safety.test-abstract-suffix",
+      "kind": "template",
+      "lane": "ai-templated",
+      "matches": {
+        "rule": "port-safety:test-abstract-suffix"
+      },
+      "postconditions": [
+        {
+          "type": "rescan"
+        }
+      ],
+      "source": "config/port-checks.json#/checks/test-abstract-suffix",
+      "template": {
+        "why": "In a file under tests/ whose name ends in Test.php, an abstract class, while the declared core range admits a core whose PHPUnit is `phpunit_from` or later (Drupal `drupal_from` and later). Core's phpunit.xml.dist collects every *Test.php file, and from that PHPUnit TestSuite::addTestSuite() throws 'Class X is abstract' for it: a warning that core's failOnWarning turns into a failed run although every test passed (training run module 08, pbf: PbfBaseTest.php). Name the base class and its file *TestBase (PbfTestBase.php), as core does, and update the classes that extend it."
+      },
+      "version": "41a9b219a7ee"
+    },
+    {
+      "applies_when": {},
+      "engine": "template",
+      "fixtures": null,
+      "id": "safety.test-field-ui-display-path",
+      "kind": "template",
+      "lane": "ai-templated",
+      "matches": {
+        "rule": "port-safety:test-field-ui-display-path"
+      },
+      "postconditions": [
+        {
+          "type": "rescan"
+        }
+      ],
+      "source": "config/port-checks.json#/checks/test-field-ui-display-path",
+      "template": {
+        "why": "In a file under tests/, a path ending in /display (admin/structure/types/manage/<bundle>/display) given to drupalGet() or a Url while the declared core range admits a core from `overview_from`. From that release Field UI serves an overview of the view modes at .../display and the default display form at .../display/default, so a test that opens .../display to configure a formatter finds no form (training run modules 05, fotorama_gallery, and 08, pbf). .../display/default opens the same form on every core: on older ones it matches the .../display/{view_mode_name} route."
+      },
+      "version": "a94b215f4488"
+    },
+    {
+      "applies_when": {},
+      "engine": "template",
+      "fixtures": null,
       "id": "safety.test-label-markup",
       "kind": "template",
       "lane": "ai-templated",
@@ -1338,6 +1380,6 @@
   "sources": {
     "config/deprecations.json": "sha256:eb255f51cc12f30754e935ada60bb1d1f34e3161ae7109715616fe7544472f2d",
     "config/metadata-checks.json": "sha256:182f7ce002a63577a327518fcddfe45d61ea44a23826b981843933ee55fa706f",
-    "config/port-checks.json": "sha256:93708d0b26d149b440f5ad7ba7bc5277f603a36a16fc6419fc3840f56137a5b3"
+    "config/port-checks.json": "sha256:0f044fcb650ba24a6d9f71870239ebe6f3bf5e5e7af58777bf7c475293a0a748"
   }
 }
