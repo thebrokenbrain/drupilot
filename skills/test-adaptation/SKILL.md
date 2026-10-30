@@ -82,7 +82,21 @@ would only fake a green run.
 
 If `total` is 0 (and no `legacy` test was moved): report that the subject has no tests. In Phase 1 that is a
 finding (nothing to validate beyond a smoke check); in Phase 2 it becomes the
-mandate to write tests (see §6).
+mandate to write tests (see §6). Run the smoke check then:
+
+```bash
+bash "$ROOT/scripts/tests/install-smoke.sh" --subject "$SUBJECT" --json
+```
+
+It renders drupilot's own BrowserTestBase check into
+`<drupal_root>/.drupilot/smoke/<machine_name>/` (never into the subject, never
+part of the patch) and runs it: the subject installs (core's strict config
+schema check included), serves the front page and `admin/config`, and
+uninstalls (exit 3 = failed: a production defect to fix, such as a missing
+config schema; `deprecations` counts the runtime deprecations it triggered,
+which the static analysis may not see). It is install evidence, not a test of
+the subject's behaviour: the verdict stays `not-verified-no-tests`, and the
+port report shows the smoke next to it.
 
 ## 3. Adapt the tests to Drupal 11 / PHPUnit 10/11
 

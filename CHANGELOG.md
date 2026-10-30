@@ -15,6 +15,20 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ### Added
 
+- `scripts/tests/install-smoke.sh`: the install smoke for a subject that ships
+  no PHPUnit test. It renders drupilot's own BrowserTestBase check
+  (`templates/install-smoke-test.php.tmpl`) into
+  `<drupal_root>/.drupilot/smoke/<machine_name>/` (never into the subject or
+  the patch) and runs it with the bed's PHPUnit: the subject installs (core's
+  strict config schema check included), serves the front page and
+  `admin/config` and uninstalls, in the test's own database prefix. The
+  result (`install-smoke.json`, with the runtime deprecations PHPUnit counted)
+  shows next to the `not-verified-no-tests` verdict in the port report; it is
+  install evidence, never a verdict. The test command, skill and agent run it
+  when discovery finds no test (training run modules 03, 06 and 14: ports
+  with no runtime evidence at all; views_complex_grouping passed on 11.4.11
+  with 12 runtime deprecations and on 10.6.20, a missing config schema fails
+  it).
 - Port-safety check `event-dispatch-order` (error): a `->dispatch()` call
   whose first argument is an event name (`Events::NAME` or a string), the
   Symfony 4.2 order, which Drupal 10's Symfony 6 rejects with a TypeError;

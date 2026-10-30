@@ -4400,6 +4400,45 @@ Exit codes:
   1  -> usage/internal error (e.g. subject is not a Drupal extension).
 ```
 
+### tests/install-smoke.sh
+
+```text
+drupilot — scripts/tests/install-smoke.sh
+Install smoke check for a subject that ships no PHPUnit test (training run
+modules 03, 06 and 14: their ports had no runtime evidence at all). It
+renders templates/install-smoke-test.php.tmpl into
+<drupal_root>/.drupilot/smoke/<machine_name>/DrupilotInstallSmokeTest.php
+and runs it with the bed's PHPUnit: a BrowserTestBase site installs the
+subject (core's strict config schema check included), serves the front page
+as anonymous and as an administrator plus admin/config, uninstalls it and
+serves the front page again. The test lives outside the subject, so it is
+never part of the patch, and it is NOT a test of the module's behaviour:
+preservation stays not-verified-no-tests; this only adds install evidence.
+
+Gates the 'test' profile (Docker + daemon + DDEV) like run-phpunit.sh and
+starts a stopped DDEV project. The test runs in its own database prefix:
+the bed's site is never touched.
+
+Usage:
+  install-smoke.sh --subject DIR [--dry-run] [--no-record] [--json] [-h|--help]
+  --subject DIR  the placed module/theme
+  --dry-run      render the test and print the command; PHPUnit is not run
+  --no-record    do not write install-smoke.json to the state dir
+  --json         {status, machine_name, type, core, test_file, phpunit_rc,
+                  deprecations, excerpt} on STDOUT; status: passed | failed |
+                  blocked | dry-run (deprecations: the runtime deprecations
+                  PHPUnit counted, which the static analysis may not see;
+                  excerpt: the tail of PHPUnit's output on failure)
+
+The result is recorded in the subject's hidden state dir (install-smoke.json,
+with subject_digest/digest_algo, so a later change of the sources makes it
+stale).
+
+Exit codes: 0 passed (or dry-run) · 1 usage error · 2 blocked (the 'test'
+            requirements, no Drupal root, DDEV down, PHPUnit missing) ·
+            3 failed (the subject does not install, or a page fails).
+```
+
 ### tests/negative-control.sh
 
 ```text

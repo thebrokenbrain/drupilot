@@ -131,6 +131,9 @@ reinvent their logic.
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/discover-tests.sh" --subject <DIR> --json
    # -> {unit, kernel, functional, javascript, total, files:[...]}
    ```
+   The counts include the submodules' tests (`modules/<sub>/tests/src/...`). With
+   zero tests, run `scripts/tests/install-smoke.sh --subject <DIR> --json`
+   (install evidence only; the verdict stays `not-verified-no-tests`).
 3. **Adapt the tests to D11 / PHPUnit 10-11.** Read each test, fix:
    - Deprecated test base classes / traits and namespace moves.
    - PHPUnit 10/11 API changes (data providers, `expectException`, void return types

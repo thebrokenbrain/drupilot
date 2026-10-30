@@ -45,9 +45,12 @@ This classifies the test classes under
 the file list, plus `legacy`: test classes in a SimpleTest-era location
 (`src/Tests/`, `Tests/`) that PHPUnit never reads. Move those to
 `tests/src/<group>/` first (a test adaptation; the test-adaptation skill says
-how) and discover again. If there are zero tests, say so: there is nothing to
-run in Phase 1 (and Phase 2 is where new tests get authored). Report the
-breakdown.
+how) and discover again. The counts include the submodules' tests
+(`modules/<sub>/tests/src/...`). If there are zero tests, say so: there is
+nothing to run in Phase 1 (and Phase 2 is where new tests get authored); run
+the install smoke instead (`bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/install-smoke.sh" --subject "$1" --json`:
+the subject installs, serves its pages and uninstalls; install evidence, not a
+verdict, the skill says how to read it). Report the breakdown.
 
 ## Step 2 — Load the procedure and delegate iteration
 

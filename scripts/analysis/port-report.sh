@@ -235,6 +235,20 @@ fi
 if [[ -n "$TEST_STALE" ]]; then
   PRES_LINE="$PRES_LINE _(stale: ${TEST_STALE}; re-run /drupilot-test.)_"
 fi
+# The install smoke (install-smoke.sh, for a subject with no test): install
+# evidence next to the verdict, never a verdict of its own.
+if [[ -r "$STATE_DIR/install-smoke.json" ]]; then
+  _sm="$(jq -r '"\(.status // "")\t\(.core // "?")\t\(.deprecations // "")\t\((.excerpt // "") | split("\n") | map(select(test("Exception|Error|failed|Failed"))) | .[0] // "")"' "$STATE_DIR/install-smoke.json" 2>/dev/null || true)"
+  IFS=$'\t' read -r _sms _smc _smd _sme <<< "$_sm" || true
+  case "$_sms" in
+    passed) PRES_LINE="$PRES_LINE Install smoke (drupilot's own check, not a test of the subject): **passed** on core ${_smc}: it installs, serves the front page and admin/config, and uninstalls${_smd:+ (${_smd} runtime deprecation(s) triggered)}.";;
+    failed) PRES_LINE="$PRES_LINE Install smoke (drupilot's own check): **failed** on core ${_smc}${_sme:+: ${_sme}}.";;
+  esac
+  if [[ "$_sms" == "passed" || "$_sms" == "failed" ]] \
+     && [[ "$(digest_freshness "$SUBJECT" "$STATE_DIR/install-smoke.json")" == "false"* ]]; then
+    PRES_LINE="$PRES_LINE _(stale: the sources changed since; re-run install-smoke.sh.)_"
+  fi
+fi
 # The test legs (last-test.json legs, T-M5-11): each leg's own verdict under
 # the aggregate, when the record holds more than the CURRENT one.
 TEST_LEGS="$(printf '%s' "$TEST" | jq -r '(.legs // {}) | if (type == "object" and (keys | length) > 1)
