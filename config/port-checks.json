@@ -94,6 +94,16 @@
         "unknown": "error"
       }
     },
+    "migrate-dependencies-expand": {
+      "description": "In src/, a `->getMigrationDependencies()` call in a migrate field plugin (src/Plugin/migrate/field/) or a deriver (a *Deriver*.php file), code that runs while the migration plugin definitions are being built, while the declared core range or the target major admits a core from `expands_from`. From that release Migration::getMigrationDependencies() always expands the plugin IDs through MigrationPluginManager::expandPluginIds(), which calls getDefinitions() and can enter the derivers again: an endless recursion until PHP runs out of memory (training run module 12, location_migration: its Location field plugin, called by its derivers, hung the Kernel test at 13 GB). Before that release the call returned the IDs unexpanded unless TRUE was passed. Read the unexpanded dependencies, `$migration->getPluginDefinition()['migration_dependencies']`, which every core keeps. A heuristic, so a warning: a call that never runs during discovery is safe.",
+      "expands_from": "11.0.0",
+      "verified": "core/modules/migrate/src/Plugin/Migration.php: getMigrationDependencies(bool $expand = FALSE) returns $this->migration_dependencies unexpanded when $expand is FALSE on 10.6.20 (the lab bed); on 11.4.11 getMigrationDependencies() always returns array_map([$this->migrationPluginManager, 'expandPluginIds'], ...), and expandPluginIds() calls $this->getDefinitions() (training run 12 beds, 2026-10-30).",
+      "severity": {
+        "introduced": "warn",
+        "preexisting": "warn",
+        "unknown": "warn"
+      }
+    },
     "test-phpunit-api": {
       "description": "In a file under tests/, a call of a PHPUnit method that exists only from `phpunit_from` (the PHPUnit of Drupal `drupal_from` and later), while the declared core range admits an older Drupal major, whose PHPUnit has the method of `members` instead (for example InvokedCount::numberOfInvocations(), PHPUnit 9's getInvocationCount()). Rector's WithConsecutiveRector (rector-phpunit, in drupal-rector's sets) writes $matcher->numberOfInvocations() when it removes withConsecutive(), so the test fails on Drupal 10 (training run 01, filelog: FileLogTokenTest). Count the calls in the callback itself, for example with a local counter captured by reference, which every PHPUnit runs.",
       "phpunit_from": "10",

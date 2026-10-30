@@ -15,6 +15,20 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ### Added
 
+- Port-safety check `migrate-dependencies-expand` (warning): a
+  `->getMigrationDependencies()` call in a migrate field plugin
+  (`src/Plugin/migrate/field/`) or a deriver while the range or the target
+  admits Drupal 11.0. From 11.0 the call always expands the plugin IDs, which
+  reads the migration definitions being built and can recurse until PHP runs
+  out of memory; the fix reads `getPluginDefinition()['migration_dependencies']`
+  (training run module 12, location_migration).
+- `deps-status.sh` tells when a ready dependency's composer.json constraint
+  admits none of its Drupal 11 releases (`constraint`,
+  `constraint_admits_ready`, `ready_majors`; drupal/address `^1.8` while only
+  2.x supports Drupal 11), in the table and in the viability report. The port
+  skill reinstalls the subject's requirements after it widens a constraint, and
+  the test skill checks them before the first run (training run modules 07
+  and 12).
 - Hard-break category `jquery4`: a JavaScript call of a jQuery 3 utility that
   jQuery 4, which core ships from Drupal 11.0, removed (`$.isNumeric()`,
   `$.trim()`, `$.isArray()`, `$.parseJSON()`, `$.isFunction()`, `$.type()`,

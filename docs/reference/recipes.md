@@ -45,6 +45,7 @@ A codemod applies only when its conditions hold. Its edit must be exact and its 
 | `safety.class-case` | codemod | yaml-edit | rule `port-safety:class-case` | `file_ere`: `\.ya?ml$` |
 | `safety.config-schema-sequence` | ai-templated | template | rule `port-safety:config-schema-sequence` | — |
 | `safety.fapi-callable` | ai-templated | template | rule `port-safety:fapi-callable` | — |
+| `safety.migrate-dependencies-expand` | ai-templated | template | rule `port-safety:migrate-dependencies-expand` | — |
 | `safety.override-attribute` | ai-templated | template | rule `port-safety:override-attribute` | — |
 | `safety.plugin-di` | ai-templated | template | rule `port-safety:plugin-di` | — |
 | `safety.removed-use` | ai-templated | template | rule `port-safety:removed-use` | — |

@@ -95,6 +95,16 @@
 #                      On when the declared range or the target major admits
 #                      that major. Always an error: write the item
 #                      definition as a mapping (drop the '- ').
+#   migrate-dependencies-expand
+#                      In src/, a ->getMigrationDependencies() call in a
+#                      migrate field plugin (src/Plugin/migrate/field/) or a
+#                      deriver (*Deriver*.php), while the range or the target
+#                      admits the check's expands_from (11.0.0): from there
+#                      the call always expands the plugin IDs, which reads
+#                      the migration definitions that are being built and
+#                      can recurse endlessly (training run module 12,
+#                      location_migration). A warning: read the unexpanded
+#                      getPluginDefinition()['migration_dependencies'].
 #
 # Diff-aware: when the subject is tracked by git, every finding is attributed —
 # "introduced" (on a line the port added/changed vs the pre-port base) or
@@ -142,7 +152,7 @@ set -euo pipefail
 # shellcheck source=../lib/php-scan.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/php-scan.sh"
 
-ALL_CHECKS="plugin-di removed-use static-factory fapi-callable serialization override-attribute class-case test-label-markup test-phpunit-metadata test-phpunit-api test-abstract-suffix test-field-ui-display-path config-schema-sequence"
+ALL_CHECKS="plugin-di removed-use static-factory fapi-callable serialization override-attribute class-case test-label-markup test-phpunit-metadata test-phpunit-api test-abstract-suffix test-field-ui-display-path config-schema-sequence migrate-dependencies-expand"
 SUBJECT=""
 BASE=""
 NO_DIFF=0
@@ -763,6 +773,36 @@ if check_on config-schema-sequence; then
         }' "$y")
     done < <(find "$SUBJECT_ABS" -type f -path '*/config/schema/*' -name '*.yml' \
                -not -path '*/vendor/*' -not -path '*/node_modules/*' -not -path '*/.git/*' 2>/dev/null | LC_ALL=C sort)
+  fi
+fi
+
+# --- Check: migrate-dependencies-expand -----------------------------------------
+# config/port-checks.json: getMigrationDependencies() expands the plugin IDs
+# from expands_from. On like config-schema-sequence (range or target major).
+if check_on migrate-dependencies-expand; then
+  MDE_FROM="$(jq -r '.checks["migrate-dependencies-expand"].expands_from // empty' "$CFG")"
+  MDE_ON=0
+  if [[ "$MDE_FROM" =~ ^([0-9]+) ]]; then
+    _dm="${BASH_REMATCH[1]}"
+    _tm="$(resolve_target_major 2>/dev/null || true)"
+    if [[ "$_tm" =~ ^[0-9]+$ ]] && (( _tm >= _dm )); then MDE_ON=1; fi
+    if [[ -n "$CORE_REQ" ]]; then
+      for _m in $(seq "$_dm" "$((_dm + 3))"); do constraint_admits_major "$CORE_REQ" "$_m" && MDE_ON=1; done
+    fi
+  fi
+  if [[ "$MDE_ON" == "1" ]]; then
+    while IFS= read -r f; do
+      case "/$(rel "$f")" in
+        */src/Plugin/migrate/field/*.php|*/src/*Deriver*.php) ;;
+        *) continue;;
+      esac
+      php_code_lines "$f" > "$TMP/mde.code"
+      while IFS=: read -r line _; do
+        [[ -n "$line" ]] || continue
+        add_finding migrate-dependencies-expand "$f" "$line" "$(introduced "$f" "$line")" \
+          "getMigrationDependencies() here runs while the migration definitions are being built (a migrate field plugin or a deriver): from Drupal ${MDE_FROM} it always expands the plugin IDs, which reads those definitions again and can recurse until PHP runs out of memory. Read the unexpanded dependencies, \$migration->getPluginDefinition()['migration_dependencies'], which every core keeps."
+      done < <(grep -n -E -- '->[[:space:]]*getMigrationDependencies[[:space:]]*\(' "$TMP/mde.code" 2>/dev/null || true)
+    done < "$FILES"
   fi
 fi
 

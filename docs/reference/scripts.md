@@ -672,6 +672,16 @@ Checks (--checks selects a subset; default all):
                      On when the declared range or the target major admits
                      that major. Always an error: write the item
                      definition as a mapping (drop the '- ').
+  migrate-dependencies-expand
+                     In src/, a ->getMigrationDependencies() call in a
+                     migrate field plugin (src/Plugin/migrate/field/) or a
+                     deriver (*Deriver*.php), while the range or the target
+                     admits the check's expands_from (11.0.0): from there
+                     the call always expands the plugin IDs, which reads
+                     the migration definitions that are being built and
+                     can recurse endlessly (training run module 12,
+                     location_migration). A warning: read the unexpanded
+                     getPluginDefinition()['migration_dependencies'].
 
 Diff-aware: when the subject is tracked by git, every finding is attributed —
 "introduced" (on a line the port added/changed vs the pre-port base) or
@@ -964,6 +974,11 @@ Usage:
     --offline  skip the network checks (all contrib deps -> `unknown`).
 
 Output: a human table on STDERR + STDOUT, or a JSON object on STDOUT with --json.
+  A `ready` project the subject's composer.json requires also carries
+  {constraint, constraint_admits_ready, ready_majors}: false when that
+  constraint admits none of the majors with a release for the target
+  (drupal/address ^1.8 while only 2.x supports Drupal 11) — the port has to
+  widen it, or the test-bed cannot install the dependency.
 Exit codes: 0 ok (even if a dep is not ready — that is data, not an error)
             1 usage/error. Read-only; never mutates anything.
 ```

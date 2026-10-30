@@ -921,6 +921,27 @@
       "applies_when": {},
       "engine": "template",
       "fixtures": null,
+      "id": "safety.migrate-dependencies-expand",
+      "kind": "template",
+      "lane": "ai-templated",
+      "matches": {
+        "rule": "port-safety:migrate-dependencies-expand"
+      },
+      "postconditions": [
+        {
+          "type": "rescan"
+        }
+      ],
+      "source": "config/port-checks.json#/checks/migrate-dependencies-expand",
+      "template": {
+        "why": "In src/, a `->getMigrationDependencies()` call in a migrate field plugin (src/Plugin/migrate/field/) or a deriver (a *Deriver*.php file), code that runs while the migration plugin definitions are being built, while the declared core range or the target major admits a core from `expands_from`. From that release Migration::getMigrationDependencies() always expands the plugin IDs through MigrationPluginManager::expandPluginIds(), which calls getDefinitions() and can enter the derivers again: an endless recursion until PHP runs out of memory (training run module 12, location_migration: its Location field plugin, called by its derivers, hung the Kernel test at 13 GB). Before that release the call returned the IDs unexpanded unless TRUE was passed. Read the unexpanded dependencies, `$migration->getPluginDefinition()['migration_dependencies']`, which every core keeps. A heuristic, so a warning: a call that never runs during discovery is safe."
+      },
+      "version": "42f1276e9902"
+    },
+    {
+      "applies_when": {},
+      "engine": "template",
+      "fixtures": null,
       "id": "safety.override-attribute",
       "kind": "template",
       "lane": "ai-templated",
@@ -1380,6 +1401,6 @@
   "sources": {
     "config/deprecations.json": "sha256:eb255f51cc12f30754e935ada60bb1d1f34e3161ae7109715616fe7544472f2d",
     "config/metadata-checks.json": "sha256:182f7ce002a63577a327518fcddfe45d61ea44a23826b981843933ee55fa706f",
-    "config/port-checks.json": "sha256:0f044fcb650ba24a6d9f71870239ebe6f3bf5e5e7af58777bf7c475293a0a748"
+    "config/port-checks.json": "sha256:d91934293e755aeed2b11ce3674e374ad133328f8e03f3d732a3e2a18dd9c6bf"
   }
 }

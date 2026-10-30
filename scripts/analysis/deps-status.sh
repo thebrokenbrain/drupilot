@@ -21,6 +21,11 @@
 #     --offline  skip the network checks (all contrib deps -> `unknown`).
 #
 # Output: a human table on STDERR + STDOUT, or a JSON object on STDOUT with --json.
+#   A `ready` project the subject's composer.json requires also carries
+#   {constraint, constraint_admits_ready, ready_majors}: false when that
+#   constraint admits none of the majors with a release for the target
+#   (drupal/address ^1.8 while only 2.x supports Drupal 11) — the port has to
+#   widen it, or the test-bed cannot install the dependency.
 # Exit codes: 0 ok (even if a dep is not ready — that is data, not an error)
 #             1 usage/error. Read-only; never mutates anything.
 # =============================================================================
@@ -96,9 +101,13 @@ CORE_MODULES=" action announcements_feed automated_cron ban basic_auth big_pipe 
 is_core_module() { [[ "$CORE_MODULES" == *" $1 "* ]]; }
 
 # --- Classify each dependency's Drupal 11 readiness --------------------------
-# d11_status <project> -> echoes ready|not-ready|unknown|not-on-drupalorg
+# d11_status <project> -> echoes ready|not-ready|unknown|not-on-drupalorg; sets
+# READY_MAJORS to the majors (1 for 8.x-1.8, 2 for 2.0.4) of the releases that
+# admit the target major, space-separated.
+READY_MAJORS=""
 d11_status() {
   local proj="$1" xml
+  READY_MAJORS=""
   [[ "$OFFLINE" == "1" ]] && { printf 'unknown'; return; }
   have_cmd curl || { printf 'unknown'; return; }
   xml="$(curl -fsS --max-time 8 "https://updates.drupal.org/release-history/${proj}/current" 2>/dev/null || true)"
@@ -113,27 +122,54 @@ d11_status() {
   fi
   # A release whose <core_compatibility> constraint admits the target major
   # means ready (constraint_admits_major: '<11' or '^9.4 || ^10' does not).
-  local c
-  while IFS= read -r c; do
+  local v c m found=0
+  while IFS=$'\t' read -r v c; do
     [[ -n "$c" ]] || continue
-    if constraint_admits_major "$c" "$D11_MAJOR"; then printf 'ready'; return; fi
-  done < <(printf '%s' "$xml" | grep -oiE '<core_compatibility>[^<]*</core_compatibility>' \
-             | sed -E 's#</?core_compatibility>##g; s/&gt;/>/g; s/&lt;/</g; s/&amp;/\&/g')
-  printf 'not-ready'
+    constraint_admits_major "$c" "$D11_MAJOR" || continue
+    found=1
+    m="$(printf '%s' "$v" | sed -E 's/^[0-9]+\.x-//; s/^([0-9]+).*/\1/')"
+    [[ "$m" =~ ^[0-9]+$ && " $READY_MAJORS " != *" $m "* ]] && READY_MAJORS="${READY_MAJORS:+$READY_MAJORS }$m"
+  done < <(printf '%s\n' "$xml" | awk '{ buf = buf " " $0 }
+      END {
+        n = split(buf, rel, "</release>")
+        for (i = 1; i <= n; i++) {
+          v = ""; c = ""
+          if (match(rel[i], /<version>[^<]*<\/version>/)) v = substr(rel[i], RSTART + 9, RLENGTH - 19)
+          if (match(rel[i], /<core_compatibility>[^<]*<\/core_compatibility>/)) c = substr(rel[i], RSTART + 20, RLENGTH - 41)
+          if (c != "") print v "\t" c
+        }
+      }' | sed -E 's/&gt;/>/g; s/&lt;/</g; s/&amp;/\&/g')
+  # (Literal printf: tests/contract reads the statuses from them.)
+  if [[ "$found" == "1" ]]; then printf 'ready'; else printf 'not-ready'; fi
 }
 
 D11_MAJOR="$(resolve_target_major 2>/dev/null || true)"; [[ "$D11_MAJOR" =~ ^[0-9]+$ ]] || D11_MAJOR=11
+TMP_ST="$(mktemp "${TMPDIR:-/tmp}/drupilot-deps.XXXXXX")"
+trap 'rm -f "$TMP_ST"' EXIT
 declare -a ROWS=()
 BLOCKERS=0; READY=0; UNKNOWN=0
 for proj in $(printf '%s' "$DEPS_LIST" | LC_ALL=C sort -u); do
-  if is_core_module "$proj"; then st="core"; else st="$(d11_status "$proj")"; fi
+  READY_MAJORS=""
+  if is_core_module "$proj"; then st="core"
+  else d11_status "$proj" > "$TMP_ST"; st="$(cat "$TMP_ST")"; fi
+  # A ready project whose composer.json constraint admits none of its ready
+  # releases (training run module 12, location_migration: drupal/address ^1.8,
+  # D11 from 2.0.x only): the port has to widen it, or the bed cannot get it.
+  extra='{}'
+  con="$(jq -r --arg k "drupal/$proj" '(.require // {})[$k] // empty' "$SUBJECT/composer.json" 2>/dev/null || true)"
+  if [[ "$st" == "ready" && -n "$con" && -n "$READY_MAJORS" ]]; then
+    ok=false
+    for m in $READY_MAJORS; do constraint_admits_major "$con" "$m" && ok=true; done
+    extra="$(jq -n -c --arg c "$con" --argjson ok "$ok" --arg rm "$READY_MAJORS" \
+      '{constraint: $c, constraint_admits_ready: $ok, ready_majors: ($rm | split(" "))}')"
+  fi
   case "$st" in
     ready|core) READY=$((READY+1));;
     not-ready)  BLOCKERS=$((BLOCKERS+1));;          # confirmed: a contrib project with no D11 release
     *)          UNKNOWN=$((UNKNOWN+1));;            # not-on-drupalorg / unknown -> verify, NOT a hard blocker
   esac
-  ROWS+=("$(jq -n --arg p "$proj" --arg s "$st" \
-    --arg url "https://www.drupal.org/project/$proj" '{project:$p, d11:$s, url:$url}')")
+  ROWS+=("$(jq -n --arg p "$proj" --arg s "$st" --argjson x "$extra" \
+    --arg url "https://www.drupal.org/project/$proj" '{project:$p, d11:$s, url:$url} + $x')")
 done
 
 ROWS_JSON="$(printf '%s\n' "${ROWS[@]+"${ROWS[@]}"}" | jq -s '.' 2>/dev/null || echo '[]')"
@@ -155,9 +191,10 @@ if [[ "${#ROWS[@]}" -eq 0 ]]; then
   log_ok "No contrib dependencies declared — nothing to block the port on this front."
   exit 0
 fi
-printf '%s' "$ROWS_JSON" | jq -r '.[] | [.project, .d11] | @tsv' | while IFS=$'\t' read -r p s; do
+printf '%s' "$ROWS_JSON" | jq -r '.[] | [.project, .d11, (if .constraint_admits_ready == false then "\(.constraint)\t\(.ready_majors | join(", "))" else "" end)] | join("\t")' | while IFS=$'\t' read -r p s con rm; do
   case "$s" in
-    ready)            icon="✅"; note="D11-ready";;
+    ready)            icon="✅"; note="D11-ready"
+                      [[ -z "$con" ]] || { icon="⚠️"; note="D11-ready from major $rm, but composer.json requires '$con': widen the constraint";};;
     core)             icon="✅"; note="Drupal core (bundled) — always available";;
     not-ready)        icon="❌"; note="NO D11 release — blocks the port";;
     not-on-drupalorg) icon="❓"; note="not a drupal.org project (core/custom/renamed) — verify by hand";;

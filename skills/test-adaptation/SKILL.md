@@ -194,6 +194,13 @@ bash "$ROOT/scripts/env/ddev-add-ons.sh" --selenium --subject "$SUBJECT"
   proceed with the non-JS suites and record that JS tests were skipped for a
   missing dependency (an external blocker, §7).
 
+**The subject's own requirements.** Before the first run, check that the
+test-bed has every package the subject's `composer.json` requires now (the port
+may have changed a constraint after setup installed them):
+`bash "$ROOT/scripts/env/install-subject-deps.sh" --subject "$SUBJECT" --json`
+(`present` is a no-op; exit 3 names a requirement Composer cannot install, an
+external blocker to record in §7, never a test to skip silently).
+
 ## 5. Run the suites and iterate to green
 
 Run with the leaf script, fastest first, capturing full output:
