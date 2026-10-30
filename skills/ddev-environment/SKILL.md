@@ -39,6 +39,13 @@ If no "drupilot plan" block appears above, run: bash "${CLAUDE_PLUGIN_ROOT}/scri
 - **Gate first.** Setup needs Docker (daemon up) + DDEV. Always run preflight for
   the `setup` profile before touching anything; abort cleanly if a hard
   requirement is missing — never start work that cannot finish.
+- **Only drupilot's own environment.** Never stop, delete or prune a DDEV project,
+  Docker container, network or volume drupilot did not create for this subject
+  (another project, `docker network prune`, `docker system prune`), even when it
+  looks unused and even in an autonomous run. When Docker or DDEV runs out of
+  something (address pools, ports, disk), stop with the report, name what holds
+  it, and let the developer choose (training run module 12: a test run deleted
+  seven networks of other projects to start its bed).
 - **Idempotent.** Detect-and-skip. If the project is already configured/running,
   if an add-on is already installed, or if a config file already exists with the
   right values, do not redo it — report state instead.

@@ -34,6 +34,10 @@ pass for an external reason is documented, not hidden.
   root first so relative paths resolve identically in the container and on host.
 - `${CLAUDE_PLUGIN_ROOT}` is the plugin root; leaf scripts live under
   `${CLAUDE_PLUGIN_ROOT}/scripts/...`.
+- Only drupilot's own environment: never stop, delete or prune a DDEV project,
+  Docker container, network or volume drupilot did not create for this subject,
+  even in an autonomous run; a test-bed that cannot start is a blocked run to
+  report (`not-verified-blocked`), never a reason to free resources yourself.
 - Two phases (PROMPT 0.1): **Phase 1** = make existing tests pass on D11; **Phase
   2** (opt-in) = add missing tests for maximum coverage. Adding tests is a Phase 2
   activity unless the developer asked for it.

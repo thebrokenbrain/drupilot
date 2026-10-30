@@ -56,6 +56,12 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ### Fixed
 
+- The ddev-environment and test-adaptation skills forbid stopping, deleting or
+  pruning a DDEV project or a Docker container, network or volume drupilot did
+  not create for the subject, even in an autonomous run: when Docker ran out
+  of address pools, a test run deleted seven networks of other projects to
+  start its bed (training run module 12). Such a shortage is reported for the
+  developer to resolve.
 - `run-phpunit.sh` runs the Unit, Kernel and Functional groups with
   `SIMPLETEST_BASE_URL=http://localhost` when the DDEV add-ons set the
   container's value to `http://web` (FunctionalJavascript keeps it: Selenium,
