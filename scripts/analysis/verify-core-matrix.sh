@@ -736,7 +736,14 @@ for l in "${LEGS[@]}"; do [[ "$l" == "$BASELINE" ]] && BI=$i; i=$((i + 1)); done
 # key/kind classification in jq (shared program).
 # shellcheck disable=SC2016  # jq program, not shell expansions.
 CLASSIFY='
-  def key: "\(.file)|\(.line)|\(.identifier)|\(.message)";
+  # The message with each union type normalized (members sorted, bool read
+  # as false): one error worded "bool|StreamWrapperInterface" on a core whose
+  # doc block says bool and "StreamWrapperInterface|false" on one that says
+  # false is the same error on both legs (training run module 10,
+  # image_resize_filter: every leg failed on it).
+  def normmsg: .message | gsub("(?<u>[A-Za-z0-9_\\\\]+(\\|[A-Za-z0-9_\\\\]+)+)";
+      "\(.u | split("|") | map(if . == "bool" or . == "true" then "false" else . end) | unique | join("|"))");
+  def key: "\(.file)|\(.line)|\(.identifier)|\(normmsg)";
   def is_depr: ((.identifier | test("deprecat"; "i")) or (.message | test("\\bdeprecated\\b"; "i")));
   def is_test: (.file | test("(^|/)tests/"));
   # Runtime-tolerated (see the header): more arguments than the callee accepts

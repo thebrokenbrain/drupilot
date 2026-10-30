@@ -105,16 +105,24 @@ d11_status() {
   if [[ -z "$xml" ]]; then printf 'unknown'; return; fi
   # An <error> / "no release history" response means the project is not a contrib
   # project on drupal.org (core submodule, custom, or renamed) — not a real blocker.
-  if printf '%s' "$xml" | grep_q -iE '<error>|no release history|no releases|<project_status>unsupported'; then
+  # An unsupported (abandoned) project is still one: its releases decide
+  # (training run module 10: ckeditor, unsupported, ^9.4 || ^10 only, was
+  # reported not-on-drupalorg and the verdict missed the blocker).
+  if printf '%s' "$xml" | grep_q -iE '<error>|no release history|no releases'; then
     printf 'not-on-drupalorg'; return
   fi
-  # A release whose <core_compatibility> constraint admits 11 means D11-ready.
-  if printf '%s' "$xml" | grep -oiE '<core_compatibility>[^<]*</core_compatibility>' | grep_q '11'; then
-    printf 'ready'; return
-  fi
+  # A release whose <core_compatibility> constraint admits the target major
+  # means ready (constraint_admits_major: '<11' or '^9.4 || ^10' does not).
+  local c
+  while IFS= read -r c; do
+    [[ -n "$c" ]] || continue
+    if constraint_admits_major "$c" "$D11_MAJOR"; then printf 'ready'; return; fi
+  done < <(printf '%s' "$xml" | grep -oiE '<core_compatibility>[^<]*</core_compatibility>' \
+             | sed -E 's#</?core_compatibility>##g; s/&gt;/>/g; s/&lt;/</g; s/&amp;/\&/g')
   printf 'not-ready'
 }
 
+D11_MAJOR="$(resolve_target_major 2>/dev/null || true)"; [[ "$D11_MAJOR" =~ ^[0-9]+$ ]] || D11_MAJOR=11
 declare -a ROWS=()
 BLOCKERS=0; READY=0; UNKNOWN=0
 for proj in $(printf '%s' "$DEPS_LIST" | LC_ALL=C sort -u); do

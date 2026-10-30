@@ -56,6 +56,17 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ### Fixed
 
+- `deps-status.sh` classifies an unsupported (abandoned) drupal.org project by
+  its releases instead of calling it "not on drupal.org", and reads each
+  release's core compatibility as a constraint (`>=8.9 <11` does not admit
+  11). image_resize_filter depends on `ckeditor`, unsupported with releases
+  for `^9.4 || ^10` only: the assessment counted no blocking dependency and
+  said S (training run module 10).
+- `verify-core-matrix.sh` compares the legs' PHPStan errors with each union
+  type normalized: the same error worded `bool|StreamWrapperInterface` on
+  Drupal 10 and `StreamWrapperInterface|false` on Drupal 11 (core's doc block
+  changed) made every leg fail with "errors only on this core", and Drupal 10
+  support "failed" (image_resize_filter).
 - The core-removals scan reads the code's references to a module core moved
   to a contrib project, not only its info.yml line: a port that drops
   `drupal:ckeditor` from info.yml while the plugins still extend a
