@@ -2444,7 +2444,10 @@ no toolchain needed (bash, awk and jq; curl for the release feed). It finds:
                         names a removed module as core's (drupal:NAME or a
                         bare NAME; PROJECT:NAME already names a contrib
                         project), a reference to the namespace of a
-                        module removed with no replacement, or a class of a
+                        removed module (one moved to a contrib project
+                        too, outside tests/: the code needs that project
+                        whatever its info.yml says; one with no
+                        replacement is a hard break), or a class of a
                         namespace move whose module a major of (S, T]
                         removes (Text with Summary on Drupal 12)
   migrate-drupal-usage  the same for migrate_drupal and migrate_drupal_ui

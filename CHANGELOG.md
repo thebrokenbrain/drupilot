@@ -40,6 +40,14 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ### Fixed
 
+- The core-removals scan reads the code's references to a module core moved
+  to a contrib project, not only its info.yml line: a port that drops
+  `drupal:ckeditor` from info.yml while the plugins still extend a
+  `Drupal\ckeditor\` class keeps the blocking dependency (no release of the
+  `ckeditor` project covers Drupal 11), so the port summary no longer says
+  "ported" with no blocker (training run module 07, ckeditor_oembed). Such a
+  reference follows the project's releases (rewrite, verify, blocked,
+  composer-required) instead of always being a hard break.
 - `/drupilot-assess`, `/drupilot-port`, `/drupilot-refactor` and
   `/drupilot-test` pass the subject to their preflight, which then reads the
   DDEV project of the subject's Drupal root: run from another directory, the
