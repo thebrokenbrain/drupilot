@@ -13,6 +13,8 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-10-30
+
 ### Added
 
 - `scripts/tests/install-smoke.sh`: the install smoke for a subject that ships
@@ -4244,7 +4246,8 @@ verdict, what-changed report card, frozen lock), and new insight tools
   PHP target defaults to 8.3 and drives all tuning.
 - Bilingual documentation (`README.md` / `README_es.md`) and an MIT license.
 
-[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.3...HEAD
+[1.0.3]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/thebrokenbrain/drupilot/compare/v1.0.0-rc.1...v1.0.0
