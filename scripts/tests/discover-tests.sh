@@ -4,7 +4,8 @@
 # Discover and classify a Drupal extension's PHPUnit test classes.
 #
 # Scans the subject's tests/src/{Unit,Kernel,Functional,FunctionalJavascript}
-# directories and counts the test classes in each group. This is the inventory
+# directories, and those of its submodules (modules/foo/tests/src/...), and
+# counts the test classes in each group. This is the inventory
 # step used by /drupilot-test and the drupal-test-engineer agent before running
 # the suite — it does NOT execute anything, so it needs no environment and no
 # preflight gate.
@@ -86,15 +87,13 @@ extract_class_name() {
   printf '%s' "$cls"
 }
 
-if [[ -d "$TESTS_DIR" ]]; then
-  # Walk only the four canonical directories so we classify deterministically.
-  # FunctionalJavascript is checked before Functional below only conceptually;
-  # because we match each top-level directory explicitly there is no overlap.
-  for dirname in Unit Kernel Functional FunctionalJavascript; do
-    base="$TESTS_DIR/$dirname"
-    [[ -d "$base" ]] || continue
-    key="$(group_key_for_dir "$dirname")"
-
+# The four canonical directories of the subject and of its submodules
+# (subject_test_dirs: modules/foo/tests/src/<group>), so we classify
+# deterministically.
+for dirname in Unit Kernel Functional FunctionalJavascript; do
+  key="$(group_key_for_dir "$dirname")"
+  while IFS= read -r gdir; do
+    [[ -n "$gdir" ]] || continue
     while IFS= read -r -d '' f; do
       # Skip abstract base classes and traits with no concrete *Test class:
       # the canonical convention is that runnable test classes end in "Test".
@@ -113,9 +112,10 @@ if [[ -d "$TESTS_DIR" ]]; then
       FILES_JSON="$(jq -c \
         --arg path "$rel" --arg type "$key" --arg class "$cls" \
         '. + [{path:$path, type:$type, class:$class}]' <<<"$FILES_JSON")"
-    done < <(find "$base" -type f -name '*.php' -print0 2>/dev/null | LC_ALL=C sort -z)
-  done
-else
+    done < <(find "$SUBJECT/$gdir" -type f -name '*.php' -print0 2>/dev/null | LC_ALL=C sort -z)
+  done < <(subject_test_dirs "$SUBJECT" "$dirname")
+done
+if [[ "$FILES_JSON" == "[]" && ! -d "$TESTS_DIR" ]]; then
   log_info "No tests/src directory under $SUBJECT — the subject has no PHPUnit tests."
 fi
 

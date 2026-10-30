@@ -4,8 +4,9 @@
 # Run a Drupal extension's PHPUnit suite inside the DDEV environment.
 #
 # Gates the 'test' profile first (Docker + daemon + DDEV). Runs PHPUnit against
-# the Drupal core configuration (web/core) for the selected test group(s),
-# using the drupal_runner prefix ('ddev exec' when the environment is up). For
+# the Drupal core configuration (web/core) for the selected test group(s) —
+# the subject's tests/src/<group> and each submodule's (modules/foo/tests/src/
+# <group>, one PHPUnit run per directory) —, using the drupal_runner prefix ('ddev exec' when the environment is up). For
 # JavaScript tests it verifies the Selenium add-on is reachable. With
 # --coverage it adds text + HTML coverage reports.
 #
@@ -319,21 +320,27 @@ for _g in "${TEST_GROUPS[@]}"; do
   esac
 done
 
-# group_has_tests <group> -> 0 when tests/src/<group> holds at least one *Test.php.
-group_has_tests() {
-  local d="$SUBJECT/tests/src/$1"
-  [[ -d "$d" ]] || return 1
-  [[ -n "$(find "$d" -type f -name '*Test.php' 2>/dev/null | sed -n '1p')" ]]
+# group_dirs <group> -> the subject-relative tests/src/<group> directories that
+# hold at least one *Test.php: the subject's own and its submodules'
+# (subject_test_dirs).
+group_dirs() {
+  local d
+  while IFS= read -r d; do
+    [[ -n "$d" ]] || continue
+    if [[ -n "$(find "$SUBJECT/$d" -type f -name '*Test.php' 2>/dev/null | sed -n '1p')" ]]; then printf '%s\n' "$d"; fi
+  done < <(subject_test_dirs "$SUBJECT" "$1")
+  return 0
 }
+# group_has_tests <group> -> 0 when one of its directories holds a *Test.php.
+group_has_tests() { [[ -n "$(group_dirs "$1")" ]]; }
 
 # Whether the subject ships ANY PHPUnit test (any group), independent of
 # --type: lets the report tell "no tests in the selected scope" apart from "the
 # subject ships no tests" (F14).
 SUBJECT_HAS_TESTS="false"
-if [[ -d "$SUBJECT/tests/src" ]] \
-   && [[ -n "$(find "$SUBJECT/tests/src" -type f -name '*Test.php' 2>/dev/null | sed -n '1p')" ]]; then
-  SUBJECT_HAS_TESTS="true"
-fi
+for _g in Unit Kernel Functional FunctionalJavascript; do
+  if group_has_tests "$_g"; then SUBJECT_HAS_TESTS="true"; fi
+done
 
 # The selected groups that actually contain tests.
 declare -a GROUPS_WITH_TESTS=()
@@ -513,9 +520,11 @@ fi
 
 run_group() {
   local group="$1"
-  local path="$SUBJECT_REL/tests/src/$group"
+  local -a dirs=()
+  local d
+  while IFS= read -r d; do [[ -n "$d" ]] && dirs+=("$SUBJECT_REL/$d"); done < <(group_dirs "$group")
 
-  if ! group_has_tests "$group"; then
+  if [[ ${#dirs[@]} -eq 0 ]]; then
     log_info "No $group tests under $SUBJECT_REL — skipping group."
     return 0
   fi
@@ -540,39 +549,48 @@ run_group() {
     fi
   fi
 
-  log_step "Running $group tests ($path)"
   RAN=$((RAN + 1))
-
-  # Assemble the full command. PHPUnit's own exit code drives pass/fail; we do
-  # not redirect or swallow its output. --log-junit only adds the per-test file.
-  local junit="$JUNIT_REL/junit-$$-$group.xml"
-  rm -f "$DRUPAL_ROOT/$junit" 2>/dev/null || true
   local -a genv=()
   [[ "$group" != "FunctionalJavascript" ]] && genv=(${NONJS_ENV[@]+"${NONJS_ENV[@]}"})
-  local -a cmd=(${RUNNER[@]+"${RUNNER[@]}"} ${genv[@]+"${genv[@]}"} ${COVERAGE_ENV[@]+"${COVERAGE_ENV[@]}"} "${PHPUNIT[@]}" --log-junit "$junit" ${COVERAGE_ARGS[@]+"${COVERAGE_ARGS[@]}"} ${FILTER_ARGS[@]+"${FILTER_ARGS[@]}"} "$path")
 
-  # Temporarily relax errexit around the test run so a failing group does not
-  # abort the script before we summarise it. Through DDEV, `ddev exec`'s red
-  # "Failed to execute command ...: exit status N" line is dropped: the group
-  # verdict below always reports PHPUnit's exit code.
-  local rc=0
-  if [[ ${#RUNNER[@]} -gt 0 ]]; then
-    run_dropping_ddev_failure_line "${cmd[@]}" || rc=$?
-  else
-    set +e
-    "${cmd[@]}"
-    rc=$?
-    set -e
-  fi
+  # One PHPUnit run per directory (the subject's, then each submodule's: PHPUnit
+  # takes one path); the group's exit code is the first failing run's, an
+  # unrunnable PHPUnit (126/127) winning, and its tests are every run's.
+  local rc=0 executed=0 have_log=0 parsed junit path one i=0
+  for path in "${dirs[@]}"; do
+    i=$((i + 1))
+    log_step "Running $group tests ($path)"
+    # Assemble the full command. PHPUnit's own exit code drives pass/fail; we do
+    # not redirect or swallow its output. --log-junit only adds the per-test file.
+    junit="$JUNIT_REL/junit-$$-$group-$i.xml"
+    rm -f "$DRUPAL_ROOT/$junit" 2>/dev/null || true
+    local -a cmd=(${RUNNER[@]+"${RUNNER[@]}"} ${genv[@]+"${genv[@]}"} ${COVERAGE_ENV[@]+"${COVERAGE_ENV[@]}"} "${PHPUNIT[@]}" --log-junit "$junit" ${COVERAGE_ARGS[@]+"${COVERAGE_ARGS[@]}"} ${FILTER_ARGS[@]+"${FILTER_ARGS[@]}"} "$path")
 
-  local executed=0 parsed have_log=0
-  [[ -f "$DRUPAL_ROOT/$junit" ]] && have_log=1
-  parsed="$(parse_junit "$group" "$DRUPAL_ROOT/$junit")"
-  if [[ -n "$parsed" ]]; then
-    printf '%s\n' "$parsed" >> "$TESTS_TSV"
-    executed="$(printf '%s\n' "$parsed" | grep -c . || true)"
-  fi
-  rm -f "$DRUPAL_ROOT/$junit" 2>/dev/null || true
+    # Temporarily relax errexit around the test run so a failing group does not
+    # abort the script before we summarise it. Through DDEV, `ddev exec`'s red
+    # "Failed to execute command ...: exit status N" line is dropped: the group
+    # verdict below always reports PHPUnit's exit code.
+    one=0
+    if [[ ${#RUNNER[@]} -gt 0 ]]; then
+      run_dropping_ddev_failure_line "${cmd[@]}" || one=$?
+    else
+      set +e
+      "${cmd[@]}"
+      one=$?
+      set -e
+    fi
+    if [[ "$one" -eq 126 || "$one" -eq 127 ]]; then rc="$one"
+    elif [[ "$one" -ne 0 && "$rc" -eq 0 ]]; then rc="$one"; fi
+
+    [[ -f "$DRUPAL_ROOT/$junit" ]] && have_log=1
+    parsed="$(parse_junit "$group" "$DRUPAL_ROOT/$junit")"
+    if [[ -n "$parsed" ]]; then
+      printf '%s\n' "$parsed" >> "$TESTS_TSV"
+      executed=$((executed + $(printf '%s\n' "$parsed" | grep -c . || true)))
+    fi
+    rm -f "$DRUPAL_ROOT/$junit" 2>/dev/null || true
+  done
+  junit="$JUNIT_REL/junit-$$-$group-*.xml"
   EXECUTED=$((EXECUTED + executed))
 
   local gstatus

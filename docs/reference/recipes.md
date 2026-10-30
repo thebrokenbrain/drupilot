@@ -44,6 +44,7 @@ A codemod applies only when its conditions hold. Its edit must be exact and its 
 | `meta.undeclared-deps` | human | template | rule `metadata:undeclared-deps` | — |
 | `safety.class-case` | codemod | yaml-edit | rule `port-safety:class-case` | `file_ere`: `\.ya?ml$` |
 | `safety.config-schema-sequence` | ai-templated | template | rule `port-safety:config-schema-sequence` | — |
+| `safety.event-dispatch-order` | ai-templated | template | rule `port-safety:event-dispatch-order` | — |
 | `safety.fapi-callable` | ai-templated | template | rule `port-safety:fapi-callable` | — |
 | `safety.migrate-dependencies-expand` | ai-templated | template | rule `port-safety:migrate-dependencies-expand` | — |
 | `safety.override-attribute` | ai-templated | template | rule `port-safety:override-attribute` | — |

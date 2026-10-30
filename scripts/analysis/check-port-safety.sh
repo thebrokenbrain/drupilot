@@ -105,6 +105,14 @@
 #                      can recurse endlessly (training run module 12,
 #                      location_migration). A warning: read the unexpanded
 #                      getPluginDefinition()['migration_dependencies'].
+#   event-dispatch-order
+#                      A ->dispatch() call whose first argument is an event
+#                      name (a class constant such as Events::NAME, or a string
+#                      literal), the Symfony 4.2 order, while the range or the
+#                      target admits the check's removed_in (10.0.0, Symfony
+#                      6): dispatch(object $event, ?string $eventName) then
+#                      throws a TypeError (training run module 13, log_entity:
+#                      its login hooks). An error: swap the two arguments.
 #
 # Diff-aware: when the subject is tracked by git, every finding is attributed —
 # "introduced" (on a line the port added/changed vs the pre-port base) or
@@ -152,7 +160,7 @@ set -euo pipefail
 # shellcheck source=../lib/php-scan.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/php-scan.sh"
 
-ALL_CHECKS="plugin-di removed-use static-factory fapi-callable serialization override-attribute class-case test-label-markup test-phpunit-metadata test-phpunit-api test-abstract-suffix test-field-ui-display-path config-schema-sequence migrate-dependencies-expand"
+ALL_CHECKS="plugin-di removed-use static-factory fapi-callable serialization override-attribute class-case test-label-markup test-phpunit-metadata test-phpunit-api test-abstract-suffix test-field-ui-display-path config-schema-sequence migrate-dependencies-expand event-dispatch-order"
 SUBJECT=""
 BASE=""
 NO_DIFF=0
@@ -802,6 +810,46 @@ if check_on migrate-dependencies-expand; then
         add_finding migrate-dependencies-expand "$f" "$line" "$(introduced "$f" "$line")" \
           "getMigrationDependencies() here runs while the migration definitions are being built (a migrate field plugin or a deriver): from Drupal ${MDE_FROM} it always expands the plugin IDs, which reads those definitions again and can recurse until PHP runs out of memory. Read the unexpanded dependencies, \$migration->getPluginDefinition()['migration_dependencies'], which every core keeps."
       done < <(grep -n -E -- '->[[:space:]]*getMigrationDependencies[[:space:]]*\(' "$TMP/mde.code" 2>/dev/null || true)
+    done < "$FILES"
+  fi
+fi
+
+# --- Check: event-dispatch-order ------------------------------------------------
+# config/port-checks.json: the event name first, removed with removed_in's
+# Symfony. On like config-schema-sequence (range or target major). The first
+# argument may start on the line after 'dispatch('.
+if check_on event-dispatch-order; then
+  EDO_REMOVED="$(jq -r '.checks["event-dispatch-order"].removed_in // empty' "$CFG")"
+  EDO_ON=0
+  if [[ "$EDO_REMOVED" =~ ^([0-9]+) ]]; then
+    _em="${BASH_REMATCH[1]}"
+    _tm="$(resolve_target_major 2>/dev/null || true)"
+    if [[ "$_tm" =~ ^[0-9]+$ ]] && (( _tm >= _em )); then EDO_ON=1; fi
+    if [[ -n "$CORE_REQ" ]]; then
+      for _m in $(seq "$_em" "$((_em + 3))"); do constraint_admits_major "$CORE_REQ" "$_m" && EDO_ON=1; done
+    fi
+  fi
+  if [[ "$EDO_ON" == "1" ]]; then
+    while IFS= read -r f; do
+      php_code_lines "$f" > "$TMP/edo.code"
+      while IFS= read -r line; do
+        [[ -n "$line" ]] || continue
+        add_finding event-dispatch-order "$f" "$line" "$(introduced "$f" "$line")" \
+          "dispatch() gets the event name first, the order of Symfony 4.2 and before: from Drupal ${EDO_REMOVED%%.*} (Symfony 6 and later) the signature is dispatch(object \$event, ?string \$eventName = NULL), so this call throws a TypeError. Swap the two arguments: dispatch(\$event, NAME)."
+      done < <(awk '
+        function first_is_name(t) {
+          sub(/^[[:space:]]+/, "", t)
+          return t ~ /^(\\?[A-Za-z_][A-Za-z0-9_\\]*::[A-Z][A-Z0-9_]*|\047[^\047]*\047|"[^"]*")[[:space:]]*,/
+        }
+        pend { if ($0 ~ /^[[:space:]]*$/) next; if (first_is_name($0)) print pend; pend = 0 }
+        {
+          t = $0
+          while (match(t, /->[[:space:]]*dispatch[[:space:]]*\(/)) {
+            t = substr(t, RSTART + RLENGTH)
+            if (t ~ /^[[:space:]]*$/) { pend = NR; break }
+            if (first_is_name(t)) { print NR; break }
+          }
+        }' "$TMP/edo.code")
     done < "$FILES"
   fi
 fi

@@ -523,7 +523,11 @@ only narrates it.
                  Renaming/Transform/Arguments/Removing rules drupal-rector
                  configures, at the same (file, anchor); a file-level anchor,
                  or anchors unavailable, never counts as covered), plus the
-                 signature and port-safety findings of severity error
+                 signature and port-safety findings of severity error, and
+                 PHPStan's class.notFound outside tests/ for a class of
+                 Symfony or Drupal\Core / Drupal\Component: the bed always
+                 has them, so the class was removed (training run module
+                 13, log_entity: Symfony\Component\EventDispatcher\Event)
                  (manual_items, each with its occurrences)
   hard_breaks    the categories of config/catalog/hard-breaks.json with at
                  least one matching file of the subject, plus the detectors
@@ -682,6 +686,14 @@ Checks (--checks selects a subset; default all):
                      can recurse endlessly (training run module 12,
                      location_migration). A warning: read the unexpanded
                      getPluginDefinition()['migration_dependencies'].
+  event-dispatch-order
+                     A ->dispatch() call whose first argument is an event
+                     name (a class constant such as Events::NAME, or a string
+                     literal), the Symfony 4.2 order, while the range or the
+                     target admits the check's removed_in (10.0.0, Symfony
+                     6): dispatch(object $event, ?string $eventName) then
+                     throws a TypeError (training run module 13, log_entity:
+                     its login hooks). An error: swap the two arguments.
 
 Diff-aware: when the subject is tracked by git, every finding is attributed —
 "introduced" (on a line the port added/changed vs the pre-port base) or
@@ -4364,7 +4376,8 @@ drupilot — scripts/tests/discover-tests.sh
 Discover and classify a Drupal extension's PHPUnit test classes.
 
 Scans the subject's tests/src/{Unit,Kernel,Functional,FunctionalJavascript}
-directories and counts the test classes in each group. This is the inventory
+directories, and those of its submodules (modules/foo/tests/src/...), and
+counts the test classes in each group. This is the inventory
 step used by /drupilot-test and the drupal-test-engineer agent before running
 the suite — it does NOT execute anything, so it needs no environment and no
 preflight gate.
@@ -4467,8 +4480,9 @@ drupilot — scripts/tests/run-phpunit.sh
 Run a Drupal extension's PHPUnit suite inside the DDEV environment.
 
 Gates the 'test' profile first (Docker + daemon + DDEV). Runs PHPUnit against
-the Drupal core configuration (web/core) for the selected test group(s),
-using the drupal_runner prefix ('ddev exec' when the environment is up). For
+the Drupal core configuration (web/core) for the selected test group(s) —
+the subject's tests/src/<group> and each submodule's (modules/foo/tests/src/
+<group>, one PHPUnit run per directory) —, using the drupal_runner prefix ('ddev exec' when the environment is up). For
 JavaScript tests it verifies the Selenium add-on is reachable. With
 --coverage it adds text + HTML coverage reports.
 

@@ -458,3 +458,22 @@ info_value_d7() {
     }' "$1" 2>/dev/null || true
   return 0
 }
+
+# subject_test_dirs SUBJECT GROUP -> the subject-relative tests/src/GROUP
+# directories of the subject and of the extensions nested in it (a submodule's
+# modules/foo/tests/src/GROUP), one per line, the subject's own first. A nested
+# one counts when the directory holding its tests/ has a *.info.yml; vendor/,
+# node_modules/ and dot directories are skipped (training run module 13,
+# log_entity: its only test sat in a submodule and was never discovered or run).
+subject_test_dirs() {
+  local s="${1:-}" g="${2:-}" d ext
+  [[ -d "$s" && -n "$g" ]] || return 0
+  if [[ -d "$s/tests/src/$g" ]]; then printf 'tests/src/%s\n' "$g"; fi
+  while IFS= read -r d; do
+    [[ -n "$d" && "$d" != "tests/src/$g" ]] || continue
+    ext="${d%/tests/src/"$g"}"
+    if [[ -n "$(find "$s/$ext" -maxdepth 1 -name '*.info.yml' 2>/dev/null | sed -n '1p')" ]]; then printf '%s\n' "$d"; fi
+  done < <(cd "$s" && find . \( -name vendor -o -name node_modules -o -name '.?*' \) -prune -o -type d -path "*/tests/src/$g" -print 2>/dev/null \
+             | sed 's#^\./##' | LC_ALL=C sort)
+  return 0
+}

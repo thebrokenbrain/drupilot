@@ -104,6 +104,16 @@
         "unknown": "warn"
       }
     },
+    "event-dispatch-order": {
+      "description": "A `->dispatch()` call whose first argument is an event name, a class constant (`LogEntityEvents::LOG_EVENT`) or a string literal, the argument order of Symfony 4.2 and before, while the declared core range or the target major admits a core from `removed_in`. Symfony 4.3 deprecated that order and Symfony 5 removed it: from Drupal `removed_in` (Symfony 6) EventDispatcherInterface::dispatch(object $event, ?string $eventName = null) throws a TypeError for it (training run module 13, log_entity: its user_login and form-validate hooks, which run at every login). PHPStan misses it when the dispatcher comes from \\Drupal::service(), typed mixed. Swap the two arguments: `dispatch($event, NAME)`, which every Drupal 9.1+ core reads. A call whose event name is a variable is not checked.",
+      "removed_in": "10.0.0",
+      "verified": "vendor/symfony/event-dispatcher/EventDispatcher.php and event-dispatcher-contracts/EventDispatcherInterface.php: dispatch(object $event, ?string $eventName = null): object on symfony/event-dispatcher v6.4.44 (Drupal 10.6.20 lab bed) and v7.4.17 (Drupal 11.4.11 lab bed), training run 13, 2026-10-30.",
+      "severity": {
+        "introduced": "error",
+        "preexisting": "error",
+        "unknown": "error"
+      }
+    },
     "test-phpunit-api": {
       "description": "In a file under tests/, a call of a PHPUnit method that exists only from `phpunit_from` (the PHPUnit of Drupal `drupal_from` and later), while the declared core range admits an older Drupal major, whose PHPUnit has the method of `members` instead (for example InvokedCount::numberOfInvocations(), PHPUnit 9's getInvocationCount()). Rector's WithConsecutiveRector (rector-phpunit, in drupal-rector's sets) writes $matcher->numberOfInvocations() when it removes withConsecutive(), so the test fails on Drupal 10 (training run 01, filelog: FileLogTokenTest). Count the calls in the callback itself, for example with a local counter captured by reference, which every PHPUnit runs.",
       "phpunit_from": "10",

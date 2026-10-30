@@ -15,6 +15,16 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ### Added
 
+- Port-safety check `event-dispatch-order` (error): a `->dispatch()` call
+  whose first argument is an event name (`Events::NAME` or a string), the
+  Symfony 4.2 order, which Drupal 10's Symfony 6 rejects with a TypeError;
+  PHPStan misses it when the dispatcher comes from `\Drupal::service()`
+  (training run module 13, log_entity: its login hooks).
+- The assess verdict counts as manual a PHPStan `class.notFound` outside
+  `tests/` for a class of Symfony or of `Drupal\Core`/`Drupal\Component`,
+  which the bed always has: the class was removed (log_entity extended
+  `Symfony\Component\EventDispatcher\Event`). A missing contrib class still
+  does not count (training run module 13).
 - Port-safety check `migrate-dependencies-expand` (warning): a
   `->getMigrationDependencies()` call in a migrate field plugin
   (`src/Plugin/migrate/field/`) or a deriver while the range or the target
@@ -70,6 +80,12 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ### Fixed
 
+- `discover-tests.sh` and `run-phpunit.sh` find the tests of the subject's
+  submodules (`modules/<sub>/tests/src/<group>`, a nested extension with its
+  own `*.info.yml`; `subject_test_dirs` in `subject.sh`): `run-phpunit.sh`
+  runs one PHPUnit per directory and records every test. A subject whose
+  only tests sat in a submodule was reported `not-verified-no-tests`, and
+  the port took no baseline (training run module 13, log_entity).
 - The ddev-environment and test-adaptation skills forbid stopping, deleting or
   pruning a DDEV project or a Docker container, network or volume drupilot did
   not create for the subject, even in an autonomous run: when Docker ran out

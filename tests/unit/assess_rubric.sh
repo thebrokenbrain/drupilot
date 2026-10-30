@@ -9,7 +9,8 @@
 #   manual (the PHPStan occurrences of hard and unknown ones, not soft, not
 #   next-major, not where a Drupal Rector rule changes the same function or
 #   method; a PHP-level rule, a file-level anchor or unavailable anchors cover
-#   nothing; signature and port-safety errors, not warnings), the hard-break
+#   nothing; signature and port-safety errors, not warnings; a class.notFound
+#   of a Symfony or Drupal\Core/Component class outside tests/), the hard-break
 #   catalog (globs never expanded by the shell, vendor/ and node_modules/ left
 #   out, case-sensitive), the core removals (scan-removals.sh, ADR 0031: a
 #   decision or a hard break is a hard-break category, a blocked dependency a
@@ -116,6 +117,14 @@ assert_eq "manual: hard and unknown no Drupal Rector rule covers (a PHP-level ru
   "$(jq -c '[.manual_items[].finding_id]' "$T_OUT")" '["F-g1","F-h2","F-h9","F-p1","F-u1"]'
 assert_eq "  the soft count is reported, outside the rubric" "$(jq -c '[.deprecations_hard, .deprecations_soft, .deprecations_unknown]' "$T_OUT")" '[5,1,2]'
 assert_eq "  the auto-fixable files: every Rector pass" "$(jq -c '.auto_fixable.rector_official_files' "$T_OUT")" '1'
+{
+  fnd F-c1 phpstan class.notFound src/E.php '{file}' error current analysis | jq -c '.message = "Class Drupal\\m\\E extends unknown class Symfony\\Component\\EventDispatcher\\Event."'
+  fnd F-c2 phpstan class.notFound src/C.php '{file}' error current analysis | jq -c '.message = "Parameter $c of method Drupal\\m\\C::f() has invalid type Drupal\\Core\\Database\\Driver\\sqlite\\Connection."'
+  fnd F-c3 phpstan class.notFound src/D.php '{file}' error current analysis | jq -c '.message = "Class Drupal\\m\\D extends unknown class Drupal\\address\\Base."'
+  fnd F-c4 phpstan class.notFound tests/src/Unit/T.php '{file}' error current analysis | jq -c '.message = "Class Drupal\\Tests\\m\\T extends unknown class Symfony\\Component\\EventDispatcher\\Event."'
+} | jq -s . | run
+assert_eq "manual: a removed Symfony or Drupal\\Core class in production code (not a contrib class, not in tests/)" \
+  "$(jq -c '[.manual_items[].finding_id]' "$T_OUT")" '["F-c2","F-c1"]'
 fnd F-h1 phpstan function.deprecated m.module 'f1()' error current hard | jq -c '.sources = [range(5) as $i | {tool: "phpstan", rule: "function.deprecated", line: (3 + $i)}]' | jq -s . | run
 assert_eq "five calls merged in one finding: five occurrences, manual 5 (M)" "$(v)|$(jq -c '[.manual_items[0].occurrences, .deprecations_hard]' "$T_OUT")" "M 5 0 0|[5,5]"
 { fnd F-r1 rector 'DrupalRector\Drupal10\Rector\Deprecation\X' m.module 'f1()' info current rector; fnd F-h1 phpstan function.deprecated m.module 'f1()' error current hard; } \

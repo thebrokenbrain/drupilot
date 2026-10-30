@@ -898,6 +898,27 @@
       "applies_when": {},
       "engine": "template",
       "fixtures": null,
+      "id": "safety.event-dispatch-order",
+      "kind": "template",
+      "lane": "ai-templated",
+      "matches": {
+        "rule": "port-safety:event-dispatch-order"
+      },
+      "postconditions": [
+        {
+          "type": "rescan"
+        }
+      ],
+      "source": "config/port-checks.json#/checks/event-dispatch-order",
+      "template": {
+        "why": "A `->dispatch()` call whose first argument is an event name, a class constant (`LogEntityEvents::LOG_EVENT`) or a string literal, the argument order of Symfony 4.2 and before, while the declared core range or the target major admits a core from `removed_in`. Symfony 4.3 deprecated that order and Symfony 5 removed it: from Drupal `removed_in` (Symfony 6) EventDispatcherInterface::dispatch(object $event, ?string $eventName = null) throws a TypeError for it (training run module 13, log_entity: its user_login and form-validate hooks, which run at every login). PHPStan misses it when the dispatcher comes from \\Drupal::service(), typed mixed. Swap the two arguments: `dispatch($event, NAME)`, which every Drupal 9.1+ core reads. A call whose event name is a variable is not checked."
+      },
+      "version": "1ae0d141e6ce"
+    },
+    {
+      "applies_when": {},
+      "engine": "template",
+      "fixtures": null,
       "id": "safety.fapi-callable",
       "kind": "template",
       "lane": "ai-templated",
@@ -1401,6 +1422,6 @@
   "sources": {
     "config/deprecations.json": "sha256:eb255f51cc12f30754e935ada60bb1d1f34e3161ae7109715616fe7544472f2d",
     "config/metadata-checks.json": "sha256:182f7ce002a63577a327518fcddfe45d61ea44a23826b981843933ee55fa706f",
-    "config/port-checks.json": "sha256:d91934293e755aeed2b11ce3674e374ad133328f8e03f3d732a3e2a18dd9c6bf"
+    "config/port-checks.json": "sha256:e1d4d8d6f5e17b5548e0a55cd1fd4163b23a2e5acba648bd8774527e9d7fd71f"
   }
 }

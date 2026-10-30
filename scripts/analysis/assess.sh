@@ -14,7 +14,11 @@
 #                  Renaming/Transform/Arguments/Removing rules drupal-rector
 #                  configures, at the same (file, anchor); a file-level anchor,
 #                  or anchors unavailable, never counts as covered), plus the
-#                  signature and port-safety findings of severity error
+#                  signature and port-safety findings of severity error, and
+#                  PHPStan's class.notFound outside tests/ for a class of
+#                  Symfony or Drupal\Core / Drupal\Component: the bed always
+#                  has them, so the class was removed (training run module
+#                  13, log_entity: Symfony\Component\EventDispatcher\Event)
 #                  (manual_items, each with its occurrences)
 #   hard_breaks    the categories of config/catalog/hard-breaks.json with at
 #                  least one matching file of the subject, plus the detectors
@@ -162,11 +166,16 @@ jq -n -c --slurpfile f "$FINDINGS" --slurpfile w "$WORKLIST" --slurpfile cs "$TM
     ([$cur[] | select(.tool == "rector" and $F.anchors == "php" and .anchor != "{file}"
                       and ((.rule // "") | test("^(DrupalRector\\\\|Rector\\\\(Renaming|Transform|Arguments|Removing|Symfony|PHPUnit|Twig)\\\\)")))
       | "\(.file)\u001f\(.anchor)"] | unique) as $rx
-  # manual: hard/unknown deprecations no Drupal Rector rule covers, and the
-  # signature and port-safety errors.
+  # manual: hard/unknown deprecations no Drupal Rector rule covers, the
+  # signature and port-safety errors, and the removed vendor/core classes.
   | ([$cur[] | select((.tool == "phpstan" or ((.rule // "") | startswith("runtime-deprecation:"))) and (.class == "hard" or .class == "unknown")
                       and ("\(.file)\u001f\(.anchor)" as $k | $rx | index($k) | not)) | . + {n: occ}]
      + [$cur[] | select((.class == "signature" or .class == "safety") and .severity == "error") | . + {n: 1}]
+     # A class of Symfony or of Drupal core (Core, Component) PHPStan cannot
+     # find in production code: the bed always has them, so it was removed.
+     + [$cur[] | select(.tool == "phpstan" and .class == "analysis" and (.rule // "") == "class.notFound"
+                        and ((.file // "") | test("(^|/)tests/") | not)
+                        and ((.message // "") | test("(unknown class|invalid type) \\\\?(Symfony|Drupal\\\\(Core|Component))\\\\"))) | . + {n: 1}]
      | sort_by([.file, .line // 0, .id])) as $man
   # The core removals (ADR 0031): rule removal:<detector>:<action>, the
   # removed name as the symbol.

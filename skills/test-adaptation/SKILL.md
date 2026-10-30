@@ -65,7 +65,9 @@ bash "$ROOT/scripts/tests/discover-tests.sh" --subject "$SUBJECT" --json
 ```
 
 `discover-tests.sh` classifies the test classes under
-`tests/src/{Unit,Kernel,Functional,FunctionalJavascript}` and returns JSON:
+`tests/src/{Unit,Kernel,Functional,FunctionalJavascript}`, the subject's and
+each submodule's (`modules/<sub>/tests/src/...`, which `run-phpunit.sh` runs
+too, one PHPUnit run per directory), and returns JSON:
 `{unit,kernel,functional,javascript,total,files:[...]}`. Use it to plan run order
 (fast to slow: Unit -> Kernel -> Functional -> FunctionalJavascript) and to know
 whether Selenium is needed at all.
