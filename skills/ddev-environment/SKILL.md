@@ -326,6 +326,12 @@ project converges on the same toolchain; `ddev-up.sh` and `ddev-add-ons.sh` call
 `lock-sync.sh` for core and add-ons. `DRUPILOT_DETERMINISTIC=false` resolves the
 ranges fresh and refreshes the lock.
 
+**The subject's own requirements.** After the toolchain, install what the subject's
+`composer.json` `require` lists (libraries, contrib modules) into the test-bed:
+`bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-subject-deps.sh" --subject "<subject_path>" --json`
+(exit 3 names a requirement Composer cannot install: an external blocker; on your
+own project it only lists them, `report-only`).
+
 ## 7. Write the toolchain config from templates
 
 Templates live in `${CLAUDE_PLUGIN_ROOT}/templates/` and use `{{PLACEHOLDER}}`

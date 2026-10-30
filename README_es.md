@@ -763,6 +763,7 @@ Todos los scripts ejecutables viven en `scripts/` (o en `hooks/scripts/` los hoo
 | `place-subject.sh` | Mueve, enlaza o copia un módulo suelto dentro del banco de pruebas. |
 | `ddev-add-ons.sh` | Instala los add-ons `ddev-drupal-contrib` y Selenium. |
 | `install-toolchain.sh` | Instala el toolchain de desarrollo verificado, lo prueba y lo congela en el lock. |
+| `install-subject-deps.sh` | Instala en el banco de pruebas las librerías y los módulos contrib que pide el `composer.json` del módulo (`--dry-run`, `--json`). |
 | `render-templates.sh` | Genera `rector.php`, `phpstan.neon`, `phpcs.xml.dist` y la config de testing de DDEV, validados, sin pisar una edición a mano. |
 | `lock-sync.sh` | Captura el lockfile de reproducibilidad (`drupilot-lock.json`). |
 | `ensure-gitignore.sh` | Mantiene los artefactos de drupilot fuera de git en la raíz de Drupal. |

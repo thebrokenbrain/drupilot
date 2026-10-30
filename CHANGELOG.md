@@ -15,6 +15,15 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ### Added
 
+- `scripts/env/install-subject-deps.sh` installs the subject's own Composer
+  requirements (the libraries and contrib modules its `composer.json` lists)
+  into the test-bed; `/drupilot-setup` runs it after the toolchain (step 3d).
+  Before, nothing installed them: PHPStan reported their classes as not found
+  and a test could not enable the module (training run module 06,
+  twig_extender, whose `fightbulc/moment` gave 7 errors). A requirement
+  Composer cannot install is reported as a blocker (exit 3); on your own
+  project the script only lists the missing packages.
+
 - Port-safety check `config-schema-sequence`: a config schema `sequence:` that
   lists its item type (`- type: string`), a form deprecated in 8.0.0 and
   removed from Drupal 11, where the items lose their type and saving the

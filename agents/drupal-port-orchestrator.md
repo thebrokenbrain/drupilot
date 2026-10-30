@@ -335,7 +335,9 @@ the subject in place. Use the `ddev-environment` skill and:
   it under `web/<modules|themes|profiles>/custom/<name>`). Install the dev toolchain with
   `scripts/env/install-toolchain.sh --dir <drupal_root> --json` (pinned to the lock or the
   known-good reference, smoke-tested, lock re-synced; exit 3 = installed but broken — stop
-  and repair with `--source reference`, never assess on it), and write `rector.php`, `phpstan.neon`, `phpcs.xml.dist`, and the testing
+  and repair with `--source reference`, never assess on it), install the subject's own Composer
+  requirements with `scripts/env/install-subject-deps.sh --subject <path> --json` (exit 3 = a
+  requirement cannot be installed: an external blocker to report), and write `rector.php`, `phpstan.neon`, `phpcs.xml.dist`, and the testing
   `web_environment` from the templates.
 Idempotent: if the site is already up and configured, report state and skip.
 

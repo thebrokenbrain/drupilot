@@ -363,6 +363,26 @@ references — `coder_sniffer`, `phpcs-variable-analysis` and `slevomat/coding-s
 not just `coder_sniffer`, or phpcs aborts with "Referenced sniff ... does not exist":
 `ddev exec vendor/bin/phpcs --config-set installed_paths vendor/drupal/coder/coder_sniffer,vendor/sirbrillig/phpcs-variable-analysis,vendor/slevomat/coding-standard`
 
+### 3d — Install the subject's own requirements
+
+The test-bed is a fresh project with the subject placed in it, so the libraries and
+contrib modules the subject's `composer.json` requires (`require`, minus PHP, extensions
+and core) are not installed yet: PHPStan would report their classes as not found and the
+tests could not enable the module. Install them, substituting `<subject_path>` with the
+placed subject:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/install-subject-deps.sh" --subject "<subject_path>" --json
+```
+
+Exit 0: installed, already present, nothing required, or `report-only` (your own project:
+its `composer.json` is left alone; tell the developer which packages are missing). Exit 3:
+a requirement cannot be installed (`failed[]` names it and Composer's reason, e.g. a
+contrib module with no release for the bed's core): report it as an external blocker of
+the port, with `DRUPILOT_LENIENT_DEPS` as the way to try a contrib module whose core
+constraint does not admit the bed yet; never edit the subject's `composer.json` to make
+it install.
+
 ## Step 4 — Write the tool configs from templates
 
 Render the config templates with the deterministic renderer — do NOT substitute the

@@ -761,6 +761,7 @@ Every runnable script lives under `scripts/` (or `hooks/scripts/` for the hooks)
 | `place-subject.sh` | Moves, symlinks or copies a loose module into the test-bed. |
 | `ddev-add-ons.sh` | Installs the `ddev-drupal-contrib` and Selenium add-ons. |
 | `install-toolchain.sh` | Installs the known-good dev toolchain, smoke-tests it and freezes it in the lock. |
+| `install-subject-deps.sh` | Installs the libraries and contrib modules the subject's `composer.json` requires into the test-bed (`--dry-run`, `--json`). |
 | `render-templates.sh` | Renders `rector.php`, `phpstan.neon`, `phpcs.xml.dist` and the DDEV testing config, validated, never clobbering a hand edit. |
 | `lock-sync.sh` | Captures the reproducibility lockfile (`drupilot-lock.json`). |
 | `ensure-gitignore.sh` | Keeps drupilot's artifacts out of git at the Drupal root. |

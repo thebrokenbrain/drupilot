@@ -3601,6 +3601,49 @@ Exit codes:
   1 -> usage error / unsupported OS / an install failed.
 ```
 
+### env/install-subject-deps.sh
+
+```text
+drupilot — scripts/env/install-subject-deps.sh
+Install the subject's own Composer requirements into its test-bed: the
+libraries and contrib modules its composer.json `require` lists
+(fightbulc/moment, giggsey/libphonenumber-for-php, drupal/address, ...).
+A test-bed is a fresh drupal/recommended-project with the subject placed
+under web/*/custom/, so nothing installs them otherwise: PHPStan then reports
+their classes as not found, the module cannot be enabled and its tests
+cannot run (training run module 06, twig_extender). Runs after
+place-subject.sh and install-toolchain.sh.
+
+Left out: php, ext-*, lib-*, composer-plugin-api, composer/*,
+cweagans/composer-patches, drupal/core and drupal/core-* (the bed's own).
+A package the bed already has is "present" (never upgraded here).
+
+Only on a test-bed drupilot built (testbed_kind not none): the composer.json
+of your own project is never changed; there the missing packages are only
+listed (status report-only), with the command to add them.
+
+A package Composer cannot install (a contrib module with no release for the
+bed's core, a library whose constraint conflicts) is a blocker: the run says
+which one and why, installs the others, and exits 3. DRUPILOT_LENIENT_DEPS
+(install-toolchain.sh) is the way to install a contrib module whose
+drupal/core constraint does not admit the bed's core yet.
+
+Usage:
+  install-subject-deps.sh --subject DIR [--root ROOT] [--dry-run] [--json]
+                          [-h|--help]
+  --subject DIR  the placed module/theme (its composer.json is read)
+  --root ROOT    the Drupal project root (default: find_drupal_root)
+  --dry-run      list what would be installed; Composer is not run
+  --json         {status, root, testbed, requested, present, installed,
+                  failed: [{name, constraint, reason}], skipped} on STDOUT
+                  status: nothing | present | installed | report-only |
+                  partial | failed | dry-run
+
+Exit codes: 0 nothing to do, installed, present, report-only or dry-run ·
+            1 usage error · 2 no Drupal root / DDEV not running ·
+            3 at least one requirement could not be installed (a blocker).
+```
+
 ### env/install-toolchain.sh
 
 ```text
