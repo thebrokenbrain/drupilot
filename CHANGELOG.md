@@ -31,6 +31,11 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ### Fixed
 
+- `/drupilot-assess`, `/drupilot-port`, `/drupilot-refactor` and
+  `/drupilot-test` pass the subject to their preflight, which then reads the
+  DDEV project of the subject's Drupal root: run from another directory, the
+  Selenium add-on was always reported missing although it was installed
+  (training run module 05, fotorama_gallery).
 - A "Function X not found" that is no removal no longer counts as blocking
   work: `classify-deprecations.sh` gives the new class `not-removed` to a
   function the subject's core defines in a file core loads on demand
