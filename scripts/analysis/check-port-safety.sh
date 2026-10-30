@@ -108,7 +108,7 @@
 #   event-dispatch-order
 #                      A ->dispatch() call whose first argument is an event
 #                      name (a class constant such as Events::NAME, or a string
-#                      literal), the Symfony 4.2 order, while the range or the
+#                      literal), alone or before the event, the Symfony 4.2 order, while the range or the
 #                      target admits the check's removed_in (10.0.0, Symfony
 #                      6): dispatch(object $event, ?string $eventName) then
 #                      throws a TypeError (training run module 13, log_entity:
@@ -626,7 +626,11 @@ while IFS= read -r f; do
           [[ -n "$line" ]] || continue
           add_finding test-field-ui-display-path "$f" "$line" "$(introduced "$f" "$line")" \
             "this path ends in /display: from Drupal ${FUID_FROM} Field UI serves an overview of the view modes there, so a test that opens it to configure a display finds no form. Open .../display/default, which serves the default display form on every core."
-        done < <(grep -n -E "(drupalGet|fromUri|fromUserInput|->visit)[[:space:]]*\(.*/display(['\"]|[[:space:]]*\))" "$f" 2>/dev/null | grep -v -E '^[0-9]+:[[:space:]]*(//|\*|#)' || true)
+        # Field UI paths only: .../manage/<bundle>/display, a vocabulary's
+        # .../manage/<vocab>/overview/display, the user entity's
+        # admin/config/people/accounts/display; a module's own .../display
+        # route is not one (the PR #64 review).
+        done < <(grep -n -E "(drupalGet|fromUri|fromUserInput|->visit)[[:space:]]*\(.*(manage/[^/]+(/overview)?|admin/config/people/accounts)/display(['\"]|[[:space:]]*\))" "$f" 2>/dev/null | grep -v -E '^[0-9]+:[[:space:]]*(//|\*|#)' || true)
         ;;
     esac
   fi
@@ -835,11 +839,11 @@ if check_on event-dispatch-order; then
       while IFS= read -r line; do
         [[ -n "$line" ]] || continue
         add_finding event-dispatch-order "$f" "$line" "$(introduced "$f" "$line")" \
-          "dispatch() gets the event name first, the order of Symfony 4.2 and before: from Drupal ${EDO_REMOVED%%.*} (Symfony 6 and later) the signature is dispatch(object \$event, ?string \$eventName = NULL), so this call throws a TypeError. Swap the two arguments: dispatch(\$event, NAME)."
+          "dispatch() gets the event name first, the order of Symfony 4.2 and before: from Drupal ${EDO_REMOVED%%.*} (Symfony 6 and later) the signature is dispatch(object \$event, ?string \$eventName = NULL), so this call throws a TypeError. Pass the event object first and the name second: dispatch(\$event, NAME); a call with the name alone needs an event object, dispatch(new Event(), NAME)."
       done < <(awk '
         function first_is_name(t) {
           sub(/^[[:space:]]+/, "", t)
-          return t ~ /^(\\?[A-Za-z_][A-Za-z0-9_\\]*::[A-Z][A-Z0-9_]*|\047[^\047]*\047|"[^"]*")[[:space:]]*,/
+          return t ~ /^(\\?[A-Za-z_][A-Za-z0-9_\\]*::[A-Z][A-Z0-9_]*|\047[^\047]*\047|"[^"]*")[[:space:]]*[,)]/
         }
         pend { if ($0 ~ /^[[:space:]]*$/) next; if (first_is_name($0)) print pend; pend = 0 }
         {

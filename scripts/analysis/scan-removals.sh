@@ -175,7 +175,9 @@ done
 # needs that project, whatever its info.yml says (training run module 07,
 # ckeditor_oembed: the port dropped drupal:ckeditor from info.yml, its plugins
 # still extend Drupal\ckeditor\CKEditorPluginBase).
-NS_ERE="$(jq -r '[.[] | select(.kind == "module" and (.rewrite == "hard-break" or .rewrite == "dependency")) | .name] | unique
+# (The subject itself left out: porting a removed module's contrib replacement
+# names its own namespace.)
+NS_ERE="$(jq -r --arg mn "$MN" '[.[] | select(.kind == "module" and (.rewrite == "hard-break" or .rewrite == "dependency") and .name != $mn) | .name] | unique
   | if length == 0 then "" else "Drupal[\\\\]+(Tests[\\\\]+)?(" + join("|") + ")[\\\\]" end' "$TMP/ext.json")"
 MOVE_ERE="$(jq -r '[.[] | .classes[]] | unique | if length == 0 then "" else "(" + join("|") + ")" end' "$TMP/moves.json")"
 MOVE_NS="$(jq -r '[.[] | .from_ns] | unique | join("\n")' "$TMP/moves.json")"

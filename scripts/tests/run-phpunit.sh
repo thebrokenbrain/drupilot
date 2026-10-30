@@ -556,7 +556,7 @@ run_group() {
   # One PHPUnit run per directory (the subject's, then each submodule's: PHPUnit
   # takes one path); the group's exit code is the first failing run's, an
   # unrunnable PHPUnit (126/127) winning, and its tests are every run's.
-  local rc=0 executed=0 have_log=0 parsed junit path one i=0
+  local rc=0 executed=0 have_log=0 parsed junit path one i=0 n cdirs=""
   for path in "${dirs[@]}"; do
     i=$((i + 1))
     log_step "Running $group tests ($path)"
@@ -584,10 +584,15 @@ run_group() {
 
     [[ -f "$DRUPAL_ROOT/$junit" ]] && have_log=1
     parsed="$(parse_junit "$group" "$DRUPAL_ROOT/$junit")"
+    n=0
     if [[ -n "$parsed" ]]; then
       printf '%s\n' "$parsed" >> "$TESTS_TSV"
-      executed=$((executed + $(printf '%s\n' "$parsed" | grep -c . || true)))
+      n="$(printf '%s\n' "$parsed" | grep -c . || true)"
+      executed=$((executed + n))
     fi
+    # A directory whose PHPUnit failed without any test result crashed: kept
+    # apart, so a crash next to a directory that ran is never hidden.
+    if [[ "$one" -ne 0 && "$n" -eq 0 ]]; then cdirs="${cdirs:+$cdirs,}${path#"$SUBJECT_REL"/}"; fi
     rm -f "$DRUPAL_ROOT/$junit" 2>/dev/null || true
   done
   junit="$JUNIT_REL/junit-$$-$group-*.xml"
@@ -627,7 +632,9 @@ run_group() {
     # No per-test result at all: PHPUnit died before writing its log.
     [[ "$executed" -eq 0 ]] && gstatus="crashed"
   fi
-  printf '%s\t%s\t%s\t%s\n' "$group" "$rc" "$gstatus" "$executed" >> "$GROUPS_TSV"
+  # crashed_dirs (subject-relative, only when one crashed while another ran).
+  [[ "$gstatus" == "crashed" ]] && cdirs=""
+  printf '%s\t%s\t%s\t%s\t%s\n' "$group" "$rc" "$gstatus" "$executed" "$cdirs" >> "$GROUPS_TSV"
   return 0
 }
 
@@ -737,7 +744,8 @@ else
     echo '[]' > "$TESTS_JSON_FILE"
   fi
   GROUPRES_JSON="$(jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t")
-      | {group: .[0], rc: (.[1] | tonumber? // null), status: .[2], executed: (.[3] | tonumber? // 0)})' \
+      | {group: .[0], rc: (.[1] | tonumber? // null), status: .[2], executed: (.[3] | tonumber? // 0)}
+        + (if (.[4] // "") != "" then {crashed_dirs: (.[4] | split(","))} else {} end))' \
       "$GROUPS_TSV" 2>/dev/null || echo '[]')"
   DIGEST="$(subject_digest "$SUBJECT")"
   GIT_HEAD="$(git -C "$SUBJECT" rev-parse HEAD 2>/dev/null || true)"
@@ -757,9 +765,12 @@ else
       | $b[0] as $base
       | (reduce ($base.tests // [])[] as $t ({}; .[$t.id] = $t)) as $bm
       | (reduce ($base.group_results // [])[] as $g ({}; .[$g.group] = $g.status)) as $bgs
+      # The directories of a group that crashed in the baseline while another
+      # one ran (submodule tests, one PHPUnit run per directory).
+      | (reduce ($base.group_results // [])[] as $g ({}; .[$g.group] = ($g.crashed_dirs // []))) as $bcd
       | [ $cur[] | select(bad) | . as $t | ($bm[$t.id]) as $p
           | if $p == null then
-              (if $bgs[$t.group] == "crashed"
+              (if $bgs[$t.group] == "crashed" or (($bcd[$t.group] // []) | length > 0)
                then {id: $t.id, group: $t.group, class: "not-baselined", basis: "baseline-group-crashed", now: $t.message}
                else {id: $t.id, group: $t.group, class: "regression", basis: "not-in-baseline", now: $t.message} end)
             elif ($p | bad) and ($p | env_fail) then
@@ -771,12 +782,21 @@ else
             else {id: $t.id, group: $t.group, class: "regression", basis: "passed-before", now: $t.message} end ] as $cls
       | [ $cg[] | select(.status == "failed" or .status == "crashed") | .group as $g
           | select([ $cur[] | select(.group == $g) | select(bad) ] | length == 0)
+          # (A crashed directory explains the failure: its own item below.)
+          | select((.crashed_dirs // []) | length == 0)
           | if $bgs[$g] == "crashed"
             then {id: null, group: $g, class: "not-baselined", basis: "group-\(.status)-baseline-crashed"}
             elif $bgs[$g] == "failed"
             then {id: null, group: $g, class: "pre-existing", basis: "group-\(.status)"}
             else {id: null, group: $g, class: "regression", basis: "group-\(.status)"} end ] as $grp
-      | ($cls + $grp) as $all
+      # A directory that crashed now while its group ran elsewhere: a
+      # regression, unless the baseline never ran it (whole group or that
+      # directory crashed there too).
+      | [ $cg[] | .group as $g | (.crashed_dirs // [])[] as $d
+          | if $bgs[$g] == "crashed" or (($bcd[$g] // []) | index($d)) != null
+            then {id: null, group: $g, dir: $d, class: "not-baselined", basis: "dir-crashed-baseline-crashed"}
+            else {id: null, group: $g, dir: $d, class: "regression", basis: "dir-crashed"} end ] as $dirs
+      | ($cls + $grp + $dirs) as $all
       | {file: $file, source: ($base.source // "run"), taken_at: ($base.taken_at // null),
          type: ($base.type // null), filter: ($base.filter // null),
          same_code: (($base.subject_digest // "") != "" and $base.subject_digest == $digest),

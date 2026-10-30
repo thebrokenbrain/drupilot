@@ -7,7 +7,10 @@
 #   info.yml, under vendor/ or under a dot directory;
 # - discover-tests.sh counts the submodule's classes;
 # - run-phpunit.sh (stub docker/ddev/PHPUnit, Docker-free) runs one PHPUnit per
-#   directory, records every test, and a failing submodule run fails its group.
+#   directory, records every test, and a failing submodule run fails its group;
+# - a directory that crashes (no test result) while its group ran elsewhere is
+#   listed in crashed_dirs: a regression against a baseline that ran it, and a
+#   failure of its tests after a baseline where it crashed is not-baselined.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
 # shellcheck source=../../scripts/lib/common.sh
@@ -56,16 +59,17 @@ cat > "$R/vendor/bin/phpunit" <<'SH'
 log=""; prev=""; for a; do [ "$prev" = "--log-junit" ] && log="$a"; prev="$a"; done
 for p; do :; done
 echo "$p" >> "$STUB_LOG"
+[ "$p" = "$STUB_CRASH" ] && { echo "PHP Fatal error" >&2; exit 255; }
 c="$(printf '%s' "$p" | tr '/' '_')"
 if [ "$p" = "$STUB_FAIL" ]; then
-  printf '<testsuites><testsuite>\n<testcase name="testIt" class="T\\%s"><failure>x</failure></testcase>\n</testsuite></testsuites>\n' "$c" > "$log"; exit 1
+  printf '<testsuites><testsuite>\n<testcase name="testIt" class="T\\%s">\n<failure>x</failure>\n</testcase>\n</testsuite></testsuites>\n' "$c" > "$log"; exit 1
 fi
 printf '<testsuites><testsuite>\n<testcase name="testIt" class="T\\%s"/>\n</testsuite></testsuites>\n' "$c" > "$log"
 SH
 chmod +x "$B/docker" "$B/ddev" "$R/vendor/bin/phpunit"
 LT="$(project_state_path "$S")/last-test.json"
 export STUB_LOG="$T_TMP/calls"
-rp() { : > "$STUB_LOG"; t_run env PATH="$B:$PATH" CLAUDE_PLUGIN_ROOT="$T_REPO" STUB_FAIL="${FAIL:-}" "$T_SH" "$T_REPO/scripts/tests/run-phpunit.sh" --subject "$S" --type all; }
+rp() { : > "$STUB_LOG"; t_run env PATH="$B:$PATH" CLAUDE_PLUGIN_ROOT="$T_REPO" STUB_FAIL="${FAIL:-}" STUB_CRASH="${CRASH:-}" "$T_SH" "$T_REPO/scripts/tests/run-phpunit.sh" --subject "$S" --type all; }
 rp
 assert_eq "run-phpunit: one run per directory, the subject's first" "$T_RC|$(tr '\n' ',' < "$STUB_LOG")" \
   "0|web/modules/custom/m/tests/src/Unit,web/modules/custom/m/modules/sub/tests/src/Unit,web/modules/custom/m/modules/sub/tests/src/Functional,"
@@ -74,4 +78,16 @@ assert_eq "  verified, the three tests recorded, two groups passed" \
   '["verified",3,true,[["Unit","passed",2],["Functional","passed",1]]]'
 FAIL=web/modules/custom/m/modules/sub/tests/src/Unit rp
 assert_eq "a failing submodule run fails its group (exit 3)" "$T_RC|$(jq -c '[.group_results[] | [.group, .status]]' "$LT")" '3|[["Unit","failed"],["Functional","passed"]]'
+SU=web/modules/custom/m/modules/sub/tests/src/Unit
+rp() { : > "$STUB_LOG"; t_run env PATH="$B:$PATH" CLAUDE_PLUGIN_ROOT="$T_REPO" STUB_FAIL="${FAIL:-}" STUB_CRASH="${CRASH:-}" "$T_SH" "$T_REPO/scripts/tests/run-phpunit.sh" --subject "$S" --type all "$@"; }
+rp --baseline
+CRASH="$SU" rp
+assert_eq "a submodule directory crashed after a green baseline: crashed_dirs, a dir-crashed regression (exit 3)" \
+  "$T_RC|$(jq -c '[.preservation, ([.group_results[] | select(.group == "Unit")][0] | [.status, .crashed_dirs]), [.baseline.regressions[] | [.basis, .dir]]]' "$LT")" \
+  '3|["regression",["failed",["modules/sub/tests/src/Unit"]],[["dir-crashed","modules/sub/tests/src/Unit"]]]'
+CRASH="$SU" rp --baseline
+FAIL="$SU" rp
+assert_eq "  its test failing after a baseline where it crashed: not-baselined, never a regression" \
+  "$T_RC|$(jq -c '[.preservation, [.baseline.regressions[].id], [.baseline.not_baselined[].basis]]' "$LT")" \
+  '3|["not-verified-unbaselined",[],["baseline-group-crashed"]]'
 t_done

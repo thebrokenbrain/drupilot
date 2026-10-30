@@ -29,9 +29,11 @@
 #
 # A package Composer cannot install (a contrib module with no release for the
 # bed's core, a library whose constraint conflicts) is a blocker: the run says
-# which one and why, installs the others, and exits 3. DRUPILOT_LENIENT_DEPS
-# (install-toolchain.sh) is the way to install a contrib module whose
-# drupal/core constraint does not admit the bed's core yet.
+# which one and why, installs the others, and exits 3. To install a contrib
+# module whose drupal/core constraint does not admit the bed's core yet, set
+# DRUPILOT_LENIENT_DEPS and rerun install-toolchain.sh (it installs
+# composer-drupal-lenient and writes its allowed-list; this script does not
+# read the variable), then rerun this one.
 #
 # Usage:
 #   install-subject-deps.sh --subject DIR [--root ROOT] [--dry-run] [--json]
@@ -94,8 +96,12 @@ if [[ -f "$SUBJECT_ABS/composer.json" ]]; then
 fi
 INFO="$(subject_info_file "$SUBJECT_ABS" 2>/dev/null || true)"
 if [[ -n "$INFO" && -f "$INFO" ]]; then
+  # The subject's own project (a test dependency on one of its submodules):
+  # never required from drupal.org next to the placed port.
+  OWN="$(subject_machine_name "$SUBJECT_ABS" 2>/dev/null || true)"
+  OWN_PKG="$(jq -r '.name // empty' "$SUBJECT_ABS/composer.json" 2>/dev/null || true)"
   while IFS= read -r proj; do
-    [[ -n "$proj" && "$proj" != "drupal" ]] || continue
+    [[ -n "$proj" && "$proj" != "drupal" && "$proj" != "$OWN" && "drupal/$proj" != "$OWN_PKG" ]] || continue
     if ! printf '%s\n' "$REQS" | cut -f1 | grep_q -x -F "drupal/$proj"; then
       REQS="${REQS:+$REQS$'\n'}drupal/$proj"$'\t*\t1'
     fi
@@ -157,7 +163,7 @@ if [[ -z "$STATUS" ]]; then
       if ( cd "$ROOT" && ddev composer require ${DEVF[@]+"${DEVF[@]}"} -W --no-interaction "$name:$con" < /dev/null > "$TMP/one.log" 2>&1 ); then
         printf '%s\t%s\t%s\n' "$name" "$con" "$dev" >> "$TMP/installed.tsv"
       else
-        reason="$(grep -E -i 'requires drupal/core|conflict|could not be resolved|does not match|not found|minimum-stability|Problem [0-9]' "$TMP/one.log" | sed -n '1,3p' | tr -s '[:space:]' ' ' | cut -c1-400)"
+        reason="$(grep -E -i 'requires drupal/core|conflict|could not be resolved|does not match|not found|minimum-stability|Problem [0-9]' "$TMP/one.log" | sed -n '1,3p' | tr -s '[:space:]' ' ' | cut -c1-400 || true)"
         printf '%s\t%s\t%s\t%s\n' "$name" "$con" "$dev" "${reason:-composer require failed}" >> "$TMP/failed.tsv"
         log_err "Could not install $name:$con into the test-bed${reason:+: $reason}"
       fi

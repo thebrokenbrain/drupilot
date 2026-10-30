@@ -765,7 +765,7 @@ CLASSIFY='
   # EntityBase::$original from 11.2): PHPStan reports property.notFound, the
   # code still runs (training run module 15, mobile_number).
   def magic_prop: (.identifier == "property.notFound")
-    and ((.message | capture("::\\$(?<p>[A-Za-z0-9_]+)\\.?$") | .p) as $p | ($mp | index($p)) != null);
+    and (([.message | capture("::\\$(?<p>[A-Za-z0-9_]+)\\.?$")? | .p] | .[0]) as $p | $p != null and ($mp | index($p)) != null);
   def tolerated: too_many_args or void_used or magic_prop;
   # A PHPDoc-only report (an @var, @param or @return that disagrees with the
   # native type, a malformed tag, a missing iterable value type): it can never

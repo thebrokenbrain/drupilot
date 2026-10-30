@@ -18,12 +18,19 @@ declare(strict_types=1);
 namespace Drupal\Tests\drupilot_smoke\Functional;
 
 use Drupal\Tests\BrowserTestBase;
+use PHPUnit\Framework\Attributes\Group;
+use PHPUnit\Framework\Attributes\RunTestsInSeparateProcesses;
 
 /**
  * Installs {{MACHINE_NAME}} ({{SUBJECT_TYPE}}), opens pages, uninstalls it.
  *
+ * The attributes are what core 11.3+ asks of a Functional test (PHPUnit 9 on
+ * Drupal 10 ignores them and reads the annotation).
+ *
  * @group drupilot_smoke
  */
+#[Group('drupilot_smoke')]
+#[RunTestsInSeparateProcesses]
 class DrupilotInstallSmokeTest extends BrowserTestBase {
 
   /**

@@ -24,7 +24,8 @@
 #   --json         {status, machine_name, type, core, test_file, phpunit_rc,
 #                   deprecations, excerpt} on STDOUT; status: passed | failed |
 #                   blocked | dry-run (deprecations: the runtime deprecations
-#                   PHPUnit counted, which the static analysis may not see;
+#                   PHPUnit counted, core's own included, which the static
+#                   analysis may not see: read them in phpunit.log;
 #                   excerpt: the tail of PHPUnit's output on failure)
 #
 # The result is recorded in the subject's hidden state dir (install-smoke.json,

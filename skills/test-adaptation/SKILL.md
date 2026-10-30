@@ -48,7 +48,8 @@ Running tests is a `test` operation (needs DDEV + Docker daemon):
 
 ```bash
 ROOT="${CLAUDE_PLUGIN_ROOT}"
-bash "$ROOT/scripts/env/preflight.sh" --profile test
+SUBJECT="$(cd "${1:-$PWD}" && pwd)"
+bash "$ROOT/scripts/env/preflight.sh" --profile test --subject "$SUBJECT"
 ```
 
 - Exit `0` -> proceed. Exit `2` -> show the report and **stop** (hard reqs:

@@ -69,6 +69,11 @@ All output you produce — messages, summaries, coverage reports — is in **Eng
    `pre-existing`, a test that passed before and fails now is a `regression`.
    Report both honestly: pre-existing failures are not proof of preservation, and
    one that "fails differently now" may hide a port-introduced bug — review it.
+9. **Only drupilot's own environment.** Never stop, delete or prune a DDEV project,
+   Docker container, network or volume drupilot did not create for this subject (no
+   `docker network prune` / `docker system prune`), even in an autonomous run. A bed
+   that cannot start (address pools, ports, disk) is `not-verified-blocked`: report it
+   with what holds the resource.
 
 ## Verified ecosystem facts (June 2026 — do not re-research)
 
@@ -124,16 +129,23 @@ reinvent their logic.
 
 1. **Gate**:
    ```bash
-   bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile test --json
+   bash "${CLAUDE_PLUGIN_ROOT}/scripts/env/preflight.sh" --profile test --subject <DIR> --json
    ```
 2. **Discover and classify**:
    ```bash
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/tests/discover-tests.sh" --subject <DIR> --json
    # -> {unit, kernel, functional, javascript, total, files:[...]}
    ```
-   The counts include the submodules' tests (`modules/<sub>/tests/src/...`). With
-   zero tests, run `scripts/tests/install-smoke.sh --subject <DIR> --json`
-   (install evidence only; the verdict stays `not-verified-no-tests`).
+   The counts include the submodules' tests (`modules/<sub>/tests/src/...`). A
+   `legacy` list names test classes in `src/Tests/` or `Tests/` that PHPUnit never
+   reads: `git mv` each to `tests/src/<group>/` with the namespace
+   `Drupal\Tests\<module>\<group>` (a placeholder that asserts nothing is reported,
+   not moved), then discover again. With zero tests and no legacy test moved, run
+   `scripts/tests/install-smoke.sh --subject <DIR> --json` (install evidence only; the
+   verdict stays `not-verified-no-tests`). Before the first run, check the test-bed has
+   the subject's requirements, test ones included:
+   `scripts/env/install-subject-deps.sh --subject <DIR> --json` (`present` is a no-op;
+   exit 3 is an external blocker to document).
 3. **Adapt the tests to D11 / PHPUnit 10-11.** Read each test, fix:
    - Deprecated test base classes / traits and namespace moves.
    - PHPUnit 10/11 API changes (data providers, `expectException`, void return types

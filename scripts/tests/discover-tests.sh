@@ -125,8 +125,8 @@ TOTAL=$((UNIT + KERNEL + FUNCTIONAL + JAVASCRIPT))
 # directory): PHPUnit never finds them, so they never ran (training run modules
 # 03 like_dislike and 11 nodeviewcount). Listed apart, never counted: moving
 # one to tests/src/<group>/ with its namespace is a test adaptation.
-LEGACY_JSON="$(cd "$SUBJECT" && find . \( -name vendor -o -name node_modules -o -name .git \) -prune -o -type f -name '*Test.php' \
-    \( -path './src/Tests/*' -o -path './Tests/*' \) -print 2>/dev/null | sed 's#^\./##' | LC_ALL=C sort \
+LEGACY_JSON="$(cd "$SUBJECT" && { find . \( -name vendor -o -name node_modules -o -name .git \) -prune -o -type f -name '*Test.php' \
+    \( -path './src/Tests/*' -o -path './Tests/*' \) -print 2>/dev/null || true; } | sed 's#^\./##' | LC_ALL=C sort \
   | jq -R -s -c 'split("\n") | map(select(length > 0))')"
 [[ -n "$LEGACY_JSON" ]] || LEGACY_JSON='[]'
 

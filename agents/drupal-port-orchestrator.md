@@ -314,7 +314,9 @@ whatever stage it starts at (a set-up site skips Stage 1):
 ### Stage 1 — setup (gate: `setup`)
 
 Goal: a DDEV site of the target major (Drupal 11 by default) with the toolchain and
-the subject in place. Use the `ddev-environment` skill and:
+the subject in place. Never stop, delete or prune a DDEV project, Docker container,
+network or volume drupilot did not create (not even to free address pools or ports):
+a bed that cannot start is a blocker to report. Use the `ddev-environment` skill and:
 - `scripts/env/detect-php.sh --json` to confirm the effective PHP target (Drupal
   11's; the test-bed takes the plan's `php.final`).
 - Freeze the draft upgrade plan before anything is created:

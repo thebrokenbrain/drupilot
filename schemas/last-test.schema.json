@@ -18,7 +18,7 @@
       "enum": ["Unit", "Kernel", "Functional", "FunctionalJavascript"]
     },
     "baseline_item": {
-      "description": "One failure classified against the pre-port baseline. A test-level item has the test id; a group-level item (a failed or crashed group with no failing test result) has id null.",
+      "description": "One failure classified against the pre-port baseline. A test-level item has the test id; a group-level item (a failed or crashed group with no failing test result) has id null, and so has a directory-level one (dir).",
       "type": "object",
       "required": ["id", "group", "basis"],
       "additionalProperties": false,
@@ -30,9 +30,11 @@
           "enum": [
             "not-in-baseline", "passed-before", "baseline-group-crashed", "baseline-not-installable",
             "test", "group-failed", "group-crashed",
-            "group-failed-baseline-crashed", "group-crashed-baseline-crashed"
+            "group-failed-baseline-crashed", "group-crashed-baseline-crashed",
+            "dir-crashed", "dir-crashed-baseline-crashed"
           ]
         },
+        "dir": {"description": "A directory-level item: the subject-relative test directory that crashed while its group ran elsewhere (dir-crashed: a regression; dir-crashed-baseline-crashed: never baselined).", "type": "string"},
         "now": {
           "description": "The failure message of this run (test-level items).",
           "type": ["string", "null"]
@@ -230,7 +232,12 @@
             "description": "empty: PHPUnit ran but executed no test; crashed: it failed without writing any test result; blocked: PHPUnit could not be executed (exit 126/127).",
             "enum": ["passed", "failed", "crashed", "empty", "skipped", "blocked"]
           },
-          "executed": {"type": "integer", "minimum": 0}
+          "executed": {"type": "integer", "minimum": 0},
+          "crashed_dirs": {
+            "description": "The subject-relative test directories (the subject's tests/src/<group> or a submodule's) whose PHPUnit run failed without any test result while another directory of the group ran; absent when there is none.",
+            "type": "array",
+            "items": {"type": "string"}
+          }
         }
       }
     },

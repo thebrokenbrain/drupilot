@@ -381,8 +381,11 @@ Exit 0: installed, already present, nothing required, or `report-only` (your own
 its `composer.json` is left alone; tell the developer which packages are missing). Exit 3:
 a requirement cannot be installed (`failed[]` names it and Composer's reason, e.g. a
 contrib module with no release for the bed's core): report it as an external blocker of
-the port, with `DRUPILOT_LENIENT_DEPS` as the way to try a contrib module whose core
-constraint does not admit the bed yet; never edit the subject's `composer.json` to make
+the port. To try a contrib module whose core constraint does not admit the bed yet, set
+`DRUPILOT_LENIENT_DEPS=drupal/<project>` and rerun `install-toolchain.sh --dir <drupal_root>`
+(it installs composer-drupal-lenient and writes its allowed-list;
+`install-subject-deps.sh` does not read the variable), then rerun
+`install-subject-deps.sh`; never edit the subject's `composer.json` to make
 it install.
 
 ## Step 4 — Write the tool configs from templates

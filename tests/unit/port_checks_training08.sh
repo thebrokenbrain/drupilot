@@ -7,8 +7,9 @@
 #   range with no Drupal 11;
 # - test-field-ui-display-path: a tests/ path ending in /display given to
 #   drupalGet() (literal, interpolated, concatenated) while the range admits
-#   Drupal 11 (an overview from 11.4); .../display/default, /form-display and
-#   a comment pass; off for ^9 || ^10.
+#   Drupal 11 (an overview from 11.4); .../display/default, /form-display, a
+#   comment and a module's own admin/config/m/display route pass; off for
+#   ^9 || ^10.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
 PS="$T_REPO/scripts/analysis/check-port-safety.sh"
@@ -52,6 +53,7 @@ class MDisplayTest extends MBaseTest {
     $this->drupalGet('admin/structure/types/manage/gallery/display/default');
     $this->drupalGet('admin/structure/types/manage/gallery/form-display');
     // $this->drupalGet('admin/structure/types/manage/gallery/display');
+    $this->drupalGet('admin/config/m/display');
   }
 
 }

@@ -244,8 +244,8 @@ if [[ -n "$NF_ERE" && -n "$SUBJECT" ]]; then
     ( cd "$_core" && find . \( -name tests -o -name vendor -o -name node_modules \) -prune -o -type f \
         \( -name '*.inc' -o -name '*.module' -o -name '*.install' -o -name '*.php' \) \
         -exec grep -H -o -E "^function ($NF_ERE)\(" {} + 2>/dev/null || true ) \
-      | sed -E 's#^\./##; s#:function ([A-Za-z0-9_]+)\($#\t\1#' \
-      | jq -R -s -c 'split("\n") | map(select(length > 0) | split("\t") | {key: .[1], value: ("core/" + .[0])}) | from_entries' \
+      | sed -E 's#^\./##; s#\($##' \
+      | jq -R -s -c 'split("\n") | map(select(length > 0) | split(":function ") | {key: .[1], value: ("core/" + .[0])}) | from_entries' \
       > "$DEFF" 2>/dev/null || printf '{}\n' > "$DEFF"
   fi
 fi
@@ -400,7 +400,8 @@ G="$(printf '%s' "$RESULT" | jq -r '.counts.guarded // 0')"
 hr
 log_plain "Deprecations — target Drupal ${TARGET_MAJOR}, core floor ${FLOOR:-unknown}, soft policy '${POLICY}' (phase ${PHASE})"
 hr
-if [[ "$H" == "0" && "$S" == "0" && "$U" == "0" && "$G" == "0" ]]; then
+NR_="$(printf '%s' "$RESULT" | jq -r '.counts.not_removed // 0')"
+if [[ "$H" == "0" && "$S" == "0" && "$U" == "0" && "$G" == "0" && "$NR_" == "0" ]]; then
   log_ok "No deprecation recognized in the input."
   exit 0
 fi

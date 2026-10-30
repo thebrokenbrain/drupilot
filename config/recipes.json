@@ -663,20 +663,20 @@
       ],
       "source": "config/deprecations.json#/lifecycle/8",
       "template": {
-        "fix": "Replace it with: \\Drupal\\Core\\Utility\\Error::logException(\\Drupal::logger($type), $exception, $message, $variables, $severity, $link)",
+        "fix": "Replace it with: \\Drupal\\Core\\Utility\\Error::logException(\\Drupal::logger($type), $exception) (Drupal 10.1+), whose signature is (LoggerInterface $logger, \\Throwable $exception, string $message = Error::DEFAULT_ERROR_MESSAGE, array $additional_variables = [], string $level = LogLevel::ERROR): pass $message only when the call sets one (a NULL message is a TypeError), $variables as $additional_variables (with 'link' => $link when the call had a link), and a \\Psr\\Log\\LogLevel string instead of an RfcLogLevel int for a severity other than the default",
         "lifecycle": [
           {
             "deprecated_in": "10.1.0",
             "kind": "function",
             "removed_in": "11.0.0",
-            "replacement": "\\Drupal\\Core\\Utility\\Error::logException(\\Drupal::logger($type), $exception, $message, $variables, $severity, $link)",
+            "replacement": "\\Drupal\\Core\\Utility\\Error::logException(\\Drupal::logger($type), $exception) (Drupal 10.1+), whose signature is (LoggerInterface $logger, \\Throwable $exception, string $message = Error::DEFAULT_ERROR_MESSAGE, array $additional_variables = [], string $level = LogLevel::ERROR): pass $message only when the call sets one (a NULL message is a TypeError), $variables as $additional_variables (with 'link' => $link when the call had a link), and a \\Psr\\Log\\LogLevel string instead of an RfcLogLevel int for a severity other than the default",
             "replacement_since": "10.1",
             "symbol": "watchdog_exception"
           }
         ],
         "why": "watchdog_exception() is deprecated in drupal:10.1.0 and removed from drupal:11.0.0."
       },
-      "version": "c32dfd190b01"
+      "version": "4b7b1c260bfa"
     },
     {
       "applies_when": {},
@@ -911,9 +911,9 @@
       ],
       "source": "config/port-checks.json#/checks/event-dispatch-order",
       "template": {
-        "why": "A `->dispatch()` call whose first argument is an event name, a class constant (`LogEntityEvents::LOG_EVENT`) or a string literal, the argument order of Symfony 4.2 and before, while the declared core range or the target major admits a core from `removed_in`. Symfony 4.3 deprecated that order and Symfony 5 removed it: from Drupal `removed_in` (Symfony 6) EventDispatcherInterface::dispatch(object $event, ?string $eventName = null) throws a TypeError for it (training run module 13, log_entity: its user_login and form-validate hooks, which run at every login). PHPStan misses it when the dispatcher comes from \\Drupal::service(), typed mixed. Swap the two arguments: `dispatch($event, NAME)`, which every Drupal 9.1+ core reads. A call whose event name is a variable is not checked."
+        "why": "A `->dispatch()` call whose first argument is an event name (alone or before the event), a class constant (`LogEntityEvents::LOG_EVENT`) or a string literal, the argument order of Symfony 4.2 and before, while the declared core range or the target major admits a core from `removed_in`. Symfony 4.3 deprecated that order and Symfony 5 removed it: from Drupal `removed_in` (Symfony 6) EventDispatcherInterface::dispatch(object $event, ?string $eventName = null) throws a TypeError for it (training run module 13, log_entity: its user_login and form-validate hooks, which run at every login). PHPStan misses it when the dispatcher comes from \\Drupal::service(), typed mixed. Pass the event object first and the name second: `dispatch($event, NAME)`, which every Drupal 9.1+ core reads; a call with the name alone (`dispatch(NAME)`, allowed by the old signature) needs an event object. A call whose event name is a variable is not checked."
       },
-      "version": "1ae0d141e6ce"
+      "version": "93d4bba3f51e"
     },
     {
       "applies_when": {},
@@ -1112,9 +1112,9 @@
       ],
       "source": "config/port-checks.json#/checks/test-field-ui-display-path",
       "template": {
-        "why": "In a file under tests/, a path ending in /display (admin/structure/types/manage/<bundle>/display) given to drupalGet() or a Url while the declared core range admits a core from `overview_from`. From that release Field UI serves an overview of the view modes at .../display and the default display form at .../display/default, so a test that opens .../display to configure a formatter finds no form (training run modules 05, fotorama_gallery, and 08, pbf). .../display/default opens the same form on every core: on older ones it matches the .../display/{view_mode_name} route."
+        "why": "In a file under tests/, a Field UI path ending in /display (admin/structure/types/manage/<bundle>/display, a vocabulary's .../manage/<vocab>/overview/display, admin/config/people/accounts/display; a module's own .../display route is not one) given to drupalGet() or a Url while the declared core range admits a core from `overview_from`. From that release Field UI serves an overview of the view modes at .../display and the default display form at .../display/default, so a test that opens .../display to configure a formatter finds no form (training run modules 05, fotorama_gallery, and 08, pbf). .../display/default opens the same form on every core: on older ones it matches the .../display/{view_mode_name} route."
       },
-      "version": "a94b215f4488"
+      "version": "a1526af4cfee"
     },
     {
       "applies_when": {},
@@ -1420,8 +1420,8 @@
   ],
   "schema": "drupilot.recipes/1",
   "sources": {
-    "config/deprecations.json": "sha256:eb255f51cc12f30754e935ada60bb1d1f34e3161ae7109715616fe7544472f2d",
+    "config/deprecations.json": "sha256:a130e1d9e075530077dde01753b74455c65c87c78c62a4ae2e6e45c7e80b0b63",
     "config/metadata-checks.json": "sha256:182f7ce002a63577a327518fcddfe45d61ea44a23826b981843933ee55fa706f",
-    "config/port-checks.json": "sha256:e1d4d8d6f5e17b5548e0a55cd1fd4163b23a2e5acba648bd8774527e9d7fd71f"
+    "config/port-checks.json": "sha256:222d3465db0e800f8d232ce4ff26926eb72776db18612d3e217843e19c29329a"
   }
 }

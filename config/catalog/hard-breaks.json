@@ -25,10 +25,10 @@
     {
       "id": "jquery_ui",
       "label": "jQuery UI (core/jquery.ui.* removed or externalized)",
-      "src": "drupal/core 11.4.8 core/core.libraries.yml declares no jquery.ui library; only internal.jquery_ui remains; .uniqueId()/.removeUniqueId() are jQuery UI methods (core/assets/vendor/jquery.ui/ui/unique-id-min.js on 10.x), gone with the library (training run module 09, material_admin)",
+      "src": "drupal/core 11.4.8 core/core.libraries.yml declares no jquery.ui library; only internal.jquery_ui remains",
       "verified": true,
       "blocking": false,
-      "ere": "jquery[._]ui|core/jquery\\.ui|\\.(uniqueId|removeUniqueId)\\(",
+      "ere": "jquery[._]ui|core/jquery\\.ui",
       "globs": ["*.libraries.yml", "*.yml", "*.js"]
     },
     {

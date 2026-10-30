@@ -30,8 +30,8 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   with 12 runtime deprecations and on 10.6.20, a missing config schema fails
   it).
 - Port-safety check `event-dispatch-order` (error): a `->dispatch()` call
-  whose first argument is an event name (`Events::NAME` or a string), the
-  Symfony 4.2 order, which Drupal 10's Symfony 6 rejects with a TypeError;
+  whose first argument is an event name (`Events::NAME` or a string), alone
+  or before the event, the Symfony 4.2 order, which Drupal 10's Symfony 6 rejects with a TypeError;
   PHPStan misses it when the dispatcher comes from `\Drupal::service()`
   (training run module 13, log_entity: its login hooks).
 - The assess verdict counts as manual a PHPStan `class.notFound` outside
@@ -56,16 +56,17 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 - Hard-break category `jquery4`: a JavaScript call of a jQuery 3 utility that
   jQuery 4, which core ships from Drupal 11.0, removed (`$.isNumeric()`,
   `$.trim()`, `$.isArray()`, `$.parseJSON()`, `$.isFunction()`, `$.type()`,
-  `$.now()` and others); the jQuery UI category also matches `.uniqueId()`.
-  The material_admin theme (training run module 09) used both, and only the
-  port model noticed.
+  `$.now()` and others).
+  The material_admin theme (training run module 09) called `$.isNumeric()`,
+  and only the port model noticed.
 - Port-safety checks `test-abstract-suffix` and `test-field-ui-display-path`,
   run by the test skill, agent and command with the other test checks:
   - an abstract base class in a file named `*Test.php`: PHPUnit 10+ (Drupal
     11) throws "Class X is abstract" when core's configuration collects it,
     and `failOnWarning` fails the run although every test passed (training
     run module 08, pbf: `PbfBaseTest.php`); name it `*TestBase`;
-  - a test path ending in `/display`: from Drupal 11.4 Field UI serves an
+  - a test's Field UI path ending in `/display` (`.../manage/<bundle>/display`,
+    not a module's own route): from Drupal 11.4 Field UI serves an
     overview of the view modes there, and the default display form moved to
     `.../display/default`, which every core serves (fotorama_gallery and pbf
     both had to change it in the test stage).
@@ -113,7 +114,11 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 - `discover-tests.sh` and `run-phpunit.sh` find the tests of the subject's
   submodules (`modules/<sub>/tests/src/<group>`, a nested extension with its
   own `*.info.yml`; `subject_test_dirs` in `subject.sh`): `run-phpunit.sh`
-  runs one PHPUnit per directory and records every test. A subject whose
+  runs one PHPUnit per directory and records every test; a directory whose
+  run died without any test result while another one ran is listed in the
+  group's `crashed_dirs` and classified on its own against the baseline
+  (`dir-crashed`: a regression, or not baselined when it crashed there too).
+  A subject whose
   only tests sat in a submodule was reported `not-verified-no-tests`, and
   the port took no baseline (training run module 13, log_entity).
 - The ddev-environment and test-adaptation skills forbid stopping, deleting or

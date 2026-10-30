@@ -689,7 +689,7 @@ Checks (--checks selects a subset; default all):
   event-dispatch-order
                      A ->dispatch() call whose first argument is an event
                      name (a class constant such as Events::NAME, or a string
-                     literal), the Symfony 4.2 order, while the range or the
+                     literal), alone or before the event, the Symfony 4.2 order, while the range or the
                      target admits the check's removed_in (10.0.0, Symfony
                      6): dispatch(object $event, ?string $eventName) then
                      throws a TypeError (training run module 13, log_entity:
@@ -3680,9 +3680,11 @@ listed (status report-only), with the command to add them.
 
 A package Composer cannot install (a contrib module with no release for the
 bed's core, a library whose constraint conflicts) is a blocker: the run says
-which one and why, installs the others, and exits 3. DRUPILOT_LENIENT_DEPS
-(install-toolchain.sh) is the way to install a contrib module whose
-drupal/core constraint does not admit the bed's core yet.
+which one and why, installs the others, and exits 3. To install a contrib
+module whose drupal/core constraint does not admit the bed's core yet, set
+DRUPILOT_LENIENT_DEPS and rerun install-toolchain.sh (it installs
+composer-drupal-lenient and writes its allowed-list; this script does not
+read the variable), then rerun this one.
 
 Usage:
   install-subject-deps.sh --subject DIR [--root ROOT] [--dry-run] [--json]
@@ -4443,7 +4445,8 @@ Usage:
   --json         {status, machine_name, type, core, test_file, phpunit_rc,
                   deprecations, excerpt} on STDOUT; status: passed | failed |
                   blocked | dry-run (deprecations: the runtime deprecations
-                  PHPUnit counted, which the static analysis may not see;
+                  PHPUnit counted, core's own included, which the static
+                  analysis may not see: read them in phpunit.log;
                   excerpt: the tail of PHPUnit's output on failure)
 
 The result is recorded in the subject's hidden state dir (install-smoke.json,
