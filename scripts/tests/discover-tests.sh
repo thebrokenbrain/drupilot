@@ -16,7 +16,10 @@
 #   default  -> a human-readable English summary on STDOUT.
 #   --json   -> a single JSON object on STDOUT (nothing else):
 #               { unit, kernel, functional, javascript, total,
-#                 files:[ {path, type, class} ] }
+#                 files:[ {path, type, class} ] }, plus legacy:[paths]
+#               when test classes sit in a SimpleTest-era location
+#               (src/Tests/, Tests/) that PHPUnit never reads: never
+#               counted; move them to tests/src/<group>/ (a test adaptation)
 #   Diagnostics/logging always go to STDERR.
 #
 # Exit codes:
@@ -118,12 +121,22 @@ fi
 
 TOTAL=$((UNIT + KERNEL + FUNCTIONAL + JAVASCRIPT))
 
+# Test classes in a SimpleTest-era location (src/Tests/, or a top-level Tests/
+# directory): PHPUnit never finds them, so they never ran (training run modules
+# 03 like_dislike and 11 nodeviewcount). Listed apart, never counted: moving
+# one to tests/src/<group>/ with its namespace is a test adaptation.
+LEGACY_JSON="$(cd "$SUBJECT" && find . \( -name vendor -o -name node_modules -o -name .git \) -prune -o -type f -name '*Test.php' \
+    \( -path './src/Tests/*' -o -path './Tests/*' \) -print 2>/dev/null | sed 's#^\./##' | LC_ALL=C sort \
+  | jq -R -s -c 'split("\n") | map(select(length > 0))')"
+[[ -n "$LEGACY_JSON" ]] || LEGACY_JSON='[]'
+
 RESULT="$(jq -n \
   --argjson unit "$UNIT" --argjson kernel "$KERNEL" \
   --argjson functional "$FUNCTIONAL" --argjson javascript "$JAVASCRIPT" \
-  --argjson total "$TOTAL" --argjson files "$FILES_JSON" \
+  --argjson total "$TOTAL" --argjson files "$FILES_JSON" --argjson legacy "$LEGACY_JSON" \
   '{unit:$unit, kernel:$kernel, functional:$functional, javascript:$javascript,
-    total:$total, files:$files}')"
+    total:$total, files:$files}
+   + (if ($legacy | length) > 0 then {legacy: $legacy} else {} end)')"
 
 # ---------------------------------------------------------------------------
 # Output
@@ -143,6 +156,12 @@ else
   if [[ "$TOTAL" -eq 0 ]]; then
     printf '\n%sNo PHPUnit tests found.%s In Phase 2 (refactor), add coverage to maximise it.\n' \
       "$_C_YELLOW" "$_C_RESET"
+  fi
+  _nl="$(printf '%s' "$LEGACY_JSON" | jq 'length')"
+  if [[ "$_nl" -gt 0 ]]; then
+    printf '\n%s%s test class file(s) in a SimpleTest-era location PHPUnit never reads:%s\n' "$_C_YELLOW" "$_nl" "$_C_RESET"
+    printf '%s' "$LEGACY_JSON" | jq -r '.[] | "  - \(.)"'
+    printf '  Move each to tests/src/<Unit|Kernel|Functional|FunctionalJavascript>/ with the namespace\n  Drupal\\Tests\\<module>\\<group> (a test adaptation), or they never run.\n'
   fi
   printf '\n'
 fi

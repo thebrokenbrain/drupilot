@@ -42,8 +42,12 @@ If DDEV is down, tell the user to run `/drupilot-setup` (or `ddev start`) and st
 
 This classifies the test classes under
 `tests/src/{Unit,Kernel,Functional,FunctionalJavascript}` and returns counts plus
-the file list. If there are zero tests, say so: there is nothing to run in
-Phase 1 (and Phase 2 is where new tests get authored). Report the breakdown.
+the file list, plus `legacy`: test classes in a SimpleTest-era location
+(`src/Tests/`, `Tests/`) that PHPUnit never reads. Move those to
+`tests/src/<group>/` first (a test adaptation; the test-adaptation skill says
+how) and discover again. If there are zero tests, say so: there is nothing to
+run in Phase 1 (and Phase 2 is where new tests get authored). Report the
+breakdown.
 
 ## Step 2 — Load the procedure and delegate iteration
 

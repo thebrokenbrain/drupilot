@@ -56,6 +56,18 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ### Fixed
 
+- `run-phpunit.sh` runs the Unit, Kernel and Functional groups with
+  `SIMPLETEST_BASE_URL=http://localhost` when the DDEV add-ons set the
+  container's value to `http://web` (FunctionalJavascript keeps it: Selenium,
+  in another container, needs it). A Functional test that expects the
+  client address `127.0.0.1`, as on core's CI, failed there although the
+  module was right, and the verdict said regression (training run module
+  11, nodeviewcount: 2 of its 10 tests).
+- `discover-tests.sh` lists the test classes in a SimpleTest-era location
+  (`src/Tests/`, a top-level `Tests/`) under `legacy`: PHPUnit never reads
+  them, so a module with five test classes there was reported as having no
+  tests until the test stage found them (nodeviewcount, like_dislike). The
+  test command and skill move them first.
 - `deps-status.sh` classifies an unsupported (abandoned) drupal.org project by
   its releases instead of calling it "not on drupal.org", and reads each
   release's core compatibility as a constraint (`>=8.9 <11` does not admit

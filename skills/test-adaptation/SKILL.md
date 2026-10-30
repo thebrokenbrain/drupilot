@@ -66,7 +66,15 @@ bash "$ROOT/scripts/tests/discover-tests.sh" --subject "$SUBJECT" --json
 (fast to slow: Unit -> Kernel -> Functional -> FunctionalJavascript) and to know
 whether Selenium is needed at all.
 
-If `total` is 0: report that the subject has no tests. In Phase 1 that is a
+A `legacy` list names test classes in a SimpleTest-era location
+(`src/Tests/`, a top-level `Tests/`) that PHPUnit never reads: they never
+ran. Moving each to `tests/src/<group>/` (`git mv`, so the history follows),
+with the namespace `Drupal\Tests\<module>\<group>`, is a test adaptation
+(form, not what it verifies): do it first, then discover again. A placeholder
+that asserts nothing (`assertEquals(TRUE, TRUE)`) is reported, not moved: it
+would only fake a green run.
+
+If `total` is 0 (and no `legacy` test was moved): report that the subject has no tests. In Phase 1 that is a
 finding (nothing to validate beyond a smoke check); in Phase 2 it becomes the
 mandate to write tests (see §6).
 

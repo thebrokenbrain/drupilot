@@ -223,6 +223,20 @@ fi
 # shellcheck disable=SC2206,SC2207  # intentional word-split: runner is a command prefix.
 RUNNER=( $(drupal_runner "$DRUPAL_ROOT") )
 
+# The base URL of the non-JavaScript groups: the add-ons set
+# SIMPLETEST_BASE_URL=http://web for the whole container, which Selenium (in
+# another container) needs; a Unit, Kernel or Functional test then reaches the
+# site over the DDEV network, from the web container's own network address. A
+# test that expects the client address 127.0.0.1, as on core's CI
+# (http://localhost), fails there although the module is right (training run
+# module 11, nodeviewcount). Through DDEV, when the value is the add-on's
+# http://web, those groups get http://localhost; FunctionalJavascript keeps it.
+NONJS_ENV=()
+if [[ ${#RUNNER[@]} -gt 0 ]]; then
+  _sbu="$("${RUNNER[@]}" printenv SIMPLETEST_BASE_URL < /dev/null 2> /dev/null | tr -d '\r' | sed -n '1p' || true)"
+  [[ "$_sbu" == "http://web" ]] && NONJS_ENV=(env SIMPLETEST_BASE_URL=http://localhost)
+fi
+
 # PHPUnit lives in core; use the core configuration explicitly.
 PHPUNIT=( vendor/bin/phpunit -c web/core )
 if [[ ! -f "$DRUPAL_ROOT/web/core/phpunit.xml.dist" && ! -f "$DRUPAL_ROOT/web/core/phpunit.xml" ]]; then
@@ -533,7 +547,9 @@ run_group() {
   # not redirect or swallow its output. --log-junit only adds the per-test file.
   local junit="$JUNIT_REL/junit-$$-$group.xml"
   rm -f "$DRUPAL_ROOT/$junit" 2>/dev/null || true
-  local -a cmd=(${RUNNER[@]+"${RUNNER[@]}"} ${COVERAGE_ENV[@]+"${COVERAGE_ENV[@]}"} "${PHPUNIT[@]}" --log-junit "$junit" ${COVERAGE_ARGS[@]+"${COVERAGE_ARGS[@]}"} ${FILTER_ARGS[@]+"${FILTER_ARGS[@]}"} "$path")
+  local -a genv=()
+  [[ "$group" != "FunctionalJavascript" ]] && genv=(${NONJS_ENV[@]+"${NONJS_ENV[@]}"})
+  local -a cmd=(${RUNNER[@]+"${RUNNER[@]}"} ${genv[@]+"${genv[@]}"} ${COVERAGE_ENV[@]+"${COVERAGE_ENV[@]}"} "${PHPUNIT[@]}" --log-junit "$junit" ${COVERAGE_ARGS[@]+"${COVERAGE_ARGS[@]}"} ${FILTER_ARGS[@]+"${FILTER_ARGS[@]}"} "$path")
 
   # Temporarily relax errexit around the test run so a failing group does not
   # abort the script before we summarise it. Through DDEV, `ddev exec`'s red

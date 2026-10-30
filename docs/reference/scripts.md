@@ -4361,7 +4361,10 @@ Output:
   default  -> a human-readable English summary on STDOUT.
   --json   -> a single JSON object on STDOUT (nothing else):
               { unit, kernel, functional, javascript, total,
-                files:[ {path, type, class} ] }
+                files:[ {path, type, class} ] }, plus legacy:[paths]
+              when test classes sit in a SimpleTest-era location
+              (src/Tests/, Tests/) that PHPUnit never reads: never
+              counted; move them to tests/src/<group>/ (a test adaptation)
   Diagnostics/logging always go to STDERR.
 
 Exit codes:
