@@ -2,7 +2,7 @@
   "schema_version": 1,
   "as_of": "2026-10-06",
   "catalog": "hard-breaks",
-  "description": "The four hard-break categories of the viability rubric (07-R4, T-M4-09), moved out of skills/viability-assessment/SKILL.md so scripts/analysis/assess.sh counts them the same way on every run. A category is present when its POSIX ERE (case-sensitive, grep -E) matches at least one file of the subject whose name matches one of its globs. The matched files are listed; the count of categories present is the rubric's hard_breaks. The patterns are the 0.9 skill's, unchanged, so the verdict reproduces; each fact was verified against the drupal/core 11.4.8 tree of the lab bed.",
+  "description": "The hard-break categories of the viability rubric (07-R4, T-M4-09), moved out of skills/viability-assessment/SKILL.md so scripts/analysis/assess.sh counts them the same way on every run. A category is present when its POSIX ERE (case-sensitive, grep -E) matches at least one file of the subject whose name matches one of its globs. The matched files are listed; the count of categories present is the rubric's hard_breaks. The first four patterns are the 0.9 skill's; jquery4 and the jQuery UI method pattern came from the training run (1.0.3); each fact was verified against the drupal/core 11.4.8 tree of the lab bed.",
   "entries": [
     {
       "id": "twig3",
@@ -25,11 +25,20 @@
     {
       "id": "jquery_ui",
       "label": "jQuery UI (core/jquery.ui.* removed or externalized)",
-      "src": "drupal/core 11.4.8 core/core.libraries.yml declares no jquery.ui library; only internal.jquery_ui remains",
+      "src": "drupal/core 11.4.8 core/core.libraries.yml declares no jquery.ui library; only internal.jquery_ui remains; .uniqueId()/.removeUniqueId() are jQuery UI methods (core/assets/vendor/jquery.ui/ui/unique-id-min.js on 10.x), gone with the library (training run module 09, material_admin)",
       "verified": true,
       "blocking": false,
-      "ere": "jquery[._]ui|core/jquery\\.ui",
+      "ere": "jquery[._]ui|core/jquery\\.ui|\\.(uniqueId|removeUniqueId)\\(",
       "globs": ["*.libraries.yml", "*.yml", "*.js"]
+    },
+    {
+      "id": "jquery4",
+      "label": "jQuery 4 (removed jQuery 3 utilities)",
+      "src": "drupal/core core/core.libraries.yml jquery version 3.7.1 on 10.6.x, 4.0.0-beta.2 on 11.0.x/11.1.x, 4.0.0-rc.1 on 11.2.x, 4.0.0 on 11.3.x/11.4.x (git.drupalcode.org, read 2026-10-30); core/assets/vendor/jquery/jquery.js defines jQuery.isArray, parseJSON, nodeName, isFunction, isWindow, camelCase, type, now, isNumeric, trim and unique in 3.7.1 (10.6.20 lab bed) and none of them in 4.0.0 (11.4.11 lab bed). Training run module 09, material_admin: $.isNumeric() in notifications.js.",
+      "verified": true,
+      "blocking": false,
+      "ere": "(\\$|jQuery)\\.(isArray|parseJSON|nodeName|isFunction|isWindow|camelCase|type|now|isNumeric|trim|unique)\\(",
+      "globs": ["*.js"]
     },
     {
       "id": "symfony7",

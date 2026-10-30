@@ -152,7 +152,7 @@ Hand `assess.json` to the analyst (it reads that file and does not run
   the hard and unknown deprecations no Drupal Rector rule changes in the same
   function or method, plus the signature and port-safety errors.
 - **Auto-fixable**: `auto_fixable` (the official Rector files and rules).
-- **Hard breaks**: `hard_break_categories` (Twig 3, CKEditor 5, jQuery UI,
+- **Hard breaks**: `hard_break_categories` (Twig 3, CKEditor 5, jQuery UI, jQuery 4,
   Symfony 7, and the core-removal detectors) with the files that matched. A
   Symfony 7 hit is the most likely to be harmless: say whether PHPStan flags a
   real type or signature error there.

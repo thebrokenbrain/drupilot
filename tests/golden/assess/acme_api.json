@@ -55,6 +55,7 @@
   "findings_hash": "sha256:73a8e8baa85bd616c65e5a6f8fb6391f71449d2a521307887c371599d4118085",
   "hard_break_categories": {
     "ckeditor5": [],
+    "jquery4": [],
     "jquery_ui": [],
     "symfony7": [],
     "twig3": []

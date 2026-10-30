@@ -15,6 +15,12 @@ carries none) to match, and tag the commit `vX.Y.Z`.
 
 ### Added
 
+- Hard-break category `jquery4`: a JavaScript call of a jQuery 3 utility that
+  jQuery 4, which core ships from Drupal 11.0, removed (`$.isNumeric()`,
+  `$.trim()`, `$.isArray()`, `$.parseJSON()`, `$.isFunction()`, `$.type()`,
+  `$.now()` and others); the jQuery UI category also matches `.uniqueId()`.
+  The material_admin theme (training run module 09) used both, and only the
+  port model noticed.
 - Port-safety checks `test-abstract-suffix` and `test-field-ui-display-path`,
   run by the test skill, agent and command with the other test checks:
   - an abstract base class in a file named `*Test.php`: PHPUnit 10+ (Drupal
@@ -62,7 +68,9 @@ carries none) to match, and tag the commit `vX.Y.Z`.
   `/drupilot-test` pass the subject to their preflight, which then reads the
   DDEV project of the subject's Drupal root: run from another directory, the
   Selenium add-on was always reported missing although it was installed
-  (training run module 05, fotorama_gallery).
+  (training run module 05, fotorama_gallery). `run-phpunit.sh`,
+  `run-phpstan.sh`, `run-phpcs.sh` and `convert-attributes.sh` pass their
+  subject to their own preflight for the same reason (module 09).
 - A "Function X not found" that is no removal no longer counts as blocking
   work: `classify-deprecations.sh` gives the new class `not-removed` to a
   function the subject's core defines in a file core loads on demand

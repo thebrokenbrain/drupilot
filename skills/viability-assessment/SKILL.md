@@ -436,7 +436,7 @@ Suggested phasing to encode in the plan:
    in the main and every submodule `info.yml` (`set-core-requirement.sh`),
    apply `palantirnet/drupal-rector` (dry-run -> review -> apply -> validate).
 3. **Stage 2 — Manual items + hard breaks**: the `manual_items`, then Twig 3,
-   CKEditor 5, jQuery UI, Symfony 7, in risk order; optionally the filtered
+   CKEditor 5, jQuery UI, jQuery 4, Symfony 7, in risk order; optionally the filtered
    digests layer of the port.
 4. **Stage 3 — Tests green**: adapt + run the full suite (`test-adaptation`).
 5. **Phase 2 (opt-in) — Refactor**: "the target major's way", PHPStan 5-6,
