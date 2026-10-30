@@ -1112,9 +1112,9 @@
       ],
       "source": "config/port-checks.json#/checks/test-field-ui-display-path",
       "template": {
-        "why": "In a file under tests/, a Field UI path ending in /display (admin/structure/types/manage/<bundle>/display, a vocabulary's .../manage/<vocab>/overview/display, admin/config/people/accounts/display; a module's own .../display route is not one) given to drupalGet() or a Url while the declared core range admits a core from `overview_from`. From that release Field UI serves an overview of the view modes at .../display and the default display form at .../display/default, so a test that opens .../display to configure a formatter finds no form (training run modules 05, fotorama_gallery, and 08, pbf). .../display/default opens the same form on every core: on older ones it matches the .../display/{view_mode_name} route."
+        "why": "In a file under tests/, a Field UI path ending in /display (admin/structure/types/manage/<bundle>/display, a vocabulary's .../manage/<vocab>/overview/display, admin/config/people/accounts/display, or /display after a variable prefix such as $bundle_path . '/display'; a module's own literal .../display route is not one) given to drupalGet() or a Url while the declared core range admits a core from `overview_from`. From that release Field UI serves an overview of the view modes at .../display and the default display form at .../display/default, so a test that opens .../display to configure a formatter finds no form (training run modules 05, fotorama_gallery, and 08, pbf). .../display/default opens the same form on every core: on older ones it matches the .../display/{view_mode_name} route."
       },
-      "version": "a1526af4cfee"
+      "version": "b7a60b06a90b"
     },
     {
       "applies_when": {},
@@ -1422,6 +1422,6 @@
   "sources": {
     "config/deprecations.json": "sha256:a130e1d9e075530077dde01753b74455c65c87c78c62a4ae2e6e45c7e80b0b63",
     "config/metadata-checks.json": "sha256:182f7ce002a63577a327518fcddfe45d61ea44a23826b981843933ee55fa706f",
-    "config/port-checks.json": "sha256:222d3465db0e800f8d232ce4ff26926eb72776db18612d3e217843e19c29329a"
+    "config/port-checks.json": "sha256:4d37f70692f191a7197a2dd71108bc446b10dfa5dae40fdd23dd2e318c58615d"
   }
 }

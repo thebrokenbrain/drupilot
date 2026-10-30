@@ -8,8 +8,8 @@
 # - test-field-ui-display-path: a tests/ path ending in /display given to
 #   drupalGet() (literal, interpolated, concatenated) while the range admits
 #   Drupal 11 (an overview from 11.4); .../display/default, /form-display, a
-#   comment and a module's own admin/config/m/display route pass; off for
-#   ^9 || ^10.
+#   comment and a module's own admin/config/m/display route pass, a path after
+#   a variable prefix ($bundle_path . '/display') is flagged; off for ^9 || ^10.
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/assert.sh"
 t_isolate
 PS="$T_REPO/scripts/analysis/check-port-safety.sh"
@@ -54,14 +54,16 @@ class MDisplayTest extends MBaseTest {
     $this->drupalGet('admin/structure/types/manage/gallery/form-display');
     // $this->drupalGet('admin/structure/types/manage/gallery/display');
     $this->drupalGet('admin/config/m/display');
+    $this->drupalGet($bundle_path . '/display');
+    $this->drupalGet("$bundle_path/display");
   }
 
 }
 EOF
 t_run "$T_SH" "$PS" --subject "$M" --checks test-abstract-suffix,test-field-ui-display-path --json
-assert_eq "^10 || ^11: the abstract *Test.php and the three /display paths, warnings without git" \
+assert_eq "^10 || ^11: the abstract *Test.php and the five Field UI /display paths (two after a variable prefix), warnings without git" \
   "$T_RC|$(jq -c '[.findings[] | [.check, .file, .line, .severity]]' "$T_OUT")" \
-  '0|[["test-abstract-suffix","tests/src/Functional/MBaseTest.php",7,"warn"],["test-field-ui-display-path","tests/src/Functional/MDisplayTest.php",11,"warn"],["test-field-ui-display-path","tests/src/Functional/MDisplayTest.php",12,"warn"],["test-field-ui-display-path","tests/src/Functional/MDisplayTest.php",13,"warn"]]'
+  '0|[["test-abstract-suffix","tests/src/Functional/MBaseTest.php",7,"warn"],["test-field-ui-display-path","tests/src/Functional/MDisplayTest.php",11,"warn"],["test-field-ui-display-path","tests/src/Functional/MDisplayTest.php",12,"warn"],["test-field-ui-display-path","tests/src/Functional/MDisplayTest.php",13,"warn"],["test-field-ui-display-path","tests/src/Functional/MDisplayTest.php",18,"warn"],["test-field-ui-display-path","tests/src/Functional/MDisplayTest.php",19,"warn"]]'
 assert_match "  the abstract message names the class and the fix" \
   "$(jq -r '.findings[] | select(.check == "test-abstract-suffix") | .message' "$T_OUT")" \
   "^MBaseTest is abstract in a file named \*Test\.php: from PHPUnit 10 \(Drupal 11\.0 and later\).*Name the class and its file \*TestBase"

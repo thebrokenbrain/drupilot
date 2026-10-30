@@ -234,7 +234,7 @@
           },
           "executed": {"type": "integer", "minimum": 0},
           "crashed_dirs": {
-            "description": "The subject-relative test directories (the subject's tests/src/<group> or a submodule's) whose PHPUnit run failed without any test result while another directory of the group ran; absent when there is none.",
+            "description": "The subject-relative test directories (the subject's tests/src/<group> or a submodule's) whose PHPUnit run failed without any test result, in a group of several directories (one PHPUnit run each); absent when there is none.",
             "type": "array",
             "items": {"type": "string"}
           }

@@ -590,9 +590,10 @@ run_group() {
       n="$(printf '%s\n' "$parsed" | grep -c . || true)"
       executed=$((executed + n))
     fi
-    # A directory whose PHPUnit failed without any test result crashed: kept
+    # A directory whose PHPUnit failed without any test result crashed (126/127
+    # is PHPUnit not executable: an environment blocker, never a crash): kept
     # apart, so a crash next to a directory that ran is never hidden.
-    if [[ "$one" -ne 0 && "$n" -eq 0 ]]; then cdirs="${cdirs:+$cdirs,}${path#"$SUBJECT_REL"/}"; fi
+    if [[ "$one" -ne 0 && "$one" -ne 126 && "$one" -ne 127 && "$n" -eq 0 ]]; then cdirs="${cdirs:+$cdirs,}${path#"$SUBJECT_REL"/}"; fi
     rm -f "$DRUPAL_ROOT/$junit" 2>/dev/null || true
   done
   junit="$JUNIT_REL/junit-$$-$group-*.xml"
@@ -632,8 +633,9 @@ run_group() {
     # No per-test result at all: PHPUnit died before writing its log.
     [[ "$executed" -eq 0 ]] && gstatus="crashed"
   fi
-  # crashed_dirs (subject-relative, only when one crashed while another ran).
-  [[ "$gstatus" == "crashed" ]] && cdirs=""
+  # crashed_dirs (subject-relative), in a group of several directories only (a
+  # one-directory group keeps the group-level verdict), never for a blocked one.
+  [[ ${#dirs[@]} -gt 1 && "$gstatus" != "blocked" ]] || cdirs=""
   printf '%s\t%s\t%s\t%s\t%s\n' "$group" "$rc" "$gstatus" "$executed" "$cdirs" >> "$GROUPS_TSV"
   return 0
 }
@@ -756,7 +758,7 @@ else
   if [[ -z "$BASELINE_MODE" && "$USE_BASELINE" == "1" && -r "$BASELINE_FILE" ]] \
      && jq -e '(.tests | type) == "array"' "$BASELINE_FILE" >/dev/null 2>&1; then
     BASELINE_JSON="$(jq -c -n --slurpfile b "$BASELINE_FILE" --slurpfile curf "$TESTS_JSON_FILE" --argjson cg "$GROUPRES_JSON" \
-        --arg file "$BASELINE_FILE" --arg digest "$DIGEST" '
+        --arg file "$BASELINE_FILE" --arg digest "$DIGEST" --arg mn "$(subject_machine_name "$SUBJECT" 2>/dev/null || true)" '
       def bad: .status == "fail" or .status == "error";
       # The baseline failure was the environment refusing the un-ported
       # extension (install-time), not the behavior under test.
@@ -766,11 +768,15 @@ else
       | (reduce ($base.tests // [])[] as $t ({}; .[$t.id] = $t)) as $bm
       | (reduce ($base.group_results // [])[] as $g ({}; .[$g.group] = $g.status)) as $bgs
       # The directories of a group that crashed in the baseline while another
-      # one ran (submodule tests, one PHPUnit run per directory).
+      # one ran (submodule tests, one PHPUnit run per directory), and whether a
+      # test belongs to one: its class is in the namespace Drupal\Tests\<ext>\
+      # of the extension that holds the directory (the subject for tests/src).
       | (reduce ($base.group_results // [])[] as $g ({}; .[$g.group] = ($g.crashed_dirs // []))) as $bcd
-      | [ $cur[] | select(bad) | . as $t | ($bm[$t.id]) as $p
+      | def dir_ext($d): if ($d | startswith("tests/")) then $mn else ($d | split("/tests/src/")[0] | split("/") | last) end;
+        def in_crashed($t): any(($bcd[$t.group] // [])[]; . as $d | ($t.id | startswith("Drupal\\Tests\\" + dir_ext($d) + "\\")));
+        [ $cur[] | select(bad) | . as $t | ($bm[$t.id]) as $p
           | if $p == null then
-              (if $bgs[$t.group] == "crashed" or (($bcd[$t.group] // []) | length > 0)
+              (if $bgs[$t.group] == "crashed" or in_crashed($t)
                then {id: $t.id, group: $t.group, class: "not-baselined", basis: "baseline-group-crashed", now: $t.message}
                else {id: $t.id, group: $t.group, class: "regression", basis: "not-in-baseline", now: $t.message} end)
             elif ($p | bad) and ($p | env_fail) then
@@ -818,12 +824,12 @@ else
       if [[ "$FAILED" -gt 0 && "$N_REG" -eq 0 && "$N_NOB" -gt 0 ]]; then
         PRESERVATION="not-verified-unbaselined"
         log_warn "$N_NOB failing test(s) were never meaningfully run by the baseline (their group crashed, or the un-ported module could not be installed): they may be regressions, so preservation is NOT verified."
-        printf '%s' "$BASELINE_JSON" | jq -r '.not_baselined[] | "  not baselined: \(.id // ("group " + .group)) (\(.basis))" + (if (.now // "") != "" then " — now: \(.now)" else "" end)' >&2
+        printf '%s' "$BASELINE_JSON" | jq -r '.not_baselined[] | "  not baselined: \(.id // ("group " + .group + (if .dir then ", directory " + .dir else "" end))) (\(.basis))" + (if (.now // "") != "" then " — now: \(.now)" else "" end)' >&2
       elif [[ "$FAILED" -gt 0 && "$N_REG" -eq 0 ]]; then
         PRESERVATION="pre-existing-failures"
         log_warn "Every failing test already failed in the baseline (pre-existing): no regression, but the suite is not green."
       fi
-      [[ "$N_REG" -gt 0 ]] && printf '%s' "$BASELINE_JSON" | jq -r '.regressions[] | "  regression: \(.id // ("group " + .group)) (\(.basis))"' >&2
+      [[ "$N_REG" -gt 0 ]] && printf '%s' "$BASELINE_JSON" | jq -r '.regressions[] | "  regression: \(.id // ("group " + .group + (if .dir then ", directory " + .dir else "" end))) (\(.basis))"' >&2
     else
       BASELINE_JSON="null"
       log_warn "Could not compare with the baseline $BASELINE_FILE (unreadable): verdict computed without it."
@@ -908,9 +914,9 @@ else
          groups: [(.group_results // [])[] | .group],
          tests_failed: [(.tests // [])[] | select(.status == "fail" or .status == "error") | .id],
          baseline: (if (.baseline | type) == "object"
-                    then {regressions: [(.baseline.regressions // [])[] | (.id // ("group " + .group))],
-                          not_baselined: [(.baseline.not_baselined // [])[] | (.id // ("group " + .group))],
-                          pre_existing: [(.baseline.pre_existing // [])[] | (.id // ("group " + .group))]}
+                    then {regressions: [(.baseline.regressions // [])[] | (.id // ("group " + .group + (if .dir then ", directory " + .dir else "" end)))],
+                          not_baselined: [(.baseline.not_baselined // [])[] | (.id // ("group " + .group + (if .dir then ", directory " + .dir else "" end)))],
+                          pre_existing: [(.baseline.pre_existing // [])[] | (.id // ("group " + .group + (if .dir then ", directory " + .dir else "" end)))]}
                     else null end)};
       def rank: {"verified": 0, "not-verified-no-tests": 1, "verified-partial": 2, "pre-existing-failures": 3,
                  "not-verified-blocked": 4, "not-verified-unbaselined": 5, "regression": 6}[.] // 0;

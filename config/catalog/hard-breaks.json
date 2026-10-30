@@ -2,7 +2,7 @@
   "schema_version": 1,
   "as_of": "2026-10-06",
   "catalog": "hard-breaks",
-  "description": "The hard-break categories of the viability rubric (07-R4, T-M4-09), moved out of skills/viability-assessment/SKILL.md so scripts/analysis/assess.sh counts them the same way on every run. A category is present when its POSIX ERE (case-sensitive, grep -E) matches at least one file of the subject whose name matches one of its globs. The matched files are listed; the count of categories present is the rubric's hard_breaks. The first four patterns are the 0.9 skill's; jquery4 and the jQuery UI method pattern came from the training run (1.0.3); each fact was verified against the drupal/core 11.4.8 tree of the lab bed.",
+  "description": "The hard-break categories of the viability rubric (07-R4, T-M4-09), moved out of skills/viability-assessment/SKILL.md so scripts/analysis/assess.sh counts them the same way on every run. A category is present when its POSIX ERE (case-sensitive, grep -E) matches at least one file of the subject whose name matches one of its globs. The matched files are listed; the count of categories present is the rubric's hard_breaks. The first four patterns are the 0.9 skill's; jquery4 came from the training run (1.0.3); each fact was verified against the drupal/core 11.4.8 tree of the lab bed.",
   "entries": [
     {
       "id": "twig3",
